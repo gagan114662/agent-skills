@@ -16,6 +16,8 @@
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@node-rs/argon2": "^2.0.2",
     "@reload/shared": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
