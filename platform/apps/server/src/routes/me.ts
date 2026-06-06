@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { resolveIdentity } from "../auth/middleware.js";
+import { requireIdentity } from "../auth/guard.js";
 
 export async function meRoutes(app: FastifyInstance): Promise<void> {
   app.get("/me", async (req, reply) => {
-    const identity = await resolveIdentity(req);
-    if (!identity) return reply.code(401).send({ error: "unauthorized" });
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
     return identity;
   });
 }
