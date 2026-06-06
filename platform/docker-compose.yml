@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: reload
+      POSTGRES_PASSWORD: reload
+      POSTGRES_DB: reload
+    ports:
+      # Host 5433 to avoid colliding with a locally-installed Postgres on 5432.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reload -d reload"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - reload_pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  reload_pg:

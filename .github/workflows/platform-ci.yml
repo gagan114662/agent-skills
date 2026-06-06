@@ -1,0 +1,63 @@
+name: platform-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["platform/**", ".github/workflows/platform-ci.yml"]
+  pull_request:
+    paths: ["platform/**", ".github/workflows/platform-ci.yml"]
+
+defaults:
+  run:
+    working-directory: platform
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  demo-video:
+    # Regenerates the PR video proof as a downloadable artifact.
+    # Best-effort: never blocks the PR (the canonical demo is committed under platform/docs/demos/).
+    runs-on: ubuntu-latest
+    needs: quality
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Install recording tools (ffmpeg, asciinema, agg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg asciinema
+          curl -fsSL -o /usr/local/bin/agg \
+            https://github.com/asciinema/agg/releases/latest/download/agg-x86_64-unknown-linux-gnu
+          chmod +x /usr/local/bin/agg
+      - name: Record demo
+        run: bash scripts/record-demo.sh 01-foundation-scaffolding-ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-video
+          path: platform/docs/demos/01-foundation-scaffolding-ci.mp4
+          if-no-files-found: warn
