@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { db } from "../index.js";
 import { users, agents, members } from "../schema/index.js";
 
@@ -5,6 +6,16 @@ export interface Member {
   id: string;
   kind: "human" | "agent";
   displayName: string;
+}
+
+/** True iff the member exists *in this workspace* — the #9 cross-workspace grant guard (IDOR). */
+export async function memberInWorkspace(memberId: string, workspaceId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.workspaceId, workspaceId)))
+    .limit(1);
+  return row !== undefined;
 }
 
 /** Create a human user (global) and their member row in a workspace. */
