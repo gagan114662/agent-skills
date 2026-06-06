@@ -14,7 +14,11 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
-/** Drizzle handle for future query work (schema arrives in #2). */
+/**
+ * Drizzle handle for future query work (schema arrives in #2).
+ * Note: this initializes the pool at module import. `pg` opens no socket until the
+ * first query, so there's no eager connection — but the Pool object itself exists eagerly.
+ */
 export const db = drizzle(getPool());
 
 /** Returns true if Postgres answers a trivial query. Never throws. */

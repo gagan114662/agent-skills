@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the dependency pings so this is a hermetic unit test of the /healthz contract.
-// Real Postgres/Redis connectivity is proven by the live demo + the CI integration job.
+// Real Postgres/Redis connectivity is proven by the demo (scripts/demo.sh, recorded as the
+// PR video). A CI service-container integration job is deferred to #2 (when schema lands).
 const pingDb = vi.fn<() => Promise<boolean>>();
 const pingRedis = vi.fn<() => Promise<boolean>>();
 

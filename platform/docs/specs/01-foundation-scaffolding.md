@@ -31,7 +31,7 @@
 |---|---|---|
 | Language | TypeScript (strict) | 5.x |
 | Runtime | Node.js | 22 LTS |
-| Package manager / monorepo | pnpm workspaces | 9.x |
+| Package manager / monorepo | pnpm workspaces | 10.x |
 | HTTP server | Fastify | 5.x |
 | Realtime | `ws` (raw WebSocket) on the Fastify server | latest |
 | DB | PostgreSQL + Drizzle ORM | pg 16 / drizzle latest |
@@ -125,7 +125,7 @@ Conventions: `kebab-case` files, `camelCase` vars, `PascalCase` types/components
 ## Testing Strategy
 
 - **Framework:** Vitest. Tests colocated under each workspace's `test/` (`*.test.ts`).
-- **This issue's tests:** `apps/server/test/health.test.ts` boots `buildApp()` via `app.inject()` (no network) and asserts the `/healthz` contract. A connectivity test for db/redis runs against Compose services in CI (service containers).
+- **This issue's tests:** `apps/server/test/health.test.ts` boots `buildApp()` via `app.inject()` (no network) and asserts the `/healthz` contract with the db/redis pings mocked (hermetic). Real db/redis **connectivity** is exercised by the demo (`scripts/demo.sh`, recorded as the PR video) against Docker Compose. A CI **service-container** integration job is intentionally **deferred to #2** (when schema/migrations land and there's something to integration-test); CI here runs the hermetic unit test only.
 - **Levels:** unit (pure logic), integration (route + infra) here; e2e/browser deferred to feature issues (#18 uses `browser-testing-with-devtools`).
 - **Coverage:** no hard % gate on the skeleton; gate is "the health contract test passes." Feature issues will set coverage expectations.
 - **TDD:** per `test-driven-development`, the health test is written **before** the route implementation (red → green).
