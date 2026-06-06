@@ -8,6 +8,8 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().$defaultFn(newId),
   email: text("email").notNull().unique(),
   displayName: text("display_name").notNull(),
+  // Nullable: OAuth/magic-link users (future) won't have a password. Set for dev email+password (#3).
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
