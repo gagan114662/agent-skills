@@ -30,9 +30,54 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  integration:
+    # Runs migrations + repository tests against a real Postgres (and Redis).
+    # This is the service-container integration job the #1 review flagged as missing.
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reload
+          POSTGRES_PASSWORD: reload
+          POSTGRES_DB: reload
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U reload -d reload"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://reload:reload@localhost:5432/reload
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate up
+        run: pnpm --filter @reload/server db:migrate
+      - name: Integration tests (real Postgres)
+        run: pnpm --filter @reload/server test:integration
+      - name: Prove down/up clean
+        run: |
+          pnpm --filter @reload/server db:rollback
+          pnpm --filter @reload/server db:migrate
+
   demo-video:
-    # Regenerates the PR video proof as a downloadable artifact.
-    # Best-effort: never blocks the PR (the canonical demo is committed under platform/docs/demos/).
+    # Regenerates the PR video proofs as downloadable artifacts.
+    # Best-effort: never blocks the PR (the canonical demos are committed under platform/docs/demos/).
     runs-on: ubuntu-latest
     needs: quality
     continue-on-error: true
@@ -54,10 +99,14 @@ jobs:
           curl -fsSL -o /usr/local/bin/agg \
             https://github.com/asciinema/agg/releases/latest/download/agg-x86_64-unknown-linux-gnu
           chmod +x /usr/local/bin/agg
-      - name: Record demo
-        run: bash scripts/record-demo.sh 01-foundation-scaffolding-ci
+      - name: Record all demos
+        run: |
+          for f in scripts/demos/*.sh; do
+            slug="$(basename "$f" .sh)"
+            bash scripts/record-demo.sh "$slug" || echo "demo $slug failed (non-blocking)"
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: demo-video
-          path: platform/docs/demos/01-foundation-scaffolding-ci.mp4
+          name: demo-videos
+          path: platform/docs/demos/*.mp4
           if-no-files-found: warn

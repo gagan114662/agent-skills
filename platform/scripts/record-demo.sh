@@ -10,13 +10,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SLUG="${1:-demo}"
+DEMO="scripts/demos/${SLUG}.sh"
 OUT_DIR="docs/demos"
 CAST="$(mktemp -t "${SLUG}.XXXXXX").cast"
 GIF="$(mktemp -t "${SLUG}.XXXXXX").gif"
 mkdir -p "$OUT_DIR"
 
-echo ">> recording demo for '$SLUG'..." >&2
-asciinema rec --overwrite --command "bash scripts/demo.sh" "$CAST"
+if [ ! -f "$DEMO" ]; then
+  echo "!! no demo script at $DEMO" >&2
+  exit 1
+fi
+
+echo ">> recording demo for '$SLUG' ($DEMO)..." >&2
+asciinema rec --overwrite --command "bash $DEMO" "$CAST"
 
 echo ">> rendering GIF..." >&2
 agg --theme monokai "$CAST" "$GIF"

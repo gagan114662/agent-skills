@@ -8,19 +8,26 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "db:migrate": "tsx src/db/migrate.ts up",
+    "db:rollback": "tsx src/db/migrate.ts down",
+    "db:reset": "tsx src/db/migrate.ts reset",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@reload/shared": "workspace:*",
+    "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1",
-    "drizzle-orm": "^0.38.3",
+    "uuidv7": "^1.0.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.10",
     "@types/ws": "^8.5.13",
+    "drizzle-kit": "^0.30.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

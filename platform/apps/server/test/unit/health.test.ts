@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the dependency pings so this is a hermetic unit test of the /healthz contract.
-// Real Postgres/Redis connectivity is proven by the demo (scripts/demo.sh, recorded as the
-// PR video). A CI service-container integration job is deferred to #2 (when schema lands).
+// Real Postgres/Redis connectivity is proven by the demo (scripts/demos/*.sh, recorded as the
+// PR video) and the integration tests (test/integration) which run against a real database.
 const pingDb = vi.fn<() => Promise<boolean>>();
 const pingRedis = vi.fn<() => Promise<boolean>>();
 
-vi.mock("../src/db/index.js", () => ({ pingDb, closeDb: vi.fn() }));
-vi.mock("../src/redis/index.js", () => ({ pingRedis, closeRedis: vi.fn() }));
+vi.mock("../../src/db/index.js", () => ({ pingDb, closeDb: vi.fn() }));
+vi.mock("../../src/redis/index.js", () => ({ pingRedis, closeRedis: vi.fn() }));
 
-const { buildApp } = await import("../src/app.js");
+const { buildApp } = await import("../../src/app.js");
 
 describe("GET /healthz", () => {
   beforeEach(() => {
