@@ -1,12 +1,13 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { loadEnv } from "../env.js";
+import * as schema from "./schema/index.js";
 
 const { Pool } = pg;
 
 let pool: pg.Pool | undefined;
 
-/** Lazily-created shared pg pool. No schema yet — issue #2 introduces tables. */
+/** Lazily-created shared pg pool. */
 export function getPool(): pg.Pool {
   if (!pool) {
     pool = new Pool({ connectionString: loadEnv().databaseUrl, max: 10 });
@@ -15,11 +16,11 @@ export function getPool(): pg.Pool {
 }
 
 /**
- * Drizzle handle for future query work (schema arrives in #2).
+ * Drizzle handle, typed against the full schema (#2).
  * Note: this initializes the pool at module import. `pg` opens no socket until the
  * first query, so there's no eager connection — but the Pool object itself exists eagerly.
  */
-export const db = drizzle(getPool());
+export const db = drizzle(getPool(), { schema });
 
 /** Returns true if Postgres answers a trivial query. Never throws. */
 export async function pingDb(): Promise<boolean> {

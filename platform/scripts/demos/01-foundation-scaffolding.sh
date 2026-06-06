@@ -2,7 +2,7 @@
 # Scripted acceptance demo for the Reload platform foundation (issue #1).
 # Run from platform/. Wrapped by record-demo.sh to produce the PR video proof.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 cyan() { printf "\033[1;36m%s\033[0m\n" "$*"; }
 green() { printf "\033[1;32m%s\033[0m\n" "$*"; }
@@ -17,7 +17,6 @@ pnpm --filter @reload/server test
 
 cyan "==> 2/4  Local infra (Postgres + Redis via Docker Compose)"
 docker compose up -d
-# wait for Postgres + Redis healthchecks
 for i in $(seq 1 30); do
   if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q postgres)" 2>/dev/null)" = "healthy" ] && \
      [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q redis)" 2>/dev/null)" = "healthy" ]; then
