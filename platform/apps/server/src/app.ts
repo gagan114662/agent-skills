@@ -4,6 +4,7 @@ import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentRoutes } from "./routes/agents.js";
+import { channelRoutes } from "./routes/channels.js";
 
 /**
  * Builds the Fastify app without binding a port, so it can be exercised in tests
@@ -16,5 +17,6 @@ export function buildApp(): FastifyInstance {
   app.register(authRoutes);
   app.register(meRoutes);
   app.register(agentRoutes);
+  app.register(channelRoutes);
   return app;
 }
