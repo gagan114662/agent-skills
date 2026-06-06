@@ -126,8 +126,17 @@ export async function findValidAgentToken(
   return row;
 }
 
-export async function revokeAgentToken(tokenId: string): Promise<void> {
-  await db.update(agentTokens).set({ revokedAt: new Date() }).where(eq(agentTokens.id, tokenId));
+/**
+ * Revoke a token, scoped to the caller's workspace (prevents cross-tenant revoke / IDOR).
+ * Returns false if the token does not exist *in that workspace*.
+ */
+export async function revokeAgentToken(tokenId: string, workspaceId: string): Promise<boolean> {
+  const res = await db
+    .update(agentTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(agentTokens.id, tokenId), eq(agentTokens.workspaceId, workspaceId)))
+    .returning({ id: agentTokens.id });
+  return res.length > 0;
 }
 
 export async function getAgentMember(

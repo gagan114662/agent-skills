@@ -46,7 +46,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const { userId } = await createHumanAccount({
       workspaceId: ws.id,
       email: b.email,
-      passwordHash: hashPassword(b.password),
+      passwordHash: await hashPassword(b.password),
       displayName: b.displayName,
     });
     const { raw, hash } = generateSessionToken();
@@ -58,7 +58,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/auth/login", async (req, reply) => {
     const b = req.body as { email?: string; password?: string };
     const user = await findUserByEmail(b.email ?? "");
-    if (!user || !user.passwordHash || !verifyPassword(b.password ?? "", user.passwordHash)) {
+    if (!user || !user.passwordHash || !(await verifyPassword(b.password ?? "", user.passwordHash))) {
       return reply.code(401).send({ error: "invalid credentials" });
     }
     const { raw, hash } = generateSessionToken();

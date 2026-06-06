@@ -39,7 +39,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       if (identity.workspaceId !== workspaceId) {
         return reply.code(403).send({ error: "not a member of this workspace" });
       }
-      await revokeAgentToken(tokenId);
+      const revoked = await revokeAgentToken(tokenId, workspaceId);
+      if (!revoked) return reply.code(404).send({ error: "token not found in this workspace" });
       return { ok: true };
     },
   );

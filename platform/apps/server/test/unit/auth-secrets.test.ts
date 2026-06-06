@@ -8,20 +8,20 @@ import {
   AGENT_TOKEN_PREFIX,
 } from "../../src/auth/secrets.js";
 
-describe("password hashing (scrypt)", () => {
-  it("verifies a correct password and rejects a wrong one", () => {
-    const stored = hashPassword("correct horse battery staple");
-    expect(stored.startsWith("scrypt$")).toBe(true);
-    expect(verifyPassword("correct horse battery staple", stored)).toBe(true);
-    expect(verifyPassword("wrong", stored)).toBe(false);
+describe("password hashing (argon2id)", () => {
+  it("verifies a correct password and rejects a wrong one", async () => {
+    const stored = await hashPassword("correct horse battery staple");
+    expect(stored.startsWith("$argon2id$")).toBe(true);
+    expect(await verifyPassword("correct horse battery staple", stored)).toBe(true);
+    expect(await verifyPassword("wrong", stored)).toBe(false);
   });
 
-  it("produces a different salt/hash each time", () => {
-    expect(hashPassword("same")).not.toBe(hashPassword("same"));
+  it("produces a different hash each time (random salt)", async () => {
+    expect(await hashPassword("same")).not.toBe(await hashPassword("same"));
   });
 
-  it("rejects malformed stored values", () => {
-    expect(verifyPassword("x", "not-a-valid-hash")).toBe(false);
+  it("rejects malformed stored values", async () => {
+    expect(await verifyPassword("x", "not-a-valid-hash")).toBe(false);
   });
 });
 

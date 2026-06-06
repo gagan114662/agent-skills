@@ -118,4 +118,57 @@ describe("auth & identity (real Postgres)", () => {
     const res = await app.inject({ method: "GET", url: "/me" });
     expect(res.statusCode).toBe(401);
   });
+
+  it("does not let a human revoke a token belonging to another workspace (IDOR)", async () => {
+    // workspace A + human A
+    const slugA = `auth-${newId()}`;
+    createdWorkspaceSlugs.push(slugA);
+    const signA = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      payload: { email: `a-${newId()}@e.com`, password: "pw", displayName: "A", workspaceSlug: slugA },
+    });
+    const cookieA = sessionCookie(signA);
+    const wsA = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookieA } })).json()
+      .workspaceId as string;
+
+    // workspace B + human B + an agent token in B
+    const slugB = `auth-${newId()}`;
+    createdWorkspaceSlugs.push(slugB);
+    const signB = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      payload: { email: `b-${newId()}@e.com`, password: "pw", displayName: "B", workspaceSlug: slugB },
+    });
+    const cookieB = sessionCookie(signB);
+    const wsB = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookieB } })).json()
+      .workspaceId as string;
+    const regB = await app.inject({
+      method: "POST",
+      url: `/workspaces/${wsB}/agents`,
+      cookies: { rid: cookieB },
+      payload: { name: "BScout" },
+    });
+    const { token: tokenB, agentId: agentB, tokenId: tokenIdB } = regB.json() as {
+      token: string;
+      agentId: string;
+      tokenId: string;
+    };
+
+    // A uses its OWN workspace in the path (passing the membership check) but B's token id.
+    const attempt = await app.inject({
+      method: "POST",
+      url: `/workspaces/${wsA}/agents/${agentB}/tokens/${tokenIdB}/revoke`,
+      cookies: { rid: cookieA },
+    });
+    expect(attempt.statusCode).toBe(404); // not found *in A's workspace*
+
+    // B's token must still be valid — A's cross-tenant attempt did nothing.
+    const meB = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(meB.statusCode).toBe(200);
+  });
 });

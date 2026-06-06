@@ -1,4 +1,5 @@
-import { randomBytes, scryptSync, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
+import { hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
 
 export const AGENT_TOKEN_PREFIX = "rld_agt_";
 
@@ -20,20 +21,17 @@ export function hashToken(raw: string): string {
 }
 
 /**
- * Password hashing via Node's built-in scrypt (memory-hard, zero native deps — ADR-0003).
- * Format: `scrypt$<saltHex>$<hashHex>`.
+ * Password hashing via argon2id (OWASP-recommended; ADR-0003). Returns a PHC string
+ * (`$argon2id$...`). `@node-rs/argon2` ships prebuilt binaries for CI/dev platforms.
  */
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  const derived = scryptSync(password, salt, 64);
-  return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
+export function hashPassword(password: string): Promise<string> {
+  return argon2Hash(password); // @node-rs/argon2 defaults to argon2id
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
-  const parts = stored.split("$");
-  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const salt = Buffer.from(parts[1]!, "hex");
-  const expected = Buffer.from(parts[2]!, "hex");
-  const derived = scryptSync(password, salt, expected.length);
-  return derived.length === expected.length && timingSafeEqual(derived, expected);
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  try {
+    return await argon2Verify(stored, password);
+  } catch {
+    return false;
+  }
 }
