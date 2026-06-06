@@ -11,12 +11,26 @@ import {
 export const SESSION_COOKIE = "rid";
 
 /**
- * Resolve the caller to a workspace member, or null if unauthenticated.
- * Priority: agent Bearer token, then human session cookie. Shared by HTTP routes
- * and (later, #5) the WebSocket gateway.
+ * Raw credentials a caller can present, decoupled from the HTTP transport. Lets the
+ * WebSocket gateway (#5) reuse the exact same identity resolution as REST routes,
+ * sourcing credentials from the upgrade request (headers, cookie, or query param).
  */
-export async function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
-  const authz = req.headers.authorization;
+export interface Credentials {
+  /** `Authorization` header value, e.g. `Bearer reload_…` (agents). */
+  authorization?: string | undefined;
+  /** Raw session token from the `rid` cookie (humans). */
+  sessionToken?: string | undefined;
+}
+
+/**
+ * Resolve raw credentials to a workspace member, or null if unauthenticated.
+ * Priority: agent Bearer token, then human session token. The single source of
+ * truth for both REST (`resolveIdentity`) and the #5 WebSocket gateway.
+ */
+export async function resolveIdentityFromCredentials(
+  creds: Credentials,
+): Promise<Identity | null> {
+  const authz = creds.authorization;
   if (authz?.startsWith("Bearer ")) {
     const raw = authz.slice("Bearer ".length).trim();
     if (!raw.startsWith(AGENT_TOKEN_PREFIX)) return null;
@@ -32,9 +46,9 @@ export async function resolveIdentity(req: FastifyRequest): Promise<Identity | n
     };
   }
 
-  const cookie = req.cookies?.[SESSION_COOKIE];
-  if (cookie) {
-    const sess = await findValidSession(hashToken(cookie));
+  const token = creds.sessionToken;
+  if (token) {
+    const sess = await findValidSession(hashToken(token));
     if (!sess) return null;
     const member = await getHumanMember(sess.userId);
     if (!member) return null;
@@ -47,4 +61,15 @@ export async function resolveIdentity(req: FastifyRequest): Promise<Identity | n
   }
 
   return null;
+}
+
+/**
+ * Resolve the caller to a workspace member, or null if unauthenticated.
+ * Priority: agent Bearer token, then human session cookie.
+ */
+export async function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
+  return resolveIdentityFromCredentials({
+    authorization: req.headers.authorization,
+    sessionToken: req.cookies?.[SESSION_COOKIE],
+  });
 }
