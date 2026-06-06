@@ -1,0 +1,11 @@
+# Keep the build context small and reproducible — install deps and build in-image.
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+.git
+**/*.log
+docs/demos/*.mp4
+**/.DS_Store
+**/coverage

@@ -22,6 +22,19 @@ Then open http://localhost:5173 (shows backend health) or:
 curl localhost:3000/healthz   # {"status":"ok","db":"up","redis":"up"}
 ```
 
+### Deploy the full stack (containerized, migrate-on-deploy)
+
+```bash
+cd platform
+docker compose --profile full up -d --build   # server + Postgres + Redis, migrations on deploy
+curl localhost:3000/readyz                     # {"status":"ready","db":"up","redis":"up"}
+```
+
+Probes: `/livez` (liveness), `/readyz` (readiness), `/healthz` (summary), `/metrics`
+(Prometheus). Every request carries an `x-request-id` (echoed + logged with the tenant).
+Operations — deploy / rollback / backup / restore / SLOs — are in
+[docs/operations.md](docs/operations.md).
+
 ## Commands
 
 | Command | What it does |
@@ -32,18 +45,22 @@ curl localhost:3000/healthz   # {"status":"ok","db":"up","redis":"up"}
 | `pnpm lint` | ESLint |
 | `pnpm build` | build all workspaces |
 | `pnpm infra:up` / `infra:down` | start/stop Postgres + Redis |
+| `docker compose --profile full up -d --build` | deploy the full stack (server + deps, migrate-on-deploy) |
+| `bash scripts/backup.sh` / `bash scripts/restore.sh <file>` | Postgres logical backup / restore |
 | `bash scripts/record-demo.sh <slug>` | record the PR video proof → `docs/demos/<slug>.mp4` |
 
 ## Layout
 
 ```
-apps/server      Fastify API + /healthz (Postgres + Redis checks)
+apps/server      Fastify API + probes (/livez /readyz /healthz) + /metrics
 apps/web         React + Vite client
 packages/shared  shared TypeScript contracts (@reload/shared)
+observability    Prometheus scrape config + SLO alert rules
 docs/specs       one spec per issue
 docs/adrs        architecture decision records
 docs/demos       committed PR video proofs
-scripts          demo + recording helpers
+docs/operations.md  deploy / rollback / backup / restore / SLO runbook
+scripts          demo, recording, backup/restore helpers
 ```
 
 ## Conventions
