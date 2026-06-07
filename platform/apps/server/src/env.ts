@@ -1,8 +1,31 @@
+import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
+
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
   port: number;
   databaseUrl: string;
   redisUrl: string;
+  /** Cloud agent execution (#25). */
+  agent: AgentEnv;
+}
+
+export interface AgentEnv {
+  /** Execution backend. Default `local` so tests/CI need no cloud spend. */
+  runtime: RuntimeKind;
+  /** The trusted harness command + args run for each session (NOT client-supplied). */
+  harnessCommand: string;
+  harnessArgs: string[];
+  /** Hard per-session resource + wall-clock caps. */
+  caps: ResourceCaps;
+}
+
+function parseRuntime(value: string | undefined): RuntimeKind {
+  return value === "sandbox" ? "sandbox" : "local";
+}
+
+function num(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -10,5 +33,18 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port: Number(source.PORT ?? 3000),
     databaseUrl: source.DATABASE_URL ?? "postgres://reload:reload@localhost:5433/reload",
     redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
+    agent: {
+      runtime: parseRuntime(source.AGENT_RUNTIME),
+      // Dev/demo default: a tiny built-in harness that echoes the task as a few lines of "work".
+      harnessCommand: source.AGENT_HARNESS_CMD ?? "bash",
+      harnessArgs: source.AGENT_HARNESS_ARGS
+        ? JSON.parse(source.AGENT_HARNESS_ARGS)
+        : ["scripts/agent-harness-demo.sh"],
+      caps: {
+        wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
+        idleMs: num(source.AGENT_IDLE_MS, 120_000),
+        memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
+      },
+    },
   };
 }

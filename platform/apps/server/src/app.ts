@@ -7,7 +7,10 @@ import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
+import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { attachRealtime } from "./realtime/gateway.js";
+import { createDefaultSessionManager } from "./runtime/default.js";
+import type { SessionManager } from "./runtime/manager.js";
 
 /**
  * Builds the Fastify app without binding a port, so it can be exercised in tests
@@ -18,7 +21,12 @@ import { attachRealtime } from "./realtime/gateway.js";
  * stamped on every log line (`requestIdLogLabel`) and echoed in the response header
  * by the observability plugin.
  */
-export function buildApp(): FastifyInstance {
+/** Options for {@link buildApp}; tests may inject a SessionManager with a fake runtime (#25). */
+export interface BuildAppOptions {
+  sessionManager?: SessionManager;
+}
+
+export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger: true,
     requestIdHeader: "x-request-id",
@@ -32,6 +40,14 @@ export function buildApp(): FastifyInstance {
   app.register(meRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
+  // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
+  // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
+  // manager. It is cancelled+drained on server close so no run leaks past shutdown.
+  const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log);
+  app.register(agentSessionRoutes, { sessionManager });
+  app.addHook("onClose", async () => {
+    await sessionManager.shutdown();
+  });
   // #5 realtime gateway: WebSocket delivery + presence on top of the REST endpoints.
   // Its Redis subscriber is created lazily on the first socket, so inject-only tests
   // and the no-Redis CI job stay Redis-free.

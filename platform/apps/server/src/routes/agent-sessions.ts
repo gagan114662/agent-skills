@@ -1,0 +1,108 @@
+import type { FastifyInstance } from "fastify";
+import { requireIdentity } from "../auth/guard.js";
+import { requireChannelCapability } from "../auth/access.js";
+import { getWorkspaceMember } from "../db/repositories/members.js";
+import { addChannelMember } from "../db/repositories/channels.js";
+import { grantCapability } from "../db/repositories/permissions.js";
+import { getAgentSession, listAgentSessions } from "../db/repositories/agent-sessions.js";
+import type { SessionManager } from "../runtime/manager.js";
+
+export interface AgentSessionRoutesOptions {
+  sessionManager: SessionManager;
+}
+
+/**
+ * Cloud agent execution routes (#25). A human (or agent with write) launches an agent session
+ * into a channel; the SessionManager runs it server-side on the configured AgentRuntime and
+ * streams output back as the agent member — so the work continues after the client disconnects.
+ *
+ * Gating reuses #9 channel capabilities + the #19 tenant guard. The launch route never accepts a
+ * host command from the client: the harness command is fixed by config and the caller only
+ * supplies a task (data).
+ */
+export async function agentSessionRoutes(
+  app: FastifyInstance,
+  opts: AgentSessionRoutesOptions,
+): Promise<void> {
+  const { sessionManager } = opts;
+
+  // Launch a session: write capability on the channel; the target must be an agent in-workspace.
+  app.post("/channels/:cid/agent-sessions", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid } = req.params as { cid: string };
+    const ch = await requireChannelCapability(id, cid, "write", reply);
+    if (!ch) return;
+    if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
+
+    const b = req.body as { agentMemberId?: string; task?: string };
+    if (!b.agentMemberId) return reply.code(400).send({ error: "agentMemberId required" });
+    if (!b.task) return reply.code(400).send({ error: "task required" });
+
+    // Cross-tenant + kind guard: the runner must be an agent member of THIS workspace (IDOR).
+    const target = await getWorkspaceMember(b.agentMemberId, id.workspaceId);
+    if (!target) return reply.code(404).send({ error: "agent not found in this workspace" });
+    if (target.kind !== "agent") {
+      return reply.code(400).send({ error: "agentMemberId must reference an agent member" });
+    }
+
+    // The agent posts its streamed output into this channel — make it a legitimate writer.
+    await addChannelMember(cid, target.id);
+    await grantCapability({
+      workspaceId: id.workspaceId,
+      memberId: target.id,
+      resourceType: "channel",
+      resourceId: cid,
+      capability: "write",
+      grantedByMemberId: id.memberId,
+    });
+
+    const session = await sessionManager.launch({
+      workspaceId: id.workspaceId,
+      channelId: cid,
+      agentMemberId: target.id,
+      createdByMemberId: id.memberId,
+      task: b.task,
+    });
+    // 202: accepted and running server-side; the client can disconnect now.
+    return reply.code(202).send({
+      id: session.id,
+      status: session.status,
+      runtime: session.runtime,
+      agentMemberId: session.agentMemberId,
+    });
+  });
+
+  // List a channel's agent sessions (read capability).
+  app.get("/channels/:cid/agent-sessions", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid } = req.params as { cid: string };
+    if (!(await requireChannelCapability(id, cid, "read", reply))) return;
+    return listAgentSessions(cid);
+  });
+
+  // Get one session's status (read capability; scoped to the channel → tenant-safe).
+  app.get("/channels/:cid/agent-sessions/:id", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid, id: sessionId } = req.params as { cid: string; id: string };
+    if (!(await requireChannelCapability(id, cid, "read", reply))) return;
+    const session = await getAgentSession(sessionId, cid);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    return session;
+  });
+
+  // Cancel a running session (write capability). Idempotent.
+  app.post("/channels/:cid/agent-sessions/:id/cancel", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid, id: sessionId } = req.params as { cid: string; id: string };
+    if (!(await requireChannelCapability(id, cid, "write", reply))) return;
+    // Confirm the session belongs to this channel before touching the in-memory runner (IDOR).
+    const session = await getAgentSession(sessionId, cid);
+    if (!session) return reply.code(404).send({ error: "session not found" });
+    const canceled = await sessionManager.cancel(sessionId);
+    return { ok: true, canceled };
+  });
+}
