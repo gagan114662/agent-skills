@@ -5,7 +5,7 @@
  *   memoryEdges → #15
  *   permissions → #9  (RBAC: read/write/propagate)
  */
-import { pgTable, uuid, text, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, unique, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -25,30 +25,78 @@ export const tasks = pgTable("tasks", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const memories = pgTable("memories", {
-  id: uuid("id").primaryKey().$defaultFn(newId),
-  workspaceId: uuid("workspace_id")
-    .notNull()
-    .references(() => workspaces.id, { onDelete: "cascade" }),
-  type: text("type").notNull(),
-  content: jsonb("content").notNull().default(sql`'{}'::jsonb`),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * Typed memory/context graph nodes (issue #15, ADR-0015). The #2 stub (id, workspace_id,
+ * type, content, created_at) becomes the live node store via 0003_memory:
+ *   - `entity` — a normalized subject the node is about (powers query-by-entity)
+ *   - `source_type` / `source_id` — provenance: the activity a node was auto-captured from
+ *   - `dedupe_key` — deterministic hash of (type, entity, normalized text); the UNIQUE below
+ *     makes writes idempotent so obvious duplicates collapse to one node
+ * `type` stays free text (extensible); the canonical set is decision/fact/preference/artifact.
+ */
+export const memories = pgTable(
+  "memories",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    content: jsonb("content")
+      .$type<{ text: string } & Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    entity: text("entity"),
+    sourceType: text("source_type"),
+    sourceId: uuid("source_id"),
+    dedupeKey: text("dedupe_key").notNull(),
+    createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    dedupeUniq: unique("memories_workspace_dedupe_uniq").on(t.workspaceId, t.dedupeKey),
+    byType: index("memories_workspace_type_idx").on(t.workspaceId, t.type),
+    byEntity: index("memories_workspace_entity_idx").on(t.workspaceId, t.entity),
+  }),
+);
 
-export const memoryEdges = pgTable("memory_edges", {
-  id: uuid("id").primaryKey().$defaultFn(newId),
-  workspaceId: uuid("workspace_id")
-    .notNull()
-    .references(() => workspaces.id, { onDelete: "cascade" }),
-  fromMemoryId: uuid("from_memory_id")
-    .notNull()
-    .references(() => memories.id, { onDelete: "cascade" }),
-  toMemoryId: uuid("to_memory_id")
-    .notNull()
-    .references(() => memories.id, { onDelete: "cascade" }),
-  relation: text("relation").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * Typed, directed edges between memory nodes (same workspace, FK-enforced). `relation` is
+ * free text (canonical: relates_to / supports / supersedes / derived_from). The UNIQUE makes
+ * an edge idempotent; the per-endpoint indexes serve neighbor traversal.
+ */
+export const memoryEdges = pgTable(
+  "memory_edges",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    fromMemoryId: uuid("from_memory_id")
+      .notNull()
+      .references(() => memories.id, { onDelete: "cascade" }),
+    toMemoryId: uuid("to_memory_id")
+      .notNull()
+      .references(() => memories.id, { onDelete: "cascade" }),
+    relation: text("relation").notNull(),
+    createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    edgeUniq: unique("memory_edges_uniq").on(
+      t.workspaceId,
+      t.fromMemoryId,
+      t.toMemoryId,
+      t.relation,
+    ),
+    byFrom: index("memory_edges_from_idx").on(t.fromMemoryId),
+    byTo: index("memory_edges_to_idx").on(t.toMemoryId),
+  }),
+);
 
 /**
  * RBAC capability grants (issue #9, ADR-0009). One effective capability level per
