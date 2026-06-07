@@ -34,6 +34,52 @@ const httpTotals = new Map<string, HttpSeries>();
 const durations = new Map<string, DurationSeries>();
 let inFlight = 0;
 
+// --- agent sessions (#25) ---------------------------------------------------
+// Cardinality discipline (as for HTTP): labels are bounded to the runtime kind and a small set
+// of terminal statuses — tenant ids are NEVER labels (they live in logs/traces).
+
+/** Spin-up histogram buckets in seconds — sandbox provision should be sub-second to a few s. */
+const SPINUP_BUCKETS = [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
+
+const sessionTotals = new Map<string, { runtime: string; status: string; count: number }>();
+interface SpinupSeries {
+  runtime: string;
+  bucketCounts: number[];
+  inf: number;
+  sum: number;
+  count: number;
+}
+const spinups = new Map<string, SpinupSeries>();
+let sessionsActive = 0;
+
+/** A session was launched (provisioning). */
+export function recordSessionStarted(): void {
+  sessionsActive += 1;
+}
+
+/** A session reached a terminal status; decrement the active gauge and count the outcome. */
+export function recordSessionEnded(runtime: string, status: string): void {
+  sessionsActive = Math.max(0, sessionsActive - 1);
+  const key = `${runtime}|${status}`;
+  const existing = sessionTotals.get(key);
+  if (existing) existing.count += 1;
+  else sessionTotals.set(key, { runtime, status, count: 1 });
+}
+
+/** Observe sandbox spin-up (provision) latency in seconds. */
+export function observeSpinup(runtime: string, seconds: number): void {
+  let s = spinups.get(runtime);
+  if (!s) {
+    s = { runtime, bucketCounts: SPINUP_BUCKETS.map(() => 0), inf: 0, sum: 0, count: 0 };
+    spinups.set(runtime, s);
+  }
+  s.count += 1;
+  s.sum += seconds;
+  const idx = SPINUP_BUCKETS.findIndex((b) => seconds <= b);
+  if (idx === -1) s.inf += 1;
+  else s.bucketCounts[idx] = (s.bucketCounts[idx] ?? 0) + 1;
+}
+
 const httpKey = (method: string, route: string, status: number): string =>
   `${method}|${route}|${status}`;
 const durKey = (method: string, route: string): string => `${method}|${route}`;
@@ -79,6 +125,9 @@ export function resetMetrics(): void {
   httpTotals.clear();
   durations.clear();
   inFlight = 0;
+  sessionTotals.clear();
+  spinups.clear();
+  sessionsActive = 0;
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -126,6 +175,34 @@ export function renderMetrics(): string {
   lines.push("# HELP process_resident_memory_bytes Resident memory size in bytes.");
   lines.push("# TYPE process_resident_memory_bytes gauge");
   lines.push(`process_resident_memory_bytes ${process.memoryUsage().rss}`);
+
+  // --- agent sessions (#25) ---
+  lines.push("# HELP agent_sessions_total Agent sessions by runtime and terminal status.");
+  lines.push("# TYPE agent_sessions_total counter");
+  for (const s of sessionTotals.values()) {
+    lines.push(
+      `agent_sessions_total{runtime="${esc(s.runtime)}",status="${esc(s.status)}"} ${s.count}`,
+    );
+  }
+
+  lines.push("# HELP agent_sessions_active Agent sessions currently running.");
+  lines.push("# TYPE agent_sessions_active gauge");
+  lines.push(`agent_sessions_active ${sessionsActive}`);
+
+  lines.push("# HELP agent_sandbox_spinup_seconds Runtime provision (spin-up) latency.");
+  lines.push("# TYPE agent_sandbox_spinup_seconds histogram");
+  for (const s of spinups.values()) {
+    const labels = `runtime="${esc(s.runtime)}"`;
+    let cumulative = 0;
+    for (let i = 0; i < SPINUP_BUCKETS.length; i++) {
+      cumulative += s.bucketCounts[i] ?? 0;
+      lines.push(`agent_sandbox_spinup_seconds_bucket{${labels},le="${SPINUP_BUCKETS[i]}"} ${cumulative}`);
+    }
+    cumulative += s.inf;
+    lines.push(`agent_sandbox_spinup_seconds_bucket{${labels},le="+Inf"} ${cumulative}`);
+    lines.push(`agent_sandbox_spinup_seconds_sum{${labels}} ${s.sum}`);
+    lines.push(`agent_sandbox_spinup_seconds_count{${labels}} ${s.count}`);
+  }
 
   return lines.join("\n") + "\n";
 }

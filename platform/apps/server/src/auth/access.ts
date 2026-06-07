@@ -2,6 +2,7 @@ import type { FastifyReply } from "fastify";
 import type { Identity } from "./identity.js";
 import { getChannel, isChannelMember, type Channel } from "../db/repositories/channels.js";
 import { getCapability, type Capability } from "../db/repositories/permissions.js";
+import { getTask, type Task } from "../db/repositories/tasks.js";
 
 export type { Capability };
 
@@ -58,4 +59,22 @@ export async function requireChannelCapability(
     return undefined;
   }
   return ch;
+}
+
+/**
+ * Load a task and assert it belongs to the caller's workspace (#14). Tasks are workspace-scoped
+ * (membership is the gate, no per-task RBAC yet), so this is the single access call task-id routes
+ * make — it carries the #3 IDOR discipline: a task in another workspace is a 404, never readable.
+ */
+export async function requireTaskInWorkspace(
+  identity: Identity,
+  taskId: string,
+  reply: FastifyReply,
+): Promise<Task | undefined> {
+  const task = await getTask(taskId);
+  if (!task || task.workspaceId !== identity.workspaceId) {
+    reply.code(404).send({ error: "task not found" });
+    return undefined;
+  }
+  return task;
 }
