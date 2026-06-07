@@ -3,6 +3,7 @@ import type { Identity } from "./identity.js";
 import { getChannel, isChannelMember, type Channel } from "../db/repositories/channels.js";
 import { getCapability, type Capability } from "../db/repositories/permissions.js";
 import { getTask, type Task } from "../db/repositories/tasks.js";
+import { getWorkspaceMember } from "../db/repositories/members.js";
 
 export type { Capability };
 
@@ -77,4 +78,50 @@ export async function requireTaskInWorkspace(
     return undefined;
   }
   return task;
+}
+
+/**
+ * A member's effective capability on the **workspace memory graph** (issue #16). Memory is one
+ * shared resource per workspace (`resource_type='memory'`, `resource_id=workspace_id`), layered
+ * on workspace membership:
+ *   - non-member        → null (no access)
+ *   - explicit grant    → that level (e.g. an agent deliberately downgraded to `read`)
+ *   - human, no grant   → `propagate` (humans administer the graph)
+ *   - agent, no grant   → `write`     (agents collaborate by default — the shared-memory default)
+ */
+export function effectiveMemoryCapability(
+  explicit: Capability | null,
+  memberKind: "human" | "agent" | null,
+): Capability | null {
+  if (memberKind === null) return null;
+  return explicit ?? (memberKind === "human" ? "propagate" : "write");
+}
+
+/**
+ * Assert the caller may act on `workspaceId`'s memory graph at `needed` level (issue #16). The
+ * single access call memory routes make: carries the #3 IDOR discipline (a caller from another
+ * workspace is rejected) and the #9 RBAC ladder. Sends the response on failure and returns false.
+ */
+export async function requireMemoryCapability(
+  identity: Identity,
+  workspaceId: string,
+  needed: Capability,
+  reply: FastifyReply,
+): Promise<boolean> {
+  if (identity.workspaceId !== workspaceId) {
+    reply.code(403).send({ error: "wrong workspace" });
+    return false;
+  }
+  const member = await getWorkspaceMember(identity.memberId, workspaceId);
+  const explicit = await getCapability(workspaceId, identity.memberId, "memory", workspaceId);
+  const effective = effectiveMemoryCapability(explicit, member?.kind ?? null);
+  if (!effective) {
+    reply.code(403).send({ error: "not a workspace member" });
+    return false;
+  }
+  if (!satisfies(effective, needed)) {
+    reply.code(403).send({ error: `requires ${needed} capability on memory` });
+    return false;
+  }
+  return true;
 }

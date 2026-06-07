@@ -6,7 +6,7 @@
  *
  * `tasks` graduated out of this stub in #14 — it now lives in `schema/tasks.ts`.
  */
-import { pgTable, uuid, text, timestamp, jsonb, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, unique, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -41,12 +41,47 @@ export const memories = pgTable(
     createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
+    // supersede/version (issue #16): a newer node can mark this one stale — kept, not deleted.
+    // Self-FK; ON DELETE SET NULL so dropping the replacement doesn't cascade-delete history.
+    supersededByMemoryId: uuid("superseded_by_memory_id").references(
+      (): AnyPgColumn => memories.id,
+      { onDelete: "set null" },
+    ),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     dedupeUniq: unique("memories_workspace_dedupe_uniq").on(t.workspaceId, t.dedupeKey),
     byType: index("memories_workspace_type_idx").on(t.workspaceId, t.type),
     byEntity: index("memories_workspace_entity_idx").on(t.workspaceId, t.entity),
+  }),
+);
+
+/**
+ * memory ↔ file links (issue #16, ADR-0016). Links a memory node to a file **path** — there is
+ * no files table yet, so the path string is the stable target id. Workspace-scoped, idempotent
+ * per (workspace, memory, path); resolves both ways (by memory → files, by path → memories).
+ */
+export const memoryFiles = pgTable(
+  "memory_files",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    memoryId: uuid("memory_id")
+      .notNull()
+      .references(() => memories.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: unique("memory_files_uniq").on(t.workspaceId, t.memoryId, t.path),
+    byMemory: index("memory_files_memory_idx").on(t.memoryId),
+    reverse: index("memory_files_reverse_idx").on(t.workspaceId, t.path),
   }),
 );
 
