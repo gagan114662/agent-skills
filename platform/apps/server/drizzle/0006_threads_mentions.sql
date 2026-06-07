@@ -1,6 +1,7 @@
--- 0003_threads_mentions — threaded replies metadata + @mentions. Issue #6, ADR-0006.
--- Additive on top of #2 (messages.parent_message_id already exists) and #4/#5. Safe: the
--- new column has a default, and the new table is independent.
+-- 0006_threads_mentions — threaded replies metadata + @mentions. Issue #6, ADR-0006.
+-- Additive on top of #2 (messages.parent_message_id already exists), #4/#5, and #7's
+-- 0003_search (messages.body_tsv). Safe: the new column has a default, the new table is
+-- independent. Numbered 0006 (0003 went to #7 search; 0004/0005 reserved by siblings).
 
 -- "Also send to channel" flag on a thread reply (Slack semantics). Default false → existing
 -- rows and root messages are unaffected; clients use it to render the channel/thread split.

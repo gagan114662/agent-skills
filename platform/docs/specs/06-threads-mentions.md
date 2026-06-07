@@ -92,8 +92,9 @@ is written (the message is the source of truth; mentions are derived).
   index (`byMember`) and forwards a `mention` only to the mentioned member's sockets in that
   workspace. No client command changes; clients just receive a new event type.
 
-## Data model (additive migration `0003_threads_mentions`)
-Next free number after `0002_rbac`. Up + paired down, both idempotent.
+## Data model (additive migration `0006_threads_mentions`)
+Numbered `0006` — `0003` is taken by #7 (search); `0004`/`0005` are reserved by sibling
+branches. Additive on top of #7's `messages.body_tsv`. Up + paired down, both idempotent.
 - `ALTER TABLE messages ADD COLUMN also_sent_to_channel boolean NOT NULL DEFAULT false;`
   (safe: default false → existing rows + roots unaffected.)
 - ```sql

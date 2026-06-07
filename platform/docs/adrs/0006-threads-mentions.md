@@ -60,8 +60,8 @@ without breaking it, stay workspace-scoped, and respect #9 capability.
    and the mention stream are all scoped by `identity.workspaceId`.
 
 ## Consequences
-- Threads and mentions are purely additive on #4/#5/#9: one additive migration
-  (`0003_threads_mentions`: `messages.also_sent_to_channel` + the `message_mentions` table), one
+- Threads and mentions are purely additive on #4/#5/#9 (and #7 search): one additive migration
+  (`0006_threads_mentions`: `messages.also_sent_to_channel` + the `message_mentions` table), one
   new `ServerEvent` variant, one new Redis key pattern, and three new endpoints
   (`…/replies`, `…/thread`, `/me/mentions[/count]`). No existing contract changed.
 - Agents become first-class addressable participants: an `@agent` mention lands as a realtime
