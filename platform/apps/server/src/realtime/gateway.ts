@@ -13,11 +13,13 @@ import {
   CHANNEL_PATTERN,
   PRESENCE_PATTERN,
   MENTION_PATTERN,
+  NOTIFY_PATTERN,
   channelIdFromKey,
   presenceHashKey,
   publishPresence,
   workspaceIdFromPresenceKey,
   workspaceIdFromMentionKey,
+  workspaceIdFromNotifyKey,
 } from "./bus.js";
 import type { ServerEvent } from "./protocol.js";
 
@@ -78,7 +80,7 @@ export function attachRealtime(app: FastifyInstance): void {
     if (!subscriberReady) {
       subscriberReady = (async () => {
         const sub = getRedis().duplicate();
-        await sub.psubscribe(CHANNEL_PATTERN, PRESENCE_PATTERN, MENTION_PATTERN);
+        await sub.psubscribe(CHANNEL_PATTERN, PRESENCE_PATTERN, MENTION_PATTERN, NOTIFY_PATTERN);
         sub.on("pmessage", (_pattern, key, payload) => {
           const channelId = channelIdFromKey(key);
           if (channelId) return forward(byChannel.get(channelId), payload);
@@ -90,6 +92,15 @@ export function attachRealtime(app: FastifyInstance): void {
             const event = JSON.parse(payload) as ServerEvent;
             if (event.type === "mention") {
               forward(byMember.get(`${mentionWid}:${event.mention.mentionedMemberId}`), payload);
+            }
+            return;
+          }
+          const notifyWid = workspaceIdFromNotifyKey(key);
+          if (notifyWid) {
+            // Notifications are recipient-targeted: deliver only to the recipient's sockets (#8).
+            const event = JSON.parse(payload) as ServerEvent;
+            if (event.type === "notification") {
+              forward(byMember.get(`${notifyWid}:${event.notification.recipientMemberId}`), payload);
             }
           }
         });
