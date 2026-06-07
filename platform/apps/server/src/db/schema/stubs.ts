@@ -1,29 +1,16 @@
 /**
  * Stub tables — minimal columns + FKs so later issues can extend them via new migrations:
- *   tasks       → #14 (Linear-style task system)
  *   memories    → #15 (typed context/memory graph)
  *   memoryEdges → #15
  *   permissions → #9  (RBAC: read/write/propagate)
+ *
+ * `tasks` graduated out of this stub in #14 — it now lives in `schema/tasks.ts`.
  */
 import { pgTable, uuid, text, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 import { members } from "./identities.js";
-
-export const tasks = pgTable("tasks", {
-  id: uuid("id").primaryKey().$defaultFn(newId),
-  workspaceId: uuid("workspace_id")
-    .notNull()
-    .references(() => workspaces.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  status: text("status").notNull().default("backlog"),
-  assigneeMemberId: uuid("assignee_member_id").references(() => members.id, { onDelete: "set null" }),
-  createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 export const memories = pgTable("memories", {
   id: uuid("id").primaryKey().$defaultFn(newId),

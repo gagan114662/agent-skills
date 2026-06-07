@@ -18,7 +18,10 @@ export async function memberInWorkspace(memberId: string, workspaceId: string): 
   return row !== undefined;
 }
 
-/** Fetch a member scoped to a workspace (kind + display name), or undefined (cross-tenant safe). */
+/**
+ * Fetch a member scoped to a workspace (kind + display name), or undefined (cross-tenant safe).
+ * Shared by #25 (agent sessions) and #14 (the task assignee/routing guard, which reads `.kind`).
+ */
 export async function getWorkspaceMember(
   memberId: string,
   workspaceId: string,

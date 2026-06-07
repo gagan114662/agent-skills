@@ -55,3 +55,13 @@ export async function listChannelMessages(channelId: string): Promise<Message[]>
 export async function softDeleteMessage(id: string): Promise<void> {
   await db.update(messages).set({ deletedAt: new Date() }).where(eq(messages.id, id));
 }
+
+/** True iff the message exists *in this workspace* — the #14 link-target IDOR guard. */
+export async function messageInWorkspace(id: string, workspaceId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(and(eq(messages.id, id), eq(messages.workspaceId, workspaceId)))
+    .limit(1);
+  return row !== undefined;
+}
