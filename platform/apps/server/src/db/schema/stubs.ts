@@ -1,9 +1,10 @@
 /**
  * Stub tables — minimal columns + FKs so later issues can extend them via new migrations:
- *   tasks       → #14 (Linear-style task system)
  *   memories    → #15 (typed context/memory graph)
  *   memoryEdges → #15
  *   permissions → #9  (RBAC: read/write/propagate)
+ *
+ * `tasks` graduated out of this stub in #14 — it now lives in `schema/tasks.ts`.
  */
 import { pgTable, uuid, text, timestamp, jsonb, unique, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -11,27 +12,15 @@ import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 import { members } from "./identities.js";
 
-export const tasks = pgTable("tasks", {
-  id: uuid("id").primaryKey().$defaultFn(newId),
-  workspaceId: uuid("workspace_id")
-    .notNull()
-    .references(() => workspaces.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  status: text("status").notNull().default("backlog"),
-  assigneeMemberId: uuid("assignee_member_id").references(() => members.id, { onDelete: "set null" }),
-  createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 /**
  * Typed memory/context graph nodes (issue #15, ADR-0015). The #2 stub (id, workspace_id,
  * type, content, created_at) becomes the live node store via 0005_memory:
  *   - `entity` — a normalized subject the node is about (powers query-by-entity)
  *   - `source_type` / `source_id` — provenance: the activity a node was auto-captured from
  *   - `dedupe_key` — deterministic hash of (type, entity, normalized text); the UNIQUE below
- *     makes writes idempotent so obvious duplicates collapse to one node
+ *     makes writes idempotent so obvious duplicates collapse to one node. **Nullable**: #14's
+ *     `createMemory()` task-link shim inserts memories without a dedup key (a NULL never
+ *     collides under the UNIQUE), while the graph's own writes always supply one.
  * `type` stays free text (extensible); the canonical set is decision/fact/preference/artifact.
  */
 export const memories = pgTable(
@@ -42,14 +31,13 @@ export const memories = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
-    content: jsonb("content")
-      .$type<{ text: string } & Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
+    // plain jsonb (no $type): the #15 graph writes `{ text, ... }`, but #14's createMemory()
+    // shim inserts arbitrary content — the precise shape is enforced on the repo functions.
+    content: jsonb("content").notNull().default(sql`'{}'::jsonb`),
     entity: text("entity"),
     sourceType: text("source_type"),
     sourceId: uuid("source_id"),
-    dedupeKey: text("dedupe_key").notNull(),
+    dedupeKey: text("dedupe_key"),
     createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
       onDelete: "set null",
     }),

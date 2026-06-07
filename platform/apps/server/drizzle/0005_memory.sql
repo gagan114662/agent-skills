@@ -9,8 +9,9 @@
 ALTER TABLE memories ADD COLUMN entity text;
 ALTER TABLE memories ADD COLUMN source_type text;
 ALTER TABLE memories ADD COLUMN source_id uuid;
--- the stub table is empty (no routes existed), so a NOT NULL key without default is safe.
-ALTER TABLE memories ADD COLUMN dedupe_key text NOT NULL;
+-- Nullable: #14's createMemory() task-link shim inserts memories without a dedup key (a NULL
+-- never collides under the UNIQUE below), while the #15 graph's own writes always supply one.
+ALTER TABLE memories ADD COLUMN dedupe_key text;
 ALTER TABLE memories ADD COLUMN created_by_member_id uuid REFERENCES members(id) ON DELETE SET NULL;
 ALTER TABLE memories ADD CONSTRAINT memories_source_type_ck
   CHECK (source_type IS NULL OR source_type IN ('message', 'task', 'file', 'event', 'manual'));

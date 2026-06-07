@@ -18,6 +18,22 @@ export async function memberInWorkspace(memberId: string, workspaceId: string): 
   return row !== undefined;
 }
 
+/**
+ * Fetch a member scoped to a workspace (kind + display name), or undefined (cross-tenant safe).
+ * Shared by #25 (agent sessions) and #14 (the task assignee/routing guard, which reads `.kind`).
+ */
+export async function getWorkspaceMember(
+  memberId: string,
+  workspaceId: string,
+): Promise<Member | undefined> {
+  const [row] = await db
+    .select({ id: members.id, kind: members.kind, displayName: members.displayName })
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.workspaceId, workspaceId)))
+    .limit(1);
+  return row as Member | undefined;
+}
+
 /** Create a human user (global) and their member row in a workspace. */
 export async function createHumanMember(input: {
   workspaceId: string;

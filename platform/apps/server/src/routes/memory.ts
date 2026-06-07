@@ -6,7 +6,7 @@ import {
   listMemories,
   upsertEdge,
   getNeighbors,
-} from "../db/repositories/memory.js";
+} from "../db/repositories/memories.js";
 import { dedupeKey } from "../memory/dedupe.js";
 import { captureFromSource } from "../memory/capture.js";
 

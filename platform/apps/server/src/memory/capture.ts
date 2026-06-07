@@ -7,7 +7,7 @@
  */
 import { DeterministicExtractor, type Extraction, type MemoryExtractor } from "./extract.js";
 import { dedupeKey } from "./dedupe.js";
-import { upsertMemory, upsertEdge } from "../db/repositories/memory.js";
+import { upsertMemory, upsertEdge } from "../db/repositories/memories.js";
 
 /** A node ready to upsert: dedup key resolved. */
 export interface PlannedNode {

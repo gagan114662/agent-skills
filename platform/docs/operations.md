@@ -133,6 +133,28 @@ files into your monitoring stack.
 
 ---
 
+## Cloud agent execution (#25)
+Agents run server-side on an `AgentRuntime` backend so work continues after a client disconnects
+(ADR-0025). Configure via env:
+
+| Var | Default | Meaning |
+|---|---|---|
+| `AGENT_RUNTIME` | `local` | `local` (host child process; dev/CI, no cloud) or `sandbox` (Vercel Sandbox per session). |
+| `AGENT_HARNESS_CMD` / `AGENT_HARNESS_ARGS` | `bash` / `["scripts/agent-harness-demo.sh"]` | The **trusted** harness command (never client-supplied); model-agnostic. |
+| `AGENT_WALLCLOCK_MS` | `600000` | Hard wall-clock cap per session. |
+| `AGENT_IDLE_MS` | `120000` | Idle (no-output) cap; resets on each output chunk. |
+| `AGENT_MEMORY_MB` | unset | Advisory memory cap passed to the sandbox provider. |
+| `AGENT_SECRETS` | unset | Per-tenant secrets as JSON: `{"*":{KEY:val},"<workspaceId>":{KEY:val}}`. Injected as runtime env at provision; **never** logged or snapshotted. |
+| `AGENT_SECRET_KEYS` | unset | Comma list of `process.env` keys to pass through as secrets. |
+
+**`sandbox` backend** additionally requires `npm i @vercel/sandbox` and
+`VERCEL_TOKEN` / `VERCEL_TEAM_ID` / `VERCEL_PROJECT_ID`. The SDK is loaded lazily — `local`
+deploys never need it. Metrics: `agent_sessions_total{runtime,status}`, `agent_sessions_active`,
+`agent_sandbox_spinup_seconds`. Per-session logs bind `{ sessionId, workspaceId, runtime }`.
+
+> Flipping the org-wide default to `sandbox` is an explicit "ask first" change — `local` stays
+> the default so nothing incurs cloud spend without intent.
+
 ## Incident quick reference
 | Symptom | First checks |
 |---|---|
@@ -141,6 +163,8 @@ files into your monitoring stack.
 | High latency (ReloadHighLatencyP95) | check db load; `http_requests_in_flight`; slow `route` in metrics. |
 | Server won't start | `docker compose logs migrate` — did migrations fail? then `docker compose logs server`. |
 | Suspected cross-tenant access | the tenant-isolation integration test is the contract; reproduce with two workspaces. |
+| Agent session stuck / not reaped | check `agent_sessions_active`; a session past its caps becomes `timeout`/`idle_reaped`; force-stop with `POST /channels/:cid/agent-sessions/:id/cancel`. |
+| `AGENT_RUNTIME=sandbox` can't start a session | is `@vercel/sandbox` installed + `VERCEL_*` set? the error names the missing piece. Fall back to `local`. |
 
 ## Verifying a deploy (acceptance demo)
 ```bash

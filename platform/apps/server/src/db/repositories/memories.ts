@@ -3,10 +3,49 @@ import { db } from "../index.js";
 import { memories, memoryEdges } from "../schema/index.js";
 
 /**
- * Typed memory-graph store (issue #15, ADR-0015). Every query is workspace-scoped — the #3
- * IDOR discipline — and writes are idempotent via the dedup uniques, so re-posting or
- * re-capturing the same statement/edge merges into the existing row.
+ * Memory repository. Two layers share the `memories` table:
+ *   - the #14 task↔memory **shim** (`createMemory`, `memoryInWorkspace`) — validates a link
+ *     target in-workspace and lets tests/demo mint a memory. It inserts no `dedupe_key`; a NULL
+ *     never collides under the dedup UNIQUE, so those rows simply don't participate in dedup.
+ *   - the #15 typed **memory graph** (`upsertMemory`/`getMemory`/`listMemories`/`upsertEdge`/
+ *     `getNeighbors`) — workspace-scoped (the #3 IDOR discipline), with idempotent dedup writes.
  */
+
+// --- #14 task↔memory shim -------------------------------------------------------------------
+
+export interface Memory {
+  id: string;
+  workspaceId: string;
+  type: string;
+}
+
+export async function createMemory(input: {
+  workspaceId: string;
+  type: string;
+  content?: unknown;
+}): Promise<Memory> {
+  const [row] = await db
+    .insert(memories)
+    .values({
+      workspaceId: input.workspaceId,
+      type: input.type,
+      content: (input.content ?? {}) as object,
+    })
+    .returning({ id: memories.id, workspaceId: memories.workspaceId, type: memories.type });
+  return row as Memory;
+}
+
+/** True iff the memory exists *in this workspace* — the link-target IDOR guard. */
+export async function memoryInWorkspace(id: string, workspaceId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: memories.id })
+    .from(memories)
+    .where(and(eq(memories.id, id), eq(memories.workspaceId, workspaceId)))
+    .limit(1);
+  return row !== undefined;
+}
+
+// --- #15 typed memory graph -----------------------------------------------------------------
 
 export interface MemoryNode {
   id: string;
