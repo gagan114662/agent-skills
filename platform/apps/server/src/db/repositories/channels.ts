@@ -50,6 +50,15 @@ export async function removeChannelMember(channelId: string, memberId: string): 
     .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.memberId, memberId)));
 }
 
+/** All member ids in a channel — used for DM notification fan-out (#8). */
+export async function listChannelMemberIds(channelId: string): Promise<string[]> {
+  const rows = await db
+    .select({ memberId: channelMembers.memberId })
+    .from(channelMembers)
+    .where(eq(channelMembers.channelId, channelId));
+  return rows.map((r) => r.memberId);
+}
+
 export async function isChannelMember(channelId: string, memberId: string): Promise<boolean> {
   const [row] = await db
     .select({ memberId: channelMembers.memberId })

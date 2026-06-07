@@ -16,6 +16,23 @@ export interface MentionEvent {
   body: string;
 }
 
+/**
+ * A notification pushed to the recipient's sockets (#8). Delivered to the recipient regardless of
+ * channel subscription (like a #6 mention). `type` discriminates the activity (mention / dm /
+ * reply / assignment); the reference ids + excerpt let a client render the inbox item live.
+ */
+export interface NotificationEvent {
+  id: string;
+  type: "mention" | "dm" | "reply" | "assignment" | "approval";
+  recipientMemberId: string;
+  actorMemberId: string | null;
+  channelId: string | null;
+  messageId: string | null;
+  taskId: string | null;
+  excerpt: string | null;
+  createdAt: string;
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
@@ -30,6 +47,7 @@ export type ServerEvent =
   | { type: "unsubscribed"; channelId: string }
   | { type: "message"; message: Message }
   | { type: "mention"; mention: MentionEvent }
+  | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };

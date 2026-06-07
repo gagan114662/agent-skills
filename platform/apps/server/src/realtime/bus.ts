@@ -1,6 +1,11 @@
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
-import type { MentionEvent, PresenceStatus, ServerEvent } from "./protocol.js";
+import type {
+  MentionEvent,
+  NotificationEvent,
+  PresenceStatus,
+  ServerEvent,
+} from "./protocol.js";
 
 /**
  * Redis pub/sub fan-out for realtime delivery (#5). REST is the source of truth; these
@@ -11,6 +16,7 @@ import type { MentionEvent, PresenceStatus, ServerEvent } from "./protocol.js";
 export const CHANNEL_KEY_PREFIX = "rt:channel:";
 export const PRESENCE_KEY_PREFIX = "rt:presence:";
 export const MENTION_KEY_PREFIX = "rt:mention:";
+export const NOTIFY_KEY_PREFIX = "rt:notify:";
 
 /** Pattern the gateway subscribes to for all channel-message fan-out. */
 export const CHANNEL_PATTERN = `${CHANNEL_KEY_PREFIX}*`;
@@ -18,6 +24,8 @@ export const CHANNEL_PATTERN = `${CHANNEL_KEY_PREFIX}*`;
 export const PRESENCE_PATTERN = `${PRESENCE_KEY_PREFIX}*`;
 /** Pattern the gateway subscribes to for all mention fan-out (#6). */
 export const MENTION_PATTERN = `${MENTION_KEY_PREFIX}*`;
+/** Pattern the gateway subscribes to for all notification fan-out (#8). */
+export const NOTIFY_PATTERN = `${NOTIFY_KEY_PREFIX}*`;
 
 /** Redis pub/sub key carrying message events for one channel. */
 export function channelKey(channelId: string): string {
@@ -32,6 +40,11 @@ export function presenceKey(workspaceId: string): string {
 /** Redis pub/sub key carrying mention events for one workspace (#6). */
 export function mentionKey(workspaceId: string): string {
   return `${MENTION_KEY_PREFIX}${workspaceId}`;
+}
+
+/** Redis pub/sub key carrying notification events for one workspace (#8). */
+export function notifyKey(workspaceId: string): string {
+  return `${NOTIFY_KEY_PREFIX}${workspaceId}`;
 }
 
 /** Recover the channel id from a `rt:channel:<id>` key. */
@@ -49,6 +62,11 @@ export function workspaceIdFromMentionKey(key: string): string | null {
   return key.startsWith(MENTION_KEY_PREFIX) ? key.slice(MENTION_KEY_PREFIX.length) : null;
 }
 
+/** Recover the workspace id from a `rt:notify:<id>` key. */
+export function workspaceIdFromNotifyKey(key: string): string | null {
+  return key.startsWith(NOTIFY_KEY_PREFIX) ? key.slice(NOTIFY_KEY_PREFIX.length) : null;
+}
+
 /** Publish a newly-posted message to its channel's subscribers (called by the REST route). */
 export async function publishMessageEvent(channelId: string, message: Message): Promise<void> {
   const event: ServerEvent = { type: "message", message };
@@ -62,6 +80,18 @@ export async function publishMessageEvent(channelId: string, message: Message): 
 export async function publishMention(workspaceId: string, mention: MentionEvent): Promise<void> {
   const event: ServerEvent = { type: "mention", mention };
   await getRedis().publish(mentionKey(workspaceId), JSON.stringify(event));
+}
+
+/**
+ * Publish a notification to the workspace stream (#8). The gateway delivers it only to the
+ * recipient member's sockets (human or agent), independent of channel subscription.
+ */
+export async function publishNotification(
+  workspaceId: string,
+  notification: NotificationEvent,
+): Promise<void> {
+  const event: ServerEvent = { type: "notification", notification };
+  await getRedis().publish(notifyKey(workspaceId), JSON.stringify(event));
 }
 
 /** Publish a presence change to everyone in the workspace. */

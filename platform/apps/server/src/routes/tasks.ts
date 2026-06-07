@@ -1,7 +1,9 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { requireTaskInWorkspace } from "../auth/access.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
+import { notify } from "../notifications/service.js";
+import type { Identity } from "../auth/identity.js";
 import { messageInWorkspace } from "../db/repositories/messages.js";
 import { memoryInWorkspace } from "../db/repositories/memories.js";
 import { canTransition, isStatus, type TaskStatus } from "../tasks/status.js";
@@ -20,7 +22,33 @@ import {
   listRoutingRules,
   deleteRoutingRule,
   pickRouteAssignee,
+  type Task,
 } from "../db/repositories/tasks.js";
+
+/**
+ * Assign a task and, if the assignee actually changed to a real member, fire an `assignment`
+ * notification for them (#8). `notify` no-ops when the new assignee is the actor, and is
+ * best-effort, so this never fails the assignment write.
+ */
+async function assignAndNotify(
+  req: FastifyRequest,
+  id: Identity,
+  task: Task,
+  newAssignee: string | null,
+): Promise<Task> {
+  const updated = await assignTask(task.id, newAssignee, id.memberId);
+  if (newAssignee && newAssignee !== task.assigneeMemberId) {
+    await notify(req.log, {
+      workspaceId: task.workspaceId,
+      recipientMemberId: newAssignee,
+      type: "assignment",
+      actorMemberId: id.memberId,
+      taskId: task.id,
+      excerpt: task.title,
+    });
+  }
+  return updated;
+}
 
 /** Link targets #14 supports today (both workspace-validated). `file` joins when files land. */
 const LINK_TYPES = ["message", "memory"] as const;
@@ -76,6 +104,17 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       createdByMemberId: id.memberId,
       assigneeMemberId: assignee,
     });
+    // #8: a task created already assigned notifies its assignee (notify no-ops for self-assign).
+    if (task.assigneeMemberId) {
+      await notify(req.log, {
+        workspaceId: wid,
+        recipientMemberId: task.assigneeMemberId,
+        type: "assignment",
+        actorMemberId: id.memberId,
+        taskId: task.id,
+        excerpt: task.title,
+      });
+    }
     return reply.code(201).send(task);
   });
 
@@ -144,7 +183,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     if (b.autoRoute === true) {
       const target = await pickRouteAssignee(task.workspaceId, task.labels);
       if (target === null) return task; // best-effort: no rule matched, leave as-is
-      return assignTask(tid, target, id.memberId);
+      return assignAndNotify(req, id, task, target);
     }
     if (!("assigneeMemberId" in b)) {
       return reply.code(400).send({ error: "provide assigneeMemberId or autoRoute" });
@@ -154,7 +193,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: "assignee not found in this workspace" });
       }
     }
-    return assignTask(tid, b.assigneeMemberId ?? null, id.memberId);
+    return assignAndNotify(req, id, task, b.assigneeMemberId ?? null);
   });
 
   app.get("/tasks/:tid/events", async (req, reply) => {

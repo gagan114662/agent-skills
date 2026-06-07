@@ -9,7 +9,9 @@ import {
   addChannelMember,
   removeChannelMember,
   isChannelMember,
+  listChannelMemberIds,
   getOrCreateDm,
+  type Channel,
 } from "../db/repositories/channels.js";
 import {
   grantCapability,
@@ -28,6 +30,7 @@ import {
 } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 import { publishMessageEvent, publishMention } from "../realtime/bus.js";
+import { notify } from "../notifications/service.js";
 import type { Identity } from "../auth/identity.js";
 import type { FastifyRequest } from "fastify";
 
@@ -77,9 +80,45 @@ async function extractAndNotifyMentions(
         authorMemberId: m.authorMemberId,
         body: m.body,
       }).catch((err) => req.log.error({ err }, "mention publish failed"));
+      // #8: a mention is also a durable notification (inbox + unread), on top of the #6 event.
+      await notify(req.log, {
+        workspaceId: identity.workspaceId,
+        recipientMemberId: m.mentionedMemberId,
+        type: "mention",
+        actorMemberId: m.authorMemberId,
+        channelId: m.channelId,
+        messageId: m.messageId,
+        excerpt: m.body,
+      });
     }
   } catch (err) {
     req.log.error({ err }, "mention extraction failed");
+  }
+}
+
+/**
+ * Notify the *other* members of a DM that a message landed (#8). No-op for non-DM channels and
+ * for the author. Best-effort: `notify` never throws, so this can't fail the REST write.
+ */
+async function notifyDmRecipients(
+  req: FastifyRequest,
+  identity: Identity,
+  channel: Channel,
+  message: Message,
+): Promise<void> {
+  if (channel.kind !== "dm") return;
+  const memberIds = await listChannelMemberIds(channel.id);
+  for (const recipientMemberId of memberIds) {
+    if (recipientMemberId === identity.memberId) continue;
+    await notify(req.log, {
+      workspaceId: identity.workspaceId,
+      recipientMemberId,
+      type: "dm",
+      actorMemberId: identity.memberId,
+      channelId: channel.id,
+      messageId: message.id,
+      excerpt: message.body,
+    });
   }
 }
 
@@ -253,6 +292,7 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       req.log.error({ err }, "realtime publish failed"),
     );
     await extractAndNotifyMentions(req, id, message);
+    await notifyDmRecipients(req, id, ch, message); // #8: DM → notification for the other member(s)
     return reply.code(201).send(message);
   });
 
@@ -281,6 +321,16 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       req.log.error({ err }, "realtime publish failed"),
     );
     await extractAndNotifyMentions(req, id, message);
+    // #8: a thread reply notifies the thread root's author (notify no-ops if that's the replier).
+    await notify(req.log, {
+      workspaceId: id.workspaceId,
+      recipientMemberId: root.authorMemberId,
+      type: "reply",
+      actorMemberId: id.memberId,
+      channelId: cid,
+      messageId: message.id,
+      excerpt: message.body,
+    });
     return reply.code(201).send(message);
   });
 

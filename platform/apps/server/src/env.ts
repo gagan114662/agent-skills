@@ -7,6 +7,13 @@ export interface Env {
   redisUrl: string;
   /** Cloud agent execution (#25). */
   agent: AgentEnv;
+  /** Notifications (#8). */
+  notify: NotifyEnv;
+}
+
+export interface NotifyEnv {
+  /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
+  webhookUrl?: string;
 }
 
 export interface AgentEnv {
@@ -45,6 +52,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         idleMs: num(source.AGENT_IDLE_MS, 120_000),
         memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
       },
+    },
+    notify: {
+      webhookUrl: source.NOTIFY_WEBHOOK_URL || undefined,
     },
   };
 }
