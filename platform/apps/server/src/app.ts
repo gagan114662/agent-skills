@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
+import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { searchRoutes } from "./routes/search.js";
@@ -42,6 +43,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(meRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
+  app.register(memoryRoutes);
   app.register(taskRoutes);
   app.register(searchRoutes);
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
