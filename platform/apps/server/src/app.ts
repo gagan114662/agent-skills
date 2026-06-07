@@ -8,6 +8,7 @@ import { meRoutes } from "./routes/me.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import { searchRoutes } from "./routes/search.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
@@ -40,6 +41,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(meRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
+  app.register(searchRoutes);
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
