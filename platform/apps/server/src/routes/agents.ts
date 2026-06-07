@@ -1,9 +1,40 @@
 import type { FastifyInstance } from "fastify";
 import { resolveIdentity } from "../auth/middleware.js";
 import { generateAgentToken } from "../auth/secrets.js";
-import { createAgentWithToken, revokeAgentToken } from "../db/repositories/auth.js";
+import {
+  createAgentWithToken,
+  revokeAgentToken,
+  listAgents,
+  deactivateAgent,
+} from "../db/repositories/auth.js";
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
+  // List the workspace's agent registry (profiles). Any workspace member may read the roster.
+  app.get("/workspaces/:workspaceId/agents", async (req, reply) => {
+    const identity = await resolveIdentity(req);
+    if (!identity) return reply.code(401).send({ error: "unauthorized" });
+    const { workspaceId } = req.params as { workspaceId: string };
+    if (identity.workspaceId !== workspaceId) {
+      return reply.code(403).send({ error: "not a member of this workspace" });
+    }
+    return listAgents(workspaceId);
+  });
+
+  // Deactivate an agent: block auth + revoke its tokens (immediate). Owner/human-only.
+  app.post("/workspaces/:workspaceId/agents/:agentId/deactivate", async (req, reply) => {
+    const identity = await resolveIdentity(req);
+    if (!identity || identity.kind !== "human") {
+      return reply.code(401).send({ error: "human authentication required" });
+    }
+    const { workspaceId, agentId } = req.params as { workspaceId: string; agentId: string };
+    if (identity.workspaceId !== workspaceId) {
+      return reply.code(403).send({ error: "not a member of this workspace" });
+    }
+    const ok = await deactivateAgent(agentId, workspaceId);
+    if (!ok) return reply.code(404).send({ error: "agent not found in this workspace" });
+    return { ok: true };
+  });
+
   // Register an agent in a workspace and mint its first token (returned ONCE).
   app.post("/workspaces/:workspaceId/agents", async (req, reply) => {
     const identity = await resolveIdentity(req);

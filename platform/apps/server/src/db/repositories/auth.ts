@@ -139,6 +139,7 @@ export async function revokeAgentToken(tokenId: string, workspaceId: string): Pr
   return res.length > 0;
 }
 
+/** The agent's member, but only while the agent is active — a deactivated agent (#9) resolves to nothing. */
 export async function getAgentMember(
   agentId: string,
   workspaceId: string,
@@ -146,7 +147,63 @@ export async function getAgentMember(
   const [row] = await db
     .select({ id: members.id, displayName: members.displayName })
     .from(members)
-    .where(and(eq(members.agentId, agentId), eq(members.workspaceId, workspaceId)))
+    .innerJoin(agents, eq(agents.id, members.agentId))
+    .where(
+      and(
+        eq(members.agentId, agentId),
+        eq(members.workspaceId, workspaceId),
+        isNull(agents.deactivatedAt),
+      ),
+    )
     .limit(1);
   return row;
+}
+
+/** The agent registry for a workspace (profiles). */
+export async function listAgents(workspaceId: string): Promise<
+  {
+    id: string;
+    name: string;
+    framework: string | null;
+    ownerUserId: string | null;
+    deactivatedAt: Date | null;
+    createdAt: Date;
+  }[]
+> {
+  return db
+    .select({
+      id: agents.id,
+      name: agents.name,
+      framework: agents.framework,
+      ownerUserId: agents.ownerUserId,
+      deactivatedAt: agents.deactivatedAt,
+      createdAt: agents.createdAt,
+    })
+    .from(agents)
+    .where(eq(agents.workspaceId, workspaceId));
+}
+
+/**
+ * Deactivate an agent (workspace-scoped, prevents cross-tenant deactivation): flags it and
+ * revokes all its live tokens so it can no longer authenticate. Returns false if not found
+ * in that workspace. Effect is immediate (resolveIdentity re-checks per request).
+ */
+export async function deactivateAgent(agentId: string, workspaceId: string): Promise<boolean> {
+  const res = await db
+    .update(agents)
+    .set({ deactivatedAt: new Date() })
+    .where(and(eq(agents.id, agentId), eq(agents.workspaceId, workspaceId)))
+    .returning({ id: agents.id });
+  if (res.length === 0) return false;
+  await db
+    .update(agentTokens)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(agentTokens.agentId, agentId),
+        eq(agentTokens.workspaceId, workspaceId),
+        isNull(agentTokens.revokedAt),
+      ),
+    );
+  return true;
 }

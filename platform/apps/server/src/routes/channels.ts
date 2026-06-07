@@ -1,6 +1,6 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
-import type { Identity } from "../auth/identity.js";
+import { requireChannelCapability } from "../auth/access.js";
 import {
   createChannel,
   getChannel,
@@ -10,28 +10,18 @@ import {
   removeChannelMember,
   isChannelMember,
   getOrCreateDm,
-  type Channel,
 } from "../db/repositories/channels.js";
+import {
+  grantCapability,
+  revokeCapability,
+  listResourceGrants,
+  type Capability,
+} from "../db/repositories/permissions.js";
+import { memberInWorkspace } from "../db/repositories/members.js";
 import { postMessage, listChannelMessages } from "../db/repositories/messages.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 
-/** Load a channel and assert the caller is a member of it (in their workspace). */
-async function memberChannel(
-  identity: Identity,
-  channelId: string,
-  reply: FastifyReply,
-): Promise<Channel | undefined> {
-  const ch = await getChannel(channelId);
-  if (!ch || ch.workspaceId !== identity.workspaceId) {
-    reply.code(404).send({ error: "channel not found" });
-    return undefined;
-  }
-  if (!(await isChannelMember(channelId, identity.memberId))) {
-    reply.code(403).send({ error: "not a channel member" });
-    return undefined;
-  }
-  return ch;
-}
+const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
 
 export async function channelRoutes(app: FastifyInstance): Promise<void> {
   // create a public channel (creator auto-joins)
@@ -44,6 +34,15 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     if (!b.name) return reply.code(400).send({ error: "name required" });
     const channel = await createChannel({ workspaceId: wid, kind: "public", name: b.name });
     await addChannelMember(channel.id, id.memberId);
+    // The creator is the channel's first administrator (#9): an explicit propagate grant.
+    await grantCapability({
+      workspaceId: wid,
+      memberId: id.memberId,
+      resourceType: "channel",
+      resourceId: channel.id,
+      capability: "propagate",
+      grantedByMemberId: id.memberId,
+    });
     return reply.code(201).send(channel);
   });
 
@@ -72,9 +71,58 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     const id = await requireIdentity(req, reply);
     if (!id) return;
     const { cid } = req.params as { cid: string };
-    if (!(await memberChannel(id, cid, reply))) return;
+    // archiving is a write to the channel — a read-only role can't do it
+    if (!(await requireChannelCapability(id, cid, "write", reply))) return;
     await archiveChannel(cid);
     return { ok: true };
+  });
+
+  // --- RBAC grants (#9): propagate-only administration of channel roles ---
+
+  // grant/upsert a role to a member (auto-adds them to the channel)
+  app.post("/channels/:cid/grants", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid } = req.params as { cid: string };
+    if (!(await requireChannelCapability(id, cid, "propagate", reply))) return;
+    const b = req.body as { memberId?: string; capability?: string };
+    if (!b.memberId) return reply.code(400).send({ error: "memberId required" });
+    if (!b.capability || !CAPABILITIES.includes(b.capability as Capability)) {
+      return reply.code(400).send({ error: "capability must be read | write | propagate" });
+    }
+    // cross-workspace guard: never grant a role to a member from another workspace (IDOR)
+    if (!(await memberInWorkspace(b.memberId, id.workspaceId))) {
+      return reply.code(404).send({ error: "member not found in this workspace" });
+    }
+    await addChannelMember(cid, b.memberId); // granting access implies presence
+    await grantCapability({
+      workspaceId: id.workspaceId,
+      memberId: b.memberId,
+      resourceType: "channel",
+      resourceId: cid,
+      capability: b.capability as Capability,
+      grantedByMemberId: id.memberId,
+    });
+    return reply.code(201).send({ ok: true, memberId: b.memberId, capability: b.capability });
+  });
+
+  // revoke a member's explicit role (immediate effect)
+  app.delete("/channels/:cid/grants/:mid", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid, mid } = req.params as { cid: string; mid: string };
+    if (!(await requireChannelCapability(id, cid, "propagate", reply))) return;
+    await revokeCapability(id.workspaceId, mid, "channel", cid);
+    return { ok: true };
+  });
+
+  // list the channel's explicit role grants (read access)
+  app.get("/channels/:cid/grants", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid } = req.params as { cid: string };
+    if (!(await requireChannelCapability(id, cid, "read", reply))) return;
+    return listResourceGrants(id.workspaceId, "channel", cid);
   });
 
   // join (self) or add a member to a public channel
@@ -120,7 +168,7 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     const id = await requireIdentity(req, reply);
     if (!id) return;
     const { cid } = req.params as { cid: string };
-    const ch = await memberChannel(id, cid, reply);
+    const ch = await requireChannelCapability(id, cid, "write", reply);
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
     const b = req.body as { body?: string; parentMessageId?: string };
@@ -140,12 +188,12 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(message);
   });
 
-  // list messages (member-only)
+  // list messages (read capability)
   app.get("/channels/:cid/messages", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
     const { cid } = req.params as { cid: string };
-    if (!(await memberChannel(id, cid, reply))) return;
+    if (!(await requireChannelCapability(id, cid, "read", reply))) return;
     return listChannelMessages(cid);
   });
 }

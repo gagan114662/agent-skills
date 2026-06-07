@@ -22,6 +22,8 @@ export const agents = pgTable("agents", {
   ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   framework: text("framework"),
+  // Set by #9 deactivation; a non-null value blocks the agent from authenticating.
+  deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
