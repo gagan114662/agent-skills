@@ -3,6 +3,19 @@ import type { Message } from "../db/repositories/messages.js";
 /** Presence states a member can be in within a workspace (#5). */
 export type PresenceStatus = "online" | "away" | "offline";
 
+/**
+ * A mention pushed to the mentioned member over the socket (#6). For an agent this is an
+ * actionable event — it can act the instant it lands, without watching the channel.
+ */
+export interface MentionEvent {
+  id: string;
+  messageId: string;
+  channelId: string;
+  mentionedMemberId: string;
+  authorMemberId: string;
+  body: string;
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
@@ -16,6 +29,7 @@ export type ServerEvent =
   | { type: "subscribed"; channelId: string }
   | { type: "unsubscribed"; channelId: string }
   | { type: "message"; message: Message }
+  | { type: "mention"; mention: MentionEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };

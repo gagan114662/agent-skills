@@ -12,11 +12,14 @@ import { encodeEvent, parseClientCommand, type PresenceStatus } from "./protocol
 import {
   CHANNEL_PATTERN,
   PRESENCE_PATTERN,
+  MENTION_PATTERN,
   channelIdFromKey,
   presenceHashKey,
   publishPresence,
   workspaceIdFromPresenceKey,
+  workspaceIdFromMentionKey,
 } from "./bus.js";
+import type { ServerEvent } from "./protocol.js";
 
 const WS_PATH = "/ws";
 
@@ -42,6 +45,9 @@ export function attachRealtime(app: FastifyInstance): void {
   // Local routing tables for this process.
   const byChannel = new Map<string, Set<Conn>>();
   const byWorkspace = new Map<string, Set<Conn>>();
+  // Member-targeted routing for mentions (#6), keyed `${workspaceId}:${memberId}` — a mention
+  // reaches only the mentioned member's sockets, regardless of channel subscription.
+  const byMember = new Map<string, Set<Conn>>();
   // How many local sockets a member has open, keyed `${workspaceId}:${memberId}` — drives
   // presence online/offline on first-connect / last-disconnect.
   const memberSocketCount = new Map<string, number>();
@@ -72,12 +78,20 @@ export function attachRealtime(app: FastifyInstance): void {
     if (!subscriberReady) {
       subscriberReady = (async () => {
         const sub = getRedis().duplicate();
-        await sub.psubscribe(CHANNEL_PATTERN, PRESENCE_PATTERN);
+        await sub.psubscribe(CHANNEL_PATTERN, PRESENCE_PATTERN, MENTION_PATTERN);
         sub.on("pmessage", (_pattern, key, payload) => {
           const channelId = channelIdFromKey(key);
           if (channelId) return forward(byChannel.get(channelId), payload);
-          const workspaceId = workspaceIdFromPresenceKey(key);
-          if (workspaceId) forward(byWorkspace.get(workspaceId), payload);
+          const presenceWid = workspaceIdFromPresenceKey(key);
+          if (presenceWid) return forward(byWorkspace.get(presenceWid), payload);
+          const mentionWid = workspaceIdFromMentionKey(key);
+          if (mentionWid) {
+            // Mentions are member-targeted: deliver only to the mentioned member's sockets.
+            const event = JSON.parse(payload) as ServerEvent;
+            if (event.type === "mention") {
+              forward(byMember.get(`${mentionWid}:${event.mention.mentionedMemberId}`), payload);
+            }
+          }
         });
         subscriber = sub;
       })();
@@ -101,6 +115,7 @@ export function attachRealtime(app: FastifyInstance): void {
     addTo(byWorkspace, identity.workspaceId, conn);
 
     const memberKey = `${identity.workspaceId}:${identity.memberId}`;
+    addTo(byMember, memberKey, conn);
     const prev = memberSocketCount.get(memberKey) ?? 0;
     memberSocketCount.set(memberKey, prev + 1);
     if (prev === 0) {
@@ -119,6 +134,7 @@ export function attachRealtime(app: FastifyInstance): void {
     ws.on("close", () => {
       for (const channelId of conn.channels) removeFrom(byChannel, channelId, conn);
       removeFrom(byWorkspace, identity.workspaceId, conn);
+      removeFrom(byMember, memberKey, conn);
       const count = (memberSocketCount.get(memberKey) ?? 1) - 1;
       if (count <= 0) {
         memberSocketCount.delete(memberKey);

@@ -1,4 +1,12 @@
-import { pgTable, uuid, text, timestamp, index, type AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  boolean,
+  index,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 import { channels } from "./channels.js";
@@ -21,6 +29,9 @@ export const messages = pgTable(
     parentMessageId: uuid("parent_message_id").references((): AnyPgColumn => messages.id, {
       onDelete: "cascade",
     }),
+    // #6: a thread reply may be "also sent to channel" (Slack semantics). Persisted metadata
+    // clients use to surface a reply in the main timeline as well as the thread view.
+    alsoSentToChannel: boolean("also_sent_to_channel").notNull().default(false),
     body: text("body").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
