@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
+import { searchRoutes } from "./routes/search.js";
 import { attachRealtime } from "./realtime/gateway.js";
 
 /**
@@ -32,6 +33,7 @@ export function buildApp(): FastifyInstance {
   app.register(meRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
+  app.register(searchRoutes);
   // #5 realtime gateway: WebSocket delivery + presence on top of the REST endpoints.
   // Its Redis subscriber is created lazily on the first socket, so inject-only tests
   // and the no-Redis CI job stay Redis-free.
