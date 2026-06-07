@@ -13,7 +13,8 @@ export const SESSION_COOKIE = "rid";
 /**
  * Raw credentials a caller can present, decoupled from the HTTP transport. Lets the
  * WebSocket gateway (#5) reuse the exact same identity resolution as REST routes,
- * sourcing credentials from the upgrade request (headers, cookie, or query param).
+ * sourcing credentials from the upgrade request (headers, cookie, or query param) —
+ * a WS handshake has no `FastifyRequest`, so it calls the credentials resolver directly.
  */
 export interface Credentials {
   /** `Authorization` header value, e.g. `Bearer reload_…` (agents). */
@@ -64,12 +65,27 @@ export async function resolveIdentityFromCredentials(
 }
 
 /**
- * Resolve the caller to a workspace member, or null if unauthenticated.
- * Priority: agent Bearer token, then human session cookie.
+ * Per-request memoization of the resolved identity. The #19 observability plugin
+ * resolves identity in a `preHandler` (to tenant-attribute logs) and routes resolve
+ * it again — a WeakMap keyed by the request object makes that a single DB lookup,
+ * not two, and avoids `any`-typed request decoration.
  */
-export async function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
-  return resolveIdentityFromCredentials({
-    authorization: req.headers.authorization,
-    sessionToken: req.cookies?.[SESSION_COOKIE],
-  });
+const identityCache = new WeakMap<FastifyRequest, Promise<Identity | null>>();
+
+/**
+ * Resolve the caller to a workspace member, or null if unauthenticated.
+ * Memoized per request (see `identityCache`). Priority: agent Bearer token, then
+ * human session cookie. Delegates to `resolveIdentityFromCredentials`, which the #5
+ * WebSocket gateway also uses directly from the upgrade request.
+ */
+export function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
+  let pending = identityCache.get(req);
+  if (!pending) {
+    pending = resolveIdentityFromCredentials({
+      authorization: req.headers.authorization,
+      sessionToken: req.cookies?.[SESSION_COOKIE],
+    });
+    identityCache.set(req, pending);
+  }
+  return pending;
 }

@@ -1,0 +1,18 @@
+# Prometheus scrape config for the Reload server (#19).
+# Point a Prometheus at this file to scrape the dependency-free /metrics endpoint.
+# In compose, "server:3000" resolves over the service network; for a host-run server
+# use "localhost:3000". SLO alert rules live in alerts.yml.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: reload-server
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["server:3000"]
+        labels:
+          service: reload-server

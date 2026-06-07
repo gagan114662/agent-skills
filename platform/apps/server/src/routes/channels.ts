@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { resolveIdentity } from "../auth/middleware.js";
+import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import type { Identity } from "../auth/identity.js";
 import {
   createChannel,
@@ -36,10 +36,10 @@ async function memberChannel(
 export async function channelRoutes(app: FastifyInstance): Promise<void> {
   // create a public channel (creator auto-joins)
   app.post("/workspaces/:wid/channels", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { wid } = req.params as { wid: string };
-    if (id.workspaceId !== wid) return reply.code(403).send({ error: "wrong workspace" });
+    if (!assertWorkspace(id, wid, reply)) return;
     const b = req.body as { name?: string };
     if (!b.name) return reply.code(400).send({ error: "name required" });
     const channel = await createChannel({ workspaceId: wid, kind: "public", name: b.name });
@@ -49,19 +49,19 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
 
   // list non-archived channels in the workspace
   app.get("/workspaces/:wid/channels", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { wid } = req.params as { wid: string };
-    if (id.workspaceId !== wid) return reply.code(403).send({ error: "wrong workspace" });
+    if (!assertWorkspace(id, wid, reply)) return;
     return listChannels(wid);
   });
 
   // get-or-create a DM for a member set (caller is always included)
   app.post("/workspaces/:wid/dms", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { wid } = req.params as { wid: string };
-    if (id.workspaceId !== wid) return reply.code(403).send({ error: "wrong workspace" });
+    if (!assertWorkspace(id, wid, reply)) return;
     const b = req.body as { memberIds?: string[] };
     const members = [...new Set([id.memberId, ...(b.memberIds ?? [])])];
     if (members.length < 2) return reply.code(400).send({ error: "a DM needs at least 2 members" });
@@ -69,8 +69,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/channels/:cid/archive", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { cid } = req.params as { cid: string };
     if (!(await memberChannel(id, cid, reply))) return;
     await archiveChannel(cid);
@@ -79,8 +79,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
 
   // join (self) or add a member to a public channel
   app.post("/channels/:cid/members", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { cid } = req.params as { cid: string };
     const ch = await getChannel(cid);
     if (!ch || ch.workspaceId !== id.workspaceId) {
@@ -100,8 +100,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete("/channels/:cid/members/:mid", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { cid, mid } = req.params as { cid: string; mid: string };
     const ch = await getChannel(cid);
     if (!ch || ch.workspaceId !== id.workspaceId) {
@@ -117,8 +117,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
 
   // post a message (member-only, not archived)
   app.post("/channels/:cid/messages", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { cid } = req.params as { cid: string };
     const ch = await memberChannel(id, cid, reply);
     if (!ch) return;
@@ -142,8 +142,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
 
   // list messages (member-only)
   app.get("/channels/:cid/messages", async (req, reply) => {
-    const id = await resolveIdentity(req);
-    if (!id) return reply.code(401).send({ error: "unauthorized" });
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
     const { cid } = req.params as { cid: string };
     if (!(await memberChannel(id, cid, reply))) return;
     return listChannelMessages(cid);

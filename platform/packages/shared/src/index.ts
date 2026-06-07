@@ -12,3 +12,18 @@ export interface HealthResponse {
   db: DependencyState;
   redis: DependencyState;
 }
+
+/** Liveness probe response (`GET /livez`) — the process is up. */
+export interface LivenessResponse {
+  status: "ok";
+}
+
+/**
+ * Readiness probe response (`GET /readyz`) — every backing dependency is reachable.
+ * Served with HTTP 200 when ready, 503 when not (`status: "not_ready"`).
+ */
+export interface ReadinessResponse {
+  status: "ready" | "not_ready";
+  db: DependencyState;
+  redis: DependencyState;
+}

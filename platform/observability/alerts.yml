@@ -1,0 +1,41 @@
+# SLO-driven alert rules for the Reload server (#19), evaluated against /metrics.
+#
+# SLOs:
+#   - Availability: 99.5% of requests non-5xx  (error-rate alert at >0.5% over 5m)
+#   - Latency:      95% of requests < 500ms     (p95 alert at >0.5s over 5m)
+#   - Liveness:     the target is up            (TargetDown)
+#
+# Wire these into Alertmanager for paging; thresholds are starting points — tune per
+# environment. See docs/operations.md for the dashboard/alert runbook.
+groups:
+  - name: reload-server-slo
+    rules:
+      - alert: ReloadServerDown
+        expr: up{job="reload-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Reload server target is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for >1m."
+
+      - alert: ReloadHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(http_requests_total[5m])) > 0.005
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "5xx error rate above 0.5% SLO"
+          description: "Availability SLO (99.5%) is burning: 5xx ratio {{ $value | humanizePercentage }} over 5m."
+
+      - alert: ReloadHighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency above 500ms SLO"
+          description: "Latency SLO breached: p95 is {{ $value }}s over 5m."
