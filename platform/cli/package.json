@@ -1,0 +1,17 @@
+{
+  "name": "@reload/cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-agnostic CLI for the Reload agent interface (#11). Zero dependencies — plain HTTP + JSON over a Bearer token.",
+  "bin": {
+    "reload": "./reload.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "reload.mjs",
+    "README.md"
+  ]
+}

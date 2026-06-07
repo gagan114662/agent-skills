@@ -5,6 +5,7 @@ import { registerObservability } from "./observability/plugin.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
+import { agentInterfaceRoutes } from "./routes/agent-interface.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
 import { memoryRoutes } from "./routes/memory.js";
@@ -41,6 +42,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(healthRoutes);
   app.register(authRoutes);
   app.register(meRoutes);
+  // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.
+  app.register(agentInterfaceRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
   app.register(memoryRoutes);
