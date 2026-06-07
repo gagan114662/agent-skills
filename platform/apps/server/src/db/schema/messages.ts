@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   timestamp,
+  boolean,
   index,
   customType,
   type AnyPgColumn,
@@ -41,6 +42,9 @@ export const messages = pgTable(
     parentMessageId: uuid("parent_message_id").references((): AnyPgColumn => messages.id, {
       onDelete: "cascade",
     }),
+    // #6: a thread reply may be "also sent to channel" (Slack semantics). Persisted metadata
+    // clients use to surface a reply in the main timeline as well as the thread view.
+    alsoSentToChannel: boolean("also_sent_to_channel").notNull().default(false),
     body: text("body").notNull(),
     // Full-text search vector (#7), generated from `body` by Postgres. Read-only to the app.
     bodyTsv: tsvector("body_tsv").generatedAlwaysAs(sql`to_tsvector('english', "body")`),

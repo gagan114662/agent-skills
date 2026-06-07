@@ -1,6 +1,6 @@
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
-import type { PresenceStatus, ServerEvent } from "./protocol.js";
+import type { MentionEvent, PresenceStatus, ServerEvent } from "./protocol.js";
 
 /**
  * Redis pub/sub fan-out for realtime delivery (#5). REST is the source of truth; these
@@ -10,11 +10,14 @@ import type { PresenceStatus, ServerEvent } from "./protocol.js";
 
 export const CHANNEL_KEY_PREFIX = "rt:channel:";
 export const PRESENCE_KEY_PREFIX = "rt:presence:";
+export const MENTION_KEY_PREFIX = "rt:mention:";
 
 /** Pattern the gateway subscribes to for all channel-message fan-out. */
 export const CHANNEL_PATTERN = `${CHANNEL_KEY_PREFIX}*`;
 /** Pattern the gateway subscribes to for all presence fan-out. */
 export const PRESENCE_PATTERN = `${PRESENCE_KEY_PREFIX}*`;
+/** Pattern the gateway subscribes to for all mention fan-out (#6). */
+export const MENTION_PATTERN = `${MENTION_KEY_PREFIX}*`;
 
 /** Redis pub/sub key carrying message events for one channel. */
 export function channelKey(channelId: string): string {
@@ -24,6 +27,11 @@ export function channelKey(channelId: string): string {
 /** Redis pub/sub key carrying presence events for one workspace. */
 export function presenceKey(workspaceId: string): string {
   return `${PRESENCE_KEY_PREFIX}${workspaceId}`;
+}
+
+/** Redis pub/sub key carrying mention events for one workspace (#6). */
+export function mentionKey(workspaceId: string): string {
+  return `${MENTION_KEY_PREFIX}${workspaceId}`;
 }
 
 /** Recover the channel id from a `rt:channel:<id>` key. */
@@ -36,10 +44,24 @@ export function workspaceIdFromPresenceKey(key: string): string | null {
   return key.startsWith(PRESENCE_KEY_PREFIX) ? key.slice(PRESENCE_KEY_PREFIX.length) : null;
 }
 
+/** Recover the workspace id from a `rt:mention:<id>` key. */
+export function workspaceIdFromMentionKey(key: string): string | null {
+  return key.startsWith(MENTION_KEY_PREFIX) ? key.slice(MENTION_KEY_PREFIX.length) : null;
+}
+
 /** Publish a newly-posted message to its channel's subscribers (called by the REST route). */
 export async function publishMessageEvent(channelId: string, message: Message): Promise<void> {
   const event: ServerEvent = { type: "message", message };
   await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/**
+ * Publish a mention to the workspace stream (#6). The gateway delivers it only to the
+ * mentioned member's sockets (human or agent), independent of channel subscription.
+ */
+export async function publishMention(workspaceId: string, mention: MentionEvent): Promise<void> {
+  const event: ServerEvent = { type: "mention", mention };
+  await getRedis().publish(mentionKey(workspaceId), JSON.stringify(event));
 }
 
 /** Publish a presence change to everyone in the workspace. */
