@@ -1,4 +1,5 @@
--- 0003_tasks — Linear-style task system. Issue #14, ADR-0014.
+-- 0004_tasks — Linear-style task system. Issue #14, ADR-0014.
+-- (Renamed from 0003_tasks → 0004_tasks: #7 search landed 0003_search on main first.)
 -- Additive: extends the #2 `tasks` stub (0000_init) with description/labels/updated_at
 -- and a status CHECK, then adds the coordination tables (events, links, routing rules).
 

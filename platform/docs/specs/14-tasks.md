@@ -80,8 +80,8 @@ DELETE /workspaces/:wid/task-routing-rules/:ruleId   delete rule
 ```
 `create` resolves the assignee in this precedence: explicit `assigneeMemberId` (validated in-workspace) → else `autoRoute:true` runs the router → else unassigned. `assign` mirrors it: `assigneeMemberId:null` unassigns, a value reassigns, `autoRoute:true` runs the router. Cross-workspace `assigneeMemberId`/`agentMemberId`/link target → `404`.
 
-## Schema & migration (0003_tasks, additive — paired up/down)
-The `tasks` stub (id, workspace_id, title, status default `backlog`, assignee_member_id, created_by_member_id, created_at) exists from #2 (`0000_init`). `0003_tasks.sql` adds:
+## Schema & migration (0004_tasks, additive — paired up/down)
+The `tasks` stub (id, workspace_id, title, status default `backlog`, assignee_member_id, created_by_member_id, created_at) exists from #2 (`0000_init`). `0004_tasks.sql` adds (numbered after #7's `0003_search`, which merged to main first):
 - `tasks.description text` (nullable), `tasks.labels jsonb NOT NULL DEFAULT '[]'::jsonb`, `tasks.updated_at timestamptz NOT NULL DEFAULT now()`.
 - `CHECK (status IN ('backlog','todo','in_progress','blocked','done','canceled'))` — the lifecycle is enforced at the DB edge too.
 - `INDEX tasks (workspace_id, status)` (board) and `INDEX tasks (workspace_id, assignee_member_id)` (by-assignee / load lookups).
@@ -89,7 +89,7 @@ The `tasks` stub (id, workspace_id, title, status default `backlog`, assignee_me
 - `task_links` (id, workspace_id FK, task_id FK cascade, target_type, target_id uuid, created_by_member_id FK set null, created_at) + `UNIQUE (task_id, target_type, target_id)` (idempotent link) + `INDEX (workspace_id, target_type, target_id)` (reverse lookup).
 - `task_routing_rules` (id, workspace_id FK, label, agent_member_id FK members cascade, created_by_member_id FK set null, created_at) + `UNIQUE (workspace_id, label, agent_member_id)` + `INDEX (workspace_id, label)`.
 
-The Drizzle schema moves `tasks` from `schema/stubs.ts` into its own `schema/tasks.ts` (with the new tables); `memories`, `memory_edges`, `permissions` stay in `stubs.ts`. `0003_tasks.down.sql` drops the three new tables and the three added columns/CHECK/indexes — CI's "prove down/up clean" step must stay green.
+The Drizzle schema moves `tasks` from `schema/stubs.ts` into its own `schema/tasks.ts` (with the new tables); `memories`, `memory_edges`, `permissions` stay in `stubs.ts`. `0004_tasks.down.sql` drops the three new tables and the three added columns/CHECK/indexes — CI's "prove down/up clean" step must stay green.
 
 ## Service/repo layer (routes stay thin)
 - `src/tasks/status.ts` — `STATUSES`, `canTransition(from, to)` (pure, unit-tested).
@@ -117,7 +117,7 @@ The Drizzle schema moves `tasks` from `schema/stubs.ts` into its own `schema/tas
 ## Success criteria
 1. Acceptance matrix (1–5) green in the `integration` job against real Postgres.
 2. `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass from `platform/`.
-3. `0003_tasks` applies and reverses cleanly (CI down/up step green); all prior tests unchanged and green.
+3. `0004_tasks` applies and reverses cleanly (CI down/up step green); all prior tests unchanged and green.
 4. `requireTaskInWorkspace` is the single access call task-id routes make; auto-routing selection is a pure unit-tested function; no access/transition logic inlined in routes.
 5. ADR-0014 records the lifecycle + event-sourced history + auto-routing decisions; `docs/tasks.md` documents the model; demo `docs/demos/14-tasks.mp4` walks the acceptance matrix.
 

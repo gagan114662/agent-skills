@@ -1,4 +1,4 @@
--- Reverse of 0003_tasks. Drop new tables (children first), then the additive tasks columns.
+-- Reverse of 0004_tasks. Drop new tables (children first), then the additive tasks columns.
 DROP TABLE IF EXISTS task_routing_rules;
 DROP TABLE IF EXISTS task_links;
 DROP TABLE IF EXISTS task_events;
