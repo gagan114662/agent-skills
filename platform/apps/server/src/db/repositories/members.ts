@@ -18,6 +18,19 @@ export async function memberInWorkspace(memberId: string, workspaceId: string): 
   return row !== undefined;
 }
 
+/** The member's kind iff it exists *in this workspace*, else undefined (the #14 assignee/route guard). */
+export async function getWorkspaceMember(
+  memberId: string,
+  workspaceId: string,
+): Promise<{ id: string; kind: "human" | "agent" } | undefined> {
+  const [row] = await db
+    .select({ id: members.id, kind: members.kind })
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.workspaceId, workspaceId)))
+    .limit(1);
+  return row as { id: string; kind: "human" | "agent" } | undefined;
+}
+
 /** Create a human user (global) and their member row in a workspace. */
 export async function createHumanMember(input: {
   workspaceId: string;
