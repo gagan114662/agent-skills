@@ -11,3 +11,4 @@ coverage/
 # conductor workspace scratch
 .context/
 .conductor/
+.gstack/
