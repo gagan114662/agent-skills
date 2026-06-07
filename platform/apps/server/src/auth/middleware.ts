@@ -11,29 +11,27 @@ import {
 export const SESSION_COOKIE = "rid";
 
 /**
- * Per-request memoization of the resolved identity. The #19 observability plugin
- * resolves identity in a `preHandler` (to tenant-attribute logs) and routes resolve
- * it again — a WeakMap keyed by the request object makes that a single DB lookup,
- * not two, and avoids `any`-typed request decoration.
+ * Raw credentials a caller can present, decoupled from the HTTP transport. Lets the
+ * WebSocket gateway (#5) reuse the exact same identity resolution as REST routes,
+ * sourcing credentials from the upgrade request (headers, cookie, or query param) —
+ * a WS handshake has no `FastifyRequest`, so it calls the credentials resolver directly.
  */
-const identityCache = new WeakMap<FastifyRequest, Promise<Identity | null>>();
-
-/**
- * Resolve the caller to a workspace member, or null if unauthenticated.
- * Memoized per request (see `identityCache`). Priority: agent Bearer token, then
- * human session cookie. Shared by HTTP routes and (later, #5) the WebSocket gateway.
- */
-export function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
-  let pending = identityCache.get(req);
-  if (!pending) {
-    pending = resolveIdentityUncached(req);
-    identityCache.set(req, pending);
-  }
-  return pending;
+export interface Credentials {
+  /** `Authorization` header value, e.g. `Bearer reload_…` (agents). */
+  authorization?: string | undefined;
+  /** Raw session token from the `rid` cookie (humans). */
+  sessionToken?: string | undefined;
 }
 
-async function resolveIdentityUncached(req: FastifyRequest): Promise<Identity | null> {
-  const authz = req.headers.authorization;
+/**
+ * Resolve raw credentials to a workspace member, or null if unauthenticated.
+ * Priority: agent Bearer token, then human session token. The single source of
+ * truth for both REST (`resolveIdentity`) and the #5 WebSocket gateway.
+ */
+export async function resolveIdentityFromCredentials(
+  creds: Credentials,
+): Promise<Identity | null> {
+  const authz = creds.authorization;
   if (authz?.startsWith("Bearer ")) {
     const raw = authz.slice("Bearer ".length).trim();
     if (!raw.startsWith(AGENT_TOKEN_PREFIX)) return null;
@@ -49,9 +47,9 @@ async function resolveIdentityUncached(req: FastifyRequest): Promise<Identity | 
     };
   }
 
-  const cookie = req.cookies?.[SESSION_COOKIE];
-  if (cookie) {
-    const sess = await findValidSession(hashToken(cookie));
+  const token = creds.sessionToken;
+  if (token) {
+    const sess = await findValidSession(hashToken(token));
     if (!sess) return null;
     const member = await getHumanMember(sess.userId);
     if (!member) return null;
@@ -64,4 +62,30 @@ async function resolveIdentityUncached(req: FastifyRequest): Promise<Identity | 
   }
 
   return null;
+}
+
+/**
+ * Per-request memoization of the resolved identity. The #19 observability plugin
+ * resolves identity in a `preHandler` (to tenant-attribute logs) and routes resolve
+ * it again — a WeakMap keyed by the request object makes that a single DB lookup,
+ * not two, and avoids `any`-typed request decoration.
+ */
+const identityCache = new WeakMap<FastifyRequest, Promise<Identity | null>>();
+
+/**
+ * Resolve the caller to a workspace member, or null if unauthenticated.
+ * Memoized per request (see `identityCache`). Priority: agent Bearer token, then
+ * human session cookie. Delegates to `resolveIdentityFromCredentials`, which the #5
+ * WebSocket gateway also uses directly from the upgrade request.
+ */
+export function resolveIdentity(req: FastifyRequest): Promise<Identity | null> {
+  let pending = identityCache.get(req);
+  if (!pending) {
+    pending = resolveIdentityFromCredentials({
+      authorization: req.headers.authorization,
+      sessionToken: req.cookies?.[SESSION_COOKIE],
+    });
+    identityCache.set(req, pending);
+  }
+  return pending;
 }

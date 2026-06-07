@@ -19,6 +19,7 @@ import {
 } from "../db/repositories/permissions.js";
 import { memberInWorkspace } from "../db/repositories/members.js";
 import { postMessage, listChannelMessages } from "../db/repositories/messages.js";
+import { publishMessageEvent } from "../realtime/bus.js";
 
 const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
 
@@ -179,6 +180,11 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       body: b.body,
       parentMessageId: b.parentMessageId,
     });
+    // Realtime delivery (#5) is best-effort on top of the REST source of truth: a Redis
+    // hiccup must never fail the write, so publish fire-and-forget and only log failures.
+    publishMessageEvent(cid, message).catch((err) =>
+      req.log.error({ err }, "realtime publish failed"),
+    );
     return reply.code(201).send(message);
   });
 
