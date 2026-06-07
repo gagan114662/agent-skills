@@ -16,10 +16,10 @@
 5. **Workspace-scoped, not channel-RBAC'd.** Memory is **workspace-scoped**: any member of the workspace may read/write it, gated by `assertWorkspace` (the #3 IDOR guard). #9 deferred workspace-wide/org roles and noted memory enforcement would come "when those surfaces exist"; since memory isn't channel-scoped, applying channel RBAC here would be a category error. Edge creation additionally requires **both** endpoints to resolve in the caller's workspace (cross-workspace edge → 404). Channel/workspace RBAC over memory is left to a later issue.
 6. **Thin routes, logic in `memory/*` + repo.** Routes authenticate, assert the workspace, validate, and delegate. All extraction, dedup, and traversal live in `memory/extract.ts`, `memory/dedupe.ts`, `memory/capture.ts`, and `db/repositories/memory.ts`.
 
-## Schema (migration `0003_memory`, additive + reversible)
+## Schema (migration `0005_memory`, additive + reversible)
 `memories` gains `entity`, `source_type` (+ CHECK), `source_id`, `dedupe_key` (NOT NULL), `created_by_member_id`, `UNIQUE (workspace_id, dedupe_key)`, and indexes on `(workspace_id, type)` / `(workspace_id, entity)`. `memory_edges` gains `created_by_member_id`, `UNIQUE (workspace_id, from, to, relation)`, and per-endpoint traversal indexes. The down migration returns both tables to their #2 stub shape; verified up→down→up on a clean database.
 
-> **Parallel-migration note.** Sibling Conductor workspaces are independently authoring other `0003_*` migrations against the shared dev Postgres. Per this branch's lineage (0000→0002) the next free number is `0003`, named `0003_memory`; all `0003_*` files are additive and order-independent. Local `db:rollback` against the shared DB can target a sibling's `0003_*` by lexical-name ordering, so `0003_memory`'s up/down is verified on a clean throwaway DB — which is what CI does.
+> **Parallel-migration note.** Sibling issues landed migrations concurrently — #7 (search) took `0003_search` and `0004` is claimed by another sibling — so this migration is numbered **`0005_memory`** (the next free slot after merging `origin/main`). All are additive and order-independent. Local `db:rollback` against the shared dev Postgres can target a sibling's later-numbered migration by lexical-name ordering, so `0005_memory`'s up/down is verified on a clean throwaway DB — which is what CI does.
 
 ## Endpoints
 | Endpoint | Purpose |

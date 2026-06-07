@@ -1,8 +1,8 @@
--- 0003_memory — typed context/memory graph (issue #15, ADR-0015).
+-- 0005_memory — typed context/memory graph (issue #15, ADR-0015).
 -- Makes the #2 `memories` / `memory_edges` stubs (0000_init) live: typed nodes with
 -- provenance + a dedup key, and idempotent typed edges with traversal indexes.
 --
--- Additive + reversible (paired 0003_memory.down.sql). `type` / `relation` stay free text
+-- Additive + reversible (paired 0005_memory.down.sql). `type` / `relation` stay free text
 -- (extensible); the canonical sets live in the app layer, not a DB CHECK.
 
 -- nodes --

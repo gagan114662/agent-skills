@@ -27,7 +27,7 @@ export const tasks = pgTable("tasks", {
 
 /**
  * Typed memory/context graph nodes (issue #15, ADR-0015). The #2 stub (id, workspace_id,
- * type, content, created_at) becomes the live node store via 0003_memory:
+ * type, content, created_at) becomes the live node store via 0005_memory:
  *   - `entity` — a normalized subject the node is about (powers query-by-entity)
  *   - `source_type` / `source_id` — provenance: the activity a node was auto-captured from
  *   - `dedupe_key` — deterministic hash of (type, entity, normalized text); the UNIQUE below

@@ -1,4 +1,4 @@
--- Reverse of 0003_memory. Returns memories / memory_edges to their #2 stub shape.
+-- Reverse of 0005_memory. Returns memories / memory_edges to their #2 stub shape.
 DROP INDEX IF EXISTS memory_edges_to_idx;
 DROP INDEX IF EXISTS memory_edges_from_idx;
 ALTER TABLE memory_edges DROP CONSTRAINT IF EXISTS memory_edges_uniq;
