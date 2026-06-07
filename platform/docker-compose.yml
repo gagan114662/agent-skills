@@ -26,5 +26,64 @@ services:
       timeout: 3s
       retries: 20
 
+  # --- full application stack (#19) -------------------------------------------
+  # Behind the "full" profile so plain `docker compose up -d` still starts only
+  # infra (preserving the #1–#4 dev/demo workflow). Deploy the whole stack with:
+  #   docker compose --profile full up -d --build
+  migrate:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: reload-server
+    # One-shot: apply pending migrations on deploy, then exit.
+    command: ["node", "/app/apps/server/dist/db/migrate.js", "up"]
+    environment:
+      DATABASE_URL: postgres://reload:reload@postgres:5432/reload
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: reload-server
+    # Migrations already ran in the `migrate` service; just start the server.
+    command: ["node", "/app/apps/server/dist/index.js"]
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://reload:reload@postgres:5432/reload
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    # Bound the blast radius of any single tenant/runaway request (#19 review: resource limits).
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Readiness gate: only "healthy" once deps are reachable via /readyz.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
 volumes:
   reload_pg:

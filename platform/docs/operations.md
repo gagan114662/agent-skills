@@ -1,0 +1,149 @@
+# Reload Platform — Operations Runbook (#19)
+
+How to deploy, observe, and recover the Reload platform. Covers the full stack
+(server + Postgres + Redis). See [ADR-0019](adrs/0019-deploy-observability.md) for the
+decisions behind this; [the spec](specs/19-deploy.md) for scope.
+
+## Stack at a glance
+- **server** — Fastify API (`apps/server`), container image `reload-server`, port `3000`.
+- **postgres** — Postgres 16, the system of record (per-workspace tenant data).
+- **redis** — Redis 7, used by realtime/caching paths.
+- **migrate** — one-shot job that applies pending migrations on deploy, then exits.
+
+Config is entirely via environment variables (12-factor): `PORT`, `DATABASE_URL`,
+`REDIS_URL`. Defaults for local dev are in `.env.example`. **Never commit a real `.env`.**
+
+---
+
+## Deploy
+
+### Full stack (one pipeline)
+From `platform/`:
+```bash
+docker compose --profile full up -d --build
+```
+This builds the image, runs `migrate` (apply pending migrations) **before** the server
+starts (the server `depends_on` `migrate` completing successfully and on db/redis health),
+then starts the server. The server reports **healthy** only once `GET /readyz` passes.
+
+Verify:
+```bash
+curl -s localhost:3000/readyz     # {"status":"ready","db":"up","redis":"up"}
+curl -s localhost:3000/livez      # {"status":"ok"}
+```
+
+> Plain `docker compose up -d` (no `--profile full`) starts **only** Postgres + Redis —
+> the local dev/demo workflow used by issues #1–#4. The app services are gated behind the
+> `full` profile so they don't collide with a tsx-run dev server.
+
+### Single container
+The image self-migrates on boot (`docker-entrypoint.sh` runs `migrate up` then starts):
+```bash
+docker build -f apps/server/Dockerfile -t reload-server .
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL=postgres://reload:reload@HOST:5432/reload \
+  -e REDIS_URL=redis://HOST:6379 reload-server
+```
+
+### Migrations
+Migrate-on-deploy is automatic (the `migrate` service / entrypoint). Manual control:
+```bash
+pnpm --filter @reload/server db:migrate     # apply pending (up)
+pnpm --filter @reload/server db:rollback    # revert last migration (down)
+pnpm --filter @reload/server db:reset       # revert all, then re-apply
+```
+Each `NNNN_name.sql` has a paired `NNNN_name.down.sql`; applied migrations are tracked in
+the `_migrations` table. CI proves the down→up path stays clean on every PR.
+
+---
+
+## Rollback
+
+**App rollback** — redeploy the previous image tag:
+```bash
+docker compose --profile full up -d --build   # or pin a known-good image tag
+```
+**Schema rollback** — if a migration is the problem, revert it (paired `.down.sql`):
+```bash
+pnpm --filter @reload/server db:rollback
+```
+Roll the schema back **before** rolling the app back if the new schema is incompatible
+with the old code. If data has already been written under the new schema, prefer a
+forward fix + restore from backup over a destructive down-migration.
+
+---
+
+## Backup & restore
+
+**Backup** (logical `pg_dump`, gzipped, timestamped):
+```bash
+bash scripts/backup.sh [output-dir]    # default ./backups/reload-YYYYmmdd-HHMMSS.sql.gz
+```
+**Restore** (DESTRUCTIVE — overwrites the live DB; take a fresh backup first):
+```bash
+bash scripts/restore.sh backups/reload-YYYYmmdd-HHMMSS.sql.gz
+```
+For real environments: schedule `backup.sh` (cron/CI), ship artifacts to offsite/object
+storage, and test restores regularly. Point-in-time recovery (WAL archiving) is a
+follow-up beyond this logical-dump baseline.
+
+---
+
+## Observability
+
+### Probes
+| Endpoint | Meaning | Use |
+|---|---|---|
+| `GET /livez` | process is up (always 200) | container **restart** probe |
+| `GET /readyz` | deps reachable (200 ready / 503 not_ready) | **traffic**/load-balancer gate |
+| `GET /healthz` | human summary (`ok`/`degraded`, always 200) | dashboards / quick check |
+| `GET /metrics` | Prometheus text exposition | scraping |
+
+All four are unauthenticated and expose **no tenant data**.
+
+### Correlation ids (tracing a request end-to-end)
+Every request has an `x-request-id` — adopted from the client header if present (so an
+upstream id propagates), else generated (uuidv7). It is:
+- echoed in the `x-request-id` **response header**, and
+- stamped as `requestId` on **every log line** for that request, alongside `workspaceId`,
+  `memberId`, and `kind` once the caller is resolved.
+
+To trace one request across logs:
+```bash
+docker compose logs server | grep '"requestId":"<the-id>"'
+```
+W3C `traceparent` is also echoed; an OpenTelemetry exporter can adopt this seam without
+code changes (follow-up).
+
+### Metrics & SLOs
+`/metrics` exposes `http_requests_total{method,route,status}` (labelled by **route
+template**, not raw path — bounded cardinality; tenant id is intentionally **not** a
+label), `http_request_duration_seconds` (histogram), `http_requests_in_flight`, and
+process gauges.
+
+Scrape config and SLO alert rules are committed as code:
+- `observability/prometheus.yml` — scrape job for the server.
+- `observability/alerts.yml` — SLO alerts:
+  - **Availability** 99.5% → alert when 5xx ratio > 0.5% for 5m.
+  - **Latency** p95 < 500ms → alert when p95 > 0.5s for 5m.
+  - **Liveness** → alert when the target is down > 1m.
+
+Standing up managed Prometheus/Grafana/Alertmanager is environment-specific; wire these
+files into your monitoring stack.
+
+---
+
+## Incident quick reference
+| Symptom | First checks |
+|---|---|
+| `/readyz` 503 | `docker compose ps`; is postgres/redis healthy? check `DATABASE_URL`/`REDIS_URL`. |
+| 5xx spike (ReloadHighErrorRate) | find the `requestId` in logs; `BubbleUp` by `route`/`status`; recent deploy? roll back. |
+| High latency (ReloadHighLatencyP95) | check db load; `http_requests_in_flight`; slow `route` in metrics. |
+| Server won't start | `docker compose logs migrate` — did migrations fail? then `docker compose logs server`. |
+| Suspected cross-tenant access | the tenant-isolation integration test is the contract; reproduce with two workspaces. |
+
+## Verifying a deploy (acceptance demo)
+```bash
+bash scripts/demos/19-deploy.sh      # full stack → probes → correlation id → tenant isolation
+```
+Recorded as `docs/demos/19-deploy.mp4` and regenerated as a CI `demo-video` artifact.
