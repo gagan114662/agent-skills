@@ -1,4 +1,4 @@
--- 0002_rbac — role-based permissions (read/write/propagate) + agent deactivation. Issue #9, ADR-0005.
+-- 0002_rbac — role-based permissions (read/write/propagate) + agent deactivation. Issue #9, ADR-0009.
 -- Layers roles onto the #4 channel-membership model (ADR-0004 §2): the `permissions` stub
 -- from #2 (0000_init) becomes the live capability store.
 

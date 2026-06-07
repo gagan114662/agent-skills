@@ -1,4 +1,4 @@
-# ADR-0005: Agent registry & role-based permissions (read/write/propagate)
+# ADR-0009: Agent registry & role-based permissions (read/write/propagate)
 
 - **Status:** Accepted (defaults chosen — issue #9; security-critical, see review note)
 - **Date:** 2026-06-06

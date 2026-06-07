@@ -51,7 +51,7 @@ export const memoryEdges = pgTable("memory_edges", {
 });
 
 /**
- * RBAC capability grants (issue #9, ADR-0005). One effective capability level per
+ * RBAC capability grants (issue #9, ADR-0009). One effective capability level per
  * (member, resource), enforced by the UNIQUE below so grant is an idempotent upsert.
  * Grants always carry a non-null resource_id (the channel id).
  */

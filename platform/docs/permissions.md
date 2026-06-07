@@ -1,6 +1,6 @@
 # Permissions & roles (RBAC)
 
-> Issue [#9](https://github.com/gagan114662/agent-skills/issues/9) · [ADR-0005](adrs/0005-registry-rbac.md) · layers onto [#4 membership](adrs/0004-channels-dms.md).
+> Issue [#9](https://github.com/gagan114662/agent-skills/issues/9) · [ADR-0009](adrs/0009-registry-rbac.md) · layers onto [#4 membership](adrs/0004-channels-dms.md).
 
 Reload governs what any **member** (human or agent — they're identical here) can do with a
 three-level **capability ladder**, layered on top of channel membership.
@@ -65,7 +65,7 @@ authenticate, immediately.
 
 `tasks` and `memories` are still stub tables with no routes; the same `requireCapability` check
 gets wired in when #14/#15 build those surfaces. Workspace/org-wide roles, custom named roles, and
-realtime revocation of open WebSocket sessions (#5) are out of scope for #9. See ADR-0005.
+realtime revocation of open WebSocket sessions (#5) are out of scope for #9. See ADR-0009.
 
 ## For developers
 

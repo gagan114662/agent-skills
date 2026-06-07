@@ -99,7 +99,7 @@ The `permissions` stub (id, workspace_id, member_id, resource_type, resource_id,
 2. `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass from `platform/`.
 3. `0002_rbac` applies and reverses cleanly (CI down/up step green); #4 tests unchanged and green.
 4. `requireChannelCapability` is the single access call the routes make; no access logic inlined in routes.
-5. ADR-0005 records the ladder + layering decision; `platform/docs/permissions.md` documents the model; demo `platform/docs/demos/09-registry-rbac.mp4` walks the acceptance matrix.
+5. ADR-0009 records the ladder + layering decision; `platform/docs/permissions.md` documents the model; demo `platform/docs/demos/09-registry-rbac.mp4` walks the acceptance matrix.
 
 ## Open questions (defaults chosen; override before PLAN if any are wrong)
 1. **Capability model = ordered ladder** (`read`<`write`<`propagate`), effective = explicit-row-else-member-default-`write`. Keeps #4 behavior intact, supports read-only downgrade, makes `propagate` the admin tier. OK?
