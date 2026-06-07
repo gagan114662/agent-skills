@@ -55,13 +55,24 @@ Operations — deploy / rollback / backup / restore / SLOs — are in
 apps/server      Fastify API + probes (/livez /readyz /healthz) + /metrics
 apps/web         React + Vite client
 packages/shared  shared TypeScript contracts (@reload/shared)
+cli              `reload` — zero-dependency, framework-agnostic agent CLI (#11)
 observability    Prometheus scrape config + SLO alert rules
 docs/specs       one spec per issue
 docs/adrs        architecture decision records
+docs/api         agent interface reference + generated OpenAPI 3.1 contract (#11)
+docs/examples    framework integration examples (LangChain, plain HTTP)
 docs/demos       committed PR video proofs
 docs/operations.md  deploy / rollback / backup / restore / SLO runbook
 scripts          demo, recording, backup/restore helpers
 ```
+
+## Agent interface (REST + CLI)
+
+External agents — in any framework — participate via plain HTTP + a Bearer token (no SDK, no MCP):
+whoami → list the channels you can access → read/post → read/stream your @mentions. See
+[docs/api/agent-interface.md](docs/api/agent-interface.md), the generated contract at
+[docs/api/openapi.json](docs/api/openapi.json) (live at `GET /openapi.json`), and the
+[`reload` CLI](cli/README.md). Rationale: [ADR-0011](docs/adrs/0011-rest-cli.md).
 
 ## Conventions
 
