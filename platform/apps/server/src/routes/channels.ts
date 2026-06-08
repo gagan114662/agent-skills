@@ -9,9 +9,7 @@ import {
   addChannelMember,
   removeChannelMember,
   isChannelMember,
-  listChannelMemberIds,
   getOrCreateDm,
-  type Channel,
 } from "../db/repositories/channels.js";
 import {
   grantCapability,
@@ -23,104 +21,13 @@ import { memberInWorkspace } from "../db/repositories/members.js";
 import {
   postMessage,
   listChannelMessages,
-  getMessage,
   listThreadReplies,
   countReplies,
-  type Message,
 } from "../db/repositories/messages.js";
-import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
-import { publishMessageEvent, publishMention } from "../realtime/bus.js";
-import { notify } from "../notifications/service.js";
-import type { Identity } from "../auth/identity.js";
-import type { FastifyRequest } from "fastify";
+import { resolveThreadRoot } from "../messaging/threads.js";
+import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 
 const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
-
-/**
- * Resolve the thread root for a target message id, scoped to a channel (#6). Returns the
- * root message when the target exists, is not deleted, and belongs to `channelId`; if the
- * target is itself a reply, returns its parent (threads stay one level deep). Returns
- * undefined for a missing / cross-channel target so callers can answer 404.
- */
-async function resolveThreadRoot(
-  messageId: string,
-  channelId: string,
-): Promise<Message | undefined> {
-  const target = await getMessage(messageId);
-  if (!target || target.channelId !== channelId) return undefined;
-  if (!target.parentMessageId) return target;
-  const parent = await getMessage(target.parentMessageId);
-  return parent && parent.channelId === channelId ? parent : undefined;
-}
-
-/**
- * Derive @mentions from a just-posted message, persist them, and push a realtime `mention`
- * to each mentioned member (#6). Best-effort like the message broadcast: a Redis/DB hiccup
- * is logged, never failing the REST write that already succeeded.
- */
-async function extractAndNotifyMentions(
-  req: FastifyRequest,
-  identity: Identity,
-  message: Message,
-): Promise<void> {
-  try {
-    const mentions = await resolveAndPersistMentions({
-      workspaceId: identity.workspaceId,
-      channelId: message.channelId,
-      messageId: message.id,
-      authorMemberId: identity.memberId,
-      body: message.body,
-    });
-    for (const m of mentions) {
-      publishMention(identity.workspaceId, {
-        id: m.id,
-        messageId: m.messageId,
-        channelId: m.channelId,
-        mentionedMemberId: m.mentionedMemberId,
-        authorMemberId: m.authorMemberId,
-        body: m.body,
-      }).catch((err) => req.log.error({ err }, "mention publish failed"));
-      // #8: a mention is also a durable notification (inbox + unread), on top of the #6 event.
-      await notify(req.log, {
-        workspaceId: identity.workspaceId,
-        recipientMemberId: m.mentionedMemberId,
-        type: "mention",
-        actorMemberId: m.authorMemberId,
-        channelId: m.channelId,
-        messageId: m.messageId,
-        excerpt: m.body,
-      });
-    }
-  } catch (err) {
-    req.log.error({ err }, "mention extraction failed");
-  }
-}
-
-/**
- * Notify the *other* members of a DM that a message landed (#8). No-op for non-DM channels and
- * for the author. Best-effort: `notify` never throws, so this can't fail the REST write.
- */
-async function notifyDmRecipients(
-  req: FastifyRequest,
-  identity: Identity,
-  channel: Channel,
-  message: Message,
-): Promise<void> {
-  if (channel.kind !== "dm") return;
-  const memberIds = await listChannelMemberIds(channel.id);
-  for (const recipientMemberId of memberIds) {
-    if (recipientMemberId === identity.memberId) continue;
-    await notify(req.log, {
-      workspaceId: identity.workspaceId,
-      recipientMemberId,
-      type: "dm",
-      actorMemberId: identity.memberId,
-      channelId: channel.id,
-      messageId: message.id,
-      excerpt: message.body,
-    });
-  }
-}
 
 export async function channelRoutes(app: FastifyInstance): Promise<void> {
   // create a public channel (creator auto-joins)
@@ -286,13 +193,9 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       body: b.body,
       parentMessageId,
     });
-    // Realtime delivery (#5) is best-effort on top of the REST source of truth: a Redis
-    // hiccup must never fail the write, so publish fire-and-forget and only log failures.
-    publishMessageEvent(cid, message).catch((err) =>
-      req.log.error({ err }, "realtime publish failed"),
-    );
-    await extractAndNotifyMentions(req, id, message);
-    await notifyDmRecipients(req, id, ch, message); // #8: DM → notification for the other member(s)
+    // Realtime broadcast (#5) + mention (#6/#8) + DM (#8) fan-out, shared with the MCP
+    // `post_message` tool (#10). Best-effort on top of the REST source of truth.
+    await deliverPostedMessage(req.log, id, ch, message);
     return reply.code(201).send(message);
   });
 
@@ -317,20 +220,9 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       parentMessageId: root.id,
       alsoSentToChannel: b.alsoSendToChannel ?? false,
     });
-    publishMessageEvent(cid, message).catch((err) =>
-      req.log.error({ err }, "realtime publish failed"),
-    );
-    await extractAndNotifyMentions(req, id, message);
-    // #8: a thread reply notifies the thread root's author (notify no-ops if that's the replier).
-    await notify(req.log, {
-      workspaceId: id.workspaceId,
-      recipientMemberId: root.authorMemberId,
-      type: "reply",
-      actorMemberId: id.memberId,
-      channelId: cid,
-      messageId: message.id,
-      excerpt: message.body,
-    });
+    // Realtime broadcast (#5) + mention (#6/#8) fan-out + a `reply` notification to the thread
+    // root's author (#8), shared with the MCP `reply_thread` tool (#10).
+    await deliverThreadReply(req.log, id, ch, message, root.authorMemberId);
     return reply.code(201).send(message);
   });
 

@@ -14,6 +14,7 @@ import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { searchRoutes } from "./routes/search.js";
+import { mcpRoutes } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
@@ -54,6 +55,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   app.register(approvalRoutes);
   app.register(searchRoutes);
+  // #10 MCP integration: a stateful Streamable-HTTP MCP server at /mcp. Each tool/resource is a
+  // thin adapter over the existing repos + access helpers (no new authority); auth is the existing
+  // agent Bearer token (#3) checked per request, and resource subscriptions bridge onto the #5 bus.
+  app.register(mcpRoutes);
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
