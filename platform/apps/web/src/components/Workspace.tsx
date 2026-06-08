@@ -1,4 +1,5 @@
-/** The Slack-style workspace shell: top bar, channel sidebar, message pane, thread + members rails. */
+/** The Slack-style workspace shell: top bar, channel sidebar, message pane, thread + members rails.
+ * The top bar switches between the chat workspace and the Approvals Panel (#13 governance surface). */
 import { useState } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { authorLabel } from "../store/store.js";
@@ -6,23 +7,37 @@ import { ChannelSidebar } from "./ChannelSidebar.js";
 import { MessagePane } from "./MessagePane.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { MembersRail } from "./MembersRail.js";
+import { ApprovalsPanel } from "./approvals/ApprovalsPanel.js";
+
+type View = "chat" | "approvals";
 
 export function Workspace(): React.JSX.Element {
+  const [view, setView] = useState<View>("chat");
   return (
     <div className="workspace">
-      <TopBar />
-      <div className="workspace__body">
-        <ChannelSidebar />
-        <MessagePane />
-        <ThreadPanel />
-        <MembersRail />
-      </div>
+      <TopBar view={view} onSelectView={setView} />
+      {view === "approvals" ? (
+        <ApprovalsPanel />
+      ) : (
+        <div className="workspace__body">
+          <ChannelSidebar />
+          <MessagePane />
+          <ThreadPanel />
+          <MembersRail />
+        </div>
+      )}
     </div>
   );
 }
 
-function TopBar(): React.JSX.Element {
-  const { identity, unreadMentions, mentions, directory } = useAppState();
+function TopBar({
+  view,
+  onSelectView,
+}: {
+  view: View;
+  onSelectView: (v: View) => void;
+}): React.JSX.Element {
+  const { identity, unreadMentions, mentions, directory, approvals } = useAppState();
   const store = useStore();
   const [showMentions, setShowMentions] = useState(false);
 
@@ -36,6 +51,23 @@ function TopBar(): React.JSX.Element {
       <div className="topbar__brand">
         <span className="auth__mark">◆</span> Reload
       </div>
+      <nav className="topbar__nav" aria-label="Workspace views">
+        <button
+          className={`topbar__navbtn${view === "chat" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "chat"}
+          onClick={() => onSelectView("chat")}
+        >
+          Chat
+        </button>
+        <button
+          className={`topbar__navbtn${view === "approvals" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "approvals"}
+          onClick={() => onSelectView("approvals")}
+        >
+          Approvals
+          {approvals.pendingCount > 0 && <span className="badge">{approvals.pendingCount}</span>}
+        </button>
+      </nav>
       <div className="topbar__spacer" />
       {identity && (
         <div className="topbar__me">

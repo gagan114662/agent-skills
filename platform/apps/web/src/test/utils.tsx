@@ -2,10 +2,39 @@
 import { render, type RenderResult } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
+import type { ApprovalPolicyDto, ApprovalRequestDto } from "@reload/shared";
 import type { Realtime } from "../api/realtime.js";
 import type { Channel, Identity, MemberHit, Message, ServerEvent } from "../api/types.js";
 import { createStore, type Store, type StoreDeps } from "../store/store.js";
 import { StoreProvider } from "../store/StoreContext.js";
+
+const STUB_REQUEST: ApprovalRequestDto = {
+  id: "r0",
+  workspaceId: "w1",
+  requesterMemberId: "ag1",
+  actionType: "external.send",
+  payload: {},
+  amount: null,
+  summary: "stub request",
+  status: "pending",
+  reason: null,
+  decidedByMemberId: null,
+  decidedAt: null,
+  expiresAt: null,
+  result: null,
+  error: null,
+  createdAt: "2026-06-08T11:00:00Z",
+  updatedAt: "2026-06-08T11:00:00Z",
+};
+
+const STUB_POLICY: ApprovalPolicyDto = {
+  id: "p0",
+  actionType: "chat.post_message",
+  requireApproval: true,
+  maxAutoAmount: null,
+  createdAt: "2026-06-08T10:00:00Z",
+  updatedAt: "2026-06-08T10:00:00Z",
+};
 
 export const TEST_IDENTITY: Identity = {
   workspaceId: "w1",
@@ -96,6 +125,17 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       { id: "ag1", name: "Atlas", framework: "claude", ownerUserId: null, deactivatedAt: null, createdAt: "2026-01-01T00:00:00Z" },
     ]),
     listMyMentions: vi.fn(async () => []),
+    approvals: {
+      list: vi.fn(async () => [] as ApprovalRequestDto[]),
+      get: vi.fn(async () => STUB_REQUEST),
+      events: vi.fn(async () => []),
+      approve: vi.fn(async (rid: string) => ({ status: "executed" as const, result: {}, request: { ...STUB_REQUEST, id: rid, status: "executed" as const } })),
+      reject: vi.fn(async (rid: string, reason: string) => ({ status: "rejected" as const, request: { ...STUB_REQUEST, id: rid, status: "rejected" as const, reason } })),
+      listPolicies: vi.fn(async () => [] as ApprovalPolicyDto[]),
+      upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => ({ ...STUB_POLICY, actionType: input.actionType })),
+      deletePolicy: vi.fn(async () => ({ ok: true }) as const),
+      submitAction: vi.fn(async () => ({ status: "pending" as const, reason: "policy", request: STUB_REQUEST })),
+    },
   };
   return { deps: { api, realtime: rt }, rt };
 }

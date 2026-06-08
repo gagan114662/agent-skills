@@ -5,6 +5,12 @@
  * State is immutable: every mutation replaces `state` with a new object so `getState()` returns a
  * stable reference between notifications (what `useSyncExternalStore` requires).
  */
+import type {
+  ApprovalEventDto,
+  ApprovalPolicyDto,
+  ApprovalRequestDto,
+  ApprovalStatus,
+} from "@reload/shared";
 import type { api as realApi } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
 import type {
@@ -29,6 +35,19 @@ export interface ThreadState {
   replies: Message[];
 }
 
+/** The approvals slice (#13 web surface). The review queue, the open request + its audit chain,
+ * and the workspace policy rules. `pendingCount` drives a live nav badge independent of the view. */
+export interface ApprovalsState {
+  status: ApprovalStatus;
+  requests: ApprovalRequestDto[];
+  loading: boolean;
+  pendingCount: number;
+  activeRequest: ApprovalRequestDto | null;
+  activeEvents: ApprovalEventDto[];
+  policies: ApprovalPolicyDto[];
+  error: string | null;
+}
+
 export interface AppState {
   phase: "loading" | "anon" | "ready";
   identity: Identity | null;
@@ -41,6 +60,7 @@ export interface AppState {
   presence: Record<string, PresenceStatus>;
   mentions: MentionEvent[];
   unreadMentions: number;
+  approvals: ApprovalsState;
   error: string | null;
 }
 
@@ -61,6 +81,7 @@ export interface StoreDeps {
     | "searchMembers"
     | "listAgents"
     | "listMyMentions"
+    | "approvals"
   >;
   realtime: Realtime;
 }
@@ -94,6 +115,17 @@ function mergeDirectory(
 // no list-all-members endpoint (see spec §Known server constraints).
 const ROSTER_PROBES = ["a", "e", "i", "o", "u", "y"];
 
+const INITIAL_APPROVALS: ApprovalsState = {
+  status: "pending",
+  requests: [],
+  loading: false,
+  pendingCount: 0,
+  activeRequest: null,
+  activeEvents: [],
+  policies: [],
+  error: null,
+};
+
 const INITIAL: AppState = {
   phase: "loading",
   identity: null,
@@ -106,6 +138,7 @@ const INITIAL: AppState = {
   presence: {},
   mentions: [],
   unreadMentions: 0,
+  approvals: INITIAL_APPROVALS,
   error: null,
 };
 
@@ -129,6 +162,20 @@ export interface Store {
   sendReply(rootId: string, body: string, alsoSendToChannel: boolean): Promise<void>;
   searchMembers(query: string): Promise<MemberHit[]>;
   markMentionsRead(): void;
+  // --- approvals (#13 web surface) ---
+  loadApprovals(status?: ApprovalStatus): Promise<void>;
+  openRequest(requestId: string): Promise<void>;
+  closeRequest(): void;
+  decideApprove(requestId: string, reason?: string): Promise<void>;
+  decideReject(requestId: string, reason: string): Promise<void>;
+  loadPolicies(): Promise<void>;
+  addPolicy(input: { actionType: string; requireApproval?: boolean; maxAutoAmount?: number | null }): Promise<void>;
+  removePolicy(ruleId: string): Promise<void>;
+}
+
+/** Server `error` message off an ApiError, or a generic fallback. */
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : "request failed";
 }
 
 export function createStore({ api, realtime }: StoreDeps): Store {
@@ -156,6 +203,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       case "mention":
         set({ mentions: [event.mention, ...state.mentions], unreadMentions: state.unreadMentions + 1 });
         break;
+      case "notification":
+        // A gated action (#13) needs a human decision — refresh the pending queue live (ADR-0026).
+        if (event.notification.type === "approval") void refreshPending();
+        break;
       case "presence":
         set({ presence: { ...state.presence, [event.memberId]: event.status } });
         break;
@@ -163,6 +214,32 @@ export function createStore({ api, realtime }: StoreDeps): Store {
         // ready / subscribed / unsubscribed / error / pong — no UI state to update.
         break;
     }
+  }
+
+  function setApprovals(patch: Partial<ApprovalsState>): void {
+    set({ approvals: { ...state.approvals, ...patch } });
+  }
+
+  /** Refresh the pending bucket: always updates the nav badge; updates rows when pending is shown.
+   * Best-effort — a failure only zeroes the badge, never breaks login or a decision. */
+  async function refreshPending(): Promise<void> {
+    const workspaceId = state.identity?.workspaceId;
+    if (!workspaceId) return;
+    try {
+      const pending = await api.approvals.list(workspaceId, "pending");
+      const patch: Partial<ApprovalsState> = { pendingCount: pending.length };
+      if (state.approvals.status === "pending") patch.requests = pending;
+      setApprovals(patch);
+    } catch {
+      // best-effort: the badge/queue degrade, the rest of the app is unaffected.
+    }
+  }
+
+  /** After any decision, reload the visible queue + the badge, and refresh an open detail. */
+  async function reconcile(requestId: string): Promise<void> {
+    await store.loadApprovals(state.approvals.status);
+    if (state.approvals.status !== "pending") await refreshPending();
+    if (state.approvals.activeRequest?.id === requestId) await store.openRequest(requestId);
   }
 
   async function warmDirectory(workspaceId: string): Promise<void> {
@@ -203,6 +280,7 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       .listMyMentions()
       .then((items) => set({ unreadMentions: items.length }))
       .catch(() => undefined);
+    await refreshPending();
 
     const first = channels[0];
     if (first) await store.selectChannel(first.id);
@@ -303,6 +381,98 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
     markMentionsRead() {
       if (state.unreadMentions !== 0) set({ unreadMentions: 0 });
+    },
+
+    // --- approvals (#13 web surface) ---
+
+    async loadApprovals(status = state.approvals.status) {
+      const workspaceId = state.identity?.workspaceId;
+      if (!workspaceId) return;
+      setApprovals({ status, loading: true, error: null });
+      try {
+        const requests = await api.approvals.list(workspaceId, status);
+        const patch: Partial<ApprovalsState> = { requests, loading: false };
+        if (status === "pending") patch.pendingCount = requests.length;
+        setApprovals(patch);
+      } catch (e) {
+        setApprovals({ loading: false, error: errMsg(e) });
+      }
+    },
+
+    async openRequest(requestId) {
+      try {
+        const [request, events] = await Promise.all([
+          api.approvals.get(requestId),
+          api.approvals.events(requestId),
+        ]);
+        setApprovals({ activeRequest: request, activeEvents: events, error: null });
+      } catch (e) {
+        setApprovals({ error: errMsg(e) });
+      }
+    },
+
+    closeRequest() {
+      setApprovals({ activeRequest: null, activeEvents: [] });
+    },
+
+    async decideApprove(requestId, reason) {
+      let error: string | null = null;
+      try {
+        await api.approvals.approve(requestId, reason);
+      } catch (e) {
+        error = errMsg(e);
+      }
+      // Reconcile against authoritative server state (handles 409 already-decided / 502 failed).
+      await reconcile(requestId);
+      if (error) setApprovals({ error });
+    },
+
+    async decideReject(requestId, reason) {
+      let error: string | null = null;
+      try {
+        await api.approvals.reject(requestId, reason);
+      } catch (e) {
+        error = errMsg(e);
+      }
+      await reconcile(requestId);
+      if (error) setApprovals({ error });
+    },
+
+    async loadPolicies() {
+      const workspaceId = state.identity?.workspaceId;
+      if (!workspaceId) return;
+      try {
+        const policies = await api.approvals.listPolicies(workspaceId);
+        setApprovals({ policies, error: null });
+      } catch (e) {
+        setApprovals({ error: errMsg(e) });
+      }
+    },
+
+    async addPolicy(input) {
+      const workspaceId = state.identity?.workspaceId;
+      if (!workspaceId) return;
+      let error: string | null = null;
+      try {
+        await api.approvals.upsertPolicy(workspaceId, input);
+      } catch (e) {
+        error = errMsg(e);
+      }
+      await store.loadPolicies();
+      if (error) setApprovals({ error });
+    },
+
+    async removePolicy(ruleId) {
+      const workspaceId = state.identity?.workspaceId;
+      if (!workspaceId) return;
+      let error: string | null = null;
+      try {
+        await api.approvals.deletePolicy(workspaceId, ruleId);
+      } catch (e) {
+        error = errMsg(e);
+      }
+      await store.loadPolicies();
+      if (error) setApprovals({ error });
     },
   };
 

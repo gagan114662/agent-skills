@@ -68,6 +68,25 @@ export interface MentionEvent {
   body: string;
 }
 
+/**
+ * A notification pushed to the recipient's sockets (#8) — mirrors the server `NotificationEvent`
+ * (`apps/server/src/realtime/protocol.ts`). Delivered to the recipient regardless of channel
+ * subscription. `type:"approval"` is the signal a gated action (#13) needs a human decision; the
+ * Approvals Panel uses it to refresh the pending queue live. The server already emits this event —
+ * the web union simply never listed it (see ADR-0026).
+ */
+export interface NotificationEvent {
+  id: string;
+  type: "mention" | "dm" | "reply" | "assignment" | "approval";
+  recipientMemberId: string;
+  actorMemberId: string | null;
+  channelId: string | null;
+  messageId: string | null;
+  taskId: string | null;
+  excerpt: string | null;
+  createdAt: string;
+}
+
 /** A member search hit, from `GET /workspaces/:wid/search/members`. */
 export interface MemberHit {
   id: string;
@@ -109,6 +128,7 @@ export type ServerEvent =
   | { type: "unsubscribed"; channelId: string }
   | { type: "message"; message: Message }
   | { type: "mention"; mention: MentionEvent }
+  | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };

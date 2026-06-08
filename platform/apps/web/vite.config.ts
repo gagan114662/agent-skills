@@ -19,6 +19,8 @@ export default defineConfig({
       "/me": API_ORIGIN,
       "/workspaces": API_ORIGIN,
       "/channels": API_ORIGIN,
+      // Approval request/decision/audit routes are top-level (not under /workspaces) — #13/#18.
+      "/approvals": API_ORIGIN,
       // WebSocket gateway — `ws: true` proxies the HTTP upgrade so the rid cookie rides along.
       "/ws": { target: API_ORIGIN, ws: true },
     },
