@@ -6,6 +6,10 @@ import { closeRedis } from "./redis/index.js";
 const env = loadEnv();
 const app = buildApp();
 
+// #17 autonomy: start the opt-in background loop (AUTONOMY_INTERVAL_MS; default 0 = off). The
+// engine is stopped on server close via the onClose hook registered in buildApp.
+app.autonomyEngine.start(env.autonomy.intervalMs);
+
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "shutting down");
   await app.close();

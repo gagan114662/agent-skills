@@ -7,8 +7,15 @@ export interface Env {
   redisUrl: string;
   /** Cloud agent execution (#25). */
   agent: AgentEnv;
+  /** Autonomous activity loop (#17). */
+  autonomy: AutonomyEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
+}
+
+export interface AutonomyEnv {
+  /** Periodic loop interval in ms. Default `0` = the background timer is OFF (opt-in). */
+  intervalMs: number;
 }
 
 export interface NotifyEnv {
@@ -52,6 +59,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         idleMs: num(source.AGENT_IDLE_MS, 120_000),
         memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
       },
+    },
+    autonomy: {
+      // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.
+      intervalMs: Number(source.AUTONOMY_INTERVAL_MS ?? 0) || 0,
     },
     notify: {
       webhookUrl: source.NOTIFY_WEBHOOK_URL || undefined,
