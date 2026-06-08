@@ -6,6 +6,8 @@ import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentInterfaceRoutes } from "./routes/agent-interface.js";
+import { acpRoutes } from "./routes/acp.js";
+import { a2aRoutes } from "./routes/a2a.js";
 import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
 import { notificationRoutes } from "./routes/notifications.js";
@@ -45,6 +47,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(meRoutes);
   // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.
   app.register(agentInterfaceRoutes);
+  // #12 protocol adapters (grouped with the agent surface): ACP runs ⇄ channel threads, A2A
+  // handoff ⇄ tasks + AgentCard handshake. Both reuse the same identity/RBAC/IDOR helpers — no new
+  // authority, no new table.
+  app.register(acpRoutes);
+  app.register(a2aRoutes);
   app.register(agentRoutes);
   app.register(channelRoutes);
   app.register(notificationRoutes);

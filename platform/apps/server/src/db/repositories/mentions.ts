@@ -109,6 +109,27 @@ export async function listMentionsForMember(
     .orderBy(desc(messageMentions.createdAt));
 }
 
+/**
+ * The members @mentioned on a single message, with their kind + handle, in mention order. Used by
+ * the ACP adapter (#12) to find a run's target agent: an ACP run is a thread, and the run targets
+ * the first agent-kind member mentioned on its root message.
+ */
+export async function listMentionsOnMessage(
+  messageId: string,
+): Promise<Array<{ memberId: string; kind: "human" | "agent"; displayName: string }>> {
+  const rows = await db
+    .select({
+      memberId: members.id,
+      kind: members.kind,
+      displayName: members.displayName,
+    })
+    .from(messageMentions)
+    .innerJoin(members, eq(messageMentions.mentionedMemberId, members.id))
+    .where(eq(messageMentions.messageId, messageId))
+    .orderBy(messageMentions.createdAt);
+  return rows as Array<{ memberId: string; kind: "human" | "agent"; displayName: string }>;
+}
+
 /** How many times a member has been mentioned in their workspace. */
 export async function countMentionsForMember(
   workspaceId: string,

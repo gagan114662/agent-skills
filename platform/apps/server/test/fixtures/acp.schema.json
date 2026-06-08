@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reload.dev/fixtures/acp.schema.json",
+  "x-source": "https://github.com/i-am-bee/acp / https://agentcommunicationprotocol.dev/spec",
+  "x-spec-version": "2025-draft",
+  "x-note": "Focused subset of the published ACP schema — the exact $defs Reload's ACP adapter emits (Agent manifest, Run, Message). Transcribed from upstream; stream/await/session detail types omitted (poll-based adapter). Pinned for offline conformance.",
+  "$defs": {
+    "MessagePart": {
+      "type": "object",
+      "required": ["content_type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "content_type": { "type": "string" },
+        "content": { "type": ["string", "null"] },
+        "content_encoding": { "type": "string", "enum": ["plain", "base64"] },
+        "content_url": { "type": ["string", "null"] }
+      }
+    },
+    "Message": {
+      "type": "object",
+      "required": ["role", "parts"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string" },
+        "parts": { "type": "array", "items": { "$ref": "#/$defs/MessagePart" } },
+        "created_at": { "type": ["string", "null"] },
+        "completed_at": { "type": ["string", "null"] }
+      }
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "created",
+        "in-progress",
+        "awaiting",
+        "cancelling",
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    "Run": {
+      "type": "object",
+      "required": ["run_id", "agent_name", "status", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "run_id": { "type": "string" },
+        "agent_name": { "type": "string" },
+        "session_id": { "type": ["string", "null"] },
+        "status": { "$ref": "#/$defs/RunStatus" },
+        "output": { "type": "array", "items": { "$ref": "#/$defs/Message" } },
+        "created_at": { "type": "string" },
+        "finished_at": { "type": ["string", "null"] }
+      }
+    },
+    "Agent": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

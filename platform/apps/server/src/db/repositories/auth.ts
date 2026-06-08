@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { users, agents, members, sessions, agentTokens } from "../schema/index.js";
 
@@ -152,6 +152,52 @@ export async function getAgentMember(
       and(
         eq(members.agentId, agentId),
         eq(members.workspaceId, workspaceId),
+        isNull(agents.deactivatedAt),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
+ * A single agent profile, workspace-scoped (#3 IDOR): an agent id from another workspace resolves
+ * to nothing. Used by the A2A adapter to derive an AgentCard (#12).
+ */
+export async function getAgentById(
+  agentId: string,
+  workspaceId: string,
+): Promise<{ id: string; name: string; framework: string | null; deactivatedAt: Date | null } | undefined> {
+  const [row] = await db
+    .select({
+      id: agents.id,
+      name: agents.name,
+      framework: agents.framework,
+      deactivatedAt: agents.deactivatedAt,
+    })
+    .from(agents)
+    .where(and(eq(agents.id, agentId), eq(agents.workspaceId, workspaceId)))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Resolve an active agent member by its handle (display name, case-insensitive) within a workspace.
+ * Used by the ACP adapter to map a run's `agent_name` to a member (#12). Deactivated agents resolve
+ * to nothing (their member row is gone via the same active-only join as {@link getAgentMember}).
+ */
+export async function getAgentMemberByHandle(
+  workspaceId: string,
+  handle: string,
+): Promise<{ memberId: string; agentId: string; name: string } | undefined> {
+  const [row] = await db
+    .select({ memberId: members.id, agentId: agents.id, name: members.displayName })
+    .from(members)
+    .innerJoin(agents, eq(agents.id, members.agentId))
+    .where(
+      and(
+        eq(members.workspaceId, workspaceId),
+        eq(members.kind, "agent"),
+        sql`lower(${members.displayName}) = lower(${handle})`,
         isNull(agents.deactivatedAt),
       ),
     )
