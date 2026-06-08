@@ -281,8 +281,10 @@ export async function autonomyRoutes(
   });
 
   // ---- approvals (the human gate) -----------------------------------------
+  // Namespaced under /autonomy/ to avoid colliding with the #13 governance approvals
+  // (routes/approvals.ts), which own /workspaces/:workspaceId/approvals.
 
-  app.get("/workspaces/:workspaceId/approvals", async (req, reply) => {
+  app.get("/workspaces/:workspaceId/autonomy/approvals", async (req, reply) => {
     const { workspaceId } = req.params as { workspaceId: string };
     const id = await requireIdentity(req, reply);
     if (!id) return;
@@ -291,7 +293,7 @@ export async function autonomyRoutes(
     return listApprovals(workspaceId, { status: q.status });
   });
 
-  app.post("/workspaces/:workspaceId/approvals/:id/approve", async (req, reply) => {
+  app.post("/workspaces/:workspaceId/autonomy/approvals/:id/approve", async (req, reply) => {
     const { workspaceId, id: approvalId } = req.params as { workspaceId: string; id: string };
     const id = await requireHumanInWorkspace(req, reply, workspaceId);
     if (!id) return;
@@ -302,7 +304,7 @@ export async function autonomyRoutes(
     return { ok: true };
   });
 
-  app.post("/workspaces/:workspaceId/approvals/:id/reject", async (req, reply) => {
+  app.post("/workspaces/:workspaceId/autonomy/approvals/:id/reject", async (req, reply) => {
     const { workspaceId, id: approvalId } = req.params as { workspaceId: string; id: string };
     const id = await requireHumanInWorkspace(req, reply, workspaceId);
     if (!id) return;

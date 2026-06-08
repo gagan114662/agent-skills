@@ -58,9 +58,9 @@ green "    task status: $(curl -s -b "$JAR" localhost:3000/tasks/$TASK | field s
 curl -s -b "$JAR" "localhost:3000/channels/$A/messages" | bodies
 
 cyan "==> 6/8  AC2: the workflow is parked at the human gate; one approval completes it"
-AP=$(curl -s -b "$JAR" "localhost:3000/workspaces/$WS/approvals?status=pending" | field id)
+AP=$(curl -s -b "$JAR" "localhost:3000/workspaces/$WS/autonomy/approvals?status=pending" | field id)
 echo "    pending approval=$AP — approving as a human…"
-curl -s -b "$JAR" -XPOST "localhost:3000/workspaces/$WS/approvals/$AP/approve" >/dev/null
+curl -s -b "$JAR" -XPOST "localhost:3000/workspaces/$WS/autonomy/approvals/$AP/approve" >/dev/null
 green "    workflow=$(curl -s -b "$JAR" localhost:3000/channels/$A/workflows/$WF | field status)  task=$(curl -s -b "$JAR" localhost:3000/tasks/$TASK | field status) ✓"
 
 cyan "==> 7/8  AC3: share the pooled Writer into team-b and let it act there per its role"

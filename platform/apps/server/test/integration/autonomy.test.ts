@@ -178,10 +178,10 @@ describe("cross-team agent pooling + autonomy loop (real Postgres + Redis, #17)"
     expect(stillParked.currentStage).toBe(1);
 
     // A single human approval completes the whole workflow.
-    const pending = (await get(`/workspaces/${w.workspaceId}/approvals?status=pending`, w.cookie)).json();
+    const pending = (await get(`/workspaces/${w.workspaceId}/autonomy/approvals?status=pending`, w.cookie)).json();
     expect(pending).toHaveLength(1);
     const approve = await post(
-      `/workspaces/${w.workspaceId}/approvals/${pending[0].id}/approve`,
+      `/workspaces/${w.workspaceId}/autonomy/approvals/${pending[0].id}/approve`,
       w.cookie,
     );
     expect(approve.statusCode).toBe(200);
