@@ -9,11 +9,18 @@ export interface Env {
   agent: AgentEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
+  /** Approval gates (#13). */
+  approval: ApprovalEnv;
 }
 
 export interface NotifyEnv {
   /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
   webhookUrl?: string;
+}
+
+export interface ApprovalEnv {
+  /** Default TTL (seconds) after which an undecided request expires. Override per request. */
+  defaultTtlSeconds: number;
 }
 
 export interface AgentEnv {
@@ -55,6 +62,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     notify: {
       webhookUrl: source.NOTIFY_WEBHOOK_URL || undefined,
+    },
+    approval: {
+      defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
     },
   };
 }
