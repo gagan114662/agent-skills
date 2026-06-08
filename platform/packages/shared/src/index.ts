@@ -86,3 +86,34 @@ export interface ApprovalEventDto {
 export type SubmitActionResponse =
   | { status: "pending"; reason: string; request: ApprovalRequestDto }
   | { status: "executed"; result: Record<string, unknown>; request: ApprovalRequestDto };
+
+// ---- team mode (#TeamMode) --------------------------------------------------
+
+/**
+ * The lifecycle a teammate broadcasts on the shared team channel so peers can keep each other in
+ * the loop: `started` (claimed a subtask), `milestone` (progress worth announcing), `blocked`
+ * (stuck / failed — peers should avoid depending on it), `needs_handoff` (wants another agent to
+ * pick something up), `done` (subtask finished). Reading recent events before acting is how agents
+ * avoid duplicate or conflicting work.
+ */
+export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
+
+/** One structured status event on a team run's channel. */
+export interface TeamEvent {
+  /** Groups every event belonging to one team run. */
+  teamRunId: string;
+  /** Which subtask/branch this event is about. */
+  subtaskId: string;
+  /** The agent member that emitted the event. */
+  agentMemberId: string;
+  kind: TeamEventKind;
+  /** Human-readable one-liner describing what happened. */
+  summary: string;
+  /** The branch the agent is working on, or null before one is assigned. */
+  branch: string | null;
+  /** ISO-8601 timestamp the event was created. */
+  createdAt: string;
+}
+
+// The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
+// this package is consumed unbuilt and stays strictly type-only with no runtime exports.

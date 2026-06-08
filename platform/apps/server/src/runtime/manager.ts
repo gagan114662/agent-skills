@@ -76,6 +76,10 @@ export interface LaunchInput {
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
   task: string;
+  /** Team Mode: the team run this session belongs to (recorded on its trace for grouping). */
+  teamRunId?: string;
+  /** Team Mode: the team rollup span this session links under (Braintrust parent span id). */
+  parentSpanId?: string;
 }
 
 /** How many trailing output lines to keep as the persisted result summary. */
@@ -119,7 +123,10 @@ export class SessionManager {
       command: this.deps.harness.command,
       caps: this.deps.caps,
     });
-    const run = this.drive(session, input.task).catch(() => {
+    const run = this.drive(session, input.task, {
+      teamRunId: input.teamRunId,
+      parentSpanId: input.parentSpanId,
+    }).catch(() => {
       /* drive() never throws — terminal failures are persisted as `failed` */
     });
     this.runs.set(session.id, run);
@@ -146,7 +153,11 @@ export class SessionManager {
     await Promise.allSettled([...this.runs.values()]);
   }
 
-  private async drive(session: AgentSession, task: string): Promise<void> {
+  private async drive(
+    session: AgentSession,
+    task: string,
+    trace: { teamRunId?: string; parentSpanId?: string } = {},
+  ): Promise<void> {
     const log = this.deps.logger.child({
       sessionId: session.id,
       workspaceId: session.workspaceId,
@@ -154,7 +165,8 @@ export class SessionManager {
     });
     recordSessionStarted();
     // Observability: wrap the whole session in one span (task -> output/status). The tracer is a
-    // no-op unless BRAINTRUST_API_KEY is set, so tests / CI / local dev are unaffected.
+    // no-op unless BRAINTRUST_API_KEY is set, so tests / CI / local dev are unaffected. Under Team
+    // Mode the span links to the team rollup via parentSpanId.
     await this.tracer.session(
       {
         sessionId: session.id,
@@ -162,6 +174,8 @@ export class SessionManager {
         agentMemberId: session.agentMemberId,
         runtime: this.deps.runtime.kind,
         task,
+        teamRunId: trace.teamRunId,
+        parentSpanId: trace.parentSpanId,
       },
       () => this.runSession(session, task, log),
     );

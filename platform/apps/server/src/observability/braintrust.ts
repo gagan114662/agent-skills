@@ -37,11 +37,38 @@ export function createBraintrustTracer(): AgentTracer {
               runtime: trace.runtime,
               status: outcome.status,
               exitCode: outcome.exitCode,
+              // Team Mode: tag the run so child sessions are filterable/groupable as one team.
+              ...(trace.teamRunId ? { teamRunId: trace.teamRunId } : {}),
             },
           });
           return outcome;
         },
-        { name: "agent_session" },
+        // Team Mode: when launched under a team run, attach this session as a child of the team
+        // rollup span (`parentSpanId` is the exported parent span). Plain sessions pass undefined.
+        { name: "agent_session", parent: trace.parentSpanId },
+      );
+    },
+    team(trace, run) {
+      return traced(
+        async (span) => {
+          // Export the team span so the coordinator can link each child session under it.
+          const parentSpanId = await span.export();
+          const outcome = await run({ parentSpanId });
+          span.log({
+            input: `team run ${trace.teamRunId} (${trace.subtaskCount} subtasks)`,
+            output: `completed=${outcome.completed} failed=${outcome.failed}`,
+            metadata: {
+              teamRunId: trace.teamRunId,
+              workspaceId: trace.workspaceId,
+              channelId: trace.channelId,
+              subtaskCount: trace.subtaskCount,
+              completed: outcome.completed,
+              failed: outcome.failed,
+            },
+          });
+          return outcome;
+        },
+        { name: "team_session" },
       );
     },
   };

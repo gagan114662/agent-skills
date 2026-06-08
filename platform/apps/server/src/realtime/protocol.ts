@@ -1,3 +1,4 @@
+import type { TeamEvent } from "@reload/shared";
 import type { Message } from "../db/repositories/messages.js";
 
 /** Presence states a member can be in within a workspace (#5). */
@@ -49,6 +50,7 @@ export type ServerEvent =
   | { type: "mention"; mention: MentionEvent }
   | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
+  | { type: "team_event"; event: TeamEvent }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 
