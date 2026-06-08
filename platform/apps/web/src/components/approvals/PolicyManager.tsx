@@ -34,7 +34,10 @@ export function PolicyManager(): React.JSX.Element {
       )}
 
       {approvals.policies.length === 0 ? (
-        <p className="review-queue__empty">No policy rules — actions execute without approval.</p>
+        <p className="review-queue__empty">
+          No custom policy rules — external sends still require approval by default; other actions
+          auto-execute. Add a rule below to change this.
+        </p>
       ) : (
         <ul className="policy-list">
           {approvals.policies.map((p) => (
