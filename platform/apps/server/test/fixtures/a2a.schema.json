@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reload.dev/fixtures/a2a.schema.json",
+  "x-source": "https://github.com/a2aproject/A2A/blob/main/specification/json/a2a.json",
+  "x-spec-version": "0.3.x",
+  "x-note": "Focused subset of the published A2A JSON Schema — the exact $defs Reload's A2A adapter emits (AgentCard, Task, Message). Transcribed verbatim from upstream; streaming/push/extended-card defs omitted (advertised unsupported). Pinned for offline conformance, mirroring #11's focused-contract decision.",
+  "$defs": {
+    "TaskState": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "TextPart": {
+      "type": "object",
+      "required": ["kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "text" },
+        "text": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "DataPart": {
+      "type": "object",
+      "required": ["kind", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "data" },
+        "data": { "type": "object" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "FilePart": {
+      "type": "object",
+      "required": ["kind", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "file" },
+        "file": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "mimeType": { "type": "string" },
+            "uri": { "type": "string" },
+            "bytes": { "type": "string" }
+          }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+    "Part": {
+      "oneOf": [
+        { "$ref": "#/$defs/TextPart" },
+        { "$ref": "#/$defs/DataPart" },
+        { "$ref": "#/$defs/FilePart" }
+      ]
+    },
+    "Message": {
+      "type": "object",
+      "required": ["kind", "role", "parts", "messageId"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "message" },
+        "role": { "type": "string", "enum": ["user", "agent"] },
+        "parts": { "type": "array", "items": { "$ref": "#/$defs/Part" } },
+        "messageId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "contextId": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "TaskStatus": {
+      "type": "object",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "$ref": "#/$defs/TaskState" },
+        "message": { "$ref": "#/$defs/Message" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "Artifact": {
+      "type": "object",
+      "required": ["artifactId", "parts"],
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "parts": { "type": "array", "items": { "$ref": "#/$defs/Part" } },
+        "metadata": { "type": "object" }
+      }
+    },
+    "Task": {
+      "type": "object",
+      "required": ["kind", "id", "contextId", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "task" },
+        "id": { "type": "string" },
+        "contextId": { "type": "string" },
+        "status": { "$ref": "#/$defs/TaskStatus" },
+        "history": { "type": "array", "items": { "$ref": "#/$defs/Message" } },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/Artifact" } },
+        "metadata": { "type": "object" }
+      }
+    },
+    "AgentCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "streaming": { "type": "boolean" },
+        "pushNotifications": { "type": "boolean" },
+        "stateTransitionHistory": { "type": "boolean" }
+      }
+    },
+    "AgentSkill": {
+      "type": "object",
+      "required": ["id", "name", "description", "tags"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "examples": { "type": "array", "items": { "type": "string" } },
+        "inputModes": { "type": "array", "items": { "type": "string" } },
+        "outputModes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "SecurityScheme": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "scheme": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "AgentCard": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "name",
+        "description",
+        "url",
+        "version",
+        "capabilities",
+        "defaultInputModes",
+        "defaultOutputModes",
+        "skills"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "preferredTransport": { "type": "string" },
+        "version": { "type": "string" },
+        "documentationUrl": { "type": "string" },
+        "capabilities": { "$ref": "#/$defs/AgentCapabilities" },
+        "defaultInputModes": { "type": "array", "items": { "type": "string" } },
+        "defaultOutputModes": { "type": "array", "items": { "type": "string" } },
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/AgentSkill" } },
+        "securitySchemes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/SecurityScheme" }
+        },
+        "security": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
