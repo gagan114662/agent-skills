@@ -3,6 +3,7 @@ import type { Identity } from "./identity.js";
 import { getChannel, isChannelMember, type Channel } from "../db/repositories/channels.js";
 import { getCapability, type Capability } from "../db/repositories/permissions.js";
 import { getTask, type Task } from "../db/repositories/tasks.js";
+import { getRequest, type ApprovalRequest } from "../db/repositories/approvals.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
 
 export type { Capability };
@@ -78,6 +79,25 @@ export async function requireTaskInWorkspace(
     return undefined;
   }
   return task;
+}
+
+/**
+ * Load an approval request and assert it belongs to the caller's workspace (#13). Approval requests
+ * are workspace-scoped (access is by workspace membership; *deciding* additionally requires the
+ * caller be human — enforced at the route). The single access call request-id routes make — carries
+ * the #3 IDOR discipline: a request in another workspace is a 404, never readable.
+ */
+export async function requireApprovalInWorkspace(
+  identity: Identity,
+  requestId: string,
+  reply: FastifyReply,
+): Promise<ApprovalRequest | undefined> {
+  const request = await getRequest(requestId);
+  if (!request || request.workspaceId !== identity.workspaceId) {
+    reply.code(404).send({ error: "approval request not found" });
+    return undefined;
+  }
+  return request;
 }
 
 /**
