@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authorLabel, createStore, upsertMessage, type StoreDeps } from "./store.js";
+import { makePolicy as pol, makeRequest as req } from "../test/approvals-fixtures.js";
 import type { Realtime } from "../api/realtime.js";
 import type { Identity, Message, ServerEvent } from "../api/types.js";
 
@@ -79,6 +80,17 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
     searchMembers: vi.fn(async () => []),
     listAgents: vi.fn(async () => []),
     listMyMentions: vi.fn(async () => []),
+    approvals: {
+      list: vi.fn(async () => []),
+      get: vi.fn(async (rid: string) => req({ id: rid })),
+      events: vi.fn(async () => []),
+      approve: vi.fn(async (rid: string) => ({ status: "executed" as const, result: {}, request: req({ id: rid }) })),
+      reject: vi.fn(async (rid: string) => ({ status: "rejected" as const, request: req({ id: rid }) })),
+      listPolicies: vi.fn(async () => []),
+      upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => pol({ id: "p1", actionType: input.actionType })),
+      deletePolicy: vi.fn(async () => ({ ok: true }) as const),
+      submitAction: vi.fn(async () => ({ status: "pending" as const, reason: "policy", request: req({ id: "r1" }) })),
+    },
   };
   return { deps: { api, realtime: rt }, rt };
 }
