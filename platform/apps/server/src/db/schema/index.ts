@@ -5,6 +5,7 @@ export * from "./messages.js";
 export * from "./mentions.js";
 export * from "./notifications.js";
 export * from "./tasks.js";
+export * from "./approvals.js";
 export * from "./stubs.js";
 export * from "./auth.js";
 export * from "./agent-sessions.js";
