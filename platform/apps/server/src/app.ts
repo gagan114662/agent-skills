@@ -15,11 +15,21 @@ import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import { autonomyRoutes } from "./routes/autonomy.js";
 import { searchRoutes } from "./routes/search.js";
 import { mcpRoutes } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
+import { createDefaultAutonomyEngine } from "./autonomy/default.js";
+import type { AutonomyEngine } from "./autonomy/engine.js";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    /** The #17 autonomy engine; `index.ts` starts its opt-in background timer. */
+    autonomyEngine: AutonomyEngine;
+  }
+}
 
 /**
  * Builds the Fastify app without binding a port, so it can be exercised in tests
@@ -33,6 +43,8 @@ import type { SessionManager } from "./runtime/manager.js";
 /** Options for {@link buildApp}; tests may inject a SessionManager with a fake runtime (#25). */
 export interface BuildAppOptions {
   sessionManager?: SessionManager;
+  /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
+  autonomyEngine?: AutonomyEngine;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -74,6 +86,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addHook("onClose", async () => {
     await sessionManager.shutdown();
   });
+  // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
+  // handoffs, approval gates, guards + kill switch). The background timer is opt-in
+  // (AUTONOMY_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
+  // drive `tick()`. It is stopped on server close so no timer leaks past shutdown.
+  const autonomyEngine = opts.autonomyEngine ?? createDefaultAutonomyEngine(app.log);
+  app.register(autonomyRoutes, { engine: autonomyEngine });
+  app.addHook("onClose", async () => {
+    autonomyEngine.stop();
+  });
+  app.decorate("autonomyEngine", autonomyEngine);
   // #5 realtime gateway: WebSocket delivery + presence on top of the REST endpoints.
   // Its Redis subscriber is created lazily on the first socket, so inject-only tests
   // and the no-Redis CI job stay Redis-free.

@@ -9,3 +9,4 @@ export * from "./approvals.js";
 export * from "./stubs.js";
 export * from "./auth.js";
 export * from "./agent-sessions.js";
+export * from "./autonomy.js";

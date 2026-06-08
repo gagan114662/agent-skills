@@ -80,6 +80,22 @@ export function observeSpinup(runtime: string, seconds: number): void {
   else s.bucketCounts[idx] = (s.bucketCounts[idx] ?? 0) + 1;
 }
 
+// --- autonomy loop (#17) ----------------------------------------------------
+// Cardinality discipline (as everywhere): the only label is the bounded action kind — tenant ids
+// are NEVER labels (they live in logs/traces).
+let autonomyTicks = 0;
+const autonomyActions = new Map<string, number>();
+
+/** One autonomy tick ran (a single pass over a workspace's active workflows). */
+export function recordAutonomyTick(): void {
+  autonomyTicks += 1;
+}
+
+/** One autonomy action was applied/decided (start | handoff | request_approval | noop | …). */
+export function recordAutonomyAction(action: string): void {
+  autonomyActions.set(action, (autonomyActions.get(action) ?? 0) + 1);
+}
+
 const httpKey = (method: string, route: string, status: number): string =>
   `${method}|${route}|${status}`;
 const durKey = (method: string, route: string): string => `${method}|${route}`;
@@ -128,6 +144,8 @@ export function resetMetrics(): void {
   sessionTotals.clear();
   spinups.clear();
   sessionsActive = 0;
+  autonomyTicks = 0;
+  autonomyActions.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -202,6 +220,17 @@ export function renderMetrics(): string {
     lines.push(`agent_sandbox_spinup_seconds_bucket{${labels},le="+Inf"} ${cumulative}`);
     lines.push(`agent_sandbox_spinup_seconds_sum{${labels}} ${s.sum}`);
     lines.push(`agent_sandbox_spinup_seconds_count{${labels}} ${s.count}`);
+  }
+
+  // --- autonomy loop (#17) ---
+  lines.push("# HELP autonomy_ticks_total Autonomy loop ticks executed.");
+  lines.push("# TYPE autonomy_ticks_total counter");
+  lines.push(`autonomy_ticks_total ${autonomyTicks}`);
+
+  lines.push("# HELP autonomy_actions_total Autonomy actions by kind.");
+  lines.push("# TYPE autonomy_actions_total counter");
+  for (const [action, count] of autonomyActions) {
+    lines.push(`autonomy_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   return lines.join("\n") + "\n";
