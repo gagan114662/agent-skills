@@ -9,6 +9,7 @@ import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { EnvSecretsResolver } from "./secrets-resolver.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
+import { createBraintrustTracer } from "../observability/braintrust.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -52,5 +53,7 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     caps: env.caps,
     logger,
+    // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set.
+    tracer: createBraintrustTracer(),
   });
 }

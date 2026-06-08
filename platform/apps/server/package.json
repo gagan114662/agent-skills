@@ -14,13 +14,15 @@
     "db:rollback": "tsx src/db/migrate.ts down",
     "db:reset": "tsx src/db/migrate.ts reset",
     "db:seed": "tsx src/db/seed.ts",
-    "openapi:dump": "tsx scripts/dump-openapi.ts"
+    "openapi:dump": "tsx scripts/dump-openapi.ts",
+    "trace:smoke": "tsx scripts/braintrust-smoke.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@node-rs/argon2": "^2.0.2",
     "@reload/shared": "workspace:*",
+    "braintrust": "^3.17.0",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
     "ioredis": "^5.4.2",

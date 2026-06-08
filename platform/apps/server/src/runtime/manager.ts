@@ -12,6 +12,7 @@ import {
 import { makeRedactor } from "./redact.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
+import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
 /** Persistence seam (real impl wraps the agent-sessions repository; tests inject a fake). */
 export interface SessionStore {
@@ -64,6 +65,8 @@ export interface SessionManagerDeps {
   harness: { command: string; args: string[] };
   caps: ResourceCaps;
   logger: SessionLogger;
+  /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
+  tracer?: AgentTracer;
 }
 
 export interface LaunchInput {
@@ -90,8 +93,11 @@ const RESULT_MAX_CHARS = 4000;
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>();
   private readonly runs = new Map<string, Promise<void>>();
+  private readonly tracer: AgentTracer;
 
-  constructor(private readonly deps: SessionManagerDeps) {}
+  constructor(private readonly deps: SessionManagerDeps) {
+    this.tracer = deps.tracer ?? noopTracer;
+  }
 
   get runtimeKind(): RuntimeKind {
     return this.deps.runtime.kind;
@@ -147,7 +153,26 @@ export class SessionManager {
       runtime: this.deps.runtime.kind,
     });
     recordSessionStarted();
+    // Observability: wrap the whole session in one span (task -> output/status). The tracer is a
+    // no-op unless BRAINTRUST_API_KEY is set, so tests / CI / local dev are unaffected.
+    await this.tracer.session(
+      {
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        agentMemberId: session.agentMemberId,
+        runtime: this.deps.runtime.kind,
+        task,
+      },
+      () => this.runSession(session, task, log),
+    );
+  }
 
+  /** The driven session lifecycle (provision -> run -> finalize); returns a trace-friendly outcome. */
+  private async runSession(
+    session: AgentSession,
+    task: string,
+    log: SessionLogger,
+  ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only.
     const secrets = await this.deps.secrets.resolve(session.workspaceId);
     const redact = makeRedactor(secrets);
@@ -236,6 +261,7 @@ export class SessionManager {
     });
     recordSessionEnded(this.deps.runtime.kind, result.status);
     log.info({ status: result.status, snapshotId: result.snapshotId }, "agent session finalized");
+    return { status: result.status, exitCode: result.exitCode ?? null, result: resultText || null };
   }
 
   /** Post to the channel without ever letting a delivery error fail the session. */
