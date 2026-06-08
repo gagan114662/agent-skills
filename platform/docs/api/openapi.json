@@ -17,6 +17,10 @@
       "description": "The framework-agnostic agent interface (#11)."
     },
     {
+      "name": "governance",
+      "description": "Human approval gates for sensitive agent actions (#13)."
+    },
+    {
       "name": "meta",
       "description": "Contract / discovery endpoints."
     }
@@ -429,6 +433,354 @@
         }
       }
     },
+    "/workspaces/{workspaceId}/approvals": {
+      "get": {
+        "summary": "List approval requests (audit log)",
+        "description": "The workspace's approval requests, newest first (#13). Filter with `?status=` (pending|approved|rejected|expired|auto_approved) or `?requestedBy=<memberId>`. Workspace-scoped (#3) — only the caller's workspace is ever visible.",
+        "tags": [
+          "governance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "description": "The caller's workspace id.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Filter by status.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "auto_approved"
+              ]
+            }
+          },
+          {
+            "name": "requestedBy",
+            "in": "query",
+            "required": false,
+            "description": "Filter by requesting member id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace's approval requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalRequest"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but lacks the required capability (#9).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not in the caller's workspace (#3 IDOR) or not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Request approval for a sensitive action",
+        "description": "Submit an action (the preview a human approves). The policy engine decides: a gated action is recorded `pending` and NOT executed (humans are notified); an ungated action is `auto_approved` and executed immediately. Either way an audit row is returned (#13).",
+        "tags": [
+          "governance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "description": "The caller's workspace id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "actionKind",
+                  "summary"
+                ],
+                "properties": {
+                  "actionKind": {
+                    "type": "string",
+                    "enum": [
+                      "external_send",
+                      "spend",
+                      "channel_post",
+                      "custom"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "Human-readable description of the action."
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "description": "For `spend`: amount in minor units."
+                  },
+                  "currency": {
+                    "type": "string",
+                    "description": "For `spend`: ISO 4217 code (audit only)."
+                  },
+                  "channelId": {
+                    "type": "string",
+                    "description": "For `channel_post`: the target channel (must be in-workspace)."
+                  },
+                  "destination": {
+                    "type": "string",
+                    "description": "For `external_send`: where data is going (audit only)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The persisted approval request (pending or auto_approved).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but lacks the required capability (#9).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not in the caller's workspace (#3 IDOR) or not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workspaces/{workspaceId}/approvals/{approvalId}": {
+      "get": {
+        "summary": "Read one approval request",
+        "description": "A single approval request + its decision — the preview/audit read (#13).",
+        "tags": [
+          "governance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "description": "The caller's workspace id.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "approvalId",
+            "in": "path",
+            "required": true,
+            "description": "The approval request id (must belong to the caller's workspace).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The approval request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but lacks the required capability (#9).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not in the caller's workspace (#3 IDOR) or not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workspaces/{workspaceId}/governance-policy": {
+      "get": {
+        "summary": "Read the workspace governance policy",
+        "description": "The policy that decides what needs approval — external sends, spend threshold, guarded channels, always-gated kinds, and the request TTL. Defaults apply when unset (#13).",
+        "tags": [
+          "governance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "description": "The caller's workspace id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace governance policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernancePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated, but lacks the required capability (#9).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not in the caller's workspace (#3 IDOR) or not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/openapi.json": {
       "get": {
         "summary": "This contract",
@@ -589,6 +941,142 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "ApprovalRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspaceId",
+          "requestedByMemberId",
+          "actionKind",
+          "actionSummary",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "requestedByMemberId": {
+            "type": "string"
+          },
+          "actionKind": {
+            "type": "string",
+            "enum": [
+              "external_send",
+              "spend",
+              "channel_post",
+              "custom"
+            ]
+          },
+          "actionSummary": {
+            "type": "string",
+            "description": "The human-readable preview."
+          },
+          "action": {
+            "type": "object",
+            "description": "The opaque action descriptor (amount/destination/etc.)."
+          },
+          "channelId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "auto_approved"
+            ],
+            "description": "pending → approved|rejected|expired; auto_approved is the ungated terminal."
+          },
+          "policyReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why the policy gated (or auto-approved) the action."
+          },
+          "decidedByMemberId": {
+            "type": "string",
+            "nullable": true
+          },
+          "decisionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "outcome": {
+            "type": "string",
+            "nullable": true,
+            "description": "The executor's result after an approved/auto action ran."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "executedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "GovernancePolicy": {
+        "type": "object",
+        "required": [
+          "externalSendRequiresApproval",
+          "spendThresholdCents",
+          "guardedChannelIds",
+          "requireApprovalFor",
+          "defaultTtlMs"
+        ],
+        "properties": {
+          "externalSendRequiresApproval": {
+            "type": "boolean",
+            "description": "Every external_send needs approval."
+          },
+          "spendThresholdCents": {
+            "type": "integer",
+            "description": "A spend strictly above this needs approval."
+          },
+          "guardedChannelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "channel_post into one of these needs approval."
+          },
+          "requireApprovalFor": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "external_send",
+                "spend",
+                "channel_post",
+                "custom"
+              ]
+            },
+            "description": "Action kinds that always need approval."
+          },
+          "defaultTtlMs": {
+            "type": "integer",
+            "description": "TTL applied to a new pending request."
           }
         }
       },

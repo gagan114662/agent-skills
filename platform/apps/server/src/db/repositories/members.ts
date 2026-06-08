@@ -34,6 +34,21 @@ export async function getWorkspaceMember(
   return row as Member | undefined;
 }
 
+/**
+ * Every member of a workspace of a given kind (human/agent). Used by #13 to fan an `approval`
+ * notification out to the human approvers of the workspace.
+ */
+export async function listWorkspaceMembersByKind(
+  workspaceId: string,
+  kind: "human" | "agent",
+): Promise<Member[]> {
+  const rows = await db
+    .select({ id: members.id, kind: members.kind, displayName: members.displayName })
+    .from(members)
+    .where(and(eq(members.workspaceId, workspaceId), eq(members.kind, kind)));
+  return rows as Member[];
+}
+
 /** Create a human user (global) and their member row in a workspace. */
 export async function createHumanMember(input: {
   workspaceId: string;

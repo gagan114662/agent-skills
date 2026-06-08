@@ -33,6 +33,17 @@ describe("buildOpenApiDocument (agent OpenAPI contract)", () => {
     expect(doc.paths["/me/mentions/count"].get).toBeDefined();
   });
 
+  it("documents the #13 governance (approval gate) endpoints + schemas", () => {
+    expect(doc.paths["/workspaces/{workspaceId}/approvals"].post).toBeDefined();
+    expect(doc.paths["/workspaces/{workspaceId}/approvals"].get).toBeDefined();
+    expect(doc.paths["/workspaces/{workspaceId}/approvals/{approvalId}"].get).toBeDefined();
+    expect(doc.paths["/workspaces/{workspaceId}/governance-policy"].get).toBeDefined();
+    expect(doc.components.schemas.ApprovalRequest.properties.status).toBeDefined();
+    expect(doc.components.schemas.GovernancePolicy.properties.spendThresholdCents).toBeDefined();
+    // requesting an approval requires a Bearer token (it is an agent action)
+    expect(doc.paths["/workspaces/{workspaceId}/approvals"].post.security).toEqual([{ bearerAuth: [] }]);
+  });
+
   it("defines the core schemas, including the capability annotation on a channel", () => {
     expect(doc.components.schemas.Identity).toBeDefined();
     expect(doc.components.schemas.Message).toBeDefined();

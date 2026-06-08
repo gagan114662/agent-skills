@@ -11,6 +11,7 @@ import { channelRoutes } from "./routes/channels.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
+import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { searchRoutes } from "./routes/search.js";
 import { attachRealtime } from "./realtime/gateway.js";
@@ -50,6 +51,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(notificationRoutes);
   app.register(memoryRoutes);
   app.register(taskRoutes);
+  // #13 human approval gates & governance: agents request sensitive actions; humans approve/reject;
+  // a policy engine decides what needs a gate; every request + decision is an audit row.
+  app.register(approvalRoutes);
   app.register(searchRoutes);
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
