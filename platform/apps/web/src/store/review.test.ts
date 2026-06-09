@@ -17,6 +17,10 @@ const session: AgentSessionSummary = {
   branch: "agent/s1",
   baseBranch: "main",
   headSha: "abc",
+  provider: null,
+  model: null,
+  effort: null,
+  mode: null,
   createdAt: "2026-06-09T00:00:00.000Z",
 };
 
