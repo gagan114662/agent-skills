@@ -24,13 +24,17 @@ describe("harness selection (#50)", () => {
     expect(cmd).toContain("--permission-mode acceptEdits");
   });
 
-  it("honors a custom binary path and model", () => {
-    const cmd = harnessSpec("claude-code", {
-      claudeBin: "/opt/bin/claude",
-      model: "claude-opus-4-8",
-    }).args[1];
+  it("honors a custom binary path", () => {
+    const cmd = harnessSpec("claude-code", { claudeBin: "/opt/bin/claude" }).args[1];
     expect(cmd).toContain("'/opt/bin/claude' -p \"$AGENT_TASK\"");
-    expect(cmd).toContain("--model 'claude-opus-4-8'");
+  });
+
+  it("selects the model via an env-gated --model flag (#52) — per-session, never argv", () => {
+    const cmd = harnessSpec("claude-code").args[1];
+    // The model is whatever ANTHROPIC_MODEL is in the (per-session-merged) env, double-quoted like
+    // $AGENT_TASK; when unset the flag vanishes (Claude Code's own default). No static model in argv.
+    expect(cmd).toContain('${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"}');
+    expect(harnessSpec).toHaveLength(1);
   });
 
   it("injects the task via $AGENT_TASK only — never interpolates task text into argv", () => {
@@ -42,10 +46,12 @@ describe("harness selection (#50)", () => {
     expect(cmd).toMatch(/-p "\$AGENT_TASK"/);
   });
 
-  it("escapes a model value so it cannot break out of the bash -lc string", () => {
-    const cmd = harnessSpec("claude-code", { model: "x'; rm -rf /; '" }).args[1];
-    expect(cmd).not.toContain("rm -rf / ;");
-    expect(cmd).toContain("--model '");
+  it("never interpolates a model value into argv — selection is env-driven (#52)", () => {
+    // There is no `model` option any more: a hostile model string cannot reach the command line
+    // because the flag references the $ANTHROPIC_MODEL env var, never a baked literal.
+    const cmd = harnessSpec("claude-code").args[1];
+    expect(cmd).not.toMatch(/--model '/); // no single-quoted literal model in the command
+    expect(cmd).toContain('--model "$ANTHROPIC_MODEL"');
   });
 
   it("threads persona prompt + tools via env-gated flags only (#59) — never argv", () => {

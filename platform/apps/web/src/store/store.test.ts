@@ -93,6 +93,16 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
     },
     review: {
       listSessions: vi.fn(async () => []),
+      launchSession: vi.fn(async (_c, input) => ({
+        id: "sess_new",
+        status: "provisioning",
+        runtime: "local",
+        agentMemberId: input.agentMemberId,
+        provider: null,
+        model: null,
+        effort: null,
+        mode: null,
+      })),
       diff: vi.fn(async (_c, sessionId, mode) => ({
         sessionId,
         branch: `agent/${sessionId}`,

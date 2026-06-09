@@ -54,6 +54,13 @@ export const agentSessions = pgTable(
     branch: text("branch"),
     baseBranch: text("base_branch"),
     headSha: text("head_sha"),
+    // Model/provider selection (#52): the non-secret selection a session ran with (audit + review UI).
+    // Nullable — a session launched without explicit selection (or on demo) leaves them unset.
+    // Credentials NEVER live here; they stay on the #25 SecretsResolver path.
+    provider: text("provider", { enum: ["anthropic", "openai", "bedrock", "vertex", "custom"] }),
+    model: text("model"),
+    effort: text("effort", { enum: ["off", "low", "medium", "high"] }),
+    mode: text("mode", { enum: ["single", "auto"] }),
     caps: jsonb("caps").notNull().default(sql`'{}'::jsonb`),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
