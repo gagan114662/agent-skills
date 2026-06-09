@@ -41,7 +41,7 @@ export function MessagePane(): React.JSX.Element {
         )}
       </div>
 
-      <Composer />
+      <Composer queue />
     </section>
   );
 }

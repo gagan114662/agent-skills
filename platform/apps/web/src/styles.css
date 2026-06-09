@@ -550,6 +550,88 @@ button {
   flex: 1;
 }
 
+/* --- composer message/steering queue (#54) --- */
+.queue {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.queue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line);
+}
+.queue__hint {
+  color: var(--text-faint);
+}
+.queue__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.queue__list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.queue__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.queue__row--selected {
+  background: var(--accent-dim);
+}
+.queue__row--editing {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.queue__kind {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+}
+.queue__kind--steer {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.queue__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue__rowbtns {
+  display: flex;
+  gap: 4px;
+}
+.queue__editor {
+  width: 100%;
+  resize: none;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px;
+  font: inherit;
+}
+
 /* --- thread + members rails --- */
 .thread,
 .members {

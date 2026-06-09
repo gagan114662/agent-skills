@@ -17,6 +17,20 @@ import type {
 } from "@reload/shared";
 import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
+import {
+  beginEdit,
+  cancelEdit,
+  commitEdit,
+  editText,
+  emptyQueue,
+  enqueue,
+  enqueueSteer,
+  moveItem,
+  removeItem,
+  takeHead,
+  type QueueItem,
+  type SessionQueue,
+} from "./queue.js";
 import type {
   AgentProfile,
   AgentSessionSummary,
@@ -80,8 +94,14 @@ export interface AppState {
   unreadMentions: number;
   approvals: ApprovalsState;
   review: ReviewState;
+  /** Per-session (per-channel) composer message/steering queue (#54). Keyed by channelId so each
+   * conversation keeps its own stack across channel switches. */
+  queues: Record<string, SessionQueue>;
   error: string | null;
 }
+
+/** Re-export so consumers (components) get the queue types from the store barrel. */
+export type { QueueItem, SessionQueue } from "./queue.js";
 
 /** The slice of the REST client the store depends on (so tests can supply a fake). */
 export interface StoreDeps {
@@ -171,6 +191,7 @@ const INITIAL: AppState = {
   unreadMentions: 0,
   approvals: INITIAL_APPROVALS,
   review: INITIAL_REVIEW,
+  queues: {},
   error: null,
 };
 
@@ -194,6 +215,17 @@ export interface Store {
   sendReply(rootId: string, body: string, alsoSendToChannel: boolean): Promise<void>;
   searchMembers(query: string): Promise<MemberHit[]>;
   markMentionsRead(): void;
+  // --- composer message/steering queue (#54), scoped to the active channel ---
+  /** Stack a message after everything already pending; drains when the agent is ready. */
+  queueMessage(text: string): void;
+  /** Stack a message ahead of the queued backlog (redirect now). */
+  steerMessage(text: string): void;
+  editQueuedStart(itemId: string): void;
+  editQueuedChange(text: string): void;
+  editQueuedCommit(): void;
+  editQueuedCancel(): void;
+  removeQueued(itemId: string): void;
+  moveQueued(itemId: string, dir: -1 | 1): void;
   // --- approvals (#13 web surface) ---
   loadApprovals(status?: ApprovalStatus): Promise<void>;
   openRequest(requestId: string): Promise<void>;
@@ -226,6 +258,51 @@ export function createStore({ api, realtime }: StoreDeps): Store {
   function set(patch: Partial<AppState>): void {
     state = { ...state, ...patch };
     for (const l of listeners) l();
+  }
+
+  // --- composer message/steering queue (#54) -------------------------------------------------
+  // Per-channel queues live in state; the in-flight send is tracked here (not in state) so a single
+  // drain serializes every send for a channel — re-entrant calls and edits never start a 2nd send.
+  let queueSeq = 0;
+  const draining = new Set<string>();
+
+  function getQueue(channelId: string): SessionQueue {
+    return state.queues[channelId] ?? emptyQueue();
+  }
+
+  function setQueue(channelId: string, q: SessionQueue): void {
+    set({ queues: { ...state.queues, [channelId]: q } });
+  }
+
+  function newItem(text: string, kind: QueueItem["kind"]): QueueItem {
+    queueSeq += 1;
+    return { id: `q${queueSeq}`, text, kind };
+  }
+
+  /** Drain a channel's queue one message at a time. Holds while paused (an open edit) and exits on
+   * empty; the `draining` guard makes the loop the single sender, so sends never overlap. */
+  async function drain(channelId: string): Promise<void> {
+    if (draining.has(channelId)) return;
+    draining.add(channelId);
+    try {
+      for (;;) {
+        const q = getQueue(channelId);
+        if (q.status === "paused" || q.items.length === 0) break;
+        const { head, rest } = takeHead(q);
+        setQueue(channelId, rest); // the message leaves the visible queue as it goes in flight
+        try {
+          const msg = await api.postMessage(channelId, head.text);
+          const list = state.messagesByChannel[channelId] ?? [];
+          set({
+            messagesByChannel: { ...state.messagesByChannel, [channelId]: upsertMessage(list, msg) },
+          });
+        } catch {
+          // Best-effort: a failed send drops that message and the queue keeps draining.
+        }
+      }
+    } finally {
+      draining.delete(channelId);
+    }
   }
 
   function onEvent(event: import("../api/types.js").ServerEvent): void {
@@ -443,6 +520,63 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
     markMentionsRead() {
       if (state.unreadMentions !== 0) set({ unreadMentions: 0 });
+    },
+
+    // --- composer message/steering queue (#54) ---
+
+    queueMessage(text) {
+      const channelId = state.activeChannelId;
+      const body = text.trim();
+      if (!channelId || !body) return;
+      setQueue(channelId, enqueue(getQueue(channelId), newItem(body, "queue")));
+      void drain(channelId);
+    },
+
+    steerMessage(text) {
+      const channelId = state.activeChannelId;
+      const body = text.trim();
+      if (!channelId || !body) return;
+      setQueue(channelId, enqueueSteer(getQueue(channelId), newItem(body, "steer")));
+      void drain(channelId);
+    },
+
+    editQueuedStart(itemId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, beginEdit(getQueue(channelId), itemId));
+    },
+
+    editQueuedChange(text) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, editText(getQueue(channelId), text));
+    },
+
+    editQueuedCommit() {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, commitEdit(getQueue(channelId)));
+      void drain(channelId);
+    },
+
+    editQueuedCancel() {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, cancelEdit(getQueue(channelId)));
+      void drain(channelId);
+    },
+
+    removeQueued(itemId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, removeItem(getQueue(channelId), itemId));
+      void drain(channelId);
+    },
+
+    moveQueued(itemId, dir) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setQueue(channelId, moveItem(getQueue(channelId), itemId, dir));
     },
 
     // --- approvals (#13 web surface) ---
