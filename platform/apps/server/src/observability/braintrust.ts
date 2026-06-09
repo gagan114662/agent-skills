@@ -1,5 +1,6 @@
 import { initLogger, traced } from "braintrust";
 import { noopTracer, type AgentTracer } from "./tracing.js";
+import { egressAllowed } from "../config/egress.js";
 
 /**
  * Braintrust-backed agent tracer (https://braintrust.dev). Every agent session becomes one span —
@@ -15,7 +16,13 @@ import { noopTracer, type AgentTracer } from "./tracing.js";
  */
 let loggerReady = false;
 
-export function createBraintrustTracer(): AgentTracer {
+/**
+ * @param opts.dataPrivacyMode — when on (#58), force the no-op tracer so no agent task/result is
+ * exported off-platform, regardless of `BRAINTRUST_API_KEY`.
+ */
+export function createBraintrustTracer(opts: { dataPrivacyMode?: boolean } = {}): AgentTracer {
+  // Data-privacy mode is the hard gate: no external trace export when egress is disallowed.
+  if (!egressAllowed({ dataPrivacyMode: opts.dataPrivacyMode ?? false })) return noopTracer;
   if (!process.env.BRAINTRUST_API_KEY) return noopTracer;
   const projectName = process.env.BRAINTRUST_PROJECT ?? "My Project";
   if (!loggerReady) {

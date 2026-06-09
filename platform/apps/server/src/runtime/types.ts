@@ -31,6 +31,11 @@ export interface AgentJob {
   /** Non-secret environment (e.g. the task/prompt as data). */
   env: Record<string, string>;
   /**
+   * Working dir for the harness (#58). Set by the SessionManager from a {@link WorkspaceProvisioner}
+   * that has copied the configured files-to-copy into it. Undefined → inherit the server cwd.
+   */
+  cwd?: string;
+  /**
    * Per-tenant secrets injected at provision time as runtime env. These are NEVER written to a
    * snapshot and NEVER logged; the SessionManager redacts their values from streamed output too.
    */

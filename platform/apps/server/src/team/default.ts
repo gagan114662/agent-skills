@@ -1,4 +1,5 @@
 import { loadEnv } from "../env.js";
+import { loadConfig } from "../config/loader.js";
 import { listChannelMessages } from "../db/repositories/messages.js";
 import { publishTeamEvent } from "../realtime/bus.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
@@ -30,6 +31,7 @@ export function createDefaultTeamCoordinator(
     channel,
     maxConcurrency: loadEnv().team.maxConcurrency,
     logger,
-    tracer: createBraintrustTracer(),
+    // #58: forced off under data-privacy mode (server-level managed config).
+    tracer: createBraintrustTracer({ dataPrivacyMode: loadConfig().dataPrivacyMode }),
   });
 }

@@ -22,6 +22,8 @@ export class LocalRuntime implements AgentRuntime {
 
   start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
     const child = spawn(job.command, job.args, {
+      // #58: run in the per-session workspace when one was provisioned (else inherit server cwd).
+      cwd: job.cwd,
       env: { ...process.env, ...job.env, ...job.secrets },
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],

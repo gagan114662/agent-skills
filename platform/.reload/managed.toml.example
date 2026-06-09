@@ -1,0 +1,13 @@
+# Reload — managed/enterprise settings (#58, ADR-0035). This is the TOP layer: values here CANNOT be
+# overridden by a lower layer (env/user/repo). Deploy it at `/etc/reload/managed.toml` or point
+# RELOAD_MANAGED_CONFIG at it. An enterprise admin owns this file; developers cannot weaken it.
+
+# Global managed settings — apply to every tenant, locked.
+[settings]
+dataPrivacyMode = true
+
+# Per-tenant managed override — keyed by workspace id. Still managed (still locked vs user/repo/env),
+# and beats [settings] for this tenant only. Use it to relax or tighten policy per customer.
+[workspace.ws_acme]
+dataPrivacyMode = false
+filesToCopy = ["compliance/NOTICE.md"]
