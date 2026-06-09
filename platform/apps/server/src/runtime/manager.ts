@@ -185,6 +185,19 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * Inject steering guidance into a live, in-flight session (#53). Mirrors {@link cancel}: it only
+   * touches a session this manager is actively driving and only delivers when the runtime supports
+   * steering. Returns whether the guidance reached the process (false for an unknown/terminal session
+   * or a runtime without steering — the caller still records the steer message in the channel).
+   */
+  async steer(id: string, text: string): Promise<boolean> {
+    const running = this.running.get(id);
+    if (!running?.steer) return false;
+    await running.steer(text);
+    return true;
+  }
+
   /** Await a session's server-side completion (test/introspection helper). */
   async join(id: string): Promise<void> {
     await this.runs.get(id);

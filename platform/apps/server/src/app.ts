@@ -22,6 +22,9 @@ import {
 } from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
+import { turnRoutes } from "./routes/turns.js";
+import { createTurnController } from "./turns/default.js";
+import type { TurnController } from "./turns/controller.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
 import { teamRoutes } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
@@ -78,6 +81,8 @@ export interface BuildAppOptions {
   gitWorkspace?: GitWorkspaceService;
   /** #51 git/PR/review: the GitHub provider (tests inject a fake; default `none` from env). */
   gitHubProvider?: GitHubProvider;
+  /** #53 plan mode / checkpoints / steering; defaults to one over the shared SessionManager + git. */
+  turnController?: TurnController;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -137,6 +142,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const gitWorkspace = opts.gitWorkspace ?? createGitWorkspaceFromEnv();
   const gitHubProvider = opts.gitHubProvider ?? createGitHubProvider();
   app.register(gitReviewRoutes, { sessionManager, gitWorkspace, gitHubProvider });
+  // #53 plan mode, checkpoints & steering: an agent proposes a plan (work blocks until a human
+  // approves / approves-with-feedback / rejects), each turn is a revertible checkpoint (files + chat),
+  // and a live session can be steered. Reuses the SessionManager (plan = two launches with a gate) and
+  // the opt-in #51 worktree (commitTurn/resetTo); checkpoint/revert 501 without a configured repo.
+  const turnController =
+    opts.turnController ?? createTurnController(sessionManager, gitWorkspace ?? null);
+  app.register(turnRoutes, { controller: turnController, sessionManager });
   // Team Mode: run N agents in parallel on one feature, each on its own subtask/branch, kept in
   // the loop over the channel's shared team protocol. The coordinator reuses the same
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.

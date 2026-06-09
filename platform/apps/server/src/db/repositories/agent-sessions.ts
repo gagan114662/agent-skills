@@ -166,6 +166,16 @@ export async function getAgentSession(
   return row as AgentSession | undefined;
 }
 
+/** A session's finalized output tail (#53): the plan-mode run's proposed plan is parsed from it. */
+export async function getAgentSessionResult(id: string): Promise<string | null> {
+  const [row] = await db
+    .select({ result: agentSessions.result })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, id))
+    .limit(1);
+  return row?.result ?? null;
+}
+
 /** Sessions for a channel, newest first. */
 export async function listAgentSessions(channelId: string): Promise<AgentSession[]> {
   const rows = await db
