@@ -1,3 +1,4 @@
+import type { TeamEvent } from "@reload/shared";
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
 import type {
@@ -71,6 +72,16 @@ export function workspaceIdFromNotifyKey(key: string): string | null {
 export async function publishMessageEvent(channelId: string, message: Message): Promise<void> {
   const event: ServerEvent = { type: "message", message };
   await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/**
+ * Publish a team event to its channel's subscribers (Team Mode). Rides the same `rt:channel:<id>`
+ * key as ordinary messages — the message carrying the event is already persisted (REST source of
+ * truth), so this is a best-effort live nudge and needs no new gateway pattern.
+ */
+export async function publishTeamEvent(channelId: string, event: TeamEvent): Promise<void> {
+  const serverEvent: ServerEvent = { type: "team_event", event };
+  await getRedis().publish(channelKey(channelId), JSON.stringify(serverEvent));
 }
 
 /**

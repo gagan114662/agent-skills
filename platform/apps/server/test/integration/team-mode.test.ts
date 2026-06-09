@@ -1,0 +1,205 @@
+import { describe, it, expect, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import type { AddressInfo } from "node:net";
+import { buildApp } from "../../src/app.js";
+import { db, closeDb } from "../../src/db/index.js";
+import { closeRedis } from "../../src/redis/index.js";
+import { workspaces } from "../../src/db/schema/index.js";
+import { newId } from "../../src/db/id.js";
+import { LocalRuntime } from "../../src/runtime/local.js";
+import { SessionManager, type SessionLogger } from "../../src/runtime/manager.js";
+import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
+import { dbStore, channelPoster } from "../../src/runtime/default.js";
+import { listChannelMessages } from "../../src/db/repositories/messages.js";
+import { publishTeamEvent } from "../../src/realtime/bus.js";
+import { TeamChannel } from "../../src/team/channel.js";
+import { TeamCoordinator } from "../../src/team/coordinator.js";
+import type { TeamEvent } from "@reload/shared";
+
+const silentLogger: SessionLogger = {
+  child: () => silentLogger,
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
+
+// A real (host) harness via node -e: echoes the task then exits 0 after a short tick.
+const COMPLETING_HARNESS = [
+  "-e",
+  "console.log('agent: ' + (process.env.AGENT_TASK || 'none'));" +
+    "setTimeout(() => console.log('agent: done'), 20);",
+];
+
+const apps: FastifyInstance[] = [];
+const slugs: string[] = [];
+
+afterAll(async () => {
+  for (const slug of slugs) await db.delete(workspaces).where(eq(workspaces.slug, slug));
+  for (const app of apps) await app.close();
+  await Promise.allSettled([closeDb(), closeRedis()]);
+});
+
+/** Build + listen an app whose TeamCoordinator drives a LocalRuntime SessionManager. */
+async function startApp(maxConcurrency: number): Promise<{ app: FastifyInstance; http: string }> {
+  const manager = new SessionManager({
+    runtime: new LocalRuntime(),
+    store: dbStore,
+    poster: channelPoster,
+    secrets: new StaticSecretsResolver({}),
+    harness: { command: process.execPath, args: COMPLETING_HARNESS },
+    caps: { wallClockMs: 20_000, idleMs: 8_000 },
+    logger: silentLogger,
+  });
+  const channel = new TeamChannel({
+    poster: channelPoster,
+    publish: (cid, ev) => publishTeamEvent(cid, ev).catch(() => {}),
+    listMessages: listChannelMessages,
+  });
+  const coordinator = new TeamCoordinator({
+    launcher: manager,
+    channel,
+    maxConcurrency,
+    logger: silentLogger,
+  });
+  const app = buildApp({ sessionManager: manager, teamCoordinator: coordinator });
+  apps.push(app);
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const { port } = app.server.address() as AddressInfo;
+  return { app, http: `http://127.0.0.1:${port}` };
+}
+
+interface World {
+  cookie: string;
+  workspaceId: string;
+  channelId: string;
+  agentMemberIds: string[];
+}
+
+/** Sign up a human, make a channel, and register N agents. */
+async function seed(app: FastifyInstance, agentCount: number): Promise<World> {
+  const slug = `tm-${newId()}`;
+  slugs.push(slug);
+  const signup = await app.inject({
+    method: "POST",
+    url: "/auth/signup",
+    payload: { email: `u-${newId()}@e.com`, password: "pw", displayName: "U", workspaceSlug: slug },
+  });
+  const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
+  const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
+  const channel = await app.inject({
+    method: "POST",
+    url: `/workspaces/${me.workspaceId}/channels`,
+    cookies: { rid: cookie },
+    payload: { name: "feature-team" },
+  });
+  const agentMemberIds: string[] = [];
+  for (let i = 0; i < agentCount; i++) {
+    const agent = await app.inject({
+      method: "POST",
+      url: `/workspaces/${me.workspaceId}/agents`,
+      cookies: { rid: cookie },
+      payload: { name: `Builder-${i}` },
+    });
+    agentMemberIds.push(agent.json().memberId);
+  }
+  return { cookie, workspaceId: me.workspaceId, channelId: channel.json().id, agentMemberIds };
+}
+
+/** Poll the channel's agent sessions until `count` of them reach a terminal state. */
+async function pollTerminal(
+  app: FastifyInstance,
+  w: World,
+  count: number,
+  timeoutMs = 15_000,
+): Promise<Record<string, unknown>[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const sessions = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/agent-sessions`,
+        cookies: { rid: w.cookie },
+      })
+    ).json() as Record<string, unknown>[];
+    const terminal = sessions.filter((s) => s.status === "completed" || s.status === "failed");
+    if (terminal.length >= count) return terminal;
+    if (Date.now() > deadline) {
+      throw new Error(`only ${terminal.length}/${count} sessions terminal in time`);
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
+  it("runs 3 agents in parallel on one feature and coordinates over the team channel", async () => {
+    const { app } = await startApp(3);
+    const w = await seed(app, 3);
+
+    const subtasks = w.agentMemberIds.map((agentMemberId, i) => ({
+      agentMemberId,
+      task: `implement part ${i}`,
+      branch: `feat/part-${i}`,
+    }));
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: { subtasks },
+    });
+    expect(launch.statusCode).toBe(202);
+    const body = launch.json();
+    expect(body.subtaskCount).toBe(3);
+    expect(typeof body.teamRunId).toBe("string");
+
+    // All three sessions run server-side and finish.
+    const terminal = await pollTerminal(app, w, 3);
+    expect(terminal.filter((s) => s.status === "completed")).toHaveLength(3);
+
+    // The shared team channel carries a started + done event for each of the 3 subtasks.
+    const events = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/team-events`,
+        cookies: { rid: w.cookie },
+      })
+    ).json() as TeamEvent[];
+
+    expect(events.every((e) => e.teamRunId === body.teamRunId)).toBe(true);
+    const started = events.filter((e) => e.kind === "started");
+    const done = events.filter((e) => e.kind === "done");
+    expect(started).toHaveLength(3);
+    expect(done).toHaveLength(3);
+    // Each subtask owns a distinct branch — the basis for conflict-free merges.
+    expect(new Set(done.map((e) => e.branch))).toEqual(
+      new Set(["feat/part-0", "feat/part-1", "feat/part-2"]),
+    );
+  });
+
+  it("rejects a subtask whose agent is not an agent member of this workspace (IDOR)", async () => {
+    const { app } = await startApp(2);
+    const a = await seed(app, 1);
+    const b = await seed(app, 1); // different workspace
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/channels/${a.channelId}/team-runs`, // A's channel
+      cookies: { rid: b.cookie }, // B's identity
+      payload: { subtasks: [{ agentMemberId: b.agentMemberIds[0], task: "intrude", branch: "x" }] },
+    });
+    expect(res.statusCode).toBe(404); // cross-workspace channel is invisible
+  });
+
+  it("validates an empty subtask list", async () => {
+    const { app } = await startApp(2);
+    const w = await seed(app, 1);
+    const res = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: { subtasks: [] },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

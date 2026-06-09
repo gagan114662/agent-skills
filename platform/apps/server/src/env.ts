@@ -13,6 +13,16 @@ export interface Env {
   notify: NotifyEnv;
   /** Approval gates (#13). */
   approval: ApprovalEnv;
+  /** Team Mode: parallel multi-agent runs. */
+  team: TeamEnv;
+}
+
+export interface TeamEnv {
+  /**
+   * Max agent sessions a team run keeps in flight at once — the team-level cap that keeps us under
+   * the sandbox budget. Per-session ResourceCaps still apply on top of this. Default 3.
+   */
+  maxConcurrency: number;
 }
 
 export interface AutonomyEnv {
@@ -76,6 +86,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
+    },
+    team: {
+      maxConcurrency: num(source.TEAM_MAX_CONCURRENCY, 3),
     },
   };
 }

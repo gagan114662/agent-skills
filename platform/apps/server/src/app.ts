@@ -16,11 +16,14 @@ import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
+import { teamRoutes } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
 import { mcpRoutes } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
+import { createDefaultTeamCoordinator } from "./team/default.js";
+import type { TeamCoordinator } from "./team/coordinator.js";
 import { createDefaultAutonomyEngine } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
 
@@ -45,6 +48,8 @@ export interface BuildAppOptions {
   sessionManager?: SessionManager;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
+  /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
+  teamCoordinator?: TeamCoordinator;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -86,6 +91,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addHook("onClose", async () => {
     await sessionManager.shutdown();
   });
+  // Team Mode: run N agents in parallel on one feature, each on its own subtask/branch, kept in
+  // the loop over the channel's shared team protocol. The coordinator reuses the same
+  // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.
+  const teamCoordinator =
+    opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
+  app.register(teamRoutes, { coordinator: teamCoordinator });
   // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in
   // (AUTONOMY_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
