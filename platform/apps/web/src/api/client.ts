@@ -7,10 +7,17 @@ import type {
   ApprovalEventDto,
   ApprovalPolicyDto,
   ApprovalRequestDto,
+  CheckRunDto,
+  ChecksStatus,
+  DiffMode,
+  PullRequestDto,
+  ReviewCommentDto,
+  SessionDiff,
   SubmitActionResponse,
 } from "@reload/shared";
 import type {
   AgentProfile,
+  AgentSessionSummary,
   Channel,
   Identity,
   MemberHit,
@@ -19,6 +26,22 @@ import type {
   SearchEnvelope,
   ThreadView,
 } from "./types.js";
+
+/** Body accepted by `POST /channels/:cid/agent-sessions/:id/review-comments`. */
+export interface AddReviewCommentInput {
+  filePath: string;
+  lineStart?: number | null;
+  lineEnd?: number | null;
+  body: string;
+  pullRequestId?: string;
+}
+
+/** Body accepted by `POST /channels/:cid/agent-sessions/:id/pull-request`. */
+export interface CreatePrInput {
+  title: string;
+  body?: string;
+  draft?: boolean;
+}
 
 /** Result of `POST /approvals/:rid/approve` on success (executor ran). */
 export interface ApproveResult {
@@ -197,6 +220,72 @@ export const api = {
     /** Submit an action through the gating seam — used by the demo to manufacture a gated request. */
     submitAction(workspaceId: string, input: SubmitActionInput): Promise<SubmitActionResponse> {
       return post(`/workspaces/${workspaceId}/actions`, input) as Promise<SubmitActionResponse>;
+    },
+  },
+
+  // --- git / PR / diff / review (#51) ---
+  review: {
+    /** Agent sessions in a channel — the things that have a reviewable diff. */
+    listSessions(channelId: string): Promise<AgentSessionSummary[]> {
+      return request<AgentSessionSummary[]>(`/channels/${channelId}/agent-sessions`);
+    },
+    /** A session's diff (cumulative or the latest turn). */
+    diff(channelId: string, sessionId: string, mode: DiffMode): Promise<SessionDiff> {
+      return request<SessionDiff>(
+        `/channels/${channelId}/agent-sessions/${sessionId}/diff?mode=${mode}`,
+      );
+    },
+    listComments(channelId: string, sessionId: string): Promise<ReviewCommentDto[]> {
+      return request<ReviewCommentDto[]>(
+        `/channels/${channelId}/agent-sessions/${sessionId}/review-comments`,
+      );
+    },
+    addComment(
+      channelId: string,
+      sessionId: string,
+      input: AddReviewCommentInput,
+    ): Promise<{ comment: ReviewCommentDto }> {
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/review-comments`,
+        input,
+      ) as Promise<{ comment: ReviewCommentDto }>;
+    },
+    /** Deliver the session's undelivered comments to the agent as a new session (the round trip). */
+    deliver(
+      channelId: string,
+      sessionId: string,
+    ): Promise<{ sessionId: string | null; deliveredCount: number }> {
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/review-comments/deliver`,
+      ) as Promise<{ sessionId: string | null; deliveredCount: number }>;
+    },
+    listPullRequests(channelId: string): Promise<PullRequestDto[]> {
+      return request<PullRequestDto[]>(`/channels/${channelId}/pull-requests`);
+    },
+    createPullRequest(
+      channelId: string,
+      sessionId: string,
+      input: CreatePrInput,
+    ): Promise<{ pullRequest: PullRequestDto }> {
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/pull-request`,
+        input,
+      ) as Promise<{ pullRequest: PullRequestDto }>;
+    },
+    refreshChecks(
+      channelId: string,
+      prId: string,
+    ): Promise<{ checksStatus: ChecksStatus; runs: CheckRunDto[] }> {
+      return post(`/channels/${channelId}/pull-requests/${prId}/checks/refresh`) as Promise<{
+        checksStatus: ChecksStatus;
+        runs: CheckRunDto[];
+      }>;
+    },
+    /** Forward failing CI to the agent as a new session. */
+    fixCi(channelId: string, prId: string): Promise<{ sessionId: string }> {
+      return post(`/channels/${channelId}/pull-requests/${prId}/fix-ci`) as Promise<{
+        sessionId: string;
+      }>;
     },
   },
 };

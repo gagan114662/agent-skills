@@ -49,6 +49,11 @@ export const agentSessions = pgTable(
     snapshotId: text("snapshot_id"),
     exitCode: integer("exit_code"),
     result: text("result"),
+    // Git refs (#51): set when the session runs in a git worktree (agent/<id> off base_branch).
+    // Nullable — non-git sessions (#25 default) leave them unset.
+    branch: text("branch"),
+    baseBranch: text("base_branch"),
+    headSha: text("head_sha"),
     caps: jsonb("caps").notNull().default(sql`'{}'::jsonb`),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),

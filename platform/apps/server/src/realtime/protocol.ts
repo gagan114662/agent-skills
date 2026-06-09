@@ -1,4 +1,4 @@
-import type { TeamEvent } from "@reload/shared";
+import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared";
 import type { Message } from "../db/repositories/messages.js";
 
 /** Presence states a member can be in within a workspace (#5). */
@@ -51,6 +51,8 @@ export type ServerEvent =
   | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "team_event"; event: TeamEvent }
+  | { type: "pull_request"; pullRequest: PullRequestDto }
+  | { type: "review_comment"; comment: ReviewCommentDto }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 
