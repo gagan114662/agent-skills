@@ -26,11 +26,16 @@ import { createDefaultTeamCoordinator } from "./team/default.js";
 import type { TeamCoordinator } from "./team/coordinator.js";
 import { createDefaultAutonomyEngine } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
+import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
+import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
+import type { CloudWorkspaceManager } from "./workspace/manager.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     /** The #17 autonomy engine; `index.ts` starts its opt-in background timer. */
     autonomyEngine: AutonomyEngine;
+    /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
+    cloudWorkspaceManager: CloudWorkspaceManager;
   }
 }
 
@@ -50,6 +55,8 @@ export interface BuildAppOptions {
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
+  /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
+  cloudWorkspaceManager?: CloudWorkspaceManager;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -107,6 +114,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     autonomyEngine.stop();
   });
   app.decorate("autonomyEngine", autonomyEngine);
+  // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
+  // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
+  // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
+  // started in index.ts; routes use the manager + the #9 access ladder + the #5 bus.
+  const cloudWorkspaceManager =
+    opts.cloudWorkspaceManager ?? createDefaultCloudWorkspaceManager(app.log);
+  app.register(cloudWorkspaceRoutes, { manager: cloudWorkspaceManager });
+  app.decorate("cloudWorkspaceManager", cloudWorkspaceManager);
   // #5 realtime gateway: WebSocket delivery + presence on top of the REST endpoints.
   // Its Redis subscriber is created lazily on the first socket, so inject-only tests
   // and the no-Redis CI job stay Redis-free.

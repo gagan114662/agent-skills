@@ -6,6 +6,7 @@ import type {
   NotificationEvent,
   PresenceStatus,
   ServerEvent,
+  WorkspacePresenceEvent,
 } from "./protocol.js";
 
 /**
@@ -18,6 +19,7 @@ export const CHANNEL_KEY_PREFIX = "rt:channel:";
 export const PRESENCE_KEY_PREFIX = "rt:presence:";
 export const MENTION_KEY_PREFIX = "rt:mention:";
 export const NOTIFY_KEY_PREFIX = "rt:notify:";
+export const CLOUD_WS_KEY_PREFIX = "rt:cloudws:";
 
 /** Pattern the gateway subscribes to for all channel-message fan-out. */
 export const CHANNEL_PATTERN = `${CHANNEL_KEY_PREFIX}*`;
@@ -27,6 +29,8 @@ export const PRESENCE_PATTERN = `${PRESENCE_KEY_PREFIX}*`;
 export const MENTION_PATTERN = `${MENTION_KEY_PREFIX}*`;
 /** Pattern the gateway subscribes to for all notification fan-out (#8). */
 export const NOTIFY_PATTERN = `${NOTIFY_KEY_PREFIX}*`;
+/** Pattern the gateway subscribes to for shared cloud workspace presence + revoke (#55). */
+export const CLOUD_WS_PATTERN = `${CLOUD_WS_KEY_PREFIX}*`;
 
 /** Redis pub/sub key carrying message events for one channel. */
 export function channelKey(channelId: string): string {
@@ -66,6 +70,16 @@ export function workspaceIdFromMentionKey(key: string): string | null {
 /** Recover the workspace id from a `rt:notify:<id>` key. */
 export function workspaceIdFromNotifyKey(key: string): string | null {
   return key.startsWith(NOTIFY_KEY_PREFIX) ? key.slice(NOTIFY_KEY_PREFIX.length) : null;
+}
+
+/** Redis pub/sub key carrying presence + access-revoke events for one cloud workspace (#55). */
+export function cloudWorkspaceKey(cloudWorkspaceId: string): string {
+  return `${CLOUD_WS_KEY_PREFIX}${cloudWorkspaceId}`;
+}
+
+/** Recover the cloud workspace id from a `rt:cloudws:<id>` key. */
+export function cloudWorkspaceIdFromKey(key: string): string | null {
+  return key.startsWith(CLOUD_WS_KEY_PREFIX) ? key.slice(CLOUD_WS_KEY_PREFIX.length) : null;
 }
 
 /** Publish a newly-posted message to its channel's subscribers (called by the REST route). */
@@ -118,4 +132,24 @@ export async function publishPresence(
 /** Redis hash holding current presence for a workspace (`memberId` → status). */
 export function presenceHashKey(workspaceId: string): string {
   return `presence:${workspaceId}`;
+}
+
+/** Publish a shared-workspace presence change (joined/left) to its watchers (#55). */
+export async function publishWorkspacePresence(
+  presence: WorkspacePresenceEvent,
+): Promise<void> {
+  const event: ServerEvent = { type: "workspace_presence", presence };
+  await getRedis().publish(cloudWorkspaceKey(presence.cloudWorkspaceId), JSON.stringify(event));
+}
+
+/**
+ * Publish an access-revoked signal for a cloud workspace, targeted at one member (#55). The
+ * gateway drops that member's live watch and tells them — so revoke cuts access in real time.
+ */
+export async function publishAccessRevoked(
+  cloudWorkspaceId: string,
+  memberId: string,
+): Promise<void> {
+  const event = { type: "access_revoked" as const, cloudWorkspaceId, memberId };
+  await getRedis().publish(cloudWorkspaceKey(cloudWorkspaceId), JSON.stringify(event));
 }

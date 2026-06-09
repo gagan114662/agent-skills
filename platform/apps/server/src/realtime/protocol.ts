@@ -34,11 +34,24 @@ export interface NotificationEvent {
   createdAt: string;
 }
 
+/**
+ * Live presence on a shared cloud workspace (#55): who is currently attached. Reuses the #5 bus —
+ * `joined` on first watch, `left` on unwatch/disconnect — so a collaborator sees, in real time,
+ * who else is in the shared session.
+ */
+export interface WorkspacePresenceEvent {
+  cloudWorkspaceId: string;
+  memberId: string;
+  status: "joined" | "left";
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
   | { type: "unsubscribe"; channelId: string }
   | { type: "presence"; status: "online" | "away" }
+  | { type: "watch"; cloudWorkspaceId: string }
+  | { type: "unwatch"; cloudWorkspaceId: string }
   | { type: "ping" };
 
 /** Events the gateway pushes to a client. Discriminated by `type`. */
@@ -51,6 +64,10 @@ export type ServerEvent =
   | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "team_event"; event: TeamEvent }
+  | { type: "watching"; cloudWorkspaceId: string }
+  | { type: "unwatched"; cloudWorkspaceId: string }
+  | { type: "workspace_presence"; presence: WorkspacePresenceEvent }
+  | { type: "access_revoked"; cloudWorkspaceId: string }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 
@@ -78,6 +95,11 @@ export function parseClientCommand(raw: string): ClientCommand | null {
     case "presence":
       return obj.status === "online" || obj.status === "away"
         ? { type: "presence", status: obj.status }
+        : null;
+    case "watch":
+    case "unwatch":
+      return typeof obj.cloudWorkspaceId === "string" && obj.cloudWorkspaceId.length > 0
+        ? { type: obj.type, cloudWorkspaceId: obj.cloudWorkspaceId }
         : null;
     case "ping":
       return { type: "ping" };

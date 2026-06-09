@@ -5,6 +5,8 @@ import { getCapability, type Capability } from "../db/repositories/permissions.j
 import { getTask, type Task } from "../db/repositories/tasks.js";
 import { getRequest, type ApprovalRequest } from "../db/repositories/approvals.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
+import { getCloudWorkspace, type CloudWorkspace } from "../db/repositories/cloud-workspaces.js";
+import { getActiveCollaborator } from "../db/repositories/cloud-workspace-collaborators.js";
 
 export type { Capability };
 
@@ -98,6 +100,65 @@ export async function requireApprovalInWorkspace(
     return undefined;
   }
   return request;
+}
+
+/**
+ * A member's effective capability on a **cloud workspace** (issue #55), layered on the #9 ladder:
+ *   - owner (created_by)        → `propagate` (implicit admin; outranks any collaborator row)
+ *   - active collaborator       → the granted capability
+ *   - no row / revoked          → null (no access)
+ * Sharing is collaborator-gated (not channel/workspace membership): a member sees a cloud
+ * workspace only if they own it or hold an un-revoked collaborator grant.
+ */
+export function effectiveCloudWorkspaceCapability(
+  isOwner: boolean,
+  collaborator: { capability: Capability; revokedAt: Date | null } | null,
+): Capability | null {
+  if (isOwner) return "propagate";
+  if (!collaborator || collaborator.revokedAt) return null;
+  return collaborator.capability;
+}
+
+/**
+ * Resolve the caller's effective capability on a cloud workspace, or null if they cannot see it.
+ * Carries the #3 IDOR discipline: a workspace in another tenant resolves to null (→ 404 at the
+ * route). Shared by the REST guard and the realtime gateway (which has no `reply`).
+ */
+export async function resolveCloudWorkspaceCapability(
+  identity: Identity,
+  cloudWorkspaceId: string,
+): Promise<{ cw: CloudWorkspace; capability: Capability } | null> {
+  const cw = await getCloudWorkspace(cloudWorkspaceId, identity.workspaceId);
+  if (!cw) return null;
+  const isOwner = cw.createdByMemberId === identity.memberId;
+  const collaborator = isOwner
+    ? null
+    : (await getActiveCollaborator(cloudWorkspaceId, identity.memberId)) ?? null;
+  const capability = effectiveCloudWorkspaceCapability(isOwner, collaborator);
+  return capability ? { cw, capability } : null;
+}
+
+/**
+ * Load a cloud workspace and assert the caller may act on it at `needed` level (#55). The single
+ * access call cloud-workspace routes make — sends the response on failure (404 not-found /
+ * cross-tenant, 403 insufficient) and returns undefined.
+ */
+export async function requireCloudWorkspaceCapability(
+  identity: Identity,
+  cloudWorkspaceId: string,
+  needed: Capability,
+  reply: FastifyReply,
+): Promise<CloudWorkspace | undefined> {
+  const resolved = await resolveCloudWorkspaceCapability(identity, cloudWorkspaceId);
+  if (!resolved) {
+    reply.code(404).send({ error: "cloud workspace not found" });
+    return undefined;
+  }
+  if (!satisfies(resolved.capability, needed)) {
+    reply.code(403).send({ error: `requires ${needed} capability on cloud workspace` });
+    return undefined;
+  }
+  return resolved.cw;
 }
 
 /**

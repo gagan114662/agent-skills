@@ -14,22 +14,27 @@ import {
   PRESENCE_PATTERN,
   MENTION_PATTERN,
   NOTIFY_PATTERN,
+  CLOUD_WS_PATTERN,
   channelIdFromKey,
+  cloudWorkspaceIdFromKey,
   presenceHashKey,
   publishPresence,
+  publishWorkspacePresence,
   workspaceIdFromPresenceKey,
   workspaceIdFromMentionKey,
   workspaceIdFromNotifyKey,
 } from "./bus.js";
+import { resolveCloudWorkspaceCapability } from "../auth/access.js";
 import type { ServerEvent } from "./protocol.js";
 
 const WS_PATH = "/ws";
 
-/** A live socket plus the channels it's subscribed to (local to this process). */
+/** A live socket plus the channels it's subscribed to + cloud workspaces it watches (#55). */
 interface Conn {
   ws: WebSocket;
   identity: Identity;
   channels: Set<string>;
+  watching: Set<string>;
 }
 
 /**
@@ -53,6 +58,11 @@ export function attachRealtime(app: FastifyInstance): void {
   // How many local sockets a member has open, keyed `${workspaceId}:${memberId}` — drives
   // presence online/offline on first-connect / last-disconnect.
   const memberSocketCount = new Map<string, number>();
+  // Watchers of a shared cloud workspace (#55), keyed by cloud workspace id.
+  const byCloudWorkspace = new Map<string, Set<Conn>>();
+  // How many watches a member holds on a cloud workspace, keyed `${cloudWorkspaceId}:${memberId}` —
+  // drives shared-workspace presence joined/left on first-watch / last-unwatch.
+  const cloudWatchCount = new Map<string, number>();
 
   let subscriber: Redis | undefined;
   let subscriberReady: Promise<void> | undefined;
@@ -80,10 +90,18 @@ export function attachRealtime(app: FastifyInstance): void {
     if (!subscriberReady) {
       subscriberReady = (async () => {
         const sub = getRedis().duplicate();
-        await sub.psubscribe(CHANNEL_PATTERN, PRESENCE_PATTERN, MENTION_PATTERN, NOTIFY_PATTERN);
+        await sub.psubscribe(
+          CHANNEL_PATTERN,
+          PRESENCE_PATTERN,
+          MENTION_PATTERN,
+          NOTIFY_PATTERN,
+          CLOUD_WS_PATTERN,
+        );
         sub.on("pmessage", (_pattern, key, payload) => {
           const channelId = channelIdFromKey(key);
           if (channelId) return forward(byChannel.get(channelId), payload);
+          const cloudWsId = cloudWorkspaceIdFromKey(key);
+          if (cloudWsId) return routeCloudWorkspaceEvent(cloudWsId, payload);
           const presenceWid = workspaceIdFromPresenceKey(key);
           if (presenceWid) return forward(byWorkspace.get(presenceWid), payload);
           const mentionWid = workspaceIdFromMentionKey(key);
@@ -121,8 +139,54 @@ export function attachRealtime(app: FastifyInstance): void {
     await publishPresence(workspaceId, memberId, status);
   }
 
+  /**
+   * Route a cloud-workspace event (#55) to local watchers. `workspace_presence` fans out to every
+   * watcher; `access_revoked` (carrying a target member id) drops THAT member's live watch and
+   * notifies them — so a revoke cuts access in real time, even cross-instance.
+   */
+  function routeCloudWorkspaceEvent(cloudWorkspaceId: string, payload: string): void {
+    let event: { type?: string; memberId?: string };
+    try {
+      event = JSON.parse(payload) as { type?: string; memberId?: string };
+    } catch {
+      return;
+    }
+    if (event.type === "workspace_presence") {
+      return forward(byCloudWorkspace.get(cloudWorkspaceId), payload);
+    }
+    if (event.type === "access_revoked" && event.memberId) {
+      const set = byCloudWorkspace.get(cloudWorkspaceId);
+      if (!set) return;
+      const clean = encodeEvent({ type: "access_revoked", cloudWorkspaceId });
+      for (const conn of [...set]) {
+        if (conn.identity.memberId !== event.memberId) continue;
+        dropWatch(conn, cloudWorkspaceId);
+        if (conn.ws.readyState === WebSocket.OPEN) conn.ws.send(clean);
+      }
+    }
+  }
+
+  /** Remove one connection's watch on a cloud workspace, emitting `left` presence on the last one. */
+  function dropWatch(conn: Conn, cloudWorkspaceId: string): void {
+    if (!conn.watching.has(cloudWorkspaceId)) return;
+    conn.watching.delete(cloudWorkspaceId);
+    removeFrom(byCloudWorkspace, cloudWorkspaceId, conn);
+    const key = `${cloudWorkspaceId}:${conn.identity.memberId}`;
+    const count = (cloudWatchCount.get(key) ?? 1) - 1;
+    if (count <= 0) {
+      cloudWatchCount.delete(key);
+      void publishWorkspacePresence({
+        cloudWorkspaceId,
+        memberId: conn.identity.memberId,
+        status: "left",
+      }).catch((err) => app.log.error({ err }, "workspace presence left failed"));
+    } else {
+      cloudWatchCount.set(key, count);
+    }
+  }
+
   async function onConnection(ws: WebSocket, identity: Identity): Promise<void> {
-    const conn: Conn = { ws, identity, channels: new Set() };
+    const conn: Conn = { ws, identity, channels: new Set(), watching: new Set() };
     addTo(byWorkspace, identity.workspaceId, conn);
 
     const memberKey = `${identity.workspaceId}:${identity.memberId}`;
@@ -139,11 +203,19 @@ export function attachRealtime(app: FastifyInstance): void {
     ws.send(encodeEvent({ type: "ready", memberId: identity.memberId, workspaceId: identity.workspaceId }));
 
     ws.on("message", (data) => {
-      void handleCommand(conn, data.toString());
+      // A command handler must never silently swallow an error — that would hang the client with
+      // no reply. Log it and send a generic error so the socket stays responsive.
+      handleCommand(conn, data.toString()).catch((err) => {
+        app.log.error({ err }, "ws command handler failed");
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(encodeEvent({ type: "error", code: "bad_request", detail: "command failed" }));
+        }
+      });
     });
 
     ws.on("close", () => {
       for (const channelId of conn.channels) removeFrom(byChannel, channelId, conn);
+      for (const cloudWorkspaceId of [...conn.watching]) dropWatch(conn, cloudWorkspaceId);
       removeFrom(byWorkspace, identity.workspaceId, conn);
       removeFrom(byMember, memberKey, conn);
       const count = (memberSocketCount.get(memberKey) ?? 1) - 1;
@@ -191,6 +263,37 @@ export function attachRealtime(app: FastifyInstance): void {
         await setPresence(conn.identity.workspaceId, conn.identity.memberId, cmd.status).catch((err) =>
           app.log.error({ err }, "presence update failed"),
         );
+        return;
+      }
+      case "watch": {
+        // Gate on collaborator access (#9): only an owner/active collaborator may watch (#55).
+        const access = await resolveCloudWorkspaceCapability(conn.identity, cmd.cloudWorkspaceId);
+        if (!access) {
+          conn.ws.send(
+            encodeEvent({ type: "error", code: "forbidden", detail: "no access to cloud workspace" }),
+          );
+          return;
+        }
+        if (!conn.watching.has(cmd.cloudWorkspaceId)) {
+          conn.watching.add(cmd.cloudWorkspaceId);
+          addTo(byCloudWorkspace, cmd.cloudWorkspaceId, conn);
+          const key = `${cmd.cloudWorkspaceId}:${conn.identity.memberId}`;
+          const prev = cloudWatchCount.get(key) ?? 0;
+          cloudWatchCount.set(key, prev + 1);
+          if (prev === 0) {
+            await publishWorkspacePresence({
+              cloudWorkspaceId: cmd.cloudWorkspaceId,
+              memberId: conn.identity.memberId,
+              status: "joined",
+            }).catch((err) => app.log.error({ err }, "workspace presence joined failed"));
+          }
+        }
+        conn.ws.send(encodeEvent({ type: "watching", cloudWorkspaceId: cmd.cloudWorkspaceId }));
+        return;
+      }
+      case "unwatch": {
+        dropWatch(conn, cmd.cloudWorkspaceId);
+        conn.ws.send(encodeEvent({ type: "unwatched", cloudWorkspaceId: cmd.cloudWorkspaceId }));
         return;
       }
       case "ping":

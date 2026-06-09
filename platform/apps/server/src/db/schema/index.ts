@@ -10,3 +10,4 @@ export * from "./stubs.js";
 export * from "./auth.js";
 export * from "./agent-sessions.js";
 export * from "./autonomy.js";
+export * from "./cloud-workspaces.js";
