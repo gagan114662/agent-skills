@@ -14,3 +14,28 @@ filesToCopy = ["AGENTS.md", "docs/agent-context.md"]
 
 # Base dir under which per-session working dirs are created: `<workspaceRoot>/<sessionId>`.
 workspaceRoot = ".reload/workspaces"
+
+# --- #57 deep dev integrations -------------------------------------------------------------------
+# NOTE: in TOML, flat keys (like `skills`) must appear BEFORE any `[table]` header, or they get
+# absorbed into the preceding table. Keep `skills` here with the other top-level keys.
+
+# Skills the agent should carry across harnesses (synced to both Claude Code and Codex).
+skills = ["test-driven-development", "code-review-and-quality"]
+
+# Project slash commands: `/name [args]` expands to its prompt and runs in a session. `{{args}}` is
+# replaced with the caller's args (data, never shell). These are TRUSTED project config.
+[slashCommands.review]
+description = "Review a diff for correctness and security"
+prompt = "Review this diff for correctness, security, and tests:\n{{args}}"
+
+[slashCommands.fix]
+description = "Fix the failing tests"
+prompt = "Find and fix the failing tests."
+
+# Canonical MCP servers — one source of truth synced to BOTH Claude Code and Codex (see
+# `POST /me/agent-config/sync`). `env` lists variable NAMES the harness should pass through; the
+# secret VALUES stay on AGENT_SECRETS and are emitted only as ${VAR} placeholders in synced artifacts.
+[mcpServers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = ["GITHUB_TOKEN"]
