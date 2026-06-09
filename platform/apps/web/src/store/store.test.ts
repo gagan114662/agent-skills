@@ -111,6 +111,29 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
       refreshChecks: vi.fn(async () => ({ checksStatus: "success" as const, runs: [] })),
       fixCi: vi.fn(async () => ({ sessionId: "fix-ci" })),
     },
+    run: {
+      start: vi.fn(async (_c, sessionId) => ({
+        sessionId,
+        status: "starting" as const,
+        url: null,
+        exitCode: null,
+        error: null,
+        logs: [],
+      })),
+      status: vi.fn(async (_c, sessionId) => ({
+        sessionId,
+        status: "idle" as const,
+        url: null,
+        exitCode: null,
+        error: null,
+        logs: [],
+      })),
+      stop: vi.fn(async () => ({ ok: true, stopped: true })),
+      sendAnnotations: vi.fn(async (_c, _s, annotations) => ({
+        sessionId: "follow-up-run",
+        count: annotations.length,
+      })),
+    },
   };
   return { deps: { api, realtime: rt }, rt };
 }

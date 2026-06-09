@@ -11,8 +11,10 @@ import type {
   ApprovalRequestDto,
   ApprovalStatus,
   DiffMode,
+  PreviewAnnotation,
   PullRequestDto,
   ReviewCommentDto,
+  RunState,
   SessionDiff,
 } from "@reload/shared";
 import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
@@ -80,6 +82,20 @@ export interface ReviewState {
   error: string | null;
 }
 
+/** The run slice (#56 Run tab). The active channel's sessions, the selected session's live run
+ * process state (status + preview url + logs), and the annotations collected on the preview before
+ * they're delivered to the agent. The run process state is ephemeral (server-side, not persisted). */
+export interface RunTabState {
+  sessions: AgentSessionSummary[];
+  activeSessionId: string | null;
+  /** The selected session's live run-process state, or null before a run is started/known. */
+  process: RunState | null;
+  /** Annotations dropped on the preview, collected client-side until delivered (#56 round trip). */
+  annotations: PreviewAnnotation[];
+  loading: boolean;
+  error: string | null;
+}
+
 export interface AppState {
   phase: "loading" | "anon" | "ready";
   identity: Identity | null;
@@ -94,6 +110,7 @@ export interface AppState {
   unreadMentions: number;
   approvals: ApprovalsState;
   review: ReviewState;
+  run: RunTabState;
   /** Per-session (per-channel) composer message/steering queue (#54). Keyed by channelId so each
    * conversation keeps its own stack across channel switches. */
   queues: Record<string, SessionQueue>;
@@ -122,6 +139,7 @@ export interface StoreDeps {
     | "listMyMentions"
     | "approvals"
     | "review"
+    | "run"
   >;
   realtime: Realtime;
 }
@@ -177,6 +195,15 @@ const INITIAL_REVIEW: ReviewState = {
   error: null,
 };
 
+const INITIAL_RUN: RunTabState = {
+  sessions: [],
+  activeSessionId: null,
+  process: null,
+  annotations: [],
+  loading: false,
+  error: null,
+};
+
 const INITIAL: AppState = {
   phase: "loading",
   identity: null,
@@ -191,6 +218,7 @@ const INITIAL: AppState = {
   unreadMentions: 0,
   approvals: INITIAL_APPROVALS,
   review: INITIAL_REVIEW,
+  run: INITIAL_RUN,
   queues: {},
   error: null,
 };
@@ -244,6 +272,21 @@ export interface Store {
   createPullRequest(input: CreatePrInput): Promise<void>;
   refreshChecks(prId: string): Promise<void>;
   fixCi(prId: string): Promise<void>;
+  // --- run tab / preview + annotations (#56 web surface) ---
+  /** Load the active channel's sessions for the Run tab. */
+  loadRun(): Promise<void>;
+  /** Select a session and fetch its current run-process state. */
+  selectRunSession(sessionId: string): Promise<void>;
+  /** Start the selected session's run process (spawns the dev server → detects the preview url). */
+  startRun(): Promise<void>;
+  /** Stop the selected session's run process. */
+  stopRun(): Promise<void>;
+  /** Collect an annotation dropped on the preview (delivered later as a batch). */
+  addAnnotation(annotation: PreviewAnnotation): void;
+  /** Drop a collected annotation by index before delivery. */
+  removeAnnotation(index: number): void;
+  /** Deliver the collected annotations to the agent as a follow-up session. Returns the count. */
+  deliverAnnotations(): Promise<number>;
 }
 
 /** Server `error` message off an ApiError, or a generic fallback. */
@@ -345,6 +388,28 @@ export function createStore({ api, realtime }: StoreDeps): Store {
         }
         break;
       }
+      case "run_status": {
+        // Update the live run-process state for the session currently shown in the Run tab.
+        if (event.sessionId !== state.run.activeSessionId) break;
+        const prev = state.run.process;
+        setRun({
+          process: {
+            sessionId: event.sessionId,
+            status: event.status,
+            url: event.url ?? prev?.url ?? null,
+            exitCode: event.exitCode ?? prev?.exitCode ?? null,
+            error: event.error ?? prev?.error ?? null,
+            logs: prev?.logs ?? [],
+          },
+        });
+        break;
+      }
+      case "run_log": {
+        if (event.sessionId !== state.run.activeSessionId || !state.run.process) break;
+        const logs = [...state.run.process.logs, event.chunk].slice(-RUN_LOG_TAIL);
+        setRun({ process: { ...state.run.process, logs } });
+        break;
+      }
       default:
         // ready / subscribed / unsubscribed / error / pong — no UI state to update.
         break;
@@ -358,6 +423,13 @@ export function createStore({ api, realtime }: StoreDeps): Store {
   function setReview(patch: Partial<ReviewState>): void {
     set({ review: { ...state.review, ...patch } });
   }
+
+  function setRun(patch: Partial<RunTabState>): void {
+    set({ run: { ...state.run, ...patch } });
+  }
+
+  /** How many trailing log lines the Run tab keeps from a live stream (mirrors the server tail). */
+  const RUN_LOG_TAIL = 200;
 
   /** Refresh the pending bucket: always updates the nav badge; updates rows when pending is shown.
    * Best-effort — a failure only zeroes the badge, never breaks login or a decision. */
@@ -790,6 +862,84 @@ export function createStore({ api, realtime }: StoreDeps): Store {
         await api.review.fixCi(channelId, prId);
       } catch (e) {
         setReview({ error: errMsg(e) });
+      }
+    },
+
+    // --- run tab / preview + annotations (#56) ---
+    /** Load the active channel's sessions for the Run tab (reuses the #51 session list). */
+    async loadRun() {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setRun({ loading: true, error: null });
+      try {
+        const sessions = await api.review.listSessions(channelId);
+        setRun({ sessions, loading: false });
+      } catch (e) {
+        setRun({ loading: false, error: errMsg(e) });
+      }
+    },
+
+    /** Select a session and fetch its current run-process state. */
+    async selectRunSession(sessionId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setRun({ activeSessionId: sessionId, process: null, annotations: [], error: null });
+      try {
+        const process = await api.run.status(channelId, sessionId);
+        // Guard against a race: only apply if this is still the selected session.
+        if (state.run.activeSessionId === sessionId) setRun({ process });
+      } catch (e) {
+        setRun({ error: errMsg(e) });
+      }
+    },
+
+    /** Start the selected session's run process. */
+    async startRun() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.run.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        const process = await api.run.start(channelId, sessionId);
+        setRun({ process });
+      } catch (e) {
+        setRun({ error: errMsg(e) });
+      }
+    },
+
+    /** Stop the selected session's run process. */
+    async stopRun() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.run.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        await api.run.stop(channelId, sessionId);
+        const process = await api.run.status(channelId, sessionId);
+        setRun({ process });
+      } catch (e) {
+        setRun({ error: errMsg(e) });
+      }
+    },
+
+    addAnnotation(annotation) {
+      setRun({ annotations: [...state.run.annotations, annotation] });
+    },
+
+    removeAnnotation(index) {
+      setRun({ annotations: state.run.annotations.filter((_, i) => i !== index) });
+    },
+
+    /** Deliver the collected annotations to the agent as a follow-up session, then clear them. */
+    async deliverAnnotations() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.run.activeSessionId;
+      if (!channelId || !sessionId || state.run.annotations.length === 0) return 0;
+      try {
+        const res = await api.run.sendAnnotations(channelId, sessionId, state.run.annotations);
+        setRun({ annotations: [] });
+        return res.count;
+      } catch (e) {
+        setRun({ error: errMsg(e) });
+        return 0;
       }
     },
   };

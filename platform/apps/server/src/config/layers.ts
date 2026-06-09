@@ -16,6 +16,8 @@ export function mergeSettings(layers: Settings[]): Settings {
     if (layer.slashCommands !== undefined) out.slashCommands = { ...layer.slashCommands };
     if (layer.mcpServers !== undefined) out.mcpServers = { ...layer.mcpServers };
     if (layer.skills !== undefined) out.skills = [...layer.skills];
+    // #56 run command: a higher layer fully owns the value (replace, consistent with the records above).
+    if (layer.run !== undefined) out.run = { ...layer.run };
   }
   return out;
 }
@@ -30,5 +32,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     slashCommands: merged.slashCommands ?? { ...CONFIG_DEFAULTS.slashCommands },
     mcpServers: merged.mcpServers ?? { ...CONFIG_DEFAULTS.mcpServers },
     skills: merged.skills ?? [...CONFIG_DEFAULTS.skills],
+    // #56: no default run command — absent means the deployment configured none (Run tab → 409).
+    run: merged.run,
   };
 }

@@ -22,6 +22,17 @@ workspaceRoot = ".reload/workspaces"
 # Skills the agent should carry across harnesses (synced to both Claude Code and Codex).
 skills = ["test-driven-development", "code-review-and-quality"]
 
+# --- #56 Run tab ---------------------------------------------------------------------------------
+# How the Run tab starts this project's app for in-app preview. The `command` is TRUSTED project
+# config (run via `sh -c` in the session's worktree) — it is NEVER taken from a request, so the Run
+# tab can't become arbitrary RCE. The bound localhost port is auto-detected from the command's
+# output; set `port` to skip detection, or `readyPattern` (a regex whose first group is the port or a
+# full url) to override how detection reads the output.
+[run]
+command = "pnpm dev"
+# port = 3000
+# readyPattern = "Local:\\s+http://localhost:(\\d+)"
+
 # Project slash commands: `/name [args]` expands to its prompt and runs in a session. `{{args}}` is
 # replaced with the caller's args (data, never shell). These are TRUSTED project config.
 [slashCommands.review]

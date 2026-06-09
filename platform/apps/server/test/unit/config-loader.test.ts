@@ -151,6 +151,33 @@ describe("env layer parsing (#58)", () => {
   });
 });
 
+describe("run command config (#56)", () => {
+  it("is undefined when no layer sets it (Run tab → 409)", () => {
+    expect(loadConfig(undefined, sources({})).run).toBeUndefined();
+  });
+
+  it("resolves a repo-scope run command, and managed fully replaces it", () => {
+    const repoOnly = loadConfig(
+      undefined,
+      sources({ repo: `[run]\ncommand = "pnpm dev"\nport = 3000` }),
+    );
+    expect(repoOnly.run).toEqual({ command: "pnpm dev", port: 3000 });
+
+    const managedWins = loadConfig(
+      undefined,
+      sources({
+        repo: `[run]\ncommand = "pnpm dev"\nport = 3000`,
+        managed: `[settings.run]\ncommand = "make serve"`,
+      }),
+    );
+    expect(managedWins.run).toEqual({ command: "make serve" });
+  });
+
+  it("rejects an invalid run command (missing command field)", () => {
+    expect(() => loadConfig(undefined, sources({ repo: `[run]\nport = 3000` }))).toThrow();
+  });
+});
+
 describe("mergeLayers (pure precedence helper)", () => {
   it("applies layers low→high, last-defined-per-field wins, arrays replace not concat", () => {
     expect(

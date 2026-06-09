@@ -193,5 +193,44 @@ export interface ReviewCommentDto {
   createdAt: string;
 }
 
+// ---- run tab / preview + annotations (#56) ----------------------------------
+
+/** Lifecycle of a session's run process (#56). Ephemeral — a child of the server, never persisted. */
+export type RunStatus = "idle" | "starting" | "running" | "stopped" | "exited" | "failed";
+
+/** A session's run-process state, surfaced to the Run tab (#56). */
+export interface RunState {
+  sessionId: string;
+  status: RunStatus;
+  /** The detected (or configured) localhost preview URL once the app is up; null otherwise. */
+  url: string | null;
+  /** Exit code once the process has exited on its own; null otherwise. */
+  exitCode: number | null;
+  /** A spawn/runtime error message when status is `failed`; null otherwise. */
+  error: string | null;
+  /** A bounded tail of the process's combined stdout/stderr lines (oldest first). */
+  logs: string[];
+}
+
+/**
+ * A user annotation dropped on the running preview (#56). Coordinates are **normalized fractions**
+ * (0–1) of the preview viewport, so they stay stable across pixel sizes. The localhost app is
+ * cross-origin, so an annotation is a coordinate + the user's note — never page DOM content.
+ */
+export interface PreviewAnnotation {
+  /** Normalized x (0–1) of the annotation anchor within the preview viewport. */
+  x: number;
+  /** Normalized y (0–1) of the annotation anchor within the preview viewport. */
+  y: number;
+  /** Optional normalized width (0–1) of a dragged region. */
+  width?: number;
+  /** Optional normalized height (0–1) of a dragged region. */
+  height?: number;
+  /** The user's note describing what to change at this spot. */
+  note: string;
+  /** The preview URL the annotation was made against. */
+  pageUrl: string;
+}
+
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
 // this package is consumed unbuilt and stays strictly type-only with no runtime exports.

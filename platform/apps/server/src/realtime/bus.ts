@@ -5,6 +5,8 @@ import type {
   MentionEvent,
   NotificationEvent,
   PresenceStatus,
+  RunLogEvent,
+  RunStatusEvent,
   ServerEvent,
   WorkspacePresenceEvent,
 } from "./protocol.js";
@@ -108,6 +110,18 @@ export async function publishPullRequestEvent(
   pullRequest: PullRequestDto,
 ): Promise<void> {
   const event: ServerEvent = { type: "pull_request", pullRequest };
+  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/**
+ * Publish a run-process status/log change to its channel's subscribers (#56). Rides the same
+ * `rt:channel:<id>` key as messages — run state is ephemeral (a child of the server) so this event
+ * is the live record; best-effort, so a Redis hiccup never fails the run.
+ */
+export async function publishRunEvent(
+  channelId: string,
+  event: RunStatusEvent | RunLogEvent,
+): Promise<void> {
   await getRedis().publish(channelKey(channelId), JSON.stringify(event));
 }
 

@@ -1,4 +1,4 @@
-import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared";
+import type { PullRequestDto, ReviewCommentDto, RunStatus, TeamEvent } from "@reload/shared";
 import type { Message } from "../db/repositories/messages.js";
 
 /** Presence states a member can be in within a workspace (#5). */
@@ -45,6 +45,32 @@ export interface WorkspacePresenceEvent {
   status: "joined" | "left";
 }
 
+/**
+ * A run-process lifecycle change for the Run tab (#56): `starting → running(url) → exited(code) |
+ * stopped | failed(error)`. Rides the session's channel key (like #51 PR events) — no new gateway
+ * pattern; the run state is ephemeral (a child of the server), so this event is the only record.
+ */
+export interface RunStatusEvent {
+  type: "run_status";
+  sessionId: string;
+  channelId: string;
+  status: RunStatus;
+  /** The preview URL once detected/configured (status `running`); null/absent otherwise. */
+  url?: string | null;
+  /** The exit code when the process exits on its own (status `exited`); null/absent otherwise. */
+  exitCode?: number | null;
+  /** A spawn/runtime error (status `failed`); null/absent otherwise. */
+  error?: string | null;
+}
+
+/** One bounded chunk of a run process's combined stdout/stderr, streamed to the Run tab (#56). */
+export interface RunLogEvent {
+  type: "run_log";
+  sessionId: string;
+  channelId: string;
+  chunk: string;
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
@@ -70,6 +96,8 @@ export type ServerEvent =
   | { type: "access_revoked"; cloudWorkspaceId: string }
   | { type: "pull_request"; pullRequest: PullRequestDto }
   | { type: "review_comment"; comment: ReviewCommentDto }
+  | RunStatusEvent
+  | RunLogEvent
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 
