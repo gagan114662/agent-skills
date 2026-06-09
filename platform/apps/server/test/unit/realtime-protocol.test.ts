@@ -24,6 +24,19 @@ describe("parseClientCommand", () => {
     expect(parseClientCommand('{"type":"ping"}')).toEqual({ type: "ping" });
   });
 
+  it("parses watch / unwatch for a shared cloud workspace (#55)", () => {
+    expect(parseClientCommand('{"type":"watch","cloudWorkspaceId":"cw1"}')).toEqual({
+      type: "watch",
+      cloudWorkspaceId: "cw1",
+    });
+    expect(parseClientCommand('{"type":"unwatch","cloudWorkspaceId":"cw1"}')).toEqual({
+      type: "unwatch",
+      cloudWorkspaceId: "cw1",
+    });
+    expect(parseClientCommand('{"type":"watch"}')).toBeNull(); // missing id
+    expect(parseClientCommand('{"type":"watch","cloudWorkspaceId":""}')).toBeNull(); // empty id
+  });
+
   it("rejects malformed JSON without throwing", () => {
     expect(parseClientCommand("not json")).toBeNull();
     expect(parseClientCommand("")).toBeNull();

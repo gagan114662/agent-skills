@@ -80,6 +80,30 @@ export function observeSpinup(runtime: string, seconds: number): void {
   else s.bucketCounts[idx] = (s.bucketCounts[idx] ?? 0) + 1;
 }
 
+// --- cloud workspaces (#55) -------------------------------------------------
+// Persistent & shared cloud workspaces: sleep/wake transitions and sync activity. No labels —
+// tenant ids live in logs/traces (the #19 cardinality rule).
+let cloudWorkspaceSleeps = 0;
+let cloudWorkspaceWakes = 0;
+let cloudWorkspaceSyncs = 0;
+let cloudWorkspaceFilesSynced = 0;
+
+/** A cloud workspace was put to sleep (idle sweep or explicit). */
+export function recordCloudWorkspaceSleep(): void {
+  cloudWorkspaceSleeps += 1;
+}
+
+/** A cloud workspace was woken (resume from snapshot). */
+export function recordCloudWorkspaceWake(): void {
+  cloudWorkspaceWakes += 1;
+}
+
+/** A cloud→local mirror ran; `filesWritten` files were pulled. */
+export function recordCloudWorkspaceSync(filesWritten: number): void {
+  cloudWorkspaceSyncs += 1;
+  cloudWorkspaceFilesSynced += Math.max(0, filesWritten);
+}
+
 // --- autonomy loop (#17) ----------------------------------------------------
 // Cardinality discipline (as everywhere): the only label is the bounded action kind — tenant ids
 // are NEVER labels (they live in logs/traces).
@@ -144,6 +168,10 @@ export function resetMetrics(): void {
   sessionTotals.clear();
   spinups.clear();
   sessionsActive = 0;
+  cloudWorkspaceSleeps = 0;
+  cloudWorkspaceWakes = 0;
+  cloudWorkspaceSyncs = 0;
+  cloudWorkspaceFilesSynced = 0;
   autonomyTicks = 0;
   autonomyActions.clear();
 }
@@ -221,6 +249,20 @@ export function renderMetrics(): string {
     lines.push(`agent_sandbox_spinup_seconds_sum{${labels}} ${s.sum}`);
     lines.push(`agent_sandbox_spinup_seconds_count{${labels}} ${s.count}`);
   }
+
+  // --- cloud workspaces (#55) ---
+  lines.push("# HELP cloud_workspace_sleeps_total Cloud workspaces put to sleep.");
+  lines.push("# TYPE cloud_workspace_sleeps_total counter");
+  lines.push(`cloud_workspace_sleeps_total ${cloudWorkspaceSleeps}`);
+  lines.push("# HELP cloud_workspace_wakes_total Cloud workspaces woken from sleep.");
+  lines.push("# TYPE cloud_workspace_wakes_total counter");
+  lines.push(`cloud_workspace_wakes_total ${cloudWorkspaceWakes}`);
+  lines.push("# HELP cloud_workspace_syncs_total Cloud→local mirror operations.");
+  lines.push("# TYPE cloud_workspace_syncs_total counter");
+  lines.push(`cloud_workspace_syncs_total ${cloudWorkspaceSyncs}`);
+  lines.push("# HELP cloud_workspace_files_synced_total Files pulled by cloud→local mirrors.");
+  lines.push("# TYPE cloud_workspace_files_synced_total counter");
+  lines.push(`cloud_workspace_files_synced_total ${cloudWorkspaceFilesSynced}`);
 
   // --- autonomy loop (#17) ---
   lines.push("# HELP autonomy_ticks_total Autonomy loop ticks executed.");

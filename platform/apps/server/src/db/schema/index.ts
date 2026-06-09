@@ -13,3 +13,4 @@ export * from "./agent-personas.js";
 export * from "./pull-requests.js";
 export * from "./review-comments.js";
 export * from "./autonomy.js";
+export * from "./cloud-workspaces.js";

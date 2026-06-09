@@ -16,6 +16,18 @@ export interface Env {
   approval: ApprovalEnv;
   /** Team Mode: parallel multi-agent runs. */
   team: TeamEnv;
+  /** Persistent & shared cloud workspaces (#55). */
+  cloud: CloudEnv;
+}
+
+export interface CloudEnv {
+  /**
+   * Idle-sweep interval in ms. Default `0` = the background sweep is OFF (opt-in), mirroring the
+   * #17 loop — tests drive `sweepIdle()` deterministically.
+   */
+  sweepIntervalMs: number;
+  /** A cloud workspace idle longer than this is slept by the sweep. Default 30 min. */
+  idleMs: number;
 }
 
 export interface TeamEnv {
@@ -101,6 +113,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     team: {
       maxConcurrency: num(source.TEAM_MAX_CONCURRENCY, 3),
+    },
+    cloud: {
+      // Default 0 (off): the idle sweep is opt-in so tests/CI drive `sweepIdle()` deterministically.
+      sweepIntervalMs: Number(source.CLOUD_SWEEP_INTERVAL_MS ?? 0) || 0,
+      idleMs: num(source.CLOUD_IDLE_MS, 1_800_000),
     },
   };
 }
