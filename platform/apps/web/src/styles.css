@@ -984,3 +984,233 @@ button {
   border-top: 1px solid var(--line);
   padding-top: 16px;
 }
+
+/* --- git / PR / diff / review panel (#51) --- */
+.review {
+  display: grid;
+  grid-template-columns: 220px 1fr 300px;
+  gap: 1px;
+  background: var(--line);
+  flex: 1;
+  min-height: 0;
+}
+.review__sidebar,
+.review__main,
+.review__prs {
+  background: var(--bg-1);
+  padding: 16px;
+  overflow-y: auto;
+}
+.review__sidebar h3,
+.review__main h3,
+.review__prs h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+}
+.review__empty {
+  color: var(--text-faint);
+  font-size: 13px;
+}
+.review__error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.review__session {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.review__session--active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.review__session-branch {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.review__session-status {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.review__diffhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.review__modes {
+  display: flex;
+  gap: 4px;
+}
+.review__mode {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.review__mode--active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-dim);
+}
+.diff {
+  margin: 8px 0 16px;
+}
+.diff__files {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.diff__file {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.diff__file-path {
+  font-family: ui-monospace, monospace;
+}
+.diff__add {
+  color: var(--online);
+}
+.diff__del {
+  color: var(--danger);
+}
+.diff__patch {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.diff__line {
+  display: block;
+  white-space: pre;
+}
+.diff__line--add {
+  background: rgba(63, 208, 122, 0.12);
+  color: #b6f0cf;
+}
+.diff__line--del {
+  background: rgba(255, 107, 107, 0.12);
+  color: #f4c2c2;
+}
+.diff__line--hunk {
+  color: var(--accent);
+}
+.diff__line--meta {
+  color: var(--text-faint);
+}
+.review__comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.review__comment-loc {
+  display: flex;
+  gap: 6px;
+}
+.review__comment-loc input,
+.review__comment-form textarea,
+.review__pr-form input,
+.review__pr-form textarea {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.review__comment-loc input:first-child {
+  flex: 1;
+}
+.review__comments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.review__comment {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+  font-size: 13px;
+}
+.review__comment-loc-label {
+  color: var(--accent);
+  font-size: 12px;
+}
+.review__comment-delivered {
+  color: var(--online);
+  font-size: 11px;
+}
+.review__pr-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.review__pr-draft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.review__pr {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+  font-size: 13px;
+}
+.review__pr-meta {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 11px;
+}
+.review__pr-state,
+.review__pr-checks {
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--bg-3);
+}
+.review__pr-checks--success {
+  color: var(--online);
+}
+.review__pr-checks--failure {
+  color: var(--danger);
+}
+.review__pr-checks--pending {
+  color: var(--away);
+}
+.review__pr-actions {
+  display: flex;
+  gap: 6px;
+}

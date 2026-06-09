@@ -34,6 +34,10 @@ export interface AgentSession {
   snapshotId: string | null;
   exitCode: number | null;
   result: string | null;
+  /** Git refs (#51): set when the session runs in a git worktree. Null for non-git sessions. */
+  branch: string | null;
+  baseBranch: string | null;
+  headSha: string | null;
   caps: ResourceCaps;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -53,6 +57,9 @@ const COLUMNS = {
   snapshotId: agentSessions.snapshotId,
   exitCode: agentSessions.exitCode,
   result: agentSessions.result,
+  branch: agentSessions.branch,
+  baseBranch: agentSessions.baseBranch,
+  headSha: agentSessions.headSha,
   caps: agentSessions.caps,
   startedAt: agentSessions.startedAt,
   endedAt: agentSessions.endedAt,
@@ -111,6 +118,17 @@ export async function finalizeSession(
       snapshotId: fields.snapshotId ?? null,
       endedAt: new Date(),
     })
+    .where(eq(agentSessions.id, id));
+}
+
+/** Record a session's git refs (#51): branch + base + latest committed head sha. Idempotent. */
+export async function setSessionGitRefs(
+  id: string,
+  refs: { branch: string; baseBranch: string; headSha?: string | null },
+): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({ branch: refs.branch, baseBranch: refs.baseBranch, headSha: refs.headSha ?? null })
     .where(eq(agentSessions.id, id));
 }
 

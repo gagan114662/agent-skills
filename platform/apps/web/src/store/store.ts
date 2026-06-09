@@ -10,11 +10,16 @@ import type {
   ApprovalPolicyDto,
   ApprovalRequestDto,
   ApprovalStatus,
+  DiffMode,
+  PullRequestDto,
+  ReviewCommentDto,
+  SessionDiff,
 } from "@reload/shared";
-import type { api as realApi } from "../api/client.js";
+import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
 import type {
   AgentProfile,
+  AgentSessionSummary,
   Channel,
   Identity,
   MemberHit,
@@ -48,6 +53,19 @@ export interface ApprovalsState {
   error: string | null;
 }
 
+/** The review slice (#51 git/PR/diff web surface). The active channel's agent sessions and PRs,
+ * the selected session's diff + comments, and the diff mode toggle. */
+export interface ReviewState {
+  sessions: AgentSessionSummary[];
+  activeSessionId: string | null;
+  diff: SessionDiff | null;
+  diffMode: DiffMode;
+  comments: ReviewCommentDto[];
+  pullRequests: PullRequestDto[];
+  loading: boolean;
+  error: string | null;
+}
+
 export interface AppState {
   phase: "loading" | "anon" | "ready";
   identity: Identity | null;
@@ -61,6 +79,7 @@ export interface AppState {
   mentions: MentionEvent[];
   unreadMentions: number;
   approvals: ApprovalsState;
+  review: ReviewState;
   error: string | null;
 }
 
@@ -82,6 +101,7 @@ export interface StoreDeps {
     | "listAgents"
     | "listMyMentions"
     | "approvals"
+    | "review"
   >;
   realtime: Realtime;
 }
@@ -126,6 +146,17 @@ const INITIAL_APPROVALS: ApprovalsState = {
   error: null,
 };
 
+const INITIAL_REVIEW: ReviewState = {
+  sessions: [],
+  activeSessionId: null,
+  diff: null,
+  diffMode: "cumulative",
+  comments: [],
+  pullRequests: [],
+  loading: false,
+  error: null,
+};
+
 const INITIAL: AppState = {
   phase: "loading",
   identity: null,
@@ -139,6 +170,7 @@ const INITIAL: AppState = {
   mentions: [],
   unreadMentions: 0,
   approvals: INITIAL_APPROVALS,
+  review: INITIAL_REVIEW,
   error: null,
 };
 
@@ -171,6 +203,15 @@ export interface Store {
   loadPolicies(): Promise<void>;
   addPolicy(input: { actionType: string; requireApproval?: boolean; maxAutoAmount?: number | null }): Promise<void>;
   removePolicy(ruleId: string): Promise<void>;
+  // --- git / PR / diff / review (#51 web surface) ---
+  loadReview(): Promise<void>;
+  selectReviewSession(sessionId: string): Promise<void>;
+  setDiffMode(mode: DiffMode): Promise<void>;
+  addReviewComment(input: AddReviewCommentInput): Promise<void>;
+  deliverComments(): Promise<number>;
+  createPullRequest(input: CreatePrInput): Promise<void>;
+  refreshChecks(prId: string): Promise<void>;
+  fixCi(prId: string): Promise<void>;
 }
 
 /** Server `error` message off an ApiError, or a generic fallback. */
@@ -210,6 +251,23 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       case "presence":
         set({ presence: { ...state.presence, [event.memberId]: event.status } });
         break;
+      case "pull_request": {
+        // Upsert the PR into the review slice so the panel reflects create/checks changes live.
+        const pr = event.pullRequest;
+        const existing = state.review.pullRequests;
+        const idx = existing.findIndex((p) => p.id === pr.id);
+        const pullRequests = idx === -1 ? [pr, ...existing] : existing.map((p) => (p.id === pr.id ? pr : p));
+        setReview({ pullRequests });
+        break;
+      }
+      case "review_comment": {
+        // Append a new comment when it belongs to the session currently being reviewed.
+        const c = event.comment;
+        if (c.sessionId === state.review.activeSessionId && !state.review.comments.some((x) => x.id === c.id)) {
+          setReview({ comments: [...state.review.comments, c] });
+        }
+        break;
+      }
       default:
         // ready / subscribed / unsubscribed / error / pong — no UI state to update.
         break;
@@ -218,6 +276,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
   function setApprovals(patch: Partial<ApprovalsState>): void {
     set({ approvals: { ...state.approvals, ...patch } });
+  }
+
+  function setReview(patch: Partial<ReviewState>): void {
+    set({ review: { ...state.review, ...patch } });
   }
 
   /** Refresh the pending bucket: always updates the nav badge; updates rows when pending is shown.
@@ -473,6 +535,128 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       }
       await store.loadPolicies();
       if (error) setApprovals({ error });
+    },
+
+    // --- git / PR / diff / review (#51 web surface) ---
+
+    /** Load the active channel's agent sessions + PRs, then select the first session (if any). */
+    async loadReview() {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setReview({ loading: true, error: null });
+      try {
+        const [sessions, pullRequests] = await Promise.all([
+          api.review.listSessions(channelId),
+          api.review.listPullRequests(channelId).catch(() => [] as PullRequestDto[]),
+        ]);
+        setReview({ sessions, pullRequests, loading: false });
+        const first = sessions[0];
+        if (first && first.id !== state.review.activeSessionId) await store.selectReviewSession(first.id);
+      } catch (e) {
+        setReview({ loading: false, error: errMsg(e) });
+      }
+    },
+
+    /** Select a session and load its diff + comments. */
+    async selectReviewSession(sessionId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setReview({ activeSessionId: sessionId, diff: null, comments: [], error: null });
+      try {
+        const [diff, comments] = await Promise.all([
+          api.review.diff(channelId, sessionId, state.review.diffMode),
+          api.review.listComments(channelId, sessionId).catch(() => [] as ReviewCommentDto[]),
+        ]);
+        setReview({ diff, comments });
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
+    },
+
+    /** Switch the diff mode (cumulative ⇄ turn) and reload the active session's diff. */
+    async setDiffMode(mode) {
+      setReview({ diffMode: mode });
+      const channelId = state.activeChannelId;
+      const sessionId = state.review.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        const diff = await api.review.diff(channelId, sessionId, mode);
+        setReview({ diff });
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
+    },
+
+    async addReviewComment(input) {
+      const channelId = state.activeChannelId;
+      const sessionId = state.review.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        const { comment } = await api.review.addComment(channelId, sessionId, input);
+        if (!state.review.comments.some((c) => c.id === comment.id)) {
+          setReview({ comments: [...state.review.comments, comment] });
+        }
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
+    },
+
+    /** Deliver the session's undelivered comments to the agent. Returns how many were delivered. */
+    async deliverComments() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.review.activeSessionId;
+      if (!channelId || !sessionId) return 0;
+      try {
+        const res = await api.review.deliver(channelId, sessionId);
+        // Refresh comments so the delivered marker shows.
+        const comments = await api.review.listComments(channelId, sessionId);
+        setReview({ comments });
+        return res.deliveredCount;
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+        return 0;
+      }
+    },
+
+    async createPullRequest(input) {
+      const channelId = state.activeChannelId;
+      const sessionId = state.review.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        const { pullRequest } = await api.review.createPullRequest(channelId, sessionId, input);
+        const existing = state.review.pullRequests;
+        const pullRequests = existing.some((p) => p.id === pullRequest.id)
+          ? existing.map((p) => (p.id === pullRequest.id ? pullRequest : p))
+          : [pullRequest, ...existing];
+        setReview({ pullRequests });
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
+    },
+
+    async refreshChecks(prId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      try {
+        const { checksStatus } = await api.review.refreshChecks(channelId, prId);
+        setReview({
+          pullRequests: state.review.pullRequests.map((p) =>
+            p.id === prId ? { ...p, checksStatus } : p,
+          ),
+        });
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
+    },
+
+    async fixCi(prId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      try {
+        await api.review.fixCi(channelId, prId);
+      } catch (e) {
+        setReview({ error: errMsg(e) });
+      }
     },
   };
 
