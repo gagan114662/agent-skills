@@ -55,9 +55,19 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
   // can actually modify files in the session workspace. `"$AGENT_TASK"` is double-quoted and is NOT
   // re-evaluated by bash (no command substitution on a variable's value), so task text — even if
   // hostile — cannot inject shell.
+  //
+  // Subagent personas (#59) thread their system prompt + allowed-tools ceiling the SAME way — as env,
+  // never argv — using bash `${VAR:+word}` expansion: the flag appears only when the var is set and
+  // non-empty, and the value is a double-quoted env reference (injection-safe like $AGENT_TASK).
+  // Non-persona sessions leave these unset, so the flags vanish and behavior is unchanged.
+  const persona =
+    ` ` +
+    `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}` +
+    ` ` +
+    `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}`;
   const cmd =
     `${shellQuote(bin)} -p "$AGENT_TASK" ` +
-    `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}`;
+    `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}`;
 
   return { command: "bash", args: ["-lc", cmd] };
 }

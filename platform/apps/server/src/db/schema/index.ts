@@ -9,6 +9,7 @@ export * from "./approvals.js";
 export * from "./stubs.js";
 export * from "./auth.js";
 export * from "./agent-sessions.js";
+export * from "./agent-personas.js";
 export * from "./pull-requests.js";
 export * from "./review-comments.js";
 export * from "./autonomy.js";

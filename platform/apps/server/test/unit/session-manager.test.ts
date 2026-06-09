@@ -120,6 +120,21 @@ class CompletingRuntime implements AgentRuntime {
   }
 }
 
+/** Captures the job it is started with (for asserting env/cwd threading), then completes. */
+class CapturingRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  job?: AgentJob;
+  start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    this.job = job;
+    hooks.onOutput("stdout", "review done\n");
+    return Promise.resolve({
+      sessionId: job.sessionId,
+      wait: () => Promise.resolve<RuntimeResult>({ status: "completed", exitCode: 0 }),
+      cancel: () => Promise.resolve(),
+    });
+  }
+}
+
 /** A runtime that never produces output and only ends when cancelled (drives reaper tests). */
 class PendingRuntime implements AgentRuntime {
   readonly kind = "local" as const;
@@ -221,6 +236,41 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     const session = await manager.launch(launch);
     await manager.join(session.id);
     expect(store.finalized?.status).toBe("timeout");
+  });
+
+  it("threads all posts under an invoking message when parentMessageId is given (#59)", async () => {
+    const runtime = new CompletingRuntime(["line one\n"], 0);
+    const { manager, poster } = makeManager(runtime, caps(), new Secrets({}));
+
+    const session = await manager.launch({ ...launch, parentMessageId: "msg_invoke" });
+    await manager.join(session.id);
+
+    // The started message AND the streamed line thread under the invoking message, not a new root.
+    expect(poster.posts[0]?.parentMessageId).toBe("msg_invoke");
+    expect(poster.posts.find((p) => p.body === "line one")?.parentMessageId).toBe("msg_invoke");
+  });
+
+  it("merges persona harnessEnv into the job env alongside AGENT_TASK (#59)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+
+    const session = await manager.launch({
+      ...launch,
+      harnessEnv: { AGENT_APPEND_SYSTEM_PROMPT: "You review code.", AGENT_ALLOWED_TOOLS: "Read,Grep" },
+    });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).toBe("do the thing");
+    expect(runtime.job?.env.AGENT_APPEND_SYSTEM_PROMPT).toBe("You review code.");
+    expect(runtime.job?.env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep");
+  });
+
+  it("leaves the job env as AGENT_TASK-only when no harnessEnv is given (unchanged)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(Object.keys(runtime.job?.env ?? {})).toEqual(["AGENT_TASK"]);
   });
 
   it("cancel() ends a running session", async () => {
