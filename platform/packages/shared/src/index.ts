@@ -115,5 +115,83 @@ export interface TeamEvent {
   createdAt: string;
 }
 
+// ---- git / PR / diff / review workflow (#51) --------------------------------
+
+/** Which slice of a session's git history a diff covers (#51). */
+export type DiffMode = "cumulative" | "turn";
+
+/** Per-file change summary parsed from `git diff --numstat` (#51). */
+export interface DiffFileStat {
+  path: string;
+  /** Lines added; null for a binary file (git reports `-`). */
+  additions: number | null;
+  /** Lines removed; null for a binary file. */
+  deletions: number | null;
+  binary: boolean;
+}
+
+/** A session's diff: the unified patch plus per-file stats (#51). */
+export interface SessionDiff {
+  sessionId: string;
+  branch: string;
+  baseBranch: string;
+  mode: DiffMode;
+  /** The unified-diff patch text (may be empty when there are no changes). */
+  patch: string;
+  files: DiffFileStat[];
+}
+
+/** Lifecycle of a pull request opened from a session (#51). */
+export type PullRequestState = "draft" | "open" | "merged" | "closed";
+
+/** CI/checks rollup for a PR, mirrored from GitHub (#51). */
+export type ChecksStatus = "unknown" | "pending" | "success" | "failure";
+
+/** One CI check run on a PR's head (#51). */
+export interface CheckRunDto {
+  name: string;
+  status: "queued" | "in_progress" | "completed";
+  conclusion: "success" | "failure" | "neutral" | "skipped" | "cancelled" | null;
+  detailsUrl: string | null;
+}
+
+/** A pull request opened from an agent session's branch (#51). */
+export interface PullRequestDto {
+  id: string;
+  workspaceId: string;
+  channelId: string;
+  sessionId: string | null;
+  number: number | null;
+  url: string | null;
+  title: string;
+  body: string | null;
+  draft: boolean;
+  state: PullRequestState;
+  checksStatus: ChecksStatus;
+  baseBranch: string;
+  headBranch: string;
+  provider: "none" | "gh";
+  createdByMemberId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A review comment on a session's diff, optionally delivered back to the agent (#51). */
+export interface ReviewCommentDto {
+  id: string;
+  workspaceId: string;
+  channelId: string;
+  sessionId: string;
+  pullRequestId: string | null;
+  filePath: string;
+  lineStart: number | null;
+  lineEnd: number | null;
+  body: string;
+  authorMemberId: string | null;
+  /** The follow-up session this comment was forwarded to (the round-trip), or null. */
+  deliveredToSessionId: string | null;
+  createdAt: string;
+}
+
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
 // this package is consumed unbuilt and stays strictly type-only with no runtime exports.

@@ -1,4 +1,4 @@
-import type { TeamEvent } from "@reload/shared";
+import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared";
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
 import type {
@@ -82,6 +82,28 @@ export async function publishMessageEvent(channelId: string, message: Message): 
 export async function publishTeamEvent(channelId: string, event: TeamEvent): Promise<void> {
   const serverEvent: ServerEvent = { type: "team_event", event };
   await getRedis().publish(channelKey(channelId), JSON.stringify(serverEvent));
+}
+
+/**
+ * Publish a pull-request change to its channel's subscribers (#51). Rides the same `rt:channel:<id>`
+ * key as messages — the PR row is already persisted (REST source of truth), so this is a best-effort
+ * live nudge that needs no new gateway pattern.
+ */
+export async function publishPullRequestEvent(
+  channelId: string,
+  pullRequest: PullRequestDto,
+): Promise<void> {
+  const event: ServerEvent = { type: "pull_request", pullRequest };
+  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/** Publish a new/updated review comment to its channel's subscribers (#51). */
+export async function publishReviewCommentEvent(
+  channelId: string,
+  comment: ReviewCommentDto,
+): Promise<void> {
+  const event: ServerEvent = { type: "review_comment", comment };
+  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
 }
 
 /**

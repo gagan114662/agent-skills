@@ -16,6 +16,7 @@ import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { subagentRoutes } from "./routes/subagents.js";
+import { gitReviewRoutes } from "./routes/git-review.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
 import { teamRoutes } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
@@ -23,6 +24,10 @@ import { mcpRoutes } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
+import { createGitWorkspaceFromEnv } from "./git/default.js";
+import type { GitWorkspaceService } from "./git/workspace.js";
+import { createGitHubProvider } from "./github/factory.js";
+import type { GitHubProvider } from "./github/provider.js";
 import { createDefaultTeamCoordinator } from "./team/default.js";
 import type { TeamCoordinator } from "./team/coordinator.js";
 import { createDefaultAutonomyEngine } from "./autonomy/default.js";
@@ -51,6 +56,10 @@ export interface BuildAppOptions {
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
+  /** #51 git/PR/review: the worktree+diff service (opt-in; absent → git/PR routes 501). */
+  gitWorkspace?: GitWorkspaceService;
+  /** #51 git/PR/review: the GitHub provider (tests inject a fake; default `none` from env). */
+  gitHubProvider?: GitHubProvider;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -97,6 +106,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addHook("onClose", async () => {
     await sessionManager.shutdown();
   });
+  // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
+  // with review comments routed back to the agent as a new session. The git workspace is opt-in
+  // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
+  // `none` so CI never calls GitHub. Tests inject a temp-repo git service + a fake provider.
+  const gitWorkspace = opts.gitWorkspace ?? createGitWorkspaceFromEnv();
+  const gitHubProvider = opts.gitHubProvider ?? createGitHubProvider();
+  app.register(gitReviewRoutes, { sessionManager, gitWorkspace, gitHubProvider });
   // Team Mode: run N agents in parallel on one feature, each on its own subtask/branch, kept in
   // the loop over the channel's shared team protocol. The coordinator reuses the same
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.

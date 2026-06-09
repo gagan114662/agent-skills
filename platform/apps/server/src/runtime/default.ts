@@ -1,6 +1,8 @@
 import { loadEnv } from "../env.js";
 import { loadConfig } from "../config/loader.js";
-import { FileConfigWorkspaceProvisioner } from "../config/workspace.js";
+import { FileConfigWorkspaceProvisioner, type WorkspaceProvisioner } from "../config/workspace.js";
+import { createGitWorkspaceFromEnv } from "../git/default.js";
+import { GitWorkspaceProvisioner } from "../git/provisioner.js";
 import {
   createAgentSession,
   finalizeSession,
@@ -50,6 +52,12 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
   // #58: server-level config (managed-global) gates deployment-wide egress; per-tenant managed
   // overrides apply per session inside the workspace provisioner.
   const serverConfig = loadConfig();
+  // #51: when a git repo is configured, each session runs in a git worktree on branch agent/<id> so
+  // its edits become a reviewable diff/PR. Otherwise keep the #58 file-copy provisioner.
+  const gitWorkspace = createGitWorkspaceFromEnv();
+  const workspace: WorkspaceProvisioner = gitWorkspace
+    ? new GitWorkspaceProvisioner(gitWorkspace)
+    : new FileConfigWorkspaceProvisioner({ logger });
   return new SessionManager({
     runtime: createRuntime(env),
     store: dbStore,
@@ -58,8 +66,8 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     caps: env.caps,
     logger,
-    // #58: copy configured files-to-copy into each session's working dir, per the layered config.
-    workspace: new FileConfigWorkspaceProvisioner({ logger }),
+    // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.
+    workspace,
     // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set, and forced off
     // under data-privacy mode (#58).
     tracer: createBraintrustTracer({ dataPrivacyMode: serverConfig.dataPrivacyMode }),
