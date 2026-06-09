@@ -1,0 +1,68 @@
+/**
+ * Agent harness selection (#50).
+ *
+ * A "harness" is the trusted command the runtime spawns for each agent session — the thing that
+ * actually does the coding. It is NEVER client-supplied. The task/prompt is injected at runtime via
+ * the `AGENT_TASK` environment variable (the same contract the demo harness already uses), so
+ * untrusted task text is never interpolated into argv and cannot break out into the command line.
+ *
+ * Backends:
+ *   - `demo` (default): a tiny script that echoes the task. Dev/CI only — no model spend.
+ *   - `claude-code`: the real Claude Code CLI in non-interactive print mode against the task,
+ *     streaming output back through the runtime. Requires the `claude` binary + auth in the
+ *     execution environment (the host for LocalRuntime, the image for SandboxRuntime).
+ *
+ * The spec returned here plugs straight into the existing `{ command, args }` contract consumed by
+ * `SessionManager`/`AgentRuntime`, so selecting a harness changes no other code path.
+ */
+export type HarnessKind = "demo" | "claude-code";
+
+export interface HarnessSpec {
+  command: string;
+  args: string[];
+}
+
+export interface HarnessOptions {
+  /** Path or name of the Claude Code binary. Default `claude`. */
+  claudeBin?: string;
+  /** Optional model override passed to Claude Code (e.g. `claude-opus-4-8`). */
+  model?: string;
+  /** Extra raw flags appended to the claude invocation. */
+  claudeExtraArgs?: string[];
+}
+
+const DEMO: HarnessSpec = { command: "bash", args: ["scripts/agent-harness-demo.sh"] };
+
+export function parseHarnessKind(value: string | undefined): HarnessKind {
+  return value === "claude-code" ? "claude-code" : "demo";
+}
+
+/**
+ * Build the trusted command/args for a harness. Does NOT take the task — the task is supplied at
+ * run time as the `AGENT_TASK` env var, so this is pure and injection-safe by construction.
+ */
+export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): HarnessSpec {
+  if (kind === "demo") return { command: DEMO.command, args: [...DEMO.args] };
+
+  const bin = opts.claudeBin ?? "claude";
+  const model = opts.model ? ` --model ${shellQuote(opts.model)}` : "";
+  const extra =
+    opts.claudeExtraArgs && opts.claudeExtraArgs.length > 0
+      ? " " + opts.claudeExtraArgs.map(shellQuote).join(" ")
+      : "";
+
+  // Print mode + JSON stream so the runtime can surface turns/tool-calls; acceptEdits so the agent
+  // can actually modify files in the session workspace. `"$AGENT_TASK"` is double-quoted and is NOT
+  // re-evaluated by bash (no command substitution on a variable's value), so task text — even if
+  // hostile — cannot inject shell.
+  const cmd =
+    `${shellQuote(bin)} -p "$AGENT_TASK" ` +
+    `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}`;
+
+  return { command: "bash", args: ["-lc", cmd] };
+}
+
+/** POSIX single-quote escaping for values we place into the bash `-lc` string. */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
