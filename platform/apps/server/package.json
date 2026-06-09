@@ -23,6 +23,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@node-rs/argon2": "^2.0.2",
     "@reload/shared": "workspace:*",
+    "@vercel/sandbox": "^2.1.1",
     "braintrust": "^3.17.0",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
