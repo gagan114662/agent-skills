@@ -3,6 +3,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { useStore } from "../store/StoreContext.js";
 import { activeMentionQuery, applyMentionSelection } from "../store/mentions.js";
 import { KindBadge } from "./Primitives.js";
+import { MessageQueue } from "./MessageQueue.js";
 import type { MemberHit } from "../api/types.js";
 
 export interface ComposerProps {
@@ -10,9 +11,12 @@ export interface ComposerProps {
   /** Called with the typed text; when omitted, posts to the active channel. */
   onSubmit?: (text: string) => Promise<void> | void;
   compact?: boolean;
+  /** Enable the per-session message/steering queue (#54): a Queue/Steer control + the pending list.
+   * Only the channel composer opts in; thread replies stay a plain send box. */
+  queue?: boolean;
 }
 
-export function Composer({ placeholder, onSubmit, compact }: ComposerProps): React.JSX.Element {
+export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProps): React.JSX.Element {
   const store = useStore();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
@@ -66,7 +70,27 @@ export function Composer({ placeholder, onSubmit, compact }: ComposerProps): Rea
     else await store.sendMessage(value);
   }
 
+  /** Stack the typed text instead of sending it now. `kind` picks queue (tail) vs steer (jump ahead). */
+  function stack(kind: "queue" | "steer"): void {
+    const value = text.trim();
+    if (!value) return;
+    setText("");
+    setOpen(false);
+    if (kind === "steer") store.steerMessage(value);
+    else store.queueMessage(value);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (queue && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      stack("queue");
+      return;
+    }
+    if (queue && e.key === "Enter" && e.altKey) {
+      e.preventDefault();
+      stack("steer");
+      return;
+    }
     if (open && options.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -97,6 +121,7 @@ export function Composer({ placeholder, onSubmit, compact }: ComposerProps): Rea
 
   return (
     <div className={`composer${compact ? " composer--compact" : ""}`}>
+      {queue && <MessageQueue />}
       {open && options.length > 0 && (
         <ul className="mention-menu" role="listbox" aria-label="Mention a member">
           {options.map((m, i) => (
@@ -128,6 +153,16 @@ export function Composer({ placeholder, onSubmit, compact }: ComposerProps): Rea
           onChange={(e) => onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           onKeyDown={onKeyDown}
         />
+        {queue && (
+          <>
+            <button className="btn btn--ghost" type="button" onClick={() => stack("queue")} aria-label="Queue">
+              Queue
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={() => stack("steer")} aria-label="Steer">
+              Steer
+            </button>
+          </>
+        )}
         <button className="btn btn--primary" type="button" onClick={() => void submit()} aria-label="Send">
           Send
         </button>

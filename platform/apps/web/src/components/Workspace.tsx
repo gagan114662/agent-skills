@@ -8,8 +8,9 @@ import { MessagePane } from "./MessagePane.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { MembersRail } from "./MembersRail.js";
 import { ApprovalsPanel } from "./approvals/ApprovalsPanel.js";
+import { ReviewPanel } from "./review/ReviewPanel.js";
 
-type View = "chat" | "approvals";
+type View = "chat" | "approvals" | "review";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
@@ -18,6 +19,8 @@ export function Workspace(): React.JSX.Element {
       <TopBar view={view} onSelectView={setView} />
       {view === "approvals" ? (
         <ApprovalsPanel />
+      ) : view === "review" ? (
+        <ReviewPanel />
       ) : (
         <div className="workspace__body">
           <ChannelSidebar />
@@ -37,7 +40,7 @@ function TopBar({
   view: View;
   onSelectView: (v: View) => void;
 }): React.JSX.Element {
-  const { identity, unreadMentions, mentions, directory, approvals } = useAppState();
+  const { identity, unreadMentions, mentions, directory, approvals, review } = useAppState();
   const store = useStore();
   const [showMentions, setShowMentions] = useState(false);
 
@@ -66,6 +69,14 @@ function TopBar({
         >
           Approvals
           {approvals.pendingCount > 0 && <span className="badge">{approvals.pendingCount}</span>}
+        </button>
+        <button
+          className={`topbar__navbtn${view === "review" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "review"}
+          onClick={() => onSelectView("review")}
+        >
+          Review
+          {review.pullRequests.length > 0 && <span className="badge">{review.pullRequests.length}</span>}
         </button>
       </nav>
       <div className="topbar__spacer" />

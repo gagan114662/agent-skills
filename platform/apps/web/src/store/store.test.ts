@@ -91,9 +91,64 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
       deletePolicy: vi.fn(async () => ({ ok: true }) as const),
       submitAction: vi.fn(async () => ({ status: "pending" as const, reason: "policy", request: req({ id: "r1" }) })),
     },
+    review: {
+      listSessions: vi.fn(async () => []),
+      diff: vi.fn(async (_c, sessionId, mode) => ({
+        sessionId,
+        branch: `agent/${sessionId}`,
+        baseBranch: "main",
+        mode,
+        patch: "",
+        files: [],
+      })),
+      listComments: vi.fn(async () => []),
+      addComment: vi.fn(async (_c, _s, _i) => ({
+        comment: rc({ id: "rc1" }),
+      })),
+      deliver: vi.fn(async () => ({ sessionId: "follow-up", deliveredCount: 0 })),
+      listPullRequests: vi.fn(async () => []),
+      createPullRequest: vi.fn(async (_c, _s, input) => ({ pullRequest: prDto({ title: input.title }) })),
+      refreshChecks: vi.fn(async () => ({ checksStatus: "success" as const, runs: [] })),
+      fixCi: vi.fn(async () => ({ sessionId: "fix-ci" })),
+    },
   };
   return { deps: { api, realtime: rt }, rt };
 }
+
+const rc = (over: { id: string }) => ({
+  id: over.id,
+  workspaceId: "w1",
+  channelId: "c1",
+  sessionId: "s1",
+  pullRequestId: null,
+  filePath: "src/a.ts",
+  lineStart: null,
+  lineEnd: null,
+  body: "comment",
+  authorMemberId: "me1",
+  deliveredToSessionId: null,
+  createdAt: "2026-06-09T00:00:00.000Z",
+});
+
+const prDto = (over: { title: string }) => ({
+  id: "pr1",
+  workspaceId: "w1",
+  channelId: "c1",
+  sessionId: "s1",
+  number: 1,
+  url: "https://github.com/o/r/pull/1",
+  title: over.title,
+  body: null,
+  draft: false,
+  state: "open" as const,
+  checksStatus: "unknown" as const,
+  baseBranch: "main",
+  headBranch: "agent/s1",
+  provider: "gh" as const,
+  createdByMemberId: "me1",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  updatedAt: "2026-06-09T00:00:00.000Z",
+});
 
 describe("store bootstrap + realtime", () => {
   let env: ReturnType<typeof fakeDeps>;

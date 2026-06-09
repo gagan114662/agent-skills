@@ -4,7 +4,14 @@ import type { ReactNode } from "react";
 import { vi } from "vitest";
 import type { ApprovalPolicyDto, ApprovalRequestDto } from "@reload/shared";
 import type { Realtime } from "../api/realtime.js";
-import type { Channel, Identity, MemberHit, Message, ServerEvent } from "../api/types.js";
+import type {
+  AgentSessionSummary,
+  Channel,
+  Identity,
+  MemberHit,
+  Message,
+  ServerEvent,
+} from "../api/types.js";
 import { createStore, type Store, type StoreDeps } from "../store/store.js";
 import { StoreProvider } from "../store/StoreContext.js";
 
@@ -87,6 +94,7 @@ export interface FakeBackendOverrides {
   channels?: Channel[];
   messages?: Message[];
   members?: MemberHit[];
+  sessions?: AgentSessionSummary[];
 }
 
 export function makeFakeDeps(over: FakeBackendOverrides = {}): {
@@ -135,6 +143,59 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => ({ ...STUB_POLICY, actionType: input.actionType })),
       deletePolicy: vi.fn(async () => ({ ok: true }) as const),
       submitAction: vi.fn(async () => ({ status: "pending" as const, reason: "policy", request: STUB_REQUEST })),
+    },
+    review: {
+      listSessions: vi.fn(async () => over.sessions ?? []),
+      diff: vi.fn(async (_c: string, sessionId: string, mode: "cumulative" | "turn") => ({
+        sessionId,
+        branch: `agent/${sessionId}`,
+        baseBranch: "main",
+        mode,
+        patch: "",
+        files: [],
+      })),
+      listComments: vi.fn(async () => []),
+      addComment: vi.fn(async (_c: string, sessionId: string, input: { filePath: string; body: string }) => ({
+        comment: {
+          id: `rc-${input.filePath}`,
+          workspaceId: "w1",
+          channelId: _c,
+          sessionId,
+          pullRequestId: null,
+          filePath: input.filePath,
+          lineStart: null,
+          lineEnd: null,
+          body: input.body,
+          authorMemberId: "me1",
+          deliveredToSessionId: null,
+          createdAt: "2026-06-09T00:00:00.000Z",
+        },
+      })),
+      deliver: vi.fn(async () => ({ sessionId: "follow-up", deliveredCount: 1 })),
+      listPullRequests: vi.fn(async () => []),
+      createPullRequest: vi.fn(async (_c: string, sessionId: string, input: { title: string }) => ({
+        pullRequest: {
+          id: "pr1",
+          workspaceId: "w1",
+          channelId: _c,
+          sessionId,
+          number: 1,
+          url: "https://github.com/o/r/pull/1",
+          title: input.title,
+          body: null,
+          draft: false,
+          state: "open" as const,
+          checksStatus: "unknown" as const,
+          baseBranch: "main",
+          headBranch: `agent/${sessionId}`,
+          provider: "gh" as const,
+          createdByMemberId: "me1",
+          createdAt: "2026-06-09T00:00:00.000Z",
+          updatedAt: "2026-06-09T00:00:00.000Z",
+        },
+      })),
+      refreshChecks: vi.fn(async () => ({ checksStatus: "success" as const, runs: [] })),
+      fixCi: vi.fn(async () => ({ sessionId: "fix-ci" })),
     },
   };
   return { deps: { api, realtime: rt }, rt };

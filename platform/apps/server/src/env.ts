@@ -1,4 +1,5 @@
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
+import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -55,6 +56,8 @@ export interface ApprovalEnv {
 export interface AgentEnv {
   /** Execution backend. Default `local` so tests/CI need no cloud spend. */
   runtime: RuntimeKind;
+  /** Which coding-agent harness runs each session (#50). Default `demo` (no model spend). */
+  harness: HarnessKind;
   /** The trusted harness command + args run for each session (NOT client-supplied). */
   harnessCommand: string;
   harnessArgs: string[];
@@ -76,19 +79,28 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port: Number(source.PORT ?? 3000),
     databaseUrl: source.DATABASE_URL ?? "postgres://reload:reload@localhost:5433/reload",
     redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
-    agent: {
-      runtime: parseRuntime(source.AGENT_RUNTIME),
-      // Dev/demo default: a tiny built-in harness that echoes the task as a few lines of "work".
-      harnessCommand: source.AGENT_HARNESS_CMD ?? "bash",
-      harnessArgs: source.AGENT_HARNESS_ARGS
-        ? JSON.parse(source.AGENT_HARNESS_ARGS)
-        : ["scripts/agent-harness-demo.sh"],
-      caps: {
-        wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
-        idleMs: num(source.AGENT_IDLE_MS, 120_000),
-        memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
-      },
-    },
+    agent: (() => {
+      // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
+      // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
+      const harness = parseHarnessKind(source.AGENT_HARNESS);
+      const spec = harnessSpec(harness, {
+        claudeBin: source.CLAUDE_BIN,
+        model: source.ANTHROPIC_MODEL,
+      });
+      return {
+        runtime: parseRuntime(source.AGENT_RUNTIME),
+        harness,
+        harnessCommand: source.AGENT_HARNESS_CMD ?? spec.command,
+        harnessArgs: source.AGENT_HARNESS_ARGS
+          ? JSON.parse(source.AGENT_HARNESS_ARGS)
+          : spec.args,
+        caps: {
+          wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
+          idleMs: num(source.AGENT_IDLE_MS, 120_000),
+          memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
+        },
+      };
+    })(),
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.
       intervalMs: Number(source.AUTONOMY_INTERVAL_MS ?? 0) || 0,

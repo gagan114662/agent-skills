@@ -11,6 +11,7 @@ import {
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
+import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
@@ -67,6 +68,11 @@ export interface SessionManagerDeps {
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
+  /**
+   * Optional workspace seam (#58): prepares a per-session working dir + copies files-to-copy into
+   * it before the runtime starts. When absent, the harness inherits the server cwd (#25 behavior).
+   */
+  workspace?: WorkspaceProvisioner;
 }
 
 export interface LaunchInput {
@@ -80,6 +86,17 @@ export interface LaunchInput {
   teamRunId?: string;
   /** Team Mode: the team rollup span this session links under (Braintrust parent span id). */
   parentSpanId?: string;
+  /**
+   * Subagents (#59): when set, the session's messages thread under this (the invoking @mention)
+   * message instead of creating a new root — so a subagent's result returns into the parent thread.
+   */
+  parentMessageId?: string;
+  /**
+   * Subagents (#59): extra env merged into the job alongside `AGENT_TASK` (e.g. a persona's
+   * `AGENT_APPEND_SYSTEM_PROMPT` / `AGENT_ALLOWED_TOOLS`). Persona config is data, never argv. When
+   * absent the job env is `{ AGENT_TASK }` exactly as before.
+   */
+  harnessEnv?: Record<string, string>;
 }
 
 /** How many trailing output lines to keep as the persisted result summary. */
@@ -126,6 +143,8 @@ export class SessionManager {
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
+      parentMessageId: input.parentMessageId,
+      harnessEnv: input.harnessEnv,
     }).catch(() => {
       /* drive() never throws — terminal failures are persisted as `failed` */
     });
@@ -156,7 +175,12 @@ export class SessionManager {
   private async drive(
     session: AgentSession,
     task: string,
-    trace: { teamRunId?: string; parentSpanId?: string } = {},
+    opts: {
+      teamRunId?: string;
+      parentSpanId?: string;
+      parentMessageId?: string;
+      harnessEnv?: Record<string, string>;
+    } = {},
   ): Promise<void> {
     const log = this.deps.logger.child({
       sessionId: session.id,
@@ -174,10 +198,14 @@ export class SessionManager {
         agentMemberId: session.agentMemberId,
         runtime: this.deps.runtime.kind,
         task,
-        teamRunId: trace.teamRunId,
-        parentSpanId: trace.parentSpanId,
+        teamRunId: opts.teamRunId,
+        parentSpanId: opts.parentSpanId,
       },
-      () => this.runSession(session, task, log),
+      () =>
+        this.runSession(session, task, log, {
+          parentMessageId: opts.parentMessageId,
+          harnessEnv: opts.harnessEnv,
+        }),
     );
   }
 
@@ -186,14 +214,22 @@ export class SessionManager {
     session: AgentSession,
     task: string,
     log: SessionLogger,
+    opts: { parentMessageId?: string; harnessEnv?: Record<string, string> } = {},
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only.
     const secrets = await this.deps.secrets.resolve(session.workspaceId);
     const redact = makeRedactor(secrets);
 
-    // Post the parent "started" message before any output so streamed lines thread under it.
-    const start = await this.safePost(session, `🤖 session ${session.id} started: ${task}`, log);
-    const parentMessageId = start?.id;
+    // Post the parent "started" message before any output so streamed lines thread under it. For a
+    // subagent invocation (#59) the invoking @mention message is the thread root, so the started
+    // message and every streamed line thread under it — the result returns into the parent thread.
+    const start = await this.safePost(
+      session,
+      `🤖 session ${session.id} started: ${task}`,
+      log,
+      opts.parentMessageId,
+    );
+    const parentMessageId = opts.parentMessageId ?? start?.id;
 
     // Stream state: line-buffer output, keep a redacted tail for the result.
     let buffer = "";
@@ -224,13 +260,19 @@ export class SessionManager {
     let result: RuntimeResult = { status: "failed", exitCode: null };
     try {
       const provisionStart = Date.now();
+      // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
+      const prepared = await this.deps.workspace?.prepare({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+      });
       const running = await this.deps.runtime.start(
         {
           sessionId: session.id,
           workspaceId: session.workspaceId,
           command: this.deps.harness.command,
           args: this.deps.harness.args,
-          env: { AGENT_TASK: task },
+          env: { AGENT_TASK: task, ...opts.harnessEnv },
+          cwd: prepared?.cwd,
           secrets,
           caps: this.deps.caps,
         },

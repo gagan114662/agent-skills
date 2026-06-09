@@ -14,6 +14,7 @@ import {
 import { publishNotification } from "../realtime/bus.js";
 import type { NotificationEvent } from "../realtime/protocol.js";
 import { loadEnv } from "../env.js";
+import { loadConfig } from "../config/loader.js";
 import { shouldNotify, type NotificationType } from "./types.js";
 import {
   selectTransport,
@@ -36,7 +37,11 @@ let transport: NotificationTransport | undefined;
 
 /** The deployment's external transport, chosen once from env (webhook when configured, else no-op). */
 function getNotificationTransport(): NotificationTransport {
-  if (!transport) transport = selectTransport(loadEnv().notify.webhookUrl);
+  // #58: data-privacy mode (server-level managed config) forces the no-op transport regardless of URL.
+  if (!transport)
+    transport = selectTransport(loadEnv().notify.webhookUrl, {
+      dataPrivacyMode: loadConfig().dataPrivacyMode,
+    });
   return transport;
 }
 

@@ -15,18 +15,21 @@
     "db:reset": "tsx src/db/migrate.ts reset",
     "db:seed": "tsx src/db/seed.ts",
     "openapi:dump": "tsx scripts/dump-openapi.ts",
-    "trace:smoke": "tsx scripts/braintrust-smoke.ts"
+    "trace:smoke": "tsx scripts/braintrust-smoke.ts",
+    "sandbox:smoke": "tsx scripts/vercel-sandbox-smoke.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@node-rs/argon2": "^2.0.2",
     "@reload/shared": "workspace:*",
+    "@vercel/sandbox": "^2.1.1",
     "braintrust": "^3.17.0",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.0",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1",
+    "smol-toml": "^1.6.1",
     "uuidv7": "^1.0.2",
     "ws": "^8.18.0",
     "zod": "^3.25.76"
