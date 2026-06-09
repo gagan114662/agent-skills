@@ -15,7 +15,8 @@
     "db:reset": "tsx src/db/migrate.ts reset",
     "db:seed": "tsx src/db/seed.ts",
     "openapi:dump": "tsx scripts/dump-openapi.ts",
-    "trace:smoke": "tsx scripts/braintrust-smoke.ts"
+    "trace:smoke": "tsx scripts/braintrust-smoke.ts",
+    "sandbox:smoke": "tsx scripts/vercel-sandbox-smoke.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
