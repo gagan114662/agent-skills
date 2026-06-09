@@ -31,7 +31,10 @@ interface VercelCommand {
 }
 
 interface VercelSandbox {
-  readonly sandboxId: string;
+  // The identifier's accessor name has drifted across SDK versions: docs say `sandboxId`, but
+  // @vercel/sandbox 2.1.x exposes it as `name`. We read whichever is present.
+  readonly sandboxId?: string;
+  readonly name?: string;
   runCommand(params: {
     cmd: string;
     args?: string[];
@@ -90,7 +93,8 @@ class VercelSandboxInstance implements SandboxInstance {
   constructor(private readonly sandbox: VercelSandbox) {}
 
   get id(): string {
-    return this.sandbox.sandboxId;
+    // `sandboxId` (docs) / `name` (SDK 2.1.x) / `id` (older) — read whichever the SDK provides.
+    return this.sandbox.sandboxId ?? this.sandbox.name ?? (this.sandbox as { id?: string }).id ?? "";
   }
 
   async run(
