@@ -92,6 +92,30 @@ grants), invoking requires `propagate` on the channel (delegation), and a reques
 **narrow** the persona's ceiling. See [docs/specs/36-subagents.md](docs/specs/36-subagents.md) and
 [ADR-0036](docs/adrs/0036-subagents.md); demo: `scripts/demos/36-subagents.sh`.
 
+## Plan mode, checkpoints & steering
+
+Review an agent's **plan** before it works, **revert** a turn cleanly, and **steer** a running
+session — the controls that make a long-running agent trustworthy:
+
+```
+POST /channels/:cid/plans                                  { agentMemberId, task }   # propose (blocks)
+POST /channels/:cid/plans/:id/decide   { decision: approve | approve_with_feedback | reject, feedback? }
+POST /channels/:cid/agent-sessions/:id/checkpoint          # capture a turn (files + conversation)
+POST /channels/:cid/agent-sessions/:id/turns/:tid/revert   # restore both to before that turn
+POST /channels/:cid/agent-sessions/:id/steer              { guidance }               # redirect a live run
+```
+
+**Plan mode** runs the agent with `AGENT_PLAN_MODE=1` so it proposes a plan and does no work; no
+execution launches until a human approves (optionally with feedback, which threads into the execution
+task) or rejects. **Checkpoints** reuse the #51 worktree: each turn is a `commitTurn` snapshot + a
+conversation cursor, and **revert** does a `git reset --hard` **and** soft-deletes the messages after
+that point — files and chat return together. **Steering** injects guidance into the live process
+(LocalRuntime stdin) and records it in the channel. Checkpoint/revert need a configured git repo
+(`GIT_WORKSPACE_REPO`); plan mode and steering do not. See
+[docs/specs/30-plan-checkpoints-steering.md](docs/specs/30-plan-checkpoints-steering.md) and
+[ADR-0030](docs/adrs/0030-plan-checkpoints-steering.md); demo:
+`scripts/demos/30-plan-checkpoints-steering.sh`.
+
 ## Conventions
 
 Every change follows the agent-skills lifecycle: **DEFINE** (spec) → **PLAN** →

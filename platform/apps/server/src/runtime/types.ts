@@ -61,6 +61,12 @@ export interface RunningSession {
   wait(): Promise<RuntimeResult>;
   /** Force teardown (idle/wall-clock reaper, explicit cancel). Idempotent. */
   cancel(reason: TerminalReason): Promise<void>;
+  /**
+   * Inject steering guidance into the live agent process (#53). Optional, like {@link sandboxId} —
+   * `LocalRuntime` implements it (writes to the harness stdin); `SandboxRuntime` and test fakes may
+   * omit it, in which case `SessionManager.steer` reports the guidance was not delivered.
+   */
+  steer?(text: string): Promise<void>;
 }
 
 /** Why a session ended — maps onto a persisted {@link SessionStatus}. */

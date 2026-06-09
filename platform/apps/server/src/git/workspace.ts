@@ -131,6 +131,21 @@ export class GitWorkspaceService {
     return { branch, baseBranch: base, mode, patch, files: parseNumstat(numstat) };
   }
 
+  /** The current HEAD sha of a session's worktree — the baseline checkpoint when work begins (#53). */
+  async currentHeadSha(sessionId: string): Promise<string> {
+    const head = await this.git(this.worktreePathFor(sessionId), ["rev-parse", "HEAD"]);
+    return head.trim();
+  }
+
+  /**
+   * Hard-reset a session's worktree to a prior checkpoint sha (#53 revert — the FILES half). `sha`
+   * always comes from a server-stored checkpoint (`commitTurn` / {@link currentHeadSha}), never client
+   * input, and runs as argv in the session's own worktree (no shell — the #50 rule).
+   */
+  async resetTo(sessionId: string, sha: string): Promise<void> {
+    await this.git(this.worktreePathFor(sessionId), ["reset", "--hard", sha]);
+  }
+
   /** Remove a session's worktree (best-effort cleanup; never throws). */
   async removeWorktree(sessionId: string): Promise<void> {
     const cwd = this.worktreePathFor(sessionId);

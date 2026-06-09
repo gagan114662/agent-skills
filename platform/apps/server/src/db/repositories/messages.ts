@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, count } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, count } from "drizzle-orm";
 import { db } from "../index.js";
 import { messages } from "../schema/index.js";
 
@@ -83,6 +83,45 @@ export async function countReplies(rootId: string): Promise<number> {
 /** Soft-delete: tombstones the message but keeps the row (preserves threads). */
 export async function softDeleteMessage(id: string): Promise<void> {
   await db.update(messages).set({ deletedAt: new Date() }).where(eq(messages.id, id));
+}
+
+/**
+ * The conversation cursor for checkpoints (#53): the id of the channel's most recent non-deleted
+ * message, or null when the channel is empty. Ids are time-sortable UUIDv7, so "most recent" is
+ * simply the max id — and `id > cursor` means "created after the cursor".
+ */
+export async function latestMessageId(channelId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
+    .orderBy(desc(messages.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
+ * Soft-delete every non-deleted message in the channel created strictly after `afterMessageId` (the
+ * conversation half of a checkpoint revert, #53). Returns how many were tombstoned. A null cursor is
+ * a no-op (nothing to truncate). Scoped to the one channel — never touches other channels' messages.
+ */
+export async function softDeleteMessagesAfter(
+  channelId: string,
+  afterMessageId: string | null,
+): Promise<number> {
+  if (!afterMessageId) return 0;
+  const rows = await db
+    .update(messages)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(messages.channelId, channelId),
+        isNull(messages.deletedAt),
+        gt(messages.id, afterMessageId),
+      ),
+    )
+    .returning({ id: messages.id });
+  return rows.length;
 }
 
 /** True iff the message exists *in this workspace* — the #14 link-target IDOR guard. */

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -94,5 +94,26 @@ describe("GitWorkspaceService", () => {
     expect(a.cwd).not.toBe(b.cwd);
     expect(a.branch).toBe("agent/sessA");
     expect(b.branch).toBe("agent/sessB");
+  });
+
+  it("resetTo restores the worktree to a prior checkpoint sha (#53 revert)", async () => {
+    const { cwd } = await svc.prepare("sessReset");
+    const base = await svc.currentHeadSha("sessReset");
+    expect(base).toMatch(/^[0-9a-f]{40}$/);
+
+    writeFileSync(join(cwd, "a.ts"), "export const a = 1;\n");
+    const sha1 = await svc.commitTurn("sessReset", "turn 1");
+    writeFileSync(join(cwd, "b.ts"), "export const b = 2;\n");
+    await svc.commitTurn("sessReset", "turn 2");
+
+    // Revert to turn 1: file B disappears, file A remains.
+    await svc.resetTo("sessReset", sha1!);
+    expect(existsSync(join(cwd, "a.ts"))).toBe(true);
+    expect(existsSync(join(cwd, "b.ts"))).toBe(false);
+
+    // Revert to the baseline: both files are gone.
+    await svc.resetTo("sessReset", base);
+    expect(existsSync(join(cwd, "a.ts"))).toBe(false);
+    expect(existsSync(join(cwd, "b.ts"))).toBe(false);
   });
 });
