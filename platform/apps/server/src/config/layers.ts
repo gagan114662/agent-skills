@@ -11,6 +11,11 @@ export function mergeSettings(layers: Settings[]): Settings {
     if (layer.dataPrivacyMode !== undefined) out.dataPrivacyMode = layer.dataPrivacyMode;
     if (layer.filesToCopy !== undefined) out.filesToCopy = [...layer.filesToCopy];
     if (layer.workspaceRoot !== undefined) out.workspaceRoot = layer.workspaceRoot;
+    // #57 record fields: a higher layer fully owns the value (replace, consistent with arrays). A
+    // partial map in a higher layer therefore wins outright — it is not deep-merged with lower ones.
+    if (layer.slashCommands !== undefined) out.slashCommands = { ...layer.slashCommands };
+    if (layer.mcpServers !== undefined) out.mcpServers = { ...layer.mcpServers };
+    if (layer.skills !== undefined) out.skills = [...layer.skills];
   }
   return out;
 }
@@ -22,5 +27,8 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     dataPrivacyMode: merged.dataPrivacyMode ?? CONFIG_DEFAULTS.dataPrivacyMode,
     filesToCopy: merged.filesToCopy ?? [...CONFIG_DEFAULTS.filesToCopy],
     workspaceRoot: merged.workspaceRoot ?? CONFIG_DEFAULTS.workspaceRoot,
+    slashCommands: merged.slashCommands ?? { ...CONFIG_DEFAULTS.slashCommands },
+    mcpServers: merged.mcpServers ?? { ...CONFIG_DEFAULTS.mcpServers },
+    skills: merged.skills ?? [...CONFIG_DEFAULTS.skills],
   };
 }

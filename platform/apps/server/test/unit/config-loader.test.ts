@@ -51,7 +51,12 @@ describe("config layering (#58 — env < user < repo < managed)", () => {
         { RELOAD_WORKSPACE_ROOT: "ws-from-env" },
       ),
     );
-    expect(cfg).toEqual({ dataPrivacyMode: true, filesToCopy: ["A.md"], workspaceRoot: "ws-from-env" });
+    expect(cfg).toEqual({
+      ...CONFIG_DEFAULTS,
+      dataPrivacyMode: true,
+      filesToCopy: ["A.md"],
+      workspaceRoot: "ws-from-env",
+    });
   });
 
   it("repo overrides user; user overrides env (without managed present)", () => {
@@ -131,7 +136,12 @@ describe("env layer parsing (#58)", () => {
       },
       readFile: () => undefined,
     });
-    expect(json).toEqual({ dataPrivacyMode: true, filesToCopy: ["A.md", "B.md"], workspaceRoot: "/srv/ws" });
+    expect(json).toEqual({
+      ...CONFIG_DEFAULTS,
+      dataPrivacyMode: true,
+      filesToCopy: ["A.md", "B.md"],
+      workspaceRoot: "/srv/ws",
+    });
 
     const csv = loadConfig(undefined, {
       env: { RELOAD_FILES_TO_COPY: "A.md, B.md" },
@@ -145,6 +155,6 @@ describe("mergeLayers (pure precedence helper)", () => {
   it("applies layers low→high, last-defined-per-field wins, arrays replace not concat", () => {
     expect(
       mergeLayers([{ filesToCopy: ["a"] }, { filesToCopy: ["b", "c"] }, { workspaceRoot: "w" }]),
-    ).toEqual({ dataPrivacyMode: false, filesToCopy: ["b", "c"], workspaceRoot: "w" });
+    ).toEqual({ ...CONFIG_DEFAULTS, dataPrivacyMode: false, filesToCopy: ["b", "c"], workspaceRoot: "w" });
   });
 });

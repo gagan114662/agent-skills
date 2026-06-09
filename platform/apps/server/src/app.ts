@@ -15,6 +15,11 @@ import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import {
+  integrationsRoutes,
+  defaultIntegrationsOptions,
+  type IntegrationsRoutesOptions,
+} from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
@@ -56,6 +61,12 @@ export interface BuildAppOptions {
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
+  /**
+   * #57 deep dev integrations. Tests pass fakes (e.g. a fake IssueProvider, an in-memory config
+   * loader); production builds the defaults over the shared SessionManager. Partial — anything
+   * omitted falls back to the default.
+   */
+  integrations?: Partial<IntegrationsRoutesOptions>;
   /** #51 git/PR/review: the worktree+diff service (opt-in; absent → git/PR routes 501). */
   gitWorkspace?: GitWorkspaceService;
   /** #51 git/PR/review: the GitHub provider (tests inject a fake; default `none` from env). */
@@ -98,6 +109,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log);
   app.register(agentSessionRoutes, { sessionManager });
+  // #57 deep dev integrations: issue→session, project slash commands, agent-config sync. Reuses the
+  // same SessionManager and the base-launch gating; provider tokens stay on the #25 secrets path.
+  app.register(
+    integrationsRoutes,
+    defaultIntegrationsOptions(sessionManager, { logger: app.log, ...opts.integrations }),
+  );
   // #59 custom subagents / agent personas: define an @-mentionable persona (prompt + tool ceiling),
   // then invoke it in a channel. It runs the real harness AS its own agent member via the same
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
