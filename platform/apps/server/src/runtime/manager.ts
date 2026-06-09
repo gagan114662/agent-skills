@@ -11,6 +11,7 @@ import {
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
+import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
@@ -67,6 +68,11 @@ export interface SessionManagerDeps {
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
+  /**
+   * Optional workspace seam (#58): prepares a per-session working dir + copies files-to-copy into
+   * it before the runtime starts. When absent, the harness inherits the server cwd (#25 behavior).
+   */
+  workspace?: WorkspaceProvisioner;
 }
 
 export interface LaunchInput {
@@ -224,6 +230,11 @@ export class SessionManager {
     let result: RuntimeResult = { status: "failed", exitCode: null };
     try {
       const provisionStart = Date.now();
+      // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
+      const prepared = await this.deps.workspace?.prepare({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+      });
       const running = await this.deps.runtime.start(
         {
           sessionId: session.id,
@@ -231,6 +242,7 @@ export class SessionManager {
           command: this.deps.harness.command,
           args: this.deps.harness.args,
           env: { AGENT_TASK: task },
+          cwd: prepared?.cwd,
           secrets,
           caps: this.deps.caps,
         },

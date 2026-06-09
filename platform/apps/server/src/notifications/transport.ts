@@ -6,6 +6,7 @@
  * fail the in-app notification or the REST write (ADR-0008).
  */
 import type { NotificationType } from "./types.js";
+import { egressAllowed } from "../config/egress.js";
 
 /** The durable notification handed to a transport (mirrors the persisted row + WS payload). */
 export interface NotificationRecord {
@@ -64,7 +65,14 @@ export class WebhookTransport implements NotificationTransport {
   }
 }
 
-/** Pick the transport for a deployment: webhook when a URL is configured, else no-op. */
-export function selectTransport(webhookUrl?: string): NotificationTransport {
+/**
+ * Pick the transport for a deployment: webhook when a URL is configured, else no-op. Under
+ * data-privacy mode (#58) the webhook is forced off — nothing is forwarded off-platform.
+ */
+export function selectTransport(
+  webhookUrl?: string,
+  opts: { dataPrivacyMode?: boolean } = {},
+): NotificationTransport {
+  if (!egressAllowed({ dataPrivacyMode: opts.dataPrivacyMode ?? false })) return new NoopTransport();
   return webhookUrl ? new WebhookTransport(webhookUrl) : new NoopTransport();
 }

@@ -1,4 +1,6 @@
 import { loadEnv } from "../env.js";
+import { loadConfig } from "../config/loader.js";
+import { FileConfigWorkspaceProvisioner } from "../config/workspace.js";
 import {
   createAgentSession,
   finalizeSession,
@@ -45,6 +47,9 @@ export const channelPoster: ChannelPoster = {
  */
 export function createDefaultSessionManager(logger: SessionLogger): SessionManager {
   const env = loadEnv().agent;
+  // #58: server-level config (managed-global) gates deployment-wide egress; per-tenant managed
+  // overrides apply per session inside the workspace provisioner.
+  const serverConfig = loadConfig();
   return new SessionManager({
     runtime: createRuntime(env),
     store: dbStore,
@@ -53,7 +58,10 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     caps: env.caps,
     logger,
-    // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set.
-    tracer: createBraintrustTracer(),
+    // #58: copy configured files-to-copy into each session's working dir, per the layered config.
+    workspace: new FileConfigWorkspaceProvisioner({ logger }),
+    // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set, and forced off
+    // under data-privacy mode (#58).
+    tracer: createBraintrustTracer({ dataPrivacyMode: serverConfig.dataPrivacyMode }),
   });
 }
