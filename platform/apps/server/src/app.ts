@@ -15,6 +15,7 @@ import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import { subagentRoutes } from "./routes/subagents.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
 import { teamRoutes } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
@@ -88,6 +89,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log);
   app.register(agentSessionRoutes, { sessionManager });
+  // #59 custom subagents / agent personas: define an @-mentionable persona (prompt + tool ceiling),
+  // then invoke it in a channel. It runs the real harness AS its own agent member via the same
+  // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
+  // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
+  app.register(subagentRoutes, { sessionManager });
   app.addHook("onClose", async () => {
     await sessionManager.shutdown();
   });

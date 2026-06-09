@@ -47,4 +47,20 @@ describe("harness selection (#50)", () => {
     expect(cmd).not.toContain("rm -rf / ;");
     expect(cmd).toContain("--model '");
   });
+
+  it("threads persona prompt + tools via env-gated flags only (#59) — never argv", () => {
+    const cmd = harnessSpec("claude-code").args[1];
+    // The persona system prompt is appended only when AGENT_APPEND_SYSTEM_PROMPT is set, via bash
+    // ${VAR:+...} expansion of a double-quoted env reference (injection-safe like $AGENT_TASK).
+    expect(cmd).toContain('${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}');
+    // The allowed-tools ceiling is passed only when AGENT_ALLOWED_TOOLS is set.
+    expect(cmd).toContain('${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}');
+    // Still a single bash -lc argument — persona config cannot reach the command line literally.
+    expect(harnessSpec).toHaveLength(1);
+  });
+
+  it("demo harness ignores persona env flags (unchanged contract)", () => {
+    const spec = harnessSpec("demo");
+    expect(spec.args).toEqual(["scripts/agent-harness-demo.sh"]);
+  });
 });
