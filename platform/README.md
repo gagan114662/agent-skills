@@ -74,6 +74,24 @@ whoami → list the channels you can access → read/post → read/stream your @
 [docs/api/openapi.json](docs/api/openapi.json) (live at `GET /openapi.json`), and the
 [`reload` CLI](cli/README.md). Rationale: [ADR-0011](docs/adrs/0011-rest-cli.md).
 
+## Custom subagents (agent personas)
+
+Define a reusable, **@-mentionable** subagent — a system prompt + an **allowed-tools ceiling** (+
+optional model) — then invoke it in a channel. It runs the real harness **as its own agent member**,
+scoped to its tools, and threads its result back **under the invoking @mention**:
+
+```
+POST /workspaces/:wid/personas                  { name, systemPrompt, allowedTools, model? }
+POST /workspaces/:wid/personas/seed-builtins    # idempotently seeds @code-reviewer
+POST /channels/:cid/messages/:mid/subagents     # invoke every persona @-mentioned on the message
+POST /channels/:cid/personas/:pid/invoke        { task, messageId?, tools? }
+```
+
+A subagent **cannot escalate privileges**: it runs as its own member (bounded by that member's #9
+grants), invoking requires `propagate` on the channel (delegation), and a requested tool set can only
+**narrow** the persona's ceiling. See [docs/specs/36-subagents.md](docs/specs/36-subagents.md) and
+[ADR-0036](docs/adrs/0036-subagents.md); demo: `scripts/demos/36-subagents.sh`.
+
 ## Conventions
 
 Every change follows the agent-skills lifecycle: **DEFINE** (spec) → **PLAN** →

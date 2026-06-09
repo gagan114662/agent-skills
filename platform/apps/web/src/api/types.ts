@@ -10,6 +10,8 @@
  *  - identity carries `kind: "human" | "agent"` (there is no `isAgent` boolean)
  */
 
+import type { PullRequestDto, ReviewCommentDto } from "@reload/shared";
+
 export type MemberKind = "human" | "agent";
 export type ChannelKind = "public" | "dm";
 export type PresenceStatus = "online" | "away" | "offline";
@@ -104,6 +106,22 @@ export interface AgentProfile {
   createdAt: string;
 }
 
+/**
+ * A summary of an agent session for the review surface (#51), from `GET /channels/:cid/agent-sessions`.
+ * The git refs are set once the session has run in a worktree (null otherwise).
+ */
+export interface AgentSessionSummary {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: string;
+  result: string | null;
+  branch: string | null;
+  baseBranch: string | null;
+  headSha: string | null;
+  createdAt: string;
+}
+
 /** Search envelope shared by all three search endpoints. */
 export interface SearchEnvelope<T> {
   query: string;
@@ -130,5 +148,7 @@ export type ServerEvent =
   | { type: "mention"; mention: MentionEvent }
   | { type: "notification"; notification: NotificationEvent }
   | { type: "presence"; memberId: string; status: PresenceStatus }
+  | { type: "pull_request"; pullRequest: PullRequestDto }
+  | { type: "review_comment"; comment: ReviewCommentDto }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };

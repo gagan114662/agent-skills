@@ -64,6 +64,23 @@ export async function requireChannelCapability(
 }
 
 /**
+ * The effective channel capability for an **arbitrary** member (not the request identity), using the
+ * same #4-membership + #9-grant layering as {@link requireChannelCapability}. Returns null when the
+ * member is not on the channel (and has no explicit grant). Used by the subagent dispatcher (#59) to
+ * assert a persona's own member is permitted in the target channel before launching it as that
+ * member — the persona can never act beyond its own grants.
+ */
+export async function effectiveChannelCapabilityFor(
+  workspaceId: string,
+  memberId: string,
+  channelId: string,
+): Promise<Capability | null> {
+  const isMember = await isChannelMember(channelId, memberId);
+  const explicit = await getCapability(workspaceId, memberId, "channel", channelId);
+  return effectiveCapability(explicit, isMember);
+}
+
+/**
  * Load a task and assert it belongs to the caller's workspace (#14). Tasks are workspace-scoped
  * (membership is the gate, no per-task RBAC yet), so this is the single access call task-id routes
  * make — it carries the #3 IDOR discipline: a task in another workspace is a 404, never readable.
