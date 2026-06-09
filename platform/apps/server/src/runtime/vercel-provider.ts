@@ -2,39 +2,78 @@ import type { OutputStream } from "./types.js";
 import type { SandboxCreateOpts, SandboxInstance, SandboxProvider } from "./sandbox.js";
 
 /**
- * Production adapter mapping {@link SandboxProvider} onto the Vercel Sandbox SDK
- * (`@vercel/sandbox`). It is loaded via a *dynamic import behind a runtime variable* so the SDK
- * stays an OPTIONAL dependency: tests/CI never reach this file (they inject a fake provider), and
- * the committed lockfile is not forced to carry the SDK. Install `@vercel/sandbox` and set
- * `VERCEL_TOKEN` / `VERCEL_TEAM_ID` / `VERCEL_PROJECT_ID` to use the `sandbox` backend in prod.
+ * Production adapter mapping {@link SandboxProvider} onto the real Vercel Sandbox SDK
+ * (`@vercel/sandbox` — https://vercel.com/docs/vercel-sandbox/sdk-reference). This is the
+ * "close the laptop, agents keep working" backend: one ephemeral Firecracker microVM per session,
+ * the same primitive Conductor's Cloud Workspaces are built on.
  *
- * The SDK surface is narrowed to exactly what we use; field names track the published SDK and may
- * need a bump per SDK version (documented in ADR-0025 as a follow-up risk).
+ * The SDK is loaded via a *dynamic import behind a runtime variable* so it stays an OPTIONAL
+ * dependency: the test/CI path injects a fake provider and never loads it, and the lockfile isn't
+ * forced to carry the SDK. To use the `sandbox` backend:
+ *   1. Install it:  pnpm --filter @reload/server add @vercel/sandbox
+ *   2. Authenticate with EITHER a Vercel OIDC token (VERCEL_OIDC_TOKEN — recommended on Vercel,
+ *      via `vercel link && vercel env pull`) OR, off-Vercel, an access token:
+ *      VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID.
+ *   3. Set AGENT_RUNTIME=sandbox.
+ *
+ * The SDK surface below is the exact slice we use, matching the published sdk-reference
+ * (Sandbox.create / runCommand / Command.logs / Command.wait / snapshot / stop).
  */
 
-/** Minimal slice of the `@vercel/sandbox` module we depend on. */
-interface VercelSdk {
-  Sandbox: {
-    create(opts: {
-      timeout?: number;
-      resources?: { memory?: number };
-      source?: { type: "snapshot"; id: string };
-      env?: Record<string, string>;
-    }): Promise<VercelSandboxHandle>;
-  };
-}
+/** A streamed log line from a running command (`Command.logs()` yields these). */
+type LogChunk = { stream: "stdout" | "stderr"; data: string };
 
-interface VercelCommandHandle {
-  stdout?: AsyncIterable<Uint8Array | string>;
-  stderr?: AsyncIterable<Uint8Array | string>;
+interface VercelCommand {
+  /** Live structured log stream while the command runs. */
+  logs(): AsyncIterable<LogChunk>;
+  /** Resolves with the terminal exit code once the command finishes. */
   wait(): Promise<{ exitCode: number }>;
 }
 
-interface VercelSandboxHandle {
-  sandboxId: string;
-  runCommand(opts: { cmd: string; args: string[] }): Promise<VercelCommandHandle>;
-  createSnapshot?(): Promise<{ snapshotId: string }>;
-  stop(): Promise<void>;
+interface VercelSandbox {
+  // The identifier's accessor name has drifted across SDK versions: docs say `sandboxId`, but
+  // @vercel/sandbox 2.1.x exposes it as `name`. We read whichever is present.
+  readonly sandboxId?: string;
+  readonly name?: string;
+  runCommand(params: {
+    cmd: string;
+    args?: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    detached: true;
+  }): Promise<VercelCommand>;
+  /** Capture filesystem + packages for fast resume. Auto-stops the sandbox. */
+  snapshot(opts?: { expiration?: number }): Promise<{ snapshotId: string }>;
+  stop(opts?: { blocking?: boolean }): Promise<unknown>;
+}
+
+interface GitSourceArg {
+  type: "git";
+  url: string;
+  revision?: string;
+  depth?: number;
+  username?: string;
+  password?: string;
+}
+interface SnapshotSourceArg {
+  type: "snapshot";
+  snapshotId: string;
+}
+
+interface VercelSdk {
+  Sandbox: {
+    create(opts: {
+      runtime?: string;
+      source?: GitSourceArg | SnapshotSourceArg;
+      resources?: { vcpus?: number };
+      timeout?: number;
+      env?: Record<string, string>;
+      // Access-token auth for non-Vercel hosts; omitted values fall back to OIDC env.
+      token?: string;
+      teamId?: string;
+      projectId?: string;
+    }): Promise<VercelSandbox>;
+  };
 }
 
 async function loadSdk(): Promise<VercelSdk> {
@@ -43,28 +82,19 @@ async function loadSdk(): Promise<VercelSdk> {
     return (await import(specifier)) as unknown as VercelSdk;
   } catch {
     throw new Error(
-      "AGENT_RUNTIME=sandbox requires the '@vercel/sandbox' package. Install it and set " +
-        "VERCEL_TOKEN / VERCEL_TEAM_ID / VERCEL_PROJECT_ID, or run with AGENT_RUNTIME=local.",
+      "AGENT_RUNTIME=sandbox requires the '@vercel/sandbox' package. Install it " +
+        "(pnpm --filter @reload/server add @vercel/sandbox) and authenticate with VERCEL_OIDC_TOKEN, " +
+        "or VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID — or run with AGENT_RUNTIME=local.",
     );
   }
 }
 
-async function pump(
-  iter: AsyncIterable<Uint8Array | string> | undefined,
-  stream: OutputStream,
-  onOutput: (stream: OutputStream, chunk: string) => void,
-): Promise<void> {
-  if (!iter) return;
-  for await (const chunk of iter) {
-    onOutput(stream, typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
-  }
-}
-
 class VercelSandboxInstance implements SandboxInstance {
-  constructor(private readonly handle: VercelSandboxHandle) {}
+  constructor(private readonly sandbox: VercelSandbox) {}
 
   get id(): string {
-    return this.handle.sandboxId;
+    // `sandboxId` (docs) / `name` (SDK 2.1.x) / `id` (older) — read whichever the SDK provides.
+    return this.sandbox.sandboxId ?? this.sandbox.name ?? (this.sandbox as { id?: string }).id ?? "";
   }
 
   async run(
@@ -72,25 +102,24 @@ class VercelSandboxInstance implements SandboxInstance {
     args: string[],
     onOutput: (stream: OutputStream, chunk: string) => void,
   ): Promise<{ exitCode: number }> {
-    const cmd = await this.handle.runCommand({ cmd: command, args });
-    // Stream both pipes concurrently; resolve with the exit code once the command finishes.
-    await Promise.all([
-      pump(cmd.stdout, "stdout", onOutput),
-      pump(cmd.stderr, "stderr", onOutput),
-    ]);
-    return cmd.wait();
+    // Detached so we can stream `logs()` live (resets the orchestrator's idle timer) and still
+    // await the terminal exit code via `wait()`.
+    const cmd = await this.sandbox.runCommand({ cmd: command, args, detached: true });
+    for await (const log of cmd.logs()) {
+      onOutput(log.stream, log.data);
+    }
+    const { exitCode } = await cmd.wait();
+    return { exitCode };
   }
 
   async snapshot(): Promise<string> {
-    if (!this.handle.createSnapshot) {
-      throw new Error("snapshots not supported by this SDK version");
-    }
-    const { snapshotId } = await this.handle.createSnapshot();
+    // snapshot() captures filesystem + packages and auto-stops the VM; a later stop() is a no-op.
+    const { snapshotId } = await this.sandbox.snapshot();
     return snapshotId;
   }
 
-  stop(): Promise<void> {
-    return this.handle.stop();
+  async stop(): Promise<void> {
+    await this.sandbox.stop();
   }
 }
 
@@ -98,14 +127,32 @@ class VercelSandboxInstance implements SandboxInstance {
 export class VercelSandboxProvider implements SandboxProvider {
   async create(opts: SandboxCreateOpts): Promise<SandboxInstance> {
     const sdk = await loadSdk();
-    // Secrets and non-secret env are both injected as env at provision — never written to disk,
-    // so a later snapshot (filesystem only) cannot carry them.
-    const handle = await sdk.Sandbox.create({
+
+    // Source precedence: a fresh repo clone (agent-on-a-branch) > resume from a snapshot > empty.
+    const source: GitSourceArg | SnapshotSourceArg | undefined = opts.source
+      ? {
+          type: "git",
+          url: opts.source.url,
+          revision: opts.source.revision,
+          depth: opts.source.depth,
+          username: opts.source.username,
+          password: opts.source.password,
+        }
+      : opts.snapshotId
+        ? { type: "snapshot", snapshotId: opts.snapshotId }
+        : undefined;
+
+    const sandbox = await sdk.Sandbox.create({
+      runtime: process.env.VERCEL_SANDBOX_RUNTIME || "node24",
+      source,
+      resources: opts.vcpus ? { vcpus: opts.vcpus } : undefined,
       timeout: opts.caps.wallClockMs,
-      resources: opts.caps.memoryMb ? { memory: opts.caps.memoryMb } : undefined,
-      source: opts.snapshotId ? { type: "snapshot", id: opts.snapshotId } : undefined,
+      // Secrets + non-secret env injected at provision; never written into a snapshot's filesystem.
       env: { ...opts.env, ...opts.secrets },
+      token: process.env.VERCEL_TOKEN,
+      teamId: process.env.VERCEL_TEAM_ID,
+      projectId: process.env.VERCEL_PROJECT_ID,
     });
-    return new VercelSandboxInstance(handle);
+    return new VercelSandboxInstance(sandbox);
   }
 }

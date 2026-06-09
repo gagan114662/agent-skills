@@ -20,6 +20,21 @@ export interface SandboxProvider {
   create(opts: SandboxCreateOpts): Promise<SandboxInstance>;
 }
 
+/**
+ * Optional Git source cloned into the sandbox at provision time. Mirrors Conductor's model where
+ * each agent works on an isolated branch of your codebase (`revision`). Credentials are used only
+ * to clone a private repo and are never persisted into a snapshot.
+ */
+export interface SandboxGitSource {
+  url: string;
+  /** Branch, tag, or commit to check out. */
+  revision?: string;
+  /** Shallow-clone depth for large repos (faster spin-up). */
+  depth?: number;
+  username?: string;
+  password?: string;
+}
+
 export interface SandboxCreateOpts {
   sessionId: string;
   workspaceId: string;
@@ -29,6 +44,10 @@ export interface SandboxCreateOpts {
   secrets: Record<string, string>;
   /** Resume key: a prior snapshot for fast spin-up, if any. */
   snapshotId?: string;
+  /** Optional repo to clone into the sandbox (Conductor "agent on a branch" model). */
+  source?: SandboxGitSource;
+  /** Optional vCPU count for the microVM (defaults to the SDK default of 2). */
+  vcpus?: number;
   caps: ResourceCaps;
 }
 
