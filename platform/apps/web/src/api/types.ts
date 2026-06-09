@@ -119,7 +119,25 @@ export interface AgentSessionSummary {
   branch: string | null;
   baseBranch: string | null;
   headSha: string | null;
+  /** Model/provider selection (#52) the session ran with; null when none was chosen. */
+  provider: ProviderKind | null;
+  model: string | null;
+  effort: EffortLevel | null;
+  mode: SessionMode | null;
   createdAt: string;
+}
+
+/** Model/provider selection vocabulary (#52) — mirrors the server's selection layer. */
+export type ProviderKind = "anthropic" | "openai" | "bedrock" | "vertex" | "custom";
+export type EffortLevel = "off" | "low" | "medium" | "high";
+export type SessionMode = "single" | "auto";
+
+/** A per-session model/provider selection a launch form collects (#52). */
+export interface ModelSelection {
+  provider: ProviderKind;
+  model: string;
+  effort: EffortLevel;
+  mode: SessionMode;
 }
 
 /** Search envelope shared by all three search endpoints. */

@@ -6,6 +6,14 @@ import { addChannelMember } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { getAgentSession, listAgentSessions } from "../db/repositories/agent-sessions.js";
 import type { SessionManager } from "../runtime/manager.js";
+import { loadConfig } from "../config/loader.js";
+import {
+  modelPolicyFromConfig,
+  resolveSelection,
+  SelectionError,
+  type ResolvedSelection,
+  type SelectionInput,
+} from "../runtime/model-selection.js";
 
 export interface AgentSessionRoutesOptions {
   sessionManager: SessionManager;
@@ -35,9 +43,38 @@ export async function agentSessionRoutes(
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
 
-    const b = req.body as { agentMemberId?: string; task?: string };
+    const b = req.body as {
+      agentMemberId?: string;
+      task?: string;
+      provider?: string;
+      model?: string;
+      effort?: string;
+      mode?: string;
+    };
     if (!b.agentMemberId) return reply.code(400).send({ error: "agentMemberId required" });
     if (!b.task) return reply.code(400).send({ error: "task required" });
+
+    // Model/provider selection (#52). Resolve a selection only when the caller asks for one OR the
+    // tenant pins a default model — otherwise leave the session on the deployment default (unchanged
+    // behavior). A policy violation (disallowed provider/model, missing Auto pair, custom URL under
+    // data-privacy) is a content-free 400; nothing about the selection ever logs a secret.
+    let selection: ResolvedSelection | undefined;
+    const wantsSelection = Boolean(b.provider || b.model || b.effort || b.mode);
+    const config = loadConfig(id.workspaceId);
+    if (wantsSelection || config.models.defaultModel) {
+      const requested: SelectionInput = {
+        provider: b.provider,
+        model: b.model,
+        effort: b.effort,
+        mode: b.mode,
+      };
+      try {
+        selection = resolveSelection(requested, modelPolicyFromConfig(config));
+      } catch (err) {
+        if (err instanceof SelectionError) return reply.code(400).send({ error: err.message });
+        throw err;
+      }
+    }
 
     // Cross-tenant + kind guard: the runner must be an agent member of THIS workspace (IDOR).
     const target = await getWorkspaceMember(b.agentMemberId, id.workspaceId);
@@ -63,6 +100,17 @@ export async function agentSessionRoutes(
       agentMemberId: target.id,
       createdByMemberId: id.memberId,
       task: b.task,
+      // #52: the secret-free selection env (provider flags, model, thinking budget) rides the same
+      // injection-safe seam as the task/persona; the metadata is persisted on the row for audit.
+      harnessEnv: selection?.env,
+      selection: selection
+        ? {
+            provider: selection.provider,
+            model: selection.model,
+            effort: selection.effort,
+            mode: selection.mode,
+          }
+        : undefined,
     });
     // 202: accepted and running server-side; the client can disconnect now.
     return reply.code(202).send({
@@ -70,6 +118,10 @@ export async function agentSessionRoutes(
       status: session.status,
       runtime: session.runtime,
       agentMemberId: session.agentMemberId,
+      provider: session.provider,
+      model: session.model,
+      effort: session.effort,
+      mode: session.mode,
     });
   });
 

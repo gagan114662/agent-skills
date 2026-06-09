@@ -16,6 +16,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     if (layer.slashCommands !== undefined) out.slashCommands = { ...layer.slashCommands };
     if (layer.mcpServers !== undefined) out.mcpServers = { ...layer.mcpServers };
     if (layer.skills !== undefined) out.skills = [...layer.skills];
+    // #52 model policy: a higher layer fully owns the block (replace, consistent with records above)
+    // so a managed-layer tenant's allow-list cannot be widened by a lower layer.
+    if (layer.models !== undefined) out.models = { ...layer.models };
   }
   return out;
 }
@@ -30,5 +33,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     slashCommands: merged.slashCommands ?? { ...CONFIG_DEFAULTS.slashCommands },
     mcpServers: merged.mcpServers ?? { ...CONFIG_DEFAULTS.mcpServers },
     skills: merged.skills ?? [...CONFIG_DEFAULTS.skills],
+    models: merged.models ?? { ...CONFIG_DEFAULTS.models },
   };
 }

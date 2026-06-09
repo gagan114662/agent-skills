@@ -83,9 +83,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
       // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
       const harness = parseHarnessKind(source.AGENT_HARNESS);
+      // Model/provider selection (#52) flows through env Claude Code reads natively (ANTHROPIC_MODEL
+      // + provider flags), delivered per-session via the harnessEnv seam — so we no longer bake a
+      // static `--model` here. A deployment-wide default ANTHROPIC_MODEL in the process env still
+      // applies (the harness emits an env-gated `--model "$ANTHROPIC_MODEL"`); per-session selection
+      // overrides it.
       const spec = harnessSpec(harness, {
         claudeBin: source.CLAUDE_BIN,
-        model: source.ANTHROPIC_MODEL,
       });
       return {
         runtime: parseRuntime(source.AGENT_RUNTIME),
