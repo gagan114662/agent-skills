@@ -46,9 +46,24 @@ export interface SandboxCreateOpts {
   snapshotId?: string;
   /** Optional repo to clone into the sandbox (Conductor "agent on a branch" model). */
   source?: SandboxGitSource;
+  /**
+   * Working dir for the harness inside the sandbox (#58/#51). Threaded from {@link AgentJob.cwd};
+   * undefined → the sandbox's default cwd. The provider applies it when running the command.
+   */
+  cwd?: string;
   /** Optional vCPU count for the microVM (defaults to the SDK default of 2). */
   vcpus?: number;
   caps: ResourceCaps;
+}
+
+/** Construction-time options for {@link SandboxRuntime} (the per-deployment git source, #83). */
+export interface SandboxRuntimeOptions {
+  /**
+   * Repo cloned into every session's sandbox (the Conductor "agent on an isolated branch" model).
+   * Resolved from config/env (`SANDBOX_REPO_URL`/`SANDBOX_REPO_REVISION`). Undefined → an empty
+   * sandbox (or a {@link AgentJob.snapshotId} resume), exactly as before.
+   */
+  source?: SandboxGitSource;
 }
 
 export interface SandboxInstance {
@@ -73,7 +88,10 @@ export interface SandboxInstance {
 export class SandboxRuntime implements AgentRuntime {
   readonly kind = "sandbox" as const;
 
-  constructor(private readonly provider: SandboxProvider) {}
+  constructor(
+    private readonly provider: SandboxProvider,
+    private readonly options: SandboxRuntimeOptions = {},
+  ) {}
 
   async start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
     const sandbox = await this.provider.create({
@@ -82,6 +100,11 @@ export class SandboxRuntime implements AgentRuntime {
       env: job.env,
       secrets: job.secrets,
       caps: job.caps,
+      // #83: clone the configured repo into the sandbox (agent-on-a-branch) and run in the
+      // provisioner's cwd; #82: resume from a prior snapshot when one was threaded through.
+      source: this.options.source,
+      cwd: job.cwd,
+      snapshotId: job.snapshotId,
     });
     const session = new SandboxSession(job.sessionId, sandbox);
     session.begin(job.command, job.args, hooks);

@@ -3,6 +3,7 @@ import {
   CloudWorkspaceManager,
   type CloudWorkspaceStore,
   type CloudWorkspaceLogger,
+  type CloudWorkspaceSandbox,
 } from "../../src/workspace/manager.js";
 import { InMemoryMirrorSource, InMemoryMirrorSink } from "../../src/workspace/sync.js";
 import type { CloudWorkspace, CloudWorkspaceStatus } from "../../src/db/repositories/cloud-workspaces.js";
@@ -131,6 +132,66 @@ describe("CloudWorkspaceManager — persist / sleep / wake (#55)", () => {
     const manager = new CloudWorkspaceManager({ store, logger: silentLogger });
     await manager.recordSnapshot("cw_1", "snap-xyz");
     expect(store.rows.get("cw_1")!.snapshotId).toBe("snap-xyz");
+  });
+});
+
+/** Records the live-microVM seam calls so we can assert sleep really snapshots+stops and wake resumes. */
+class FakeSandbox implements CloudWorkspaceSandbox {
+  snapshotted: string[] = [];
+  resumed: { id: string; snapshotId: string | null }[] = [];
+  constructor(private readonly snapshotResult: string | null = "snap-new") {}
+  snapshotAndStop(cloudWorkspaceId: string): Promise<string | null> {
+    this.snapshotted.push(cloudWorkspaceId);
+    return Promise.resolve(this.snapshotResult);
+  }
+  resume(cloudWorkspaceId: string, snapshotId: string | null): Promise<void> {
+    this.resumed.push({ id: cloudWorkspaceId, snapshotId });
+    return Promise.resolve();
+  }
+}
+
+describe("CloudWorkspaceManager — real snapshot sleep/wake via the runtime (#82)", () => {
+  it("sleep snapshots+stops the live microVM and records the new snapshot as the resume key", async () => {
+    const store = new FakeStore([cw({ status: "active", snapshotId: "snap-old" })]);
+    const sandbox = new FakeSandbox("snap-new");
+    const manager = new CloudWorkspaceManager({ store, logger: silentLogger, sandbox });
+
+    const slept = await manager.sleep("cw_1", "ws_1");
+
+    expect(sandbox.snapshotted).toEqual(["cw_1"]); // the live VM was snapshot + stopped
+    expect(store.rows.get("cw_1")!.snapshotId).toBe("snap-new"); // recorded on teardown
+    expect(store.rows.get("cw_1")!.status).toBe("sleeping");
+    expect(slept).toEqual({ status: "sleeping", snapshotId: "snap-new" });
+  });
+
+  it("sleep with no live sandbox keeps the previously retained snapshot (still sleeps)", async () => {
+    const store = new FakeStore([cw({ status: "active", snapshotId: "snap-old" })]);
+    const sandbox = new FakeSandbox(null); // nothing live to snapshot
+    const manager = new CloudWorkspaceManager({ store, logger: silentLogger, sandbox });
+
+    const slept = await manager.sleep("cw_1", "ws_1");
+
+    expect(store.rows.get("cw_1")!.snapshotId).toBe("snap-old");
+    expect(slept).toEqual({ status: "sleeping", snapshotId: "snap-old" });
+  });
+
+  it("wake resumes the durable microVM from the retained snapshot (fed into the next create)", async () => {
+    const store = new FakeStore([cw({ status: "sleeping", snapshotId: "snap-new" })]);
+    const sandbox = new FakeSandbox();
+    const manager = new CloudWorkspaceManager({ store, logger: silentLogger, sandbox });
+
+    const woken = await manager.wake("cw_1", "ws_1");
+
+    expect(sandbox.resumed).toEqual([{ id: "cw_1", snapshotId: "snap-new" }]);
+    expect(store.rows.get("cw_1")!.status).toBe("active");
+    expect(woken).toEqual({ status: "active", snapshotId: "snap-new" });
+  });
+
+  it("without a sandbox seam (default local), sleep/wake are status-only (back-compat)", async () => {
+    const store = new FakeStore([cw({ status: "active", snapshotId: "snap-123" })]);
+    const manager = new CloudWorkspaceManager({ store, logger: silentLogger });
+    expect((await manager.sleep("cw_1", "ws_1"))?.snapshotId).toBe("snap-123");
+    expect((await manager.wake("cw_1", "ws_1"))?.snapshotId).toBe("snap-123");
   });
 });
 

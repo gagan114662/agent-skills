@@ -1,6 +1,7 @@
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
+import type { SandboxGitSource } from "./runtime/sandbox.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -99,6 +100,12 @@ export interface AgentEnv {
   harnessArgs: string[];
   /** Hard per-session resource + wall-clock caps. */
   caps: ResourceCaps;
+  /**
+   * Optional repo cloned into each sandbox session (#83, Conductor "agent on an isolated branch").
+   * Resolved from `SANDBOX_REPO_URL`/`SANDBOX_REPO_REVISION`; undefined → an empty sandbox. Read by
+   * the sandbox backend only — `local`/`demo` (the default) ignores it.
+   */
+  sandboxSource?: SandboxGitSource;
 }
 
 function parseRuntime(value: string | undefined): RuntimeKind {
@@ -132,6 +139,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       const spec = harnessSpec(harness, {
         claudeBin: source.CLAUDE_BIN,
       });
+      // #83: a repo to clone into each sandbox session (agent-on-a-branch). Previously only the
+      // smoke script read these; now the server threads it into provider.create via the factory.
+      const repoUrl = source.SANDBOX_REPO_URL?.trim();
+      const repoRevision = source.SANDBOX_REPO_REVISION?.trim();
+      const sandboxSource: SandboxGitSource | undefined = repoUrl
+        ? { url: repoUrl, ...(repoRevision ? { revision: repoRevision } : {}) }
+        : undefined;
       return {
         profile,
         runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
@@ -145,6 +159,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
           idleMs: num(source.AGENT_IDLE_MS, 120_000),
           memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
         },
+        sandboxSource,
       };
     })(),
     autonomy: {

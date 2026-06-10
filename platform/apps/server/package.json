@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:migrate": "tsx src/db/migrate.ts up",
     "db:rollback": "tsx src/db/migrate.ts down",
     "db:reset": "tsx src/db/migrate.ts reset",

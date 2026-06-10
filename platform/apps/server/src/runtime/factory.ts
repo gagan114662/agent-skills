@@ -11,7 +11,11 @@ import { VercelSandboxProvider } from "./vercel-provider.js";
  */
 export function createRuntime(env: AgentEnv, sandboxProvider?: SandboxProvider): AgentRuntime {
   if (env.runtime === "sandbox") {
-    return new SandboxRuntime(sandboxProvider ?? new VercelSandboxProvider());
+    // #83: thread the configured git source (SANDBOX_REPO_URL/REVISION) so each session's sandbox
+    // clones the repo (agent-on-a-branch) instead of provisioning empty.
+    return new SandboxRuntime(sandboxProvider ?? new VercelSandboxProvider(), {
+      source: env.sandboxSource,
+    });
   }
   return new LocalRuntime();
 }

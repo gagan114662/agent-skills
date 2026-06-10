@@ -23,9 +23,34 @@ export interface CloudWorkspaceLogger {
   warn(obj: unknown, msg?: string): void;
 }
 
+/**
+ * The live-microVM seam (#82): lets `sleep()` snapshot+stop the running sandbox backing a cloud
+ * workspace and `wake()` resume a durable sandbox from the retained snapshot. The real impl
+ * (`ProviderCloudWorkspaceSandbox`) wraps the #25 {@link SandboxProvider}; tests inject a fake.
+ * Absent (the default `local`/`demo` posture — no microVM to snapshot) → sleep/wake are a pure
+ * status transition exactly as before, so wiring it in changes nothing for that path.
+ */
+export interface CloudWorkspaceSandbox {
+  /**
+   * Snapshot + stop the live microVM backing this cloud workspace. Returns the new snapshot id
+   * (the resume key recorded on the workspace), or `null` if no sandbox is currently live.
+   */
+  snapshotAndStop(cloudWorkspaceId: string): Promise<string | null>;
+  /**
+   * Resume (provision) the durable microVM from `snapshotId` — fed into the next
+   * `SandboxCreateOpts.snapshotId`. `null` snapshot → a fresh sandbox. Idempotent per workspace.
+   */
+  resume(cloudWorkspaceId: string, snapshotId: string | null): Promise<void>;
+}
+
 export interface CloudWorkspaceManagerDeps {
   store: CloudWorkspaceStore;
   logger: CloudWorkspaceLogger;
+  /**
+   * Optional live-microVM seam (#82). When present, `sleep()` snapshots+stops the live sandbox and
+   * `wake()` resumes it; when absent, both are status-only (the default local/demo behavior).
+   */
+  sandbox?: CloudWorkspaceSandbox;
 }
 
 /** What a sleep/wake transition returns (the snapshot is the resume key for wake). */
@@ -50,23 +75,41 @@ export interface SyncToLocalResult {
 export class CloudWorkspaceManager {
   constructor(private readonly deps: CloudWorkspaceManagerDeps) {}
 
-  /** Put an active workspace to sleep (snapshot retained for fast wake). Idempotent. */
+  /**
+   * Put an active workspace to sleep. When a live microVM is wired (#82, sandbox runtime) this
+   * snapshots + stops it and records the snapshot as the resume key; otherwise it is a status-only
+   * transition retaining the last snapshot. Idempotent.
+   */
   async sleep(id: string, workspaceId: string): Promise<CloudWorkspaceState | null> {
     const cw = await this.deps.store.get(id, workspaceId);
     if (!cw) return null;
+    let snapshotId = cw.snapshotId;
     if (cw.status === "active") {
+      // Snapshot + stop the live microVM via the runtime, then persist the new resume key. A null
+      // result means nothing was live to snapshot → keep the previously retained snapshot.
+      const fresh = await this.deps.sandbox?.snapshotAndStop(id);
+      if (fresh) {
+        await this.deps.store.recordSnapshot(id, fresh);
+        snapshotId = fresh;
+      }
       await this.deps.store.setStatus(id, "sleeping");
       recordCloudWorkspaceSleep();
-      this.deps.logger.info({ cloudWorkspaceId: id, workspaceId }, "cloud workspace slept");
+      this.deps.logger.info({ cloudWorkspaceId: id, workspaceId, snapshotId }, "cloud workspace slept");
     }
-    return { status: "sleeping", snapshotId: cw.snapshotId };
+    return { status: "sleeping", snapshotId };
   }
 
-  /** Wake a sleeping/archived workspace, returning the snapshot to resume the next session from. */
+  /**
+   * Wake a sleeping/archived workspace. When a live microVM is wired (#82) this resumes a durable
+   * sandbox from the retained snapshot (fed into the next `SandboxCreateOpts.snapshotId`); either
+   * way it returns the snapshot the next session resumes from.
+   */
   async wake(id: string, workspaceId: string): Promise<CloudWorkspaceState | null> {
     const cw = await this.deps.store.get(id, workspaceId);
     if (!cw) return null;
     if (cw.status !== "active") {
+      // Resume the durable microVM from the retained snapshot (the #25 fast-wake path).
+      await this.deps.sandbox?.resume(id, cw.snapshotId);
       await this.deps.store.setStatus(id, "active");
       await this.deps.store.touch(id);
       recordCloudWorkspaceWake();
