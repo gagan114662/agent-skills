@@ -40,6 +40,9 @@ import type { RunProcessManager } from "./run/manager.js";
 import { deployRoutes } from "./routes/deploy.js";
 import { createDefaultDeployManager } from "./deploy/default.js";
 import type { DeployManager } from "./deploy/manager.js";
+import { billingRoutes } from "./routes/billing.js";
+import { createDefaultBillingManager } from "./billing/default.js";
+import type { BillingManager } from "./billing/manager.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { GitWorktreeReaper } from "./git/reaper.js";
@@ -98,6 +101,8 @@ export interface BuildAppOptions {
   runManager?: RunProcessManager;
   /** #73 Deploy: tests inject a DeployManager over the dry-run provider; default builds one from env. */
   deployManager?: DeployManager;
+  /** #98 Billing: tests inject a BillingManager over the none provider; default builds one from env. */
+  billingManager?: BillingManager;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
@@ -215,6 +220,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // URL is PERSISTED (the deployments table) rather than ephemeral; rollback re-promotes a prior deploy.
   const deployManager = opts.deployManager ?? createDefaultDeployManager(app.log);
   app.register(deployRoutes, { deployManager });
+  // #98 Stripe revenue rails: a FUNDed venture's deployed app charges real money INBOUND through a
+  // swappable BillingProvider (default = the no-network `none` backend; BILLING_PROVIDER=stripe switches
+  // to the real adapter, lazy). A signature-verified webhook persists deduped revenue events per workspace
+  // and turns each real payment into willingness-to-pay evidence the #96 venture scorecard consumes.
+  // Outbound money (refunds/payouts/transfers) is NEVER here — it is a #13 approval-gated, recorded-only
+  // action; payouts stay manual in the Stripe dashboard.
+  const billingManager = opts.billingManager ?? createDefaultBillingManager(app.log);
+  app.register(billingRoutes, { billingManager });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to

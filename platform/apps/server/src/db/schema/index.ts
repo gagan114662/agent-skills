@@ -18,4 +18,5 @@ export * from "./plan-proposals.js";
 export * from "./session-turns.js";
 export * from "./tenant-usage.js";
 export * from "./deployments.js";
+export * from "./revenue.js";
 export * from "./venture.js";

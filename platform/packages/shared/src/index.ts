@@ -40,7 +40,7 @@ export type ApprovalStatus =
   | "expired";
 
 /** Action types the executor registry can run (#13). */
-export type ApprovalActionType = "chat.post_message" | "external.send";
+export type ApprovalActionType = "chat.post_message" | "external.send" | "billing.refund";
 
 /** A workspace policy rule: which action types pause for a human (#13). */
 export interface ApprovalPolicyDto {
@@ -263,6 +263,44 @@ export interface DeploymentDto {
   /** A bounded tail of (redacted) build/deploy log lines, oldest first. */
   logs: string[];
   createdAt: string;
+}
+
+/** A payment link minted for a session's deployed app (#98). Server-only fields are not exposed. */
+export interface PaymentLinkDto {
+  id: string;
+  sessionId: string;
+  channelId: string;
+  /** The deployment this link collects payment for, when attached. */
+  deploymentId: string | null;
+  /** The billing backend that produced it (`none` | `stripe`). */
+  provider: string;
+  /** The hosted URL a customer pays at. */
+  url: string;
+  amountCents: number;
+  currency: string;
+  /** Recurring interval (`month`…), or null for a one-time charge. */
+  interval: string | null;
+  createdAt: string;
+}
+
+/** One recorded inbound payment surfaced to the dashboard (#98). */
+export interface RevenueEventDto {
+  id: string;
+  type: string;
+  amountCents: number;
+  currency: string;
+  status: string;
+  createdAt: string;
+}
+
+/** Revenue-per-venture summary for the #71 usage dashboard (#98). */
+export interface RevenueSummaryDto {
+  currency: string;
+  totalCents: number;
+  paymentCount: number;
+  /** Count of willingness-to-pay evidence rows (consumed by the #96 venture scorecard). */
+  evidenceCount: number;
+  recent: RevenueEventDto[];
 }
 
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):

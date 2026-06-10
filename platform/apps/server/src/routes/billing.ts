@@ -1,0 +1,193 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { PaymentLinkDto, RevenueSummaryDto } from "@reload/shared";
+import { requireIdentity, assertWorkspace } from "../auth/guard.js";
+import { requireChannelCapability } from "../auth/access.js";
+import { getAgentSession, type AgentSession } from "../db/repositories/agent-sessions.js";
+import {
+  BillingEgressBlocked,
+  BillingProviderError,
+  NoBillingConfigError,
+  type BillingManager,
+  type PaymentLink,
+  type RevenueSummary,
+} from "../billing/manager.js";
+import { WebhookVerificationError } from "../billing/webhook.js";
+import type { PriceInterval } from "../billing/provider.js";
+
+export interface BillingRoutesOptions {
+  billingManager: BillingManager;
+}
+
+const MAX_NAME_LEN = 200;
+const VALID_INTERVALS: readonly PriceInterval[] = ["day", "week", "month", "year"];
+
+/**
+ * Stripe revenue-rails routes (#98, ADR-0043). INBOUND money only:
+ *   - `POST /channels/:cid/agent-sessions/:id/billing/payment-link` — mint a product+price+payment link
+ *     for a session's deployed app (channel **write** + channel-scoped session → IDOR-safe), attach it to
+ *     the deployment, post it to the channel.
+ *   - `POST /billing/webhook/:wid` — the **unauthenticated but signature-verified** webhook receiver; it
+ *     reads the **raw** body (a parser encapsulated to this one route) and persists a deduped revenue event.
+ *   - `GET /workspaces/:wid/billing/revenue` — revenue-per-venture for the #71 usage dashboard.
+ *
+ * Outbound money (refunds/payouts/transfers) is NOT here — it is a #13 approval-gated, recorded-only
+ * action (see `approvals/runtime.ts`); payouts stay manual in the Stripe dashboard.
+ */
+export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOptions): Promise<void> {
+  const { billingManager } = opts;
+
+  async function authorize(
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<{
+    workspaceId: string;
+    memberId: string;
+    cid: string;
+    sessionId: string;
+    session: AgentSession;
+  } | null> {
+    const id = await requireIdentity(req, reply);
+    if (!id) return null;
+    const { cid, id: sessionId } = req.params as { cid: string; id: string };
+    if (!(await requireChannelCapability(id, cid, "write", reply))) return null;
+    const session = await getAgentSession(sessionId, cid);
+    if (!session) {
+      reply.code(404).send({ error: "session not found" });
+      return null;
+    }
+    return { workspaceId: id.workspaceId, memberId: id.memberId, cid, sessionId, session };
+  }
+
+  function toLinkDto(l: PaymentLink): PaymentLinkDto {
+    return {
+      id: l.id,
+      sessionId: l.sessionId,
+      channelId: l.channelId,
+      deploymentId: l.deploymentId,
+      provider: l.provider,
+      url: l.url,
+      amountCents: l.amountCents,
+      currency: l.currency,
+      interval: l.interval,
+      createdAt: l.createdAt.toISOString(),
+    };
+  }
+
+  function toSummaryDto(s: RevenueSummary): RevenueSummaryDto {
+    return {
+      currency: s.currency,
+      totalCents: s.totalCents,
+      paymentCount: s.paymentCount,
+      evidenceCount: s.evidenceCount,
+      recent: s.recent.map((e) => ({
+        id: e.id,
+        type: e.type,
+        amountCents: e.amountCents,
+        currency: e.currency,
+        status: e.status,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  function mapError(err: unknown, reply: FastifyReply): FastifyReply {
+    if (err instanceof NoBillingConfigError) {
+      return reply.code(409).send({ error: "billing not enabled" });
+    }
+    if (err instanceof BillingEgressBlocked) {
+      return reply.code(409).send({ error: "billing blocked by data-privacy mode" });
+    }
+    if (err instanceof BillingProviderError) {
+      return reply.code(502).send({ error: "billing provider error", detail: err.message });
+    }
+    throw err;
+  }
+
+  // Mint a payment link for the session's deployed app (inbound money).
+  app.post("/channels/:cid/agent-sessions/:id/billing/payment-link", async (req, reply) => {
+    const ctx = await authorize(req, reply);
+    if (!ctx) return;
+    const body = (req.body ?? {}) as {
+      name?: unknown;
+      amountCents?: unknown;
+      currency?: unknown;
+      interval?: unknown;
+    };
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > MAX_NAME_LEN) {
+      return reply.code(400).send({ error: "name required (1..200 chars)" });
+    }
+    if (
+      typeof body.amountCents !== "number" ||
+      !Number.isInteger(body.amountCents) ||
+      body.amountCents <= 0 ||
+      body.amountCents > 100_000_000
+    ) {
+      return reply.code(400).send({ error: "amountCents must be a positive integer (cents)" });
+    }
+    const currency =
+      typeof body.currency === "string" && /^[a-zA-Z]{3}$/.test(body.currency)
+        ? body.currency.toLowerCase()
+        : undefined;
+    const interval =
+      typeof body.interval === "string" && VALID_INTERVALS.includes(body.interval as PriceInterval)
+        ? (body.interval as PriceInterval)
+        : null;
+
+    try {
+      const link = await billingManager.createPaymentLink({
+        sessionId: ctx.sessionId,
+        workspaceId: ctx.workspaceId,
+        channelId: ctx.cid,
+        agentMemberId: ctx.session.agentMemberId,
+        createdByMemberId: ctx.memberId,
+        name,
+        amountCents: body.amountCents,
+        currency,
+        interval,
+      });
+      return reply.code(201).send(toLinkDto(link));
+    } catch (err) {
+      return mapError(err, reply);
+    }
+  });
+
+  // Revenue-per-venture summary for the usage dashboard (#71).
+  app.get("/workspaces/:wid/billing/revenue", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const summary = await billingManager.revenue(wid);
+    return toSummaryDto(summary);
+  });
+
+  // The signature-verified webhook receiver. Encapsulated in its own plugin scope so the RAW body
+  // (required for signature verification) is parsed as a Buffer ONLY for this route — the rest of the
+  // app keeps normal JSON parsing (Fastify per-plugin content-type parsers).
+  await app.register(async (webhookScope) => {
+    webhookScope.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_req, body, done) => done(null, body),
+    );
+    webhookScope.post("/billing/webhook/:wid", async (req, reply) => {
+      const { wid } = req.params as { wid: string };
+      const signature = req.headers["stripe-signature"];
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
+      try {
+        const result = await billingManager.ingestWebhook(
+          wid,
+          rawBody,
+          typeof signature === "string" ? signature : undefined,
+        );
+        return reply.code(200).send({ received: true, deduped: result.deduped });
+      } catch (err) {
+        if (err instanceof WebhookVerificationError) {
+          return reply.code(400).send({ error: "invalid signature" });
+        }
+        throw err;
+      }
+    });
+  });
+}

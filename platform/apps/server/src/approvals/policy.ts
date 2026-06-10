@@ -6,7 +6,7 @@
  */
 
 /** Action types the executor registry can run (#13). Submitting any other type is a 400. */
-export const ACTION_TYPES = ["chat.post_message", "external.send"] as const;
+export const ACTION_TYPES = ["chat.post_message", "external.send", "billing.refund"] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
 export function isActionType(value: unknown): value is ActionType {
@@ -27,7 +27,15 @@ export const AUTONOMY_COMPLETE_ACTION = "autonomy.complete" as const;
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042).
  * A workspace rule can override either way.
  */
-export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = ["external.send", AUTONOMY_COMPLETE_ACTION];
+export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
+  "external.send",
+  AUTONOMY_COMPLETE_ACTION,
+  // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
+  // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
+  "billing.refund",
+  "billing.payout",
+  "billing.transfer",
+];
 
 /** Lifecycle of an approval request. `approved` is the transient state between the decision and the
  * executor finishing; the rest are terminal. */
