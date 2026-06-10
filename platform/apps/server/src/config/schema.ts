@@ -135,6 +135,31 @@ export const scaleSchema = z.object({
   computeRateCentsPerMinute: z.number().nonnegative().optional(),
 });
 
+/**
+ * Venture-loop policy (#96, ADR-0049). All **non-secret** knobs for the YC-fundability gate. Every
+ * field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
+ * keeps today's behavior — autonomy launches are never blocked. Thresholds parameterize the pure
+ * `decideVenture`; `scorecardTtlMinutes` is how long a passing scorecard keeps admitting work.
+ */
+export const ventureSchema = z.object({
+  /** The anti-demo admission gate flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Score (0–100) at/above which an idea is FUNDed. */
+  fundThreshold: z.number().int().min(0).max(100).optional(),
+  /** Score (0–100) at/below which an idea is KILLed. */
+  killThreshold: z.number().int().min(0).max(100).optional(),
+  /** Width of the borderline band below `fundThreshold` that ESCALATEs instead of iterating. */
+  escalateBand: z.number().int().min(0).max(100).optional(),
+  /** Max passes before the loop exits to a human (the max-iteration termination). */
+  maxIterations: z.number().int().positive().optional(),
+  /** Weight on the adversarial Reviewer when combining the two personas (0–1). */
+  reviewerWeight: z.number().min(0).max(1).optional(),
+  /** How long (minutes) a passing scorecard stays valid for the admission gate. */
+  scorecardTtlMinutes: z.number().int().positive().optional(),
+  /** Estimated cost (cents) charged to tenant usage per scoring pass — the dollar ceiling input. */
+  evaluationCostCents: z.number().int().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -156,6 +181,8 @@ export const settingsSchema = z.object({
   models: modelsSchema.optional(),
   /** Cloud-scale policy (#71): warm pool, concurrency caps, regions, cost/budget caps. */
   scale: scaleSchema.optional(),
+  /** Venture-loop policy (#96): the YC-fundability admission gate + decision thresholds. */
+  venture: ventureSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -170,6 +197,7 @@ export type SessionMode = z.infer<typeof sessionModeSchema>;
 export type ProviderConnection = z.infer<typeof providerConnectionSchema>;
 export type ModelsConfig = z.infer<typeof modelsSchema>;
 export type ScaleConfig = z.infer<typeof scaleSchema>;
+export type VentureConfig = z.infer<typeof ventureSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -187,6 +215,8 @@ export interface ResolvedConfig {
   models: ModelsConfig;
   /** Cloud-scale policy (#71). A partial whose hard defaults `resolveScaleCaps` fills. */
   scale: ScaleConfig;
+  /** Venture-loop policy (#96). A partial whose hard defaults `resolveVentureCaps` fills. */
+  venture: VentureConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -199,4 +229,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   skills: [],
   models: {},
   scale: {},
+  venture: {},
 };

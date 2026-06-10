@@ -10,6 +10,10 @@ const app = buildApp();
 // engine is stopped on server close via the onClose hook registered in buildApp.
 app.autonomyEngine.start(env.autonomy.intervalMs);
 
+// #96 venture loop: start the opt-in scheduled tick (VENTURE_INTERVAL_MS; default 0 = off) that
+// advances active evaluations on infrastructure time. Stopped on server close via buildApp's hook.
+app.ventureEngine.start(env.venture.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

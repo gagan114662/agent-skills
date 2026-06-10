@@ -26,6 +26,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #71 scale policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // caps/budget cannot be loosened by a lower layer.
     if (layer.scale !== undefined) out.scale = { ...layer.scale };
+    // #96 venture policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // gate flag/thresholds cannot be loosened (e.g. the gate turned off) by a lower layer.
+    if (layer.venture !== undefined) out.venture = { ...layer.venture };
   }
   return out;
 }
@@ -46,5 +49,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     deploy: merged.deploy,
     models: merged.models ?? { ...CONFIG_DEFAULTS.models },
     scale: merged.scale ?? { ...CONFIG_DEFAULTS.scale },
+    venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
   };
 }
