@@ -15,6 +15,8 @@ import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import { preflightRoutes } from "./routes/preflight.js";
+import type { PreflightReport } from "./runtime/preflight.js";
 import {
   integrationsRoutes,
   defaultIntegrationsOptions,
@@ -94,6 +96,8 @@ export interface BuildAppOptions {
   gitHubProvider?: GitHubProvider;
   /** #53 plan mode / checkpoints / steering; defaults to one over the shared SessionManager + git. */
   turnController?: TurnController;
+  /** #69 preflight/doctor: tests inject a report; default runs the live host-env check. */
+  preflight?: () => PreflightReport;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -132,6 +136,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log);
   app.register(agentSessionRoutes, { sessionManager });
+  // #69 preflight/doctor: GET /preflight reports whether the configured cloud + real-agent posture
+  // is runnable (auth + harness availability), backing `reload doctor`. Secret-free (names only).
+  app.register(preflightRoutes, { preflight: opts.preflight });
   // #57 deep dev integrations: issue→session, project slash commands, agent-config sync. Reuses the
   // same SessionManager and the base-launch gating; provider tokens stay on the #25 secrets path.
   app.register(

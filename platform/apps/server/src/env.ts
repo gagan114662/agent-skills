@@ -1,5 +1,6 @@
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
+import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -66,6 +67,11 @@ export interface ApprovalEnv {
 }
 
 export interface AgentEnv {
+  /**
+   * Posture profile (#69): the named preset that sets the runtime/harness defaults. `dev` =
+   * local/demo (the default), `prod` = sandbox/claude-code. Reported for the preflight/doctor.
+   */
+  profile: ProfileName;
   /** Execution backend. Default `local` so tests/CI need no cloud spend. */
   runtime: RuntimeKind;
   /** Which coding-agent harness runs each session (#50). Default `demo` (no model spend). */
@@ -92,9 +98,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     databaseUrl: source.DATABASE_URL ?? "postgres://reload:reload@localhost:5433/reload",
     redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
     agent: (() => {
+      // Posture profile (#69): pick a named preset (dev=local/demo, prod=sandbox/claude-code) that
+      // supplies the runtime/harness DEFAULTS. Precedence is explicit env > profile preset > built-in
+      // default, so the default profile `dev` resolves to local/demo exactly as before — additive.
+      const profile = parseProfile(source.RELOAD_PROFILE);
+      const preset = profilePreset(profile);
       // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
       // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
-      const harness = parseHarnessKind(source.AGENT_HARNESS);
+      const harness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
       // Model/provider selection (#52) flows through env Claude Code reads natively (ANTHROPIC_MODEL
       // + provider flags), delivered per-session via the harnessEnv seam — so we no longer bake a
       // static `--model` here. A deployment-wide default ANTHROPIC_MODEL in the process env still
@@ -104,7 +115,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         claudeBin: source.CLAUDE_BIN,
       });
       return {
-        runtime: parseRuntime(source.AGENT_RUNTIME),
+        profile,
+        runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
         harness,
         harnessCommand: source.AGENT_HARNESS_CMD ?? spec.command,
         harnessArgs: source.AGENT_HARNESS_ARGS

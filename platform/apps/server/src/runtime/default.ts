@@ -11,6 +11,7 @@ import {
 import { postMessage } from "../db/repositories/messages.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
+import { preflight, type PreflightReport } from "./preflight.js";
 import { EnvSecretsResolver } from "./secrets-resolver.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
@@ -47,6 +48,21 @@ export const channelPoster: ChannelPoster = {
  * Build the production SessionManager from env (#25). Default backend is `local`. The
  * `@vercel/sandbox` adapter is only constructed (and only loaded) when `AGENT_RUNTIME=sandbox`.
  */
+/**
+ * The production preflight thunk (#69): validate the live host posture against the configured
+ * profile. Bound to `process.env` so it reflects the running deployment; the default `dev`/local/demo
+ * posture always passes, so this gates only the opt-in cloud + real-agent path.
+ */
+export function defaultPreflight(): PreflightReport {
+  const env = loadEnv().agent;
+  return preflight({
+    profile: env.profile,
+    runtime: env.runtime,
+    harness: env.harness,
+    env: process.env,
+  });
+}
+
 export function createDefaultSessionManager(logger: SessionLogger): SessionManager {
   const env = loadEnv().agent;
   // #58: server-level config (managed-global) gates deployment-wide egress; per-tenant managed
@@ -71,5 +87,8 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
     // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set, and forced off
     // under data-privacy mode (#58).
     tracer: createBraintrustTracer({ dataPrivacyMode: serverConfig.dataPrivacyMode }),
+    // #69: fail fast on a misconfigured cloud/real-agent posture before any launch persists or makes
+    // a cloud call. local/demo (the default) always passes, so this is a no-op for that posture.
+    preflight: defaultPreflight,
   });
 }
