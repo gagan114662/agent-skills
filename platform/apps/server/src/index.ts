@@ -23,9 +23,24 @@ if (env.cloud.sweepIntervalMs > 0) {
   sweepTimer.unref();
 }
 
+// #70 local worktree isolation: when a git repo is configured, reap per-session worktrees this process
+// is no longer driving. One sweep on boot clears anything a crashed run left behind ("no orphans after
+// a crash/restart"); the recurring timer is opt-in (GIT_WORKTREE_REAP_INTERVAL_MS; default 0 = off).
+// sweep() never throws, so a reaper hiccup can never crash startup. No repo configured → no reaper.
+let reapTimer: NodeJS.Timeout | undefined;
+if (app.gitWorktreeReaper) {
+  const reaper = app.gitWorktreeReaper;
+  void reaper.sweep();
+  if (env.git.reapIntervalMs > 0) {
+    reapTimer = setInterval(() => void reaper.sweep(), env.git.reapIntervalMs);
+    reapTimer.unref();
+  }
+}
+
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "shutting down");
   if (sweepTimer) clearInterval(sweepTimer);
+  if (reapTimer) clearInterval(reapTimer);
   await app.close();
   await Promise.allSettled([closeDb(), closeRedis()]);
   process.exit(0);

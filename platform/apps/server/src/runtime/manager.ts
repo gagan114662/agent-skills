@@ -149,6 +149,17 @@ export class SessionManager {
     return this.running.size;
   }
 
+  /**
+   * The ids of the sessions this process is currently driving (#70) — the git-worktree reaper's
+   * keep-set, so it never reaps a live run's worktree. Backed by `runs` (set synchronously in
+   * {@link launch}, deleted at teardown), NOT `running` (set only *after* the workspace is
+   * provisioned): this covers the provision→start window too, so a periodic sweep can't race a
+   * session whose worktree exists but whose runtime hasn't attached yet.
+   */
+  get activeSessionIds(): string[] {
+    return [...this.runs.keys()];
+  }
+
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
     const session = await this.deps.store.create({
