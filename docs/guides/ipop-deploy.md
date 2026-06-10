@@ -8,7 +8,7 @@ platform is fully functional online. Owner-testing target.
 | Piece | Status | Where |
 | --- | --- | --- |
 | Web console (`@reload/web`, Vite/React SPA) | ✅ Live in production | Vercel project `agent-skills` (team `gagans-projects-0e63a02f`) |
-| API (`@reload/server`, Fastify + Postgres + Redis + `/ws`) | ⛔ Not hosted — blocked | See [API hosting](#api-hosting-blocked) |
+| API (`@reload/server`, Fastify + Postgres + Redis + `/ws`) | ✅ Hosted on Fly.io | `reload-api.fly.dev` → see [API hosting — Fly.io](#api-hosting--flyio-apiipopai) |
 | `ipop.ai` + `www.ipop.ai` | ✅ Attached to project, awaiting DNS | DNS records below |
 
 **Production URLs**

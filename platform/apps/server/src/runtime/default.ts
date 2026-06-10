@@ -6,6 +6,7 @@ import { GitWorkspaceProvisioner } from "../git/provisioner.js";
 import {
   createAgentSession,
   finalizeSession,
+  heartbeatSession,
   markSessionRunning,
 } from "../db/repositories/agent-sessions.js";
 import { postMessage } from "../db/repositories/messages.js";
@@ -24,6 +25,7 @@ import { createScale, type Scale } from "../scale/default.js";
 export const dbStore: SessionStore = {
   create: createAgentSession,
   markRunning: markSessionRunning,
+  heartbeat: heartbeatSession,
   finalize: finalizeSession,
 };
 

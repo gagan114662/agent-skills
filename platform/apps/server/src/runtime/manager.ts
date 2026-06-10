@@ -55,6 +55,13 @@ export interface SessionStore {
     region?: string | null;
   }): Promise<AgentSession>;
   markRunning(id: string, sandboxId?: string): Promise<void>;
+  /**
+   * Bump the session's liveness heartbeat (#105). Called on every output chunk — the same signal the
+   * idle-reaper trusts as proof of progress — so the Fleet Watchdog can detect a session whose driving
+   * process died (a network blip) cross-process. **Optional** so every existing fake store still
+   * satisfies the seam; absent ⇒ no heartbeat (today's behavior). A heartbeat hiccup never fails a run.
+   */
+  heartbeat?(id: string): Promise<void>;
   finalize(
     id: string,
     fields: {
@@ -190,6 +197,12 @@ export interface LaunchInput {
 /** How many trailing output lines to keep as the persisted result summary. */
 const RESULT_TAIL_LINES = 12;
 const RESULT_MAX_CHARS = 4000;
+/**
+ * Minimum gap between liveness-heartbeat writes (#105). Output can be very chatty, so we coalesce the
+ * heartbeat to at most one write per this interval — cheap, and far finer-grained than any sane
+ * watchdog stale cutoff (minutes), so detection is unaffected.
+ */
+const HEARTBEAT_MIN_INTERVAL_MS = 10_000;
 
 /**
  * SessionManager — the server-owned orchestrator that makes "close the laptop, agents keep
@@ -451,6 +464,19 @@ export class SessionManager {
       }
     };
 
+    // --- liveness heartbeat (#105): coalesced proof-of-progress write the watchdog reads ---
+    let lastBeatAt = 0;
+    const beat = (): void => {
+      if (!this.deps.store.heartbeat) return;
+      const t = Date.now();
+      if (t - lastBeatAt < HEARTBEAT_MIN_INTERVAL_MS) return;
+      lastBeatAt = t;
+      // Fire-and-forget: a heartbeat hiccup must never fail an otherwise-healthy run.
+      void this.deps.store.heartbeat(session.id).catch((err: unknown) => {
+        log.error({ err }, "agent session heartbeat failed");
+      });
+    };
+
     // --- reaper: wall-clock + idle (no-output) timers ---
     let idleTimer: NodeJS.Timeout | undefined;
     const resetIdle = (): void => {
@@ -492,6 +518,7 @@ export class SessionManager {
         {
           onOutput: (_stream, chunk) => {
             resetIdle();
+            beat();
             buffer += chunk;
             let nl: number;
             while ((nl = buffer.indexOf("\n")) >= 0) {
