@@ -37,5 +37,7 @@ It runs in two modes from one code path:
 - ADR-0037 records the approach and what the live run must show.
 
 ## 🎥 PROVE
-Demo video: the soak running N real sessions (local) + one real cloud session, at
-`platform/docs/demos/37-cloud-e2e-proof.mp4`. Gagan approves on the video.
+Demo: the soak harness (`apps/server/scripts/cloud-e2e-soak.ts`, run via
+`SOAK_N=5 pnpm --filter @reload/server soak`) is the current spend-free local proof; the live
+cloud run requires credentials and is not run in CI. Recorded video
+pending — Gagan approves on the video.

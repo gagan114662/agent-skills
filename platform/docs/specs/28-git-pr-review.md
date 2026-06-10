@@ -131,10 +131,11 @@ POST /channels/:cid/agent-sessions/:id/review-comments/deliver          write  -
   - `git/diff.test.ts` — numstat/patch parsing is pure.
   - `github/provider.test.ts` — `NoneGitHubProvider` throws `GitHubUnavailableError`; a fake satisfies
     the interface contract.
-  - `routes/git-review.test.ts` — full route behavior via `app.inject` with injected fakes
-    (GitWorkspaceService + GitHubProvider + SessionManager + in-memory repos): diff, create-PR (incl.
-    501 when provider is `none`), comment, **deliver → new session + delivered_to_session_id**, fix-CI,
-    auth gating + IDOR (wrong channel → 404).
+  - `test/unit/git-review-routes.test.ts` — route behavior via `app.inject` with injected fakes
+    (GitWorkspaceService + GitHubProvider + SessionManager + mocked repos): diff + snapshot-ref
+    persistence, 501 when no git workspace is configured, create-PR validation + provider call,
+    comment validation, **deliver → new follow-up session + markCommentsDelivered**, and IDOR
+    scope (wrong channel → 404).
   - `realtime/git-events.test.ts` — `pull_request`/`review_comment` event construction.
   - web: `store/review.test.ts` (actions + event reducers over a fake api), `DiffView.test.tsx`
     (renders add/del/context lines), `ReviewPanel.test.tsx` (smoke).
@@ -162,7 +163,7 @@ POST /channels/:cid/agent-sessions/:id/review-comments/deliver          write  -
    `delivered_to_session_id` set).
 4. **Failing CI can be forwarded** to the agent (fix-CI → new session).
 5. `pnpm -C platform typecheck && lint && test && build` green; integration green.
-6. ADR-0028 + this spec + demo `docs/demos/28-git-pr-review.mp4`; PR links #51; **not** merged.
+6. ADR-0028 + this spec + demo script `scripts/demos/28-git-pr-review.sh` (the runnable proof; recorded video pending); PR links #51; **not** merged.
 
 ## Plan (atomic)
 1. `0026` migration + schema (`pull_requests`, `review_comments`, `agent_sessions` branch cols) +

@@ -43,7 +43,8 @@ session is steered by a member with `write` on the channel.
    delivered to the live agent process (and recorded in the channel), redirecting it without a
    cancel/relaunch.
 4. `pnpm -C platform typecheck && lint && test && build` green; integration green.
-5. ADR-0030 + this spec + demo `docs/demos/30-plan-checkpoints-steering.mp4`; PR links #53; **not**
+5. ADR-0030 + this spec + demo script `scripts/demos/30-plan-checkpoints-steering.sh` (the runnable
+   proof; recorded video pending); PR links #53; **not**
    merged (approved by @gagan114662 on the video).
 
 ### In scope
@@ -320,7 +321,8 @@ authority is invented:
    unit seam).
 4. RBAC/IDOR holds (write-gated mutations, tenant-scoped reads, 501 without a repo).
 5. `pnpm typecheck && lint && test && build` green; integration green.
-6. ADR-0030 + this spec + demo `docs/demos/30-plan-checkpoints-steering.mp4`; PR links #53; **not**
+6. ADR-0030 + this spec + demo script `scripts/demos/30-plan-checkpoints-steering.sh` (the runnable
+   proof; recorded video pending); PR links #53; **not**
    merged.
 
 ## Plan (atomic)

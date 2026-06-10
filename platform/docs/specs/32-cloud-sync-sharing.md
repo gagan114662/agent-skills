@@ -220,7 +220,7 @@ export async function mirror(source: MirrorSource, sink: MirrorSink): Promise<Sy
 3. A slept workspace retains its snapshot and wakes to resume from it (unit + integration).
 4. Cross-tenant access is impossible (IDOR integration test).
 5. `pnpm -C platform typecheck && lint && test && build` green; integration green.
-6. ADR-0032 + this spec + demo `docs/demos/32-cloud-sync-sharing.mp4`; PR links #55; **not** merged.
+6. ADR-0032 + this spec + demo script `scripts/demos/32-cloud-sync-sharing.sh` (the runnable proof; recorded video pending); PR links #55; **not** merged.
 
 ## Open questions
 - None blocking. The local mirror trigger is intentionally client-driven (the server exposes the

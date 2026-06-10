@@ -38,7 +38,8 @@ rail that lets us flip the default later (#37) with confidence.
 5. **The default posture stays `local`/`demo`**; the decision to flip the global default is **deferred
    to #37** and recorded in ADR-0038.
 6. `pnpm -C platform typecheck && lint && test && build` green.
-7. ADR-0038 + this spec + a guide + demo `docs/demos/38-cloud-default-posture.mp4`; PR links #69;
+7. ADR-0038 + this spec + a guide + demo script `scripts/demos/38-cloud-default-posture.sh` (the
+   runnable proof; recorded video pending); PR links #69;
    **not** merged (Gagan approves on the video).
 
 ### In scope
@@ -174,7 +175,8 @@ SessionManager.launch(): if (deps.preflight) { r = deps.preflight(); if (!r.ok) 
 4. Preflight returns/logs no secret value (unit).
 5. The default posture stays `local`/`demo`; the flip is deferred to #37 and recorded in ADR-0038.
 6. `pnpm typecheck && lint && test && build` green.
-7. ADR-0038 + this spec + guide + demo `docs/demos/38-cloud-default-posture.mp4`; PR links #69; **not**
+7. ADR-0038 + this spec + guide + demo script `scripts/demos/38-cloud-default-posture.sh` (the runnable
+   proof; recorded video pending); PR links #69; **not**
    merged.
 
 ## Plan (atomic)

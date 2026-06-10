@@ -79,4 +79,6 @@ gains **Queue** and **Steer** actions next to **Send**. Keyboard model on the in
 - Each channel keeps an independent queue across channel switches.
 - Tests first (Red→Green); all gates green (`typecheck && lint && test && build`); no server files touched.
 - ADR-0031 records the client-only, no-readiness-signal queue design.
-- Demo video: queue / edit / reorder / steer at `platform/docs/demos/31-message-queue.mp4`.
+- Demo: queue / edit / reorder / steer — covered by the `apps/web` Vitest suite
+  (`src/store/queue.test.ts`, `src/store/queue-store.test.ts`); recorded video
+  pending (client-only change, no server files touched).

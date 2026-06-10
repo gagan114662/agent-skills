@@ -142,7 +142,9 @@ env.ts     git: { reapIntervalMs }   // GIT_WORKTREE_REAP_INTERVAL_MS, default 0
 4. The sweep **keeps `activeSessionIds`** so a concurrent live run is never reaped (unit).
 5. `pnpm -C platform typecheck && lint && test && build` green; integration green. Default behavior
    (no repo configured) unchanged.
-6. ADR-0039 + this spec + demo `docs/demos/39-local-worktree-isolation.mp4`; PR links #70; **not**
+6. ADR-0039 + this spec + the reaper tests (`apps/server/test/unit/git-reaper.test.ts`,
+   `apps/server/test/integration/local-worktree-isolation.test.ts`) as the runnable proof; recorded
+   video pending; PR links #70; **not**
    merged.
 
 ## Plan (atomic)

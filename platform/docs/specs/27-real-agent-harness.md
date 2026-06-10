@@ -41,4 +41,5 @@ Secrets continue to flow through `SecretsResolver` → runtime env and are redac
 - `AGENT_HARNESS=claude-code` produces a real `claude` invocation under Local and Sandbox runtimes.
 - Task text cannot escape into the command line (tested).
 - ADR-0027 records the harness abstraction + first-class agent choice.
-- Demo video: a real agent edits code in a session and streams its work to the channel.
+- Demo (recorded video pending): a real agent edits code in a session and streams its work to the
+  channel; `bash scripts/agent-harness-demo.sh` exercises the harness-selection seam spend-free.

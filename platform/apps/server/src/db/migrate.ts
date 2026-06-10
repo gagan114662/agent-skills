@@ -16,6 +16,16 @@ import { loadEnv } from "../env.js";
 
 const MIGRATIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../drizzle");
 
+/**
+ * Ordering is the **full filename** sorted lexicographically — not the numeric prefix. This makes
+ * a duplicate prefix deterministic: `0007_notifications.sql` sorts before `0007_shared_memory.sql`
+ * (the `_notifications` vs `_shared_memory` suffix breaks the tie, "n" < "s"), and `down()` mirrors
+ * it with `ORDER BY name DESC`, so revert order is the exact reverse. Duplicate prefixes arose from
+ * sibling feature branches reserving the same next-free number; they are safe because each pair of
+ * same-prefix migrations is additive and mutually independent (no shared table). We do **not**
+ * renumber: `_migrations` records the applied filename, so renaming a shipped migration would orphan
+ * the ledger row on every deployed database. See drizzle/README.md.
+ */
 async function upFiles(): Promise<string[]> {
   const entries = await readdir(MIGRATIONS_DIR);
   return entries.filter((f) => f.endsWith(".sql") && !f.endsWith(".down.sql")).sort();
