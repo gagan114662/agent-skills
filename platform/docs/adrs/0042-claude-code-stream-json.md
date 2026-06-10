@@ -59,6 +59,12 @@ beyond the output rendering; no new dependency; no schema/migration.**
   queryable run-log/turns timeline is a documented follow-up — this ADR only stops discarding the data.
 - `user`/tool-result events are intentionally **not** rendered into the channel (noise); the issue
   scopes assistant/tool_use/result. Surfacing tool *results* is a follow-up if wanted.
+- **Streamed-post ordering (fixed in this PR).** Touching the output path surfaced a latent race: the
+  per-line channel posts were fire-and-forget (`void safePost`), so they could land out of order or
+  remain in flight when the session went terminal — a consumer reading right after completion saw
+  streamed lines reordered or missing. The posts are now serialized through one chain and **flushed
+  before the terminal message + finalize**, so the channel reflects the full, ordered output by the
+  time the session is `completed`. `safePost` still never rejects, so the chain can't break the run.
 
 ## Alternatives considered
 - **Parse in `LocalRuntime`/`SandboxRuntime`.** Rejected: the runtimes are thin process backends that

@@ -310,6 +310,12 @@ export class SessionManager {
     const decode: LineDecoder = this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
     let buffer = "";
     const tail: string[] = [];
+    // Streamed line posts are serialized through one chain (rather than fire-and-forget) so they land
+    // in the channel in emission order, and so we can flush them before the terminal message +
+    // finalize — otherwise a consumer reading right after the session goes terminal can see streamed
+    // lines out of order or missing entirely (they were still in flight). safePost never rejects, so
+    // the chain never breaks.
+    let postChain: Promise<unknown> = Promise.resolve();
     const emitLine = (line: string): void => {
       const decoded = decode(line);
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
@@ -322,7 +328,7 @@ export class SessionManager {
         if (!clean) continue;
         tail.push(clean);
         if (tail.length > RESULT_TAIL_LINES) tail.shift();
-        void this.safePost(session, clean, log, parentMessageId);
+        postChain = postChain.then(() => this.safePost(session, clean, log, parentMessageId));
       }
     };
 
@@ -390,6 +396,7 @@ export class SessionManager {
     }
 
     if (buffer.trim()) emitLine(buffer); // flush a trailing partial line
+    await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
     await this.safePost(session, `✅ session ${result.status} (exit ${result.exitCode ?? "n/a"})`, log);

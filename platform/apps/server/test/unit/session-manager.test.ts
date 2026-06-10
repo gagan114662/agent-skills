@@ -99,6 +99,28 @@ const silentLogger: SessionLogger = {
   error: () => {},
 };
 
+/**
+ * A poster whose post() promises resolve OUT of emission order (earlier calls resolve later). If the
+ * manager fires streamed posts concurrently (fire-and-forget), they land reversed and the terminal
+ * message can interleave; if it serializes them, they land in emission order with the terminal last.
+ * Records bodies in the order their post() promise RESOLVED.
+ */
+class ReorderingPoster implements ChannelPoster {
+  readonly completed: string[] = [];
+  private call = 0;
+  constructor(private readonly store: FakeStore) {}
+  post(input: { body: string }): Promise<{ id: string }> {
+    const idx = this.call++;
+    const delay = (20 - idx) * 2; // earlier calls → larger delay → resolve later if run concurrently
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.completed.push(input.body);
+        resolve({ id: this.store.nextId() });
+      }, Math.max(1, delay));
+    });
+  }
+}
+
 /** A runtime that emits fixed output synchronously and then completes with `exitCode`. */
 class CompletingRuntime implements AgentRuntime {
   readonly kind = "local" as const;
@@ -371,6 +393,37 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     const all = poster.bodies().join("\n") + (store.finalized?.result ?? "");
     expect(all).not.toContain(secret);
     expect(poster.bodies().some((b) => b.includes("‹redacted›"))).toBe(true);
+  });
+
+  it("persists streamed lines in emission order and flushes them before the terminal message", async () => {
+    // Regression: streamed posts were fire-and-forget, so they raced the terminal message + finalize —
+    // a consumer reading after completion saw lines out of order or missing entirely.
+    const runtime = new CompletingRuntime(["alpha\nbeta\ngamma\n"], 0);
+    const store = new FakeStore();
+    const poster = new ReorderingPoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    // All streamed lines are persisted by the time the run completes...
+    expect(poster.completed).toContain("alpha");
+    expect(poster.completed).toContain("beta");
+    expect(poster.completed).toContain("gamma");
+    // ...in emission order (not reversed by concurrent resolution)...
+    const streamed = poster.completed.filter((b) => ["alpha", "beta", "gamma"].includes(b));
+    expect(streamed).toEqual(["alpha", "beta", "gamma"]);
+    // ...and the terminal "completed" message lands after every streamed line.
+    const termIdx = poster.completed.findIndex((b) => b.includes("completed"));
+    expect(termIdx).toBeGreaterThan(poster.completed.indexOf("gamma"));
   });
 
   it("cancel() ends a running session", async () => {
