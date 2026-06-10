@@ -10,6 +10,7 @@ import type {
   ApprovalPolicyDto,
   ApprovalRequestDto,
   ApprovalStatus,
+  DeploymentDto,
   DiffMode,
   PreviewAnnotation,
   PullRequestDto,
@@ -96,6 +97,22 @@ export interface RunTabState {
   error: string | null;
 }
 
+/** The deploy slice (#73 Deploy tab). The active channel's sessions, the selected session's latest
+ * deployment (status + live URL + redacted logs), and its deployment history (the backup set). Unlike
+ * the ephemeral run slice, a deployment is durable (persisted server-side) and survives a reload. */
+export interface DeployTabState {
+  sessions: AgentSessionSummary[];
+  activeSessionId: string | null;
+  /** The selected session's latest deployment, or null before one exists. */
+  latest: DeploymentDto | null;
+  /** Deployment history (newest first) — each row is an immutable, rollback-able deploy. */
+  history: DeploymentDto[];
+  loading: boolean;
+  /** True while a deploy/redeploy/rollback is in flight (drives the button spinner). */
+  busy: boolean;
+  error: string | null;
+}
+
 export interface AppState {
   phase: "loading" | "anon" | "ready";
   identity: Identity | null;
@@ -111,6 +128,7 @@ export interface AppState {
   approvals: ApprovalsState;
   review: ReviewState;
   run: RunTabState;
+  deploy: DeployTabState;
   /** Per-session (per-channel) composer message/steering queue (#54). Keyed by channelId so each
    * conversation keeps its own stack across channel switches. */
   queues: Record<string, SessionQueue>;
@@ -140,6 +158,7 @@ export interface StoreDeps {
     | "approvals"
     | "review"
     | "run"
+    | "deploy"
   >;
   realtime: Realtime;
 }
@@ -204,6 +223,16 @@ const INITIAL_RUN: RunTabState = {
   error: null,
 };
 
+const INITIAL_DEPLOY: DeployTabState = {
+  sessions: [],
+  activeSessionId: null,
+  latest: null,
+  history: [],
+  loading: false,
+  busy: false,
+  error: null,
+};
+
 const INITIAL: AppState = {
   phase: "loading",
   identity: null,
@@ -219,6 +248,7 @@ const INITIAL: AppState = {
   approvals: INITIAL_APPROVALS,
   review: INITIAL_REVIEW,
   run: INITIAL_RUN,
+  deploy: INITIAL_DEPLOY,
   queues: {},
   error: null,
 };
@@ -287,6 +317,17 @@ export interface Store {
   removeAnnotation(index: number): void;
   /** Deliver the collected annotations to the agent as a follow-up session. Returns the count. */
   deliverAnnotations(): Promise<number>;
+  // --- deploy to a live url (#73 web surface) ---
+  /** Load the active channel's sessions for the Deploy tab. */
+  loadDeploy(): Promise<void>;
+  /** Select a session and fetch its latest deployment + history. */
+  selectDeploySession(sessionId: string): Promise<void>;
+  /** Deploy (or redeploy) the selected session's app to a live URL. */
+  deployApp(): Promise<void>;
+  /** Roll back the selected session to its prior good deployment. */
+  rollbackDeploy(): Promise<void>;
+  /** Scale the selected session's deployment to `instances` (bounded server-side). */
+  scaleDeploy(instances: number): Promise<void>;
 }
 
 /** Server `error` message off an ApiError, or a generic fallback. */
@@ -410,6 +451,27 @@ export function createStore({ api, realtime }: StoreDeps): Store {
         setRun({ process: { ...state.run.process, logs } });
         break;
       }
+      case "deploy_status": {
+        // Update the live deployment for the session currently shown in the Deploy tab.
+        if (event.sessionId !== state.deploy.activeSessionId || !state.deploy.latest) break;
+        if (event.deploymentId !== state.deploy.latest.id) break;
+        setDeploy({
+          latest: {
+            ...state.deploy.latest,
+            status: event.status,
+            url: event.url ?? state.deploy.latest.url,
+            error: event.error ?? state.deploy.latest.error,
+          },
+        });
+        break;
+      }
+      case "deploy_log": {
+        if (event.sessionId !== state.deploy.activeSessionId || !state.deploy.latest) break;
+        if (event.deploymentId !== state.deploy.latest.id) break;
+        const logs = [...state.deploy.latest.logs, event.chunk].slice(-RUN_LOG_TAIL);
+        setDeploy({ latest: { ...state.deploy.latest, logs } });
+        break;
+      }
       default:
         // ready / subscribed / unsubscribed / error / pong — no UI state to update.
         break;
@@ -426,6 +488,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
   function setRun(patch: Partial<RunTabState>): void {
     set({ run: { ...state.run, ...patch } });
+  }
+
+  function setDeploy(patch: Partial<DeployTabState>): void {
+    set({ deploy: { ...state.deploy, ...patch } });
   }
 
   /** How many trailing log lines the Run tab keeps from a live stream (mirrors the server tail). */
@@ -940,6 +1006,79 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       } catch (e) {
         setRun({ error: errMsg(e) });
         return 0;
+      }
+    },
+
+    // --- deploy to a live url (#73) ---
+    /** Load the active channel's sessions for the Deploy tab (reuses the #51 session list). */
+    async loadDeploy() {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setDeploy({ loading: true, error: null });
+      try {
+        const sessions = await api.review.listSessions(channelId);
+        setDeploy({ sessions, loading: false });
+      } catch (e) {
+        setDeploy({ loading: false, error: errMsg(e) });
+      }
+    },
+
+    /** Select a session and fetch its latest deployment + history. */
+    async selectDeploySession(sessionId) {
+      const channelId = state.activeChannelId;
+      if (!channelId) return;
+      setDeploy({ activeSessionId: sessionId, latest: null, history: [], error: null });
+      try {
+        const [latest, history] = await Promise.all([
+          api.deploy.status(channelId, sessionId),
+          api.deploy.history(channelId, sessionId),
+        ]);
+        // Guard against a race: only apply if this is still the selected session.
+        if (state.deploy.activeSessionId === sessionId) setDeploy({ latest, history });
+      } catch (e) {
+        setDeploy({ error: errMsg(e) });
+      }
+    },
+
+    /** Deploy (or redeploy) the selected session's app. */
+    async deployApp() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.deploy.activeSessionId;
+      if (!channelId || !sessionId) return;
+      setDeploy({ busy: true, error: null });
+      try {
+        const latest = await api.deploy.start(channelId, sessionId);
+        const history = await api.deploy.history(channelId, sessionId);
+        setDeploy({ latest, history, busy: false });
+      } catch (e) {
+        setDeploy({ busy: false, error: errMsg(e) });
+      }
+    },
+
+    /** Roll back the selected session to its prior good deployment. */
+    async rollbackDeploy() {
+      const channelId = state.activeChannelId;
+      const sessionId = state.deploy.activeSessionId;
+      if (!channelId || !sessionId) return;
+      setDeploy({ busy: true, error: null });
+      try {
+        const latest = await api.deploy.rollback(channelId, sessionId);
+        const history = await api.deploy.history(channelId, sessionId);
+        setDeploy({ latest, history, busy: false });
+      } catch (e) {
+        setDeploy({ busy: false, error: errMsg(e) });
+      }
+    },
+
+    /** Scale the selected session's deployment to `instances` (bounded server-side). */
+    async scaleDeploy(instances) {
+      const channelId = state.activeChannelId;
+      const sessionId = state.deploy.activeSessionId;
+      if (!channelId || !sessionId) return;
+      try {
+        await api.deploy.scale(channelId, sessionId, instances);
+      } catch (e) {
+        setDeploy({ error: errMsg(e) });
       }
     },
   };

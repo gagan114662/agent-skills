@@ -16,3 +16,4 @@ export * from "./autonomy.js";
 export * from "./cloud-workspaces.js";
 export * from "./plan-proposals.js";
 export * from "./session-turns.js";
+export * from "./deployments.js";

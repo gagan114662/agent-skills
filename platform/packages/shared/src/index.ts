@@ -232,5 +232,38 @@ export interface PreviewAnnotation {
   pageUrl: string;
 }
 
+// ---- deploy to a live url (#73) ---------------------------------------------
+
+/**
+ * Lifecycle of a deployment (#73). A deploy is a durable one-shot job: `queued → building →
+ * ready(url) | error`. `unhealthy` is set when a health check fails and a restart can't recover it;
+ * `rolled_back` marks a deployment that re-promoted a prior good one. Every deploy is immutable — the
+ * row history is the backup set.
+ */
+export type DeployStatus = "queued" | "building" | "ready" | "error" | "unhealthy" | "rolled_back";
+
+/** A deployment surfaced to the web Deploy tab (#73). Server-only fields are not exposed. */
+export interface DeploymentDto {
+  id: string;
+  sessionId: string;
+  channelId: string;
+  /** The hosting backend that produced it (`dryrun` | `vercel`). */
+  provider: string;
+  status: DeployStatus;
+  /** The live HTTPS URL once ready; null while building or on error. */
+  url: string | null;
+  /** The detected/declared framework. */
+  framework: string | null;
+  /** A (redacted) error message when status is `error`/`unhealthy`. */
+  error: string | null;
+  /** Why this deploy ran (`deploy` | `push` | `rollback`). */
+  reason: string | null;
+  /** The prior deployment this one re-promoted, when status is `rolled_back`. */
+  rolledBackFromId: string | null;
+  /** A bounded tail of (redacted) build/deploy log lines, oldest first. */
+  logs: string[];
+  createdAt: string;
+}
+
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
 // this package is consumed unbuilt and stays strictly type-only with no runtime exports.
