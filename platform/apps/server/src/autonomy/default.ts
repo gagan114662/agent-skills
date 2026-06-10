@@ -30,11 +30,14 @@ export function autonomyLauncherFrom(sessionManager: SessionManager): AutonomyLa
 export function createDefaultAutonomyEngine(
   logger: SessionLogger,
   sessionManager?: SessionManager,
+  launcher?: AutonomyLauncher,
 ): AutonomyEngine {
   return new AutonomyEngine({
     poster: channelPoster,
     logger,
-    launcher: sessionManager ? autonomyLauncherFrom(sessionManager) : undefined,
+    // An explicit launcher (e.g. the #96 venture-gated one composed in app.ts) wins; otherwise derive
+    // it from the SessionManager (#84). Absent both → narration-only (the pre-#84 behaviour).
+    launcher: launcher ?? (sessionManager ? autonomyLauncherFrom(sessionManager) : undefined),
     completionPolicies: (workspaceId) => listPolicyRulesWithId(workspaceId),
   });
 }
