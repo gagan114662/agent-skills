@@ -12,6 +12,8 @@ export interface Env {
   agent: AgentEnv;
   /** Autonomous activity loop (#17). */
   autonomy: AutonomyEnv;
+  /** Venture-loop scheduled tick (#96). */
+  venture: VentureEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -72,6 +74,11 @@ export interface TeamEnv {
 
 export interface AutonomyEnv {
   /** Periodic loop interval in ms. Default `0` = the background timer is OFF (opt-in). */
+  intervalMs: number;
+}
+
+export interface VentureEnv {
+  /** Venture-tick interval in ms. Default `0` = the background tick is OFF (opt-in, #96). */
   intervalMs: number;
 }
 
@@ -163,6 +170,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         sandboxSource,
       };
     })(),
+    venture: {
+      intervalMs: Number(source.VENTURE_INTERVAL_MS ?? 0) || 0,
+    },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.
       intervalMs: Number(source.AUTONOMY_INTERVAL_MS ?? 0) || 0,

@@ -47,8 +47,17 @@ import { createGitHubProvider } from "./github/factory.js";
 import type { GitHubProvider } from "./github/provider.js";
 import { createDefaultTeamCoordinator } from "./team/default.js";
 import type { TeamCoordinator } from "./team/coordinator.js";
-import { createDefaultAutonomyEngine } from "./autonomy/default.js";
+import { createDefaultAutonomyEngine, autonomyLauncherFrom } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
+import { ventureRoutes } from "./routes/venture.js";
+import {
+  createDefaultVentureService,
+  createDefaultVentureEngine,
+  createVentureAdmission,
+} from "./venture/default.js";
+import { VentureService } from "./venture/service.js";
+import type { VentureEngine } from "./venture/engine.js";
+import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -61,6 +70,8 @@ declare module "fastify" {
   interface FastifyInstance {
     /** The #17 autonomy engine; `index.ts` starts its opt-in background timer. */
     autonomyEngine: AutonomyEngine;
+    /** The #96 venture engine; `index.ts` starts its opt-in background tick (VENTURE_INTERVAL_MS). */
+    ventureEngine: VentureEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -113,6 +124,8 @@ export interface BuildAppOptions {
   scale?: Scale;
   /** #69 preflight/doctor: tests inject a report; default runs the live host-env check. */
   preflight?: () => PreflightReport;
+  /** #96 venture loop: tests inject a service over a deterministic scorer; default builds the real one. */
+  venture?: VentureService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -132,6 +145,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       recordAdmissionDenied(err.reason);
       const status = err.reason === "budget_exceeded" ? 402 : 429;
       return reply.code(status).send({ error: err.message, reason: err.reason });
+    }
+    // #96: the venture admission gate denies an autonomy launch lacking a fundable scorecard → 403.
+    if (err instanceof VentureAdmissionError) {
+      return reply.code(403).send({ error: err.message, reason: err.reason });
     }
     return reply.send(err);
   });
@@ -231,7 +248,28 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // drive `tick()`. It is stopped on server close so no timer leaks past shutdown.
   // #84: the engine launches real agent sessions through the shared #25 SessionManager (past the
   // same kill-switch/budget/rate-limit guards), so autonomy executes work instead of only narrating.
-  const autonomyEngine = opts.autonomyEngine ?? createDefaultAutonomyEngine(app.log, sessionManager);
+  // #96 venture loop: the YC-fundability gate. The service runs the loop (intake → evidence → dual
+  // persona scoring → decide → FUND/ITERATE/KILL/ESCALATE); the admission gate decorates the autonomy
+  // launcher so a session is only launched for a workspace holding a passing, unexpired scorecard.
+  // The gate is config default-OFF (`VentureAdmission.check` short-circuits to admit), so wrapping the
+  // launcher is safe for every workspace that hasn't opted in — unchanged behavior by default.
+  const ventureService = opts.venture ?? createDefaultVentureService();
+  app.register(ventureRoutes, { service: ventureService });
+  // The scheduled tick advances active evaluations on infrastructure time (default OFF — started in
+  // index.ts only when VENTURE_INTERVAL_MS > 0); each advance self-gates on the kill switch + budget.
+  const ventureEngine = createDefaultVentureEngine(app.log);
+  app.addHook("onClose", async () => {
+    ventureEngine.stop();
+  });
+  app.decorate("ventureEngine", ventureEngine);
+  const ventureAdmission = createVentureAdmission();
+  const gatedAutonomyLauncher = ventureGatedLauncher(
+    autonomyLauncherFrom(sessionManager),
+    ventureAdmission,
+  );
+  const autonomyEngine =
+    opts.autonomyEngine ??
+    createDefaultAutonomyEngine(app.log, sessionManager, gatedAutonomyLauncher);
   app.register(autonomyRoutes, { engine: autonomyEngine });
   app.addHook("onClose", async () => {
     autonomyEngine.stop();
