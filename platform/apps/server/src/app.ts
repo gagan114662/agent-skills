@@ -202,7 +202,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in
   // (AUTONOMY_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
   // drive `tick()`. It is stopped on server close so no timer leaks past shutdown.
-  const autonomyEngine = opts.autonomyEngine ?? createDefaultAutonomyEngine(app.log);
+  // #84: the engine launches real agent sessions through the shared #25 SessionManager (past the
+  // same kill-switch/budget/rate-limit guards), so autonomy executes work instead of only narrating.
+  const autonomyEngine = opts.autonomyEngine ?? createDefaultAutonomyEngine(app.log, sessionManager);
   app.register(autonomyRoutes, { engine: autonomyEngine });
   app.addHook("onClose", async () => {
     autonomyEngine.stop();
