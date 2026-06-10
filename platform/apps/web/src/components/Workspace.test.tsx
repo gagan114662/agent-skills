@@ -14,6 +14,26 @@ describe("Workspace shell", () => {
     expect(await screen.findByText("Atlas")).toBeInTheDocument(); // members rail
   });
 
+  it("shows only the slimmed product nav — Chat/Founder/Approvals/Deploy, no Review/Run/Usage (#122)", async () => {
+    const { store } = renderWithStore(<Workspace />);
+    await store.bootstrap();
+
+    for (const kept of ["Chat", "Founder", "Approvals", "Deploy"]) {
+      expect(screen.getByRole("button", { name: new RegExp(`^${kept}`) })).toBeInTheDocument();
+    }
+    for (const removed of ["Review", "Run", "Usage"]) {
+      expect(screen.queryByRole("button", { name: new RegExp(`^${removed}`) })).toBeNull();
+    }
+  });
+
+  it("renders the configured brand, not the internal name (#122)", async () => {
+    const { store } = renderWithStore(<Workspace />);
+    await store.bootstrap();
+
+    expect(screen.getAllByText(/ipop/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Reload/)).toBeNull();
+  });
+
   it("surfaces an unread @mention indicator from the gateway", async () => {
     const { store, rt } = renderWithStore(<Workspace />);
     await store.bootstrap();
