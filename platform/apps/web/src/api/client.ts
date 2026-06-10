@@ -23,6 +23,7 @@ import type {
   AgentSessionSummary,
   Channel,
   EffortLevel,
+  FounderConsoleDto,
   Identity,
   MemberHit,
   MentionItem,
@@ -183,6 +184,11 @@ export const api = {
   // --- cloud scale (#71) ---
   getScaleUsage(workspaceId: string): Promise<UsageReport> {
     return request<UsageReport>(`/workspaces/${workspaceId}/scale/usage`);
+  },
+
+  // --- founder console (#104) ---
+  getFounderConsole(workspaceId: string): Promise<FounderConsoleDto> {
+    return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
   },
 
   // --- messages & threads ---

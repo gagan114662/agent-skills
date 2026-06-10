@@ -314,6 +314,19 @@ export async function listActiveEvaluations(workspaceId: string): Promise<Ventur
   return rows as VentureEvaluation[];
 }
 
+/**
+ * Every evaluation for a workspace, any status, newest-first — the #104 Founder Console pipeline
+ * roll-up (active vs FUND/KILL/ESCALATE). Workspace-scoped (the #3 IDOR discipline); read-only.
+ */
+export async function listEvaluations(workspaceId: string): Promise<VentureEvaluation[]> {
+  const rows = await db
+    .select(EVALUATION_COLS)
+    .from(ventureEvaluations)
+    .where(eq(ventureEvaluations.workspaceId, workspaceId))
+    .orderBy(desc(ventureEvaluations.createdAt));
+  return rows as VentureEvaluation[];
+}
+
 /** Distinct workspaces with an `active` evaluation — the scheduled timer's work-list. */
 export async function listActiveEvaluationWorkspaces(): Promise<string[]> {
   const rows = await db
