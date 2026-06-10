@@ -21,6 +21,8 @@ export interface Env {
   cloud: CloudEnv;
   /** Local per-agent git worktree isolation + reaping (#70). */
   git: GitEnv;
+  /** Deploy agent-built apps to a live URL (#73). */
+  deploy: DeployEnv;
 }
 
 export interface GitEnv {
@@ -31,6 +33,22 @@ export interface GitEnv {
    * is configured (no repo → no worktrees → no reaper).
    */
   reapIntervalMs: number;
+}
+
+/** Which managed-hosting backend deploys agent-built apps (#73). */
+export type DeployProviderKind = "dryrun" | "vercel";
+
+export interface DeployEnv {
+  /**
+   * The deploy backend. Default `dryrun` (no cloud spend — a deterministic fake URL) so tests/CI/the
+   * demo run free. `vercel` enables the real adapter (its SDK is loaded lazily on first deploy).
+   */
+  provider: DeployProviderKind;
+  /**
+   * Health-monitor interval in ms. Default `0` = the background sweep is OFF (opt-in), mirroring the
+   * #17 autonomy loop / #55 cloud sweep — tests drive `checkHealth()` deterministically.
+   */
+  monitorIntervalMs: number;
 }
 
 export interface CloudEnv {
@@ -150,6 +168,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     git: {
       // Default 0 (off): the periodic worktree reaper is opt-in; a single startup sweep always runs.
       reapIntervalMs: Number(source.GIT_WORKTREE_REAP_INTERVAL_MS ?? 0) || 0,
+    },
+    deploy: {
+      // Default `dryrun`: no cloud spend. `vercel` enables the real adapter (lazy SDK load).
+      provider: source.DEPLOY_PROVIDER === "vercel" ? "vercel" : "dryrun",
+      // Default 0 (off): the health sweep is opt-in so tests/CI drive `checkHealth()` deterministically.
+      monitorIntervalMs: Number(source.DEPLOY_MONITOR_INTERVAL_MS ?? 0) || 0,
     },
   };
 }

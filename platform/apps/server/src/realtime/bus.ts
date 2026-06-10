@@ -2,6 +2,8 @@ import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
 import type {
+  DeployLogEvent,
+  DeployStatusEvent,
   MentionEvent,
   NotificationEvent,
   PresenceStatus,
@@ -121,6 +123,18 @@ export async function publishPullRequestEvent(
 export async function publishRunEvent(
   channelId: string,
   event: RunStatusEvent | RunLogEvent,
+): Promise<void> {
+  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/**
+ * Publish a deployment status/log change to its channel's subscribers (#73). Rides the same
+ * `rt:channel:<id>` key as messages — the `deployments` row is the durable record, so this is a
+ * best-effort live nudge; a Redis hiccup never fails the deploy.
+ */
+export async function publishDeployEvent(
+  channelId: string,
+  event: DeployStatusEvent | DeployLogEvent,
 ): Promise<void> {
   await getRedis().publish(channelKey(channelId), JSON.stringify(event));
 }

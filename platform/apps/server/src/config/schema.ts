@@ -48,6 +48,30 @@ export const runSchema = z.object({
   readyPattern: z.string().optional(),
 });
 
+/**
+ * Deploy-to-live-URL settings (#73) — declared in **trusted** config (repo/managed scope), never
+ * supplied by a request, so deploy can never become arbitrary RCE/unbounded scale (the same trust
+ * boundary as the #56 run command). Provider **credentials never live here** — they stay on the #25
+ * `SecretsResolver` path; `env` lists only variable NAMES to pass into the build (the #57 convention).
+ * A deployment with no `deploy` section has opted out (the Deploy tab → 409).
+ */
+export const deploySchema = z.object({
+  /** Hosting backend (`dryrun` default — no spend | `vercel`). Mirrors the env-level DEPLOY_PROVIDER. */
+  provider: z.enum(["dryrun", "vercel"]).optional(),
+  /** Optional explicit deploy/build command (overrides framework detection). */
+  command: z.string().optional(),
+  /** Override the detected framework (`next`/`vite`/`cra`/`astro`/`node`/`static`). */
+  framework: z.string().optional(),
+  /** Override the detected build command. */
+  buildCommand: z.string().optional(),
+  /** Override the detected build output directory. */
+  outputDir: z.string().optional(),
+  /** Names of env vars to pass into the build (values stay on the secrets path). */
+  env: z.array(z.string()).optional(),
+  /** Upper bound for one-click scaling (instance count). Defaults to 1 when unset. */
+  maxInstances: z.number().int().positive().max(100).optional(),
+});
+
 /** The providers the selection layer (#52) understands. */
 export const providerKinds = ["anthropic", "openai", "bedrock", "vertex", "custom"] as const;
 export const providerKindSchema = z.enum(providerKinds);
@@ -101,6 +125,8 @@ export const settingsSchema = z.object({
   skills: z.array(z.string()).optional(),
   /** The Run tab's run command (#56): how to start the session's app for in-app preview. */
   run: runSchema.optional(),
+  /** Deploy-to-live-URL settings (#73): how to build + deploy the session's app. */
+  deploy: deploySchema.optional(),
   /** Model/provider selection policy (#52): which providers/models a tenant allows + defaults. */
   models: modelsSchema.optional(),
 });
@@ -110,6 +136,7 @@ export type Settings = z.infer<typeof settingsSchema>;
 export type SlashCommandConfig = z.infer<typeof slashCommandSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 export type RunConfig = z.infer<typeof runSchema>;
+export type DeployConfig = z.infer<typeof deploySchema>;
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 export type EffortLevel = z.infer<typeof effortLevelSchema>;
 export type SessionMode = z.infer<typeof sessionModeSchema>;
@@ -126,6 +153,8 @@ export interface ResolvedConfig {
   skills: string[];
   /** The Run tab's run command (#56), or undefined when the deployment configures none. */
   run?: RunConfig;
+  /** Deploy settings (#73), or undefined when the deployment hasn't enabled deploy (opt-in → 409). */
+  deploy?: DeployConfig;
   /** Model/provider selection policy (#52). A partial whose hard defaults `modelPolicyFromConfig` fills. */
   models: ModelsConfig;
 }

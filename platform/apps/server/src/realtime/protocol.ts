@@ -1,4 +1,4 @@
-import type { PullRequestDto, ReviewCommentDto, RunStatus, TeamEvent } from "@reload/shared";
+import type { DeployStatus, PullRequestDto, ReviewCommentDto, RunStatus, TeamEvent } from "@reload/shared";
 import type { Message } from "../db/repositories/messages.js";
 
 /** Presence states a member can be in within a workspace (#5). */
@@ -71,6 +71,33 @@ export interface RunLogEvent {
   chunk: string;
 }
 
+/**
+ * A deployment lifecycle change for the Deploy tab (#73): `queued → building → ready(url) | error |
+ * unhealthy | rolled_back`. Rides the session's channel key (like #56 run events) — the durable
+ * record is the `deployments` row; this is the live nudge.
+ */
+export interface DeployStatusEvent {
+  type: "deploy_status";
+  sessionId: string;
+  channelId: string;
+  /** The deployment row id. */
+  deploymentId: string;
+  status: DeployStatus;
+  /** The live URL once ready; null/absent otherwise. */
+  url?: string | null;
+  /** A (redacted) error/health detail (status `error`/`unhealthy`); null/absent otherwise. */
+  error?: string | null;
+}
+
+/** One bounded, **redacted** chunk of deploy/build output, streamed to the Deploy tab (#73). */
+export interface DeployLogEvent {
+  type: "deploy_log";
+  sessionId: string;
+  channelId: string;
+  deploymentId: string;
+  chunk: string;
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
@@ -98,6 +125,8 @@ export type ServerEvent =
   | { type: "review_comment"; comment: ReviewCommentDto }
   | RunStatusEvent
   | RunLogEvent
+  | DeployStatusEvent
+  | DeployLogEvent
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 

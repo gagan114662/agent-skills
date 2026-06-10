@@ -37,6 +37,9 @@ import type { SessionManager } from "./runtime/manager.js";
 import { runRoutes } from "./routes/run.js";
 import { createDefaultRunProcessManager } from "./run/default.js";
 import type { RunProcessManager } from "./run/manager.js";
+import { deployRoutes } from "./routes/deploy.js";
+import { createDefaultDeployManager } from "./deploy/default.js";
+import type { DeployManager } from "./deploy/manager.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { GitWorktreeReaper } from "./git/reaper.js";
@@ -78,6 +81,8 @@ export interface BuildAppOptions {
   sessionManager?: SessionManager;
   /** #56 Run tab: tests inject a RunProcessManager with a fake provisioner/spawn; default builds one. */
   runManager?: RunProcessManager;
+  /** #73 Deploy: tests inject a DeployManager over the dry-run provider; default builds one from env. */
+  deployManager?: DeployManager;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
@@ -160,6 +165,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     runManager.shutdown();
     await sessionManager.shutdown();
   });
+  // #73 Deploy: take a finished session's app to a live HTTPS URL through a swappable DeployProvider
+  // (default = the no-spend dry-run backend; DEPLOY_PROVIDER=vercel switches to the real adapter, lazy).
+  // Separate from the SessionManager/RunProcessManager — a deploy is a durable one-shot job whose live
+  // URL is PERSISTED (the deployments table) rather than ephemeral; rollback re-promotes a prior deploy.
+  const deployManager = opts.deployManager ?? createDefaultDeployManager(app.log);
+  app.register(deployRoutes, { deployManager });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
