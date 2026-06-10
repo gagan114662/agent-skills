@@ -25,6 +25,11 @@ export interface AgentJob {
   sessionId: string;
   /** Tenant the session belongs to; scopes isolation + secret resolution. */
   workspaceId: string;
+  /**
+   * Resume key (#82): a prior filesystem snapshot to spin the sandbox up from (e.g. a woken cloud
+   * workspace's retained snapshot). Honored by the sandbox backend; ignored by LocalRuntime.
+   */
+  snapshotId?: string;
   /** The trusted harness command + args. NEVER arbitrary client input. */
   command: string;
   args: string[];
