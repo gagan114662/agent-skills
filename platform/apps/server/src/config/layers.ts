@@ -21,6 +21,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #52 model policy: a higher layer fully owns the block (replace, consistent with records above)
     // so a managed-layer tenant's allow-list cannot be widened by a lower layer.
     if (layer.models !== undefined) out.models = { ...layer.models };
+    // #71 scale policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // caps/budget cannot be loosened by a lower layer.
+    if (layer.scale !== undefined) out.scale = { ...layer.scale };
   }
   return out;
 }
@@ -38,5 +41,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     // #56: no default run command — absent means the deployment configured none (Run tab → 409).
     run: merged.run,
     models: merged.models ?? { ...CONFIG_DEFAULTS.models },
+    scale: merged.scale ?? { ...CONFIG_DEFAULTS.scale },
   };
 }

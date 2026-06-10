@@ -45,6 +45,10 @@ import { createDefaultAutonomyEngine } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
+import { scaleRoutes } from "./routes/scale.js";
+import { createScale, type Scale } from "./scale/default.js";
+import { AdmissionError } from "./scale/admission.js";
+import { recordAdmissionDenied } from "./observability/metrics.js";
 import type { CloudWorkspaceManager } from "./workspace/manager.js";
 
 declare module "fastify" {
@@ -88,6 +92,12 @@ export interface BuildAppOptions {
   gitHubProvider?: GitHubProvider;
   /** #53 plan mode / checkpoints / steering; defaults to one over the shared SessionManager + git. */
   turnController?: TurnController;
+  /**
+   * #71 cloud-scale bundle (admission + usage). Tests inject one and build their SessionManager over
+   * the SAME `scale.admission`, so the usage route's in-flight counters match what the manager runs.
+   * Default builds a fresh one (all caps off → unchanged #25 behavior).
+   */
+  scale?: Scale;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -99,6 +109,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.register(cookie);
   registerObservability(app);
+  // #71: map an admission denial (thrown by any launch path through SessionManager) to a clean HTTP
+  // status — 402 for a budget breach, 429 for a hard stop / capacity — with a content-free reason.
+  // A non-admission error falls through to Fastify's default handling (unchanged behavior).
+  app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof AdmissionError) {
+      recordAdmissionDenied(err.reason);
+      const status = err.reason === "budget_exceeded" ? 402 : 429;
+      return reply.code(status).send({ error: err.message, reason: err.reason });
+    }
+    return reply.send(err);
+  });
   app.register(healthRoutes);
   app.register(authRoutes);
   app.register(meRoutes);
@@ -124,8 +145,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
-  const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log);
+  // #71 cloud scale: ONE Admission instance (kill switch, budget, concurrency caps, region
+  // placement) shared between the SessionManager (which mutates its counters) and the usage route
+  // (which reads them). Built before the manager so they share state. With all caps 0 (the default)
+  // it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
+  const scale = opts.scale ?? createScale(0);
+  const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
   app.register(agentSessionRoutes, { sessionManager });
+  app.register(scaleRoutes, { admission: scale.admission, config: scale.config });
   // #57 deep dev integrations: issue→session, project slash commands, agent-config sync. Reuses the
   // same SessionManager and the base-launch gating; provider tokens stay on the #25 secrets path.
   app.register(

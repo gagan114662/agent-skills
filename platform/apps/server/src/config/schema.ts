@@ -86,6 +86,31 @@ export const modelsSchema = z.object({
   providers: z.record(providerKindSchema, providerConnectionSchema).optional(),
 });
 
+/**
+ * Cloud-scale policy (#71, ADR-0040). All **non-secret** knobs an operator sets in the managed
+ * (optionally per-tenant) layer to make a 24/7 fleet economical + elastic. Every field is optional
+ * and defaults to **off** (no warm pool, unlimited concurrency, no budget, cost rate 0) so a
+ * deployment that sets nothing keeps today's #25 behavior. `tenantConcurrency`/`budgetCents`/
+ * `regions`/`computeRateCentsPerMinute` are per-tenant policy; `globalConcurrency` is a fleet
+ * ceiling (managed-global) — see ADR-0040.
+ */
+export const scaleSchema = z.object({
+  /** Per-region warm-pool buffer target; 0 = pool off (cold-provision every session). */
+  warmPoolSize: z.number().int().nonnegative().optional(),
+  /** Allowed placement regions; [] = unplaced (single-region #25 behavior). */
+  regions: z.array(z.string()).optional(),
+  /** Tie-break preference among `regions` when load is equal. */
+  preferredRegion: z.string().optional(),
+  /** Max in-flight sessions per tenant; 0 = unlimited. */
+  tenantConcurrency: z.number().int().nonnegative().optional(),
+  /** Fleet-wide in-flight ceiling (managed-global); 0/undefined → the env default. */
+  globalConcurrency: z.number().int().nonnegative().optional(),
+  /** Per-window cost cap in cents; 0 = no budget. */
+  budgetCents: z.number().int().nonnegative().optional(),
+  /** Cost-estimate rate (cents per compute-minute); 0 = cost always 0 (budget never bites). */
+  computeRateCentsPerMinute: z.number().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -103,6 +128,8 @@ export const settingsSchema = z.object({
   run: runSchema.optional(),
   /** Model/provider selection policy (#52): which providers/models a tenant allows + defaults. */
   models: modelsSchema.optional(),
+  /** Cloud-scale policy (#71): warm pool, concurrency caps, regions, cost/budget caps. */
+  scale: scaleSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -115,6 +142,7 @@ export type EffortLevel = z.infer<typeof effortLevelSchema>;
 export type SessionMode = z.infer<typeof sessionModeSchema>;
 export type ProviderConnection = z.infer<typeof providerConnectionSchema>;
 export type ModelsConfig = z.infer<typeof modelsSchema>;
+export type ScaleConfig = z.infer<typeof scaleSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -128,6 +156,8 @@ export interface ResolvedConfig {
   run?: RunConfig;
   /** Model/provider selection policy (#52). A partial whose hard defaults `modelPolicyFromConfig` fills. */
   models: ModelsConfig;
+  /** Cloud-scale policy (#71). A partial whose hard defaults `resolveScaleCaps` fills. */
+  scale: ScaleConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -139,4 +169,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   mcpServers: {},
   skills: [],
   models: {},
+  scale: {},
 };
