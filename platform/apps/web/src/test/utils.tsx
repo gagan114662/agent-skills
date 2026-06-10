@@ -146,6 +146,16 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
     },
     review: {
       listSessions: vi.fn(async () => over.sessions ?? []),
+      launchSession: vi.fn(async (_c: string, input: { agentMemberId: string }) => ({
+        id: "sess_new",
+        status: "provisioning",
+        runtime: "local",
+        agentMemberId: input.agentMemberId,
+        provider: null,
+        model: null,
+        effort: null,
+        mode: null,
+      })),
       diff: vi.fn(async (_c: string, sessionId: string, mode: "cumulative" | "turn") => ({
         sessionId,
         branch: `agent/${sessionId}`,

@@ -1,7 +1,10 @@
 import type {
   AgentSession,
+  EffortLevel,
+  ProviderKind,
   ResourceCaps,
   RuntimeKind,
+  SessionMode,
   SessionStatus,
 } from "../db/repositories/agent-sessions.js";
 import {
@@ -25,6 +28,11 @@ export interface SessionStore {
     runtime: RuntimeKind;
     command: string;
     caps: ResourceCaps;
+    /** Non-secret model/provider selection (#52); omitted when no explicit selection was made. */
+    provider?: ProviderKind | null;
+    model?: string | null;
+    effort?: EffortLevel | null;
+    mode?: SessionMode | null;
   }): Promise<AgentSession>;
   markRunning(id: string, sandboxId?: string): Promise<void>;
   finalize(
@@ -93,10 +101,22 @@ export interface LaunchInput {
   parentMessageId?: string;
   /**
    * Subagents (#59): extra env merged into the job alongside `AGENT_TASK` (e.g. a persona's
-   * `AGENT_APPEND_SYSTEM_PROMPT` / `AGENT_ALLOWED_TOOLS`). Persona config is data, never argv. When
-   * absent the job env is `{ AGENT_TASK }` exactly as before.
+   * `AGENT_APPEND_SYSTEM_PROMPT` / `AGENT_ALLOWED_TOOLS`). Model/provider selection (#52) flows the
+   * same way (`ANTHROPIC_MODEL`, provider flags, `MAX_THINKING_TOKENS`, …). Config is data, never
+   * argv. When absent the job env is `{ AGENT_TASK }` exactly as before.
    */
   harnessEnv?: Record<string, string>;
+  /**
+   * Model/provider selection (#52): the **non-secret** selection persisted on the session row for
+   * audit + the review UI. The matching env lives in `harnessEnv`; this is metadata only — never a
+   * secret. Omitted when no explicit selection was made.
+   */
+  selection?: {
+    provider: ProviderKind;
+    model: string;
+    effort: EffortLevel;
+    mode: SessionMode;
+  };
 }
 
 /** How many trailing output lines to keep as the persisted result summary. */
@@ -139,6 +159,10 @@ export class SessionManager {
       runtime: this.deps.runtime.kind,
       command: this.deps.harness.command,
       caps: this.deps.caps,
+      provider: input.selection?.provider ?? null,
+      model: input.selection?.model ?? null,
+      effort: input.selection?.effort ?? null,
+      mode: input.selection?.mode ?? null,
     });
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
@@ -158,6 +182,19 @@ export class SessionManager {
     const running = this.running.get(id);
     if (!running) return false;
     await running.cancel("canceled");
+    return true;
+  }
+
+  /**
+   * Inject steering guidance into a live, in-flight session (#53). Mirrors {@link cancel}: it only
+   * touches a session this manager is actively driving and only delivers when the runtime supports
+   * steering. Returns whether the guidance reached the process (false for an unknown/terminal session
+   * or a runtime without steering — the caller still records the steer message in the channel).
+   */
+  async steer(id: string, text: string): Promise<boolean> {
+    const running = this.running.get(id);
+    if (!running?.steer) return false;
+    await running.steer(text);
     return true;
   }
 

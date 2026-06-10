@@ -21,11 +21,14 @@ import type {
   AgentProfile,
   AgentSessionSummary,
   Channel,
+  EffortLevel,
   Identity,
   MemberHit,
   MentionItem,
   Message,
+  ProviderKind,
   SearchEnvelope,
+  SessionMode,
   ThreadView,
 } from "./types.js";
 
@@ -43,6 +46,32 @@ export interface CreatePrInput {
   title: string;
   body?: string;
   draft?: boolean;
+}
+
+/**
+ * Body accepted by `POST /channels/:cid/agent-sessions` (#52). `task` is required; the model/provider
+ * selection is optional — omit it to run on the deployment/tenant default. The server validates the
+ * selection against the tenant's policy and rejects a disallowed choice with a 400 (ApiError).
+ */
+export interface LaunchSessionInput {
+  agentMemberId: string;
+  task: string;
+  provider?: ProviderKind;
+  model?: string;
+  effort?: EffortLevel;
+  mode?: SessionMode;
+}
+
+/** The 202 launch acknowledgement, echoing the resolved (non-secret) selection. */
+export interface LaunchSessionResult {
+  id: string;
+  status: string;
+  runtime: string;
+  agentMemberId: string;
+  provider: ProviderKind | null;
+  model: string | null;
+  effort: EffortLevel | null;
+  mode: SessionMode | null;
 }
 
 /** Result of `POST /approvals/:rid/approve` on success (executor ran). */
@@ -230,6 +259,10 @@ export const api = {
     /** Agent sessions in a channel — the things that have a reviewable diff. */
     listSessions(channelId: string): Promise<AgentSessionSummary[]> {
       return request<AgentSessionSummary[]>(`/channels/${channelId}/agent-sessions`);
+    },
+    /** Launch an agent session with an optional model/provider/effort/Auto selection (#52). */
+    launchSession(channelId: string, input: LaunchSessionInput): Promise<LaunchSessionResult> {
+      return post(`/channels/${channelId}/agent-sessions`, input) as Promise<LaunchSessionResult>;
     },
     /** A session's diff (cumulative or the latest turn). */
     diff(channelId: string, sessionId: string, mode: DiffMode): Promise<SessionDiff> {

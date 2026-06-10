@@ -26,7 +26,10 @@ export class LocalRuntime implements AgentRuntime {
       cwd: job.cwd,
       env: { ...process.env, ...job.env, ...job.secrets },
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      // stdin is a pipe so steering (#53) can inject guidance into the live process. Harmless for
+      // harnesses that don't read it (`claude -p` takes its prompt from argv; the `demo` harness
+      // ignores stdin) — only a steerable harness consumes it.
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     child.stdout?.setEncoding("utf8");
@@ -65,6 +68,19 @@ class LocalSession implements RunningSession {
   cancel(reason: TerminalReason): Promise<void> {
     this.forcedReason = reason;
     killTree(this.child);
+    return Promise.resolve();
+  }
+
+  /**
+   * Steering (#53): write one guidance line to the harness stdin. Best-effort — if the process has
+   * exited or its stdin is closed, the write is swallowed (the channel still records the steer).
+   */
+  steer(text: string): Promise<void> {
+    try {
+      this.child.stdin?.write(`${text}\n`);
+    } catch {
+      /* stdin closed / process gone — never throw from steering */
+    }
     return Promise.resolve();
   }
 }

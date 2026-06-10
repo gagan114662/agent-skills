@@ -48,6 +48,44 @@ export const runSchema = z.object({
   readyPattern: z.string().optional(),
 });
 
+/** The providers the selection layer (#52) understands. */
+export const providerKinds = ["anthropic", "openai", "bedrock", "vertex", "custom"] as const;
+export const providerKindSchema = z.enum(providerKinds);
+/** Effort/thinking tiers (#52): `off` = no thinking budget; higher = larger `MAX_THINKING_TOKENS`. */
+export const effortLevels = ["off", "low", "medium", "high"] as const;
+export const effortLevelSchema = z.enum(effortLevels);
+/** Session mode (#52): `single` = one model; `auto` = Opus plans → Sonnet implements. */
+export const sessionModes = ["single", "auto"] as const;
+export const sessionModeSchema = z.enum(sessionModes);
+
+/**
+ * Non-secret connection details for a provider (#52). A `baseUrl` (custom/openai gateway) is an
+ * egress point gated by data-privacy mode; `region`/`projectId` configure Bedrock/Vertex. Provider
+ * **credentials never live here** — they stay on the #25 `SecretsResolver` path, exactly like the
+ * #57 `mcpServers.env` convention (names, never values).
+ */
+export const providerConnectionSchema = z.object({
+  baseUrl: z.string().optional(),
+  region: z.string().optional(),
+  projectId: z.string().optional(),
+});
+
+/**
+ * Model/provider selection policy (#52, ADR-0029). All **non-secret**: which providers/models a tenant
+ * permits, the defaults, the Auto-mode model pair, and per-provider connection details. A managed-layer
+ * tenant uses `allowedProviders`/`allowedModels` to pin selection; a session cannot pick outside it.
+ */
+export const modelsSchema = z.object({
+  defaultProvider: providerKindSchema.optional(),
+  defaultModel: z.string().optional(),
+  allowedProviders: z.array(providerKindSchema).optional(),
+  allowedModels: z.array(z.string()).optional(),
+  defaultEffort: effortLevelSchema.optional(),
+  defaultMode: sessionModeSchema.optional(),
+  auto: z.object({ planModel: z.string(), implementModel: z.string() }).optional(),
+  providers: z.record(providerKindSchema, providerConnectionSchema).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -63,6 +101,8 @@ export const settingsSchema = z.object({
   skills: z.array(z.string()).optional(),
   /** The Run tab's run command (#56): how to start the session's app for in-app preview. */
   run: runSchema.optional(),
+  /** Model/provider selection policy (#52): which providers/models a tenant allows + defaults. */
+  models: modelsSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -70,6 +110,11 @@ export type Settings = z.infer<typeof settingsSchema>;
 export type SlashCommandConfig = z.infer<typeof slashCommandSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 export type RunConfig = z.infer<typeof runSchema>;
+export type ProviderKind = z.infer<typeof providerKindSchema>;
+export type EffortLevel = z.infer<typeof effortLevelSchema>;
+export type SessionMode = z.infer<typeof sessionModeSchema>;
+export type ProviderConnection = z.infer<typeof providerConnectionSchema>;
+export type ModelsConfig = z.infer<typeof modelsSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -81,6 +126,8 @@ export interface ResolvedConfig {
   skills: string[];
   /** The Run tab's run command (#56), or undefined when the deployment configures none. */
   run?: RunConfig;
+  /** Model/provider selection policy (#52). A partial whose hard defaults `modelPolicyFromConfig` fills. */
+  models: ModelsConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -91,4 +138,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   slashCommands: {},
   mcpServers: {},
   skills: [],
+  models: {},
 };

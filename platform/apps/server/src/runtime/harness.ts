@@ -25,8 +25,6 @@ export interface HarnessSpec {
 export interface HarnessOptions {
   /** Path or name of the Claude Code binary. Default `claude`. */
   claudeBin?: string;
-  /** Optional model override passed to Claude Code (e.g. `claude-opus-4-8`). */
-  model?: string;
   /** Extra raw flags appended to the claude invocation. */
   claudeExtraArgs?: string[];
 }
@@ -45,7 +43,6 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
   if (kind === "demo") return { command: DEMO.command, args: [...DEMO.args] };
 
   const bin = opts.claudeBin ?? "claude";
-  const model = opts.model ? ` --model ${shellQuote(opts.model)}` : "";
   const extra =
     opts.claudeExtraArgs && opts.claudeExtraArgs.length > 0
       ? " " + opts.claudeExtraArgs.map(shellQuote).join(" ")
@@ -65,6 +62,13 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
     `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}` +
     ` ` +
     `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}`;
+  // Model + provider selection (#52) reaches Claude Code via env it reads natively (ANTHROPIC_MODEL,
+  // ANTHROPIC_BASE_URL, CLAUDE_CODE_USE_BEDROCK/VERTEX, MAX_THINKING_TOKENS, ANTHROPIC_DEFAULT_OPUS_MODEL),
+  // so per-session selection is the same injection-safe env seam as the task/persona — never argv. The
+  // model is surfaced as an env-gated `--model` flag (double-quoted env reference, like `$AGENT_TASK`)
+  // so the chosen model is explicit/overridable per session; when ANTHROPIC_MODEL is unset the flag
+  // vanishes and Claude Code falls back to its own default — unchanged behavior.
+  const model = ` \${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"}`;
   const cmd =
     `${shellQuote(bin)} -p "$AGENT_TASK" ` +
     `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}`;

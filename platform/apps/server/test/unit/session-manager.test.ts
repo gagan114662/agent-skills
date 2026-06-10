@@ -153,6 +153,30 @@ class PendingRuntime implements AgentRuntime {
   }
 }
 
+/** A pending runtime whose session supports steering — records the guidance it receives (#53). */
+class SteerablePendingRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  readonly steered: string[] = [];
+  start(job: AgentJob): Promise<RunningSession> {
+    let resolve!: (r: RuntimeResult) => void;
+    const done = new Promise<RuntimeResult>((r) => (resolve = r));
+    const steered = this.steered;
+    const session: RunningSession = {
+      sessionId: job.sessionId,
+      wait: () => done,
+      cancel: (reason: TerminalReason) => {
+        resolve({ status: statusForReason(reason), exitCode: null });
+        return Promise.resolve();
+      },
+      steer: (text: string) => {
+        steered.push(text);
+        return Promise.resolve();
+      },
+    };
+    return Promise.resolve(session);
+  }
+}
+
 const caps = (over: Partial<ResourceCaps> = {}): ResourceCaps => ({
   wallClockMs: 10_000,
   idleMs: 10_000,
@@ -283,5 +307,32 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(store.finalized?.status).toBe("canceled");
     // cancelling an unknown / already-finished session is a no-op
     expect(await manager.cancel(session.id)).toBe(false);
+  });
+
+  it("steer() delivers guidance to a live, steerable session (#53)", async () => {
+    const runtime = new SteerablePendingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+    const session = await manager.launch(launch);
+    await new Promise((r) => setTimeout(r, 10)); // let drive() reach the running state
+
+    expect(await manager.steer(session.id, "focus on the tests")).toBe(true);
+    expect(runtime.steered).toEqual(["focus on the tests"]);
+
+    await manager.cancel(session.id);
+    await manager.join(session.id);
+  });
+
+  it("steer() returns false for an unknown session or a runtime without steering (#53)", async () => {
+    // unknown id → not delivered
+    const { manager: m1 } = makeManager(new SteerablePendingRuntime(), caps(), new Secrets({}));
+    expect(await m1.steer("nope", "x")).toBe(false);
+
+    // a live session whose runtime has no steer support → not delivered (no throw)
+    const { manager: m2 } = makeManager(new PendingRuntime(), caps(), new Secrets({}));
+    const s = await m2.launch(launch);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await m2.steer(s.id, "x")).toBe(false);
+    await m2.cancel(s.id);
+    await m2.join(s.id);
   });
 });

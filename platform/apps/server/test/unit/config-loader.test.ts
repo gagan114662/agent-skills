@@ -98,6 +98,37 @@ describe("managed/enterprise lock (#58)", () => {
   });
 });
 
+describe("model policy layer (#52)", () => {
+  it("loads a tenant's model allow-list + defaults from the repo layer", () => {
+    const repo = [
+      `[models]`,
+      `defaultProvider = "bedrock"`,
+      `allowedProviders = ["bedrock", "anthropic"]`,
+      `defaultEffort = "high"`,
+      `[models.providers.bedrock]`,
+      `region = "eu-west-1"`,
+    ].join("\n");
+    const cfg = loadConfig(undefined, sources({ repo }));
+    expect(cfg.models.defaultProvider).toBe("bedrock");
+    expect(cfg.models.allowedProviders).toEqual(["bedrock", "anthropic"]);
+    expect(cfg.models.defaultEffort).toBe("high");
+    expect(cfg.models.providers?.bedrock?.region).toBe("eu-west-1");
+  });
+
+  it("a managed model allow-list is the lock — a lower layer cannot widen it", () => {
+    const managed = `[settings.models]\nallowedProviders = ["anthropic"]`;
+    const repo = `[models]\nallowedProviders = ["anthropic", "openai", "custom"]`;
+    const cfg = loadConfig(undefined, sources({ managed, repo }));
+    expect(cfg.models.allowedProviders).toEqual(["anthropic"]); // managed wins (replace, not merge)
+  });
+
+  it("rejects an unknown provider in the allow-list (schema-validated, content-free)", () => {
+    expect(() => loadConfig(undefined, sources({ repo: `[models]\nallowedProviders = ["skynet"]` }))).toThrowError(
+      /allowedProviders/,
+    );
+  });
+});
+
 describe("validation & resilience (#58)", () => {
   it("rejects a type-invalid value with a clear, content-free error", () => {
     expect(() => loadConfig(undefined, sources({ repo: `dataPrivacyMode = "yes"` }))).toThrowError(

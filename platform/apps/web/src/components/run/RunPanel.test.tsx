@@ -16,6 +16,10 @@ const SESSION: AgentSessionSummary = {
   baseBranch: "main",
   headSha: null,
   createdAt: "2026-06-09T00:00:00.000Z",
+  provider: null,
+  model: null,
+  effort: null,
+  mode: null,
 };
 
 /** Fire a gateway event inside act(...) so React flushes the resulting state update synchronously. */

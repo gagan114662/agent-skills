@@ -14,3 +14,5 @@ export * from "./pull-requests.js";
 export * from "./review-comments.js";
 export * from "./autonomy.js";
 export * from "./cloud-workspaces.js";
+export * from "./plan-proposals.js";
+export * from "./session-turns.js";

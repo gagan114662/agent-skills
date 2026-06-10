@@ -1,6 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
+import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
+
+export type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
 
 /** Lifecycle states of an agent session. Terminal states end with a set `endedAt`. */
 export type SessionStatus =
@@ -38,6 +41,11 @@ export interface AgentSession {
   branch: string | null;
   baseBranch: string | null;
   headSha: string | null;
+  /** Model/provider selection (#52): the non-secret selection the session ran with. Null = unset. */
+  provider: ProviderKind | null;
+  model: string | null;
+  effort: EffortLevel | null;
+  mode: SessionMode | null;
   caps: ResourceCaps;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -60,6 +68,10 @@ const COLUMNS = {
   branch: agentSessions.branch,
   baseBranch: agentSessions.baseBranch,
   headSha: agentSessions.headSha,
+  provider: agentSessions.provider,
+  model: agentSessions.model,
+  effort: agentSessions.effort,
+  mode: agentSessions.mode,
   caps: agentSessions.caps,
   startedAt: agentSessions.startedAt,
   endedAt: agentSessions.endedAt,
@@ -74,6 +86,11 @@ export async function createAgentSession(input: {
   runtime: RuntimeKind;
   command: string;
   caps: ResourceCaps;
+  /** Non-secret model/provider selection (#52); omitted when no explicit selection was made. */
+  provider?: ProviderKind | null;
+  model?: string | null;
+  effort?: EffortLevel | null;
+  mode?: SessionMode | null;
 }): Promise<AgentSession> {
   const [row] = await db
     .insert(agentSessions)
@@ -85,6 +102,10 @@ export async function createAgentSession(input: {
       runtime: input.runtime,
       command: input.command,
       caps: input.caps,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
+      effort: input.effort ?? null,
+      mode: input.mode ?? null,
       status: "provisioning",
     })
     .returning(COLUMNS);
@@ -143,6 +164,16 @@ export async function getAgentSession(
     .where(and(eq(agentSessions.id, id), eq(agentSessions.channelId, channelId)))
     .limit(1);
   return row as AgentSession | undefined;
+}
+
+/** A session's finalized output tail (#53): the plan-mode run's proposed plan is parsed from it. */
+export async function getAgentSessionResult(id: string): Promise<string | null> {
+  const [row] = await db
+    .select({ result: agentSessions.result })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, id))
+    .limit(1);
+  return row?.result ?? null;
 }
 
 /** Sessions for a channel, newest first. */

@@ -1126,6 +1126,56 @@ button {
   font-size: 11px;
   color: var(--text-faint);
 }
+/* Model/provider selection (#52) */
+.modelsel__badge {
+  font-size: 11px;
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+}
+.review__launch {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.review__launch h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.modelsel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.modelsel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.modelsel__field select,
+.modelsel__field input {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 6px;
+  font-size: 13px;
+}
+.modelsel__auto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.review__launch-preview {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: ui-monospace, monospace;
+  margin-top: 6px;
+}
 .review__diffhead {
   display: flex;
   align-items: center;
