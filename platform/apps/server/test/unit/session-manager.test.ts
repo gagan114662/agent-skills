@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SessionManager } from "../../src/runtime/manager.js";
+import { harnessLineDecoder } from "../../src/runtime/stream-json.js";
+import type { LineDecoder } from "../../src/runtime/stream-json.js";
 import type {
   ChannelPoster,
   SessionLogger,
@@ -97,6 +99,28 @@ const silentLogger: SessionLogger = {
   error: () => {},
 };
 
+/**
+ * A poster whose post() promises resolve OUT of emission order (earlier calls resolve later). If the
+ * manager fires streamed posts concurrently (fire-and-forget), they land reversed and the terminal
+ * message can interleave; if it serializes them, they land in emission order with the terminal last.
+ * Records bodies in the order their post() promise RESOLVED.
+ */
+class ReorderingPoster implements ChannelPoster {
+  readonly completed: string[] = [];
+  private call = 0;
+  constructor(private readonly store: FakeStore) {}
+  post(input: { body: string }): Promise<{ id: string }> {
+    const idx = this.call++;
+    const delay = (20 - idx) * 2; // earlier calls → larger delay → resolve later if run concurrently
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.completed.push(input.body);
+        resolve({ id: this.store.nextId() });
+      }, Math.max(1, delay));
+    });
+  }
+}
+
 /** A runtime that emits fixed output synchronously and then completes with `exitCode`. */
 class CompletingRuntime implements AgentRuntime {
   readonly kind = "local" as const;
@@ -183,7 +207,12 @@ const caps = (over: Partial<ResourceCaps> = {}): ResourceCaps => ({
   ...over,
 });
 
-function makeManager(runtime: AgentRuntime, c: ResourceCaps, secrets: StaticSecretsResolver) {
+function makeManager(
+  runtime: AgentRuntime,
+  c: ResourceCaps,
+  secrets: StaticSecretsResolver,
+  decodeOutput?: LineDecoder,
+) {
   const store = new FakeStore();
   const poster = new FakePoster(store);
   const manager = new SessionManager({
@@ -194,6 +223,7 @@ function makeManager(runtime: AgentRuntime, c: ResourceCaps, secrets: StaticSecr
     harness: { command: "bash", args: ["x.sh"] },
     caps: c,
     logger: silentLogger,
+    decodeOutput,
   });
   return { manager, store, poster };
 }
@@ -295,6 +325,105 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     const session = await manager.launch(launch);
     await manager.join(session.id);
     expect(Object.keys(runtime.job?.env ?? {})).toEqual(["AGENT_TASK"]);
+  });
+
+  it("decodes claude-code stream-json into readable channel text and surfaces tool calls (#81)", async () => {
+    const events = [
+      JSON.stringify({ type: "system", subtype: "init", model: "claude" }),
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "Investigating the failure." }] },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", name: "Bash", input: { command: "pnpm test" } }] },
+      }),
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "All tests pass." }),
+    ].join("\n") + "\n";
+    const runtime = new CompletingRuntime([events], 0);
+    const { manager, poster } = makeManager(runtime, caps(), new Secrets({}), harnessLineDecoder("claude-code"));
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    const bodies = poster.bodies();
+    // Readable assistant text + result summary reach the channel.
+    expect(bodies).toContain("Investigating the failure.");
+    expect(bodies).toContain("All tests pass.");
+    // The tool call is surfaced as a readable line.
+    expect(bodies.some((b) => b.includes("🔧") && b.includes("Bash") && b.includes("pnpm test"))).toBe(true);
+    // No raw JSON event blob is ever posted to the channel.
+    expect(bodies.some((b) => b.includes('"type":"assistant"'))).toBe(false);
+    // The init event is suppressed (no model-config blob in the channel).
+    expect(bodies.some((b) => b.includes('"subtype":"init"'))).toBe(false);
+  });
+
+  it("leaves demo harness output unchanged when a demo decoder is wired (#81 regression)", async () => {
+    // A JSON-looking line from the demo harness must stream verbatim — never decoded.
+    const jsonish = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } });
+    const runtime = new CompletingRuntime([`build complete\n${jsonish}\n`], 0);
+    const { manager, poster } = makeManager(runtime, caps(), new Secrets({}), harnessLineDecoder("demo"));
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    const bodies = poster.bodies();
+    expect(bodies).toContain("build complete");
+    expect(bodies).toContain(jsonish); // verbatim, not decoded
+  });
+
+  it("redacts secrets from decoded claude-code channel output (#81)", async () => {
+    const secret = "sk-supersecret-value-123";
+    const line =
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "text", text: `using token ${secret} to authenticate` }] },
+      }) + "\n";
+    const runtime = new CompletingRuntime([line], 0);
+    const { manager, store, poster } = makeManager(
+      runtime,
+      caps(),
+      new Secrets({ MY_SECRET: secret }),
+      harnessLineDecoder("claude-code"),
+    );
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    const all = poster.bodies().join("\n") + (store.finalized?.result ?? "");
+    expect(all).not.toContain(secret);
+    expect(poster.bodies().some((b) => b.includes("‹redacted›"))).toBe(true);
+  });
+
+  it("persists streamed lines in emission order and flushes them before the terminal message", async () => {
+    // Regression: streamed posts were fire-and-forget, so they raced the terminal message + finalize —
+    // a consumer reading after completion saw lines out of order or missing entirely.
+    const runtime = new CompletingRuntime(["alpha\nbeta\ngamma\n"], 0);
+    const store = new FakeStore();
+    const poster = new ReorderingPoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    // All streamed lines are persisted by the time the run completes...
+    expect(poster.completed).toContain("alpha");
+    expect(poster.completed).toContain("beta");
+    expect(poster.completed).toContain("gamma");
+    // ...in emission order (not reversed by concurrent resolution)...
+    const streamed = poster.completed.filter((b) => ["alpha", "beta", "gamma"].includes(b));
+    expect(streamed).toEqual(["alpha", "beta", "gamma"]);
+    // ...and the terminal "completed" message lands after every streamed line.
+    const termIdx = poster.completed.findIndex((b) => b.includes("completed"));
+    expect(termIdx).toBeGreaterThan(poster.completed.indexOf("gamma"));
   });
 
   it("cancel() ends a running session", async () => {
