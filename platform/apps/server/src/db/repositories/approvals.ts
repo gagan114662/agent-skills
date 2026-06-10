@@ -76,6 +76,23 @@ export async function listPolicyRules(workspaceId: string): Promise<PolicyRule[]
   }));
 }
 
+/**
+ * Policy rules carrying their id — `evaluatePolicy`-compatible plus the id of the rule that matched,
+ * so a policy-driven auto-approval can be audited to the exact rule (#84 follow-up, ADR-0042). Used by
+ * the autonomy engine's `completionPolicies` seam; the extra `id` is ignored by `evaluatePolicy`.
+ */
+export async function listPolicyRulesWithId(
+  workspaceId: string,
+): Promise<(PolicyRule & { id: string })[]> {
+  const rows = await listPolicies(workspaceId);
+  return rows.map((r) => ({
+    id: r.id,
+    actionType: r.actionType,
+    requiresApproval: r.requireApproval,
+    maxAutoAmount: r.maxAutoAmount,
+  }));
+}
+
 export async function deletePolicy(id: string, workspaceId: string): Promise<boolean> {
   const deleted = await db
     .delete(approvalPolicies)

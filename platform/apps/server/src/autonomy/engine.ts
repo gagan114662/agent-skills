@@ -22,6 +22,7 @@ import {
 } from "../db/repositories/autonomy.js";
 import { budgetExhausted, tickLimitReached } from "./guards.js";
 import { decideWorkflowAction, type AutonomyAction } from "./decide.js";
+import { evaluatePolicy, AUTONOMY_COMPLETE_ACTION, type PolicyRule } from "../approvals/policy.js";
 
 /**
  * AutonomyEngine (#17, ADR-0017; real-session execution #84, ADR-0042) — the server-owned activity
@@ -57,6 +58,11 @@ export interface AutonomyLauncher {
   status(id: string): Promise<SessionStatus>;
 }
 
+/** A workspace policy rule plus its id — `PolicyRule`-compatible, carrying the audit anchor (#84). */
+export interface CompletionPolicyRule extends PolicyRule {
+  id: string;
+}
+
 export interface AutonomyEngineDeps {
   poster: ChannelPoster;
   logger: SessionLogger;
@@ -65,6 +71,14 @@ export interface AutonomyEngineDeps {
    * for the stage; when absent the engine narrates the action only (its pre-#84 behaviour).
    */
   launcher?: AutonomyLauncher;
+  /**
+   * Optional auto-approve policy source for autonomous completion (#84 follow-up, ADR-0042). When a
+   * workspace's `autonomy.complete` policy rule auto-approves, a completed final stage closes straight
+   * to `done` instead of parking at the human gate. When absent — or when no rule matches — the human
+   * approval gate (#13/#20) holds, exactly as before. Defaults to the #13 `approval_policies` store in
+   * production; tests inject a fake.
+   */
+  completionPolicies?: (workspaceId: string) => Promise<CompletionPolicyRule[]>;
   /** Loop-guard ceiling override (defaults to the engine's safe default). */
   loopGuardMax?: number;
 }
@@ -368,6 +382,24 @@ export class AutonomyEngine {
   }
 
   /**
+   * Decide whether a completed final stage may auto-approve, and which rule authorised it (#84
+   * follow-up, ADR-0042). With no policy source wired, or no matching auto-approve rule, the human
+   * gate holds (`autoApprove: false`) — `autonomy.complete` is sensitive by default, so a workspace
+   * must opt in explicitly. Reuses the #13 pure `evaluatePolicy`, scoped to the workflow's workspace
+   * (no cross-tenant leakage — the rules are fetched per workspace).
+   */
+  private async completionDecision(
+    workspaceId: string,
+  ): Promise<{ autoApprove: boolean; ruleId: string | null }> {
+    if (!this.deps.completionPolicies) return { autoApprove: false, ruleId: null };
+    const rules = await this.deps.completionPolicies(workspaceId);
+    const decision = evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, rules);
+    if (decision.requiresApproval) return { autoApprove: false, ruleId: null };
+    const rule = rules.find((r) => r.actionType === AUTONOMY_COMPLETE_ACTION);
+    return { autoApprove: true, ruleId: rule?.id ?? null };
+  }
+
+  /**
    * Close the loop on a finished session (#84). Success of the final stage drives the task to `done`
    * and completes the workflow; success of an earlier stage clears admission so the next tick hands
    * off to the next stage. Any non-`completed` terminal state blocks the task for human review. All
@@ -389,25 +421,49 @@ export class AutonomyEngine {
     if (status === "completed") {
       const isFinalStage = stageIndex >= wf.stages.length - 1;
       if (isFinalStage) {
-        // The agent did the work, but a human (or an explicit auto-approve policy, #13) closes it —
-        // success never drives `done` directly. Park at the same approval gate the narration path
-        // uses: an approval record + `awaiting_approval`. `approve()` drives the task to `done`,
-        // `reject()` drives it to `blocked`.
-        await createApproval({
+        // The agent did the work; acceptance closes the loop. A gate record is always created (the
+        // audit anchor). By default a human closes it — success never drives `done` directly. An
+        // explicit workspace `autonomy.complete` auto-approve policy (#84 follow-up, ADR-0042) lets a
+        // trusted workflow skip the human: the gate is decided BY POLICY (recording which rule fired)
+        // and the task goes straight to `done` + the workflow to `completed`. With no rule the gate
+        // holds exactly as before.
+        const approval = await createApproval({
           workspaceId: wf.workspaceId,
           workflowId: wf.id,
           taskId,
           requestedByMemberId: agentMemberId,
           action: "complete_workflow",
         });
-        await setWorkflowStatus(wf.id, "awaiting_approval");
-        await bumpWorkflowAction(wf.id);
-        await this.post(
-          wf,
-          agentMemberId,
-          `✅ agent session ${sessionId} completed “${taskTitle}” — awaiting human approval to complete.`,
-          log,
-        );
+        const policy = await this.completionDecision(wf.workspaceId);
+        if (policy.autoApprove) {
+          await decideApproval(approval.id, {
+            status: "approved",
+            decidedByMemberId: null,
+            decisionSource: "policy",
+            policyRuleId: policy.ruleId,
+          });
+          if (task.status !== "done" && canTransition(task.status, "done")) {
+            await updateStatus(taskId, "done", agentMemberId);
+          }
+          await setWorkflowStatus(wf.id, "completed");
+          await bumpWorkflowAction(wf.id);
+          await this.post(
+            wf,
+            agentMemberId,
+            `✅ agent session ${sessionId} completed “${taskTitle}” — auto-approved to done by ` +
+              `policy rule ${policy.ruleId} (autonomy.complete); no human gate.`,
+            log,
+          );
+        } else {
+          await setWorkflowStatus(wf.id, "awaiting_approval");
+          await bumpWorkflowAction(wf.id);
+          await this.post(
+            wf,
+            agentMemberId,
+            `✅ agent session ${sessionId} completed “${taskTitle}” — awaiting human approval to complete.`,
+            log,
+          );
+        }
       } else {
         await this.post(
           wf,

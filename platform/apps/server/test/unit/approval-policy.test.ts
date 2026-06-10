@@ -5,6 +5,7 @@ import {
   isActionType,
   isApprovalStatus,
   DEFAULT_SENSITIVE_ACTIONS,
+  AUTONOMY_COMPLETE_ACTION,
   type PolicyRule,
 } from "../../src/approvals/policy.js";
 import {
@@ -50,6 +51,26 @@ describe("evaluatePolicy (gating engine)", () => {
     expect(DEFAULT_SENSITIVE_ACTIONS).toContain("external.send");
     expect(evaluatePolicy({ actionType: "external.send" }, []).requiresApproval).toBe(true);
     expect(evaluatePolicy({ actionType: "chat.post_message" }, []).requiresApproval).toBe(false);
+  });
+
+  it("gates autonomy.complete by default so the human gate stays unless a rule opts in (#84/ADR-0042)", () => {
+    // No rule → the autonomous-completion gate holds (today's behaviour, exactly).
+    expect(DEFAULT_SENSITIVE_ACTIONS).toContain(AUTONOMY_COMPLETE_ACTION);
+    expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, []).requiresApproval).toBe(true);
+    // An explicit auto-approve rule opts the workspace out of the human gate.
+    const auto: PolicyRule[] = [
+      { actionType: AUTONOMY_COMPLETE_ACTION, requiresApproval: false, maxAutoAmount: null },
+    ];
+    expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, auto).requiresApproval).toBe(
+      false,
+    );
+    // A rule that still requires approval keeps the gate.
+    const gated: PolicyRule[] = [
+      { actionType: AUTONOMY_COMPLETE_ACTION, requiresApproval: true, maxAutoAmount: null },
+    ];
+    expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, gated).requiresApproval).toBe(
+      true,
+    );
   });
 });
 
