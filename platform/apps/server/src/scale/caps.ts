@@ -13,6 +13,8 @@ export interface ScaleCaps {
   tenantConcurrency: number;
   budgetCents: number;
   computeRateCentsPerMinute: number;
+  /** Infra budget ceiling in cents (#113); 0 = no ceiling (the forecast never warns). */
+  infraBudgetCeilingCents: number;
 }
 
 /** Apply hard defaults to a tenant's `[scale]` config (or its absence). Pure. */
@@ -24,5 +26,6 @@ export function resolveScaleCaps(scale: ScaleConfig | undefined): ScaleCaps {
     tenantConcurrency: scale?.tenantConcurrency ?? 0,
     budgetCents: scale?.budgetCents ?? 0,
     computeRateCentsPerMinute: scale?.computeRateCentsPerMinute ?? 0,
+    infraBudgetCeilingCents: scale?.infraBudgetCeilingCents ?? 0,
   };
 }

@@ -7,6 +7,12 @@ import type { SandboxGitSource } from "./runtime/sandbox.js";
 export interface Env {
   port: number;
   databaseUrl: string;
+  /**
+   * Postgres connection-pool size — a worker-concurrency knob that bounds how much DB-bound work one
+   * server process can do at once (the per-replica capacity ceiling for horizontal scale-out, #113).
+   * Default 10 (the prior hard-coded value).
+   */
+  databasePoolMax: number;
   redisUrl: string;
   /** Cloud agent execution (#25). */
   agent: AgentEnv;
@@ -169,6 +175,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return {
     port: Number(source.PORT ?? 3000),
     databaseUrl: source.DATABASE_URL ?? "postgres://reload:reload@localhost:5433/reload",
+    // #113 worker-concurrency knob: pg pool size per process. Default 10 (the prior hard-coded value).
+    databasePoolMax: num(source.DATABASE_POOL_MAX, 10),
     redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
     agent: (() => {
       // Posture profile (#69): pick a named preset (dev=local/demo, prod=sandbox/claude-code) that

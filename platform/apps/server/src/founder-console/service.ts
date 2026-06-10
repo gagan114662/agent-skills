@@ -6,6 +6,7 @@ import {
   type RevenueSnapshot,
   type VentureEvalSnapshot,
 } from "./aggregate.js";
+import type { UsageTrendPoint } from "../scale/forecast.js";
 
 /**
  * The Founder Console IO orchestrator (#104, ADR-0050). Declares ONE read seam per data source, gathers
@@ -52,6 +53,18 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** Cost-forecast inputs (#113): the usage trend + the resolved caps the projection/right-sizing read. */
+export interface ForecastReader {
+  /** Recent per-window usage (#71 `tenant_usage`), oldest→newest, for the forecast lookback. */
+  trend(workspaceId: string, now: Date): Promise<UsageTrendPoint[]>;
+  /** The window the forecast projects (the next calendar month). */
+  forecastWindow(now: Date): string;
+  /** The resolved infra budget ceiling in cents (#113, links #108); 0 = no ceiling. */
+  infraBudgetCeilingCents(workspaceId: string): number;
+  /** The tenant's in-flight cap (#71) for the right-sizing utilization; 0 = unlimited. */
+  tenantConcurrency(workspaceId: string): number;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -59,6 +72,8 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
+  forecast: ForecastReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -77,14 +92,16 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance] = await Promise.all([
-      this.deps.venture.evaluations(workspaceId),
-      this.deps.revenue.summary(workspaceId),
-      this.deps.budget.usage(workspaceId, window),
-      this.deps.approvals.pending(workspaceId),
-      this.deps.switches.killSwitch(workspaceId),
-      this.deps.switches.maintenance(),
-    ]);
+    const [ventures, revenue, usage, approvals, killSwitch, maintenance, usageTrend] =
+      await Promise.all([
+        this.deps.venture.evaluations(workspaceId),
+        this.deps.revenue.summary(workspaceId),
+        this.deps.budget.usage(workspaceId, window),
+        this.deps.approvals.pending(workspaceId),
+        this.deps.switches.killSwitch(workspaceId),
+        this.deps.switches.maintenance(),
+        this.deps.forecast.trend(workspaceId, now),
+      ]);
 
     return aggregateFounderConsole({
       workspaceId,
@@ -105,6 +122,10 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      usageTrend,
+      forecastWindow: this.deps.forecast.forecastWindow(now),
+      infraBudgetCeilingCents: this.deps.forecast.infraBudgetCeilingCents(workspaceId),
+      tenantConcurrency: this.deps.forecast.tenantConcurrency(workspaceId),
     });
   }
 }

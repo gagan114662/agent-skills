@@ -10,6 +10,7 @@ describe("scale/caps (#71 — per-tenant scale policy defaults)", () => {
       tenantConcurrency: 0,
       budgetCents: 0,
       computeRateCentsPerMinute: 0,
+      infraBudgetCeilingCents: 0,
     });
   });
 
@@ -22,6 +23,7 @@ describe("scale/caps (#71 — per-tenant scale policy defaults)", () => {
       tenantConcurrency: 5,
       budgetCents: 5000,
       computeRateCentsPerMinute: 2,
+      infraBudgetCeilingCents: 20000,
     });
     expect(caps).toEqual({
       warmPoolSize: 2,
@@ -30,6 +32,7 @@ describe("scale/caps (#71 — per-tenant scale policy defaults)", () => {
       tenantConcurrency: 5,
       budgetCents: 5000,
       computeRateCentsPerMinute: 2,
+      infraBudgetCeilingCents: 20000,
     });
     expect(caps.regions).not.toBe(regions); // defensive copy — caller's array is not aliased
   });
