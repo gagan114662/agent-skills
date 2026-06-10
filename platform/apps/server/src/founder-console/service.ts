@@ -3,6 +3,7 @@ import {
   type FounderConsole,
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
+  type PostmortemLinkView,
   type RevenueSnapshot,
   type VentureEvalSnapshot,
 } from "./aggregate.js";
@@ -52,6 +53,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** Recent SRE postmortems (#112) for the workspace, newest first. */
+export interface PostmortemsReader {
+  recent(workspaceId: string): Promise<PostmortemLinkView[]>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -59,6 +65,8 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  /** Optional SRE postmortems reader (#112). Absent ⇒ none surfaced (the loop is off / unwired). */
+  postmortems?: PostmortemsReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -77,14 +85,16 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance] = await Promise.all([
-      this.deps.venture.evaluations(workspaceId),
-      this.deps.revenue.summary(workspaceId),
-      this.deps.budget.usage(workspaceId, window),
-      this.deps.approvals.pending(workspaceId),
-      this.deps.switches.killSwitch(workspaceId),
-      this.deps.switches.maintenance(),
-    ]);
+    const [ventures, revenue, usage, approvals, killSwitch, maintenance, postmortems] =
+      await Promise.all([
+        this.deps.venture.evaluations(workspaceId),
+        this.deps.revenue.summary(workspaceId),
+        this.deps.budget.usage(workspaceId, window),
+        this.deps.approvals.pending(workspaceId),
+        this.deps.switches.killSwitch(workspaceId),
+        this.deps.switches.maintenance(),
+        this.deps.postmortems?.recent(workspaceId) ?? Promise.resolve([]),
+      ]);
 
     return aggregateFounderConsole({
       workspaceId,
@@ -105,6 +115,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      postmortems,
     });
   }
 }

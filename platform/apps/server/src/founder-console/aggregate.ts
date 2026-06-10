@@ -66,6 +66,17 @@ export interface PendingApprovalSnapshot {
   createdAtMs: number;
 }
 
+/** One drafted postmortem the SRE Loop (#112) left behind, surfaced as a read-only link. */
+export interface PostmortemLinkView {
+  incidentId: string;
+  service: string;
+  sloKind: string;
+  /** The repo-relative path under docs/postmortems/. */
+  path: string;
+  /** When the incident resolved (epoch ms) — newest first in the console. */
+  resolvedAtMs: number;
+}
+
 /** The global maintenance flag (#99); `unavailable` when Redis could not be read (fail open). */
 export interface MaintenanceSnapshot {
   enabled: boolean;
@@ -93,6 +104,8 @@ export interface FounderConsoleInput {
   budget: BudgetSnapshot;
   approvals: PendingApprovalSnapshot[];
   switches: SwitchSnapshot;
+  /** Recent SRE postmortems (#112), newest first. Optional ⇒ defaults to none (loop off / unwired). */
+  postmortems?: PostmortemLinkView[];
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -156,6 +169,8 @@ export interface FounderConsole {
   /** The pending #13 queue, oldest-first (longest-waiting = highest priority). */
   pendingApprovals: PendingActionView[];
   switches: SwitchSnapshot;
+  /** Recent SRE postmortems (#112), newest first — the durable trace each incident left. */
+  postmortems: PostmortemLinkView[];
   attention: AttentionView;
 }
 
@@ -208,6 +223,11 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     }))
     .sort((x, y) => x.createdAtMs - y.createdAtMs);
 
+  // Newest-first: the most recent incident's postmortem is the most relevant to the daily review.
+  const postmortems: PostmortemLinkView[] = [...(input.postmortems ?? [])].sort(
+    (a, b) => b.resolvedAtMs - a.resolvedAtMs,
+  );
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -227,6 +247,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     budget: budgetView,
     pendingApprovals,
     switches,
+    postmortems,
     attention: { required: reasons.length > 0, reasons },
   };
 }

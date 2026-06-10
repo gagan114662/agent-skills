@@ -19,6 +19,11 @@ app.ventureEngine.start(env.venture.intervalMs);
 // detects stalled sessions and revives/escalates them. Stopped on server close via buildApp's hook.
 app.watchdogEngine.start(env.watchdog.intervalMs);
 
+// #112 SRE loop: start the opt-in on-call tick (SRE_INTERVAL_MS; default 0 = off) that evaluates SLOs
+// off /metrics + health, opens incidents, launches triage, and drafts postmortems. Self-gates on the
+// #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
+app.sreEngine.start(env.sre.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

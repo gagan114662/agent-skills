@@ -196,6 +196,33 @@ export const watchdogSchema = z.object({
   backoffMs: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * SRE Loop policy (#112, ADR-0112). All **non-secret** knobs for the agent-on-call loop. Every field
+ * is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
+ * today's behavior (no SLO evaluation, no incidents). `services` declares the per-service SLO targets
+ * the loop evaluates off `/metrics` + health probes; `cooldownMs` bounds re-paging on a sustained
+ * breach.
+ */
+export const sreServiceSchema = z.object({
+  /** The service name evaluated (e.g. "api", "db", "redis"). */
+  service: z.string().min(1),
+  /** Availability SLO: minimum success ratio (0..1), e.g. 0.999. Omit to skip this dimension. */
+  availabilityTarget: z.number().min(0).max(1).optional(),
+  /** Latency SLO: maximum acceptable p95 latency in milliseconds. Omit to skip. */
+  latencyP95Ms: z.number().positive().optional(),
+  /** Queue-lag SLO: maximum acceptable queue lag in seconds. Omit to skip. */
+  queueLagSeconds: z.number().nonnegative().optional(),
+});
+
+export const sreSchema = z.object({
+  /** The on-call loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Minimum time (ms) between re-page notifications for one sustained breach (the cooldown). */
+  cooldownMs: z.number().int().nonnegative().optional(),
+  /** Per-service SLO targets the loop evaluates. Empty ⇒ nothing to evaluate. */
+  services: z.array(sreServiceSchema).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -223,6 +250,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
+  sre: sreSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -240,6 +269,8 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type SreConfig = z.infer<typeof sreSchema>;
+export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -263,6 +294,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
+  sre: SreConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -277,4 +310,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  sre: {},
 };

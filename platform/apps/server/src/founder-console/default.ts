@@ -8,6 +8,7 @@ import { listEvaluations } from "../db/repositories/venture.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
+import { listPostmortems } from "../db/repositories/sre.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 
 /**
@@ -68,6 +69,17 @@ export function createDefaultFounderConsoleService(deps: {
         const m = await getMaintenanceState();
         return { enabled: m.enabled, since: m.since, reason: m.reason, unavailable: m.unavailable };
       },
+    },
+    // #112: the recent SRE postmortems, so the daily review links the durable trace each incident left.
+    postmortems: {
+      recent: async (workspaceId) =>
+        (await listPostmortems(workspaceId)).map((i) => ({
+          incidentId: i.id,
+          service: i.service,
+          sloKind: i.sloKind,
+          path: i.postmortemPath as string,
+          resolvedAtMs: (i.resolvedAt ?? i.openedAt).getTime(),
+        })),
     },
     now: deps.now,
   });
