@@ -120,6 +120,35 @@ export function recordAutonomyAction(action: string): void {
   autonomyActions.set(action, (autonomyActions.get(action) ?? 0) + 1);
 }
 
+// --- cloud scale (#71) ------------------------------------------------------
+// Warm-pool hit/miss, admission denials by reason, and session placement by region. Cardinality
+// discipline (as everywhere): the only labels are the bounded denial reason + the region — tenant
+// ids are NEVER labels (they live in logs/traces).
+let warmHits = 0;
+let warmMisses = 0;
+const admissionDenials = new Map<string, number>();
+const regionSessions = new Map<string, number>();
+
+/** A launch was served from the warm pool (fast bind path). */
+export function recordWarmHit(): void {
+  warmHits += 1;
+}
+
+/** A launch cold-provisioned (empty buffer or a snapshot resume). */
+export function recordWarmMiss(): void {
+  warmMisses += 1;
+}
+
+/** A launch was denied by admission (kill_switch | budget_exceeded | tenant_capacity | global_capacity). */
+export function recordAdmissionDenied(reason: string): void {
+  admissionDenials.set(reason, (admissionDenials.get(reason) ?? 0) + 1);
+}
+
+/** A session was placed in a region (multi-region placement). */
+export function recordRegionPlacement(region: string): void {
+  regionSessions.set(region, (regionSessions.get(region) ?? 0) + 1);
+}
+
 const httpKey = (method: string, route: string, status: number): string =>
   `${method}|${route}|${status}`;
 const durKey = (method: string, route: string): string => `${method}|${route}`;
@@ -174,6 +203,10 @@ export function resetMetrics(): void {
   cloudWorkspaceFilesSynced = 0;
   autonomyTicks = 0;
   autonomyActions.clear();
+  warmHits = 0;
+  warmMisses = 0;
+  admissionDenials.clear();
+  regionSessions.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -273,6 +306,26 @@ export function renderMetrics(): string {
   lines.push("# TYPE autonomy_actions_total counter");
   for (const [action, count] of autonomyActions) {
     lines.push(`autonomy_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- cloud scale (#71) ---
+  lines.push("# HELP scale_warm_hits_total Launches served from the warm pool (fast bind path).");
+  lines.push("# TYPE scale_warm_hits_total counter");
+  lines.push(`scale_warm_hits_total ${warmHits}`);
+  lines.push("# HELP scale_warm_misses_total Launches that cold-provisioned (empty buffer or resume).");
+  lines.push("# TYPE scale_warm_misses_total counter");
+  lines.push(`scale_warm_misses_total ${warmMisses}`);
+
+  lines.push("# HELP scale_admission_denied_total Launches denied by admission, by reason.");
+  lines.push("# TYPE scale_admission_denied_total counter");
+  for (const [reason, count] of admissionDenials) {
+    lines.push(`scale_admission_denied_total{reason="${esc(reason)}"} ${count}`);
+  }
+
+  lines.push("# HELP scale_region_sessions_total Sessions placed, by region.");
+  lines.push("# TYPE scale_region_sessions_total counter");
+  for (const [region, count] of regionSessions) {
+    lines.push(`scale_region_sessions_total{region="${esc(region)}"} ${count}`);
   }
 
   return lines.join("\n") + "\n";

@@ -53,6 +53,8 @@ export interface SandboxCreateOpts {
   cwd?: string;
   /** Optional vCPU count for the microVM (defaults to the SDK default of 2). */
   vcpus?: number;
+  /** Multi-region placement (#71): the region to provision in, chosen by the admission planner. */
+  region?: string;
   caps: ResourceCaps;
 }
 

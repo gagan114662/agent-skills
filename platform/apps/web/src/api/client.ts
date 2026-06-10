@@ -31,6 +31,7 @@ import type {
   SearchEnvelope,
   SessionMode,
   ThreadView,
+  UsageReport,
 } from "./types.js";
 
 /** Body accepted by `POST /channels/:cid/agent-sessions/:id/review-comments`. */
@@ -177,6 +178,11 @@ export const api = {
   },
   createChannel(workspaceId: string, name: string): Promise<Channel> {
     return post(`/workspaces/${workspaceId}/channels`, { name }) as Promise<Channel>;
+  },
+
+  // --- cloud scale (#71) ---
+  getScaleUsage(workspaceId: string): Promise<UsageReport> {
+    return request<UsageReport>(`/workspaces/${workspaceId}/scale/usage`);
   },
 
   // --- messages & threads ---
