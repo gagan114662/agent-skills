@@ -12,15 +12,18 @@ import { ReviewPanel } from "./review/ReviewPanel.js";
 import { RunPanel } from "./run/RunPanel.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { DeployPanel } from "./deploy/DeployPanel.js";
+import { FounderPanel } from "./FounderPanel.js";
 
-type View = "chat" | "approvals" | "review" | "run" | "usage" | "deploy";
+type View = "chat" | "approvals" | "review" | "run" | "usage" | "deploy" | "founder";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
   return (
     <div className="workspace">
       <TopBar view={view} onSelectView={setView} />
-      {view === "approvals" ? (
+      {view === "founder" ? (
+        <FounderPanel />
+      ) : view === "approvals" ? (
         <ApprovalsPanel />
       ) : view === "review" ? (
         <ReviewPanel />
@@ -72,6 +75,13 @@ function TopBar({
           onClick={() => onSelectView("chat")}
         >
           Chat
+        </button>
+        <button
+          className={`topbar__navbtn${view === "founder" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "founder"}
+          onClick={() => onSelectView("founder")}
+        >
+          Founder
         </button>
         <button
           className={`topbar__navbtn${view === "approvals" ? " topbar__navbtn--active" : ""}`}

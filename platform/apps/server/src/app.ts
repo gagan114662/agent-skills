@@ -69,6 +69,9 @@ import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
 import { createScale, type Scale } from "./scale/default.js";
+import { founderConsoleRoutes } from "./routes/founder-console.js";
+import { createDefaultFounderConsoleService } from "./founder-console/default.js";
+import type { FounderConsoleService } from "./founder-console/service.js";
 import { AdmissionError } from "./scale/admission.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
 import type { CloudWorkspaceManager } from "./workspace/manager.js";
@@ -139,6 +142,11 @@ export interface BuildAppOptions {
   venture?: VentureService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
+  /**
+   * #104 founder console: tests inject a read-only aggregation service over fakes; default builds one
+   * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
+   */
+  founderConsole?: FounderConsoleService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -243,6 +251,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // action; payouts stay manual in the Stripe dashboard.
   const billingManager = opts.billingManager ?? createDefaultBillingManager(app.log);
   app.register(billingRoutes, { billingManager });
+  // #104 founder console: ONE read-only aggregation endpoint that gives the owner fleet status, the
+  // venture pipeline (#96), revenue/willingness-to-pay (#98), budget burn (#71), the pending #13
+  // approval queue (with decision-SLA ages), and the kill/maintenance switches — the whole daily
+  // review in one read. Built over the SAME `scale` (so fleet/budget match admission) + `billingManager`
+  // (so revenue matches billing). Strictly read-only: approve/kill/maintenance flip through their
+  // existing routes, never here. Tenant-scoped via `assertWorkspace`.
+  const founderConsole =
+    opts.founderConsole ??
+    createDefaultFounderConsoleService({ scale, billing: billingManager });
+  app.register(founderConsoleRoutes, { service: founderConsole });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
