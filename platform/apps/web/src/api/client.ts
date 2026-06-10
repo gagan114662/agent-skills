@@ -106,7 +106,11 @@ export interface SubmitActionInput {
   ttlSeconds?: number;
 }
 
-/** Error thrown for any non-2xx response, carrying the server's `error` string and HTTP status. */
+/**
+ * Error thrown for any non-2xx response, carrying the server's `error` string and HTTP status.
+ * A `status` of {@link API_UNAVAILABLE_STATUS} (0) is a synthetic code meaning the API origin
+ * couldn't be reached / didn't answer with JSON — see {@link isApiUnavailable}.
+ */
 export class ApiError extends Error {
   readonly status: number;
   constructor(message: string, status: number) {
@@ -116,21 +120,41 @@ export class ApiError extends Error {
   }
 }
 
+/** Synthetic status for "no backend": fetch rejected, or a 2xx response that isn't JSON. */
+export const API_UNAVAILABLE_STATUS = 0;
+
+/**
+ * True when an error means the API origin is unreachable or not actually serving the API — e.g. the
+ * console is deployed standalone (Vercel SPA) and the rewrite returns `index.html` for `/me`. The
+ * UI uses this to show a friendly "API not connected" state instead of crashing on bad data (#108).
+ */
+export function isApiUnavailable(err: unknown): boolean {
+  return err instanceof ApiError && err.status === API_UNAVAILABLE_STATUS;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiUrl(path), {
-    credentials: "include",
-    ...init,
-    headers: {
-      ...(init?.body ? { "content-type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      credentials: "include",
+      ...init,
+      headers: {
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    // Network-level failure (DNS, CORS, refused connection): the API is simply not reachable.
+    throw new ApiError("API not connected", API_UNAVAILABLE_STATUS);
+  }
 
   let payload: unknown = undefined;
+  let parsedJson = false;
   const text = await res.text();
   if (text) {
     try {
       payload = JSON.parse(text);
+      parsedJson = true;
     } catch {
       payload = text;
     }
@@ -142,6 +166,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         ? String((payload as { error: unknown }).error)
         : `request failed (${res.status})`;
     throw new ApiError(message, res.status);
+  }
+
+  // A 2xx whose body isn't JSON is not our API answering — almost always the SPA `index.html`
+  // served because no backend is wired at this origin. Reject it so callers never receive a string
+  // where they expect typed data (which previously crashed components like `channels.filter`).
+  if (text && !parsedJson) {
+    throw new ApiError("API not connected", API_UNAVAILABLE_STATUS);
   }
   return payload as T;
 }
