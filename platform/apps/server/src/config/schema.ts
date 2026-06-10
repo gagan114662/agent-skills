@@ -196,6 +196,26 @@ export const watchdogSchema = z.object({
   backoffMs: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Evidence-Priced Autonomy policy (#119, ADR-0119). All **non-secret** knobs for the gate pricer that
+ * auto-relaxes / re-tightens #95 approval rules on measured decision error. Every field is optional and
+ * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's static gates —
+ * only evidence *recording* is always-on. `windowSize`/`minSamples` size the trailing window;
+ * `relaxBelowRate` < `retightenAboveRate` are the hysteresis rails (the dead band that prevents flapping).
+ */
+export const gatePricingSchema = z.object({
+  /** The auto-relax/re-tighten pricer flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Trailing-window size: recent decisions per action class the pricer measures. */
+  windowSize: z.number().int().positive().optional(),
+  /** Minimum decisions before a strict boundary may relax (the insufficient-evidence guard). */
+  minSamples: z.number().int().positive().optional(),
+  /** Error rate strictly below which a strict boundary RELAXes (0–1). */
+  relaxBelowRate: z.number().min(0).max(1).optional(),
+  /** Error rate strictly above which a relaxed boundary RE-TIGHTENs (0–1; must exceed `relaxBelowRate`). */
+  retightenAboveRate: z.number().min(0).max(1).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -223,6 +243,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** Evidence-Priced Autonomy policy (#119): the gate pricer that auto-relaxes/re-tightens #95 rules. */
+  gatePricing: gatePricingSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -240,6 +262,7 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -263,6 +286,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** Evidence-Priced Autonomy policy (#119). A partial whose hard defaults `resolveGatePricingCaps` fills. */
+  gatePricing: GatePricingConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -277,4 +302,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  gatePricing: {},
 };

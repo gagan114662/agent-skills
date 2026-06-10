@@ -23,6 +23,7 @@ function input(over: Partial<FounderConsoleInput> = {}): FounderConsoleInput {
     },
     approvals: [],
     switches: { killSwitch: false, maintenance: { enabled: false } },
+    gateBoundaries: { owned: [], history: [] },
     ...over,
   };
 }
@@ -195,6 +196,36 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
       "over budget",
       "2 pending approvals",
     ]);
+  });
+
+  it("surfaces the #119 autonomy boundaries: classes agents own + the change history", () => {
+    const out = aggregateFounderConsole(
+      input({
+        gateBoundaries: {
+          owned: [
+            { actionType: "chat.post_message", errorRate: 0.02, windowSize: 100, sinceMs: NOW - 60_000 },
+          ],
+          history: [
+            { actionType: "chat.post_message", direction: "RELAX", errorRate: 0.02, windowSize: 100, atMs: NOW - 60_000, reason: "earned" },
+            { actionType: "draft.tweet", direction: "RETIGHTEN", errorRate: 0.2, windowSize: 100, atMs: NOW - 30_000, reason: "regressed" },
+          ],
+        },
+      }),
+    );
+    expect(out.autonomyBoundaries.owned).toEqual([
+      { actionType: "chat.post_message", errorRate: 0.02, windowSize: 100, sinceMs: NOW - 60_000 },
+    ]);
+    expect(out.autonomyBoundaries.history).toHaveLength(2);
+    expect(out.autonomyBoundaries.history[0]).toMatchObject({
+      actionType: "chat.post_message",
+      direction: "RELAX",
+      errorRate: 0.02,
+    });
+  });
+
+  it("has empty autonomy boundaries by default (no class auto-relaxed yet)", () => {
+    const out = aggregateFounderConsole(input());
+    expect(out.autonomyBoundaries).toEqual({ owned: [], history: [] });
   });
 
   it("singularizes the pending-approval reason for exactly one item", () => {

@@ -1,6 +1,7 @@
 import {
   aggregateFounderConsole,
   type FounderConsole,
+  type GateBoundariesSnapshot,
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
   type RevenueSnapshot,
@@ -52,6 +53,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** The #119 evidence-priced autonomy boundaries: owned classes + the change history. */
+export interface GateBoundaryReader {
+  boundaries(workspaceId: string): Promise<GateBoundariesSnapshot>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -59,6 +65,7 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  gateBoundaries: GateBoundaryReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -77,14 +84,16 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance] = await Promise.all([
-      this.deps.venture.evaluations(workspaceId),
-      this.deps.revenue.summary(workspaceId),
-      this.deps.budget.usage(workspaceId, window),
-      this.deps.approvals.pending(workspaceId),
-      this.deps.switches.killSwitch(workspaceId),
-      this.deps.switches.maintenance(),
-    ]);
+    const [ventures, revenue, usage, approvals, killSwitch, maintenance, gateBoundaries] =
+      await Promise.all([
+        this.deps.venture.evaluations(workspaceId),
+        this.deps.revenue.summary(workspaceId),
+        this.deps.budget.usage(workspaceId, window),
+        this.deps.approvals.pending(workspaceId),
+        this.deps.switches.killSwitch(workspaceId),
+        this.deps.switches.maintenance(),
+        this.deps.gateBoundaries.boundaries(workspaceId),
+      ]);
 
     return aggregateFounderConsole({
       workspaceId,
@@ -105,6 +114,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      gateBoundaries,
     });
   }
 }

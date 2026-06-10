@@ -74,6 +74,37 @@ export interface MaintenanceSnapshot {
   unavailable?: boolean;
 }
 
+/**
+ * An action class agents currently **own** — auto-approved by the #119 evidence pricer — with the
+ * measured error rate that earned the relaxed boundary and when it was relaxed.
+ */
+export interface GateBoundarySnapshot {
+  actionType: string;
+  /** The measured correction rate (0–1) that earned the current relaxed boundary. */
+  errorRate: number;
+  /** Decisions in the window that earned it. */
+  windowSize: number;
+  /** When the boundary was last relaxed (epoch ms). */
+  sinceMs: number;
+}
+
+/** One #119 boundary change (RELAX/RETIGHTEN) for the Console history. */
+export interface GateBoundaryChangeSnapshot {
+  actionType: string;
+  direction: "RELAX" | "RETIGHTEN";
+  errorRate: number;
+  windowSize: number;
+  /** When the change was applied (epoch ms). */
+  atMs: number;
+  reason: string;
+}
+
+/** The #119 evidence-priced boundaries: classes agents own + the change history. */
+export interface GateBoundariesSnapshot {
+  owned: GateBoundarySnapshot[];
+  history: GateBoundaryChangeSnapshot[];
+}
+
 /** The two safety switches surfaced read-only. */
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
@@ -93,6 +124,8 @@ export interface FounderConsoleInput {
   budget: BudgetSnapshot;
   approvals: PendingApprovalSnapshot[];
   switches: SwitchSnapshot;
+  /** The #119 evidence-priced autonomy boundaries (owned classes + change history). */
+  gateBoundaries: GateBoundariesSnapshot;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -139,6 +172,12 @@ export interface PendingActionView {
   createdAtMs: number;
 }
 
+/** The #119 boundaries surface: which classes agents own (by earned error rate) + the change log. */
+export interface AutonomyBoundariesView {
+  owned: GateBoundarySnapshot[];
+  history: GateBoundaryChangeSnapshot[];
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -156,6 +195,8 @@ export interface FounderConsole {
   /** The pending #13 queue, oldest-first (longest-waiting = highest priority). */
   pendingApprovals: PendingActionView[];
   switches: SwitchSnapshot;
+  /** The #119 evidence-priced autonomy boundaries: classes agents own + the change history. */
+  autonomyBoundaries: AutonomyBoundariesView;
   attention: AttentionView;
 }
 
@@ -169,7 +210,7 @@ function pluralize(n: number, noun: string): string {
 
 /** Compose the console view from the gathered read-structs. Pure + deterministic. */
 export function aggregateFounderConsole(input: FounderConsoleInput): FounderConsole {
-  const { fleet, ventures, revenue, budget, approvals, switches } = input;
+  const { fleet, ventures, revenue, budget, approvals, switches, gateBoundaries } = input;
 
   const venturePipeline: VenturePipelineView = {
     total: ventures.length,
@@ -227,6 +268,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     budget: budgetView,
     pendingApprovals,
     switches,
+    autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     attention: { required: reasons.length > 0, reasons },
   };
 }

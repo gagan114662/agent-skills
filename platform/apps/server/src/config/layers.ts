@@ -34,6 +34,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #105 watchdog policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // supervisor flag / bounds cannot be loosened (e.g. the watchdog turned off) by a lower layer.
     if (layer.watchdog !== undefined) out.watchdog = { ...layer.watchdog };
+    // #119 gate-pricing policy: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's pricer flag / rails cannot be loosened (e.g. auto-relax turned off) by a lower layer.
+    if (layer.gatePricing !== undefined) out.gatePricing = { ...layer.gatePricing };
   }
   return out;
 }
@@ -58,5 +61,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     billing: merged.billing,
     venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
     watchdog: merged.watchdog ?? { ...CONFIG_DEFAULTS.watchdog },
+    gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
   };
 }

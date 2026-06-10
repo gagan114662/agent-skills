@@ -4,9 +4,11 @@ import {
   approvalPolicies,
   approvalRequests,
   approvalEvents,
+  gateEvidence,
   members,
 } from "../schema/index.js";
 import type { ApprovalStatus, PolicyRule } from "../../approvals/policy.js";
+import { editDistance } from "../../gate-pricing/pricing.js";
 
 // ---- policy rules -----------------------------------------------------------------------------
 
@@ -34,7 +36,8 @@ export async function upsertPolicy(input: {
   actionType: string;
   requireApproval: boolean;
   maxAutoAmount: number | null;
-  createdByMemberId: string;
+  /** The member who set the rule, or `null` for a system-driven rule (e.g. the #119 evidence pricer). */
+  createdByMemberId: string | null;
 }): Promise<ApprovalPolicy> {
   const [row] = await db
     .insert(approvalPolicies)
@@ -275,10 +278,17 @@ export async function approveAndLock(
   workspaceId: string,
   deciderMemberId: string,
   reason: string | null,
+  edit?: { field: string; value: string } | null,
 ): Promise<DecisionOutcome> {
   return db.transaction(async (tx) => {
     const [current] = await tx
-      .select({ status: approvalRequests.status, expiresAt: approvalRequests.expiresAt })
+      .select({
+        status: approvalRequests.status,
+        expiresAt: approvalRequests.expiresAt,
+        createdAt: approvalRequests.createdAt,
+        actionType: approvalRequests.actionType,
+        payload: approvalRequests.payload,
+      })
       .from(approvalRequests)
       .where(
         and(eq(approvalRequests.id, requestId), eq(approvalRequests.workspaceId, workspaceId)),
@@ -302,6 +312,17 @@ export async function approveAndLock(
       return { outcome: "expired", request: row as ApprovalRequest } as const;
     }
 
+    // #119: a human may approve a drafted-content action *with edits*. When they do, the request's
+    // payload is updated so the executor runs the EDITED draft, and the decision is recorded as
+    // `edited` with the Levenshtein distance from the original — the per-action correction signal.
+    const original =
+      edit && current.payload ? String((current.payload as Record<string, unknown>)[edit.field] ?? "") : "";
+    const edited = !!edit;
+    const editDist = edited ? editDistance(original, edit!.value) : null;
+    const nextPayload = edited
+      ? { ...(current.payload as Record<string, unknown>), [edit!.field]: edit!.value }
+      : undefined;
+
     const [row] = await tx
       .update(approvalRequests)
       .set({
@@ -310,6 +331,7 @@ export async function approveAndLock(
         decidedAt: new Date(),
         reason,
         updatedAt: new Date(),
+        ...(nextPayload ? { payload: nextPayload } : {}),
       })
       .where(eq(approvalRequests.id, requestId))
       .returning(REQUEST_COLUMNS);
@@ -319,6 +341,17 @@ export async function approveAndLock(
       type: "approved",
       actorMemberId: deciderMemberId,
       detail: reason ? { reason } : {},
+    });
+    // #119: record the decision outcome as evidence in the SAME transaction as the #13 decision, so
+    // the gate-pricing window can never drift from the audit log. ttd = decided − created.
+    await tx.insert(gateEvidence).values({
+      workspaceId,
+      actionType: current.actionType,
+      outcome: edited ? "edited" : "approved",
+      editDistance: editDist,
+      timeToDecisionMs: Math.max(0, Date.now() - current.createdAt.getTime()),
+      requestId,
+      decidedByMemberId: deciderMemberId,
     });
     return { outcome: "approved", request: row as ApprovalRequest } as const;
   });
@@ -362,7 +395,12 @@ export async function rejectRequest(
 ): Promise<DecisionOutcome> {
   return db.transaction(async (tx) => {
     const [current] = await tx
-      .select({ status: approvalRequests.status, expiresAt: approvalRequests.expiresAt })
+      .select({
+        status: approvalRequests.status,
+        expiresAt: approvalRequests.expiresAt,
+        createdAt: approvalRequests.createdAt,
+        actionType: approvalRequests.actionType,
+      })
       .from(approvalRequests)
       .where(
         and(eq(approvalRequests.id, requestId), eq(approvalRequests.workspaceId, workspaceId)),
@@ -403,6 +441,17 @@ export async function rejectRequest(
       type: "rejected",
       actorMemberId: deciderMemberId,
       detail: reason ? { reason } : {},
+    });
+    // #119: a rejection is a correction — record it as evidence in the same transaction (the pricer
+    // counts it toward the action class's error rate).
+    await tx.insert(gateEvidence).values({
+      workspaceId,
+      actionType: current.actionType,
+      outcome: "rejected",
+      editDistance: null,
+      timeToDecisionMs: Math.max(0, Date.now() - current.createdAt.getTime()),
+      requestId,
+      decidedByMemberId: deciderMemberId,
     });
     return { outcome: "rejected", request: row as ApprovalRequest } as const;
   });
