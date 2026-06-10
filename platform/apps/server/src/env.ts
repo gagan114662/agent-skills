@@ -18,6 +18,18 @@ export interface Env {
   team: TeamEnv;
   /** Persistent & shared cloud workspaces (#55). */
   cloud: CloudEnv;
+  /** Local per-agent git worktree isolation + reaping (#70). */
+  git: GitEnv;
+}
+
+export interface GitEnv {
+  /**
+   * Periodic worktree-reaper interval in ms. Default `0` = the background sweep is OFF (opt-in),
+   * mirroring the #17 autonomy loop and #55 cloud sweep. A single sweep always runs on startup
+   * regardless; this only governs the recurring timer. Has effect only when `GIT_WORKSPACE_REPO`
+   * is configured (no repo → no worktrees → no reaper).
+   */
+  reapIntervalMs: number;
 }
 
 export interface CloudEnv {
@@ -122,6 +134,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // Default 0 (off): the idle sweep is opt-in so tests/CI drive `sweepIdle()` deterministically.
       sweepIntervalMs: Number(source.CLOUD_SWEEP_INTERVAL_MS ?? 0) || 0,
       idleMs: num(source.CLOUD_IDLE_MS, 1_800_000),
+    },
+    git: {
+      // Default 0 (off): the periodic worktree reaper is opt-in; a single startup sweep always runs.
+      reapIntervalMs: Number(source.GIT_WORKTREE_REAP_INTERVAL_MS ?? 0) || 0,
     },
   };
 }

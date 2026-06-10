@@ -37,6 +37,7 @@ import { createDefaultRunProcessManager } from "./run/default.js";
 import type { RunProcessManager } from "./run/manager.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
+import { GitWorktreeReaper } from "./git/reaper.js";
 import { createGitHubProvider } from "./github/factory.js";
 import type { GitHubProvider } from "./github/provider.js";
 import { createDefaultTeamCoordinator } from "./team/default.js";
@@ -53,6 +54,11 @@ declare module "fastify" {
     autonomyEngine: AutonomyEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
+    /**
+     * The #70 git-worktree reaper; present only when a git repo is configured (`GIT_WORKSPACE_REPO`).
+     * `index.ts` runs one sweep on boot (cleaning crash leftovers) + an opt-in periodic sweep.
+     */
+    gitWorktreeReaper?: GitWorktreeReaper;
   }
 }
 
@@ -154,6 +160,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const gitWorkspace = opts.gitWorkspace ?? createGitWorkspaceFromEnv();
   const gitHubProvider = opts.gitHubProvider ?? createGitHubProvider();
   app.register(gitReviewRoutes, { sessionManager, gitWorkspace, gitHubProvider });
+  // #70 local worktree isolation: when a git repo is configured each session runs in its own worktree
+  // (#51); the reaper removes those whose session this process is no longer driving. `index.ts` sweeps
+  // once on boot (clearing crash leftovers — "no orphans after a crash/restart") + on an opt-in timer.
+  // The keep-set is the SessionManager's live ids, so a concurrent run is never reaped.
+  if (gitWorkspace) {
+    app.decorate("gitWorktreeReaper", new GitWorktreeReaper(gitWorkspace, sessionManager, app.log));
+  }
   // #53 plan mode, checkpoints & steering: an agent proposes a plan (work blocks until a human
   // approves / approves-with-feedback / rejects), each turn is a revertible checkpoint (files + chat),
   // and a live session can be steered. Reuses the SessionManager (plan = two launches with a gate) and
