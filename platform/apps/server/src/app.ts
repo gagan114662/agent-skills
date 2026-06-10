@@ -32,6 +32,9 @@ import { mcpRoutes } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
+import { runRoutes } from "./routes/run.js";
+import { createDefaultRunProcessManager } from "./run/default.js";
+import type { RunProcessManager } from "./run/manager.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { createGitHubProvider } from "./github/factory.js";
@@ -65,6 +68,8 @@ declare module "fastify" {
 /** Options for {@link buildApp}; tests may inject a SessionManager with a fake runtime (#25). */
 export interface BuildAppOptions {
   sessionManager?: SessionManager;
+  /** #56 Run tab: tests inject a RunProcessManager with a fake provisioner/spawn; default builds one. */
+  runManager?: RunProcessManager;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
@@ -132,7 +137,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
   // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
   app.register(subagentRoutes, { sessionManager });
+  // #56 Run tab: run a session's app for in-app preview + detect its localhost port, and route UI
+  // annotations back to the agent (the #51 round trip). The RunProcessManager is SEPARATE from the
+  // SessionManager (a dev server is long-lived; it must never finalize the session row). Killed on
+  // server close so no preview process leaks past shutdown.
+  const runManager = opts.runManager ?? createDefaultRunProcessManager(app.log);
+  app.register(runRoutes, { runManager, sessionManager });
   app.addHook("onClose", async () => {
+    runManager.shutdown();
     await sessionManager.shutdown();
   });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,

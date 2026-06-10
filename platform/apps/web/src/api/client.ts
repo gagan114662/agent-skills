@@ -10,8 +10,10 @@ import type {
   CheckRunDto,
   ChecksStatus,
   DiffMode,
+  PreviewAnnotation,
   PullRequestDto,
   ReviewCommentDto,
+  RunState,
   SessionDiff,
   SubmitActionResponse,
 } from "@reload/shared";
@@ -319,6 +321,35 @@ export const api = {
       return post(`/channels/${channelId}/pull-requests/${prId}/fix-ci`) as Promise<{
         sessionId: string;
       }>;
+    },
+  },
+
+  // --- run tab / preview + annotations (#56) ---
+  run: {
+    /** Start (or return the already-running) run process for a session's app. */
+    start(channelId: string, sessionId: string): Promise<RunState> {
+      return post(`/channels/${channelId}/agent-sessions/${sessionId}/run`) as Promise<RunState>;
+    },
+    /** Current run state (status + preview url + bounded log tail). */
+    status(channelId: string, sessionId: string): Promise<RunState> {
+      return request<RunState>(`/channels/${channelId}/agent-sessions/${sessionId}/run`);
+    },
+    /** Stop the run process. */
+    stop(channelId: string, sessionId: string): Promise<{ ok: boolean; stopped: boolean }> {
+      return post(`/channels/${channelId}/agent-sessions/${sessionId}/run/stop`) as Promise<{
+        ok: boolean;
+        stopped: boolean;
+      }>;
+    },
+    /** Deliver preview annotations to the agent as a follow-up session (the round trip). */
+    sendAnnotations(
+      channelId: string,
+      sessionId: string,
+      annotations: PreviewAnnotation[],
+    ): Promise<{ sessionId: string; count: number }> {
+      return post(`/channels/${channelId}/agent-sessions/${sessionId}/annotations`, {
+        annotations,
+      }) as Promise<{ sessionId: string; count: number }>;
     },
   },
 };

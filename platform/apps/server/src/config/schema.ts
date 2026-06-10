@@ -34,6 +34,20 @@ export const mcpServerSchema = z.object({
   env: z.array(z.string()).optional(),
 });
 
+/**
+ * The run command for a session's app (#56) — declared in **trusted** config (repo/managed scope),
+ * never supplied by a request, so the Run tab can never become arbitrary RCE beyond what the
+ * deployment chose to make runnable (the same trust boundary as the #27 harness command).
+ */
+export const runSchema = z.object({
+  /** Shell command that starts the app's dev server (run via `sh -c` in the session's worktree). */
+  command: z.string(),
+  /** Explicit preview port; when set, detection is skipped and this port is used immediately. */
+  port: z.number().int().positive().max(65535).optional(),
+  /** Optional regex (string) whose first capture group is the bound port (or full url) in output. */
+  readyPattern: z.string().optional(),
+});
+
 /** The providers the selection layer (#52) understands. */
 export const providerKinds = ["anthropic", "openai", "bedrock", "vertex", "custom"] as const;
 export const providerKindSchema = z.enum(providerKinds);
@@ -85,6 +99,8 @@ export const settingsSchema = z.object({
   mcpServers: z.record(z.string(), mcpServerSchema).optional(),
   /** Skill names/paths (#57) the agent should carry across harnesses. */
   skills: z.array(z.string()).optional(),
+  /** The Run tab's run command (#56): how to start the session's app for in-app preview. */
+  run: runSchema.optional(),
   /** Model/provider selection policy (#52): which providers/models a tenant allows + defaults. */
   models: modelsSchema.optional(),
 });
@@ -93,6 +109,7 @@ export const settingsSchema = z.object({
 export type Settings = z.infer<typeof settingsSchema>;
 export type SlashCommandConfig = z.infer<typeof slashCommandSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
+export type RunConfig = z.infer<typeof runSchema>;
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 export type EffortLevel = z.infer<typeof effortLevelSchema>;
 export type SessionMode = z.infer<typeof sessionModeSchema>;
@@ -107,6 +124,8 @@ export interface ResolvedConfig {
   slashCommands: Record<string, SlashCommandConfig>;
   mcpServers: Record<string, McpServerConfig>;
   skills: string[];
+  /** The Run tab's run command (#56), or undefined when the deployment configures none. */
+  run?: RunConfig;
   /** Model/provider selection policy (#52). A partial whose hard defaults `modelPolicyFromConfig` fills. */
   models: ModelsConfig;
 }

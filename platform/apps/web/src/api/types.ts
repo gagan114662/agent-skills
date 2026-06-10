@@ -10,7 +10,7 @@
  *  - identity carries `kind: "human" | "agent"` (there is no `isAgent` boolean)
  */
 
-import type { PullRequestDto, ReviewCommentDto } from "@reload/shared";
+import type { PullRequestDto, ReviewCommentDto, RunStatus } from "@reload/shared";
 
 export type MemberKind = "human" | "agent";
 export type ChannelKind = "public" | "dm";
@@ -168,5 +168,15 @@ export type ServerEvent =
   | { type: "presence"; memberId: string; status: PresenceStatus }
   | { type: "pull_request"; pullRequest: PullRequestDto }
   | { type: "review_comment"; comment: ReviewCommentDto }
+  | {
+      type: "run_status";
+      sessionId: string;
+      channelId: string;
+      status: RunStatus;
+      url?: string | null;
+      exitCode?: number | null;
+      error?: string | null;
+    }
+  | { type: "run_log"; sessionId: string; channelId: string; chunk: string }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };

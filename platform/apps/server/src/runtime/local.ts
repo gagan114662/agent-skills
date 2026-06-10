@@ -86,7 +86,7 @@ class LocalSession implements RunningSession {
 }
 
 /** Kill the child's whole process group; fall back to the pid; never throw if already gone. */
-function killTree(child: ChildProcess): void {
+export function killTree(child: ChildProcess): void {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   try {
     process.kill(-child.pid, "SIGKILL");

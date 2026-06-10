@@ -207,6 +207,29 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       refreshChecks: vi.fn(async () => ({ checksStatus: "success" as const, runs: [] })),
       fixCi: vi.fn(async () => ({ sessionId: "fix-ci" })),
     },
+    run: {
+      start: vi.fn(async (_c: string, sessionId: string) => ({
+        sessionId,
+        status: "starting" as const,
+        url: null,
+        exitCode: null,
+        error: null,
+        logs: [],
+      })),
+      status: vi.fn(async (_c: string, sessionId: string) => ({
+        sessionId,
+        status: "idle" as const,
+        url: null,
+        exitCode: null,
+        error: null,
+        logs: [],
+      })),
+      stop: vi.fn(async () => ({ ok: true, stopped: true })),
+      sendAnnotations: vi.fn(async (_c: string, _s: string, annotations: { note: string }[]) => ({
+        sessionId: "follow-up-run",
+        count: annotations.length,
+      })),
+    },
   };
   return { deps: { api, realtime: rt }, rt };
 }
