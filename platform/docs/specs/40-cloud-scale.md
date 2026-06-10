@@ -261,8 +261,9 @@ export function decideAdmission(s: AdmissionState): AdmissionDecision {
 4. Multi-region placement chooses the least-loaded allowed region, persisted on the session (unit).
 5. The #17 kill switch halts all launches (integration).
 6. `pnpm -C platform typecheck && lint && test && build` green; integration green; zero cloud spend.
-7. ADR-0040 + this spec + demo `docs/demos/40-cloud-scale.mp4`; PR links #71; **not** merged
-   (Gagan approves on the video).
+7. ADR-0040 + this spec + demo script `scripts/demos/40-cloud-scale.sh` (runs green end-to-end);
+   PR links #71. The recorded-video gate was **waived by the owner (@gagan114662)** — approved to
+   merge once CI is green.
 
 ## Open questions
 - None blocking. Default everything off (pool size 0, caps unlimited, rate 0) so the PR is a pure
