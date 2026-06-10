@@ -42,6 +42,7 @@ class FakeStore implements SessionStore {
       runtime: input.runtime,
       status: "provisioning" as SessionStatus,
       command: input.command,
+      harness: null,
       sandboxId: null,
       snapshotId: null,
       exitCode: null,

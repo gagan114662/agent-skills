@@ -40,3 +40,18 @@ Selection is config-only (`AGENT_HARNESS`, `CLAUDE_BIN`, `ANTHROPIC_MODEL`), wit
 - **Change `SessionManagerDeps.harness` to a `Harness` object** with a `build(task)` method —
   cleaner OO, but it would interpolate the task and touch every call site + test for no functional
   gain. Rejected in favor of the config-only seam.
+
+## Follow-up (#50 remaining scope): codex adapter + per-session selection
+- **`codex` is a new `HarnessKind` branch**, exactly as anticipated: `codex exec --json --full-auto`
+  with the task as the quoted `"$AGENT_TASK"` env reference and an env-gated `--model "$CODEX_MODEL"`.
+  Auth is `OPENAI_API_KEY` via the #25 secrets→env path — never argv. A `decodeCodexLine` decoder
+  renders codex's thread/item events into readable channel text, mirroring the claude-code decoder.
+- **Per-session harness selection** extends the config-only seam to per-launch without breaking the
+  zero-blast-radius principle: `SessionManagerDeps` keeps the default `{ command, args }` and gains
+  an optional `harnessKind` (persisted default) + a pure `harnessOverrides(kind) → { command, args,
+  decode }` resolver. `LaunchInput.harness` (validated against `HARNESS_KINDS`) selects per session;
+  the manager resolves a spec + decoder before persisting, records the kind on `agent_sessions.harness`
+  (migration `0050`), and passes the resolved spec to the runtime — so both runtimes honor the switch
+  identically. The resolver is still task-free, so per-session selection adds no injection surface.
+  We kept `{ command, args }` rather than the rejected `Harness` object: the resolver returns that
+  same contract, so the runtimes and the streaming/reaper/redaction paths remain untouched.

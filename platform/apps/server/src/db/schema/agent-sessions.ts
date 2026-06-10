@@ -45,6 +45,9 @@ export const agentSessions = pgTable(
       .notNull()
       .default("provisioning"),
     command: text("command").notNull(),
+    // Coding-agent harness the session ran on (#50): the per-session selection (env default unless
+    // overridden at launch). Nullable — rows created before #50 leave it unset.
+    harness: text("harness", { enum: ["demo", "claude-code", "codex"] }),
     sandboxId: text("sandbox_id"),
     snapshotId: text("snapshot_id"),
     exitCode: integer("exit_code"),
@@ -71,6 +74,10 @@ export const agentSessions = pgTable(
     byChannel: index("agent_sessions_channel_idx").on(t.channelId, t.createdAt),
     byStatus: index("agent_sessions_status_idx").on(t.status),
     runtimeCk: check("agent_sessions_runtime_ck", sql`${t.runtime} IN ('local', 'sandbox')`),
+    harnessCk: check(
+      "agent_sessions_harness_ck",
+      sql`${t.harness} IS NULL OR ${t.harness} IN ('demo', 'claude-code', 'codex')`,
+    ),
     statusCk: check(
       "agent_sessions_status_ck",
       sql`${t.status} IN ('provisioning', 'running', 'completed', 'failed', 'timeout', 'idle_reaped', 'canceled')`,
