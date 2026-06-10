@@ -87,7 +87,16 @@ closes.
 
 ## Follow-ups (deferred)
 - A durable per-workflow lease so "one session per workflow" holds across multiple server instances.
-- An explicit **auto-approve policy** for the `completed → awaiting_approval → done` edge (e.g. reuse
-  the `approvals/policy.ts` rules), so trusted workflows close without a human while the gate still
-  exists for everything else.
+- ✅ **Done** — An explicit **auto-approve policy** for the `completed → awaiting_approval → done` edge.
+  A workspace-scoped `autonomy.complete` policy rule (reusing the `approvals/policy.ts` rule model —
+  same `approval_policies` storage and routes) opts a trusted workflow out of the human gate: on a
+  completed final stage the engine evaluates the rule (via the injected `completionPolicies` seam) and,
+  when it auto-approves, decides the gate **by policy** — driving the task to `done` + the workflow to
+  `completed` and recording **which rule fired** on the approval (`decision_source='policy'`,
+  `policy_rule_id`, migration `0084`). `autonomy.complete` is sensitive by default, so with **no rule**
+  the human gate holds exactly as before; rejection/failure semantics are unchanged. Tests:
+  `autonomy-engine-launch.test.ts` (unit: no-rule gates, rule auto-approves with audit, rule-requires-
+  approval still gates) and `autonomy-auto-approve.test.ts` (integration: tick → launch → complete →
+  auto-approve → done, and per-workspace isolation — a rule in one workspace never auto-approves
+  another).
 - Feed real run cost (tokens, #25 sandbox-seconds) from the settled session into the #17 cost guard.

@@ -145,6 +145,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // overrides it.
       const spec = harnessSpec(harness, {
         claudeBin: source.CLAUDE_BIN,
+        codexBin: source.CODEX_BIN,
       });
       // #83: a repo to clone into each sandbox session (agent-on-a-branch). Previously only the
       // smoke script read these; now the server threads it into provider.create via the factory.

@@ -401,6 +401,10 @@ export interface AgentApproval {
   action: string;
   status: "pending" | "approved" | "rejected";
   decidedByMemberId: string | null;
+  /** Who closed the gate — a human reviewer or an auto-approve policy rule (#84 follow-up). */
+  decisionSource: "human" | "policy";
+  /** The `approval_policies` rule that auto-approved the gate (audit); null for human decisions. */
+  policyRuleId: string | null;
   createdAt: Date;
   decidedAt: Date | null;
 }
@@ -414,6 +418,8 @@ const APPROVAL_COLS = {
   action: agentApprovals.action,
   status: agentApprovals.status,
   decidedByMemberId: agentApprovals.decidedByMemberId,
+  decisionSource: agentApprovals.decisionSource,
+  policyRuleId: agentApprovals.policyRuleId,
   createdAt: agentApprovals.createdAt,
   decidedAt: agentApprovals.decidedAt,
 } as const;
@@ -465,19 +471,30 @@ export async function listApprovals(
 }
 
 /**
- * Record a human decision on a pending approval (idempotent on the pending→decided edge): only a
+ * Record a decision on a pending approval (idempotent on the pending→decided edge): only a
  * still-`pending` row is updated, so a double-approve/reject is a no-op. Returns the updated row,
  * or undefined if it was not pending.
+ *
+ * A human decision passes `decidedByMemberId` and leaves `decisionSource` at its default `'human'`.
+ * A policy auto-approval (#84 follow-up, ADR-0042) passes `decisionSource: 'policy'` + the
+ * `policyRuleId` that fired (the audit anchor) and may leave `decidedByMemberId` null — no human acted.
  */
 export async function decideApproval(
   id: string,
-  decision: { status: "approved" | "rejected"; decidedByMemberId: string },
+  decision: {
+    status: "approved" | "rejected";
+    decidedByMemberId: string | null;
+    decisionSource?: "human" | "policy";
+    policyRuleId?: string | null;
+  },
 ): Promise<AgentApproval | undefined> {
   const [row] = await db
     .update(agentApprovals)
     .set({
       status: decision.status,
       decidedByMemberId: decision.decidedByMemberId,
+      decisionSource: decision.decisionSource ?? "human",
+      policyRuleId: decision.policyRuleId ?? null,
       decidedAt: new Date(),
     })
     .where(and(eq(agentApprovals.id, id), eq(agentApprovals.status, "pending")))

@@ -88,6 +88,19 @@ jobs:
         working-directory: platform
     steps:
       - uses: actions/checkout@v4
+      - name: Pre-pull base images (retry transient Docker Hub timeouts)
+        # The boot step below pulls these from Docker Hub; a registry blip
+        # ("registry-1.docker.io: context deadline exceeded") must not fail the
+        # deploy gate. Pull each with retry first so `up --build` finds them cached.
+        run: |
+          for img in postgres:16-alpine redis:7-alpine node:22-alpine; do
+            ok=
+            for attempt in 1 2 3 4 5; do
+              if docker pull "$img"; then ok=1; break; fi
+              echo "pull $img attempt $attempt failed; retrying in 10s..."; sleep 10
+            done
+            if [ -z "$ok" ]; then echo "could not pull $img after retries"; exit 1; fi
+          done
       - name: Build image + boot full stack
         run: docker compose --profile full up -d --build
       - name: Wait for server readiness (/readyz)

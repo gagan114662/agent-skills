@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decodeClaudeCodeLine, harnessLineDecoder } from "../../src/runtime/stream-json.js";
+import {
+  decodeClaudeCodeLine,
+  decodeCodexLine,
+  harnessLineDecoder,
+} from "../../src/runtime/stream-json.js";
 
 describe("claude-code stream-json decoder (#81)", () => {
   it("renders an assistant text event as readable channel text and preserves the raw event", () => {
@@ -81,11 +85,86 @@ describe("claude-code stream-json decoder (#81)", () => {
   });
 });
 
-describe("harnessLineDecoder factory (#81)", () => {
+describe("codex exec --json decoder (#50)", () => {
+  it("renders an agent_message item as readable channel text and preserves the raw event", () => {
+    const line = JSON.stringify({
+      type: "item.completed",
+      item: { id: "i1", type: "agent_message", text: "I'll fix the parser now." },
+    });
+    const decoded = decodeCodexLine(line);
+    expect(decoded.display).toEqual(["I'll fix the parser now."]);
+    expect((decoded.raw as { type: string }).type).toBe("item.completed");
+  });
+
+  it("surfaces a command_execution item as a readable tool-call line", () => {
+    const line = JSON.stringify({
+      type: "item.completed",
+      item: { id: "i2", type: "command_execution", command: "pnpm test", exit_code: 0, status: "completed" },
+    });
+    const decoded = decodeCodexLine(line);
+    expect(decoded.display).toHaveLength(1);
+    expect(decoded.display[0]).toContain("🔧");
+    expect(decoded.display[0]).toContain("pnpm test");
+  });
+
+  it("surfaces a file_change item as a readable tool-call line naming the changed path", () => {
+    const line = JSON.stringify({
+      type: "item.completed",
+      item: {
+        id: "i3",
+        type: "file_change",
+        status: "completed",
+        changes: [{ path: "src/parser.ts", kind: "update" }],
+      },
+    });
+    const decoded = decodeCodexLine(line);
+    expect(decoded.display[0]).toContain("🔧");
+    expect(decoded.display[0]).toContain("src/parser.ts");
+  });
+
+  it("flags a top-level error event", () => {
+    const line = JSON.stringify({ type: "error", message: "rate limit exceeded" });
+    const decoded = decodeCodexLine(line);
+    expect(decoded.display[0]).toContain("⚠️");
+    expect(decoded.display[0]).toContain("rate limit exceeded");
+  });
+
+  it("suppresses lifecycle/reasoning events from the channel but keeps the raw event", () => {
+    for (const ev of [
+      { type: "thread.started", thread_id: "t1" },
+      { type: "turn.started" },
+      { type: "turn.completed", usage: { input_tokens: 10 } },
+      { type: "item.completed", item: { type: "reasoning", text: "thinking…" } },
+    ]) {
+      const line = JSON.stringify(ev);
+      const decoded = decodeCodexLine(line);
+      expect(decoded.display).toEqual([]);
+      expect((decoded.raw as { type: string }).type).toBe(ev.type);
+    }
+  });
+
+  it("passes a non-JSON stdout line through verbatim, with no raw event", () => {
+    const decoded = decodeCodexLine("warning: experimental json output");
+    expect(decoded.display).toEqual(["warning: experimental json output"]);
+    expect(decoded.raw).toBeNull();
+  });
+
+  it("emits nothing for a blank line", () => {
+    expect(decodeCodexLine("   ")).toEqual({ display: [], raw: null });
+  });
+});
+
+describe("harnessLineDecoder factory (#81, #50)", () => {
   it("returns the claude-code decoder for the claude-code harness", () => {
     const decode = harnessLineDecoder("claude-code");
     const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } });
     expect(decode(line).display).toEqual(["hi"]);
+  });
+
+  it("returns the codex decoder for the codex harness (#50)", () => {
+    const decode = harnessLineDecoder("codex");
+    const line = JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "done" } });
+    expect(decode(line).display).toEqual(["done"]);
   });
 
   it("returns a verbatim pass-through for the demo harness — never parses JSON (unchanged)", () => {

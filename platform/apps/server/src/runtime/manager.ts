@@ -14,6 +14,7 @@ import {
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
 import type { LineDecoder } from "./stream-json.js";
+import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
@@ -21,6 +22,17 @@ import type { AdmissionController, AdmissionTicket } from "../scale/admission.js
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
+
+/**
+ * Thrown when a per-session harness selection is invalid (not in the allowlist) or cannot be honored
+ * (no override resolver wired). Content-free + safe to surface as an HTTP 400 — never names a secret.
+ */
+export class HarnessKindError extends Error {
+  constructor(value: unknown, detail = "is not a recognized harness") {
+    super(`harness ${JSON.stringify(value)} ${detail}`);
+    this.name = "HarnessKindError";
+  }
+}
 
 /** Persistence seam (real impl wraps the agent-sessions repository; tests inject a fake). */
 export interface SessionStore {
@@ -32,6 +44,8 @@ export interface SessionStore {
     runtime: RuntimeKind;
     command: string;
     caps: ResourceCaps;
+    /** Coding-agent harness the session ran on (#50); omitted → null (env default unselected). */
+    harness?: HarnessKind | null;
     /** Non-secret model/provider selection (#52); omitted when no explicit selection was made. */
     provider?: ProviderKind | null;
     model?: string | null;
@@ -76,8 +90,23 @@ export interface SessionManagerDeps {
   store: SessionStore;
   poster: ChannelPoster;
   secrets: SecretsResolver;
-  /** The trusted harness command run for every session (never client-supplied). */
+  /** The trusted DEFAULT harness command run for a session (never client-supplied). */
   harness: { command: string; args: string[] };
+  /**
+   * The kind of {@link harness} — the deployment/env default (#50). Persisted on a session row when
+   * no per-session override is given. Defaults to `demo` when unset (back-compat for callers that
+   * only wired the legacy `{ command, args }`).
+   */
+  harnessKind?: HarnessKind;
+  /**
+   * Per-session harness override resolver (#50): maps an allowlisted {@link HarnessKind} to its
+   * trusted spec + output decoder. Wired in production from `harnessSpec` + `harnessLineDecoder`.
+   * When absent, a launch may only use the default kind — a differing override is rejected (the
+   * manager cannot synthesize a spec for a kind it was not given a resolver for). Always pure: it
+   * never takes the task (which is injected as env), so a per-session harness adds no injection
+   * surface, and the runtime backend (Local/Sandbox) honors the resolved spec identically.
+   */
+  harnessOverrides?: (kind: HarnessKind) => { command: string; args: string[]; decode: LineDecoder };
   caps: ResourceCaps;
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
@@ -122,6 +151,13 @@ export interface LaunchInput {
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
   task: string;
+  /**
+   * Per-session coding-agent harness (#50): overrides the deployment default for THIS session.
+   * Validated against the {@link HarnessKind} allowlist (invalid → {@link HarnessKindError}, mapped
+   * to a 400) and persisted on the row. Omitted → the env default. Switching claude-code ↔ codex per
+   * session works identically under LocalRuntime and SandboxRuntime.
+   */
+  harness?: HarnessKind;
   /** Team Mode: the team run this session belongs to (recorded on its trace for grouping). */
   teamRunId?: string;
   /** Team Mode: the team rollup span this session links under (Braintrust parent span id). */
@@ -201,6 +237,9 @@ export class SessionManager {
       const report = this.deps.preflight();
       if (!report.ok) throw new PreflightError(report);
     }
+    // Resolve the per-session harness (#50) BEFORE acquiring an admission slot or persisting, so an
+    // invalid kind is rejected without leaking a slot or leaving a half-started session behind.
+    const harness = this.resolveHarness(input.harness);
 
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
     // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
@@ -218,7 +257,8 @@ export class SessionManager {
         agentMemberId: input.agentMemberId,
         createdByMemberId: input.createdByMemberId,
         runtime: this.deps.runtime.kind,
-        command: this.deps.harness.command,
+        command: harness.spec.command,
+        harness: harness.kind,
         caps: this.deps.caps,
         provider: input.selection?.provider ?? null,
         model: input.selection?.model ?? null,
@@ -232,12 +272,13 @@ export class SessionManager {
       throw err;
     }
 
-
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
       parentMessageId: input.parentMessageId,
       harnessEnv: input.harnessEnv,
+      spec: harness.spec,
+      decode: harness.decode,
       ticket,
     }).catch(() => {
       /* drive() never throws — terminal failures are persisted as `failed` */
@@ -245,6 +286,34 @@ export class SessionManager {
     this.runs.set(session.id, run);
     void run.finally(() => this.runs.delete(session.id));
     return session;
+  }
+
+  /**
+   * Resolve the harness for a launch (#50): the env default, or a validated per-session override.
+   * Returns the trusted spec + its output decoder + the kind to persist. Throws
+   * {@link HarnessKindError} for an unknown kind, or an override the manager has no resolver for.
+   */
+  private resolveHarness(override?: HarnessKind): {
+    kind: HarnessKind;
+    spec: HarnessSpec;
+    decode: LineDecoder;
+  } {
+    const defaultKind = this.deps.harnessKind ?? "demo";
+    const defaultDecode: LineDecoder =
+      this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
+    if (override === undefined || override === defaultKind) {
+      return { kind: defaultKind, spec: this.deps.harness, decode: defaultDecode };
+    }
+    if (!isHarnessKind(override)) throw new HarnessKindError(override);
+    if (!this.deps.harnessOverrides) {
+      throw new HarnessKindError(override, "cannot be selected (no harness override resolver wired)");
+    }
+    const resolved = this.deps.harnessOverrides(override);
+    return {
+      kind: override,
+      spec: { command: resolved.command, args: resolved.args },
+      decode: resolved.decode,
+    };
   }
 
   /** Cancel a running session (idempotent; no-op if already terminal). */
@@ -287,8 +356,12 @@ export class SessionManager {
       parentSpanId?: string;
       parentMessageId?: string;
       harnessEnv?: Record<string, string>;
+      /** The resolved per-session harness spec + decoder (#50). */
+      spec: HarnessSpec;
+      decode: LineDecoder;
+      /** Cloud-scale admission ticket (#71): released at teardown. */
       ticket?: AdmissionTicket;
-    } = {},
+    },
   ): Promise<void> {
     const log = this.deps.logger.child({
       sessionId: session.id,
@@ -313,6 +386,8 @@ export class SessionManager {
         this.runSession(session, task, log, {
           parentMessageId: opts.parentMessageId,
           harnessEnv: opts.harnessEnv,
+          spec: opts.spec,
+          decode: opts.decode,
           ticket: opts.ticket,
         }),
     );
@@ -326,8 +401,10 @@ export class SessionManager {
     opts: {
       parentMessageId?: string;
       harnessEnv?: Record<string, string>;
+      spec: HarnessSpec;
+      decode: LineDecoder;
       ticket?: AdmissionTicket;
-    } = {},
+    },
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only.
     const secrets = await this.deps.secrets.resolve(session.workspaceId);
@@ -349,7 +426,7 @@ export class SessionManager {
     // readable channel text and surfaces tool calls; for the demo harness it is a verbatim
     // pass-through (unchanged). The decoder is pure rendering — redaction is applied AFTER it, so a
     // secret leaked inside a decoded event/tool input is still scrubbed before it is posted or logged.
-    const decode: LineDecoder = this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
+    const decode: LineDecoder = opts.decode;
     let buffer = "";
     const tail: string[] = [];
     // Streamed line posts are serialized through one chain (rather than fire-and-forget) so they land
@@ -403,8 +480,8 @@ export class SessionManager {
         {
           sessionId: session.id,
           workspaceId: session.workspaceId,
-          command: this.deps.harness.command,
-          args: this.deps.harness.args,
+          command: opts.spec.command,
+          args: opts.spec.args,
           env: { AGENT_TASK: task, ...opts.harnessEnv },
           cwd: prepared?.cwd,
           secrets,

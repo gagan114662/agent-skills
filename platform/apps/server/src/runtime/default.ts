@@ -15,6 +15,7 @@ import { preflight, type PreflightReport } from "./preflight.js";
 import { EnvSecretsResolver } from "./secrets-resolver.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { harnessLineDecoder } from "./stream-json.js";
+import { harnessSpec, type HarnessKind } from "./harness.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
@@ -91,9 +92,20 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     poster: channelPoster,
     secrets: new EnvSecretsResolver(),
     harness: { command: env.harnessCommand, args: env.harnessArgs },
+    // #50: the env default harness kind (persisted when a launch makes no per-session override).
+    harnessKind: env.harness,
     // #81: decode the selected harness's stdout. `claude-code` emits stream-json (one JSON event per
-    // line) — without this the channel shows raw JSON blobs; `demo` is a verbatim pass-through.
+    // line), `codex` emits codex `exec --json` events — without this the channel shows raw JSON
+    // blobs; `demo` is a verbatim pass-through.
     decodeOutput: harnessLineDecoder(env.harness),
+    // #50: per-session harness override resolver — maps an allowlisted kind to its trusted spec +
+    // decoder so a launch can switch claude-code ↔ codex per session. Pure (no task), so it adds no
+    // injection surface; both runtime backends honor the resolved spec identically. Binaries come
+    // from env (CLAUDE_BIN / CODEX_BIN) just like the default spec.
+    harnessOverrides: (kind: HarnessKind) => ({
+      ...harnessSpec(kind, { claudeBin: process.env.CLAUDE_BIN, codexBin: process.env.CODEX_BIN }),
+      decode: harnessLineDecoder(kind),
+    }),
     caps: env.caps,
     logger,
     // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.

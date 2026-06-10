@@ -1,6 +1,7 @@
 import { channelPoster } from "../runtime/default.js";
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { getAgentSessionStatus } from "../db/repositories/agent-sessions.js";
+import { listPolicyRulesWithId } from "../db/repositories/approvals.js";
 import { AutonomyEngine, type AutonomyLauncher } from "./engine.js";
 
 /**
@@ -20,9 +21,11 @@ export function autonomyLauncherFrom(sessionManager: SessionManager): AutonomyLa
 /**
  * Build the production AutonomyEngine (#17). It reuses the #25 channel poster (persist + realtime
  * publish), so an autonomous agent's narration is both live and persisted. When a SessionManager is
- * supplied (production), a `start`/`handoff` launches a real agent session through it (#84). The
- * periodic timer is started separately (and only when `AUTONOMY_INTERVAL_MS > 0`) so tests can
- * drive `tick()`.
+ * supplied (production), a `start`/`handoff` launches a real agent session through it (#84). A
+ * completed final stage consults the workspace's `autonomy.complete` policy via the #13
+ * `approval_policies` store (#84 follow-up, ADR-0042): an explicit auto-approve rule closes the
+ * workflow without a human, otherwise the approval gate holds. The periodic timer is started
+ * separately (and only when `AUTONOMY_INTERVAL_MS > 0`) so tests can drive `tick()`.
  */
 export function createDefaultAutonomyEngine(
   logger: SessionLogger,
@@ -35,5 +38,6 @@ export function createDefaultAutonomyEngine(
     // An explicit launcher (e.g. the #96 venture-gated one composed in app.ts) wins; otherwise derive
     // it from the SessionManager (#84). Absent both → narration-only (the pre-#84 behaviour).
     launcher: launcher ?? (sessionManager ? autonomyLauncherFrom(sessionManager) : undefined),
+    completionPolicies: (workspaceId) => listPolicyRulesWithId(workspaceId),
   });
 }
