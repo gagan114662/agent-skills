@@ -20,6 +20,10 @@ same `{ command, args }` contract the runtime already consumes, so no downstream
 Selection via `AGENT_HARNESS` (`demo` | `claude-code`); `CLAUDE_BIN` and `ANTHROPIC_MODEL` tune the
 claude invocation; `AGENT_HARNESS_CMD` / `AGENT_HARNESS_ARGS` still override everything.
 
+The **deployment-wide default model** is `ANTHROPIC_MODEL` (set in `.env.example`, `fly.toml [env]`,
+and documented in `PLATFORM-ENV-SETUP.md`). Owner directive: live ipop agents default to
+`claude-fable-5`. Per-session model selection (#52) still overrides it via the merged session env.
+
 ### Security
 The task/prompt is **never** interpolated into argv — it is passed at run time as `AGENT_TASK` and
 referenced as a double-quoted `"$AGENT_TASK"`, which bash does not re-evaluate. Hostile task text
