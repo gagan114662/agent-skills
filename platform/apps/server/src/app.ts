@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import { newId } from "./db/id.js";
 import { registerObservability } from "./observability/plugin.js";
+import { registerCors } from "./http/cors.js";
 import { registerMaintenance } from "./maintenance/gate.js";
 import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
@@ -151,6 +152,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     genReqId: () => newId(),
   });
   app.register(cookie);
+  // #108: env-gated CORS so the Vercel-hosted console (https://ipop.ai) can make credentialed calls
+  // to this API on a different origin (https://api.ipop.ai). No-op unless RELOAD_WEB_ORIGIN is set.
+  registerCors(app);
   registerObservability(app);
   // #99 disaster recovery: a root write-gate that rejects writes (503) while the platform is in
   // maintenance mode (a Redis flag, read per-request — flips in seconds with no redeploy). Installed

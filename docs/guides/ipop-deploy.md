@@ -97,33 +97,73 @@ vercel env add VITE_API_BASE_URL production   # e.g. https://api.ipop.ai
 vercel deploy --prod --yes
 ```
 
-REST calls and the WebSocket (`/ws`) are then sent to that origin. **Cross-origin auth caveat:**
-the `rid` session cookie is httpOnly, so the server must set it with `SameSite=None; Secure` and
-allow-list the web origin for credentialed CORS, otherwise login won't stick across origins.
+REST calls and the WebSocket (`/ws`) are then sent to that origin.
 
-Until the API is hosted, the console **loads** but cannot authenticate (same-origin API paths fall
-through to the SPA `index.html`). That is expected for this owner-testing milestone.
+**Cross-origin auth — why it works here.** `ipop.ai` (web) and `api.ipop.ai` (API) are *cross-origin*
+but *same-site* (shared registrable domain `ipop.ai`), so the `SameSite=Lax`, `Secure`, httpOnly
+`rid` cookie set by the API is sent on requests to `api.ipop.ai` — no `SameSite=None` needed. The
+browser still enforces CORS for the cross-origin `fetch`, so the server allow-lists the web origin
+for credentialed CORS (see below). If you ever host the API on a *different* site, you'd need
+`SameSite=None; Secure` instead.
 
-## API hosting (blocked)
+Until DNS for `api.ipop.ai` resolves, the console **loads and shows a clear "API not connected"
+state** (it no longer crashes — see #121). Once DNS + the Fly cert are live, it talks to the API.
 
-Standing up the Fastify API was evaluated strictly against already-authenticated credentials and is
-**blocked on two independent grounds**:
+## API hosting — Fly.io (`api.ipop.ai`)
 
-1. **Architecture — Vercel can't run this server.** `@reload/server` is a long-lived process: a
-   persistent WebSocket gateway (`realtime/gateway.ts`, `ws`), Redis pub/sub (`ioredis`), a
-   Postgres pool (`pg`), and migrate-on-deploy (`docker-entrypoint.sh`). Vercel Functions are
-   stateless and have no persistent connections — incompatible. Issue #108 itself mandates an
-   always-on runtime (Fly/Railway/Render) and notes "Vercel cannot run PG/Redis."
-2. **Provisioning guardrail — every remaining path needs new terms/accounts.**
-   - Fly / Railway / Render: require creating a **new third-party account** and accepting new
-     (paid) terms. Prohibited by the task guardrail.
-   - Vercel Marketplace storage (Neon Postgres / Upstash Redis): `vercel integration list` →
-     *No resources found*. Provisioning requires `vercel integration add`, which requires
-     `vercel integration accept-terms` (accepting a **new marketplace legal agreement**).
-     Prohibited by the task guardrail. And even with storage, ground #1 still blocks the runtime.
+The Fastify API is a long-lived process (WebSocket gateway, Redis pub/sub, Postgres, migrate-on-
+deploy) — Vercel functions can't run it, so it lives on Fly.io. Built from the existing
+`apps/server/Dockerfile`; config in `platform/fly.toml`.
 
-**Exact blocking step:** provisioning an always-on API runtime — `vercel integration accept-terms`
-for a Marketplace database, or creating a Fly/Railway/Render account — both require accepting new
-third-party terms, which this task is not authorized to do. The Dockerfile + `docker-entrypoint.sh`
-(migrate-on-deploy, `/readyz` health gate) are ready; deploying them to a container host is the
-remaining owner decision.
+| Resource | Fly app | Tier / cost |
+| --- | --- | --- |
+| API server | `reload-api` (region `yyz`) | 1× `shared-cpu-1x` / 512 MB, always-on (`min_machines_running = 1`) |
+| Postgres | `reload-api-db` | flex (Repmgr), `shared-cpu-1x`, 1 GB volume — standard machine billing |
+| Redis (Upstash) | `reload-api-redis` | Pay-as-you-go, $0.20 / 100K commands (no ProdPack) |
+
+`DATABASE_URL` (set by `fly postgres attach`) and `REDIS_URL` (`fly secrets set`) are **secrets**,
+never committed. Non-secret config (`PORT`, `RELOAD_PROFILE=prod`, `AGENT_HARNESS=demo`,
+`RELOAD_WEB_ORIGIN`) is in `fly.toml`.
+
+### Provision + deploy (from `platform/`)
+
+```bash
+fly apps create reload-api --org personal
+fly postgres create --name reload-api-db --org personal --region yyz \
+  --vm-size shared-cpu-1x --volume-size 1 --initial-cluster-size 1
+fly postgres attach reload-api-db --app reload-api          # sets DATABASE_URL secret
+fly redis create --name reload-api-redis --org personal --region yyz \
+  --no-replicas --enable-eviction --plan <pay-as-you-go-id>  # see `fly redis create`
+fly secrets set REDIS_URL="redis://…" --app reload-api --stage
+fly deploy --ha=false --app reload-api                       # builds image, migrates, starts
+```
+
+Verified live: `https://reload-api.fly.dev/readyz` → `200 {"status":"ready","db":"up","redis":"up"}`;
+migrations applied on deploy (entrypoint log); `OPTIONS`/`GET` to the API return CORS headers for
+`https://ipop.ai`.
+
+### CORS (`apps/server/src/http/cors.ts`)
+
+A dependency-free root hook, gated on `RELOAD_WEB_ORIGIN` (comma-separated allowlist). It reflects an
+allow-listed `Origin` with `Access-Control-Allow-Credentials: true` + `Vary: Origin`, and answers
+preflight `OPTIONS` with `204`. No-op when unset (local/same-origin unchanged).
+
+### DNS for `api.ipop.ai` (owner action — Cloudflare, DNS-only)
+
+Fly issued the cert; point the hostname at the app with **one** of:
+
+| Option | Type | Host | Value |
+| --- | --- | --- | --- |
+| A+AAAA (recommended) | A | `api` | `66.241.124.242` |
+| | AAAA | `api` | `2a09:8280:1::125:f303:0` |
+| CNAME (alternative) | CNAME | `api` | `ke1n6mr.reload-api.fly.dev` |
+
+Keep it **DNS-only** (grey cloud) in Cloudflare so Fly terminates TLS. Check progress with
+`fly certs check api.ipop.ai`. (If the record is ever proxied, also add
+`TXT _fly-ownership.api.ipop.ai → app-ke1n6mr`.)
+
+### Guardrails honored
+
+No payment method was added and no new paid plan was accepted: Postgres runs on standard machine
+billing already on the account, and Redis uses the default **Pay-as-you-go** tier (ProdPack, the only
+$/mo upsell, was declined). Cost is kept minimal (1 small always-on VM + usage-metered Redis).
