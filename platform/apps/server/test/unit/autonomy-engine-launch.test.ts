@@ -18,6 +18,7 @@ const listActiveWorkflows = vi.fn();
 const incrementActionsUsed = vi.fn(() => Promise.resolve());
 const bumpWorkflowAction = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
+const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
 const getTask = vi.fn();
 const updateStatus = vi.fn(() => Promise.resolve());
 
@@ -28,9 +29,9 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   incrementActionsUsed,
   bumpWorkflowAction,
   setWorkflowStatus,
-  // unused by the start path, but imported by the engine module:
+  createApproval,
+  // unused by the launch path, but imported by the engine module:
   advanceWorkflowStage: vi.fn(() => Promise.resolve()),
-  createApproval: vi.fn(() => Promise.resolve()),
   getApproval: vi.fn(() => Promise.resolve(undefined)),
   decideApproval: vi.fn(() => Promise.resolve(undefined)),
   getWorkflow: vi.fn(() => Promise.resolve(undefined)),
@@ -71,17 +72,18 @@ interface LaunchCall {
   task: string;
 }
 
-function makeLauncher(status: "completed" | "failed" = "completed") {
+function makeLauncher(opts: { status?: "completed" | "failed"; joinResolves?: boolean } = {}) {
   const launches: LaunchCall[] = [];
   let seq = 0;
-  // `join` stays pending so completion tracking does not run during the launch assertions.
+  // By default `join` stays pending so completion tracking does not run during launch assertions;
+  // `joinResolves` lets a test drive the session to its terminal status and assert the feedback.
   const launcher = {
     launch: vi.fn((input: LaunchCall) => {
       launches.push(input);
       return Promise.resolve({ id: `sess_${++seq}` });
     }),
-    join: vi.fn(() => new Promise<void>(() => {})),
-    status: vi.fn(() => Promise.resolve(status)),
+    join: vi.fn(() => (opts.joinResolves ? Promise.resolve() : new Promise<void>(() => {}))),
+    status: vi.fn(() => Promise.resolve(opts.status ?? "completed")),
   };
   return { launcher, launches };
 }
@@ -158,5 +160,38 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(action?.action).toBe("noop");
     expect(action?.reason).toBe("budget_exhausted");
     expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
+  it("on a completed final-stage session, requests approval — it never drives the task to done", async () => {
+    const { launcher } = makeLauncher({ status: "completed", joinResolves: true });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+    await engine.drain(); // let the completion tracker run
+
+    // The completion is parked at the human gate, not auto-completed.
+    expect(createApproval).toHaveBeenCalledTimes(1);
+    expect(createApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ workflowId: "wf_1", taskId: "task_1", action: "complete_workflow" }),
+    );
+    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    // The only status write was the `in_progress` on start — never `done`.
+    expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
+    expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
+  });
+
+  it("on a failed session, blocks the task (no approval gate for work that did not land)", async () => {
+    // First getTask (tick) sees `todo` → start; the tracker's getTask sees `in_progress` → blocked.
+    getTask.mockReset();
+    getTask.mockResolvedValueOnce({ id: "task_1", title: "summarize the repo", status: "todo" });
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
+    const { launcher } = makeLauncher({ status: "failed", joinResolves: true });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+    await engine.drain();
+
+    expect(createApproval).not.toHaveBeenCalled();
+    expect(updateStatus).toHaveBeenCalledWith("task_1", "blocked", "agent_r");
   });
 });

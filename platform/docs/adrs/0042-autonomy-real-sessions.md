@@ -44,12 +44,21 @@ closes.
   the existing kill-switch/budget/rate-limit/loop guards — all evaluated *before* `apply` — the
   launch is admitted through exactly the same gates as every other action.
 
-- **Closing the loop.** When a session settles (off the tick, so `tick()` never blocks on a run):
-  - **completed**, final stage → task `done` + workflow `completed`;
+- **Closing the loop — through the human approval gate (#13/#20).** A successful run **never drives
+  `done` directly**: autonomy does the work, but a human (or an explicit auto-approve policy rule)
+  closes it. When a session settles (off the tick, so `tick()` never blocks on a run):
+  - **completed**, final stage → create an approval (`complete_workflow`) + park the workflow at
+    `awaiting_approval` — the same gate the narration path's `request_approval` action uses. The
+    existing `approve()` then drives the task to `done` + the workflow to `completed`; `reject()`
+    drives the task to `blocked` + cancels the workflow (the mirror of approve).
   - **completed**, earlier stage → admission clears so the next tick hands off to the next stage;
   - any non-`completed` terminal (`failed`/`timeout`/`idle_reaped`/`canceled`) → task `blocked`
-    for human review. All writes go through the same `canTransition` status guard as the rest of
-    the engine.
+    directly, **no gate** (work that did not land needs human attention, not approval). All writes
+    go through the same `canTransition` status guard as the rest of the engine.
+
+  So both the approval (`completed → awaiting_approval → approve → done`) and the failure/rejection
+  (`failed`/`reject → blocked`) edges close the loop, and a human (or policy) is always on the
+  `done` edge — the launcher path adds execution without removing the safety gate.
 
 - **No launcher → unchanged.** When no launcher is wired the engine keeps its prior narration-only
   behaviour, so the #17 pooling/autonomy suite (which injects no launcher) is untouched.
@@ -58,10 +67,10 @@ closes.
 - Autonomy now **executes** work: a `tick()` persists and drives a real `agent_sessions` row, its
   output streams into the channel as the agent member (via the #25 path), and the task lands in a
   terminal state from the run's own result — not from a narrated guess.
-- The human approval gate (#13/#20) remains the engine's narration path; the launcher path treats
-  the session run as the authoritative unit of work and drives `done`/`blocked` from its outcome.
-  Re-introducing an approval gate *after* a successful run is a clean follow-up (gate the
-  `completed → done` edge behind `createApproval`).
+- The human approval gate (#13/#20) is preserved on **both** paths: the launcher path runs the real
+  session and then parks the result at the same `awaiting_approval` gate the narration path uses, so
+  a human (or an explicit auto-approve policy rule) is always on the `completed → done` edge. The
+  session run is the *work*; approval is the *acceptance*.
 - The in-flight set is **per process** (in memory). A multi-instance deployment would need a durable
   lease to keep "one session per workflow" across instances; today the production timer runs in a
   single server process (ADR-0017), so this is sufficient and called out as a follow-up.
@@ -69,14 +78,16 @@ closes.
 ## Tests
 - **Unit** (`autonomy-engine-launch.test.ts`) — the engine on a **fake SessionManager** with mocked
   persistence: a `start` action launches once with the right channel/agent/task; the kill switch and
-  an exhausted budget each block the launch.
+  an exhausted budget each block the launch; a completed final-stage session **requests approval**
+  (never drives the task to `done`); a failed session **blocks** the task.
 - **Integration** (`autonomy-launch.test.ts`) — the engine over a real `SessionManager` + a fake
-  runtime (real Postgres + Redis, no cloud): `tick → launch → complete → task done` (a real session
-  row is driven to completion), a failed run → task `blocked`, and a workflow with a live session is
-  skipped (`session_running`) rather than escalated.
+  runtime (real Postgres + Redis, no cloud): `tick → launch → complete → awaiting_approval →
+  approve → done`, the same up to `reject → blocked` (workflow canceled), and a workflow with a live
+  session is skipped (`session_running`) rather than escalated.
 
 ## Follow-ups (deferred)
 - A durable per-workflow lease so "one session per workflow" holds across multiple server instances.
-- Optional human approval on the `completed → done` edge for the launcher path (parity with the
-  narration gate).
+- An explicit **auto-approve policy** for the `completed → awaiting_approval → done` edge (e.g. reuse
+  the `approvals/policy.ts` rules), so trusted workflows close without a human while the gate still
+  exists for everything else.
 - Feed real run cost (tokens, #25 sandbox-seconds) from the settled session into the #17 cost guard.

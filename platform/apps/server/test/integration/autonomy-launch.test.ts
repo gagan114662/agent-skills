@@ -152,7 +152,7 @@ async function createWorkflow(w: World, title: string): Promise<{ taskId: string
 }
 
 describe("autonomy engine launches real agent sessions (#84)", () => {
-  it("tick → launch → complete → task done (a real session row is driven to completion)", async () => {
+  it("tick → launch → complete → awaiting_approval → approve → done (the human gate closes it)", async () => {
     const w = await seed(0);
     const { taskId, wfId } = await createWorkflow(w, "summarize the repo");
 
@@ -168,12 +168,13 @@ describe("autonomy engine launches real agent sessions (#84)", () => {
     // The task is in progress while the session runs.
     expect((await get(w.app, `/tasks/${taskId}`, w.cookie)).json().status).toBe("in_progress");
 
-    // Let the session finish server-side; its completion closes the loop.
+    // Let the session finish server-side. A successful run does NOT auto-complete the task — it
+    // parks at the human approval gate (#13), exactly like the narration path.
     await w.engine.drain();
 
-    expect((await get(w.app, `/tasks/${taskId}`, w.cookie)).json().status).toBe("done");
-    const wf = (await get(w.app, `/channels/${w.channelId}/workflows/${wfId}`, w.cookie)).json();
-    expect(wf.status).toBe("completed");
+    expect((await get(w.app, `/tasks/${taskId}`, w.cookie)).json().status).toBe("in_progress");
+    const parked = (await get(w.app, `/channels/${w.channelId}/workflows/${wfId}`, w.cookie)).json();
+    expect(parked.status).toBe("awaiting_approval");
     const finished = await listAgentSessions(w.channelId);
     expect(finished[0].status).toBe("completed");
 
@@ -181,7 +182,51 @@ describe("autonomy engine launches real agent sessions (#84)", () => {
       body: string;
     }[]).map((m) => m.body);
     expect(bodies.some((b) => b.includes("launched agent session"))).toBe(true);
-    expect(bodies.some((b) => b.includes("task done"))).toBe(true);
+    expect(bodies.some((b) => b.includes("awaiting human approval"))).toBe(true);
+
+    // A human approval closes the loop → task done, workflow completed.
+    const pending = (
+      await get(w.app, `/workspaces/${w.workspaceId}/autonomy/approvals?status=pending`, w.cookie)
+    ).json() as { id: string }[];
+    expect(pending).toHaveLength(1);
+    const approve = await post(
+      w.app,
+      `/workspaces/${w.workspaceId}/autonomy/approvals/${pending[0].id}/approve`,
+      w.cookie,
+    );
+    expect(approve.statusCode).toBe(200);
+
+    expect((await get(w.app, `/tasks/${taskId}`, w.cookie)).json().status).toBe("done");
+    expect(
+      (await get(w.app, `/channels/${w.channelId}/workflows/${wfId}`, w.cookie)).json().status,
+    ).toBe("completed");
+  });
+
+  it("tick → launch → complete → awaiting_approval → reject → blocked (rejection blocks the task)", async () => {
+    const w = await seed(0);
+    const { taskId, wfId } = await createWorkflow(w, "summarize the repo for review");
+
+    await w.engine.tick(w.workspaceId);
+    await w.engine.drain();
+    expect(
+      (await get(w.app, `/channels/${w.channelId}/workflows/${wfId}`, w.cookie)).json().status,
+    ).toBe("awaiting_approval");
+
+    const pending = (
+      await get(w.app, `/workspaces/${w.workspaceId}/autonomy/approvals?status=pending`, w.cookie)
+    ).json() as { id: string }[];
+    const reject = await post(
+      w.app,
+      `/workspaces/${w.workspaceId}/autonomy/approvals/${pending[0].id}/reject`,
+      w.cookie,
+    );
+    expect(reject.statusCode).toBe(200);
+
+    // Rejection mirrors approval: the task is blocked for review and the workflow is canceled.
+    expect((await get(w.app, `/tasks/${taskId}`, w.cookie)).json().status).toBe("blocked");
+    expect(
+      (await get(w.app, `/channels/${w.channelId}/workflows/${wfId}`, w.cookie)).json().status,
+    ).toBe("canceled");
   });
 
   it("tick → launch → failure → task blocked (a failed session feeds back as blocked)", async () => {

@@ -389,14 +389,23 @@ export class AutonomyEngine {
     if (status === "completed") {
       const isFinalStage = stageIndex >= wf.stages.length - 1;
       if (isFinalStage) {
-        if (task.status !== "done" && canTransition(task.status, "done")) {
-          await updateStatus(taskId, "done", agentMemberId);
-        }
-        await setWorkflowStatus(wf.id, "completed");
+        // The agent did the work, but a human (or an explicit auto-approve policy, #13) closes it —
+        // success never drives `done` directly. Park at the same approval gate the narration path
+        // uses: an approval record + `awaiting_approval`. `approve()` drives the task to `done`,
+        // `reject()` drives it to `blocked`.
+        await createApproval({
+          workspaceId: wf.workspaceId,
+          workflowId: wf.id,
+          taskId,
+          requestedByMemberId: agentMemberId,
+          action: "complete_workflow",
+        });
+        await setWorkflowStatus(wf.id, "awaiting_approval");
+        await bumpWorkflowAction(wf.id);
         await this.post(
           wf,
           agentMemberId,
-          `✅ agent session ${sessionId} completed “${taskTitle}” — task done.`,
+          `✅ agent session ${sessionId} completed “${taskTitle}” — awaiting human approval to complete.`,
           log,
         );
       } else {
@@ -460,7 +469,11 @@ export class AutonomyEngine {
     return { ok: true };
   }
 
-  /** Reject a pending gate: mark it rejected, cancel the workflow, narrate it. Idempotent. */
+  /**
+   * Reject a pending gate: mark it rejected, drive the task to `blocked` (the work was not accepted —
+   * it needs human attention, the mirror of `approve()` driving `done`), cancel the workflow, and
+   * narrate it. Idempotent — a non-pending approval is a no-op.
+   */
   async reject(
     workspaceId: string,
     approvalId: string,
@@ -474,11 +487,20 @@ export class AutonomyEngine {
     });
     if (!decided) return { ok: false, reason: "not_pending" };
 
+    const task = await getTask(approval.taskId);
+    if (task && task.status !== "blocked" && canTransition(task.status, "blocked")) {
+      await updateStatus(approval.taskId, "blocked", humanMemberId);
+    }
     if (approval.workflowId) {
       await setWorkflowStatus(approval.workflowId, "canceled");
       const wf = await getWorkflow(approval.workflowId, workspaceId);
       if (wf) {
-        await this.post(wf, humanMemberId, `❌ rejected by a human reviewer; workflow canceled.`, this.deps.logger);
+        await this.post(
+          wf,
+          humanMemberId,
+          `❌ rejected by a human reviewer; workflow canceled and task blocked for review.`,
+          this.deps.logger,
+        );
       }
     }
     return { ok: true };
