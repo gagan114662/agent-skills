@@ -64,6 +64,9 @@ export const agentSessions = pgTable(
     model: text("model"),
     effort: text("effort", { enum: ["off", "low", "medium", "high"] }),
     mode: text("mode", { enum: ["single", "auto"] }),
+    // Multi-region placement (#71): the region the session was placed in. Nullable — local/unplaced
+    // sessions (#25 default) leave it unset.
+    region: text("region"),
     caps: jsonb("caps").notNull().default(sql`'{}'::jsonb`),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),

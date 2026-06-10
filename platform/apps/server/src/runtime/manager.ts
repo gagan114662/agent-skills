@@ -18,6 +18,8 @@ import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js"
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
+import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
+import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
@@ -49,6 +51,8 @@ export interface SessionStore {
     model?: string | null;
     effort?: EffortLevel | null;
     mode?: SessionMode | null;
+    /** Multi-region placement (#71): the region the session was placed in (null when unplaced). */
+    region?: string | null;
   }): Promise<AgentSession>;
   markRunning(id: string, sandboxId?: string): Promise<void>;
   finalize(
@@ -119,6 +123,18 @@ export interface SessionManagerDeps {
    * it before the runtime starts. When absent, the harness inherits the server cwd (#25 behavior).
    */
   workspace?: WorkspaceProvisioner;
+  /**
+   * Cloud-scale admission (#71): the launch chokepoint — kill switch (#17), per-tenant budget, and
+   * per-tenant + global concurrency caps, plus region placement. When absent, every launch is
+   * admitted and unplaced (today's #25 behavior). A denied launch makes `launch` throw before any
+   * row is created.
+   */
+  admission?: AdmissionController;
+  /**
+   * Cloud-scale usage accounting (#71): records an admitted launch + its compute-seconds so a
+   * per-tenant budget can bite. Absent → no accounting (today's behavior).
+   */
+  usage?: UsageRecorder;
   /**
    * Optional harness-aware output decoder (#81): converts each raw stdout line into readable channel
    * text, keeping the parsed event for structured consumers. The `claude-code` harness emits
@@ -215,29 +231,47 @@ export class SessionManager {
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
     // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
-    // a row or make any runtime/cloud call — so a half-broken session never starts. The default
-    // local/demo posture always passes; when no gate is wired (unit tests) this is a no-op.
+    // a row, acquire an admission slot, or make any runtime/cloud call — so a half-broken session
+    // never starts. The default local/demo posture always passes; no gate wired (unit tests) = no-op.
     if (this.deps.preflight) {
       const report = this.deps.preflight();
       if (!report.ok) throw new PreflightError(report);
     }
-    // Resolve the per-session harness (#50) BEFORE persisting or touching the runtime, so an invalid
-    // kind is rejected without leaving a half-started session behind.
+    // Resolve the per-session harness (#50) BEFORE acquiring an admission slot or persisting, so an
+    // invalid kind is rejected without leaking a slot or leaving a half-started session behind.
     const harness = this.resolveHarness(input.harness);
-    const session = await this.deps.store.create({
-      workspaceId: input.workspaceId,
-      channelId: input.channelId,
-      agentMemberId: input.agentMemberId,
-      createdByMemberId: input.createdByMemberId,
-      runtime: this.deps.runtime.kind,
-      command: harness.spec.command,
-      harness: harness.kind,
-      caps: this.deps.caps,
-      provider: input.selection?.provider ?? null,
-      model: input.selection?.model ?? null,
-      effort: input.selection?.effort ?? null,
-      mode: input.selection?.mode ?? null,
-    });
+
+    // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
+    // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
+    // no admission is wired this is a no-op and the session is unplaced (today's #25 behavior).
+    const ticket = this.deps.admission
+      ? await this.deps.admission.acquire(input.workspaceId)
+      : undefined;
+
+    let session: AgentSession;
+    try {
+      await this.deps.usage?.recordStart(input.workspaceId);
+      session = await this.deps.store.create({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        createdByMemberId: input.createdByMemberId,
+        runtime: this.deps.runtime.kind,
+        command: harness.spec.command,
+        harness: harness.kind,
+        caps: this.deps.caps,
+        provider: input.selection?.provider ?? null,
+        model: input.selection?.model ?? null,
+        effort: input.selection?.effort ?? null,
+        mode: input.selection?.mode ?? null,
+        region: ticket?.region ?? null,
+      });
+    } catch (err) {
+      // The slot was acquired but the session never started — free it so it isn't leaked.
+      ticket?.release();
+      throw err;
+    }
+
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
@@ -245,6 +279,7 @@ export class SessionManager {
       harnessEnv: input.harnessEnv,
       spec: harness.spec,
       decode: harness.decode,
+      ticket,
     }).catch(() => {
       /* drive() never throws — terminal failures are persisted as `failed` */
     });
@@ -324,6 +359,8 @@ export class SessionManager {
       /** The resolved per-session harness spec + decoder (#50). */
       spec: HarnessSpec;
       decode: LineDecoder;
+      /** Cloud-scale admission ticket (#71): released at teardown. */
+      ticket?: AdmissionTicket;
     },
   ): Promise<void> {
     const log = this.deps.logger.child({
@@ -351,6 +388,7 @@ export class SessionManager {
           harnessEnv: opts.harnessEnv,
           spec: opts.spec,
           decode: opts.decode,
+          ticket: opts.ticket,
         }),
     );
   }
@@ -365,6 +403,7 @@ export class SessionManager {
       harnessEnv?: Record<string, string>;
       spec: HarnessSpec;
       decode: LineDecoder;
+      ticket?: AdmissionTicket;
     },
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only.
@@ -428,6 +467,8 @@ export class SessionManager {
 
     let runningRef: RunningSession | undefined;
     let result: RuntimeResult = { status: "failed", exitCode: null };
+    // #71: the session's wall-clock lifetime is the compute-seconds we bill the tenant for.
+    const runStart = Date.now();
     try {
       const provisionStart = Date.now();
       // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
@@ -444,6 +485,8 @@ export class SessionManager {
           env: { AGENT_TASK: task, ...opts.harnessEnv },
           cwd: prepared?.cwd,
           secrets,
+          // #71: the runtime provisions in the placed region (sandbox backend); local ignores it.
+          region: opts.ticket?.region,
           caps: this.deps.caps,
         },
         {
@@ -473,6 +516,9 @@ export class SessionManager {
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(wallTimer);
       this.running.delete(session.id);
+      // #71: free the admission slot on every teardown path (success, failure, reap, cancel) so a
+      // crashed/timed-out session never permanently consumes a tenant's concurrency budget.
+      opts.ticket?.release();
     }
 
     if (buffer.trim()) emitLine(buffer); // flush a trailing partial line
@@ -487,6 +533,14 @@ export class SessionManager {
       snapshotId: result.snapshotId ?? null,
     });
     recordSessionEnded(this.deps.runtime.kind, result.status);
+    // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
+    // accounting — a recorder hiccup must never fail an already-finalized session.
+    if (this.deps.usage) {
+      const computeSeconds = Math.max(0, (Date.now() - runStart) / 1000);
+      await this.deps.usage
+        .recordCompute(session.workspaceId, computeSeconds)
+        .catch((err: unknown) => log.error({ err }, "usage compute accounting failed"));
+    }
     log.info({ status: result.status, snapshotId: result.snapshotId }, "agent session finalized");
     return { status: result.status, exitCode: result.exitCode ?? null, result: resultText || null };
   }

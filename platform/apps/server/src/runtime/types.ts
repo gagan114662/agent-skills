@@ -45,6 +45,11 @@ export interface AgentJob {
    * snapshot and NEVER logged; the SessionManager redacts their values from streamed output too.
    */
   secrets: Record<string, string>;
+  /**
+   * Multi-region placement (#71): the region the admission planner chose for this session. The
+   * sandbox backend provisions there; `LocalRuntime` ignores it. Undefined → unplaced (#25 default).
+   */
+  region?: string;
   /** Hard resource + wall-clock caps for this session. */
   caps: ResourceCaps;
 }
