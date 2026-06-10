@@ -7,6 +7,7 @@ import { grantCapability } from "../db/repositories/permissions.js";
 import { getAgentSession, listAgentSessions } from "../db/repositories/agent-sessions.js";
 import type { SessionManager } from "../runtime/manager.js";
 import { PreflightError } from "../runtime/preflight.js";
+import { isHarnessKind } from "../runtime/harness.js";
 import { loadConfig } from "../config/loader.js";
 import {
   modelPolicyFromConfig,
@@ -51,9 +52,16 @@ export async function agentSessionRoutes(
       model?: string;
       effort?: string;
       mode?: string;
+      harness?: string;
     };
     if (!b.agentMemberId) return reply.code(400).send({ error: "agentMemberId required" });
     if (!b.task) return reply.code(400).send({ error: "task required" });
+
+    // Per-session harness selection (#50): validate against the allowlist here, so an unknown kind
+    // is a content-free 400 before any persistence or runtime call. Omitted → the deployment default.
+    if (b.harness !== undefined && !isHarnessKind(b.harness)) {
+      return reply.code(400).send({ error: "unknown harness" });
+    }
 
     // Model/provider selection (#52). Resolve a selection only when the caller asks for one OR the
     // tenant pins a default model — otherwise leave the session on the deployment default (unchanged
@@ -103,6 +111,9 @@ export async function agentSessionRoutes(
         agentMemberId: target.id,
         createdByMemberId: id.memberId,
         task: b.task,
+        // #50: the validated per-session harness override (undefined → deployment default). Already
+        // checked against the allowlist above; the SessionManager defensively re-validates.
+        harness: isHarnessKind(b.harness) ? b.harness : undefined,
         // #52: the secret-free selection env (provider flags, model, thinking budget) rides the same
         // injection-safe seam as the task/persona; the metadata is persisted on the row for audit.
         harnessEnv: selection?.env,
@@ -128,6 +139,7 @@ export async function agentSessionRoutes(
       id: session.id,
       status: session.status,
       runtime: session.runtime,
+      harness: session.harness,
       agentMemberId: session.agentMemberId,
       provider: session.provider,
       model: session.model,

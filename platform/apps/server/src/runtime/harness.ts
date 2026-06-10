@@ -11,11 +11,24 @@
  *   - `claude-code`: the real Claude Code CLI in non-interactive print mode against the task,
  *     streaming output back through the runtime. Requires the `claude` binary + auth in the
  *     execution environment (the host for LocalRuntime, the image for SandboxRuntime).
+ *   - `codex`: the real OpenAI Codex CLI in its non-interactive `exec --json` mode against the task,
+ *     streaming JSON events back through the runtime. Requires the `codex` binary + `OPENAI_API_KEY`
+ *     (resolved through the #25 SecretsResolver and injected as runtime env — never in argv).
  *
  * The spec returned here plugs straight into the existing `{ command, args }` contract consumed by
- * `SessionManager`/`AgentRuntime`, so selecting a harness changes no other code path.
+ * `SessionManager`/`AgentRuntime`, so selecting a harness changes no other code path. A session may
+ * pick a harness per launch (#50); the chosen kind is validated against {@link HARNESS_KINDS} and
+ * persisted on the session row.
  */
-export type HarnessKind = "demo" | "claude-code";
+export type HarnessKind = "demo" | "claude-code" | "codex";
+
+/** The full allowlist of harness kinds — the per-session selection is validated against this. */
+export const HARNESS_KINDS = ["demo", "claude-code", "codex"] as const;
+
+/** Narrow an untrusted string to a {@link HarnessKind}. The route/manager map a `false` to a 400. */
+export function isHarnessKind(value: unknown): value is HarnessKind {
+  return typeof value === "string" && (HARNESS_KINDS as readonly string[]).includes(value);
+}
 
 export interface HarnessSpec {
   command: string;
@@ -27,12 +40,16 @@ export interface HarnessOptions {
   claudeBin?: string;
   /** Extra raw flags appended to the claude invocation. */
   claudeExtraArgs?: string[];
+  /** Path or name of the Codex binary. Default `codex`. */
+  codexBin?: string;
+  /** Extra raw flags appended to the codex invocation. */
+  codexExtraArgs?: string[];
 }
 
 const DEMO: HarnessSpec = { command: "bash", args: ["scripts/agent-harness-demo.sh"] };
 
 export function parseHarnessKind(value: string | undefined): HarnessKind {
-  return value === "claude-code" ? "claude-code" : "demo";
+  return isHarnessKind(value) ? value : "demo";
 }
 
 /**
@@ -41,6 +58,7 @@ export function parseHarnessKind(value: string | undefined): HarnessKind {
  */
 export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): HarnessSpec {
   if (kind === "demo") return { command: DEMO.command, args: [...DEMO.args] };
+  if (kind === "codex") return codexSpec(opts);
 
   const bin = opts.claudeBin ?? "claude";
   const extra =
@@ -73,6 +91,35 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
     `${shellQuote(bin)} -p "$AGENT_TASK" ` +
     `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}`;
 
+  return { command: "bash", args: ["-lc", cmd] };
+}
+
+/**
+ * Build the trusted command/args for the OpenAI Codex CLI. Same injection-safe contract as
+ * `claude-code`: the task is `"$AGENT_TASK"` (double-quoted, NOT re-evaluated by bash), so hostile
+ * task text cannot break into the command line; the builder takes no task argument.
+ *
+ * - `exec` is Codex's headless (non-interactive) subcommand — it reads the prompt and runs to
+ *   completion without a TTY.
+ * - `--json` makes it emit one JSON event per stdout line, which {@link file://./stream-json.ts}
+ *   decodes into readable channel turns/tool-calls.
+ * - `--full-auto` lets the agent actually edit files in the session workspace without approval
+ *   prompts (the runtime — SandboxRuntime — is the isolation boundary for untrusted code).
+ *
+ * Auth is `OPENAI_API_KEY`, resolved per tenant through the #25 SecretsResolver and injected as
+ * runtime env (read by codex natively). It NEVER appears in argv, so it cannot be logged from the
+ * command line. Model selection rides the same env seam as the task — an env-gated `--model` flag
+ * that references `$CODEX_MODEL` (double-quoted, like `$AGENT_TASK`); when unset the flag vanishes
+ * and codex falls back to its own default.
+ */
+function codexSpec(opts: HarnessOptions): HarnessSpec {
+  const bin = opts.codexBin ?? "codex";
+  const extra =
+    opts.codexExtraArgs && opts.codexExtraArgs.length > 0
+      ? " " + opts.codexExtraArgs.map(shellQuote).join(" ")
+      : "";
+  const model = ` \${CODEX_MODEL:+--model "$CODEX_MODEL"}`;
+  const cmd = `${shellQuote(bin)} exec "$AGENT_TASK" --json --full-auto${model}${extra}`;
   return { command: "bash", args: ["-lc", cmd] };
 }
 

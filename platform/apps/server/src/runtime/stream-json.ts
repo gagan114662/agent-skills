@@ -33,11 +33,19 @@ export type LineDecoder = (line: string) => DecodedLine;
 const passthrough: LineDecoder = (line) => ({ display: [line], raw: null });
 
 /**
- * Pick the output decoder for a harness. `claude-code` → the stream-json decoder; everything else
- * (demo) → verbatim pass-through, so the default harness output is unchanged.
+ * Pick the output decoder for a harness. `claude-code` → the stream-json decoder; `codex` → the
+ * codex `exec --json` decoder; everything else (demo) → verbatim pass-through, so the default
+ * harness output is unchanged.
  */
 export function harnessLineDecoder(kind: HarnessKind): LineDecoder {
-  return kind === "claude-code" ? decodeClaudeCodeLine : passthrough;
+  switch (kind) {
+    case "claude-code":
+      return decodeClaudeCodeLine;
+    case "codex":
+      return decodeCodexLine;
+    default:
+      return passthrough;
+  }
 }
 
 interface ContentBlock {
@@ -120,6 +128,77 @@ export function decodeClaudeCodeLine(line: string): DecodedLine {
       // system / user (tool results) / unknown — keep the raw event for structured consumers, but
       // do not clutter the channel with it.
       break;
+  }
+
+  return { display, raw: event };
+}
+
+/** Compact, single-line summary of a codex `file_change` item's changed paths. */
+function summarizeFileChange(item: Record<string, unknown>): string {
+  const changes = Array.isArray(item.changes) ? item.changes : [];
+  const paths = changes
+    .map((c) => (isRecord(c) && typeof c.path === "string" ? c.path : undefined))
+    .filter((p): p is string => Boolean(p));
+  const summary = paths.join(", ") || (typeof item.path === "string" ? item.path : "");
+  const text = `file_change ${summary}`.trimEnd();
+  return text.length > INPUT_MAX ? `${text.slice(0, INPUT_MAX - 1)}…` : text;
+}
+
+/**
+ * Decode one `codex exec --json` stdout line into readable channel text + the raw event.
+ *
+ * Codex emits a thread/item event stream (one JSON object per line). We render the items a channel
+ * reader cares about and suppress lifecycle/reasoning noise (keeping the raw event for structured
+ * consumers):
+ * - `item.completed` + `agent_message` → the assistant's text, verbatim.
+ * - `item.completed` + `command_execution` → a `🔧 <command>` tool-call line.
+ * - `item.completed` + `file_change` → a `🔧 file_change <paths>` tool-call line.
+ * - a top-level `error` (or `turn.failed`) event → an `⚠️` line.
+ * - `thread.started` / `turn.started` / `turn.completed` / `reasoning` / unknown → suppressed from
+ *   the channel, raw event preserved.
+ * - a non-JSON line passes through verbatim (so CLI warnings still reach the channel) with no raw
+ *   event; a blank line yields nothing.
+ *
+ * Mirrors {@link decodeClaudeCodeLine}: redaction is applied by the caller AFTER decoding, so a
+ * secret leaked inside a decoded event/command is still scrubbed before it is posted or logged.
+ */
+export function decodeCodexLine(line: string): DecodedLine {
+  if (!line.trim()) return { display: [], raw: null };
+
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return { display: [line], raw: null };
+  }
+  if (!isRecord(event)) return { display: [line], raw: null };
+
+  const display: string[] = [];
+  if (event.type === "error" || event.type === "turn.failed") {
+    const message = typeof event.message === "string" ? event.message : "";
+    display.push(`${ERROR} ${message || "codex run ended with an error"}`.trimEnd());
+    return { display, raw: event };
+  }
+
+  if (event.type === "item.completed" && isRecord(event.item)) {
+    const item = event.item;
+    switch (item.type) {
+      case "agent_message":
+        if (typeof item.text === "string" && item.text.trim()) display.push(item.text);
+        break;
+      case "command_execution":
+        if (item.command != null) display.push(`${TOOL} ${summarizeToolInput(item.command)}`.trimEnd());
+        break;
+      case "file_change":
+        display.push(`${TOOL} ${summarizeFileChange(item)}`.trimEnd());
+        break;
+      case "error":
+        display.push(`${ERROR} ${typeof item.message === "string" ? item.message : ""}`.trimEnd());
+        break;
+      default:
+        // reasoning / mcp internal / unknown item — suppressed from the channel.
+        break;
+    }
   }
 
   return { display, raw: event };

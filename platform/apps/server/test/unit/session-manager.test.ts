@@ -41,6 +41,7 @@ class FakeStore implements SessionStore {
     runtime: "local" | "sandbox";
     command: string;
     caps: ResourceCaps;
+    harness?: string | null;
   }): Promise<AgentSession> {
     this.created = {
       id: "sess_test",
@@ -51,6 +52,7 @@ class FakeStore implements SessionStore {
       runtime: input.runtime,
       status: "provisioning",
       command: input.command,
+      harness: (input.harness ?? null) as AgentSession["harness"],
       sandboxId: null,
       snapshotId: null,
       exitCode: null,
@@ -463,5 +465,99 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(await m2.steer(s.id, "x")).toBe(false);
     await m2.cancel(s.id);
     await m2.join(s.id);
+  });
+});
+
+// --- per-session harness selection (#50) ------------------------------------
+
+/**
+ * Build a manager wired with a default harness kind + an override resolver, mirroring the production
+ * `default.ts` seam. The resolver maps each kind to a distinct spec + decoder so a test can assert
+ * the manager honored the per-session override (spec passed to the runtime, decoder used, kind
+ * persisted) — identically regardless of the runtime backend, which only ever sees command/args/env.
+ */
+function makeSelectableManager(runtime: AgentRuntime) {
+  const store = new FakeStore();
+  const poster = new FakePoster(store);
+  const manager = new SessionManager({
+    runtime,
+    store,
+    poster,
+    secrets: new Secrets({}),
+    // The env default is claude-code; per-session launches may override it.
+    harness: { command: "claude-bin", args: ["--default"] },
+    harnessKind: "claude-code",
+    decodeOutput: harnessLineDecoder("claude-code"),
+    harnessOverrides: (kind) => {
+      const specs: Record<string, { command: string; args: string[] }> = {
+        demo: { command: "bash", args: ["scripts/agent-harness-demo.sh"] },
+        "claude-code": { command: "claude-bin", args: ["--default"] },
+        codex: { command: "bash", args: ["-lc", "'codex' exec \"$AGENT_TASK\" --json --full-auto"] },
+      };
+      return { ...specs[kind], decode: harnessLineDecoder(kind as Parameters<typeof harnessLineDecoder>[0]) };
+    },
+    caps: caps(),
+    logger: silentLogger,
+  });
+  return { manager, store, poster };
+}
+
+describe("SessionManager — per-session harness selection (#50)", () => {
+  it("runs the env-default harness and persists its kind when no override is given", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager, store } = makeSelectableManager(runtime);
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    // The runtime got the default (claude-code) spec, and the row records the default kind.
+    expect(runtime.job?.command).toBe("claude-bin");
+    expect(runtime.job?.args).toEqual(["--default"]);
+    expect(store.created?.harness).toBe("claude-code");
+  });
+
+  it("honors a per-session codex override: codex spec to the runtime + persisted on the row", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager, store } = makeSelectableManager(runtime);
+    const session = await manager.launch({ ...launch, harness: "codex" });
+    await manager.join(session.id);
+    // Switching claude-code → codex per session reaches the runtime identically (it only sees the
+    // resolved command/args), and the chosen kind is persisted for audit.
+    expect(runtime.job?.command).toBe("bash");
+    expect(runtime.job?.args?.[0]).toBe("-lc");
+    expect(runtime.job?.args?.[1]).toContain("'codex' exec \"$AGENT_TASK\"");
+    expect(store.created?.harness).toBe("codex");
+    // The command column reflects the codex harness, not the env default.
+    expect(store.created?.command).toBe("bash");
+  });
+
+  it("uses the codex decoder for a codex-overridden session (readable channel output)", async () => {
+    const events =
+      [
+        JSON.stringify({ type: "thread.started", thread_id: "t1" }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "Investigating." } }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "command_execution", command: "pnpm test", exit_code: 0 },
+        }),
+      ].join("\n") + "\n";
+    const runtime = new CompletingRuntime([events], 0);
+    const { manager, poster } = makeSelectableManager(runtime);
+    const session = await manager.launch({ ...launch, harness: "codex" });
+    await manager.join(session.id);
+    const bodies = poster.bodies();
+    expect(bodies).toContain("Investigating.");
+    expect(bodies.some((b) => b.includes("🔧") && b.includes("pnpm test"))).toBe(true);
+    // No raw codex JSON blob ever reaches the channel.
+    expect(bodies.some((b) => b.includes('"type":"item.completed"'))).toBe(false);
+  });
+
+  it("rejects an invalid harness kind before persisting or starting anything", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager, store } = makeSelectableManager(runtime);
+    await expect(
+      manager.launch({ ...launch, harness: "gemini" as unknown as "codex" }),
+    ).rejects.toThrow();
+    // Nothing was persisted and the runtime was never touched.
+    expect(store.created).toBeUndefined();
+    expect(runtime.job).toBeUndefined();
   });
 });

@@ -43,3 +43,26 @@ Secrets continue to flow through `SecretsResolver` → runtime env and are redac
 - ADR-0027 records the harness abstraction + first-class agent choice.
 - Demo (recorded video pending): a real agent edits code in a session and streams its work to the
   channel; `bash scripts/agent-harness-demo.sh` exercises the harness-selection seam spend-free.
+
+## Remaining scope completed (#50, follow-up)
+The keystone (`demo` + `claude-code`, env-selected) shipped earlier. This follow-up closes the issue:
+
+- **`codex` adapter.** `HarnessKind` gains `codex`; `harnessSpec("codex")` returns
+  `bash -lc "'codex' exec \"$AGENT_TASK\" --json --full-auto ${CODEX_MODEL:+--model \"$CODEX_MODEL\"}"`.
+  Same injection-safe contract as claude-code: the task is the quoted `"$AGENT_TASK"` env reference,
+  the builder takes no task argument, the binary is POSIX single-quoted. Auth is `OPENAI_API_KEY`,
+  resolved through the #25 `SecretsResolver` and injected as runtime env — **never in argv**, so it
+  cannot be logged from the command line. A codex `exec --json` stream decoder
+  (`stream-json.ts → decodeCodexLine`) renders agent messages, command executions, and file changes
+  into readable channel lines (lifecycle/reasoning events suppressed, raw preserved), mirroring the
+  claude-code decoder so redaction still applies after decoding.
+- **Per-session harness selection.** `POST /channels/:cid/agent-sessions` accepts an optional
+  `harness` kind, validated against the `HARNESS_KINDS` allowlist (unknown → 400). `SessionManager`
+  resolves the per-session override (or the env default) to a trusted spec + decoder **before** it
+  persists or touches the runtime, persists the chosen kind on the session row (`agent_sessions.harness`,
+  migration `0050`), and feeds the resolved `{ command, args }` to the runtime — so switching
+  claude-code ↔ codex per session is honored identically under `LocalRuntime` and `SandboxRuntime`
+  (both only ever see command/args/env). An invalid kind, or an override with no resolver wired, is
+  rejected (`HarnessKindError`) without leaving a half-started session.
+
+Out of scope (still): Gemini/OpenCode adapters; typed turn/tool-call persistence (run log).

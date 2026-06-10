@@ -2,8 +2,10 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
 import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
+import type { HarnessKind } from "../../runtime/harness.js";
 
 export type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
+export type { HarnessKind } from "../../runtime/harness.js";
 
 /** Lifecycle states of an agent session. Terminal states end with a set `endedAt`. */
 export type SessionStatus =
@@ -33,6 +35,8 @@ export interface AgentSession {
   runtime: RuntimeKind;
   status: SessionStatus;
   command: string;
+  /** Coding-agent harness the session ran on (#50). Null for rows created before #50. */
+  harness: HarnessKind | null;
   sandboxId: string | null;
   snapshotId: string | null;
   exitCode: number | null;
@@ -63,6 +67,7 @@ const COLUMNS = {
   runtime: agentSessions.runtime,
   status: agentSessions.status,
   command: agentSessions.command,
+  harness: agentSessions.harness,
   sandboxId: agentSessions.sandboxId,
   snapshotId: agentSessions.snapshotId,
   exitCode: agentSessions.exitCode,
@@ -89,6 +94,8 @@ export async function createAgentSession(input: {
   runtime: RuntimeKind;
   command: string;
   caps: ResourceCaps;
+  /** Coding-agent harness the session ran on (#50); omitted → null (pre-#50 / unselected). */
+  harness?: HarnessKind | null;
   /** Non-secret model/provider selection (#52); omitted when no explicit selection was made. */
   provider?: ProviderKind | null;
   model?: string | null;
@@ -106,6 +113,7 @@ export async function createAgentSession(input: {
       createdByMemberId: input.createdByMemberId,
       runtime: input.runtime,
       command: input.command,
+      harness: input.harness ?? null,
       caps: input.caps,
       provider: input.provider ?? null,
       model: input.model ?? null,
