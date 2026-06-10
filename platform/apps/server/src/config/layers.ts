@@ -31,6 +31,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #96 venture policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // gate flag/thresholds cannot be loosened (e.g. the gate turned off) by a lower layer.
     if (layer.venture !== undefined) out.venture = { ...layer.venture };
+    // #105 watchdog policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // supervisor flag / bounds cannot be loosened (e.g. the watchdog turned off) by a lower layer.
+    if (layer.watchdog !== undefined) out.watchdog = { ...layer.watchdog };
   }
   return out;
 }
@@ -54,5 +57,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     // #98: no default billing settings — absent means billing is not enabled (inbound routes → 409).
     billing: merged.billing,
     venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
+    watchdog: merged.watchdog ?? { ...CONFIG_DEFAULTS.watchdog },
   };
 }

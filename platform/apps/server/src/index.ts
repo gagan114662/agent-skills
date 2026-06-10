@@ -15,6 +15,10 @@ app.autonomyEngine.start(env.autonomy.intervalMs);
 // advances active evaluations on infrastructure time. Stopped on server close via buildApp's hook.
 app.ventureEngine.start(env.venture.intervalMs);
 
+// #105 fleet watchdog: start the opt-in supervisor tick (WATCHDOG_INTERVAL_MS; default 0 = off) that
+// detects stalled sessions and revives/escalates them. Stopped on server close via buildApp's hook.
+app.watchdogEngine.start(env.watchdog.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

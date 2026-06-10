@@ -120,6 +120,23 @@ export function recordAutonomyAction(action: string): void {
   autonomyActions.set(action, (autonomyActions.get(action) ?? 0) + 1);
 }
 
+// --- fleet watchdog (#105) --------------------------------------------------
+// Stalled-session supervisor: ticks executed + actions applied by kind (revive | escalate |
+// wait:* | noop:*). Cardinality discipline (as everywhere): the only label is the bounded action
+// kind — tenant ids are NEVER labels (they live in logs/traces).
+let watchdogTicks = 0;
+const watchdogActions = new Map<string, number>();
+
+/** One watchdog tick ran (a single pass over a workspace's live sessions). */
+export function recordWatchdogTick(): void {
+  watchdogTicks += 1;
+}
+
+/** One watchdog action was applied/decided (revive | escalate | wait:* | noop:*). */
+export function recordWatchdogAction(action: string): void {
+  watchdogActions.set(action, (watchdogActions.get(action) ?? 0) + 1);
+}
+
 // --- cloud scale (#71) ------------------------------------------------------
 // Warm-pool hit/miss, admission denials by reason, and session placement by region. Cardinality
 // discipline (as everywhere): the only labels are the bounded denial reason + the region — tenant
@@ -203,6 +220,8 @@ export function resetMetrics(): void {
   cloudWorkspaceFilesSynced = 0;
   autonomyTicks = 0;
   autonomyActions.clear();
+  watchdogTicks = 0;
+  watchdogActions.clear();
   warmHits = 0;
   warmMisses = 0;
   admissionDenials.clear();
@@ -306,6 +325,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE autonomy_actions_total counter");
   for (const [action, count] of autonomyActions) {
     lines.push(`autonomy_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- fleet watchdog (#105) ---
+  lines.push("# HELP watchdog_ticks_total Fleet-watchdog ticks executed.");
+  lines.push("# TYPE watchdog_ticks_total counter");
+  lines.push(`watchdog_ticks_total ${watchdogTicks}`);
+
+  lines.push("# HELP watchdog_actions_total Fleet-watchdog actions by kind.");
+  lines.push("# TYPE watchdog_actions_total counter");
+  for (const [action, count] of watchdogActions) {
+    lines.push(`watchdog_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- cloud scale (#71) ---

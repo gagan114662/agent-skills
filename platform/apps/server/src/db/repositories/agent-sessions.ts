@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
 import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
@@ -53,9 +53,23 @@ export interface AgentSession {
   /** Multi-region placement (#71): the region the session ran in. Null = unplaced / local. */
   region: string | null;
   caps: ResourceCaps;
+  /** Liveness heartbeat (#105): last proof of progress; null until first output / for pre-#105 rows. */
+  lastHeartbeatAt: Date | null;
   startedAt: Date | null;
   endedAt: Date | null;
   createdAt: Date;
+}
+
+/** A non-terminal session the #105 watchdog supervises, with its resolved liveness timestamp. */
+export interface LiveSessionRow {
+  id: string;
+  workspaceId: string;
+  channelId: string;
+  agentMemberId: string;
+  createdByMemberId: string | null;
+  status: SessionStatus;
+  /** COALESCE(last_heartbeat_at, started_at, created_at) — the session's last proof of progress. */
+  progressAt: Date;
 }
 
 const COLUMNS = {
@@ -81,6 +95,7 @@ const COLUMNS = {
   mode: agentSessions.mode,
   region: agentSessions.region,
   caps: agentSessions.caps,
+  lastHeartbeatAt: agentSessions.lastHeartbeatAt,
   startedAt: agentSessions.startedAt,
   endedAt: agentSessions.endedAt,
   createdAt: agentSessions.createdAt,
@@ -128,10 +143,18 @@ export async function createAgentSession(input: {
 
 /** Mark the session running and stamp `startedAt`; records the provider sandbox id if any. */
 export async function markSessionRunning(id: string, sandboxId?: string): Promise<void> {
+  const now = new Date();
   await db
     .update(agentSessions)
-    .set({ status: "running", startedAt: new Date(), sandboxId: sandboxId ?? null })
+    // #105: seed the heartbeat at start so a freshly-running session isn't instantly "stale" before
+    // its first output chunk.
+    .set({ status: "running", startedAt: now, lastHeartbeatAt: now, sandboxId: sandboxId ?? null })
     .where(eq(agentSessions.id, id));
+}
+
+/** Bump a session's liveness heartbeat (#105): the SessionManager calls this on every output chunk. */
+export async function heartbeatSession(id: string, at: Date = new Date()): Promise<void> {
+  await db.update(agentSessions).set({ lastHeartbeatAt: at }).where(eq(agentSessions.id, id));
 }
 
 /** Finalize a session: terminal status + result/exit/snapshot + `endedAt`. */
@@ -198,6 +221,30 @@ export async function getAgentSessionResult(id: string): Promise<string | null> 
     .where(eq(agentSessions.id, id))
     .limit(1);
   return row?.result ?? null;
+}
+
+/**
+ * The fleet's live (non-terminal) sessions across all workspaces — the #105 watchdog's work-list.
+ * `progressAt` is the session's last proof of progress (heartbeat, else start, else creation), so the
+ * watchdog can age it against the per-workspace stale cutoff. Bounded by live concurrency (indexed on
+ * `status`); terminal rows are excluded.
+ */
+export async function listLiveSessions(): Promise<LiveSessionRow[]> {
+  const rows = await db
+    .select({
+      id: agentSessions.id,
+      workspaceId: agentSessions.workspaceId,
+      channelId: agentSessions.channelId,
+      agentMemberId: agentSessions.agentMemberId,
+      createdByMemberId: agentSessions.createdByMemberId,
+      status: agentSessions.status,
+      // A raw COALESCE loses drizzle/pg's timestamptz parser, so the value can come back as a string —
+      // coerce to a Date below so callers always get a real Date.
+      progressAt: sql<string>`COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.startedAt}, ${agentSessions.createdAt})`,
+    })
+    .from(agentSessions)
+    .where(inArray(agentSessions.status, ["provisioning", "running"]));
+  return rows.map((r) => ({ ...r, progressAt: new Date(r.progressAt) })) as LiveSessionRow[];
 }
 
 /** Sessions for a channel, newest first. */

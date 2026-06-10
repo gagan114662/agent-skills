@@ -63,6 +63,8 @@ import {
 import { VentureService } from "./venture/service.js";
 import type { VentureEngine } from "./venture/engine.js";
 import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
+import type { WatchdogEngine } from "./watchdog/engine.js";
+import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -77,6 +79,8 @@ declare module "fastify" {
     autonomyEngine: AutonomyEngine;
     /** The #96 venture engine; `index.ts` starts its opt-in background tick (VENTURE_INTERVAL_MS). */
     ventureEngine: VentureEngine;
+    /** The #105 fleet watchdog; `index.ts` starts its opt-in supervisor tick (WATCHDOG_INTERVAL_MS). */
+    watchdogEngine: WatchdogEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -133,6 +137,8 @@ export interface BuildAppOptions {
   preflight?: () => PreflightReport;
   /** #96 venture loop: tests inject a service over a deterministic scorer; default builds the real one. */
   venture?: VentureService;
+  /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  watchdog?: WatchdogEngine;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -297,6 +303,18 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     autonomyEngine.stop();
   });
   app.decorate("autonomyEngine", autonomyEngine);
+  // #105 fleet watchdog: the supervisor that detects stalled agent sessions (no heartbeat past the
+  // stale cutoff) and revives them through the SAME #92 launcher (past the same #71 admission), under
+  // a durable bounded restart policy (backoff, max revivals/window, dollar-aware), escalating a
+  // hopeless lineage to the #13 queue. The background tick is opt-in (WATCHDOG_INTERVAL_MS, default
+  // off) and started in index.ts; tests inject the engine and drive `tickWorkspace()`. It is config
+  // default-OFF (`watchdog.enabled`), so wiring it changes nothing until a deployment opts in. Stopped
+  // on server close so no timer leaks past shutdown.
+  const watchdogEngine = opts.watchdog ?? createDefaultWatchdogEngine(app.log, sessionManager);
+  app.addHook("onClose", async () => {
+    watchdogEngine.stop();
+  });
+  app.decorate("watchdogEngine", watchdogEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
