@@ -46,6 +46,8 @@ export interface AgentSession {
   model: string | null;
   effort: EffortLevel | null;
   mode: SessionMode | null;
+  /** Multi-region placement (#71): the region the session ran in. Null = unplaced / local. */
+  region: string | null;
   caps: ResourceCaps;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -72,6 +74,7 @@ const COLUMNS = {
   model: agentSessions.model,
   effort: agentSessions.effort,
   mode: agentSessions.mode,
+  region: agentSessions.region,
   caps: agentSessions.caps,
   startedAt: agentSessions.startedAt,
   endedAt: agentSessions.endedAt,
@@ -91,6 +94,8 @@ export async function createAgentSession(input: {
   model?: string | null;
   effort?: EffortLevel | null;
   mode?: SessionMode | null;
+  /** Multi-region placement (#71): the region the session was placed in. */
+  region?: string | null;
 }): Promise<AgentSession> {
   const [row] = await db
     .insert(agentSessions)
@@ -106,6 +111,7 @@ export async function createAgentSession(input: {
       model: input.model ?? null,
       effort: input.effort ?? null,
       mode: input.mode ?? null,
+      region: input.region ?? null,
       status: "provisioning",
     })
     .returning(COLUMNS);

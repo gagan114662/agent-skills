@@ -16,6 +16,8 @@ import { EnvSecretsResolver } from "./secrets-resolver.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { harnessLineDecoder } from "./stream-json.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
+import { resolveScaleCaps } from "../scale/caps.js";
+import { createScale, type Scale } from "../scale/default.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -64,7 +66,7 @@ export function defaultPreflight(): PreflightReport {
   });
 }
 
-export function createDefaultSessionManager(logger: SessionLogger): SessionManager {
+export function createDefaultSessionManager(logger: SessionLogger, scale: Scale = createScale(0)): SessionManager {
   const env = loadEnv().agent;
   // #58: server-level config (managed-global) gates deployment-wide egress; per-tenant managed
   // overrides apply per session inside the workspace provisioner.
@@ -75,8 +77,16 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
   const workspace: WorkspaceProvisioner = gitWorkspace
     ? new GitWorkspaceProvisioner(gitWorkspace)
     : new FileConfigWorkspaceProvisioner({ logger });
+  // #71: the warm pool is sized by the managed-global `[scale]` block. With size 0 (the default)
+  // the factory returns a plain runtime (cold) — today's #25 behavior. Admission + usage are wired
+  // unconditionally: with all caps 0 they admit everything (unchanged), but the #17 kill switch now
+  // halts launches and per-tenant usage accrues so a configured budget can bite.
+  const serverScale = resolveScaleCaps(serverConfig.scale);
   return new SessionManager({
-    runtime: createRuntime(env),
+    runtime: createRuntime(env, undefined, {
+      size: serverScale.warmPoolSize,
+      regions: serverScale.regions,
+    }),
     store: dbStore,
     poster: channelPoster,
     secrets: new EnvSecretsResolver(),
@@ -91,6 +101,11 @@ export function createDefaultSessionManager(logger: SessionLogger): SessionManag
     // Braintrust agent-session tracing; a no-op unless BRAINTRUST_API_KEY is set, and forced off
     // under data-privacy mode (#58).
     tracer: createBraintrustTracer({ dataPrivacyMode: serverConfig.dataPrivacyMode }),
+    // #71 cloud-scale admission (kill switch, budget, concurrency, placement) + usage accounting.
+    // The SAME admission instance backs the usage route (shared in-memory counters), so the
+    // dashboard's in-flight numbers reflect what the manager is actually running.
+    admission: scale.admission,
+    usage: scale.usage,
     // #69: fail fast on a misconfigured cloud/real-agent posture before any launch persists or makes
     // a cloud call. local/demo (the default) always passes, so this is a no-op for that posture.
     preflight: defaultPreflight,

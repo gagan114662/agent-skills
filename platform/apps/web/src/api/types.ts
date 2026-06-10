@@ -157,6 +157,30 @@ export type ClientCommand =
   | { type: "presence"; status: "online" | "away" }
   | { type: "ping" };
 
+/** Cloud-scale usage report (#71), from `GET /workspaces/:wid/scale/usage`. */
+export interface UsageReport {
+  /** The billing window (UTC `YYYY-MM`). */
+  window: string;
+  sessionsStarted: number;
+  computeSeconds: number;
+  estimatedCostCents: number;
+  /** The resolved caps/budget for this tenant (0 = off/unlimited). */
+  caps: {
+    tenantConcurrency: number;
+    budgetCents: number;
+    warmPoolSize: number;
+    regions: string[];
+  };
+  /** Live in-flight concurrency: this tenant, the whole fleet, and per region. */
+  inFlight: {
+    tenant: number;
+    global: number;
+    byRegion: Record<string, number>;
+  };
+  /** True when accrued cost has met/passed the budget cap (new launches are halted). */
+  overBudget: boolean;
+}
+
 /** Events the `/ws` gateway sends to the client. */
 export type ServerEvent =
   | { type: "ready"; memberId: string; workspaceId: string }

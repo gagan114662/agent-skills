@@ -10,9 +10,10 @@ import { MembersRail } from "./MembersRail.js";
 import { ApprovalsPanel } from "./approvals/ApprovalsPanel.js";
 import { ReviewPanel } from "./review/ReviewPanel.js";
 import { RunPanel } from "./run/RunPanel.js";
+import { UsagePanel } from "./UsagePanel.js";
 import { DeployPanel } from "./deploy/DeployPanel.js";
 
-type View = "chat" | "approvals" | "review" | "run" | "deploy";
+type View = "chat" | "approvals" | "review" | "run" | "usage" | "deploy";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
@@ -25,6 +26,8 @@ export function Workspace(): React.JSX.Element {
         <ReviewPanel />
       ) : view === "run" ? (
         <RunPanel />
+      ) : view === "usage" ? (
+        <UsagePanel />
       ) : view === "deploy" ? (
         <DeployPanel />
       ) : (
@@ -93,6 +96,13 @@ function TopBar({
         >
           Run
           {runLive && <span className="badge badge--live" aria-label="running">●</span>}
+        </button>
+        <button
+          className={`topbar__navbtn${view === "usage" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "usage"}
+          onClick={() => onSelectView("usage")}
+        >
+          Usage
         </button>
         <button
           className={`topbar__navbtn${view === "deploy" ? " topbar__navbtn--active" : ""}`}
