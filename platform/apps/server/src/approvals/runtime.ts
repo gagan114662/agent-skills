@@ -12,6 +12,7 @@ import { postMessage } from "../db/repositories/messages.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import {
   buildRegistry,
+  validateBillingRefund,
   validateChatPostMessage,
   validateExternalSend,
   type ActionExecutor,
@@ -78,5 +79,33 @@ const externalSend: ActionExecutor = {
   },
 };
 
-/** The executors wired for this deployment (ADR-0013 §2). */
-export const defaultRegistry: ExecutorRegistry = buildRegistry([chatPostMessage, externalSend]);
+/**
+ * Outbound money — a refund (#98, ADR-0043). It is **sensitive by default** (so it always pauses for a
+ * human) and, even after approval, **recorded-only** in v1: it performs **no** Stripe call (no autonomous
+ * money movement). Payouts/transfers stay manual in the Stripe dashboard. Wiring a real
+ * `stripe.refunds.create` behind this gate is a deliberate future ADR — never an autonomous call.
+ */
+const billingRefund: ActionExecutor = {
+  actionType: "billing.refund",
+  validate: validateBillingRefund,
+  summarize: (p) =>
+    `refund ${typeof p.amountCents === "number" ? `${(p.amountCents / 100).toFixed(2)} of ` : ""}` +
+    `payment ${String(p.paymentIntentId)}${p.reason ? ` (${String(p.reason)})` : ""}`,
+  execute(payload): Promise<Record<string, unknown>> {
+    // v1: record the approved intent, do NOT call Stripe. The owner executes the refund manually.
+    return Promise.resolve({
+      recorded: true,
+      executed: false,
+      paymentIntentId: typeof payload.paymentIntentId === "string" ? payload.paymentIntentId : null,
+      amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+      reason: typeof payload.reason === "string" ? payload.reason : null,
+    });
+  },
+};
+
+/** The executors wired for this deployment (ADR-0013 §2, #98). */
+export const defaultRegistry: ExecutorRegistry = buildRegistry([
+  chatPostMessage,
+  externalSend,
+  billingRefund,
+]);

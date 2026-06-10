@@ -2,6 +2,7 @@ import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared
 import { getRedis } from "../redis/index.js";
 import type { Message } from "../db/repositories/messages.js";
 import type {
+  BillingStatusEvent,
   DeployLogEvent,
   DeployStatusEvent,
   MentionEvent,
@@ -135,6 +136,18 @@ export async function publishRunEvent(
 export async function publishDeployEvent(
   channelId: string,
   event: DeployStatusEvent | DeployLogEvent,
+): Promise<void> {
+  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+}
+
+/**
+ * Publish a revenue-rails status change to its channel's subscribers (#98). Rides the same
+ * `rt:channel:<id>` key as messages — the `payment_links`/`revenue_events` row is the durable record, so
+ * this is a best-effort live nudge; a Redis hiccup never fails the billing operation. Carries no secret.
+ */
+export async function publishBillingEvent(
+  channelId: string,
+  event: BillingStatusEvent,
 ): Promise<void> {
   await getRedis().publish(channelKey(channelId), JSON.stringify(event));
 }

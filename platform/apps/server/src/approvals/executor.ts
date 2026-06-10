@@ -68,3 +68,24 @@ export function validateExternalSend(payload: unknown): ValidationResult {
   }
   return { ok: true };
 }
+
+/**
+ * `billing.refund` payload: `{ paymentIntentId, amountCents?, reason? }` (#98). Outbound money — always
+ * gated, recorded-only in v1. `paymentIntentId` is required; `amountCents` (when present) must be a
+ * positive integer; `reason` (when present) a string.
+ */
+export function validateBillingRefund(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.paymentIntentId)) return { ok: false, error: "paymentIntentId required" };
+  if (
+    p.amountCents !== undefined &&
+    (typeof p.amountCents !== "number" || !Number.isInteger(p.amountCents) || p.amountCents <= 0)
+  ) {
+    return { ok: false, error: "amountCents must be a positive integer" };
+  }
+  if (p.reason !== undefined && typeof p.reason !== "string") {
+    return { ok: false, error: "reason must be a string" };
+  }
+  return { ok: true };
+}

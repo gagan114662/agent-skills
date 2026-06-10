@@ -28,6 +28,8 @@ export interface Env {
   deploy: DeployEnv;
   /** Disaster recovery: backup dump location + drill freshness bound (#99). */
   dr: DrEnv;
+  /** Stripe revenue rails (#98). */
+  billing: BillingEnv;
 }
 
 export interface DrEnv {
@@ -41,6 +43,23 @@ export interface DrEnv {
   dumpPrefix: string;
   /** Maximum tolerated age of the latest dump before a restore pre-flight aborts. Default 24h. */
   maxDumpAgeMs: number;
+}
+
+/** Which revenue backend collects payment (#98). */
+export type BillingProviderKind = "none" | "stripe";
+
+export interface BillingEnv {
+  /**
+   * The billing backend. Default `none` (no network — a no-spend stand-in) so tests/CI/the demo run
+   * free. `stripe` enables the real adapter (its SDK is loaded lazily on first call). Per-tenant policy
+   * (currency, secret-var names) lives in the layered config (#58), not here.
+   */
+  provider: BillingProviderKind;
+  /**
+   * Max accepted age (seconds) of a webhook signature timestamp — the replay window. Default 300
+   * (Stripe's recommendation).
+   */
+  webhookToleranceSeconds: number;
 }
 
 export interface GitEnv {
@@ -220,6 +239,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       localDir: source.DR_LOCAL_DIR ?? ".dr-backups",
       dumpPrefix: source.DR_DUMP_PREFIX ?? "dumps/",
       maxDumpAgeMs: num(source.DR_MAX_DUMP_AGE_MS, 86_400_000),
+    },
+    billing: {
+      // Default `none`: no network/spend. `stripe` enables the real adapter (lazy SDK load).
+      provider: source.BILLING_PROVIDER === "stripe" ? "stripe" : "none",
+      // Stripe's recommended webhook replay window (seconds).
+      webhookToleranceSeconds: num(source.BILLING_WEBHOOK_TOLERANCE_SECONDS, 300),
     },
   };
 }
