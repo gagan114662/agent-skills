@@ -68,6 +68,11 @@ export const agentSessions = pgTable(
     // sessions (#25 default) leave it unset.
     region: text("region"),
     caps: jsonb("caps").notNull().default(sql`'{}'::jsonb`),
+    // Liveness heartbeat (#105): bumped by the SessionManager on every output chunk (the same signal
+    // the in-process idle-reaper trusts). The Fleet Watchdog flags a non-terminal session whose
+    // heartbeat is older than its `staleCutoffMs`. Null for rows created before #105 / never streamed —
+    // staleness falls back to COALESCE(last_heartbeat_at, started_at, created_at).
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -76,6 +81,9 @@ export const agentSessions = pgTable(
     byWorkspace: index("agent_sessions_workspace_idx").on(t.workspaceId),
     byChannel: index("agent_sessions_channel_idx").on(t.channelId, t.createdAt),
     byStatus: index("agent_sessions_status_idx").on(t.status),
+    // #105: the watchdog scans non-terminal sessions ordered by liveness — a partial-ish index on
+    // (status, last_heartbeat_at) keeps that scan cheap.
+    byHeartbeat: index("agent_sessions_heartbeat_idx").on(t.status, t.lastHeartbeatAt),
     runtimeCk: check("agent_sessions_runtime_ck", sql`${t.runtime} IN ('local', 'sandbox')`),
     harnessCk: check(
       "agent_sessions_harness_ck",

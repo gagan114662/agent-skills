@@ -20,3 +20,4 @@ export * from "./tenant-usage.js";
 export * from "./deployments.js";
 export * from "./revenue.js";
 export * from "./venture.js";
+export * from "./watchdog.js";

@@ -177,6 +177,25 @@ export const ventureSchema = z.object({
   evaluationCostCents: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Fleet-watchdog policy (#105, ADR-0105). All **non-secret** knobs for the stalled-session supervisor.
+ * Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
+ * keeps today's #25 behavior (no detection, no revival). `staleCutoffMs` is the no-progress threshold;
+ * `maxRevivalsPerWindow`/`windowMs`/`backoffMs` parameterize the bounded restart policy.
+ */
+export const watchdogSchema = z.object({
+  /** The supervisor flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** No-progress age (ms) at/above which a non-terminal session is considered stalled. */
+  staleCutoffMs: z.number().int().positive().optional(),
+  /** Hard cap on revivals per rolling window before escalation (0 = never revive). */
+  maxRevivalsPerWindow: z.number().int().nonnegative().optional(),
+  /** Length (ms) of the rolling revival window the count is measured over. */
+  windowMs: z.number().int().positive().optional(),
+  /** Minimum time (ms) between revivals of one lineage (the backoff). */
+  backoffMs: z.number().int().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -202,6 +221,8 @@ export const settingsSchema = z.object({
   billing: billingSchema.optional(),
   /** Venture-loop policy (#96): the YC-fundability admission gate + decision thresholds. */
   venture: ventureSchema.optional(),
+  /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
+  watchdog: watchdogSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -218,6 +239,7 @@ export type ModelsConfig = z.infer<typeof modelsSchema>;
 export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
+export type WatchdogConfig = z.infer<typeof watchdogSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -239,6 +261,8 @@ export interface ResolvedConfig {
   billing?: BillingConfig;
   /** Venture-loop policy (#96). A partial whose hard defaults `resolveVentureCaps` fills. */
   venture: VentureConfig;
+  /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
+  watchdog: WatchdogConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -252,4 +276,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   models: {},
   scale: {},
   venture: {},
+  watchdog: {},
 };
