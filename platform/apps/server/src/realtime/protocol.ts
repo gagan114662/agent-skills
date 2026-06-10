@@ -98,6 +98,26 @@ export interface DeployLogEvent {
   chunk: string;
 }
 
+/**
+ * A revenue-rails event for a channel (#98): `link_created` when a payment link is minted for a session's
+ * app, `payment_received` when a signature-verified webhook records a real payment. Rides the session's
+ * channel key (like #73 deploy events); the durable record is the `payment_links` / `revenue_events` row,
+ * this is the live nudge. Carries no secret (amounts only).
+ */
+export interface BillingStatusEvent {
+  type: "billing_status";
+  kind: "link_created" | "payment_received";
+  channelId: string;
+  /** The originating session, when known (a webhook may arrive without one). */
+  sessionId?: string | null;
+  /** The payment URL (kind `link_created`). */
+  url?: string | null;
+  /** The amount in cents (kind `payment_received`). */
+  amountCents?: number | null;
+  /** ISO 4217 currency code. */
+  currency?: string | null;
+}
+
 /** Commands a client sends to the gateway over the socket. */
 export type ClientCommand =
   | { type: "subscribe"; channelId: string }
@@ -127,6 +147,7 @@ export type ServerEvent =
   | RunLogEvent
   | DeployStatusEvent
   | DeployLogEvent
+  | BillingStatusEvent
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 

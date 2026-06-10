@@ -72,6 +72,23 @@ export const deploySchema = z.object({
   maxInstances: z.number().int().positive().max(100).optional(),
 });
 
+/**
+ * Stripe revenue-rails settings (#98, ADR-0043) — declared in **trusted** config (repo/managed scope),
+ * never supplied by a request. Provider **credentials never live here** — only the secret-var NAMES; the
+ * values stay on the #25 `SecretsResolver`/`AGENT_SECRETS` path (the #57 convention). A deployment with no
+ * `billing` section has opted out (the inbound routes → 409). All fields optional with no-spend defaults.
+ */
+export const billingSchema = z.object({
+  /** Revenue backend (`none` default — no network | `stripe`). Mirrors the env-level BILLING_PROVIDER. */
+  provider: z.enum(["none", "stripe"]).optional(),
+  /** Default ISO 4217 currency for new prices (default `usd`). */
+  currency: z.string().length(3).optional(),
+  /** Name of the secret holding the Stripe API key (default `STRIPE_SECRET_KEY`). Value on secrets path. */
+  secretKeyName: z.string().optional(),
+  /** Name of the secret holding the webhook signing secret (default `STRIPE_WEBHOOK_SECRET`). */
+  webhookSecretName: z.string().optional(),
+});
+
 /** The providers the selection layer (#52) understands. */
 export const providerKinds = ["anthropic", "openai", "bedrock", "vertex", "custom"] as const;
 export const providerKindSchema = z.enum(providerKinds);
@@ -156,6 +173,8 @@ export const settingsSchema = z.object({
   models: modelsSchema.optional(),
   /** Cloud-scale policy (#71): warm pool, concurrency caps, regions, cost/budget caps. */
   scale: scaleSchema.optional(),
+  /** Stripe revenue-rails settings (#98): backend, currency, secret-var names (no values). */
+  billing: billingSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -170,6 +189,7 @@ export type SessionMode = z.infer<typeof sessionModeSchema>;
 export type ProviderConnection = z.infer<typeof providerConnectionSchema>;
 export type ModelsConfig = z.infer<typeof modelsSchema>;
 export type ScaleConfig = z.infer<typeof scaleSchema>;
+export type BillingConfig = z.infer<typeof billingSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -187,6 +207,8 @@ export interface ResolvedConfig {
   models: ModelsConfig;
   /** Cloud-scale policy (#71). A partial whose hard defaults `resolveScaleCaps` fills. */
   scale: ScaleConfig;
+  /** Stripe revenue-rails settings (#98), or undefined when the deployment hasn't enabled billing (→ 409). */
+  billing?: BillingConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */

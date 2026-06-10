@@ -26,6 +26,8 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #71 scale policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // caps/budget cannot be loosened by a lower layer.
     if (layer.scale !== undefined) out.scale = { ...layer.scale };
+    // #98 billing settings: a higher layer fully owns the block (replace, consistent with deploy/run).
+    if (layer.billing !== undefined) out.billing = { ...layer.billing };
   }
   return out;
 }
@@ -46,5 +48,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     deploy: merged.deploy,
     models: merged.models ?? { ...CONFIG_DEFAULTS.models },
     scale: merged.scale ?? { ...CONFIG_DEFAULTS.scale },
+    // #98: no default billing settings — absent means billing is not enabled (inbound routes → 409).
+    billing: merged.billing,
   };
 }
