@@ -196,6 +196,26 @@ export const watchdogSchema = z.object({
   backoffMs: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Self-Healing Flywheel policy (#117, ADR-0117). All **non-secret** knobs for the failure→issue→fix
+ * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
+ * nothing files no issues and dispatches no fixes. `issueThreshold` is the occurrence count that earns
+ * an issue; `maxIssuesPerTick` rate-limits GitHub writes; `maxConcurrentFixes` is the hard cap on
+ * in-flight fix sessions; `maxDispatchesPerTick` bounds fixes proposed per pass.
+ */
+export const flywheelSchema = z.object({
+  /** The flywheel flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Occurrence count at/above which a never-issued fingerprint earns a drafted issue. */
+  issueThreshold: z.number().int().positive().optional(),
+  /** Hard cap on NEW issues drafted in a single tick (the GitHub-write rate limit). */
+  maxIssuesPerTick: z.number().int().nonnegative().optional(),
+  /** Hard cap on concurrent in-flight fix sessions per workspace (0 = never auto-dispatch). */
+  maxConcurrentFixes: z.number().int().nonnegative().optional(),
+  /** Hard cap on fix dispatches proposed in a single tick (top-ranked first). */
+  maxDispatchesPerTick: z.number().int().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -223,6 +243,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
+  flywheel: flywheelSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -240,6 +262,7 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -263,6 +286,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
+  flywheel: FlywheelConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -277,4 +302,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  flywheel: {},
 };

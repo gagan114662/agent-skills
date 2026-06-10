@@ -4,6 +4,7 @@ import {
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
   type RevenueSnapshot,
+  type SelfHealingSnapshot,
   type VentureEvalSnapshot,
 } from "./aggregate.js";
 
@@ -52,6 +53,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** The self-healing flywheel pane (#117). Optional — absent ⇒ the console renders zeroed self-healing. */
+export interface FlywheelReader {
+  state(workspaceId: string): Promise<SelfHealingSnapshot>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -59,6 +65,8 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  /** Self-healing flywheel (#117) — optional, read-only. */
+  flywheel?: FlywheelReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -77,13 +85,14 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance] = await Promise.all([
+    const [ventures, revenue, usage, approvals, killSwitch, maintenance, selfHealing] = await Promise.all([
       this.deps.venture.evaluations(workspaceId),
       this.deps.revenue.summary(workspaceId),
       this.deps.budget.usage(workspaceId, window),
       this.deps.approvals.pending(workspaceId),
       this.deps.switches.killSwitch(workspaceId),
       this.deps.switches.maintenance(),
+      this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
     ]);
 
     return aggregateFounderConsole({
@@ -105,6 +114,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      selfHealing,
     });
   }
 }

@@ -137,6 +137,24 @@ export function recordWatchdogAction(action: string): void {
   watchdogActions.set(action, (watchdogActions.get(action) ?? 0) + 1);
 }
 
+// --- self-healing flywheel (#117) -------------------------------------------
+// Failure→issue→fix loop: ticks executed + actions by kind (ingest:new | ingest:dedup |
+// ingest:recurred | issue:draft | issue:comment | issue:reopen | issue:rate_limited | dispatch:auto |
+// dispatch:queue | dispatch:skip:* | fixed | noop:kill_switch). Cardinality discipline (as everywhere):
+// the only label is the bounded action kind — tenant ids are NEVER labels (they live in logs/traces).
+let flywheelTicks = 0;
+const flywheelActions = new Map<string, number>();
+
+/** One flywheel tick ran (a single pass over a workspace's open fingerprints). */
+export function recordFlywheelTick(): void {
+  flywheelTicks += 1;
+}
+
+/** One flywheel action was applied/decided. */
+export function recordFlywheelAction(action: string): void {
+  flywheelActions.set(action, (flywheelActions.get(action) ?? 0) + 1);
+}
+
 // --- cloud scale (#71) ------------------------------------------------------
 // Warm-pool hit/miss, admission denials by reason, and session placement by region. Cardinality
 // discipline (as everywhere): the only labels are the bounded denial reason + the region — tenant
@@ -222,6 +240,8 @@ export function resetMetrics(): void {
   autonomyActions.clear();
   watchdogTicks = 0;
   watchdogActions.clear();
+  flywheelTicks = 0;
+  flywheelActions.clear();
   warmHits = 0;
   warmMisses = 0;
   admissionDenials.clear();
@@ -336,6 +356,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE watchdog_actions_total counter");
   for (const [action, count] of watchdogActions) {
     lines.push(`watchdog_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- self-healing flywheel (#117) ---
+  lines.push("# HELP flywheel_ticks_total Self-healing flywheel ticks executed.");
+  lines.push("# TYPE flywheel_ticks_total counter");
+  lines.push(`flywheel_ticks_total ${flywheelTicks}`);
+
+  lines.push("# HELP flywheel_actions_total Self-healing flywheel actions by kind.");
+  lines.push("# TYPE flywheel_actions_total counter");
+  for (const [action, count] of flywheelActions) {
+    lines.push(`flywheel_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- cloud scale (#71) ---
