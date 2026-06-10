@@ -29,10 +29,14 @@ const SKILLS_DIR = path.resolve(__dirname, '..', 'skills');
 const MAX_DESCRIPTION_LENGTH = 1024;
 
 // Sections every standard SKILL.md must contain.
-// Each entry is an array of acceptable heading strings — the first
-// match wins, so you can list canonical + legacy aliases.
+// Each entry is an array of acceptable heading strings — any match
+// satisfies the requirement, so we list the canonical heading plus the
+// equivalent headings CONTRIBUTING.md and docs/skill-anatomy.md document
+// as acceptable ("How It Works", "Workflow", "Core Process").
+// Headings are matched with a line-anchored regex (see hasHeading), so
+// `### Overview` or a `## Overview` line inside a code block does NOT count.
 const REQUIRED_SECTIONS = [
-  ['## Overview'],
+  ['## Overview', '## How It Works', '## Workflow', '## Core Process'],
   ['## When to Use'],
   ['## Common Rationalizations'],
   ['## Red Flags'],
@@ -65,6 +69,20 @@ const SKILL_REF_PATTERNS = [
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Escape a string for safe use inside a RegExp. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * True if `heading` appears as a heading on its own line in `content`.
+ * Line-anchored so a deeper heading (`### Overview`) or a heading buried in
+ * a code block with trailing text does not satisfy the check.
+ */
+function hasHeading(content, heading) {
+  return new RegExp('^' + escapeRegExp(heading) + '[ \\t]*\\r?$', 'm').test(content);
+}
 
 /**
  * Parse YAML-style frontmatter from the top of a markdown file.
@@ -160,7 +178,7 @@ function validateSkill(dirName, knownSkills) {
 
   if (!exempt) {
     for (const aliases of REQUIRED_SECTIONS) {
-      const found = aliases.some(heading => content.includes(heading));
+      const found = aliases.some(heading => hasHeading(content, heading));
       if (!found) {
         errors.push(`Missing required section: ${aliases[0]}`);
       }

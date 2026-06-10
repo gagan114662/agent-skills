@@ -89,21 +89,21 @@ See [agents/README.md](agents/README.md) for the decision matrix and [references
 skills/
   {skill-name}/           # kebab-case directory name
     SKILL.md              # Required: skill definition
-    scripts/              # Required: executable scripts
+    scripts/              # Optional: executable scripts (only if the skill ships runnable helpers)
       {script-name}.sh    # Bash scripts (preferred)
-  {skill-name}.zip        # Required: packaged for distribution
 ```
+
+`SKILL.md` is the only required file. Most skills are markdown-only and have no `scripts/` directory at all — add one only when the skill ships runnable helpers.
 
 ### Naming Conventions
 
 - **Skill directory**: `kebab-case` (e.g. `web-quality`)
 - **SKILL.md**: Always uppercase, always this exact filename
 - **Scripts**: `kebab-case.sh` (e.g., `deploy.sh`, `fetch-logs.sh`)
-- **Zip file**: Must match directory name exactly: `{skill-name}.zip`
 
 ### SKILL.md Format
 
-```markdown
+````markdown
 ---
 name: {skill-name}
 description: {One sentence describing what the skill does, followed by one or more "Use when" trigger conditions. Include trigger phrases like "Deploy my app" or "Check logs" when helpful.}
@@ -124,7 +124,7 @@ Equivalent headings like `Workflow`, `Core Process`, or `When to Use` are fine w
 Include this section only if the skill ships runnable helpers under `scripts/`. Markdown-only skills can omit both the section and the directory entirely.
 
 ```bash
-bash /mnt/skills/user/{skill-name}/scripts/{script}.sh [args]
+bash ${CLAUDE_PLUGIN_ROOT}/skills/{skill-name}/scripts/{script}.sh [args]
 ```
 
 **Arguments:**
@@ -144,7 +144,7 @@ bash /mnt/skills/user/{skill-name}/scripts/{script}.sh [args]
 ## Troubleshooting
 
 {Common issues and solutions, especially network/permissions errors}
-```
+````
 
 ### Best Practices for Context Efficiency
 
@@ -163,16 +163,7 @@ Skills are loaded on-demand — only the skill name and description are loaded a
 - Write status messages to stderr: `echo "Message" >&2`
 - Write machine-readable output (JSON) to stdout
 - Include a cleanup trap for temp files
-- Reference the script path as `/mnt/skills/user/{skill-name}/scripts/{script}.sh`
-
-### Creating the Zip Package
-
-After creating or updating a skill:
-
-```bash
-cd skills
-zip -r {skill-name}.zip {skill-name}/
-```
+- Reference the script path as `${CLAUDE_PLUGIN_ROOT}/skills/{skill-name}/scripts/{script}.sh`
 
 ### End-User Installation
 

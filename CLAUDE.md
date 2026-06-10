@@ -9,7 +9,7 @@ skills/       → Core skills (SKILL.md per directory)
 agents/       → Reusable agent personas (code-reviewer, test-engineer, security-auditor)
 hooks/        → Session lifecycle hooks
 .claude/commands/ → Slash commands (/spec, /plan, /build, /test, /review, /code-simplify, /ship)
-references/   → Supplementary checklists (testing, performance, security, accessibility)
+references/   → Supplementary references (testing, performance, security, accessibility, orchestration-patterns)
 docs/         → Setup guides for different tools
 ```
 
@@ -27,7 +27,7 @@ docs/         → Setup guides for different tools
 - Every skill lives in `skills/<name>/SKILL.md`
 - YAML frontmatter with `name` and `description` fields
 - Description starts with what the skill does (third person), followed by trigger conditions ("Use when...")
-- Every skill has: Overview, When to Use, Process, Common Rationalizations, Red Flags, Verification
+- Standard skills have: Overview, When to Use, Process, Common Rationalizations, Red Flags, Verification (the `using-agent-skills` meta-skill and `idea-refine` use a lighter structure — see `SECTION_EXEMPT_SKILLS` in scripts/validate-skills.js)
 - References are in `references/`, not inside skill directories
 - Supporting files only created when content exceeds 100 lines
 

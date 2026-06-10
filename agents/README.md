@@ -29,11 +29,13 @@ Pick this when you want one perspective on the current change and the user is in
 - "Are there security issues in `auth.ts`?" → invoke `security-auditor` directly
 - "What tests are missing for the checkout flow?" → invoke `test-engineer` directly
 
-### Slash command (single persona behind it)
-Pick this when there's a repeatable workflow you'd otherwise re-explain every time.
+### Slash command (single skill behind it)
+Pick this when there's a repeatable workflow you'd otherwise re-explain every time. In this repo these commands invoke a **skill** directly — they do not dispatch a persona.
 
-- `/review` → wraps `code-reviewer` with the project's review skill
-- `/test` → wraps `test-engineer` with TDD skill
+- `/review` → invokes the `code-review-and-quality` skill
+- `/test` → invokes the `test-driven-development` skill
+
+`/ship` is the only command in this repo that dispatches personas (see below).
 
 ### Slash command (orchestrator — fan-out)
 Pick this only when **independent** investigations can run in parallel and produce reports that a single agent then merges.

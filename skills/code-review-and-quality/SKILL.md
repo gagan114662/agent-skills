@@ -312,8 +312,8 @@ Part of code review is dependency review:
 ```
 ## See Also
 
-- For detailed security review guidance, see `references/security-checklist.md`
-- For performance review checks, see `references/performance-checklist.md`
+- For detailed security review guidance, see `${CLAUDE_PLUGIN_ROOT}/references/security-checklist.md`
+- For performance review checks, see `${CLAUDE_PLUGIN_ROOT}/references/performance-checklist.md`
 
 ## Common Rationalizations
 
