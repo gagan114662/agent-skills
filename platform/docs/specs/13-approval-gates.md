@@ -37,6 +37,12 @@ The action a request stands for is run by a small **executor registry** (`action
 
 Each executor declares a **payload validator** (pure) so a malformed action is a `400` at submit time, never a deferred failure. The registry lookup + validators are unit-tested with a fake executor; the concrete `chat.post_message` side effect is exercised in integration.
 
+> **Disclosure — `external.send` is recorded-only, by design.** Approving an `external.send` records
+> the intent and returns `{ recorded: true }`; the platform makes **no** outbound network call on the
+> user's behalf. This is intentional and permanent (it keeps CI/tests egress-free and avoids the
+> platform becoming an open relay), not a stubbed TODO. To perform real egress, register your own
+> executor for a dedicated action type that calls your delivery service — it inherits the same gate.
+
 ### Request lifecycle
 ```
               submit action

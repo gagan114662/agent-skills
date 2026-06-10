@@ -25,6 +25,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: platform/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - name: Check demo/proof references resolve (no false completion claims)
+        run: node scripts/check-demo-refs.mjs
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

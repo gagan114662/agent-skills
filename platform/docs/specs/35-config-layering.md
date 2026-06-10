@@ -36,7 +36,7 @@ provision each session's workspace and to decide whether external egress is allo
    the existing `AGENT_SECRETS`/`SecretsResolver` path (#25) and are never read from or written by the
    config loader.
 6. `pnpm -C platform typecheck && lint && test && build` green.
-7. ADR-0035 + spec + demo `docs/demos/35-config-layering.mp4`; PR links #58; **not** merged.
+7. ADR-0035 + spec + demo script `scripts/demos/35-config-layering.sh` (the runnable proof; recorded video pending); PR links #58; **not** merged.
 
 ### In scope
 - **A `config/` module** in `apps/server/src/config/`:
@@ -202,7 +202,7 @@ no agent task, result, or notification leaves the process.
 3. Data-privacy mode disables Braintrust export and the notification webhook (unit tests).
 4. No secret is readable from or written by the config loader (unit test).
 5. `pnpm typecheck && lint && test && build` green; integration green.
-6. ADR-0035 + this spec + demo `docs/demos/35-config-layering.mp4`; PR links #58; **not** merged.
+6. ADR-0035 + this spec + demo script `scripts/demos/35-config-layering.sh` (the runnable proof; recorded video pending); PR links #58; **not** merged.
 
 ## Plan (atomic)
 1. `config/schema.ts` (+ defaults) and `config/layers.ts` (deep-merge precedence) — *slice 1*.

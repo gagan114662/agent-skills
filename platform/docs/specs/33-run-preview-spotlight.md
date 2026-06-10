@@ -32,7 +32,7 @@ receives the annotations as a new task and acts on them through the proven launc
    coordinate-anchored note; delivering the collected annotations launches a **follow-up agent
    session** in the same channel whose task is the formatted annotation list.
 3. `pnpm -C platform typecheck && lint && test && build` green; server integration green.
-4. ADR-0033 + this spec + demo `docs/demos/33-run-preview-spotlight.mp4`; PR links #56; **not** merged.
+4. ADR-0033 + this spec + demo script `scripts/demos/33-run-preview-spotlight.sh` (the runnable proof; recorded video pending); PR links #56; **not** merged.
 5. *(Stretch / sub-issue)* Spotlight branch hot-swap on one running instance — **out of scope here**
    (see below), filed as a follow-up.
 
@@ -195,7 +195,7 @@ description regardless of pixel size. `formatAnnotationsTask` renders each as
 3. No run command configured → `409`; cross-channel access denied; detection is ReDoS-safe (unit +
    integration).
 4. `pnpm typecheck && lint && test && build` green; integration green.
-5. ADR-0033 + this spec + demo `docs/demos/33-run-preview-spotlight.mp4`; PR links #56; **not** merged.
+5. ADR-0033 + this spec + demo script `scripts/demos/33-run-preview-spotlight.sh` (the runnable proof; recorded video pending); PR links #56; **not** merged.
 
 ## Plan (atomic)
 1. **Config:** `run` section in `config/schema.ts` (+ defaults) and `config/layers.ts` merge — *slice 1*.

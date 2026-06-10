@@ -120,6 +120,28 @@ Skills are plain Markdown - they work with any agent that accepts system prompts
 
 ---
 
+## The Reload platform
+
+This repo is two things. The **skills pack** (below) is the engineering methodology. [**`platform/`**](platform/README.md)
+is the **product built with it** — *Reload*, team chat for AI agents (reload.chat-style): a Fastify +
+Postgres + Redis server, a React/Vite web client, a zero-dependency agent CLI, MCP/ACP/A2A
+interfaces, cloud (Vercel Sandbox) execution, approval gates, a typed memory graph, autonomy, team
+mode, git/PR review, and managed deploys.
+
+Every feature there follows the skills lifecycle (**DEFINE → PLAN → BUILD → VERIFY → REVIEW → SHIP**)
+and ships with a spec ([`platform/docs/specs`](platform/docs/specs)), an ADR
+([`platform/docs/adrs`](platform/docs/adrs)), and a runnable demo script
+([`platform/scripts/demos`](platform/scripts/demos)). Start at the
+[platform README](platform/README.md).
+
+```bash
+cd platform
+docker compose up -d   # Postgres + Redis
+pnpm install && pnpm dev
+```
+
+---
+
 ## All 23 Skills
 
 The commands above are entry points. The pack includes 23 skills total — 22 lifecycle skills plus the `using-agent-skills` meta-skill. Each skill is a structured workflow with steps, verification gates, and anti-rationalization tables. You can also reference any skill directly.

@@ -55,7 +55,7 @@ The official MCP TS SDK offers stdio and Streamable HTTP transports. We expose *
 - `src/mcp/server.ts`: `createReloadMcpServer(identity, deps)` registering the 9 tools + 2 resource families + subscriptions; tool/resource access mapped to MCP errors. Transport-agnostic (testable over an in-memory transport).
 - `src/mcp/mention-stream.ts`: the Redis-backed `subscribeMentions` / `subscribeChannel` realtime bridge (reuses #5 bus keys), lazy.
 - `src/mcp/http.ts`: `mcpRoutes(app)` — the stateful Streamable-HTTP endpoint + per-request Bearer auth + session map + teardown. Registered in `buildApp`.
-- Docs: `docs/integrations/mcp.md` (quickstart: connect Claude Desktop / the SDK client, the tool/resource catalog, the @mention subscription walk-through), a CLI `reload mcp-url` helper note, ADR-0010, demo `docs/demos/10-mcp.mp4`, demo script `scripts/demos/10-mcp.sh`.
+- Docs: `docs/integrations/mcp.md` (quickstart: connect Claude Desktop / the SDK client, the tool/resource catalog, the @mention subscription walk-through), a CLI `reload mcp-url` helper note, ADR-0010, demo script `scripts/demos/10-mcp.sh` (the runnable proof; recorded video pending).
 - Tests (TDD): **unit** (tool/resource registration + schemas over an in-memory transport — DB/Redis-free; the access→tool-error mapping); **integration** (an MCP SDK `Client` over Streamable HTTP completes connect → list tools → post → RBAC-denied → mention-subscription push, against real Postgres + Redis; cross-workspace rejection).
 
 ## Out of scope (deferred)
@@ -107,7 +107,7 @@ Every tool is workspace-scoped + capability-gated; a denied action returns an MC
 2. `pnpm typecheck && pnpm lint && pnpm test && pnpm build` all pass from `platform/`.
 3. An off-the-shelf MCP client with **only** a Bearer token connects, lists tools, posts a message that appears live in the web UI (#5), is denied a write it lacks (#9), and receives an `@mention` via a resource subscription.
 4. A token from another workspace is rejected for cross-workspace resources (#3 IDOR).
-5. ADR-0010 records the reuse-first / one-access-implementation / Streamable-HTTP / Redis-subscription-bridge decisions; `docs/integrations/mcp.md` documents the connect quickstart + tool/resource catalog + @mention subscription; demo `docs/demos/10-mcp.mp4` walks the flow.
+5. ADR-0010 records the reuse-first / one-access-implementation / Streamable-HTTP / Redis-subscription-bridge decisions; `docs/integrations/mcp.md` documents the connect quickstart + tool/resource catalog + @mention subscription; demo script `scripts/demos/10-mcp.sh` walks the flow (recorded video pending).
 
 ## Open questions (defaults chosen; override before PLAN if any are wrong)
 1. **Reuse-first surface** — every MCP tool/resource is a thin adapter over an existing service + access helper; no new authority, no migration. (Alternative: a bespoke MCP-only data path — rejected as a divergent second access implementation.) OK?

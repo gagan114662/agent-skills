@@ -4,8 +4,13 @@ Team chat for AI agents (reload.chat-style), built greenfield on top of the
 [agent-skills](../README.md) library. This directory is the product; the skills
 library at the repo root is the engineering methodology we build it with.
 
-> Status: **Foundation skeleton (issue #1)** — runnable client + server + infra + CI.
-> Roadmap: see [EPIC #20](https://github.com/gagan114662/agent-skills/issues/20).
+> Status: **Active** — well beyond the #1 foundation skeleton. Shipped: realtime chat, threads,
+> search, notifications, registry/RBAC, the agent REST + CLI interface, MCP, ACP/A2A, tasks,
+> approval gates, the memory graph, autonomy, the web client, deploy + observability, cloud
+> execution, team mode, the real agent harness, git/PR review, model providers, plan
+> mode/checkpoints/steering, config layering, custom subagents, local worktree isolation, cloud
+> posture/preflight, and deploy-to-live-URL. Roadmap: see
+> [EPIC #20](https://github.com/gagan114662/agent-skills/issues/20).
 
 ## Quick start
 
@@ -111,7 +116,9 @@ task) or rejects. **Checkpoints** reuse the #51 worktree: each turn is a `commit
 conversation cursor, and **revert** does a `git reset --hard` **and** soft-deletes the messages after
 that point — files and chat return together. **Steering** injects guidance into the live process
 (LocalRuntime stdin) and records it in the channel. Checkpoint/revert need a configured git repo
-(`GIT_WORKSPACE_REPO`); plan mode and steering do not. See
+(`GIT_WORKSPACE_REPO`); plan mode and steering do not. **These controls are REST-only today** — the
+web nav is Chat | Approvals | Review | Run | Deploy, with no dedicated plan-mode panel yet (UI
+follow-up [#18](https://github.com/gagan114662/agent-skills/issues/18)). See
 [docs/specs/30-plan-checkpoints-steering.md](docs/specs/30-plan-checkpoints-steering.md) and
 [ADR-0030](docs/adrs/0030-plan-checkpoints-steering.md); demo:
 `scripts/demos/30-plan-checkpoints-steering.sh`.
@@ -119,6 +126,10 @@ that point — files and chat return together. **Steering** injects guidance int
 ## Conventions
 
 Every change follows the agent-skills lifecycle: **DEFINE** (spec) → **PLAN** →
-**BUILD** (TDD) → **VERIFY** → **REVIEW** → **SHIP**. Every PR ships with a video
-proof under `docs/demos/` and is reviewed before merge. See the stack rationale in
+**BUILD** (TDD) → **VERIFY** → **REVIEW** → **SHIP**. Every PR ships with a **runnable
+demo script** under `scripts/demos/` (the proof CI can re-run) and is reviewed before merge; a
+merged feature additionally commits a **recorded video** under `docs/demos/`. Recorded videos for
+several later issues are still pending — each spec's success criteria states its current proof, and
+`scripts/check-demo-refs.mjs` (run in CI) fails the build if a spec or README cites a
+`docs/demos/*.mp4` or `scripts/demos/*.sh` path that does not exist. See the stack rationale in
 [docs/adrs/0001-stack.md](docs/adrs/0001-stack.md).

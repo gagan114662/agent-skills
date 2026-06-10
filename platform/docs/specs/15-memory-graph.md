@@ -32,6 +32,15 @@ The issue lists "edges to memories/messages/tasks/files". We model node↔node l
 `dedupe_key = sha256( normalize(text) ⊕ type ⊕ (entity ?? "") )`, where `normalize` lowercases, trims, and collapses internal whitespace. A `UNIQUE (workspace_id, dedupe_key)` makes writes **idempotent**: capturing or posting the same statement twice resolves to the **same** node (the first one's provenance is kept; the write is a no-op merge). Edges dedup the same way via `UNIQUE (workspace_id, from_memory_id, to_memory_id, relation)`. The key intentionally **excludes** `source`, so the same fact arriving from two different messages collapses to one node.
 
 ### Auto-capture pipeline
+
+> **Disclosure — "auto-capture" means automatic *extraction*, not an automatic *trigger*.**
+> `captureFromSource` automatically extracts typed nodes + edges from a supplied piece of text, but it
+> has exactly one call site: the explicit **`POST /workspaces/:wid/memories/capture`** endpoint. The
+> caller hands it the source text; the pipeline auto-derives the graph. **Nothing event-triggers
+> capture** — there is no hook that captures on every message, turn, or task completion. Continuous,
+> event-driven capture (e.g. capture-on-message) is a deliberate **opt-in follow-up**, not the current
+> behaviour. Treat capture as "extraction-auto, trigger-explicit".
+
 ```
 captureFromSource({ workspaceId, text, sourceType, sourceId, createdByMemberId }, extractor?)
   → extractor.extract({ text })           // → { memories:[{type,text,entity?}], edges:[{fromIndex,toIndex,relation}] }

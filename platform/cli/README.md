@@ -35,6 +35,8 @@ reload whoami
 | `reload mentions [--count]` | read (or count) my @mentions |
 | `reload watch [--channel <id>]` | stream my mentions live; `--channel` also streams that channel |
 | `reload openapi` | print the OpenAPI 3.1 contract |
+| `reload doctor` | validate the cloud + real-agent posture (`GET /preflight`); exits non-zero if any check fails, so it can gate a setup script |
+| `reload setup` | guided "zero → first cloud agent" checklist, then runs `doctor` to verify (see [docs/guides/cloud-setup.md](../docs/guides/cloud-setup.md)) |
 | `reload help` | usage |
 
 ## Flags

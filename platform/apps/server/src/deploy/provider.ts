@@ -18,9 +18,22 @@ export interface DeployProvider {
   deploy(input: DeployInput): Promise<DeployOutcome>;
   /** Re-promote a prior immutable deployment (rollback / backups). Returns its live URL. */
   rollback(prior: PriorDeployment): Promise<DeployOutcome>;
-  /** Restart a deployment (auto-restart after a failed health check). Idempotent on the provider side. */
+  /**
+   * Restart a deployment (auto-restart after a failed health check). Idempotent on the provider side.
+   *
+   * Semantics differ per provider and callers must not assume a stateful reboot: the Vercel adapter
+   * re-promotes the same immutable deployment id (serverless deployments are stateless), and the
+   * `DryRunDeployProvider` is a pure no-op. There is no in-place process restart on any shipped provider.
+   */
   restart(providerDeploymentId: string): Promise<void>;
-  /** Scale a deployment. The caller has already clamped to trusted-config bounds. */
+  /**
+   * Scale a deployment. The caller has already clamped to trusted-config bounds.
+   *
+   * Honest no-op on the shipped providers: Vercel autoscales serverless functions, so explicit
+   * scaling is a project-settings change this adapter does **not** perform (it resolves without
+   * effect); `DryRunDeployProvider` likewise records nothing. Treat `ScaleInput` as advisory until a
+   * provider with real instance control is added.
+   */
   scale(providerDeploymentId: string, scale: ScaleInput): Promise<void>;
   /** Probe a live URL's health (used by the opt-in monitor + the manual check). */
   healthCheck(url: string): Promise<HealthResult>;
