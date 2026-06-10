@@ -25,6 +25,8 @@ import {
   type IntegrationsRoutesOptions,
 } from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
+import { marketingRoutes } from "./routes/marketing.js";
+import { maybeAutoSeedOnSignup } from "./marketing/default.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
@@ -181,7 +183,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(healthRoutes);
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
-  app.register(authRoutes);
+  // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered
+  // below, right after the manager is built.
   app.register(meRoutes);
   // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.
   app.register(agentInterfaceRoutes);
@@ -227,6 +230,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
   // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
   app.register(subagentRoutes, { sessionManager });
+  // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
+  // per marketing function), turn an @mention into a REAL harness session through the venture-gated
+  // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
+  // sends stay #13-gated, sensitive-by-default. authRoutes is registered here too so signup can
+  // auto-seed (config default-OFF) through the SAME SessionManager.
+  app.register(authRoutes, {
+    onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
+      maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+  });
+  app.register(marketingRoutes, { sessionManager });
   // #56 Run tab: run a session's app for in-app preview + detect its localhost port, and route UI
   // annotations back to the agent (the #51 round trip). The RunProcessManager is SEPARATE from the
   // SessionManager (a dev server is long-lived; it must never finalize the session row). Killed on
