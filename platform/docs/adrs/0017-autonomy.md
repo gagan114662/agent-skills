@@ -85,6 +85,10 @@ autonomy real *and* bounded.
 - The continuous timer is opt-in; dev/CI run deterministic `tick()`s, so no background churn.
 
 ## Follow-ups (deferred)
+- ~~The loop narrates `start`/`handoff` but does not yet launch a real #25 session.~~ **Done in #84
+  ([ADR-0042](0042-autonomy-real-sessions.md))**: `start`/`handoff` launch a real agent session
+  through the `SessionManager`, gated by the same guards, and the session's terminal status feeds
+  back into the task (`done`/`blocked`).
 - Real cost metering (tokens, #25 sandbox-seconds) feeding the cost guard + a budget dashboard.
 - Branching / parallel (DAG) workflows and auto-composing workflows from #14 routing rules.
 - Cross-workspace agent federation (a tenant-boundary-crossing epic of its own).

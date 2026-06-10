@@ -1,4 +1,5 @@
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
+import type { SessionStatus } from "../db/repositories/agent-sessions.js";
 import { recordAutonomyAction, recordAutonomyTick } from "../observability/metrics.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
 import { getTask, updateStatus, assignTask, addTaskLink } from "../db/repositories/tasks.js";
@@ -23,18 +24,54 @@ import { budgetExhausted, tickLimitReached } from "./guards.js";
 import { decideWorkflowAction, type AutonomyAction } from "./decide.js";
 
 /**
- * AutonomyEngine (#17, ADR-0017) — the server-owned activity loop, modelled on the #25
- * SessionManager: deps injected, side effects here, decision/guard logic pure in `./decide` and
- * `./guards`. A `tick()` is one fair pass over a workspace's `running` workflows; it applies at
- * most one action per workflow (so progression is observable and the guards are meaningful) and
- * posts as the acting agent via the #5 realtime path. The production timer (`start`) is opt-in;
- * tests drive `tick()` directly.
+ * AutonomyEngine (#17, ADR-0017; real-session execution #84, ADR-0042) — the server-owned activity
+ * loop, modelled on the #25 SessionManager: deps injected, side effects here, decision/guard logic
+ * pure in `./decide` and `./guards`. A `tick()` is one fair pass over a workspace's `running`
+ * workflows; it applies at most one action per workflow (so progression is observable and the
+ * guards are meaningful) and posts as the acting agent via the #5 realtime path. The production
+ * timer (`start`) is opt-in; tests drive `tick()` directly.
+ *
+ * When a {@link AutonomyLauncher} is wired, a `start`/`handoff` action **launches a real agent
+ * session** (the #25 SessionManager) for the stage — past the same kill-switch/budget/rate-limit/
+ * loop guards (admission), with at most one live session per workflow at a time. The session's
+ * server-side completion feeds back into task status (done on success, blocked on failure) so the
+ * loop closes. Without a launcher the engine keeps its prior narration-only behaviour.
  */
+
+/**
+ * The session-launch surface the engine drives. The #25 {@link SessionManager} satisfies it
+ * structurally: `launch` returns immediately (the run continues server-side), `join` awaits that
+ * run's completion, and `status` reads the terminal status so it can feed back into the task. Tests
+ * inject a fake to assert launch-on-start + guard-blocks without a runtime or a DB.
+ */
+export interface AutonomyLauncher {
+  launch(input: {
+    workspaceId: string;
+    channelId: string;
+    agentMemberId: string;
+    createdByMemberId: string;
+    task: string;
+    harnessEnv?: Record<string, string>;
+  }): Promise<{ id: string }>;
+  join(id: string): Promise<void>;
+  status(id: string): Promise<SessionStatus>;
+}
+
 export interface AutonomyEngineDeps {
   poster: ChannelPoster;
   logger: SessionLogger;
+  /**
+   * Optional real-agent launcher (#84). When present, `start`/`handoff` launch a real agent session
+   * for the stage; when absent the engine narrates the action only (its pre-#84 behaviour).
+   */
+  launcher?: AutonomyLauncher;
   /** Loop-guard ceiling override (defaults to the engine's safe default). */
   loopGuardMax?: number;
+}
+
+/** Compose the task/prompt handed to the harness for a stage (data, never argv). */
+function composeStageTask(taskTitle: string, role: string): string {
+  return `You are the ${role} on an autonomous workflow. Work the task to completion: ${taskTitle}`;
 }
 
 export interface AppliedAction {
@@ -51,6 +88,12 @@ export interface TickResult {
 
 export class AutonomyEngine {
   private timer?: NodeJS.Timeout;
+  /**
+   * Workflows with a live agent session this process is driving → its completion tracker (#84). A
+   * workflow is admitted at most one session at a time: while one is in flight the tick skips it, so
+   * the engine never double-acts (e.g. asks for approval) on top of a still-running agent.
+   */
+  private readonly inflight = new Map<string, Promise<void>>();
 
   constructor(private readonly deps: AutonomyEngineDeps) {}
 
@@ -108,6 +151,13 @@ export class AutonomyEngine {
         continue;
       }
       const agentMemberId = stage.agentMemberId;
+
+      // Admission (#84): a workflow with a live session is busy — never act on top of it.
+      if (this.inflight.has(wf.id)) {
+        recordAutonomyAction("noop:session_running");
+        actions.push({ workflowId: wf.id, action: "noop", reason: "session_running" });
+        continue;
+      }
 
       const autonomy = await getAutonomy(workspaceId, agentMemberId);
       if (!autonomy || !autonomy.enabled) {
@@ -172,7 +222,7 @@ export class AutonomyEngine {
       case "start": {
         await updateStatus(taskId, "in_progress", agentMemberId);
         await bumpWorkflowAction(wf.id);
-        await this.post(wf, agentMemberId, `🤖 picked up task “${taskTitle}” — starting autonomously.`, log);
+        await this.launchStage(wf, taskId, taskTitle, wf.currentStage, agentMemberId, log);
         return;
       }
       case "handoff": {
@@ -209,6 +259,8 @@ export class AutonomyEngine {
             `continuity saved to shared memory ${mem.id}.`,
           log,
         );
+        // The next stage's agent now actually does the work (#84): launch its session as that member.
+        await this.launchStage(wf, taskId, taskTitle, wf.currentStage + 1, next.agentMemberId, log);
         return;
       }
       case "request_approval": {
@@ -230,6 +282,159 @@ export class AutonomyEngine {
         return;
       }
     }
+  }
+
+  /**
+   * Launch the real agent session for a stage (#84) and register its completion tracker. Without a
+   * launcher this narrates the action only (pre-#84 behaviour), so the existing pooling/autonomy
+   * tests — which wire no launcher — are unchanged. The session runs as the stage's agent member, in
+   * the workflow's channel, with the task composed as the harness prompt (data, never argv).
+   */
+  private async launchStage(
+    wf: AgentWorkflow,
+    taskId: string,
+    taskTitle: string,
+    stageIndex: number,
+    agentMemberId: string,
+    log: SessionLogger,
+  ): Promise<void> {
+    const role = wf.stages[stageIndex]?.role ?? "agent";
+    if (!this.deps.launcher) {
+      await this.post(
+        wf,
+        agentMemberId,
+        `🤖 picked up task “${taskTitle}” — starting autonomously.`,
+        log,
+      );
+      return;
+    }
+    let session: { id: string };
+    try {
+      session = await this.deps.launcher.launch({
+        workspaceId: wf.workspaceId,
+        channelId: wf.channelId,
+        agentMemberId,
+        createdByMemberId: agentMemberId,
+        task: composeStageTask(taskTitle, role),
+        harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role },
+      });
+    } catch (err) {
+      // A launch that never starts must not silently strand the task — surface it as blocked.
+      log.error({ err, workflowId: wf.id }, "autonomy session launch failed");
+      if (canTransition("in_progress", "blocked")) {
+        await updateStatus(taskId, "blocked", agentMemberId);
+      }
+      await this.post(
+        wf,
+        agentMemberId,
+        `⚠️ could not launch an agent session for “${taskTitle}” — task blocked for review.`,
+        log,
+      );
+      return;
+    }
+    await this.post(
+      wf,
+      agentMemberId,
+      `🤖 picked up task “${taskTitle}” — launched agent session ${session.id} ` +
+        `(stage ${stageIndex + 1}/${wf.stages.length}, ${role}).`,
+      log,
+    );
+    this.trackSession(wf, taskId, taskTitle, stageIndex, agentMemberId, session.id, log);
+  }
+
+  /** Drive a launched session to completion off the tick, then feed its outcome back to the task. */
+  private trackSession(
+    wf: AgentWorkflow,
+    taskId: string,
+    taskTitle: string,
+    stageIndex: number,
+    agentMemberId: string,
+    sessionId: string,
+    log: SessionLogger,
+  ): void {
+    const run = (async (): Promise<void> => {
+      try {
+        await this.deps.launcher!.join(sessionId);
+        const status = await this.deps.launcher!.status(sessionId);
+        await this.onSessionSettled(wf, taskId, taskTitle, stageIndex, agentMemberId, sessionId, status, log);
+      } catch (err) {
+        log.error({ err, sessionId, workflowId: wf.id }, "autonomy session tracking failed");
+      }
+    })();
+    this.inflight.set(wf.id, run);
+    void run.finally(() => {
+      if (this.inflight.get(wf.id) === run) this.inflight.delete(wf.id);
+    });
+  }
+
+  /**
+   * Close the loop on a finished session (#84). Success of the final stage drives the task to `done`
+   * and completes the workflow; success of an earlier stage clears admission so the next tick hands
+   * off to the next stage. Any non-`completed` terminal state blocks the task for human review. All
+   * writes go through the same status guards as the rest of the engine.
+   */
+  private async onSessionSettled(
+    wf: AgentWorkflow,
+    taskId: string,
+    taskTitle: string,
+    stageIndex: number,
+    agentMemberId: string,
+    sessionId: string,
+    status: SessionStatus,
+    log: SessionLogger,
+  ): Promise<void> {
+    const task = await getTask(taskId);
+    if (!task) return;
+
+    if (status === "completed") {
+      const isFinalStage = stageIndex >= wf.stages.length - 1;
+      if (isFinalStage) {
+        // The agent did the work, but a human (or an explicit auto-approve policy, #13) closes it —
+        // success never drives `done` directly. Park at the same approval gate the narration path
+        // uses: an approval record + `awaiting_approval`. `approve()` drives the task to `done`,
+        // `reject()` drives it to `blocked`.
+        await createApproval({
+          workspaceId: wf.workspaceId,
+          workflowId: wf.id,
+          taskId,
+          requestedByMemberId: agentMemberId,
+          action: "complete_workflow",
+        });
+        await setWorkflowStatus(wf.id, "awaiting_approval");
+        await bumpWorkflowAction(wf.id);
+        await this.post(
+          wf,
+          agentMemberId,
+          `✅ agent session ${sessionId} completed “${taskTitle}” — awaiting human approval to complete.`,
+          log,
+        );
+      } else {
+        await this.post(
+          wf,
+          agentMemberId,
+          `✅ agent session ${sessionId} finished stage ${stageIndex + 1}/${wf.stages.length}; ` +
+            `handing off next tick.`,
+          log,
+        );
+      }
+      return;
+    }
+
+    // failed / timeout / idle_reaped / canceled → the work did not land; block for review.
+    if (task.status !== "blocked" && canTransition(task.status, "blocked")) {
+      await updateStatus(taskId, "blocked", agentMemberId);
+    }
+    await this.post(
+      wf,
+      agentMemberId,
+      `⚠️ agent session ${sessionId} ended ${status} — task “${taskTitle}” blocked for review.`,
+      log,
+    );
+  }
+
+  /** Await every in-flight session tracker (test/shutdown helper; never rejects). */
+  async drain(): Promise<void> {
+    await Promise.allSettled([...this.inflight.values()]);
   }
 
   /**
@@ -264,7 +469,11 @@ export class AutonomyEngine {
     return { ok: true };
   }
 
-  /** Reject a pending gate: mark it rejected, cancel the workflow, narrate it. Idempotent. */
+  /**
+   * Reject a pending gate: mark it rejected, drive the task to `blocked` (the work was not accepted —
+   * it needs human attention, the mirror of `approve()` driving `done`), cancel the workflow, and
+   * narrate it. Idempotent — a non-pending approval is a no-op.
+   */
   async reject(
     workspaceId: string,
     approvalId: string,
@@ -278,11 +487,20 @@ export class AutonomyEngine {
     });
     if (!decided) return { ok: false, reason: "not_pending" };
 
+    const task = await getTask(approval.taskId);
+    if (task && task.status !== "blocked" && canTransition(task.status, "blocked")) {
+      await updateStatus(approval.taskId, "blocked", humanMemberId);
+    }
     if (approval.workflowId) {
       await setWorkflowStatus(approval.workflowId, "canceled");
       const wf = await getWorkflow(approval.workflowId, workspaceId);
       if (wf) {
-        await this.post(wf, humanMemberId, `❌ rejected by a human reviewer; workflow canceled.`, this.deps.logger);
+        await this.post(
+          wf,
+          humanMemberId,
+          `❌ rejected by a human reviewer; workflow canceled and task blocked for review.`,
+          this.deps.logger,
+        );
       }
     }
     return { ok: true };
