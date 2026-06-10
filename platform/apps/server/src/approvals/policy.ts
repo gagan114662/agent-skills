@@ -14,10 +14,20 @@ export function isActionType(value: unknown): value is ActionType {
 }
 
 /**
- * Action types that require approval when **no** workspace rule matches. `external.send` ships
- * gated ("external sends require approval", ADR-0013 §1); a workspace rule can override either way.
+ * The action kind a workflow's autonomous completion is gated under (#84 follow-up, ADR-0042). It is
+ * never submitted through the #13 action route (it is not an {@link ActionType}); the engine evaluates
+ * it against the same workspace `approval_policies` so a trusted workflow can opt out of the human gate
+ * with one rule, while everything else keeps the gate.
  */
-export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = ["external.send"];
+export const AUTONOMY_COMPLETE_ACTION = "autonomy.complete" as const;
+
+/**
+ * Action types that require approval when **no** workspace rule matches. `external.send` ships
+ * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
+ * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042).
+ * A workspace rule can override either way.
+ */
+export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = ["external.send", AUTONOMY_COMPLETE_ACTION];
 
 /** Lifecycle of an approval request. `approved` is the transient state between the decision and the
  * executor finishing; the rest are terminal. */

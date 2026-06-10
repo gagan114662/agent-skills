@@ -156,8 +156,14 @@ export const agentWorkflows = pgTable(
 /**
  * An approval gate: the agent creates a pending row instead of completing the workflow; a human
  * decides. An agent can never self-approve — decision routes require a human identity (ADR-0017 §6).
+ *
+ * A decision is normally made by a human (`decision_source='human'`). The #84 follow-up (ADR-0042)
+ * adds the policy path: when a workspace's `autonomy.complete` policy rule auto-approves, the engine
+ * decides the gate itself (`decision_source='policy'`) and records which rule fired (`policy_rule_id`)
+ * as the audit anchor — the human gate is preserved for every workspace without such a rule.
  */
 export const APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
+export const APPROVAL_DECISION_SOURCES = ["human", "policy"] as const;
 
 export const agentApprovals = pgTable(
   "agent_approvals",
@@ -178,6 +184,12 @@ export const agentApprovals = pgTable(
     decidedByMemberId: uuid("decided_by_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
+    /** Who closed the gate: a human reviewer, or an auto-approve policy rule (#84 follow-up). */
+    decisionSource: text("decision_source", { enum: APPROVAL_DECISION_SOURCES })
+      .notNull()
+      .default("human"),
+    /** The `approval_policies` rule that auto-approved this gate (audit), null for human decisions. */
+    policyRuleId: uuid("policy_rule_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
   },
@@ -186,6 +198,10 @@ export const agentApprovals = pgTable(
     statusCk: check(
       "agent_approvals_status_ck",
       sql`${t.status} IN ('pending','approved','rejected')`,
+    ),
+    sourceCk: check(
+      "agent_approvals_decision_source_ck",
+      sql`${t.decisionSource} IN ('human','policy')`,
     ),
   }),
 );
