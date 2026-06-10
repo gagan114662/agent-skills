@@ -6,6 +6,7 @@ import {
   isApprovalStatus,
   DEFAULT_SENSITIVE_ACTIONS,
   AUTONOMY_COMPLETE_ACTION,
+  DR_RESTORE_ACTION,
   type PolicyRule,
 } from "../../src/approvals/policy.js";
 import {
@@ -71,6 +72,12 @@ describe("evaluatePolicy (gating engine)", () => {
     expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, gated).requiresApproval).toBe(
       true,
     );
+  });
+
+  it("gates dr.restore by default so a destructive restore always needs a human (#99)", () => {
+    // No rule → a DISASTER restore requires explicit #13 approval; an agent can never self-approve.
+    expect(DEFAULT_SENSITIVE_ACTIONS).toContain(DR_RESTORE_ACTION);
+    expect(evaluatePolicy({ actionType: DR_RESTORE_ACTION }, []).requiresApproval).toBe(true);
   });
 });
 

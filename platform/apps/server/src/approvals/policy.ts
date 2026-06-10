@@ -22,12 +22,26 @@ export function isActionType(value: unknown): value is ActionType {
 export const AUTONOMY_COMPLETE_ACTION = "autonomy.complete" as const;
 
 /**
+ * The action kind a destructive disaster-recovery restore is gated under (#99, ADR-0099). Like
+ * `autonomy.complete` it is never submitted through the #13 action route; the DISASTER runbook path
+ * evaluates it against the same gate so a destructive restore ALWAYS needs an explicit human approval
+ * (an agent can never approve its own gate — ADR-0013) and is never agent-initiated. VALIDATION mode
+ * is non-destructive and needs no gate.
+ */
+export const DR_RESTORE_ACTION = "dr.restore" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
- * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042).
- * A workspace rule can override either way.
+ * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
+ * `dr.restore` ships gated so a destructive restore always needs a human (#99, ADR-0099). A workspace
+ * rule can override either way (but a destructive restore should stay gated).
  */
-export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = ["external.send", AUTONOMY_COMPLETE_ACTION];
+export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
+  "external.send",
+  AUTONOMY_COMPLETE_ACTION,
+  DR_RESTORE_ACTION,
+];
 
 /** Lifecycle of an approval request. `approved` is the transient state between the decision and the
  * executor finishing; the rest are terminal. */

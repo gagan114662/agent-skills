@@ -26,6 +26,21 @@ export interface Env {
   git: GitEnv;
   /** Deploy agent-built apps to a live URL (#73). */
   deploy: DeployEnv;
+  /** Disaster recovery: backup dump location + drill freshness bound (#99). */
+  dr: DrEnv;
+}
+
+export interface DrEnv {
+  /**
+   * Local directory used as the dryrun-by-default object store for dumps (the validation drill + the
+   * honest local/compose fallback). Real off-site upload is done by the backup workflow's `aws` CLI
+   * against an S3-compatible bucket — this local dir is never the production backup. Default `.dr-backups`.
+   */
+  localDir: string;
+  /** Object-key prefix dumps are stored under. Default `dumps/`. */
+  dumpPrefix: string;
+  /** Maximum tolerated age of the latest dump before a restore pre-flight aborts. Default 24h. */
+  maxDumpAgeMs: number;
 }
 
 export interface GitEnv {
@@ -200,6 +215,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       provider: source.DEPLOY_PROVIDER === "vercel" ? "vercel" : "dryrun",
       // Default 0 (off): the health sweep is opt-in so tests/CI drive `checkHealth()` deterministically.
       monitorIntervalMs: Number(source.DEPLOY_MONITOR_INTERVAL_MS ?? 0) || 0,
+    },
+    dr: {
+      localDir: source.DR_LOCAL_DIR ?? ".dr-backups",
+      dumpPrefix: source.DR_DUMP_PREFIX ?? "dumps/",
+      maxDumpAgeMs: num(source.DR_MAX_DUMP_AGE_MS, 86_400_000),
     },
   };
 }

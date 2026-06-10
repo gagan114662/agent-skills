@@ -1,0 +1,77 @@
+name: dr-backup
+
+# Off-site Postgres backup (#99, ADR-0049): pg_dump → gzip → upload to vendor-independent,
+# S3-compatible object storage (Cloudflare R2 / Backblaze B2 / MinIO / AWS S3 — selected by
+# AWS_ENDPOINT_URL). Bucket creds are least-privilege, WRITE-scoped repo secrets, referenced by name
+# and NEVER echoed. The dump is timed (the measured RPO input — see platform/README.md DR section).
+#
+# RPO is the dump cadence: hourly here. Tighten the cron for a smaller RPO, or run managed Postgres
+# (Neon) PITR for minute-level RPO (the dump is then the off-site, vendor-independent 3-2-1 copy).
+
+on:
+  schedule:
+    - cron: "0 * * * *" # hourly — the real RPO is this cadence + the dump duration, not the cron string
+  workflow_dispatch: {} # manual trigger (e.g. an ad-hoc pre-migration backup)
+
+concurrency:
+  group: dr-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      # All least-privilege, write-scoped creds — referenced by name, never printed.
+      DATABASE_URL: ${{ secrets.DR_DATABASE_URL }}
+      DR_S3_BUCKET: ${{ secrets.DR_S3_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.DR_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.DR_S3_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.DR_S3_REGION }}
+      AWS_ENDPOINT_URL: ${{ secrets.DR_S3_ENDPOINT_URL }} # set for R2/B2/MinIO; empty for AWS S3
+    steps:
+      - name: Guard — skip cleanly when DR backup is not configured
+        run: |
+          if [ -z "$DR_S3_BUCKET" ] || [ -z "$DATABASE_URL" ]; then
+            echo "::notice title=DR backup not configured::set DR_S3_BUCKET + DR_DATABASE_URL (and DR_S3_* creds) to enable off-site backups — skipping."
+            echo "DR_CONFIGURED=false" >> "$GITHUB_ENV"
+          else
+            echo "DR_CONFIGURED=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install postgresql-client
+        if: env.DR_CONFIGURED == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump + gzip (timed — the measured RPO input)
+        if: env.DR_CONFIGURED == 'true'
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          file="reload-${stamp}.sql.gz"
+          echo "dumping → ${file}"
+          start=$(date +%s)
+          # --no-owner --no-privileges keeps the dump portable across roles (restores into any DB).
+          # Secrets ($DATABASE_URL) are passed via env to pg_dump, never echoed to the log.
+          pg_dump --no-owner --no-privileges --format=plain "$DATABASE_URL" | gzip > "$file"
+          end=$(date +%s)
+          bytes=$(stat -c%s "$file")
+          echo "DUMP_FILE=${file}" >> "$GITHUB_ENV"
+          echo "::notice title=DR dump complete::${file} — $((end - start))s, ${bytes} bytes gzipped (measured RPO input)"
+
+      - name: Upload to off-site object storage (S3-compatible, vendor-independent)
+        if: env.DR_CONFIGURED == 'true'
+        run: |
+          set -euo pipefail
+          dest="s3://${DR_S3_BUCKET}/dumps/${DUMP_FILE}"
+          if [ -n "${AWS_ENDPOINT_URL:-}" ]; then
+            aws s3 cp "$DUMP_FILE" "$dest" --endpoint-url "$AWS_ENDPOINT_URL"
+          else
+            aws s3 cp "$DUMP_FILE" "$dest"
+          fi
+          echo "::notice title=DR backup uploaded::${dest}"
+
+      - name: Scrub the local dump
+        if: always() && env.DR_CONFIGURED == 'true'
+        run: rm -f reload-*.sql.gz

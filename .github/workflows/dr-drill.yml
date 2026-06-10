@@ -1,0 +1,55 @@
+name: dr-drill
+
+# Scheduled VALIDATION drill (#99, ADR-0049): a backup you have never restored is just a hope.
+# This restores a dump into a THROWAWAY Postgres service container and runs the sanity suite (row
+# counts + schema + freshness + content checksums), failing LOUDLY on any problem — so a broken
+# dump/restore pipeline or schema drift is caught on a Tuesday, not at 2 a.m.
+#
+# The drill is self-contained: it dumps the freshly-migrated source, restores it into a throwaway DB,
+# and verifies — so it is meaningful on every run (even in a fork with no bucket configured). DEAD
+# off-site CREDS are caught separately by dr-backup.yml failing to upload.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: platform
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reload
+          POSTGRES_PASSWORD: reload
+          POSTGRES_DB: reload
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U reload -d reload"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://reload:reload@localhost:5432/reload
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install postgresql-client (pg_dump/psql for the drill)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate the source DB
+        run: pnpm --filter @reload/server db:migrate
+      - name: VALIDATION drill — dump → restore (throwaway) → verify (loud failure)
+        run: pnpm --filter @reload/server dr:drill

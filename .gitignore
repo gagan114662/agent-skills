@@ -17,3 +17,6 @@ coverage/
 .reload/settings.toml
 .reload/managed.toml
 .reload/workspaces/
+
+# Reload (#99): local DR dump store (dryrun-by-default object store + validation-drill scratch)
+.dr-backups/

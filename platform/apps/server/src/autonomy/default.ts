@@ -2,6 +2,7 @@ import { channelPoster } from "../runtime/default.js";
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { getAgentSessionStatus } from "../db/repositories/agent-sessions.js";
 import { listPolicyRulesWithId } from "../db/repositories/approvals.js";
+import { isMaintenanceActive } from "../maintenance/flag.js";
 import { AutonomyEngine, type AutonomyLauncher } from "./engine.js";
 
 /**
@@ -39,5 +40,7 @@ export function createDefaultAutonomyEngine(
     // it from the SessionManager (#84). Absent both → narration-only (the pre-#84 behaviour).
     launcher: launcher ?? (sessionManager ? autonomyLauncherFrom(sessionManager) : undefined),
     completionPolicies: (workspaceId) => listPolicyRulesWithId(workspaceId),
+    // #99: pause the loop while the platform is in maintenance (same Redis flag the write-gate reads).
+    maintenancePaused: () => isMaintenanceActive(),
   });
 }

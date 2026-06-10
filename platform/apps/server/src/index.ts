@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { loadEnv } from "./env.js";
 import { closeDb } from "./db/index.js";
 import { closeRedis } from "./redis/index.js";
+import { isMaintenanceActive } from "./maintenance/flag.js";
 
 const env = loadEnv();
 const app = buildApp();
@@ -19,10 +20,14 @@ app.ventureEngine.start(env.venture.intervalMs);
 let sweepTimer: NodeJS.Timeout | undefined;
 if (env.cloud.sweepIntervalMs > 0) {
   sweepTimer = setInterval(() => {
-    const idleBefore = new Date(Date.now() - env.cloud.idleMs);
-    app.cloudWorkspaceManager
-      .sweepIdle(idleBefore)
-      .catch((err) => app.log.error({ err }, "cloud workspace idle sweep failed"));
+    // #99: pause the sweep during maintenance (same Redis flag the write-gate + autonomy loop read).
+    void isMaintenanceActive().then((paused) => {
+      if (paused) return;
+      const idleBefore = new Date(Date.now() - env.cloud.idleMs);
+      return app.cloudWorkspaceManager
+        .sweepIdle(idleBefore)
+        .catch((err) => app.log.error({ err }, "cloud workspace idle sweep failed"));
+    });
   }, env.cloud.sweepIntervalMs);
   sweepTimer.unref();
 }
