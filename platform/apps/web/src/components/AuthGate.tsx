@@ -34,10 +34,10 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
 function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
   return (
     <div className="splash">
-      <div className="splash__mark">◆</div>
+      <div className="splash__mark">{BRAND.mark}</div>
       <h1>API not connected</h1>
       <p>
-        The Reload web console loaded, but it can&apos;t reach the API server yet. Sign-in and
+        The {BRAND.name} web console loaded, but it can&apos;t reach the API server yet. Sign-in and
         workspace data are unavailable until the backend is online.
       </p>
       <button className="btn btn--primary" type="button" onClick={onRetry}>

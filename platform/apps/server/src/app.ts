@@ -44,8 +44,9 @@ import { deployRoutes } from "./routes/deploy.js";
 import { createDefaultDeployManager } from "./deploy/default.js";
 import type { DeployManager } from "./deploy/manager.js";
 import { billingRoutes } from "./routes/billing.js";
-import { createDefaultBillingManager } from "./billing/default.js";
+import { createDefaultBilling } from "./billing/default.js";
 import type { BillingManager } from "./billing/manager.js";
+import type { PlanBillingService } from "./billing/plan-service.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { GitWorktreeReaper } from "./git/reaper.js";
@@ -113,6 +114,8 @@ export interface BuildAppOptions {
   deployManager?: DeployManager;
   /** #98 Billing: tests inject a BillingManager over the none provider; default builds one from env. */
   billingManager?: BillingManager;
+  /** #125 Pricing: tests inject a PlanBillingService over the none provider; default builds one from env. */
+  planService?: PlanBillingService;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
@@ -253,8 +256,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // and turns each real payment into willingness-to-pay evidence the #96 venture scorecard consumes.
   // Outbound money (refunds/payouts/transfers) is NEVER here — it is a #13 approval-gated, recorded-only
   // action; payouts stay manual in the Stripe dashboard.
-  const billingManager = opts.billingManager ?? createDefaultBillingManager(app.log);
-  app.register(billingRoutes, { billingManager });
+  // #98 rails + #125 pricing/plan layer share one provider + secrets; build both together unless a test
+  // injected its own (the #98 tests inject only the manager and never exercise the plan routes).
+  const billingDefaults =
+    !opts.billingManager || !opts.planService ? createDefaultBilling(app.log) : null;
+  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
+  const planService = opts.planService ?? billingDefaults!.planService;
+  app.register(billingRoutes, { billingManager, planService });
   // #104 founder console: ONE read-only aggregation endpoint that gives the owner fleet status, the
   // venture pipeline (#96), revenue/willingness-to-pay (#98), budget burn (#71), the pending #13
   // approval queue (with decision-SLA ages), and the kill/maintenance switches — the whole daily

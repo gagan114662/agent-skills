@@ -148,6 +148,33 @@ A dependency-free root hook, gated on `RELOAD_WEB_ORIGIN` (comma-separated allow
 allow-listed `Origin` with `Access-Control-Allow-Credentials: true` + `Vary: Origin`, and answers
 preflight `OPTIONS` with `204`. No-op when unset (local/same-origin unchanged).
 
+### Enabling billing / Stripe checkout (#125 — owner action)
+
+The pricing page (`/pricing`) and the #98 revenue rails run **dark on the no-network `none` provider**
+until the owner pastes the Stripe keys. The repo contains **zero** key material; these names live only as
+Fly secrets, and **only the owner runs these** — the agent never handles key values.
+
+```bash
+# 1. Paste the keys from the Stripe dashboard (Mathematricks Fund account). Never commit these.
+fly secrets set STRIPE_SECRET_KEY=sk_live_…      --app reload-api
+fly secrets set STRIPE_WEBHOOK_SECRET=whsec_…     --app reload-api
+
+# 2. Switch the provider on (config, not a secret) and redeploy so the SDK path is selected.
+fly secrets set BILLING_PROVIDER=stripe           --app reload-api
+fly deploy --ha=false --app reload-api
+
+# 3. Mint the real products/prices ONCE (idempotent — a second run is a no-op).
+fly ssh console --app reload-api \
+  -C "pnpm -C platform/apps/server billing:bootstrap <workspaceId>"
+```
+
+Point a Stripe webhook endpoint at `https://api.ipop.ai/billing/webhook/<workspaceId>` (events:
+`checkout.session.completed`); its signing secret is the `STRIPE_WEBHOOK_SECRET` above. A paid checkout
+then activates the workspace's plan and updates its caps. **Outbound money stays structurally impossible**
+(the provider seam has no refund/payout/transfer; refunds are a #13-gated manual dashboard action). Until
+step 1, every surface works on `none` — `/pricing` renders, checkout returns the no-network URL, and CI
+spends nothing.
+
 ### DNS for `api.ipop.ai` (owner action — Cloudflare, DNS-only)
 
 Fly issued the cert; point the hostname at the app with **one** of:

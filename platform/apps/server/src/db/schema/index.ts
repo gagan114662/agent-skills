@@ -19,5 +19,6 @@ export * from "./session-turns.js";
 export * from "./tenant-usage.js";
 export * from "./deployments.js";
 export * from "./revenue.js";
+export * from "./plans.js";
 export * from "./venture.js";
 export * from "./watchdog.js";
