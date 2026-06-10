@@ -19,6 +19,7 @@ import type {
   SessionDiff,
 } from "@reload/shared";
 import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
+import { isApiUnavailable } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
 import {
   beginEdit,
@@ -114,7 +115,7 @@ export interface DeployTabState {
 }
 
 export interface AppState {
-  phase: "loading" | "anon" | "ready";
+  phase: "loading" | "anon" | "ready" | "offline";
   identity: Identity | null;
   channels: Channel[];
   activeChannelId: string | null;
@@ -574,8 +575,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       try {
         const identity = await api.me();
         await loadWorkspace(identity);
-      } catch {
-        set({ phase: "anon", identity: null });
+      } catch (err) {
+        // No backend wired (standalone deploy / API down) → show the "API not connected" state.
+        // A real API answering "unauthorized" (or any other error) just means we need to sign in.
+        set({ phase: isApiUnavailable(err) ? "offline" : "anon", identity: null });
       }
     },
 

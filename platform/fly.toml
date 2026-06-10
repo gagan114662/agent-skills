@@ -1,0 +1,43 @@
+# Fly.io deployment for the Reload API (@reload/server) — #108.
+# Always-on Fastify server (WebSocket gateway + Postgres + Redis) that the Vercel-hosted web
+# console (https://ipop.ai) talks to at https://api.ipop.ai. Built from the existing multi-stage
+# Dockerfile; migrations run on deploy via apps/server/docker-entrypoint.sh.
+#
+# Secrets (DATABASE_URL, REDIS_URL) are set with `fly secrets set` and are NOT stored here.
+app = "reload-api"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "apps/server/Dockerfile"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  RELOAD_PROFILE = "prod"
+  # Demo harness + local runtime: the API boots and serves chat/console traffic without any
+  # cloud-agent credentials. Real agent runtimes are an owner follow-up (no secrets baked in).
+  AGENT_HARNESS = "demo"
+  AGENT_RUNTIME = "local"
+  # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
+  RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always-on: one machine, never auto-stopped (min instances 1 per the deploy brief).
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  # Readiness gate: Fly only routes to a machine once deps (Postgres + Redis) are reachable.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/readyz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

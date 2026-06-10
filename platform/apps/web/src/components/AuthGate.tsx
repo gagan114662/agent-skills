@@ -21,7 +21,29 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
       </div>
     );
   }
+  if (phase === "offline") return <OfflineNotice onRetry={() => void store.bootstrap()} />;
   return <AuthForm />;
+}
+
+/**
+ * Shown when the API origin can't be reached (e.g. the console is hosted standalone with no backend
+ * wired yet — #108). A clear, non-crashing state beats a blank page; "Retry" re-runs bootstrap once
+ * the API is live.
+ */
+function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
+  return (
+    <div className="splash">
+      <div className="splash__mark">◆</div>
+      <h1>API not connected</h1>
+      <p>
+        The Reload web console loaded, but it can&apos;t reach the API server yet. Sign-in and
+        workspace data are unavailable until the backend is online.
+      </p>
+      <button className="btn btn--primary" type="button" onClick={onRetry}>
+        Retry
+      </button>
+    </div>
+  );
 }
 
 function AuthForm(): React.JSX.Element {
