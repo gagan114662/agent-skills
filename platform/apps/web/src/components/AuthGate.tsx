@@ -1,6 +1,7 @@
 /** Auth boundary: bootstraps the session, shows a sign-in/sign-up screen, then renders the app. */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
+import { BRAND } from "../brand.js";
 
 type Mode = "login" | "signup";
 
@@ -16,7 +17,7 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   if (phase === "loading") {
     return (
       <div className="splash">
-        <div className="splash__mark">◆</div>
+        <div className="splash__mark">{BRAND.mark}</div>
         <p>Connecting to your workspace…</p>
       </div>
     );
@@ -55,9 +56,9 @@ function AuthForm(): React.JSX.Element {
     <div className="auth">
       <form className="auth__card" onSubmit={onSubmit}>
         <div className="auth__brand">
-          <span className="auth__mark">◆</span> Reload
+          <span className="auth__mark">{BRAND.mark}</span> {BRAND.name}
         </div>
-        <p className="auth__tag">Team chat where humans steer and agents work.</p>
+        <p className="auth__tag">{BRAND.tagline}</p>
 
         {mode === "signup" && (
           <label className="field">

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Workspace } from "../Workspace.js";
+import { ReviewPanel } from "./ReviewPanel.js";
 import { renderWithStore } from "../../test/utils.js";
 import type { AgentSessionSummary } from "../../api/types.js";
 
@@ -21,16 +21,19 @@ const SESSION: AgentSessionSummary = {
   mode: null,
 };
 
-/** Boot the workspace and open the Review tab. */
+/**
+ * Render the Review surface directly. Since #122 removed the Review tab from product chrome, the
+ * panel is reached via the operator API/route rather than a nav button — so the test mounts it
+ * straight, after bootstrap seeds the active channel its data effect depends on.
+ */
 async function openReviewTab(over = {}): Promise<ReturnType<typeof renderWithStore>> {
-  const rendered = renderWithStore(<Workspace />, over);
+  const rendered = renderWithStore(<ReviewPanel />, over);
   await rendered.store.bootstrap();
-  await userEvent.click(screen.getByRole("button", { name: "Review" }));
   return rendered;
 }
 
 describe("ReviewPanel (#51 git/PR/review surface)", () => {
-  it("switches to the Review tab and shows the empty session state", async () => {
+  it("renders the empty session state for a channel with no sessions", async () => {
     await openReviewTab();
     expect(await screen.findByText("No agent sessions in this channel yet.")).toBeInTheDocument();
     expect(screen.getByText("Select a session to review its diff.")).toBeInTheDocument();

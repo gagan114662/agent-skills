@@ -5,7 +5,11 @@ import { api } from "./api/client.js";
 import { createRealtime } from "./api/realtime.js";
 import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
+import { applyBrand } from "./brand.js";
 import "./styles.css";
+
+// Stamp brand-driven document title + accent before first paint (env-resolved at build time).
+applyBrand();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root not found");

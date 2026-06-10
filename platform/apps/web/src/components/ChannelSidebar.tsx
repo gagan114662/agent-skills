@@ -1,6 +1,7 @@
 /** Left rail: workspace identity, channel list (public + DMs), and a create-channel control. */
 import { useState, type FormEvent } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
+import { BRAND } from "../brand.js";
 import type { Channel } from "../api/types.js";
 
 export function ChannelSidebar(): React.JSX.Element {
@@ -25,7 +26,7 @@ export function ChannelSidebar(): React.JSX.Element {
     <nav className="sidebar" aria-label="Channels">
       <header className="sidebar__head">
         <div className="sidebar__brand">
-          <span className="auth__mark">◆</span> Reload
+          <span className="auth__mark">{BRAND.mark}</span> {BRAND.name}
         </div>
         {identity && <div className="sidebar__ws">workspace · {identity.workspaceId.slice(0, 8)}</div>}
       </header>

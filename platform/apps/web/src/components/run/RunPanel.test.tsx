@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ServerEvent } from "../../api/types.js";
-import { Workspace } from "../Workspace.js";
+import { RunPanel } from "./RunPanel.js";
 import { renderWithStore } from "../../test/utils.js";
 import type { AgentSessionSummary } from "../../api/types.js";
 
@@ -27,20 +27,21 @@ function fire(rt: { fire: (e: ServerEvent) => void }, event: ServerEvent): void 
   act(() => rt.fire(event));
 }
 
-/** Boot the workspace, open the Run tab, and select the session — the shared setup for these tests. */
+/**
+ * Render the Run surface directly and select the session — the shared setup for these tests.
+ * #122 removed the Run tab from product chrome; operators reach the panel via the existing API/route,
+ * so the test mounts it straight (bootstrap seeds the active channel its data effect depends on).
+ */
 async function openRunTab(): Promise<ReturnType<typeof renderWithStore>> {
-  const rendered = renderWithStore(<Workspace />, { sessions: [SESSION] });
+  const rendered = renderWithStore(<RunPanel />, { sessions: [SESSION] });
   await rendered.store.bootstrap();
-  await userEvent.click(screen.getByRole("button", { name: "Run" }));
   await userEvent.click(await screen.findByRole("button", { name: /agent\/s1/ }));
   return rendered;
 }
 
 describe("RunPanel (#56 Run tab)", () => {
-  it("switches to the Run tab from the top bar", async () => {
-    const { store } = renderWithStore(<Workspace />, { sessions: [SESSION] });
-    await store.bootstrap();
-    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+  it("renders the run surface with the annotations rail", async () => {
+    await openRunTab();
     expect(await screen.findByRole("heading", { name: "Annotations" })).toBeInTheDocument();
   });
 
