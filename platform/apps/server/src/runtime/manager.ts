@@ -13,6 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
+import type { LineDecoder } from "./stream-json.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
@@ -105,6 +106,13 @@ export interface SessionManagerDeps {
    * per-tenant budget can bite. Absent → no accounting (today's behavior).
    */
   usage?: UsageRecorder;
+  /**
+   * Optional harness-aware output decoder (#81): converts each raw stdout line into readable channel
+   * text, keeping the parsed event for structured consumers. The `claude-code` harness emits
+   * stream-json (one JSON event per line), so without this the channel shows raw JSON blobs. Absent
+   * (and for the `demo` harness) → a verbatim pass-through, so default output is unchanged.
+   */
+  decodeOutput?: LineDecoder;
 }
 
 export interface LaunchInput {
@@ -336,15 +344,34 @@ export class SessionManager {
     );
     const parentMessageId = opts.parentMessageId ?? start?.id;
 
-    // Stream state: line-buffer output, keep a redacted tail for the result.
+    // Stream state: line-buffer output, keep a redacted tail for the result. Each raw line is run
+    // through the harness-aware decoder (#81): for `claude-code` this turns stream-json events into
+    // readable channel text and surfaces tool calls; for the demo harness it is a verbatim
+    // pass-through (unchanged). The decoder is pure rendering — redaction is applied AFTER it, so a
+    // secret leaked inside a decoded event/tool input is still scrubbed before it is posted or logged.
+    const decode: LineDecoder = this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
     let buffer = "";
     const tail: string[] = [];
+    // Streamed line posts are serialized through one chain (rather than fire-and-forget) so they land
+    // in the channel in emission order, and so we can flush them before the terminal message +
+    // finalize — otherwise a consumer reading right after the session goes terminal can see streamed
+    // lines out of order or missing entirely (they were still in flight). safePost never rejects, so
+    // the chain never breaks.
+    let postChain: Promise<unknown> = Promise.resolve();
     const emitLine = (line: string): void => {
-      const clean = redact(line).trimEnd();
-      if (!clean) return;
-      tail.push(clean);
-      if (tail.length > RESULT_TAIL_LINES) tail.shift();
-      void this.safePost(session, clean, log, parentMessageId);
+      const decoded = decode(line);
+      // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
+      // the structured log so secrets never persist there either.
+      if (decoded.raw !== null) {
+        log.info({ event: redact(JSON.stringify(decoded.raw)) }, "agent stream event");
+      }
+      for (const text of decoded.display) {
+        const clean = redact(text).trimEnd();
+        if (!clean) continue;
+        tail.push(clean);
+        if (tail.length > RESULT_TAIL_LINES) tail.shift();
+        postChain = postChain.then(() => this.safePost(session, clean, log, parentMessageId));
+      }
     };
 
     // --- reaper: wall-clock + idle (no-output) timers ---
@@ -418,6 +445,7 @@ export class SessionManager {
     }
 
     if (buffer.trim()) emitLine(buffer); // flush a trailing partial line
+    await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
     await this.safePost(session, `✅ session ${result.status} (exit ${result.exitCode ?? "n/a"})`, log);

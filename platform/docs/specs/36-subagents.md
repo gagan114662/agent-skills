@@ -40,7 +40,8 @@ any member who **invokes** one in a channel they can act in. Under the hood it i
    tool set can only **narrow** the persona's ceiling, never widen it.
 5. A built-in **`code-reviewer`** persona is seedable as the reference subagent.
 6. `pnpm -C platform typecheck && lint && test && build` green; integration green.
-7. ADR-0036 + this spec + demo `docs/demos/36-subagents.mp4`; PR links #59; **not** merged
+7. ADR-0036 + this spec + demo script `scripts/demos/36-subagents.sh` (the runnable proof; recorded
+   video pending); PR links #59; **not** merged
    (approved by @gagan114662 on the video).
 
 ### In scope
@@ -232,7 +233,7 @@ ladder**, not by inventing a new RBAC system:
    (integration), persona-scoped channel access (integration), tenant isolation (integration).
 4. Built-in `code-reviewer` seeds idempotently.
 5. `pnpm typecheck && lint && test && build` green; integration green.
-6. ADR-0036 + this spec + demo `docs/demos/36-subagents.mp4`; PR links #59; **not** merged.
+6. ADR-0036 + this spec + demo script `scripts/demos/36-subagents.sh` (the runnable proof; recorded video pending); PR links #59; **not** merged.
 
 ## Plan (atomic)
 1. `agent_personas` schema + `drizzle/0059_subagents.sql` (+ `.down.sql`) + `db/repositories/personas.ts`

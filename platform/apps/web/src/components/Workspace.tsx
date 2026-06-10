@@ -11,8 +11,9 @@ import { ApprovalsPanel } from "./approvals/ApprovalsPanel.js";
 import { ReviewPanel } from "./review/ReviewPanel.js";
 import { RunPanel } from "./run/RunPanel.js";
 import { UsagePanel } from "./UsagePanel.js";
+import { DeployPanel } from "./deploy/DeployPanel.js";
 
-type View = "chat" | "approvals" | "review" | "run" | "usage";
+type View = "chat" | "approvals" | "review" | "run" | "usage" | "deploy";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
@@ -27,6 +28,8 @@ export function Workspace(): React.JSX.Element {
         <RunPanel />
       ) : view === "usage" ? (
         <UsagePanel />
+      ) : view === "deploy" ? (
+        <DeployPanel />
       ) : (
         <div className="workspace__body">
           <ChannelSidebar />
@@ -46,8 +49,9 @@ function TopBar({
   view: View;
   onSelectView: (v: View) => void;
 }): React.JSX.Element {
-  const { identity, unreadMentions, mentions, directory, approvals, review, run } = useAppState();
+  const { identity, unreadMentions, mentions, directory, approvals, review, run, deploy } = useAppState();
   const runLive = run.process?.status === "running" || run.process?.status === "starting";
+  const deployLive = deploy.latest?.status === "ready" || deploy.latest?.status === "rolled_back";
   const store = useStore();
   const [showMentions, setShowMentions] = useState(false);
 
@@ -99,6 +103,14 @@ function TopBar({
           onClick={() => onSelectView("usage")}
         >
           Usage
+        </button>
+        <button
+          className={`topbar__navbtn${view === "deploy" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "deploy"}
+          onClick={() => onSelectView("deploy")}
+        >
+          Deploy
+          {deployLive && <span className="badge badge--live" aria-label="live">●</span>}
         </button>
       </nav>
       <div className="topbar__spacer" />

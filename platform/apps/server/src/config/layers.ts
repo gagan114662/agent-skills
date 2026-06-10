@@ -18,6 +18,8 @@ export function mergeSettings(layers: Settings[]): Settings {
     if (layer.skills !== undefined) out.skills = [...layer.skills];
     // #56 run command: a higher layer fully owns the value (replace, consistent with the records above).
     if (layer.run !== undefined) out.run = { ...layer.run };
+    // #73 deploy settings: a higher layer fully owns the block (replace, consistent with run/models).
+    if (layer.deploy !== undefined) out.deploy = { ...layer.deploy };
     // #52 model policy: a higher layer fully owns the block (replace, consistent with records above)
     // so a managed-layer tenant's allow-list cannot be widened by a lower layer.
     if (layer.models !== undefined) out.models = { ...layer.models };
@@ -40,6 +42,8 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     skills: merged.skills ?? [...CONFIG_DEFAULTS.skills],
     // #56: no default run command — absent means the deployment configured none (Run tab → 409).
     run: merged.run,
+    // #73: no default deploy settings — absent means deploy is not enabled (Deploy tab → 409).
+    deploy: merged.deploy,
     models: merged.models ?? { ...CONFIG_DEFAULTS.models },
     scale: merged.scale ?? { ...CONFIG_DEFAULTS.scale },
   };

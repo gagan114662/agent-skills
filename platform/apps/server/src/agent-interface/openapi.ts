@@ -112,7 +112,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
         "agent Bearer token (`rld_agt_…`, #3). Every endpoint is workspace-scoped (#3 IDOR) and " +
         "capability-respecting (#9). The documented flow is: whoami → list channels you can " +
         "access → read/post messages → read your @mentions. For live delivery, connect to the " +
-        "realtime gateway (`ws://<host>/ws?access_token=<token>`, #5).",
+        "realtime gateway (`ws://<host>/ws?access_token=<token>`, #5). " +
+        "SCOPE: this contract deliberately documents only the agent-flow subset (the handful of " +
+        "endpoints below) — not the full server surface (channel/workspace admin, approvals, tasks, " +
+        "memory, deploy, git/PR review, team runs, MCP, …). Those are reachable over the same HTTP " +
+        "API but are specified per-feature under docs/specs, not in this generated document.",
     },
     servers: [{ url: "http://localhost:3000", description: "Local development" }],
     tags: [

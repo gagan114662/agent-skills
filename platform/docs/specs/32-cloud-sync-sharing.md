@@ -52,9 +52,13 @@ tenant-isolated and secrets out of synced files.
   sandbox/snapshot; tests inject fakes — no cloud spend).
 - **Setup-on-first-mirror**: the manager runs a provided `runSetup()` once when
   `setup_completed` is false, then records it — idempotent across repeated mirrors.
-- **Sleep / wake / idle sweep** (`workspace/manager.ts`): state transitions + a `recordSnapshot`
-  hook (called when a session tears down) + an opt-in background `sweepIdle` that sleeps
-  workspaces idle longer than `CLOUD_IDLE_MS` (default `0` = off, like the #17 loop).
+- **Sleep / wake / idle sweep** (`workspace/manager.ts`): under the sandbox runtime (#82) sleep
+  snapshots+stops the live microVM via the `CloudWorkspaceSandbox` seam
+  (`workspace/sandbox.ts`, wrapping the #25 `SandboxProvider`) and `recordSnapshot`s the new
+  resume key; wake resumes a durable sandbox from it (fed into the next
+  `SandboxCreateOpts.snapshotId`). Under the default `local`/`demo` posture (no microVM) both are a
+  pure status transition retaining the last snapshot. Plus an opt-in background `sweepIdle` that
+  sleeps workspaces idle longer than `CLOUD_IDLE_MS` (default `0` = off, like the #17 loop).
 - **Collaborator sharing** (`cloud_workspace_collaborators` + `auth/access.ts`): invite a member
   at `read|write|propagate` (the #9 ladder), revocable (`revoked_at`); the **owner** implicitly
   holds `propagate`. A single `requireCloudWorkspaceCapability` access call carries the #3 IDOR
@@ -70,7 +74,11 @@ tenant-isolated and secrets out of synced files.
 
 ### Out of scope (deferred / documented-not-automated)
 - **Multi-region placement** of cloud workspaces — single region (per #25).
-- **Warm-pool tuning** (#17) — wake provisions on demand from the snapshot.
+- **Warm-pool tuning** (#17) — wake eagerly resumes one durable microVM per workspace; no pooling
+  or pre-warming across workspaces.
+- **Per-session attach to the durable microVM** — a launched #25 session still provisions its own
+  per-session sandbox (resuming from the same snapshot key via `AgentJob.snapshotId`); binding a
+  running session to the cloud workspace's durable VM is deferred.
 - **Real-time collaborative file editing / CRDT** — sync is one-way pull (cloud→local) + manifest;
   bi-directional conflict resolution is a follow-up.
 - **Real Vercel/cloud calls in CI** — the cloud `MirrorSource` adapter is behind the seam; tests
@@ -220,7 +228,7 @@ export async function mirror(source: MirrorSource, sink: MirrorSink): Promise<Sy
 3. A slept workspace retains its snapshot and wakes to resume from it (unit + integration).
 4. Cross-tenant access is impossible (IDOR integration test).
 5. `pnpm -C platform typecheck && lint && test && build` green; integration green.
-6. ADR-0032 + this spec + demo `docs/demos/32-cloud-sync-sharing.mp4`; PR links #55; **not** merged.
+6. ADR-0032 + this spec + demo script `scripts/demos/32-cloud-sync-sharing.sh` (the runnable proof; recorded video pending); PR links #55; **not** merged.
 
 ## Open questions
 - None blocking. The local mirror trigger is intentionally client-driven (the server exposes the

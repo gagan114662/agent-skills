@@ -131,4 +131,33 @@ describe("SandboxRuntime (#25 — provision → run → snapshot → teardown, a
     expect(result.snapshotId).toBe("snap_xyz");
     expect(result.snapshotId).not.toContain("sk-supersecret-value-123");
   });
+
+  it("threads the configured git source, the job cwd, and a resume snapshot into provider.create (#83/#82)", async () => {
+    const sandbox = new FakeSandbox({ autoComplete: true });
+    const provider = new FakeProvider(sandbox);
+    const source = { url: "https://github.com/acme/app.git", revision: "main" };
+
+    const running = await new SandboxRuntime(provider, { source }).start(
+      { ...job(), cwd: "/work/agent-7", snapshotId: "snap-resume" },
+      noopHooks,
+    );
+    await running.wait();
+
+    // The Conductor "agent on an isolated branch" clone + the provisioner's cwd + the #82 wake
+    // resume key all reach the provider — previously dead (clone-into-sandbox never wired).
+    expect(provider.lastCreate?.source).toEqual(source);
+    expect(provider.lastCreate?.cwd).toBe("/work/agent-7");
+    expect(provider.lastCreate?.snapshotId).toBe("snap-resume");
+  });
+
+  it("by default passes no git source, cwd, or resume snapshot (provisioning unchanged)", async () => {
+    const sandbox = new FakeSandbox({ autoComplete: true });
+    const provider = new FakeProvider(sandbox);
+
+    await (await new SandboxRuntime(provider).start(job(), noopHooks)).wait();
+
+    expect(provider.lastCreate?.source).toBeUndefined();
+    expect(provider.lastCreate?.cwd).toBeUndefined();
+    expect(provider.lastCreate?.snapshotId).toBeUndefined();
+  });
 });

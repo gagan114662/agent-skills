@@ -314,7 +314,7 @@ npx lhci autorun
 
 ## See Also
 
-For detailed performance checklists, optimization commands, and anti-pattern reference, see `references/performance-checklist.md`.
+For detailed performance checklists, optimization commands, and anti-pattern reference, see `${CLAUDE_PLUGIN_ROOT}/references/performance-checklist.md`.
 
 
 ## Common Rationalizations

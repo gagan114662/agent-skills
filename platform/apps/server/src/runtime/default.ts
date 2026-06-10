@@ -14,6 +14,7 @@ import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
 import { EnvSecretsResolver } from "./secrets-resolver.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
+import { harnessLineDecoder } from "./stream-json.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
@@ -90,6 +91,9 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     poster: channelPoster,
     secrets: new EnvSecretsResolver(),
     harness: { command: env.harnessCommand, args: env.harnessArgs },
+    // #81: decode the selected harness's stdout. `claude-code` emits stream-json (one JSON event per
+    // line) — without this the channel shows raw JSON blobs; `demo` is a verbatim pass-through.
+    decodeOutput: harnessLineDecoder(env.harness),
     caps: env.caps,
     logger,
     // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.

@@ -172,6 +172,16 @@ export async function getAgentSession(
   return row as AgentSession | undefined;
 }
 
+/** A session's current lifecycle status by id (#84): the autonomy loop reads it to close the loop. */
+export async function getAgentSessionStatus(id: string): Promise<SessionStatus | undefined> {
+  const [row] = await db
+    .select({ status: agentSessions.status })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, id))
+    .limit(1);
+  return row?.status as SessionStatus | undefined;
+}
+
 /** A session's finalized output tail (#53): the plan-mode run's proposed plan is parsed from it. */
 export async function getAgentSessionResult(id: string): Promise<string | null> {
   const [row] = await db

@@ -90,7 +90,11 @@ async function loadSdk(): Promise<VercelSdk> {
 }
 
 class VercelSandboxInstance implements SandboxInstance {
-  constructor(private readonly sandbox: VercelSandbox) {}
+  constructor(
+    private readonly sandbox: VercelSandbox,
+    /** Working dir for the harness inside the VM (#58/#51); undefined → the sandbox default. */
+    private readonly cwd?: string,
+  ) {}
 
   get id(): string {
     // `sandboxId` (docs) / `name` (SDK 2.1.x) / `id` (older) — read whichever the SDK provides.
@@ -104,7 +108,7 @@ class VercelSandboxInstance implements SandboxInstance {
   ): Promise<{ exitCode: number }> {
     // Detached so we can stream `logs()` live (resets the orchestrator's idle timer) and still
     // await the terminal exit code via `wait()`.
-    const cmd = await this.sandbox.runCommand({ cmd: command, args, detached: true });
+    const cmd = await this.sandbox.runCommand({ cmd: command, args, cwd: this.cwd, detached: true });
     for await (const log of cmd.logs()) {
       onOutput(log.stream, log.data);
     }
@@ -153,6 +157,6 @@ export class VercelSandboxProvider implements SandboxProvider {
       teamId: process.env.VERCEL_TEAM_ID,
       projectId: process.env.VERCEL_PROJECT_ID,
     });
-    return new VercelSandboxInstance(sandbox);
+    return new VercelSandboxInstance(sandbox, opts.cwd);
   }
 }

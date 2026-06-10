@@ -1,6 +1,7 @@
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
+import type { SandboxGitSource } from "./runtime/sandbox.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -21,6 +22,8 @@ export interface Env {
   cloud: CloudEnv;
   /** Local per-agent git worktree isolation + reaping (#70). */
   git: GitEnv;
+  /** Deploy agent-built apps to a live URL (#73). */
+  deploy: DeployEnv;
 }
 
 export interface GitEnv {
@@ -31,6 +34,22 @@ export interface GitEnv {
    * is configured (no repo → no worktrees → no reaper).
    */
   reapIntervalMs: number;
+}
+
+/** Which managed-hosting backend deploys agent-built apps (#73). */
+export type DeployProviderKind = "dryrun" | "vercel";
+
+export interface DeployEnv {
+  /**
+   * The deploy backend. Default `dryrun` (no cloud spend — a deterministic fake URL) so tests/CI/the
+   * demo run free. `vercel` enables the real adapter (its SDK is loaded lazily on first deploy).
+   */
+  provider: DeployProviderKind;
+  /**
+   * Health-monitor interval in ms. Default `0` = the background sweep is OFF (opt-in), mirroring the
+   * #17 autonomy loop / #55 cloud sweep — tests drive `checkHealth()` deterministically.
+   */
+  monitorIntervalMs: number;
 }
 
 export interface CloudEnv {
@@ -81,6 +100,12 @@ export interface AgentEnv {
   harnessArgs: string[];
   /** Hard per-session resource + wall-clock caps. */
   caps: ResourceCaps;
+  /**
+   * Optional repo cloned into each sandbox session (#83, Conductor "agent on an isolated branch").
+   * Resolved from `SANDBOX_REPO_URL`/`SANDBOX_REPO_REVISION`; undefined → an empty sandbox. Read by
+   * the sandbox backend only — `local`/`demo` (the default) ignores it.
+   */
+  sandboxSource?: SandboxGitSource;
 }
 
 function parseRuntime(value: string | undefined): RuntimeKind {
@@ -114,6 +139,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       const spec = harnessSpec(harness, {
         claudeBin: source.CLAUDE_BIN,
       });
+      // #83: a repo to clone into each sandbox session (agent-on-a-branch). Previously only the
+      // smoke script read these; now the server threads it into provider.create via the factory.
+      const repoUrl = source.SANDBOX_REPO_URL?.trim();
+      const repoRevision = source.SANDBOX_REPO_REVISION?.trim();
+      const sandboxSource: SandboxGitSource | undefined = repoUrl
+        ? { url: repoUrl, ...(repoRevision ? { revision: repoRevision } : {}) }
+        : undefined;
       return {
         profile,
         runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
@@ -127,6 +159,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
           idleMs: num(source.AGENT_IDLE_MS, 120_000),
           memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
         },
+        sandboxSource,
       };
     })(),
     autonomy: {
@@ -150,6 +183,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     git: {
       // Default 0 (off): the periodic worktree reaper is opt-in; a single startup sweep always runs.
       reapIntervalMs: Number(source.GIT_WORKTREE_REAP_INTERVAL_MS ?? 0) || 0,
+    },
+    deploy: {
+      // Default `dryrun`: no cloud spend. `vercel` enables the real adapter (lazy SDK load).
+      provider: source.DEPLOY_PROVIDER === "vercel" ? "vercel" : "dryrun",
+      // Default 0 (off): the health sweep is opt-in so tests/CI drive `checkHealth()` deterministically.
+      monitorIntervalMs: Number(source.DEPLOY_MONITOR_INTERVAL_MS ?? 0) || 0,
     },
   };
 }

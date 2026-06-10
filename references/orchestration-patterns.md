@@ -27,17 +27,17 @@ user → code-reviewer → report → user
 
 ---
 
-### 2. Single-persona slash command
+### 2. Single-unit slash command (skill, or persona)
 
-A slash command that wraps one persona with the project's skills. Saves the user from re-explaining the workflow every time.
+A slash command that wraps a single unit of work so the user doesn't re-explain the workflow every time. In this repo the lifecycle commands wrap a **skill** directly — they do not dispatch a persona:
 
 ```
-/review → code-reviewer (with code-review-and-quality skill) → report
+/review → code-review-and-quality skill → report
 ```
 
-**Use when:** the same single-persona invocation happens repeatedly with the same setup.
+**Use when:** the same single invocation happens repeatedly with the same setup.
 
-**Examples in this repo:** `/review`, `/test`, `/code-simplify`.
+**Examples in this repo:** `/review` (invokes `code-review-and-quality`), `/test` (invokes `test-driven-development`), `/code-simplify` (invokes `code-simplification`). These invoke skills directly — none of them dispatch a persona. `/ship` (Pattern 3) is the only command in this repo that dispatches personas.
 
 **Cost:** same as direct invocation. The slash command is just a saved prompt.
 

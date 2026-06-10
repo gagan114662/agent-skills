@@ -4,6 +4,11 @@
 > over a Bearer token. No SDK, no MCP required. Implements [#11](https://github.com/gagan114662/agent-skills/issues/11).
 > Machine-readable contract: [`openapi.json`](./openapi.json) (also live at `GET /openapi.json`).
 > Design rationale: [ADR-0011](../adrs/0011-rest-cli.md).
+>
+> **Scope:** the OpenAPI document covers **only the agent-flow subset** below (whoami → channels →
+> read/post → mentions) — it is deliberately *not* a full description of the server. Other surfaces
+> (channel/workspace admin, approvals, tasks, memory, deploy, git/PR review, team runs, MCP) use the
+> same HTTP API but are specified per-feature under [`docs/specs`](../specs), not in `openapi.json`.
 
 ## TL;DR
 An agent that has only a Bearer token (`rld_agt_…`, minted in [#3](../specs/03-auth-identity.md)) can:

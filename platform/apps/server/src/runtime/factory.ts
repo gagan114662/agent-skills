@@ -35,6 +35,13 @@ export function createRuntime(
 ): AgentRuntime {
   if (env.runtime === "sandbox") {
     const provider = sandboxProvider ?? new VercelSandboxProvider();
+    // #83: thread the configured git source (SANDBOX_REPO_URL/REVISION) so each session's sandbox
+    // clones the repo (agent-on-a-branch) instead of provisioning empty. SandboxRuntime passes this
+    // into the create opts, so it flows through the warm pool to the underlying provider on a miss.
+    const options = { source: env.sandboxSource };
+    // #71: wrap a warmable provider in the warm pool so launches bind from a pre-provisioned buffer
+    // instead of cold-creating. The default Vercel adapter is not warmable yet (a documented
+    // follow-up), so production stays cold; the mechanism + tests ship now, with no cloud spend.
     if (warmPool && warmPool.size > 0 && isWarmable(provider)) {
       return new SandboxRuntime(
         new WarmPool({
@@ -44,9 +51,10 @@ export function createRuntime(
           onHit: recordWarmHit,
           onMiss: recordWarmMiss,
         }),
+        options,
       );
     }
-    return new SandboxRuntime(provider);
+    return new SandboxRuntime(provider, options);
   }
   return new LocalRuntime();
 }

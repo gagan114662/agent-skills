@@ -9,6 +9,7 @@ import type {
   ApprovalRequestDto,
   CheckRunDto,
   ChecksStatus,
+  DeploymentDto,
   DiffMode,
   PreviewAnnotation,
   PullRequestDto,
@@ -356,6 +357,40 @@ export const api = {
       return post(`/channels/${channelId}/agent-sessions/${sessionId}/annotations`, {
         annotations,
       }) as Promise<{ sessionId: string; count: number }>;
+    },
+  },
+
+  // --- deploy to a live url (#73) ---
+  deploy: {
+    /** Deploy (or redeploy — a new immutable deployment) the session's app to a live HTTPS URL. */
+    start(channelId: string, sessionId: string, reason?: string): Promise<DeploymentDto> {
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/deploy`,
+        reason ? { reason } : undefined,
+      ) as Promise<DeploymentDto>;
+    },
+    /** Latest deployment state (status + url + redacted log tail); null when none yet. */
+    async status(channelId: string, sessionId: string): Promise<DeploymentDto | null> {
+      try {
+        return await request<DeploymentDto>(`/channels/${channelId}/agent-sessions/${sessionId}/deploy`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    /** Deployment history for the session, newest first (the backup set). */
+    history(channelId: string, sessionId: string): Promise<DeploymentDto[]> {
+      return request<DeploymentDto[]>(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/history`);
+    },
+    /** Roll back to the prior good deployment. */
+    rollback(channelId: string, sessionId: string): Promise<DeploymentDto> {
+      return post(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/rollback`) as Promise<DeploymentDto>;
+    },
+    /** One-click scaling (bounded server-side to the configured maxInstances). */
+    scale(channelId: string, sessionId: string, instances: number): Promise<{ ok: boolean }> {
+      return post(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/scale`, {
+        instances,
+      }) as Promise<{ ok: boolean }>;
     },
   },
 };

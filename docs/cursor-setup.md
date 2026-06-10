@@ -25,7 +25,7 @@ Create a `.cursorrules` file in your project root with the essential skills inli
 ```bash
 # Generate a combined rules file
 cat /path/to/agent-skills/skills/test-driven-development/SKILL.md > .cursorrules
-echo "\n---\n" >> .cursorrules
+printf '\n---\n' >> .cursorrules
 cat /path/to/agent-skills/skills/code-review-and-quality/SKILL.md >> .cursorrules
 ```
 

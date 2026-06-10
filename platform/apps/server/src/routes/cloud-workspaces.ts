@@ -25,10 +25,12 @@ const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
 
 /**
  * Persistent & shared cloud workspaces (#55, ADR-0032). A member creates a durable cloud
- * workspace (owner = implicit admin), can sleep/wake it (resume from the retained snapshot), and
- * can share it with scoped, revocable collaborators (#9 ladder). Access is collaborator-gated via
- * `requireCloudWorkspaceCapability`, which carries the #3 IDOR discipline (cross-tenant = 404).
- * Revoke cuts live access by publishing `access_revoked` on the #5 bus.
+ * workspace (owner = implicit admin), can sleep/wake it, and can share it with scoped, revocable
+ * collaborators (#9 ladder). Under the sandbox runtime (#82) sleep snapshots+stops the live
+ * microVM and wake resumes a durable sandbox from that snapshot; under the default local posture
+ * (no microVM) both are a status transition retaining the last snapshot. Access is
+ * collaborator-gated via `requireCloudWorkspaceCapability`, which carries the #3 IDOR discipline
+ * (cross-tenant = 404). Revoke cuts live access by publishing `access_revoked` on the #5 bus.
  */
 export async function cloudWorkspaceRoutes(
   app: FastifyInstance,
@@ -78,7 +80,8 @@ export async function cloudWorkspaceRoutes(
     return cw;
   });
 
-  // Sleep a cloud workspace (write capability). Snapshot retained for fast wake.
+  // Sleep a cloud workspace (write capability). Sandbox runtime: snapshot+stop the live microVM and
+  // record the snapshot as the resume key; local: status-only, retaining the last snapshot.
   app.post("/workspaces/:wid/cloud-workspaces/:id/sleep", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
@@ -90,7 +93,8 @@ export async function cloudWorkspaceRoutes(
     return state;
   });
 
-  // Wake a cloud workspace (write capability). Returns the snapshot to resume the next session.
+  // Wake a cloud workspace (write capability). Sandbox runtime: resume a durable microVM from the
+  // retained snapshot. Returns the snapshot the next session resumes from.
   app.post("/workspaces/:wid/cloud-workspaces/:id/wake", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;

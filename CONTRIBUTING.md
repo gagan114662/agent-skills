@@ -44,6 +44,16 @@ The frontmatter fields above are required. The section anatomy is a recommended 
 - Don't create an empty `scripts/` directory just to match another skill — add `scripts/` only when the skill includes runnable helpers
 - Don't put reference material inside skill directories — use `references/` instead
 
+### Validating
+
+Before opening a PR, run the skill validator:
+
+```bash
+node scripts/validate-skills.js
+```
+
+It checks that every skill has a `SKILL.md` with valid frontmatter (`name` matching the directory, `description` within the length limit) and the required sections. Equivalent headings such as `How It Works` are accepted for the opening section; skills with an intentionally different structure are exempted in `SECTION_EXEMPT_SKILLS` inside the script (with a documented reason). The same check runs in CI, so a green local run keeps the PR green.
+
 ## Modifying Existing Skills
 
 - Keep changes focused and minimal
@@ -67,7 +77,7 @@ Expected output: `session-start JSON payload OK`. The script exits non-zero on a
 
 ### Reproducing the no-jq fallback
 
-The hook gracefully degrades to an `INFO`-priority payload when `jq` isn't on `PATH`. To exercise that branch locally, strip `jq`'s directory from `PATH` for the test invocation:
+The hook gracefully degrades to a fallback `additionalContext` payload when `jq` isn't on `PATH`. To exercise that branch locally, strip `jq`'s directory from `PATH` for the test invocation:
 
 ```bash
 JQ_DIR=$(dirname "$(command -v jq)")
@@ -77,7 +87,7 @@ PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}$" | tr '\n' ':' | sed 's
 
 This works cleanly when `jq` lives in its own directory (e.g. `/opt/homebrew/bin` from Homebrew, `/usr/local/bin` from a manual install). If your `jq` shares a system bin with other tools the test depends on (such as `mktemp` in `/usr/bin`), the simpler approach is to install `jq` via a separate package manager so it has its own bin directory, then re-run.
 
-The hook's `command -v jq` check fails under the stripped `PATH`, the `INFO`-priority fallback runs, and the test asserts the `jq is required` guidance message instead of the normal payload.
+The hook's `command -v jq` check fails under the stripped `PATH`, the fallback branch runs, and the test asserts the `jq is required` guidance message inside `hookSpecificOutput.additionalContext` instead of the normal payload.
 
 ## Reporting Issues
 
