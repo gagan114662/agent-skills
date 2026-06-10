@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import type { DiffFileStat, DiffMode } from "@reload/shared";
 import { parseNumstat } from "./diff.js";
 import { SpawnGitRunner, type GitRunner } from "./runner.js";
@@ -152,6 +152,60 @@ export class GitWorkspaceService {
     await this.runner.run(["worktree", "remove", "--force", cwd], { cwd: this.cfg.repoRoot });
   }
 
+  /**
+   * The session ids that currently have a worktree registered with git **under `worktreesRoot`** (#70).
+   * Parses `git worktree list --porcelain` and keeps only worktrees whose parent dir is our root —
+   * compared by realpath so a `/tmp`↔`/private/tmp` symlink can't drop a match — so the reaper can
+   * never see (and thus never touch) the user's main checkout or an unrelated worktree. A worktree
+   * whose dir was deleted by a crash is still *registered* (git marks it prunable), so it is still
+   * listed here and gets reaped.
+   */
+  async listSessionWorktrees(): Promise<string[]> {
+    const porcelain = await this.git(this.cfg.repoRoot, ["worktree", "list", "--porcelain"]);
+    const rootReal = this.realpath(this.cfg.worktreesRoot);
+    const ids: string[] = [];
+    for (const line of porcelain.split("\n")) {
+      if (!line.startsWith("worktree ")) continue;
+      const path = line.slice("worktree ".length).trim();
+      if (this.realpath(dirname(path)) === rootReal) ids.push(basename(path));
+    }
+    return ids;
+  }
+
+  /**
+   * Reap one session's isolation — the teardown primitive (#70). Best-effort and idempotent: removes
+   * the worktree (`--force`, tolerating uncommitted edits), prunes git's registration (covers a crash
+   * where the dir vanished but git still lists it), and — unless `deleteBranch` is false — deletes the
+   * `agent/<sessionId>` branch. Each step is swallowed on failure so a half-gone crash state still
+   * converges to fully clean and a reap never throws.
+   */
+  async reapSession(sessionId: string, opts: { deleteBranch?: boolean } = {}): Promise<void> {
+    const cwd = this.worktreePathFor(sessionId);
+    await this.tryGit(this.cfg.repoRoot, ["worktree", "remove", "--force", cwd]);
+    await this.tryGit(this.cfg.repoRoot, ["worktree", "prune"]);
+    if (opts.deleteBranch !== false) {
+      await this.tryGit(this.cfg.repoRoot, ["branch", "-D", this.branchFor(sessionId)]);
+    }
+  }
+
+  /**
+   * Orphan sweep (#70): reap every session worktree under `worktreesRoot` that is **not** in `keep`,
+   * then prune. `keep` is the set of sessions the running process is still driving
+   * (`SessionManager.activeSessionIds`), so a live concurrent run is never reaped. On a cold boot the
+   * keep set is empty, so everything a crashed run left behind is cleaned. Returns the reaped ids.
+   */
+  async reapOrphans(keep: Iterable<string>): Promise<string[]> {
+    const keepSet = new Set(keep);
+    const reaped: string[] = [];
+    for (const id of await this.listSessionWorktrees()) {
+      if (keepSet.has(id)) continue;
+      await this.reapSession(id);
+      reaped.push(id);
+    }
+    await this.tryGit(this.cfg.repoRoot, ["worktree", "prune"]);
+    return reaped;
+  }
+
   /** True when HEAD has a parent commit (so a `turn` diff against HEAD~1 is valid). */
   private async hasParent(cwd: string): Promise<boolean> {
     const r = await this.runner.run(["rev-parse", "--verify", "HEAD~1"], { cwd });
@@ -165,5 +219,23 @@ export class GitWorkspaceService {
       throw new Error(`git ${args.join(" ")} failed (${r.code}): ${r.stderr.trim()}`);
     }
     return r.stdout;
+  }
+
+  /** Best-effort git: a non-zero exit (or spawn error) is swallowed — used by the idempotent reaper. */
+  private async tryGit(cwd: string, args: string[]): Promise<void> {
+    try {
+      await this.runner.run(args, { cwd });
+    } catch {
+      /* spawn failure (e.g. cwd gone) — reaping is best-effort, never fatal */
+    }
+  }
+
+  /** Resolve symlinks for a stable path compare; falls back to the input when the path doesn't exist. */
+  private realpath(p: string): string {
+    try {
+      return realpathSync(p);
+    } catch {
+      return p;
+    }
   }
 }

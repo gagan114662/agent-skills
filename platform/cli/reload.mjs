@@ -20,6 +20,8 @@
 //   reload mentions [--count]            GET  /me/mentions[/count]
 //   reload watch [--channel <id>]        WS   /ws — stream my mentions (+ a channel's messages)
 //   reload openapi                       GET  /openapi.json
+//   reload doctor                        GET  /preflight — validate the cloud + real-agent posture
+//   reload setup                         guided "zero → first cloud agent" checklist, then doctor
 //   reload help
 //
 // Global flags: --json (raw JSON output), --url <base>, --token <token>.
@@ -38,6 +40,8 @@ Commands:
   mentions [--count]              read (or count) my @mentions
   watch [--channel <id>]          stream my mentions live; --channel also streams that channel
   openapi                         print the OpenAPI 3.1 contract
+  doctor                          validate the cloud + real-agent posture (GET /preflight)
+  setup                           guided "zero → first cloud agent" checklist, then run doctor
   help                            show this help
 
 Flags:
@@ -198,10 +202,59 @@ const cmds = {
     ws.addEventListener("error", () => die("websocket error — is the server up?", 3));
   },
 
+  // Validate the deployment's cloud + real-agent posture (#69). Prints a ✓/⚠/✗ report from
+  // GET /preflight and exits non-zero when a check fails — so it can gate a setup script.
+  async doctor(_pos, flags, cfg) {
+    const report = await api("GET", "/preflight", cfg);
+    if (flags.json) return out(report, flags);
+    const icon = { pass: "✓", warn: "⚠", fail: "✗" };
+    console.log(
+      `\nPreflight — profile "${report.profile}" (runtime=${report.runtime}, harness=${report.harness})\n`,
+    );
+    for (const c of report.checks) {
+      console.log(`  ${icon[c.status] ?? "?"} ${String(c.name).padEnd(14)} ${c.message}`);
+      if (c.remedy && c.status !== "pass") console.log(`      ↳ ${c.remedy}`);
+    }
+    console.log(
+      report.ok
+        ? `\nOK — the "${report.profile}" posture is ready.\n`
+        : `\nNOT READY — fix the ✗ checks above, then re-run "reload doctor".\n`,
+    );
+    if (!report.ok) process.exit(1);
+  },
+
+  // Guided "zero → first cloud agent" checklist (#69), then run the live doctor.
+  async setup(pos, flags, cfg) {
+    process.stdout.write(SETUP_GUIDE);
+    if (!cfg.token) {
+      return die(
+        'set RELOAD_TOKEN (and RELOAD_API_URL) then re-run "reload doctor" to validate — see the guide above',
+      );
+    }
+    process.stdout.write("Running the live posture check…\n");
+    await cmds.doctor(pos, flags, cfg);
+  },
+
   help() {
     process.stdout.write(HELP);
   },
 };
+
+const SETUP_GUIDE = `
+reload setup — enable cloud + a real agent (zero → first cloud agent)
+
+  1. Pick the cloud posture:    export RELOAD_PROFILE=prod   (sandbox + claude-code)
+  2. Authenticate Vercel:       VERCEL_OIDC_TOKEN  (vercel link && vercel env pull)
+                                — or —  VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID
+     Install the sandbox SDK:   pnpm --filter @reload/server add @vercel/sandbox
+  3. Authenticate the agent:    claude login   — or —   export ANTHROPIC_API_KEY=...
+                                (Bedrock/Vertex: set CLAUDE_CODE_USE_BEDROCK / _USE_VERTEX)
+  4. Validate before any run:   pnpm -C platform --filter @reload/server preflight
+  5. Then verify the server:    reload doctor
+
+Full guide: platform/docs/guides/cloud-setup.md
+
+`;
 
 // Fallback for runtimes without a global WebSocket: poll mentions and print new ones.
 async function watchByPolling(flags, cfg) {

@@ -15,6 +15,8 @@ import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
+import { preflightRoutes } from "./routes/preflight.js";
+import type { PreflightReport } from "./runtime/preflight.js";
 import {
   integrationsRoutes,
   defaultIntegrationsOptions,
@@ -37,6 +39,7 @@ import { createDefaultRunProcessManager } from "./run/default.js";
 import type { RunProcessManager } from "./run/manager.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
+import { GitWorktreeReaper } from "./git/reaper.js";
 import { createGitHubProvider } from "./github/factory.js";
 import type { GitHubProvider } from "./github/provider.js";
 import { createDefaultTeamCoordinator } from "./team/default.js";
@@ -57,6 +60,11 @@ declare module "fastify" {
     autonomyEngine: AutonomyEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
+    /**
+     * The #70 git-worktree reaper; present only when a git repo is configured (`GIT_WORKSPACE_REPO`).
+     * `index.ts` runs one sweep on boot (cleaning crash leftovers) + an opt-in periodic sweep.
+     */
+    gitWorktreeReaper?: GitWorktreeReaper;
   }
 }
 
@@ -98,6 +106,8 @@ export interface BuildAppOptions {
    * Default builds a fresh one (all caps off → unchanged #25 behavior).
    */
   scale?: Scale;
+  /** #69 preflight/doctor: tests inject a report; default runs the live host-env check. */
+  preflight?: () => PreflightReport;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -153,6 +163,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
   app.register(agentSessionRoutes, { sessionManager });
   app.register(scaleRoutes, { admission: scale.admission, config: scale.config });
+  // #69 preflight/doctor: GET /preflight reports whether the configured cloud + real-agent posture
+  // is runnable (auth + harness availability), backing `reload doctor`. Secret-free (names only).
+  app.register(preflightRoutes, { preflight: opts.preflight });
   // #57 deep dev integrations: issue→session, project slash commands, agent-config sync. Reuses the
   // same SessionManager and the base-launch gating; provider tokens stay on the #25 secrets path.
   app.register(
@@ -181,6 +194,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const gitWorkspace = opts.gitWorkspace ?? createGitWorkspaceFromEnv();
   const gitHubProvider = opts.gitHubProvider ?? createGitHubProvider();
   app.register(gitReviewRoutes, { sessionManager, gitWorkspace, gitHubProvider });
+  // #70 local worktree isolation: when a git repo is configured each session runs in its own worktree
+  // (#51); the reaper removes those whose session this process is no longer driving. `index.ts` sweeps
+  // once on boot (clearing crash leftovers — "no orphans after a crash/restart") + on an opt-in timer.
+  // The keep-set is the SessionManager's live ids, so a concurrent run is never reaped.
+  if (gitWorkspace) {
+    app.decorate("gitWorktreeReaper", new GitWorktreeReaper(gitWorkspace, sessionManager, app.log));
+  }
   // #53 plan mode, checkpoints & steering: an agent proposes a plan (work blocks until a human
   // approves / approves-with-feedback / rejects), each turn is a revertible checkpoint (files + chat),
   // and a live session can be steered. Reuses the SessionManager (plan = two launches with a gate) and

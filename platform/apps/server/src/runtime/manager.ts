@@ -13,6 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
+import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
@@ -80,6 +81,13 @@ export interface SessionManagerDeps {
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
+  /**
+   * Optional preflight gate (#69): validates the deployment's posture (cloud auth + harness
+   * availability) before a launch persists or touches the runtime. When `!ok`, `launch()` throws a
+   * {@link PreflightError} before any cloud call. Absent → no gate (today's behavior); the default
+   * `local`/`demo` posture always passes, so wiring it in production changes nothing for that path.
+   */
+  preflight?: () => PreflightReport;
   /**
    * Optional workspace seam (#58): prepares a per-session working dir + copies files-to-copy into
    * it before the runtime starts. When absent, the harness inherits the server cwd (#25 behavior).
@@ -165,8 +173,27 @@ export class SessionManager {
     return this.running.size;
   }
 
+  /**
+   * The ids of the sessions this process is currently driving (#70) — the git-worktree reaper's
+   * keep-set, so it never reaps a live run's worktree. Backed by `runs` (set synchronously in
+   * {@link launch}, deleted at teardown), NOT `running` (set only *after* the workspace is
+   * provisioned): this covers the provision→start window too, so a periodic sweep can't race a
+   * session whose worktree exists but whose runtime hasn't attached yet.
+   */
+  get activeSessionIds(): string[] {
+    return [...this.runs.keys()];
+  }
+
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
+    // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
+    // a row, acquire an admission slot, or make any runtime/cloud call — so a half-broken session
+    // never starts. The default local/demo posture always passes; no gate wired (unit tests) = no-op.
+    if (this.deps.preflight) {
+      const report = this.deps.preflight();
+      if (!report.ok) throw new PreflightError(report);
+    }
+
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
     // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
     // no admission is wired this is a no-op and the session is unplaced (today's #25 behavior).
@@ -196,6 +223,7 @@ export class SessionManager {
       ticket?.release();
       throw err;
     }
+
 
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
