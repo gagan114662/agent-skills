@@ -13,6 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
+import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
@@ -76,6 +77,13 @@ export interface SessionManagerDeps {
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
+  /**
+   * Optional preflight gate (#69): validates the deployment's posture (cloud auth + harness
+   * availability) before a launch persists or touches the runtime. When `!ok`, `launch()` throws a
+   * {@link PreflightError} before any cloud call. Absent → no gate (today's behavior); the default
+   * `local`/`demo` posture always passes, so wiring it in production changes nothing for that path.
+   */
+  preflight?: () => PreflightReport;
   /**
    * Optional workspace seam (#58): prepares a per-session working dir + copies files-to-copy into
    * it before the runtime starts. When absent, the harness inherits the server cwd (#25 behavior).
@@ -151,6 +159,13 @@ export class SessionManager {
 
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
+    // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
+    // a row or make any runtime/cloud call — so a half-broken session never starts. The default
+    // local/demo posture always passes; when no gate is wired (unit tests) this is a no-op.
+    if (this.deps.preflight) {
+      const report = this.deps.preflight();
+      if (!report.ok) throw new PreflightError(report);
+    }
     const session = await this.deps.store.create({
       workspaceId: input.workspaceId,
       channelId: input.channelId,

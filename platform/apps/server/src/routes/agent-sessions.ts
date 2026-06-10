@@ -6,6 +6,7 @@ import { addChannelMember } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { getAgentSession, listAgentSessions } from "../db/repositories/agent-sessions.js";
 import type { SessionManager } from "../runtime/manager.js";
+import { PreflightError } from "../runtime/preflight.js";
 import { loadConfig } from "../config/loader.js";
 import {
   modelPolicyFromConfig,
@@ -94,24 +95,34 @@ export async function agentSessionRoutes(
       grantedByMemberId: id.memberId,
     });
 
-    const session = await sessionManager.launch({
-      workspaceId: id.workspaceId,
-      channelId: cid,
-      agentMemberId: target.id,
-      createdByMemberId: id.memberId,
-      task: b.task,
-      // #52: the secret-free selection env (provider flags, model, thinking budget) rides the same
-      // injection-safe seam as the task/persona; the metadata is persisted on the row for audit.
-      harnessEnv: selection?.env,
-      selection: selection
-        ? {
-            provider: selection.provider,
-            model: selection.model,
-            effort: selection.effort,
-            mode: selection.mode,
-          }
-        : undefined,
-    });
+    let session;
+    try {
+      session = await sessionManager.launch({
+        workspaceId: id.workspaceId,
+        channelId: cid,
+        agentMemberId: target.id,
+        createdByMemberId: id.memberId,
+        task: b.task,
+        // #52: the secret-free selection env (provider flags, model, thinking budget) rides the same
+        // injection-safe seam as the task/persona; the metadata is persisted on the row for audit.
+        harnessEnv: selection?.env,
+        selection: selection
+          ? {
+              provider: selection.provider,
+              model: selection.model,
+              effort: selection.effort,
+              mode: selection.mode,
+            }
+          : undefined,
+      });
+    } catch (err) {
+      // #69: a misconfigured cloud/real-agent posture is caught by preflight BEFORE any cloud call
+      // or persisted row — surface it as a 412 with the actionable, secret-free report (names only).
+      if (err instanceof PreflightError) {
+        return reply.code(412).send({ error: err.message, preflight: err.report });
+      }
+      throw err;
+    }
     // 202: accepted and running server-side; the client can disconnect now.
     return reply.code(202).send({
       id: session.id,
