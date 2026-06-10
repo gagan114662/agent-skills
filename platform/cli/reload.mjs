@@ -22,6 +22,7 @@
 //   reload openapi                       GET  /openapi.json
 //   reload doctor                        GET  /preflight — validate the cloud + real-agent posture
 //   reload setup                         guided "zero → first cloud agent" checklist, then doctor
+//   reload maintenance <on|off|status>   GET/POST /maintenance — instant read-only mode (#99)
 //   reload help
 //
 // Global flags: --json (raw JSON output), --url <base>, --token <token>.
@@ -42,6 +43,7 @@ Commands:
   openapi                         print the OpenAPI 3.1 contract
   doctor                          validate the cloud + real-agent posture (GET /preflight)
   setup                           guided "zero → first cloud agent" checklist, then run doctor
+  maintenance <on|off|status>     flip instant read-only maintenance mode (#99) [reason...]
   help                            show this help
 
 Flags:
@@ -233,6 +235,30 @@ const cmds = {
     }
     process.stdout.write("Running the live posture check…\n");
     await cmds.doctor(pos, flags, cfg);
+  },
+
+  // Flip instant read-only maintenance mode (#99). `status` reads the flag; `on`/`off` toggle it
+  // (an authenticated operator action). The control route is exempt from the write-gate, so `off`
+  // works even while maintenance is on.
+  async maintenance(pos, flags, cfg) {
+    const sub = pos[0] ?? "status";
+    const render = (s) =>
+      console.log(
+        s.enabled
+          ? `maintenance: ON${s.since ? ` since ${s.since}` : ""}${s.reason ? ` — ${s.reason}` : ""}${
+              s.by ? ` (by ${s.by})` : ""
+            }${s.unavailable ? " [flag store UNAVAILABLE — gate fails open]" : ""}`
+          : `maintenance: OFF${s.unavailable ? " [flag store UNAVAILABLE — gate fails open]" : ""}`,
+      );
+    if (sub === "status") {
+      return out(await api("GET", "/maintenance", cfg), flags, render);
+    }
+    if (sub === "on" || sub === "off") {
+      const reason = pos.slice(1).join(" ") || undefined;
+      const body = { on: sub === "on", ...(reason ? { reason } : {}) };
+      return out(await api("POST", "/maintenance", cfg, body), flags, render);
+    }
+    die("usage: reload maintenance <on|off|status> [reason...]");
   },
 
   help() {

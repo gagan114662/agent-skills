@@ -81,6 +81,14 @@ export interface AutonomyEngineDeps {
   completionPolicies?: (workspaceId: string) => Promise<CompletionPolicyRule[]>;
   /** Loop-guard ceiling override (defaults to the engine's safe default). */
   loopGuardMax?: number;
+  /**
+   * Optional maintenance-pause check (#99, ADR-0099). When it resolves true, `tickAll()` skips the
+   * whole pass BEFORE any DB call — the autonomy loop pauses on the same Redis flag the HTTP
+   * write-gate reads. Absent ⇒ never paused (unchanged behaviour).
+   */
+  maintenancePaused?: () => Promise<boolean>;
+  /** Workspace lister override (defaults to the repository fn); tests inject a spy. */
+  listActiveWorkspaces?: () => Promise<string[]>;
 }
 
 /** Compose the task/prompt handed to the harness for a stage (data, never argv). */
@@ -128,7 +136,14 @@ export class AutonomyEngine {
 
   /** One pass over every workspace that currently has a running workflow. */
   async tickAll(): Promise<void> {
-    const workspaceIds = await listActiveWorkflowWorkspaces();
+    // #99: maintenance pauses the loop on the same Redis flag the HTTP write-gate reads. Checked
+    // BEFORE any DB call so a maintenance window stops all autonomy work immediately.
+    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+      this.deps.logger.warn({}, "autonomy tickAll skipped: maintenance mode active");
+      return;
+    }
+    const listWorkspaces = this.deps.listActiveWorkspaces ?? listActiveWorkflowWorkspaces;
+    const workspaceIds = await listWorkspaces();
     for (const workspaceId of workspaceIds) {
       try {
         await this.tick(workspaceId);

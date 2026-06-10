@@ -2,6 +2,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import { newId } from "./db/id.js";
 import { registerObservability } from "./observability/plugin.js";
+import { registerMaintenance } from "./maintenance/gate.js";
+import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
@@ -142,6 +144,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.register(cookie);
   registerObservability(app);
+  // #99 disaster recovery: a root write-gate that rejects writes (503) while the platform is in
+  // maintenance mode (a Redis flag, read per-request — flips in seconds with no redeploy). Installed
+  // directly on the root like observability so it covers every route plugin. Reads always pass; an
+  // unavailable Redis fails OPEN (never a write outage). ADR-0099 §1.
+  registerMaintenance(app);
   // #71: map an admission denial (thrown by any launch path through SessionManager) to a clean HTTP
   // status — 402 for a budget breach, 429 for a hard stop / capacity — with a content-free reason.
   // A non-admission error falls through to Fastify's default handling (unchanged behavior).
@@ -158,6 +165,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     return reply.send(err);
   });
   app.register(healthRoutes);
+  // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
+  app.register(maintenanceRoutes);
   app.register(authRoutes);
   app.register(meRoutes);
   // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.

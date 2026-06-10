@@ -123,6 +123,49 @@ follow-up [#18](https://github.com/gagan114662/agent-skills/issues/18)). See
 [ADR-0030](docs/adrs/0030-plan-checkpoints-steering.md); demo:
 `scripts/demos/30-plan-checkpoints-steering.sh`.
 
+## Disaster recovery
+
+The whole portfolio shares one Postgres, so DR is built to the **3-2-1 rule** with agent-operated
+backups, an instant maintenance switch, and a continuously-rehearsed restore runbook
+([#99](https://github.com/gagan114662/agent-skills/issues/99), [ADR-0099](docs/adrs/0099-disaster-recovery.md)).
+
+- **Off-site dumps** — `.github/workflows/dr-backup.yml` (hourly cron + manual `workflow_dispatch`)
+  runs `pg_dump | gzip` and uploads to **vendor-independent**, S3-compatible object storage
+  (Cloudflare R2 / Backblaze B2 / MinIO / AWS S3, selected by `AWS_ENDPOINT_URL`). Bucket creds are
+  least-privilege, **write-scoped** repo secrets, referenced by name and never logged.
+- **Instant maintenance mode** — a Redis flag, checked per request, flips in **seconds with no
+  redeploy**: web + API reject writes (`503`), and the autonomy/cron/deploy loops pause. It **fails
+  open** (an unreachable Redis admits writes rather than locking the platform read-only — deliberate;
+  the flag lives in Redis, not Postgres, so you can flip it while Postgres is unhealthy). Flip it with:
+  ```
+  reload maintenance on "DR restore in progress"   # GET/POST /maintenance
+  reload maintenance status
+  reload maintenance off
+  ```
+- **RESTORE runbook** — [docs/playbooks/restore-runbook.md](docs/playbooks/restore-runbook.md).
+  **VALIDATION** (default, non-destructive: restore the latest dump into a throwaway DB, verify, report)
+  via `pnpm --filter @reload/server dr:drill`. **DISASTER** (destructive) requires an explicit `dr.restore`
+  **human approval** (#13) and is **never agent-initiated**; order is triage → pre-flight (abort with no
+  outage) → maintenance ON → snapshot-first → restore → verify → only-then maintenance OFF → report, with
+  a hard gate: a failed verification leaves maintenance ON and stops.
+- **Scheduled drill** — `.github/workflows/dr-drill.yml` restores into a throwaway Postgres service
+  container and runs the sanity suite daily, **failing loudly** — catching corrupt dumps / pipeline
+  breakage on a Tuesday, not at 2 a.m.
+- **PITR** — on managed Postgres (Neon preferred) use provider PITR/branching for minute-level RPO; the
+  dump is the off-site 3-2-1 copy. Local/compose is **dump-only** (stated honestly).
+
+### RPO / RTO
+
+| Metric | Target | Basis |
+|--------|--------|-------|
+| RPO (managed, Neon PITR) | ≤ 5 min | provider WAL retention |
+| RPO (dump-only fallback) | ≤ backup interval (**hourly** default) | the dump cadence, not the cron string |
+| RTO (VALIDATION drill) | minutes | measured by the drill each run |
+| RTO (DISASTER restore) | ≤ 30 min (shared DB) | rehearsed via the runbook |
+
+The real RPO is the dump **duration + cadence**, not the cron expression — the backup workflow logs
+the **measured** dump time + byte size on every run, and the drill logs the **measured** restore time.
+
 ## Conventions
 
 Every change follows the agent-skills lifecycle: **DEFINE** (spec) → **PLAN** →
