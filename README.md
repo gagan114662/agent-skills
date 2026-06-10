@@ -22,6 +22,8 @@ Skills encode the workflows, quality gates, and best practices that senior engin
 | Simplify the code | `/code-simplify` | Clarity over cleverness |
 | Ship to production | `/ship` | Faster is safer |
 
+> **Gemini CLI:** `/plan` is exposed as `/planning` (`/plan` conflicts with a Gemini CLI internal command). All other command names are identical. See [docs/gemini-cli-setup.md](docs/gemini-cli-setup.md).
+
 Skills also activate automatically based on what you're doing — designing an API triggers `api-and-interface-design`, building UI triggers `frontend-ui-engineering`, and so on.
 
 ---
@@ -34,20 +36,20 @@ Skills also activate automatically based on what you're doing — designing an A
 **Marketplace install:**
 
 ```
-/plugin marketplace add addyosmani/agent-skills
+/plugin marketplace add gagan114662/agent-skills
 /plugin install agent-skills@addy-agent-skills
 ```
 
 > **SSH errors?** The marketplace clones repos via SSH. If you don't have SSH keys set up on GitHub, either [add your SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) or use the full HTTPS URL to force the HTTPS cloning:
 > ```bash
-> /plugin marketplace add https://github.com/addyosmani/agent-skills.git
+> /plugin marketplace add https://github.com/gagan114662/agent-skills.git
 > /plugin install agent-skills@addy-agent-skills
 > ```
 
 **Local / development:**
 
 ```bash
-git clone https://github.com/addyosmani/agent-skills.git
+git clone https://github.com/gagan114662/agent-skills.git
 claude --plugin-dir /path/to/agent-skills
 ```
 
@@ -68,7 +70,7 @@ Install as native skills for auto-discovery, or add to `GEMINI.md` for persisten
 **Install from the repo:**
 
 ```bash
-gemini skills install https://github.com/addyosmani/agent-skills.git --path skills
+gemini skills install https://github.com/gagan114662/agent-skills.git --path skills
 ```
 
 **Install from a local clone:**
@@ -204,12 +206,13 @@ Quick-reference material that skills pull in when needed:
 | [security-checklist.md](references/security-checklist.md) | Pre-commit checks, auth, input validation, headers, CORS, OWASP Top 10 |
 | [performance-checklist.md](references/performance-checklist.md) | Core Web Vitals targets, frontend/backend checklists, measurement commands |
 | [accessibility-checklist.md](references/accessibility-checklist.md) | Keyboard nav, screen readers, visual design, ARIA, testing tools |
+| [orchestration-patterns.md](references/orchestration-patterns.md) | Persona/skill/command composition, parallel fan-out, anti-patterns |
 
 ---
 
 ## How Skills Work
 
-Every skill follows a consistent anatomy:
+Most skills follow a consistent anatomy (the `using-agent-skills` meta-skill and `idea-refine` use a lighter structure suited to their purpose):
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -232,8 +235,8 @@ Every skill follows a consistent anatomy:
 **Key design choices:**
 
 - **Process, not prose.** Skills are workflows agents follow, not reference docs they read. Each has steps, checkpoints, and exit criteria.
-- **Anti-rationalization.** Every skill includes a table of common excuses agents use to skip steps (e.g., "I'll add tests later") with documented counter-arguments.
-- **Verification is non-negotiable.** Every skill ends with evidence requirements - tests passing, build output, runtime data. "Seems right" is never sufficient.
+- **Anti-rationalization.** Most skills include a table of common excuses agents use to skip steps (e.g., "I'll add tests later") with documented counter-arguments.
+- **Verification is non-negotiable.** Standard skills end with evidence requirements - tests passing, build output, runtime data. "Seems right" is never sufficient.
 - **Progressive disclosure.** The `SKILL.md` is the entry point. Supporting references load only when needed, keeping token usage minimal.
 
 ---
@@ -267,7 +270,7 @@ agent-skills/
 │   ├── shipping-and-launch/           #   Ship
 │   └── using-agent-skills/            #   Meta: how to use this pack
 ├── agents/                            # 3 specialist personas
-├── references/                        # 4 supplementary checklists
+├── references/                        # 5 supplementary references
 ├── hooks/                             # Session lifecycle hooks
 ├── .claude/commands/                  # 7 slash commands (Claude Code)
 ├── .gemini/commands/                  # 7 slash commands (Gemini CLI)
