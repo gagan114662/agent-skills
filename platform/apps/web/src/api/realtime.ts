@@ -11,6 +11,7 @@
  * without a real network.
  */
 import type { ClientCommand, ServerEvent } from "./types.js";
+import { wsUrl } from "./config.js";
 
 /** Minimal structural type satisfied by the browser `WebSocket`. */
 export interface RealtimeSocket {
@@ -39,9 +40,7 @@ export interface Realtime {
 }
 
 function defaultUrl(): string {
-  if (typeof window === "undefined") return "ws://localhost/ws";
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/ws`;
+  return wsUrl("/ws");
 }
 
 function defaultFactory(url: string): RealtimeSocket {

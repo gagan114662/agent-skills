@@ -8,6 +8,9 @@ build/
 !.env.example
 coverage/
 
+# Vercel CLI link/build artifacts (#108)
+.vercel/
+
 # conductor workspace scratch
 .context/
 .conductor/
