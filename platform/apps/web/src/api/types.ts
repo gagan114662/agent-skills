@@ -181,6 +181,57 @@ export interface UsageReport {
   overBudget: boolean;
 }
 
+/**
+ * The Founder Console roll-up (#104), from `GET /workspaces/:wid/founder-console`. A read-only
+ * aggregation: fleet status, the venture pipeline (#96), revenue/willingness-to-pay (#98), budget
+ * burn (#71), the pending #13 approval queue (with decision-SLA ages), and the safety switches.
+ * Mirrors the server `FounderConsole` shape (kept in lock-step by hand — no codegen).
+ */
+export interface FounderConsoleDto {
+  workspaceId: string;
+  generatedAtMs: number;
+  fleet: { activeSessions: number; sessionsThisWindow: number; globalInFlight: number };
+  venturePipeline: {
+    total: number;
+    active: number;
+    funded: number;
+    killed: number;
+    /** Borderline calls awaiting human judgment (terminal verdict ESCALATE). */
+    escalated: number;
+  };
+  revenue: {
+    currency: string;
+    totalCents: number;
+    paymentCount: number;
+    willingnessToPayCount: number;
+    hasWillingnessToPay: boolean;
+  };
+  budget: {
+    window: string;
+    estimatedCostCents: number;
+    budgetCents: number;
+    overBudget: boolean;
+    /** Spent / cap as a fraction; null when no positive cap is set. */
+    utilization: number | null;
+  };
+  /** The pending #13 queue, oldest-first (longest-waiting = highest priority). */
+  pendingApprovals: {
+    id: string;
+    actionType: string;
+    summary: string;
+    amount: number | null;
+    /** Time in queue, in seconds (the decision SLA). */
+    ageSeconds: number;
+    createdAtMs: number;
+  }[];
+  switches: {
+    killSwitch: boolean;
+    maintenance: { enabled: boolean; since?: string; reason?: string; unavailable?: boolean };
+  };
+  /** Whether the platform needs a human right now, and why. */
+  attention: { required: boolean; reasons: string[] };
+}
+
 /** Events the `/ws` gateway sends to the client. */
 export type ServerEvent =
   | { type: "ready"; memberId: string; workspaceId: string }
