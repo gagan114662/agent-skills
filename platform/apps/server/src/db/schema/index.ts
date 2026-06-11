@@ -37,4 +37,5 @@ export * from "./portfolio.js";
 export * from "./planning.js";
 export * from "./constitution.js";
 export * from "./agent-credentials.js";
+export * from "./automations.js";
 export * from "./eval-runs.js";

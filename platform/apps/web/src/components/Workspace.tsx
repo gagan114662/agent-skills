@@ -14,12 +14,24 @@ import { DeployPanel } from "./deploy/DeployPanel.js";
 import { FounderPanel } from "./FounderPanel.js";
 import { PricingPanel } from "./PricingPanel.js";
 import { ConnectClaudePanel } from "./ConnectClaudePanel.js";
+import { AutomationsPanel } from "./automations/AutomationsPanel.js";
+import { MissionControlPanel } from "./MissionControlPanel.js";
+import { AuditPanel } from "./AuditPanel.js";
 
 // Product chrome surfaces only. Review/Run/Usage stay reachable for operators via the existing
 // API/routes (and their panel components remain), but are no longer part of the product nav (#122).
 // Pricing (#125) is the customer-facing plan + checkout surface. Settings (#68) is where the owner
 // connects their own Claude subscription so the fleet agents actually run.
-type View = "chat" | "approvals" | "deploy" | "founder" | "pricing" | "settings";
+type View =
+  | "chat"
+  | "approvals"
+  | "deploy"
+  | "founder"
+  | "automations"
+  | "mission"
+  | "audit"
+  | "pricing"
+  | "settings";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
@@ -30,6 +42,12 @@ export function Workspace(): React.JSX.Element {
       <div className="workspace__view view-fade" key={view}>
         {view === "founder" ? (
           <FounderPanel />
+        ) : view === "automations" ? (
+          <AutomationsPanel />
+        ) : view === "mission" ? (
+          <MissionControlPanel />
+        ) : view === "audit" ? (
+          <AuditPanel />
         ) : view === "settings" ? (
           <ConnectClaudePanel />
         ) : view === "pricing" ? (
@@ -87,6 +105,27 @@ function TopBar({
           onClick={() => onSelectView("founder")}
         >
           Founder
+        </button>
+        <button
+          className={`topbar__navbtn${view === "automations" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "automations"}
+          onClick={() => onSelectView("automations")}
+        >
+          Automations
+        </button>
+        <button
+          className={`topbar__navbtn${view === "mission" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "mission"}
+          onClick={() => onSelectView("mission")}
+        >
+          Mission
+        </button>
+        <button
+          className={`topbar__navbtn${view === "audit" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "audit"}
+          onClick={() => onSelectView("audit")}
+        >
+          Audit
         </button>
         <button
           className={`topbar__navbtn${view === "approvals" ? " topbar__navbtn--active" : ""}`}

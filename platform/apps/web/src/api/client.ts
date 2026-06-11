@@ -23,6 +23,9 @@ import type {
 import type {
   AgentProfile,
   AgentSessionSummary,
+  AuditEventDto,
+  AutomationDto,
+  AutomationRunDto,
   Channel,
   CredentialStatus,
   EffortLevel,
@@ -31,10 +34,12 @@ import type {
   MemberHit,
   MentionItem,
   Message,
+  MissionControlDto,
   ProviderKind,
   SearchEnvelope,
   SessionMode,
   StatusPageDto,
+  TaskTemplateDto,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -464,6 +469,49 @@ export const api = {
       return post(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/scale`, {
         instances,
       }) as Promise<{ ok: boolean }>;
+    },
+  },
+
+  // --- Ona-class agent infrastructure (#147) ---
+  /** The task-template gallery; pass a channel id to scope it to that channel's department. */
+  getTaskTemplates(workspaceId: string, channelId?: string): Promise<TaskTemplateDto[]> {
+    const qs = channelId ? `?channel=${encodeURIComponent(channelId)}` : "";
+    return request<TaskTemplateDto[]>(`/workspaces/${workspaceId}/task-templates${qs}`);
+  },
+  automations: {
+    list(workspaceId: string): Promise<AutomationDto[]> {
+      return request<AutomationDto[]>(`/workspaces/${workspaceId}/automations`);
+    },
+    create(workspaceId: string, input: Record<string, unknown> & { name: string }): Promise<AutomationDto> {
+      return post(`/workspaces/${workspaceId}/automations`, input) as Promise<AutomationDto>;
+    },
+    setEnabled(workspaceId: string, id: string, enabled: boolean): Promise<AutomationDto> {
+      return post(`/workspaces/${workspaceId}/automations/${id}/enable`, { enabled }) as Promise<AutomationDto>;
+    },
+    run(workspaceId: string, id: string): Promise<AutomationRunDto> {
+      return post(`/workspaces/${workspaceId}/automations/${id}/run`) as Promise<AutomationRunDto>;
+    },
+    remove(workspaceId: string, id: string): Promise<unknown> {
+      return del(`/workspaces/${workspaceId}/automations/${id}`);
+    },
+  },
+  /** The append-only audit trail (who/what/when/gated-by), newest first. */
+  getAudit(workspaceId: string): Promise<AuditEventDto[]> {
+    return request<AuditEventDto[]>(`/workspaces/${workspaceId}/audit`);
+  },
+  missionControl: {
+    get(workspaceId: string): Promise<MissionControlDto> {
+      return request<MissionControlDto>(`/workspaces/${workspaceId}/mission-control`);
+    },
+    stop(workspaceId: string, sessionId: string): Promise<{ canceled: boolean }> {
+      return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/stop`) as Promise<{
+        canceled: boolean;
+      }>;
+    },
+    steer(workspaceId: string, sessionId: string, guidance: string): Promise<{ delivered: boolean }> {
+      return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/steer`, {
+        guidance,
+      }) as Promise<{ delivered: boolean }>;
     },
   },
 };

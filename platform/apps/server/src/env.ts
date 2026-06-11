@@ -32,6 +32,8 @@ export interface Env {
   insight: InsightEnv;
   /** Product Planning Loop scheduled tick (#115). */
   planning: PlanningEnv;
+  /** Automations scheduled tick (#147). */
+  automations: AutomationsEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -164,6 +166,11 @@ export interface PlanningEnv {
   intervalMs: number;
 }
 
+export interface AutomationsEnv {
+  /** Automations-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #147). */
+  intervalMs: number;
+}
+
 export interface NotifyEnv {
   /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
   webhookUrl?: string;
@@ -280,6 +287,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     planning: {
       // Default 0 (off): the planning loop is opt-in so tests/CI drive `tick()` deterministically.
       intervalMs: Number(source.PLANNING_INTERVAL_MS ?? 0) || 0,
+    },
+    automations: {
+      // Default 0 (off): the automations loop is opt-in so tests/CI drive `tickAll()` deterministically.
+      intervalMs: Number(source.AUTOMATIONS_INTERVAL_MS ?? 0) || 0,
     },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.

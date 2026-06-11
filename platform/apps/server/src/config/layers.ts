@@ -70,6 +70,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
     if (layer.planning !== undefined) out.planning = { ...layer.planning };
+    // #147 automations policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // automations flag / run caps cannot be loosened by a lower layer.
+    if (layer.automations !== undefined) out.automations = { ...layer.automations };
     // #146 constitution policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's constitution flag / thresholds cannot be loosened (e.g. enforcement turned off) by a
     // lower layer.
@@ -113,6 +116,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
     portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
+    automations: merged.automations ?? { ...CONFIG_DEFAULTS.automations },
     constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
     fleet: merged.fleet ?? { ...CONFIG_DEFAULTS.fleet },
   };
