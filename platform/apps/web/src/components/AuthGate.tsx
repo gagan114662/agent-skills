@@ -17,6 +17,8 @@ type Mode = "login" | "signup";
 
 // Code-split the marketing site: signed-in users never download it.
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
+// #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
+const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
 
 export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
   const store = useStore();
@@ -26,6 +28,16 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   useEffect(() => {
     void store.bootstrap();
   }, [store]);
+
+  // #151: the trust page is public and works at every phase (before login, while loading, after login),
+  // so it is checked ahead of the phase gates — a logged-in user can open it from the footer too.
+  if (path === "/security") {
+    return (
+      <Suspense fallback={<Splash />}>
+        <Security />
+      </Suspense>
+    );
+  }
 
   if (phase === "ready") return <>{children}</>;
   if (phase === "loading") return <Splash />;

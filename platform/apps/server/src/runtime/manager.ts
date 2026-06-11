@@ -17,6 +17,8 @@ import type { LineDecoder } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
+import { resolveEgressPolicy } from "./egress-allowlist.js";
+import { loadConfig } from "../config/loader.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
 import type { UsageRecorder } from "../scale/usage.js";
@@ -419,9 +421,17 @@ export class SessionManager {
       ticket?: AdmissionTicket;
     },
   ): Promise<AgentSessionOutcome> {
-    // Secrets are resolved per tenant at provision and injected as runtime env only.
-    const secrets = await this.deps.secrets.resolve(session.workspaceId);
+    // Secrets are resolved per tenant at provision and injected as runtime env only. #151: the launching
+    // agent's member id scopes the resolution — with the credential matrix OFF (default) this is a no-op
+    // passthrough; when enabled the resolver filters to that agent's allowlisted keys.
+    const secrets = await this.deps.secrets.resolve(session.workspaceId, {
+      agentMemberId: session.agentMemberId,
+    });
     const redact = makeRedactor(secrets);
+    // #151: the per-tenant egress allowlist rides on the job into the sandbox (the kernel-enforcement
+    // seam). OFF (default) ⇒ undefined = unrestricted, today's behavior.
+    const egressPolicy = resolveEgressPolicy(loadConfig(session.workspaceId).egress);
+    const egress = egressPolicy.enabled ? egressPolicy.allowlist : undefined;
 
     // Post the parent "started" message before any output so streamed lines thread under it. For a
     // subagent invocation (#59) the invoking @mention message is the thread root, so the started
@@ -513,6 +523,8 @@ export class SessionManager {
           secrets,
           // #71: the runtime provisions in the placed region (sandbox backend); local ignores it.
           region: opts.ticket?.region,
+          // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
+          egress,
           caps: this.deps.caps,
         },
         {

@@ -9,7 +9,10 @@ import { effectiveCapability, satisfies } from "../auth/access.js";
 import { getChannel, isChannelMember } from "../db/repositories/channels.js";
 import { getCapability } from "../db/repositories/permissions.js";
 import { postMessage } from "../db/repositories/messages.js";
+import { recordViolation } from "../db/repositories/egress.js";
 import { publishMessageEvent } from "../realtime/bus.js";
+import { loadConfig } from "../config/loader.js";
+import { decideEgress, resolveEgressPolicy } from "../runtime/egress-allowlist.js";
 import {
   buildRegistry,
   validateBillingRefund,
@@ -22,6 +25,43 @@ import {
 
 /** Thrown by an executor when the action can't run; the route records the request as `failed`. */
 export class ActionExecutionError extends Error {}
+
+/**
+ * Egress enforcement seam (#151, ADR-0151). The #13 gate already decides *whether* an outbound action
+ * runs; this decides *where* it may go. `enforce` returns null when the target is allowed, or an error
+ * message when it is denied/flagged — having already recorded the violation to the audit trail. Injected
+ * so the registry is testable without a DB; the production default consults the #58 config + the repo.
+ */
+export interface EgressEnforcer {
+  enforce(input: {
+    workspaceId: string;
+    target: string;
+    actorMemberId: string;
+  }): Promise<string | null>;
+}
+
+/** Production enforcer: per-tenant allowlist from #58 config; denied/flagged targets recorded + blocked. */
+export const defaultEgressEnforcer: EgressEnforcer = {
+  async enforce(input) {
+    const policy = resolveEgressPolicy(loadConfig(input.workspaceId).egress);
+    if (!policy.enabled) return null; // default-OFF: unrestricted egress, today's behavior.
+    const decision = decideEgress({
+      target: input.target,
+      allowlist: policy.allowlist,
+      enabled: true,
+    });
+    if (decision.decision === "allow") return null;
+    await recordViolation({
+      workspaceId: input.workspaceId,
+      target: input.target,
+      domain: decision.domain,
+      reason: decision.reason ?? "egress blocked",
+      actorMemberId: input.actorMemberId,
+      detail: { decision: decision.decision, source: "external.send" },
+    });
+    return `egress blocked: ${decision.reason ?? "domain not allowed"}`;
+  },
+};
 
 /**
  * Post a message to a channel as the requester. Re-validates that the channel is in the requester's
@@ -64,20 +104,32 @@ const chatPostMessage: ActionExecutor = {
 /**
  * Represent an outbound "external send". Recorded-only: it performs **no** network egress (so tests
  * and CI never reach out), it just confirms the gated action would have been sent. ADR-0013 §2.
+ *
+ * #151: when the payload names a `target` and the workspace has an egress allowlist enabled, the target's
+ * domain is checked here — the one application chokepoint for outbound sends. A blocked target records a
+ * violation to the audit trail and fails the action (the #13 trail already recorded the human decision;
+ * the egress trail records where it was refused). With the allowlist off (default), this is a no-op.
  */
-const externalSend: ActionExecutor = {
-  actionType: "external.send",
-  validate: validateExternalSend,
-  summarize: (p) =>
-    `external send${p.target ? ` to ${String(p.target)}` : ""}: ${String(p.summary).slice(0, 80)}`,
-  async execute(payload): Promise<Record<string, unknown>> {
-    return {
-      recorded: true,
-      target: typeof payload.target === "string" ? payload.target : null,
-      summary: String(payload.summary),
-    };
-  },
-};
+function makeExternalSend(egress: EgressEnforcer): ActionExecutor {
+  return {
+    actionType: "external.send",
+    validate: validateExternalSend,
+    summarize: (p) =>
+      `external send${p.target ? ` to ${String(p.target)}` : ""}: ${String(p.summary).slice(0, 80)}`,
+    async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+      const target = typeof payload.target === "string" ? payload.target : null;
+      if (target) {
+        const blocked = await egress.enforce({
+          workspaceId: ctx.workspaceId,
+          target,
+          actorMemberId: ctx.requesterMemberId,
+        });
+        if (blocked) throw new ActionExecutionError(blocked);
+      }
+      return { recorded: true, target, summary: String(payload.summary) };
+    },
+  };
+}
 
 /**
  * Outbound money — a refund (#98, ADR-0043). It is **sensitive by default** (so it always pauses for a
@@ -103,9 +155,10 @@ const billingRefund: ActionExecutor = {
   },
 };
 
-/** The executors wired for this deployment (ADR-0013 §2, #98). */
-export const defaultRegistry: ExecutorRegistry = buildRegistry([
-  chatPostMessage,
-  externalSend,
-  billingRefund,
-]);
+/** Build the executor registry with an injectable egress enforcer (tests pass a fake; #151). */
+export function buildDefaultRegistry(egress: EgressEnforcer = defaultEgressEnforcer): ExecutorRegistry {
+  return buildRegistry([chatPostMessage, makeExternalSend(egress), billingRefund]);
+}
+
+/** The executors wired for this deployment (ADR-0013 §2, #98, #151). */
+export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry();

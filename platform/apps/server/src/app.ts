@@ -17,6 +17,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
+import { governanceRoutes } from "./routes/governance.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { preflightRoutes } from "./routes/preflight.js";
 import type { PreflightReport } from "./runtime/preflight.js";
@@ -305,6 +306,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(taskRoutes);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   app.register(approvalRoutes);
+  // #151 governance & trust: workspace roles (owner/approver/viewer), email invites, egress report.
+  app.register(governanceRoutes);
   app.register(searchRoutes);
   // #10 MCP integration: a stateful Streamable-HTTP MCP server at /mcp. Each tool/resource is a
   // thin adapter over the existing repos + access helpers (no new authority); auth is the existing

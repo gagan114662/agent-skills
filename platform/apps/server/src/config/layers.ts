@@ -67,6 +67,15 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
     if (layer.planning !== undefined) out.planning = { ...layer.planning };
+    // #151 credential-scopes policy: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's per-agent allowlist matrix cannot be widened (e.g. scoping turned off) by a lower layer.
+    if (layer.credentialScopes !== undefined) out.credentialScopes = { ...layer.credentialScopes };
+    // #151 egress policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // domain allowlist cannot be widened (e.g. the allowlist turned off) by a lower layer.
+    if (layer.egress !== undefined) out.egress = { ...layer.egress };
+    // #151 rbac policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // role enforcement cannot be turned off by a lower layer.
+    if (layer.rbac !== undefined) out.rbac = { ...layer.rbac };
   }
   return out;
 }
@@ -102,5 +111,8 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
     portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
+    credentialScopes: merged.credentialScopes ?? { ...CONFIG_DEFAULTS.credentialScopes },
+    egress: merged.egress ?? { ...CONFIG_DEFAULTS.egress },
+    rbac: merged.rbac ?? { ...CONFIG_DEFAULTS.rbac },
   };
 }

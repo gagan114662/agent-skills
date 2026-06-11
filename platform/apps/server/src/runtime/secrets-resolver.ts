@@ -9,9 +9,20 @@
  * deployment swaps in a vault-backed resolver implementing the same interface.
  */
 import { AGENT_AUTH_KEYS, type AgentAuthResolver } from "./agent-auth.js";
+import {
+  allowedKeysForAgent,
+  filterSecrets,
+  type CredentialMatrix,
+  type CredentialScope,
+} from "./credential-scope.js";
 
+/**
+ * Per-tenant secret resolution. The optional `scope` (#151) narrows the result to a single agent's
+ * allowlisted keys — workspace-only callers omit it and keep today's per-tenant behavior. The base
+ * resolvers ignore `scope`; only the `ScopedSecretsResolver` decorator acts on it.
+ */
 export interface SecretsResolver {
-  resolve(workspaceId: string): Promise<Record<string, string>>;
+  resolve(workspaceId: string, scope?: CredentialScope): Promise<Record<string, string>>;
 }
 
 export class EnvSecretsResolver implements SecretsResolver {
@@ -75,5 +86,45 @@ export class SubscriptionSecretsResolver implements SecretsResolver {
       if (!(AGENT_AUTH_KEYS as readonly string[]).includes(k)) rest[k] = v;
     }
     return { ...rest, ...secrets };
+  }
+}
+
+/**
+ * Per-agent scoping decorator (#151, ADR-0151). Wraps any inner resolver and, **iff** the workspace's
+ * credential matrix is enabled and the launching agent resolves to a persona name, filters the resolved
+ * secrets down to that agent's allowlisted keys (scout↛Stripe, postmark→email-only). The #68 model-auth
+ * keys are always kept so a scoped agent still runs the model.
+ *
+ * Default-OFF by contract: a disabled/empty matrix, a workspace-only call (no `scope.agentMemberId`), or
+ * an unknown agent with the matrix off ⇒ the inner result passes through **unchanged** (byte-for-byte).
+ * The matrix loader + the agentId→name lookup are injected seams so the decorator stays DB-free and
+ * unit-testable; production wires them to `loadConfig` + the personas repo.
+ */
+export class ScopedSecretsResolver implements SecretsResolver {
+  constructor(
+    private readonly inner: SecretsResolver,
+    private readonly deps: {
+      loadMatrix: (workspaceId: string) => CredentialMatrix;
+      lookupAgentName: (workspaceId: string, agentMemberId: string) => Promise<string | null>;
+    },
+  ) {}
+
+  async resolve(workspaceId: string, scope?: CredentialScope): Promise<Record<string, string>> {
+    const secrets = await this.inner.resolve(workspaceId, scope);
+    const matrix = this.deps.loadMatrix(workspaceId);
+    // Disabled matrix ⇒ no scoping at all (passthrough), regardless of who is launching.
+    if (!matrix.enabled) return secrets;
+    // No agent context at all ⇒ this is a workspace-only call (billing/deploy/integrations); never
+    // scoped. An agent launch ALWAYS carries an agentMemberId (or an explicit agentName).
+    if (!scope?.agentMemberId && !scope?.agentName) return secrets;
+    // Resolve the persona name to key the matrix on: prefer an explicit scope.agentName, else look the
+    // agent member id up. An unresolved name (an agent with no persona row) stays null ⇒
+    // `allowedKeysForAgent` returns [] (deny-by-default for an unidentifiable launching agent).
+    let agentName = scope.agentName ?? null;
+    if (!agentName && scope.agentMemberId) {
+      agentName = await this.deps.lookupAgentName(workspaceId, scope.agentMemberId);
+    }
+    const allowed = allowedKeysForAgent(matrix, agentName, scope.purpose ?? null);
+    return filterSecrets(secrets, allowed, AGENT_AUTH_KEYS);
   }
 }

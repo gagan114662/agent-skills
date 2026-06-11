@@ -422,6 +422,48 @@ export const planningSchema = z.object({
   maxDispatchesPerTick: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Per-agent scoped credentials policy (#151, ADR-0151). All **non-secret** — only secret KEY NAMES
+ * grouped by purpose; the secret VALUES stay on the #25 `SecretsResolver`/`AGENT_SECRETS` path. Every
+ * field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
+ * today's per-tenant resolution (every agent gets the full secret set). When enabled, an agent absent
+ * from `agents` receives only the #68 model-auth keys (deny-by-default). `purposes` maps a purpose name
+ * to the key names it covers; `agents` maps an agent persona name (@handle) to the purposes it may use.
+ */
+export const credentialScopesSchema = z.object({
+  /** The per-agent scoping flag — default OFF (per-tenant resolution unchanged). */
+  enabled: z.boolean().optional(),
+  /** Purpose → secret KEY names (e.g. `crawl: ["CRAWL_TOKEN"]`). Values never live here. */
+  purposes: z.record(z.string(), z.array(z.string())).optional(),
+  /** Agent persona name → allowed purposes (e.g. `scout: ["crawl"]`). */
+  agents: z.record(z.string(), z.array(z.string())).optional(),
+});
+
+/**
+ * Egress domain allowlist policy (#151, ADR-0151) for cloud agent sessions. Non-secret. Every field is
+ * optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's
+ * behavior (the binary #58 `dataPrivacyMode` remains the only egress gate). When enabled, only listed
+ * domains are reachable (exact or leading-`*.` wildcard); everything else is denied + flagged to the
+ * `egress_violations` audit.
+ */
+export const egressSchema = z.object({
+  /** The domain-allowlist flag — default OFF (unrestricted egress, today's behavior). */
+  enabled: z.boolean().optional(),
+  /** Allowed domains: exact (`api.example.com`) or leading-wildcard (`*.example.com`). */
+  allowlist: z.array(z.string()).optional(),
+});
+
+/**
+ * Teams / RBAC policy (#151, ADR-0151). Non-secret. `enabled` gates whether workspace roles are
+ * enforced on #13 approval clearing. Default **off** (`enabled: false`) so a deployment that sets
+ * nothing keeps today's "any human member clears" behavior — enabling can only tighten, never weaken
+ * (a member with no role row is still allowed; an owner must assign roles to actually restrict).
+ */
+export const rbacSchema = z.object({
+  /** The role-enforcement flag — default OFF (any human member clears approvals). */
+  enabled: z.boolean().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -471,6 +513,12 @@ export const settingsSchema = z.object({
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
   planning: planningSchema.optional(),
+  /** Per-agent scoped credentials policy (#151): the allowlist matrix (key NAMES only, default OFF). */
+  credentialScopes: credentialScopesSchema.optional(),
+  /** Egress domain allowlist policy (#151) for cloud agent sessions (default OFF). */
+  egress: egressSchema.optional(),
+  /** Teams/RBAC policy (#151): enforce workspace roles on approval clearing (default OFF). */
+  rbac: rbacSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -500,6 +548,9 @@ export type MoatConfig = z.infer<typeof moatSchema>;
 export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
+export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
+export type EgressConfig = z.infer<typeof egressSchema>;
+export type RbacConfig = z.infer<typeof rbacSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -545,6 +596,12 @@ export interface ResolvedConfig {
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
   planning: PlanningConfig;
+  /** Per-agent scoped credentials policy (#151). A partial whose defaults `resolveCredentialMatrix` fills. */
+  credentialScopes: CredentialScopesConfig;
+  /** Egress domain allowlist policy (#151). A partial whose defaults `resolveEgressPolicy` fills. */
+  egress: EgressConfig;
+  /** Teams/RBAC policy (#151). A partial whose defaults `resolveRbacConfig` fills. */
+  rbac: RbacConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -570,4 +627,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   voice: {},
   portfolio: {},
   planning: {},
+  credentialScopes: {},
+  egress: {},
+  rbac: {},
 };

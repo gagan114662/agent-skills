@@ -50,6 +50,12 @@ export interface AgentJob {
    * sandbox backend provisions there; `LocalRuntime` ignores it. Undefined → unplaced (#25 default).
    */
   region?: string;
+  /**
+   * Egress domain allowlist (#151) for this session: the domains the agent is permitted to reach. The
+   * sandbox backend is the kernel-enforcement seam (ADR-0151) — it is advisory/passed-through today;
+   * `LocalRuntime` ignores it. Empty/undefined ⇒ unrestricted (the allowlist is OFF — #25 default).
+   */
+  egress?: string[];
   /** Hard resource + wall-clock caps for this session. */
   caps: ResourceCaps;
 }

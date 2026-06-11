@@ -19,6 +19,7 @@ import {
   FLEET,
   agentColor,
   LANDING,
+  SECURITY,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +125,48 @@ describe("landing fleet + copy (#149)", () => {
   });
 });
 
+describe("security trust page copy (#151) — honest by construction", () => {
+  it("lists several real, shipped guarantees", () => {
+    expect(SECURITY.guarantees.length).toBeGreaterThanOrEqual(5);
+    for (const g of SECURITY.guarantees) {
+      expect(g.title).toBeTruthy();
+      expect(g.body).toBeTruthy();
+    }
+    // The headline guarantees the issue calls out must be present (mechanisms that truly exist).
+    const titles = SECURITY.guarantees.map((g) => g.title.toLowerCase()).join(" | ");
+    expect(titles).toMatch(/approval/);
+    expect(titles).toMatch(/isolation/);
+    expect(titles).toMatch(/kill switch/);
+    expect(titles).toMatch(/budget/);
+    expect(titles).toMatch(/audit/);
+  });
+
+  it("flags every roadmap item with an explicit status (never a current claim)", () => {
+    expect(SECURITY.roadmap.length).toBeGreaterThan(0);
+    for (const r of SECURITY.roadmap) {
+      expect(r.status, r.title).toBeTruthy();
+      // A roadmap status must read as not-done: "planned" / "not yet" / "designed seam" / "partial".
+      expect(r.status.toLowerCase(), r.title).toMatch(/planned|not yet|seam|partial/);
+    }
+    // SOC2 + GDPR appear ONLY as roadmap, and never in the shipped-guarantees grid.
+    const roadmapText = SECURITY.roadmap.map((r) => `${r.title} ${r.status} ${r.body}`).join(" ");
+    expect(roadmapText).toMatch(/SOC ?2/i);
+    expect(roadmapText).toMatch(/GDPR/i);
+    const guaranteeText = SECURITY.guarantees.map((g) => `${g.title} ${g.body}`).join(" ");
+    expect(guaranteeText).not.toMatch(/SOC ?2/i); // never claimed as a current guarantee
+    expect(guaranteeText).not.toMatch(/GDPR/i);
+    // Any mention of being "certified" must be negated (e.g. "not yet certified") — never a bare claim.
+    for (const r of SECURITY.roadmap) {
+      const blob = `${r.status} ${r.body}`.toLowerCase();
+      if (blob.includes("certified")) expect(blob).toMatch(/not (yet )?certified|not certified/);
+    }
+  });
+
+  it("states plainly that we hold no current certifications", () => {
+    expect(SECURITY.notClaimed.toLowerCase()).toMatch(/no .*certification/);
+  });
+});
+
 describe("no hardcoded brand strings in product chrome", () => {
   // Components that render the product shell. Every brand string here must come from BRAND.*.
   const CHROME_COMPONENTS = [
@@ -133,6 +176,8 @@ describe("no hardcoded brand strings in product chrome", () => {
     // The public landing (#149) is the most brand-heavy surface — every word must come from brand.ts.
     "components/landing/Landing.tsx",
     "components/landing/HeroVignette.tsx",
+    // The public trust page (#151).
+    "components/landing/Security.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.
