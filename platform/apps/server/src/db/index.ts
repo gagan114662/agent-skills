@@ -10,7 +10,10 @@ let pool: pg.Pool | undefined;
 /** Lazily-created shared pg pool. */
 export function getPool(): pg.Pool {
   if (!pool) {
-    pool = new Pool({ connectionString: loadEnv().databaseUrl, max: 10 });
+    const env = loadEnv();
+    // #113: pool size is a worker-concurrency knob (DATABASE_POOL_MAX; default 10) — the per-replica
+    // DB-bound capacity ceiling documented in docs/scaling.md.
+    pool = new Pool({ connectionString: env.databaseUrl, max: env.databasePoolMax });
   }
   return pool;
 }

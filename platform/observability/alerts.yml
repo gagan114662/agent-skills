@@ -39,3 +39,53 @@ groups:
         annotations:
           summary: "p95 latency above 500ms SLO"
           description: "Latency SLO breached: p95 is {{ $value }}s over 5m."
+
+  # Capacity / saturation alerts (#113) — the signals that predict a melting box before requests fail.
+  # Thresholds mirror DEFAULT_SATURATION_THRESHOLDS in src/observability/saturation.ts. These feed the
+  # #112 SRE alerts; the same signals are exposed at /metrics for the #105 watchdog.
+  - name: reload-server-saturation
+    rules:
+      - alert: ReloadEventLoopLagHigh
+        expr: event_loop_lag_seconds > 0.2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node event-loop lag above 200ms"
+          description: "The box is CPU-saturated: mean event-loop delay {{ $value }}s for >2m."
+
+      - alert: ReloadEventLoopLagElevated
+        expr: event_loop_lag_seconds > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node event-loop lag above 50ms"
+          description: "Event-loop delay {{ $value }}s for >5m — approaching CPU saturation."
+
+      - alert: ReloadPgPoolSaturated
+        expr: pg_pool_connections{state="waiting"} > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres pool has waiting acquirers"
+          description: "{{ $value }} requests are waiting on a DB connection for >2m — raise DATABASE_POOL_MAX or scale out."
+
+      - alert: ReloadRedisLatencyHigh
+        expr: redis_ping_seconds > 0.25
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis PING latency above 250ms"
+          description: "Redis round-trip {{ $value }}s for >2m — the maintenance flag / session reads are slow."
+
+      - alert: ReloadQueueDepthHigh
+        expr: queue_depth > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Admission in-flight queue above 200"
+          description: "{{ $value }} sessions in flight for >5m — the fleet is near its concurrency ceiling."
