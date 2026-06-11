@@ -30,6 +30,13 @@ export interface MarketingAgentSpec {
   systemPrompt: string;
   allowedTools: string[];
   model: string | null;
+  /**
+   * The per-agent skill kit (#155): the ids of the versioned skill files this agent loads each session —
+   * its `knowledge` router + `runbook` procedure, stored under `platform/agents/skills/<handle>/`. The
+   * runtime (#68) loads these via the `AGENT_SKILLS` env var (see `subagents/scope.ts`); the manifest at
+   * `platform/agents/skills/manifest.json` is the catalog (an eval asserts these ids exist there).
+   */
+  skills: string[];
   /** The brand-voice line the agent posts when it first shows up in its channel. */
   intro: string;
 }
@@ -87,6 +94,8 @@ function dept(
       systemPrompt: prompt(title, channel, handle, external),
       allowedTools: [...DRAFT_TOOLS],
       model: null,
+      // Each agent carries its own knowledge router + runbook (#155); ids match the skills manifest.
+      skills: [`${handle}/knowledge`, `${handle}/runbook`],
       intro,
     },
   };
@@ -244,4 +253,13 @@ export const UNSCALABLE_OPS_TEMPLATES: readonly UnscalableOpsTemplate[] = [
 /** The Article IV unscalable-ops task templates (manual-first user acquisition). */
 export function unscalableOpsTemplates(): readonly UnscalableOpsTemplate[] {
   return UNSCALABLE_OPS_TEMPLATES;
+}
+
+/**
+ * The skill ids a fleet agent loads each session (#155), looked up by @handle (the persona name). A
+ * non-fleet persona returns `[]` (no extra skills). Pure — used by the #59 SubagentService to set
+ * `AGENT_SKILLS` for the runtime (#68) to load per session.
+ */
+export function skillsForHandle(handle: string): string[] {
+  return departmentForHandle(handle)?.agent.skills ?? [];
 }

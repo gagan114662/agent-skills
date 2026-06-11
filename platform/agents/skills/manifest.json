@@ -1,0 +1,177 @@
+{
+  "version": "1.0.0",
+  "agents": {
+    "scout": {
+      "skills": [
+        {
+          "id": "scout/knowledge",
+          "kind": "knowledge",
+          "path": "scout/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "scout/runbook",
+          "kind": "runbook",
+          "path": "scout/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "seo/technical-audit-checklist",
+        "seo/serp-intent-map",
+        "seo/core-web-vitals"
+      ],
+      "metrics": [
+        "growth.score"
+      ]
+    },
+    "echo": {
+      "skills": [
+        {
+          "id": "echo/knowledge",
+          "kind": "knowledge",
+          "path": "echo/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "echo/runbook",
+          "kind": "runbook",
+          "path": "echo/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "social/hook-library",
+        "social/platform-specs",
+        "social/repurposing-playbook"
+      ],
+      "metrics": [
+        "growth.venture_signal"
+      ]
+    },
+    "quill": {
+      "skills": [
+        {
+          "id": "quill/knowledge",
+          "kind": "knowledge",
+          "path": "quill/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "quill/runbook",
+          "kind": "runbook",
+          "path": "quill/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "content/outline-patterns",
+        "content/editing-rubric",
+        "content/reader-personas"
+      ],
+      "metrics": [
+        "growth.score"
+      ]
+    },
+    "postmark": {
+      "skills": [
+        {
+          "id": "postmark/knowledge",
+          "kind": "knowledge",
+          "path": "postmark/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "postmark/runbook",
+          "kind": "runbook",
+          "path": "postmark/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "email/sequence-templates",
+        "email/subject-line-rubric",
+        "email/deliverability"
+      ],
+      "metrics": [
+        "demand.visit_to_paid"
+      ]
+    },
+    "bid": {
+      "skills": [
+        {
+          "id": "bid/knowledge",
+          "kind": "knowledge",
+          "path": "bid/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "bid/runbook",
+          "kind": "runbook",
+          "path": "bid/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "ads/budget-pacing",
+        "ads/channel-mix",
+        "ads/cac-targets"
+      ],
+      "metrics": [
+        "usage.cost_cents",
+        "demand.visit_to_paid"
+      ]
+    },
+    "lens": {
+      "skills": [
+        {
+          "id": "lens/knowledge",
+          "kind": "knowledge",
+          "path": "lens/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "lens/runbook",
+          "kind": "runbook",
+          "path": "lens/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "analytics/metric-catalog",
+        "analytics/provenance-ladder",
+        "analytics/raw-fallback-protocol"
+      ],
+      "metrics": [
+        "growth.score",
+        "growth.venture_signal",
+        "demand.visit_to_paid",
+        "venture.score",
+        "moat.score",
+        "usage.cost_cents"
+      ]
+    },
+    "mark": {
+      "skills": [
+        {
+          "id": "mark/knowledge",
+          "kind": "knowledge",
+          "path": "mark/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "mark/runbook",
+          "kind": "runbook",
+          "path": "mark/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "brand/voice-and-tone",
+        "brand/naming-guardrails",
+        "brand/message-consistency"
+      ],
+      "metrics": []
+    }
+  }
+}

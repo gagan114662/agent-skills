@@ -80,6 +80,12 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
     `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}` +
     ` ` +
     `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}`;
+  // Per-agent skills (#155) ride the SAME env-not-argv contract: `AGENT_SKILLS` carries the comma-joined
+  // skill ids the session loads (set by `subagents/scope.ts personaHarnessEnv`). It is passed through the
+  // job env (not interpolated into argv), so the runtime/provisioner can materialize the agent's versioned
+  // knowledge + runbook skills into the session before the model runs; a session with no skills leaves it
+  // unset and behavior is unchanged. Surfaced as a `--setting-sources`-adjacent env rather than a
+  // fabricated flag, so we never invent a CLI surface Claude Code may not expose.
   // Model + provider selection (#52) reaches Claude Code via env it reads natively (ANTHROPIC_MODEL,
   // ANTHROPIC_BASE_URL, CLAUDE_CODE_USE_BEDROCK/VERTEX, MAX_THINKING_TOKENS, ANTHROPIC_DEFAULT_OPUS_MODEL),
   // so per-session selection is the same injection-safe env seam as the task/persona — never argv. The

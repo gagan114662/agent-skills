@@ -18,6 +18,7 @@ export const FAILURE_CLASSES = [
   "venture_error",
   // #146: a repeated constitution violation fingerprints + dedupes into an issue like any other failure.
   "constitution_violation",
+  "eval_regression", // #155: an offline agent-skill eval suite dropped below its baseline pass-rate
 ] as const;
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
 

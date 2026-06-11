@@ -71,6 +71,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // tenant's constitution flag / thresholds cannot be loosened (e.g. enforcement turned off) by a
     // lower layer.
     if (layer.constitution !== undefined) out.constitution = { ...layer.constitution };
+    // #155 fleet policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // eval-maintenance flag / freshness ceiling / regression tolerance cannot be loosened by a lower layer.
+    if (layer.fleet !== undefined) out.fleet = { ...layer.fleet };
   }
   return out;
 }
@@ -107,5 +110,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
     constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
+    fleet: merged.fleet ?? { ...CONFIG_DEFAULTS.fleet },
   };
 }
