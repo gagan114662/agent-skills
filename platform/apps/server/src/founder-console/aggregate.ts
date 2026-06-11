@@ -1,4 +1,14 @@
 import { budgetExceeded } from "../scale/usage.js";
+import {
+  forecastUsage,
+  recommendRightSizing,
+  infraBudgetStatus,
+  type CostForecast,
+  type ForecastBasis,
+  type InfraBudgetStatus,
+  type RightSizing,
+  type UsageTrendPoint,
+} from "../scale/forecast.js";
 
 /**
  * The Founder Console roll-up (#104, ADR-0050). **Pure**: given the read-structs gathered from every
@@ -123,6 +133,14 @@ export interface FounderConsoleInput {
   switches: SwitchSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
   selfHealing?: SelfHealingSnapshot;
+  /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
+  usageTrend: UsageTrendPoint[];
+  /** The window the forecast projects (the next calendar month). */
+  forecastWindow: string;
+  /** The resolved infra budget ceiling in cents (#113, links #108); 0 = no ceiling. */
+  infraBudgetCeilingCents: number;
+  /** The tenant's in-flight cap (#71) for the right-sizing utilization; 0 = unlimited. */
+  tenantConcurrency: number;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -185,6 +203,23 @@ export interface SelfHealingView {
   queuedForApproval: number;
 }
 
+/** Next-window compute-cost projection + right-sizing + infra-ceiling status (#113). */
+export interface CostForecastView {
+  /** The window being forecast (next calendar month). */
+  window: string;
+  projectedComputeSeconds: number;
+  projectedCostCents: number;
+  projectedSessionsStarted: number;
+  /** How the projection was derived: no history / single point held / fitted trend. */
+  basis: ForecastBasis;
+  /** Forecast growth vs the last observed cost; null when there's no nonzero base. */
+  momChangePct: number | null;
+  /** The utilization-driven scale recommendation. */
+  rightSizing: RightSizing;
+  /** Whether the projection breaches the configured infra budget ceiling (#108). */
+  infraBudget: InfraBudgetStatus;
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -199,6 +234,8 @@ export interface FounderConsole {
   venturePipeline: VenturePipelineView;
   revenue: RevenueView;
   budget: BudgetView;
+  /** Next-window compute-cost forecast + right-sizing + infra-ceiling status (#113). */
+  costForecast: CostForecastView;
   /** The pending #13 queue, oldest-first (longest-waiting = highest priority). */
   pendingApprovals: PendingActionView[];
   switches: SwitchSnapshot;
@@ -244,6 +281,26 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     hasWillingnessToPay: revenue.evidenceCount > 0,
   };
 
+  // #113 cost forecast: project next window's spend from the tenant_usage trend, recommend a scale call
+  // from live utilization, and flag a projected breach of the infra budget ceiling (#108). Read-only —
+  // admission (#71) remains the only thing that blocks a launch.
+  const forecast: CostForecast = forecastUsage(input.usageTrend, input.forecastWindow);
+  const rightSizing = recommendRightSizing({
+    tenantInFlight: fleet.tenantInFlight,
+    tenantConcurrency: input.tenantConcurrency,
+  });
+  const infraBudget = infraBudgetStatus(forecast.projectedCostCents, input.infraBudgetCeilingCents);
+  const costForecast: CostForecastView = {
+    window: forecast.window,
+    projectedComputeSeconds: forecast.projectedComputeSeconds,
+    projectedCostCents: forecast.projectedCostCents,
+    projectedSessionsStarted: forecast.projectedSessionsStarted,
+    basis: forecast.basis,
+    momChangePct: forecast.momChangePct,
+    rightSizing,
+    infraBudget,
+  };
+
   // Oldest-first: the longest-waiting item is the one most likely to be the bottleneck.
   const pendingApprovals: PendingActionView[] = approvals
     .map((a) => ({
@@ -276,6 +333,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
   if (overBudget) reasons.push("over budget");
+  if (infraBudget.exceeded) reasons.push("infra budget ceiling projected breach");
   if (pendingApprovals.length > 0) reasons.push(pluralize(pendingApprovals.length, "pending approval"));
   if (escalatedAwaitingReview > 0) {
     reasons.push(`${pluralize(escalatedAwaitingReview, "failure")} recurred after fix (review required)`);
@@ -293,6 +351,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     venturePipeline,
     revenue: revenueView,
     budget: budgetView,
+    costForecast,
     pendingApprovals,
     switches,
     selfHealing,

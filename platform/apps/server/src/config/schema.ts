@@ -150,6 +150,13 @@ export const scaleSchema = z.object({
   budgetCents: z.number().int().nonnegative().optional(),
   /** Cost-estimate rate (cents per compute-minute); 0 = cost always 0 (budget never bites). */
   computeRateCentsPerMinute: z.number().nonnegative().optional(),
+  /**
+   * Infra budget ceiling in cents (#113, links #108): the projected monthly compute cost the Founder
+   * Console (#104) warns above so hosting can never surprise-bill. 0 = no ceiling (never bites). This
+   * is a read-only *warning* threshold — admission/`budgetCents` remains the only thing that blocks a
+   * launch.
+   */
+  infraBudgetCeilingCents: z.number().int().nonnegative().optional(),
 });
 
 /**

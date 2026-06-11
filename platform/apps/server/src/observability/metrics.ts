@@ -1,3 +1,5 @@
+import type { SaturationSample } from "./saturation.js";
+
 /**
  * Dependency-free Prometheus metrics registry (#19).
  *
@@ -33,6 +35,17 @@ interface DurationSeries {
 const httpTotals = new Map<string, HttpSeries>();
 const durations = new Map<string, DurationSeries>();
 let inFlight = 0;
+
+// --- saturation signals (#113) ----------------------------------------------
+// The four signals that predict a melting box — queue depth, event-loop lag, PG pool wait, Redis ping
+// latency — sampled at scrape time (see observability/saturation.ts + plugin.ts) and stored here as the
+// latest reading. No tenant labels (the #19 cardinality rule); pool state is the only (bounded) label.
+let saturationSample: SaturationSample | null = null;
+
+/** Store the latest saturation reading (the scrape handler samples then renders). */
+export function setSaturationSample(sample: SaturationSample): void {
+  saturationSample = sample;
+}
 
 // --- agent sessions (#25) ---------------------------------------------------
 // Cardinality discipline (as for HTTP): labels are bounded to the runtime kind and a small set
@@ -246,6 +259,7 @@ export function resetMetrics(): void {
   warmMisses = 0;
   admissionDenials.clear();
   regionSessions.clear();
+  saturationSample = null;
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -293,6 +307,33 @@ export function renderMetrics(): string {
   lines.push("# HELP process_resident_memory_bytes Resident memory size in bytes.");
   lines.push("# TYPE process_resident_memory_bytes gauge");
   lines.push(`process_resident_memory_bytes ${process.memoryUsage().rss}`);
+
+  // --- saturation signals (#113) ---
+  // Rendered only once a sample exists (the scrape handler samples before rendering). These are the
+  // capacity signals the #112 alerts + the #105 watchdog consume; thresholds live in saturation.ts.
+  if (saturationSample) {
+    const s = saturationSample;
+    lines.push("# HELP queue_depth Sessions the fleet currently has in flight (admission work queue).");
+    lines.push("# TYPE queue_depth gauge");
+    lines.push(`queue_depth ${s.queueDepth}`);
+
+    lines.push("# HELP event_loop_lag_seconds Mean Node event-loop delay in seconds.");
+    lines.push("# TYPE event_loop_lag_seconds gauge");
+    lines.push(`event_loop_lag_seconds ${s.eventLoopLagSeconds}`);
+
+    lines.push("# HELP pg_pool_connections Postgres pool connections by state.");
+    lines.push("# TYPE pg_pool_connections gauge");
+    lines.push(`pg_pool_connections{state="total"} ${s.pgPool.total}`);
+    lines.push(`pg_pool_connections{state="idle"} ${s.pgPool.idle}`);
+    lines.push(`pg_pool_connections{state="waiting"} ${s.pgPool.waiting}`);
+
+    // Omitted when null — a degraded/absent Redis is the absence of the series, not a 0 reading.
+    if (s.redisLatencySeconds !== null) {
+      lines.push("# HELP redis_ping_seconds Redis PING round-trip latency in seconds.");
+      lines.push("# TYPE redis_ping_seconds gauge");
+      lines.push(`redis_ping_seconds ${s.redisLatencySeconds}`);
+    }
+  }
 
   // --- agent sessions (#25) ---
   lines.push("# HELP agent_sessions_total Agent sessions by runtime and terminal status.");

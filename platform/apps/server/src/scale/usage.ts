@@ -32,6 +32,23 @@ export function windowKey(date: Date): string {
   return `${year}-${month}`;
 }
 
+/** The billing window immediately after `date`'s window — the window the #113 forecast projects. */
+export function nextWindowKey(date: Date): string {
+  return windowKey(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)));
+}
+
+/**
+ * The last `count` window keys up to and including `date`'s window, oldest→newest — the #113 cost
+ * forecast's lookback into `tenant_usage`. `count ≤ 0` → `[]`.
+ */
+export function recentWindowKeys(date: Date, count: number): string[] {
+  const keys: string[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    keys.push(windowKey(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - i, 1))));
+  }
+  return keys;
+}
+
 /** Estimated cost in cents for `computeSeconds` at `rateCentsPerMinute`. Non-positive inputs → 0. */
 export function estimateCostCents(computeSeconds: number, rateCentsPerMinute: number): number {
   if (rateCentsPerMinute <= 0 || computeSeconds <= 0) return 0;

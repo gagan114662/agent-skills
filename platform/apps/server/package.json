@@ -20,7 +20,8 @@
     "openapi:dump": "tsx scripts/dump-openapi.ts",
     "trace:smoke": "tsx scripts/braintrust-smoke.ts",
     "sandbox:smoke": "tsx scripts/vercel-sandbox-smoke.ts",
-    "soak": "tsx scripts/cloud-e2e-soak.ts"
+    "soak": "tsx scripts/cloud-e2e-soak.ts",
+    "perf": "tsx scripts/perf.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
