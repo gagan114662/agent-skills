@@ -171,4 +171,19 @@ export const dbRefundStore: RefundStore = {
       reason: input.reason,
     });
   },
+
+  async exists(workspaceId, experimentId, externalRef) {
+    const [row] = await db
+      .select({ id: demandRefunds.id })
+      .from(demandRefunds)
+      .where(
+        and(
+          eq(demandRefunds.workspaceId, workspaceId),
+          eq(demandRefunds.experimentId, experimentId),
+          eq(demandRefunds.externalRef, externalRef),
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  },
 };

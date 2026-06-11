@@ -5,6 +5,7 @@ import {
   DemandNotFoundError,
   DemandStateError,
   EthicsDisclosureError,
+  DemandKillSwitchError,
   type Availability,
 } from "../demand/service.js";
 import { ExperimentSpecError, type ExperimentSpec } from "../demand/experiment.js";
@@ -66,6 +67,8 @@ export async function demandRoutes(app: FastifyInstance, opts: DemandRoutesOptio
       return reply.code(201).send(exp);
     } catch (err) {
       if (err instanceof ExperimentSpecError) return reply.code(400).send({ error: err.message });
+      // #19 IDOR: registering against a venture idea not in this workspace.
+      if (err instanceof DemandNotFoundError) return reply.code(404).send({ error: err.message });
       throw err;
     }
   });
@@ -83,14 +86,15 @@ export async function demandRoutes(app: FastifyInstance, opts: DemandRoutesOptio
   app.post("/workspaces/:wid/ventures/:vid/experiments/:eid/launch", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const { wid, eid } = req.params as { wid: string; eid: string };
+    const { wid, vid, eid } = req.params as { wid: string; vid: string; eid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     try {
-      return reply.send(await service.launch(wid, eid));
+      return reply.send(await service.launch(wid, eid, vid));
     } catch (err) {
       if (err instanceof DemandNotFoundError) return reply.code(404).send({ error: err.message });
       if (err instanceof EthicsDisclosureError) return reply.code(409).send({ error: err.message });
       if (err instanceof DemandStateError) return reply.code(409).send({ error: err.message });
+      if (err instanceof DemandKillSwitchError) return reply.code(409).send({ error: err.message });
       throw err;
     }
   });
@@ -99,7 +103,7 @@ export async function demandRoutes(app: FastifyInstance, opts: DemandRoutesOptio
   app.post("/workspaces/:wid/ventures/:vid/experiments/:eid/signals", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const { wid, eid } = req.params as { wid: string; eid: string };
+    const { wid, vid, eid } = req.params as { wid: string; vid: string; eid: string };
     if (!assertWorkspace(id, wid, reply)) return;
 
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -113,11 +117,23 @@ export async function demandRoutes(app: FastifyInstance, opts: DemandRoutesOptio
     if (!externalRef) {
       return reply.code(400).send({ error: "externalRef is required (the attribution from outside the building)" });
     }
+    // Money is integer cents — floor a fractional value and reject anything non-finite/negative.
+    let amountCents = 0;
+    if (typeof body.amountCents === "number") {
+      if (!Number.isFinite(body.amountCents) || body.amountCents < 0) {
+        return reply.code(400).send({ error: "amountCents must be a non-negative number of cents" });
+      }
+      amountCents = Math.floor(body.amountCents);
+    }
     try {
-      const result = await service.recordSignal(wid, eid, signalClass as Exclude<DemandSignalClass, "paid">, externalRef, {
-        amountCents: typeof body.amountCents === "number" ? body.amountCents : 0,
-        currency: typeof body.currency === "string" ? body.currency : "usd",
-      });
+      const result = await service.recordSignal(
+        wid,
+        eid,
+        signalClass as Exclude<DemandSignalClass, "paid">,
+        externalRef,
+        { amountCents, currency: typeof body.currency === "string" ? body.currency : "usd" },
+        vid,
+      );
       return reply.code(result.deduped ? 200 : 201).send(result);
     } catch (err) {
       if (err instanceof DemandNotFoundError) return reply.code(404).send({ error: err.message });
@@ -129,10 +145,10 @@ export async function demandRoutes(app: FastifyInstance, opts: DemandRoutesOptio
   app.get("/workspaces/:wid/ventures/:vid/experiments/:eid", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const { wid, eid } = req.params as { wid: string; eid: string };
+    const { wid, vid, eid } = req.params as { wid: string; vid: string; eid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     try {
-      return reply.send(await service.view(wid, eid));
+      return reply.send(await service.view(wid, eid, vid));
     } catch (err) {
       if (err instanceof DemandNotFoundError) return reply.code(404).send({ error: err.message });
       throw err;

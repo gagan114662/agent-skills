@@ -4,6 +4,7 @@ import {
   DemandNotFoundError,
   DemandStateError,
   EthicsDisclosureError,
+  DemandKillSwitchError,
   type DemandExperiment,
   type ExperimentStore,
   type RecordSignalInput,
@@ -12,6 +13,7 @@ import {
   type LandingDeployer,
   type CheckoutMinter,
   type Refunder,
+  type VentureLookup,
 } from "../../src/demand/service.js";
 import { ExperimentSpecError, type ExperimentSpec } from "../../src/demand/experiment.js";
 import type { DemandSignal } from "../../src/demand/provenance.js";
@@ -84,19 +86,37 @@ function spec(over: Partial<ExperimentSpec> = {}): ExperimentSpec {
   };
 }
 
+function makeRefundStore(): RefundStore & { rows: { externalRef: string }[] } {
+  const rows: { externalRef: string }[] = [];
+  const seen = new Set<string>();
+  return {
+    rows,
+    async record(input) {
+      seen.add(`${input.workspaceId}:${input.experimentId}:${input.externalRef}`);
+      rows.push({ externalRef: input.externalRef });
+    },
+    async exists(workspaceId, experimentId, externalRef) {
+      return seen.has(`${workspaceId}:${experimentId}:${externalRef}`);
+    },
+  };
+}
+
 let experiments: ReturnType<typeof makeExperimentStore>;
 let signals: ReturnType<typeof makeSignalStore>;
-let refunds: RefundStore & { rows: unknown[] };
+let refunds: ReturnType<typeof makeRefundStore>;
 let refunder: Refunder & { calls: unknown[] };
 let deployer: LandingDeployer;
 let checkout: CheckoutMinter;
+let ventureExists: (workspaceId: string, ideaId: string) => boolean;
+let killSwitch: boolean;
 let nowMs = 2500;
 
 function makeService() {
-  refunds = Object.assign({ rows: [] as unknown[] }, { record: async (r: unknown) => void refunds.rows.push(r) });
+  refunds = makeRefundStore();
   refunder = Object.assign({ calls: [] as unknown[] }, { refund: async (r: unknown) => void refunder.calls.push(r) });
   deployer = { deploy: async ({ experimentId }) => ({ url: `https://land/${experimentId}` }) };
   checkout = { mint: async ({ experimentId }) => ({ url: `https://pay/${experimentId}` }) };
+  const ventures: VentureLookup = { exists: async (w, i) => ventureExists(w, i) };
   return new DemandValidationService({
     experiments,
     signals,
@@ -104,6 +124,8 @@ function makeService() {
     deployer,
     checkout,
     refunder,
+    ventures,
+    killSwitch: async () => killSwitch,
     now: () => new Date(nowMs),
   });
 }
@@ -111,6 +133,8 @@ function makeService() {
 beforeEach(() => {
   experiments = makeExperimentStore();
   signals = makeSignalStore();
+  ventureExists = () => true;
+  killSwitch = false;
   nowMs = 2500;
 });
 
@@ -195,5 +219,50 @@ describe("DemandValidationService", () => {
     await svc.ingestCheckout({ workspaceId: W, experimentId: exp.id, externalRef: "evt_x", amountCents: 5000, currency: "usd" });
     const evidence = await svc.externalDemandEvidence(W, "idea-x");
     expect(evidence.map((e) => e.signalClass).sort()).toEqual(["paid", "visit"]);
+  });
+
+  it("IDOR: refuses to register an experiment against a venture idea not in the workspace (404)", async () => {
+    ventureExists = () => false; // the idea is not owned by this workspace
+    const svc = makeService();
+    await expect(
+      svc.register({ workspaceId: W, ventureIdeaId: "idea-in-other-ws", spec: spec(), availability: "available", disclosure: null, createdByMemberId: null }),
+    ).rejects.toBeInstanceOf(DemandNotFoundError);
+  });
+
+  it("IDOR: refuses to operate on an experiment through the wrong venture's path (404)", async () => {
+    const svc = makeService();
+    const exp = await svc.register({ workspaceId: W, ventureIdeaId: "idea-a", spec: spec(), availability: "available", disclosure: null, createdByMemberId: null });
+    // The experiment belongs to idea-a; addressing it under idea-b must 404, not leak.
+    await expect(svc.view(W, exp.id, "idea-b")).rejects.toBeInstanceOf(DemandNotFoundError);
+    await expect(svc.launch(W, exp.id, "idea-b")).rejects.toBeInstanceOf(DemandNotFoundError);
+    // The correct venture path still works.
+    expect((await svc.view(W, exp.id, "idea-a")).experiment.id).toBe(exp.id);
+  });
+
+  it("KILL SWITCH: refuses to launch a new fake-door while the kill switch is engaged (409)", async () => {
+    killSwitch = true;
+    const svc = makeService();
+    const exp = await svc.register({ workspaceId: W, ventureIdeaId: null, spec: spec(), availability: "available", disclosure: null, createdByMemberId: null });
+    await expect(svc.launch(W, exp.id)).rejects.toBeInstanceOf(DemandKillSwitchError);
+  });
+
+  it("REFUND IDEMPOTENCY: a retry after a partial failure (signal persisted, refund did not) still refunds", async () => {
+    const svc = makeService();
+    const exp = await svc.register({ workspaceId: W, ventureIdeaId: "idea-r", spec: spec(), availability: "preorder", disclosure: "Deposit only", createdByMemberId: null });
+    // Simulate the crash window: the paid signal was persisted on the first delivery, but the refund never
+    // ran. The retry's signal write is therefore deduped — yet no demand_refunds row exists.
+    await signals.record({ workspaceId: W, experimentId: exp.id, ventureIdeaId: "idea-r", signalClass: "paid", source: "checkout", externalRef: "evt_crash", amountCents: 2000, currency: "usd" });
+    expect(refunds.rows).toHaveLength(0);
+
+    const r = await svc.ingestCheckout({ workspaceId: W, experimentId: exp.id, externalRef: "evt_crash", amountCents: 2000, currency: "usd" });
+    // Signal is deduped, but the refund is keyed off the missing refund row — so it still fires.
+    expect(r).toEqual({ deduped: true, refunded: true });
+    expect(refunder.calls).toHaveLength(1);
+    expect(refunds.rows).toHaveLength(1);
+
+    // A subsequent full replay (now a refund row exists) does NOT refund again.
+    const replay = await svc.ingestCheckout({ workspaceId: W, experimentId: exp.id, externalRef: "evt_crash", amountCents: 2000, currency: "usd" });
+    expect(replay).toEqual({ deduped: true, refunded: false });
+    expect(refunder.calls).toHaveLength(1);
   });
 });

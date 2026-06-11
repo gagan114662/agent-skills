@@ -52,7 +52,7 @@ export function validateSpec(spec: ExperimentSpec): void {
   if (!(spec.passThreshold > 0 && spec.passThreshold <= 1)) {
     throw new ExperimentSpecError("passThreshold must be in (0, 1]");
   }
-  if (!Number.isFinite(spec.minSample) || spec.minSample < 1) {
+  if (!Number.isInteger(spec.minSample) || spec.minSample < 1) {
     throw new ExperimentSpecError("minSample must be a positive integer");
   }
   if (!(spec.windowEndMs > spec.windowStartMs)) {

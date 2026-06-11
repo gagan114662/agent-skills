@@ -94,6 +94,21 @@ export interface RefundStore {
     currency: string;
     reason: string;
   }): Promise<void>;
+  /**
+   * Whether a refund has already been recorded for this checkout ref. The refund decision keys off THIS,
+   * not the signal dedup — so a webhook retry after a partial failure (signal persisted, refund not) still
+   * refunds, while a full replay (refund already recorded) does not double-refund.
+   */
+  exists(workspaceId: string, experimentId: string, externalRef: string): Promise<boolean>;
+}
+
+/**
+ * Tenant-scoped venture-idea ownership lookup (the #19 IDOR boundary). Register/launch/signal/view verify
+ * the idea/experiment belongs to the caller's workspace through this seam — a user in workspace A can never
+ * attach an experiment to (or read signals against) workspace B's venture.
+ */
+export interface VentureLookup {
+  exists(workspaceId: string, ventureIdeaId: string): Promise<boolean>;
 }
 
 /** Fake-door landing deploy seam — composes the #73 DeployProvider in production. */
@@ -129,6 +144,10 @@ export interface DemandServiceDeps {
   deployer: LandingDeployer;
   checkout: CheckoutMinter;
   refunder: Refunder;
+  /** Tenant ownership lookup (#19 IDOR): verifies a venture idea belongs to the workspace. */
+  ventures: VentureLookup;
+  /** The #17 kill switch for the workspace — when engaged, no new fake-door is launched. Default: off. */
+  killSwitch?: (workspaceId: string) => Promise<boolean>;
   /** Default checkout amount (cents) for the smoke test when not specified. */
   defaultAmountCents?: number;
   defaultCurrency?: string;
@@ -156,6 +175,14 @@ export class EthicsDisclosureError extends Error {
   constructor(message = "a pre-launch (waitlist/preorder) checkout must disclose its status before launch") {
     super(message);
     this.name = "EthicsDisclosureError";
+  }
+}
+
+/** Thrown when a new fake-door launch is attempted while the #17 kill switch is engaged → route 409. */
+export class DemandKillSwitchError extends Error {
+  constructor(message = "kill switch engaged — refusing to launch a new smoke test") {
+    super(message);
+    this.name = "DemandKillSwitchError";
   }
 }
 
@@ -194,9 +221,17 @@ export class DemandValidationService {
     return (this.deps.now ?? (() => new Date()))();
   }
 
+  private async killSwitchEngaged(workspaceId: string): Promise<boolean> {
+    return this.deps.killSwitch ? this.deps.killSwitch(workspaceId) : false;
+  }
+
   /** Register a **locked** experiment. The spec bar is validated here and never mutated after launch. */
   async register(input: RegisterExperimentInput): Promise<DemandExperiment> {
     validateSpec(input.spec);
+    // #19 IDOR: an experiment may only attach to a venture idea in the SAME workspace.
+    if (input.ventureIdeaId !== null && !(await this.deps.ventures.exists(input.workspaceId, input.ventureIdeaId))) {
+      throw new DemandNotFoundError("venture idea not found in this workspace");
+    }
     return this.deps.experiments.create({
       workspaceId: input.workspaceId,
       ventureIdeaId: input.ventureIdeaId,
@@ -217,13 +252,19 @@ export class DemandValidationService {
    * Launch the fake-door: deploy the landing page + mint the real checkout. The ethics rail refuses a
    * pre-launch (`waitlist`/`preorder`) launch with no disclosure; re-launching a live experiment is a 409.
    */
-  async launch(workspaceId: string, id: string): Promise<DemandExperiment> {
-    const exp = await this.require(workspaceId, id);
+  async launch(workspaceId: string, id: string, ventureIdeaId?: string): Promise<DemandExperiment> {
+    const exp = await this.require(workspaceId, id, ventureIdeaId);
     if (exp.status !== "registered") {
       throw new DemandStateError(`experiment is ${exp.status}, not registered — cannot launch`);
     }
     if (exp.availability !== "available" && !(exp.disclosure ?? "").trim()) {
       throw new EthicsDisclosureError();
+    }
+    // #17 kill switch: launching deploys + mints a real checkout (outbound work) — gate it like an
+    // autonomy launch. The ethics auto-refund in `ingestCheckout` is deliberately NOT gated (a charge
+    // that already happened must always be refunded).
+    if (await this.killSwitchEngaged(workspaceId)) {
+      throw new DemandKillSwitchError();
     }
     const landing = await this.deps.deployer.deploy({
       workspaceId,
@@ -248,8 +289,9 @@ export class DemandValidationService {
     signalClass: Exclude<DemandSignalClass, "paid">,
     externalRef: string,
     opts: { amountCents?: number; currency?: string } = {},
+    ventureIdeaId?: string,
   ): Promise<{ deduped: boolean }> {
-    const exp = await this.require(workspaceId, id);
+    const exp = await this.require(workspaceId, id, ventureIdeaId);
     return this.deps.signals.record({
       workspaceId,
       experimentId: id,
@@ -265,8 +307,12 @@ export class DemandValidationService {
   /**
    * Ingest the apex external signal — a real, signature-verified checkout from the #98 webhook. Records a
    * `paid` funnel signal (externally attributed by the Stripe event id) and, if the charge arrived before
-   * the product is `available`, auto-refunds it (the ethics rail). Idempotent: a replayed event is
-   * `deduped` and never double-refunds.
+   * the product is `available`, auto-refunds it (the ethics rail).
+   *
+   * The refund decision is **independent of the signal dedup**: a webhook retry after a partial failure
+   * (the signal persisted but the refund crashed) hits `deduped = true`, yet the charge is still
+   * unrefunded — so we re-attempt the refund whenever no `demand_refunds` row exists for the ref. A full
+   * replay (a refund row already exists) never double-refunds.
    */
   async ingestCheckout(input: {
     workspaceId: string;
@@ -286,32 +332,40 @@ export class DemandValidationService {
       amountCents: input.amountCents,
       currency: input.currency,
     });
-    // Only act on the first delivery — a webhook replay must not refund twice.
-    if (deduped) return { deduped: true, refunded: false };
 
+    // Ethics rail: a pre-availability charge must be refunded — keyed off whether a refund was already
+    // recorded for this ref, NOT off the signal dedup (so a retry after a partial failure still refunds).
+    let refunded = false;
     if (exp.availability !== "available") {
-      await this.deps.refunder.refund({
-        workspaceId: input.workspaceId,
-        externalRef: input.externalRef,
-        amountCents: input.amountCents,
-        currency: input.currency,
-      });
-      await this.deps.refunds.record({
-        workspaceId: input.workspaceId,
-        experimentId: input.experimentId,
-        externalRef: input.externalRef,
-        amountCents: input.amountCents,
-        currency: input.currency,
-        reason: `charged before availability (${exp.availability}) — auto-refunded`,
-      });
-      return { deduped: false, refunded: true };
+      const alreadyRefunded = await this.deps.refunds.exists(
+        input.workspaceId,
+        input.experimentId,
+        input.externalRef,
+      );
+      if (!alreadyRefunded) {
+        await this.deps.refunder.refund({
+          workspaceId: input.workspaceId,
+          externalRef: input.externalRef,
+          amountCents: input.amountCents,
+          currency: input.currency,
+        });
+        await this.deps.refunds.record({
+          workspaceId: input.workspaceId,
+          experimentId: input.experimentId,
+          externalRef: input.externalRef,
+          amountCents: input.amountCents,
+          currency: input.currency,
+          reason: `charged before availability (${exp.availability}) — auto-refunded`,
+        });
+        refunded = true;
+      }
     }
-    return { deduped: false, refunded: false };
+    return { deduped, refunded };
   }
 
   /** Read the experiment, its funnel, and the verdict against the locked bar. */
-  async view(workspaceId: string, id: string): Promise<ExperimentView> {
-    const exp = await this.require(workspaceId, id);
+  async view(workspaceId: string, id: string, ventureIdeaId?: string): Promise<ExperimentView> {
+    const exp = await this.require(workspaceId, id, ventureIdeaId);
     const signals = await this.deps.signals.list(workspaceId, id);
     const funnel = aggregateFunnel(signals);
     const evaluation = evaluateExperiment(this.spec(exp), funnel, this.now().getTime());
@@ -342,9 +396,22 @@ export class DemandValidationService {
 
   // --- internals ---
 
-  private async require(workspaceId: string, id: string): Promise<DemandExperiment> {
+  /**
+   * Load an experiment scoped to the workspace (cross-workspace ids 404 — the store filters by
+   * `workspace_id`). When `expectedVentureIdeaId` is supplied (the route's path `:vid`), the experiment's
+   * own `ventureIdeaId` must match it — so an experiment can never be read/mutated through the wrong
+   * venture's URL (#19 IDOR).
+   */
+  private async require(
+    workspaceId: string,
+    id: string,
+    expectedVentureIdeaId?: string,
+  ): Promise<DemandExperiment> {
     const exp = await this.deps.experiments.get(workspaceId, id);
     if (!exp) throw new DemandNotFoundError();
+    if (expectedVentureIdeaId !== undefined && exp.ventureIdeaId !== expectedVentureIdeaId) {
+      throw new DemandNotFoundError();
+    }
     return exp;
   }
 

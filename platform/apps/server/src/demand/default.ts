@@ -5,6 +5,8 @@ import {
   type Refunder,
 } from "./service.js";
 import { dbExperimentStore, dbSignalStore, dbRefundStore } from "../db/repositories/demand.js";
+import { getIdea } from "../db/repositories/venture.js";
+import { getControls } from "../db/repositories/autonomy.js";
 import type { SessionLogger } from "../runtime/manager.js";
 
 /**
@@ -63,6 +65,10 @@ export function createDefaultDemandService(
     deployer: dryRunDeployer,
     checkout: dryRunCheckout,
     refunder: loggingRefunder(logger),
+    // #19 IDOR: an experiment may only attach to a venture idea in the same workspace.
+    ventures: { exists: async (wid, ideaId) => (await getIdea(wid, ideaId)) !== undefined },
+    // #17: launching a new fake-door is gated by the same kill switch as an autonomy launch.
+    killSwitch: async (wid) => (await getControls(wid)).killSwitch,
     now,
   });
 }

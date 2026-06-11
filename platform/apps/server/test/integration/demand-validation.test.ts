@@ -23,6 +23,7 @@ import {
   type Refunder,
 } from "../../src/demand/service.js";
 import { dbExperimentStore, dbSignalStore, dbRefundStore } from "../../src/db/repositories/demand.js";
+import { getIdea } from "../../src/db/repositories/venture.js";
 import type { SessionLogger } from "../../src/runtime/manager.js";
 
 const silentLogger: SessionLogger = {
@@ -61,6 +62,8 @@ function makeDemandService(): DemandValidationService {
     deployer,
     checkout,
     refunder,
+    // #19 IDOR: an experiment may only attach to a venture idea in the same workspace.
+    ventures: { exists: async (wid, ideaId) => (await getIdea(wid, ideaId)) !== undefined },
     now: () => new Date(NOW_MS),
   });
 }
@@ -310,5 +313,74 @@ describe("Demand Validation Rails (#101 — real Postgres + Redis, none provider
       },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("IDOR: rejects cross-workspace access to ventures and experiments (404, no leak)", async () => {
+    const { app } = await startApp();
+    const a = await seed(app);
+    const b = await seed(app);
+    const ideaA = await createIdea(app, a);
+    const ideaB = await createIdea(app, b);
+
+    const regSpec = {
+      hypothesis: "x",
+      successClass: "paid",
+      denominatorClass: "visit",
+      passThreshold: 0.05,
+      minSample: 10,
+      windowStartMs: 0,
+      windowEndMs: 1000,
+      availability: "available",
+    };
+
+    // A registers a legitimate experiment on its own idea.
+    const regA = await app.inject({
+      method: "POST",
+      url: `/workspaces/${a.workspaceId}/ventures/${ideaA}/experiments`,
+      cookies: { rid: a.cookie },
+      payload: regSpec,
+    });
+    expect(regA.statusCode).toBe(201);
+    const expA = regA.json().id;
+
+    // A tries to register an experiment against B's venture idea → 404 (cannot attach across workspaces).
+    const crossRegister = await app.inject({
+      method: "POST",
+      url: `/workspaces/${a.workspaceId}/ventures/${ideaB}/experiments`,
+      cookies: { rid: a.cookie },
+      payload: regSpec,
+    });
+    expect(crossRegister.statusCode).toBe(404);
+
+    // B tries to view / launch / signal A's experiment (through B's own workspace) → 404, no leak.
+    const crossView = await app.inject({
+      method: "GET",
+      url: `/workspaces/${b.workspaceId}/ventures/${ideaB}/experiments/${expA}`,
+      cookies: { rid: b.cookie },
+    });
+    expect(crossView.statusCode).toBe(404);
+
+    const crossLaunch = await app.inject({
+      method: "POST",
+      url: `/workspaces/${b.workspaceId}/ventures/${ideaB}/experiments/${expA}/launch`,
+      cookies: { rid: b.cookie },
+    });
+    expect(crossLaunch.statusCode).toBe(404);
+
+    const crossSignal = await app.inject({
+      method: "POST",
+      url: `/workspaces/${b.workspaceId}/ventures/${ideaB}/experiments/${expA}/signals`,
+      cookies: { rid: b.cookie },
+      payload: { signalClass: "visit", externalRef: "intruder" },
+    });
+    expect(crossSignal.statusCode).toBe(404);
+
+    // And A cannot reach its own experiment through the WRONG venture path (defense-in-depth vid match).
+    const wrongVid = await app.inject({
+      method: "GET",
+      url: `/workspaces/${a.workspaceId}/ventures/${ideaB}/experiments/${expA}`,
+      cookies: { rid: a.cookie },
+    });
+    expect(wrongVid.statusCode).toBe(404);
   });
 });
