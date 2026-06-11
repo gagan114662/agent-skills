@@ -38,6 +38,7 @@ import type {
   ProviderKind,
   SearchEnvelope,
   SessionMode,
+  StatusPageDto,
   TaskTemplateDto,
   ThreadView,
   UsageReport,
@@ -243,6 +244,11 @@ export const api = {
   // --- founder console (#104) ---
   getFounderConsole(workspaceId: string): Promise<FounderConsoleDto> {
     return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
+  },
+
+  // --- public status page (#148) — UNauthenticated; needs no session cookie ---
+  getStatusPage(slug: string): Promise<StatusPageDto> {
+    return request<StatusPageDto>(`/status/${encodeURIComponent(slug)}`);
   },
 
   // --- pricing + checkout (#125) ---

@@ -83,6 +83,8 @@ import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
 import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
+import { statusRoutes } from "./routes/status.js";
+import { reliabilityRoutes } from "./routes/reliability.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
 import type { VerifierRunner } from "./verifiers/engine.js";
@@ -562,6 +564,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.decorate("sreEngine", sreEngine);
   app.register(sreRoutes);
+  // #148 reliability surface: the incident.io-class operating layer on top of the #112 loop. The
+  // owner-paging / war-room / AI-investigation behavior attaches at the SRE `notifier` seam (see
+  // `createDefaultSreEngine`), so there is no new engine here — only the public status page
+  // (UNAUTHENTICATED, opt-in per workspace via `reliability.statusPageEnabled`) and the authenticated
+  // ack / overlay / page-audit reads. All default-OFF.
+  app.register(statusRoutes);
+  app.register(reliabilityRoutes);
   // #106 outcome verifiers: read-only surface for a workspace's durable verification verdicts.
   app.register(verifierRoutes);
   // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action

@@ -235,8 +235,34 @@ export interface FounderConsoleDto {
     killSwitch: boolean;
     maintenance: { enabled: boolean; since?: string; reason?: string; unavailable?: boolean };
   };
+  /** Reliability insights (#148): MTTR, frequency, open count, noisiest components. */
+  reliability?: {
+    mttrMs: number | null;
+    incidentsLast7d: number;
+    incidentsLast30d: number;
+    openCount: number;
+    total: number;
+    noisiestComponents: { service: string; count: number }[];
+  };
   /** Whether the platform needs a human right now, and why. */
   attention: { required: boolean; reasons: string[] };
+}
+
+/** The public status page payload (#148): component health + a redacted incident history. */
+export type StatusLevel = "operational" | "degraded" | "major_outage";
+export interface StatusPageDto {
+  workspaceName: string;
+  overall: StatusLevel;
+  components: { name: string; status: StatusLevel }[];
+  incidents: {
+    title: string;
+    service: string;
+    severity: "warning" | "critical";
+    status: "firing" | "escalated" | "resolved";
+    openedAt: string;
+    resolvedAt: string | null;
+  }[];
+  generatedAt: string;
 }
 
 /** Events the `/ws` gateway sends to the client. */

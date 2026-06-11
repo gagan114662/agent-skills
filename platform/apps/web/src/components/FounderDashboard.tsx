@@ -23,6 +23,14 @@ function age(seconds: number): string {
   return `${seconds}s`;
 }
 
+/** MTTR (ms) → a human `2 hr`, `30 min`, or an em dash when nothing has resolved yet. */
+function mttr(ms: number | null): string {
+  if (ms === null) return "—";
+  const min = Math.round(ms / 60_000);
+  if (min >= 60) return `${(min / 60).toFixed(1)} hr`;
+  return `${min} min`;
+}
+
 export function FounderDashboard({
   console: data,
 }: {
@@ -38,6 +46,14 @@ export function FounderDashboard({
   }
 
   const { fleet, venturePipeline, revenue, budget, pendingApprovals, switches, attention } = data;
+  const reliability = data.reliability ?? {
+    mttrMs: null,
+    incidentsLast7d: 0,
+    incidentsLast30d: 0,
+    openCount: 0,
+    total: 0,
+    noisiestComponents: [],
+  };
 
   return (
     <section className="founder" aria-label="Founder console">
@@ -169,6 +185,36 @@ export function FounderDashboard({
               <dd>
                 {switches.maintenance.enabled ? "🔴 active" : "🟢 off"}
                 {switches.maintenance.unavailable ? " (unknown)" : ""}
+              </dd>
+            </div>
+          </dl>
+        </article>
+
+        <article className="founder__card">
+          <h3>Reliability</h3>
+          <dl className="founder__stats">
+            <div>
+              <dt>MTTR</dt>
+              <dd>{mttr(reliability.mttrMs)}</dd>
+            </div>
+            <div>
+              <dt>Open incidents</dt>
+              <dd>{reliability.openCount}</dd>
+            </div>
+            <div>
+              <dt>Last 7d / 30d</dt>
+              <dd>
+                {reliability.incidentsLast7d} / {reliability.incidentsLast30d}
+              </dd>
+            </div>
+            <div>
+              <dt>Noisiest</dt>
+              <dd>
+                {reliability.noisiestComponents.length === 0
+                  ? "no incidents"
+                  : reliability.noisiestComponents
+                      .map((c) => `${c.service} (${c.count})`)
+                      .join(", ")}
               </dd>
             </div>
           </dl>
