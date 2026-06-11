@@ -473,6 +473,22 @@ export const constitutionSchema = z.object({
   pricingDealLossCeilingPct: z.number().min(0).max(100).optional(),
 });
 
+/**
+ * Fleet skills + semantic layer + eval policy (#155, ADR-0155). One block read by BOTH the semantic-layer
+ * caps (freshness ceiling) and the eval caps (regression tolerance + the proactive eval-tick flag). Every
+ * field is optional and defaults **OFF**: a deployment that sets nothing surfaces the metric catalog
+ * read-only and runs no proactive eval maintenance — reads (answering a metric, listing the catalog) stay
+ * always-on and tenant-scoped, `enabled` gates only the proactive eval tick + flywheel feed.
+ */
+export const fleetSchema = z.object({
+  /** The proactive eval-maintenance flag — default OFF (reads always work). */
+  enabled: z.boolean().optional(),
+  /** Hours after which a metric answer is flagged stale (freshness ceiling). */
+  freshnessMaxAgeHours: z.number().nonnegative().optional(),
+  /** Allowed pass-rate slip (0–1) before an eval run counts as a regression that feeds the #117 flywheel. */
+  evalRegressionTolerance: z.number().min(0).max(1).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -526,6 +542,8 @@ export const settingsSchema = z.object({
   planning: planningSchema.optional(),
   /** YC Startup Constitution policy (#146): decision scoring + Article I love-gate (default OFF). */
   constitution: constitutionSchema.optional(),
+  /** Fleet skills + semantic layer + eval policy (#155): freshness ceiling + eval regression tolerance (default OFF). */
+  fleet: fleetSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -557,6 +575,7 @@ export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
+export type FleetConfig = z.infer<typeof fleetSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -618,6 +637,8 @@ export interface ResolvedConfig {
   planning: PlanningConfig;
   /** YC Startup Constitution policy (#146). A partial whose hard defaults `resolveConstitutionCaps` fills. */
   constitution: ConstitutionConfig;
+  /** Fleet skills + semantic + eval policy (#155). A partial whose hard defaults `resolveFleetCaps` fills. */
+  fleet: FleetConfig;
 }
 
 /**
@@ -650,4 +671,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   portfolio: {},
   planning: {},
   constitution: {},
+  fleet: {},
 };
