@@ -31,7 +31,8 @@ export const evalRuns = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    byWorkspaceAgent: index("eval_runs_workspace_agent_idx").on(t.workspaceId, t.agent, t.createdAt),
+    // Match the 0155 SQL migration's `(workspace_id, agent, created_at DESC)` — newest-first reads.
+    byWorkspaceAgent: index("eval_runs_workspace_agent_idx").on(t.workspaceId, t.agent, t.createdAt.desc()),
     countsCk: check("eval_runs_counts_ck", sql`${t.passed} >= 0 AND ${t.failed} >= 0 AND ${t.total} = ${t.passed} + ${t.failed}`),
     passRateCk: check("eval_runs_pass_rate_ck", sql`${t.passRate} >= 0 AND ${t.passRate} <= 10000`),
   }),

@@ -72,6 +72,15 @@ describe("eval-gated maintenance API (#155)", () => {
     expect(runs[0]).toMatchObject({ agent: "lens", passRate: 1, regressed: false });
   });
 
+  it("tolerates a repeated ?agent query param (array) without crashing", async () => {
+    const { rid, wid } = await signup();
+    await app.inject({ method: "POST", url: `/workspaces/${wid}/evals/lens/run`, cookies: { rid } });
+    // A repeated param arrives as an array; the route must treat it as "no filter", not pass it to eq().
+    const res = await app.inject({ method: "GET", url: `/workspaces/${wid}/evals/runs?agent=lens&agent=mark`, cookies: { rid } });
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json().runs)).toBe(true);
+  });
+
   it("404s an unknown agent", async () => {
     const { rid, wid } = await signup();
     const res = await app.inject({ method: "POST", url: `/workspaces/${wid}/evals/nope/run`, cookies: { rid } });

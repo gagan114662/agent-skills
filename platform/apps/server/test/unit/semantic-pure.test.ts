@@ -75,6 +75,8 @@ describe("answer rendering (#155)", () => {
     expect(renderValue(6.55, "score_0_10")).toBe("6.6/10");
     expect(renderValue(0.1234, "rate_0_1")).toBe("12.3%");
     expect(renderValue(1999, "cents")).toBe("$19.99");
+    expect(renderValue(150, "cents")).toBe("$1.50"); // keeps trailing zero (not $1.5)
+    expect(renderValue(100, "cents")).toBe("$1.00");
     expect(renderValue(42.7, "count")).toBe("43");
     expect(renderValue(null, "score_0_100")).toBe("—");
   });

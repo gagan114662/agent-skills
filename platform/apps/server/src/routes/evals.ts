@@ -46,7 +46,10 @@ export async function evalRoutes(app: FastifyInstance, opts: EvalRoutesOptions):
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const { agent } = req.query as { agent?: string };
+    // A repeated query param (?agent=a&agent=b) arrives as an array — only a single string is a valid
+    // filter; anything else (array/missing) means "no filter" rather than crashing Drizzle's eq().
+    const rawAgent = (req.query as { agent?: unknown }).agent;
+    const agent = typeof rawAgent === "string" ? rawAgent : undefined;
     return { runs: await listEvalRuns(wid, agent) };
   });
 }

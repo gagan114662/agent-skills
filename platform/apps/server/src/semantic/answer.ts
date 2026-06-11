@@ -51,7 +51,8 @@ export function renderValue(value: number | null, unit: MetricUnit): string {
     case "rate_0_1":
       return `${round(value * 100, 1)}%`;
     case "cents":
-      return `$${round(value / 100, 2)}`;
+      // toFixed(2) so cents keep both decimal places ($1.50, not $1.5).
+      return `$${(value / 100).toFixed(2)}`;
     case "count":
     default:
       return String(Math.round(value));

@@ -17,6 +17,11 @@
 'use strict';
 
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+// The script runs from `platform/` (CI working-directory); resolve repo-relative paths to disk from there.
+const REPO_ROOT = path.resolve(process.cwd(), '..');
 
 /** Governed metric-surface files: the pure scorers + the semantic catalog. Repo-relative (under platform/). */
 const METRIC_SOURCE_FILES = [
@@ -54,14 +59,13 @@ function isMetricSurface(file) {
   // Repo-relative path is `platform/apps/server/...`; the source list is relative to `platform/`.
   const rel = file.replace(/^platform\//, '');
   if (METRIC_SOURCE_FILES.includes(rel)) return true;
-  // A migration (under platform/apps/server/drizzle) that names a governed table.
+  // A migration (under platform/apps/server/drizzle) that names a governed table. Read the file from the
+  // working tree (it reflects the PR HEAD on a CI checkout) — `git show HEAD:<file>` fails on a brand-new
+  // or still-uncommitted migration, exactly the case we most need to catch.
   if (/^apps\/server\/drizzle\/.*\.sql$/.test(rel) && !rel.endsWith('.down.sql')) {
-    try {
-      const sql = execSync(`git show HEAD:${file}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      return GOVERNED_TABLE_RE.test(sql);
-    } catch {
-      return GOVERNED_TABLE_RE.test(rel); // fall back to the filename
-    }
+    const onDisk = path.join(REPO_ROOT, file);
+    if (existsSync(onDisk)) return GOVERNED_TABLE_RE.test(readFileSync(onDisk, 'utf8'));
+    return GOVERNED_TABLE_RE.test(rel); // file was deleted in this PR — fall back to the filename
   }
   return false;
 }
