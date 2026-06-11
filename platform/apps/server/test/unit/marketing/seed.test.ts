@@ -1,0 +1,113 @@
+import { describe, it, expect } from "vitest";
+import { newId } from "../../../src/db/id.js";
+import { seedMarketingDepartment, type MarketingSeedDeps } from "../../../src/marketing/seed.js";
+import { MARKETING_CHANNELS, MARKETING_DEPARTMENTS } from "../../../src/marketing/blueprint.js";
+
+/**
+ * #123 seeding — idempotent, reuse-first. Drives the seeder with in-memory fakes for every #4/#9/#59
+ * seam so it runs in the no-DB unit job. Asserts the agency it builds: nine channels, seven agents, the
+ * human granted propagate (so they may @mention-invoke), intros posted, and a welcome session + task
+ * record per department proving each agent alive — and that re-seeding creates nothing twice.
+ */
+function makeFakes() {
+  const channels = new Map<string, { id: string; name: string }>(); // name → channel
+  const personas = new Map<string, { id: string; agentMemberId: string }>(); // handle → persona
+  const channelMembers: Array<{ channelId: string; memberId: string }> = [];
+  const grants: Array<{ memberId: string; channelId: string; capability: string }> = [];
+  const posts: Array<{ channelId: string; agentMemberId: string; body: string }> = [];
+  const launches: Array<{ channelId: string; agentMemberId: string; task: string }> = [];
+  const tasks: Array<{ department: string; agentMemberId: string; sessionId: string | null; kind: string }> = [];
+
+  const deps: MarketingSeedDeps = {
+    getChannelByName: async (_wid, name) => channels.get(name),
+    createChannel: async ({ name }) => {
+      const ch = { id: `ch-${newId()}`, name };
+      channels.set(name, ch);
+      return ch;
+    },
+    addChannelMember: async (channelId, memberId) => {
+      if (!channelMembers.some((m) => m.channelId === channelId && m.memberId === memberId)) {
+        channelMembers.push({ channelId, memberId });
+      }
+    },
+    grantPropagate: async ({ memberId, channelId }) => {
+      grants.push({ memberId, channelId, capability: "propagate" });
+    },
+    getPersonaByHandle: async (_wid, handle) => personas.get(handle),
+    createPersona: async ({ name }) => {
+      const p = { id: `p-${newId()}`, agentMemberId: `am-${newId()}` };
+      personas.set(name, p);
+      return p;
+    },
+    post: async ({ channelId, agentMemberId, body }) => {
+      posts.push({ channelId, agentMemberId, body });
+      return { id: `msg-${newId()}` };
+    },
+    launchWelcome: async ({ channelId, agentMemberId, task }) => {
+      launches.push({ channelId, agentMemberId, task });
+      return { id: `sess-${newId()}` };
+    },
+    recordTask: async ({ department, agentMemberId, sessionId, kind }) => {
+      tasks.push({ department, agentMemberId, sessionId, kind });
+      return { id: `mt-${newId()}` };
+    },
+  };
+  return { deps, channels, personas, channelMembers, grants, posts, launches, tasks };
+}
+
+describe("#123 seedMarketingDepartment", () => {
+  const workspaceId = "ws-1";
+  const human = "human-1";
+
+  it("creates all nine channels, seven agents, grants, intros and welcome tasks", async () => {
+    const f = makeFakes();
+    const result = await seedMarketingDepartment(
+      { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
+      f.deps,
+    );
+
+    // Nine channels, seven agents.
+    expect([...f.channels.keys()].sort()).toEqual([...MARKETING_CHANNELS].sort());
+    expect(f.personas.size).toBe(7);
+    expect(result.channels).toHaveLength(9);
+    expect(result.agents).toHaveLength(7);
+
+    // The human is granted propagate on every seeded channel (so they may @mention-invoke).
+    expect(new Set(f.grants.map((g) => g.channelId)).size).toBe(9);
+    expect(f.grants.every((g) => g.memberId === human && g.capability === "propagate")).toBe(true);
+
+    // Each agent is a member of its own department channel + the two shared channels.
+    const scout = result.agents.find((a) => a.handle === "scout")!;
+    const seo = f.channels.get("seo")!;
+    expect(f.channelMembers).toContainEqual({ channelId: seo.id, memberId: scout.agentMemberId });
+    for (const shared of ["general", "launch"]) {
+      const ch = f.channels.get(shared)!;
+      expect(f.channelMembers).toContainEqual({ channelId: ch.id, memberId: scout.agentMemberId });
+    }
+
+    // Intros posted + a welcome message in #general; a welcome session + task per department.
+    expect(f.posts.length).toBeGreaterThanOrEqual(MARKETING_DEPARTMENTS.length + 1);
+    expect(f.launches).toHaveLength(7);
+    expect(f.tasks).toHaveLength(7);
+    expect(f.tasks.every((t) => t.kind === "welcome" && t.sessionId !== null)).toBe(true);
+    expect(result.welcomeTasks).toHaveLength(7);
+  });
+
+  it("is idempotent — re-seeding creates no new channels, agents, or grants", async () => {
+    const f = makeFakes();
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
+    const channelsAfterFirst = f.channels.size;
+    const personasAfterFirst = f.personas.size;
+
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
+    expect(f.channels.size).toBe(channelsAfterFirst);
+    expect(f.personas.size).toBe(personasAfterFirst);
+  });
+
+  it("skips welcome sessions when postWelcomeTasks is false", async () => {
+    const f = makeFakes();
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
+    expect(f.launches).toHaveLength(0);
+    expect(f.tasks).toHaveLength(0);
+  });
+});

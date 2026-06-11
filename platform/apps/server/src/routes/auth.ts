@@ -26,7 +26,15 @@ function setSessionCookie(reply: FastifyReply, raw: string): void {
   });
 }
 
-export async function authRoutes(app: FastifyInstance): Promise<void> {
+export interface AuthRoutesOptions {
+  /**
+   * Best-effort hook fired after a new workspace + owner are created (#123 seed-on-signup). It must
+   * not throw — a failure here never fails the signup that already succeeded.
+   */
+  onWorkspaceCreated?: (workspaceId: string, ownerMemberId: string) => Promise<void>;
+}
+
+export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions = {}): Promise<void> {
   app.post("/auth/signup", async (req, reply) => {
     const b = req.body as {
       email?: string;
@@ -43,7 +51,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const ws =
       (await getWorkspaceBySlug(b.workspaceSlug)) ??
       (await createWorkspace({ slug: b.workspaceSlug, name: b.workspaceSlug }));
-    const { userId } = await createHumanAccount({
+    const { userId, memberId } = await createHumanAccount({
       workspaceId: ws.id,
       email: b.email,
       passwordHash: await hashPassword(b.password),
@@ -52,6 +60,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const { raw, hash } = generateSessionToken();
     await createSession({ userId, tokenHash: hash, expiresAt: new Date(Date.now() + SESSION_TTL_MS) });
     setSessionCookie(reply, raw);
+    // #123: when the deployment opts in (marketing.enabled), seed the department fleet so the owner
+    // lands inside a working agency. Best-effort — the hook never throws, so signup can't be broken.
+    if (opts.onWorkspaceCreated) await opts.onWorkspaceCreated(ws.id, memberId);
     return reply.code(201).send({ ok: true });
   });
 

@@ -37,6 +37,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #119 gate-pricing policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's pricer flag / rails cannot be loosened (e.g. auto-relax turned off) by a lower layer.
     if (layer.gatePricing !== undefined) out.gatePricing = { ...layer.gatePricing };
+    // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // seed-on-signup flag cannot be flipped on/off by a lower layer.
+    if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
   }
   return out;
 }
@@ -62,5 +65,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
     watchdog: merged.watchdog ?? { ...CONFIG_DEFAULTS.watchdog },
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
+    marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
   };
 }
