@@ -7,10 +7,12 @@ import type {
   ApprovalEventDto,
   ApprovalPolicyDto,
   ApprovalRequestDto,
+  CheckoutResponseDto,
   CheckRunDto,
   ChecksStatus,
   DeploymentDto,
   DiffMode,
+  PlansResponseDto,
   PreviewAnnotation,
   PullRequestDto,
   ReviewCommentDto,
@@ -221,6 +223,18 @@ export const api = {
   // --- founder console (#104) ---
   getFounderConsole(workspaceId: string): Promise<FounderConsoleDto> {
     return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
+  },
+
+  // --- pricing + checkout (#125) ---
+  billing: {
+    /** The /pricing catalog + the workspace's active plan (un-gated — always renders). */
+    listPlans(workspaceId: string): Promise<PlansResponseDto> {
+      return request<PlansResponseDto>(`/workspaces/${workspaceId}/billing/plans`);
+    },
+    /** Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on 409/400/502. */
+    startCheckout(workspaceId: string, planKey: string): Promise<CheckoutResponseDto> {
+      return post(`/workspaces/${workspaceId}/billing/checkout`, { planKey }) as Promise<CheckoutResponseDto>;
+    },
   },
 
   // --- messages & threads ---

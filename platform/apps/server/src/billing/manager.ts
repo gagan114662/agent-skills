@@ -157,12 +157,23 @@ export interface WebhookIngestResult {
   event?: RevenueEvent;
 }
 
+/**
+ * The plan-activation seam (#125): when a deduped payment webhook carries `metadata.kind =
+ * "plan_checkout"`, the manager calls this to mark the workspace's plan + update its caps. Declared here
+ * (rather than importing `PlanBillingService`) so the #125 layer depends on #98, never the reverse.
+ */
+export interface PlanActivator {
+  activate(workspaceId: string, planKey: string, providerEventId: string): Promise<unknown>;
+}
+
 export interface BillingManagerDeps {
   provider: BillingProvider;
   store: BillingStore;
   poster: ChannelPoster;
   secrets: SecretsResolver;
   deployments: DeploymentLookup;
+  /** Optional #125 plan activation: invoked for a `plan_checkout` payment event (best-effort). */
+  planActivator?: PlanActivator;
   loadConfig?: (workspaceId: string) => ResolvedConfig;
   publish?: (channelId: string, event: BillingStatusEvent) => void;
   logger?: SessionLogger;
@@ -176,6 +187,7 @@ export class BillingManager {
   private readonly poster: ChannelPoster;
   private readonly secrets: SecretsResolver;
   private readonly deployments: DeploymentLookup;
+  private readonly planActivator?: PlanActivator;
   private readonly load: (workspaceId: string) => ResolvedConfig;
   private readonly publish: (channelId: string, event: BillingStatusEvent) => void;
   private readonly logger?: SessionLogger;
@@ -188,6 +200,7 @@ export class BillingManager {
     this.poster = deps.poster;
     this.secrets = deps.secrets;
     this.deployments = deps.deployments;
+    this.planActivator = deps.planActivator;
     this.load = deps.loadConfig ?? ((workspaceId) => loadConfig(workspaceId));
     this.publish =
       deps.publish ??
@@ -357,6 +370,15 @@ export class BillingManager {
           amountCents: parsed.amountCents,
           currency: parsed.currency,
         });
+      }
+      // #125: a plan checkout payment activates the workspace's plan + updates its caps. Best-effort —
+      // the revenue row is already the source of truth, and dedupe above makes this exactly-once.
+      if (parsed.metadata.kind === "plan_checkout" && parsed.metadata.planKey && this.planActivator) {
+        try {
+          await this.planActivator.activate(workspaceId, parsed.metadata.planKey, parsed.id);
+        } catch (err) {
+          this.logger?.warn({ workspaceId, err }, "billing: plan activation failed");
+        }
       }
     }
 

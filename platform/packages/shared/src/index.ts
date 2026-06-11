@@ -303,5 +303,48 @@ export interface RevenueSummaryDto {
   recent: RevenueEventDto[];
 }
 
+/** One pricing plan card on the `/pricing` page (#125). Mirrors the server's pure plan catalog. */
+export interface PlanDto {
+  /** Stable plan key (`starter` | `pro` | `agency`). */
+  key: string;
+  name: string;
+  /** Warm, chatty one-liner (ipop voice). */
+  tagline: string;
+  priceCents: number;
+  currency: string;
+  interval: string;
+  /** Tenant cap: agent seats. */
+  agentSeats: number;
+  /** Tenant cap: monthly spend ceiling on agent sessions (cents) → the #71 budget cap. */
+  monthlySessionBudgetCents: number;
+  /** Tenant cap: department fleet size. */
+  fleetSize: number;
+  highlights: string[];
+  /** The recommended tier (rendered with a "most popular" treatment). */
+  featured: boolean;
+}
+
+/** The workspace's currently active plan + its resolved caps (#125). Null until a plan is activated. */
+export interface ActivePlanDto {
+  planKey: string;
+  status: string;
+  agentSeats: number;
+  monthlySessionBudgetCents: number;
+  fleetSize: number;
+  activatedAt: string;
+}
+
+/** `GET /workspaces/:wid/billing/plans` payload (#125): the catalog + the active plan. */
+export interface PlansResponseDto {
+  plans: PlanDto[];
+  current: ActivePlanDto | null;
+}
+
+/** `POST /workspaces/:wid/billing/checkout` success payload (#125): the hosted checkout URL. */
+export interface CheckoutResponseDto {
+  url: string;
+  planKey: string;
+}
+
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
 // this package is consumed unbuilt and stays strictly type-only with no runtime exports.

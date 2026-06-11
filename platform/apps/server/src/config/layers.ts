@@ -37,6 +37,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #117 flywheel policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // self-healing flag / bounds (rate limit, concurrency cap) cannot be loosened by a lower layer.
     if (layer.flywheel !== undefined) out.flywheel = { ...layer.flywheel };
+    // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // seed-on-signup flag cannot be flipped on/off by a lower layer.
+    if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
   }
   return out;
 }
@@ -62,5 +65,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
     watchdog: merged.watchdog ?? { ...CONFIG_DEFAULTS.watchdog },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
+    marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
   };
 }

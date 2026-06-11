@@ -26,6 +26,8 @@ import {
   type IntegrationsRoutesOptions,
 } from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
+import { marketingRoutes } from "./routes/marketing.js";
+import { maybeAutoSeedOnSignup } from "./marketing/default.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
@@ -44,8 +46,9 @@ import { deployRoutes } from "./routes/deploy.js";
 import { createDefaultDeployManager } from "./deploy/default.js";
 import type { DeployManager } from "./deploy/manager.js";
 import { billingRoutes } from "./routes/billing.js";
-import { createDefaultBillingManager } from "./billing/default.js";
+import { createDefaultBilling } from "./billing/default.js";
 import type { BillingManager } from "./billing/manager.js";
+import type { PlanBillingService } from "./billing/plan-service.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { GitWorktreeReaper } from "./git/reaper.js";
@@ -117,6 +120,8 @@ export interface BuildAppOptions {
   deployManager?: DeployManager;
   /** #98 Billing: tests inject a BillingManager over the none provider; default builds one from env. */
   billingManager?: BillingManager;
+  /** #125 Pricing: tests inject a PlanBillingService over the none provider; default builds one from env. */
+  planService?: PlanBillingService;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
@@ -191,7 +196,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(healthRoutes);
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
-  app.register(authRoutes);
+  // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered
+  // below, right after the manager is built.
   app.register(meRoutes);
   // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.
   app.register(agentInterfaceRoutes);
@@ -237,6 +243,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
   // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
   app.register(subagentRoutes, { sessionManager });
+  // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
+  // per marketing function), turn an @mention into a REAL harness session through the venture-gated
+  // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
+  // sends stay #13-gated, sensitive-by-default. authRoutes is registered here too so signup can
+  // auto-seed (config default-OFF) through the SAME SessionManager.
+  app.register(authRoutes, {
+    onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
+      maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+  });
+  app.register(marketingRoutes, { sessionManager });
   // #56 Run tab: run a session's app for in-app preview + detect its localhost port, and route UI
   // annotations back to the agent (the #51 round trip). The RunProcessManager is SEPARATE from the
   // SessionManager (a dev server is long-lived; it must never finalize the session row). Killed on
@@ -259,8 +275,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // and turns each real payment into willingness-to-pay evidence the #96 venture scorecard consumes.
   // Outbound money (refunds/payouts/transfers) is NEVER here — it is a #13 approval-gated, recorded-only
   // action; payouts stay manual in the Stripe dashboard.
-  const billingManager = opts.billingManager ?? createDefaultBillingManager(app.log);
-  app.register(billingRoutes, { billingManager });
+  // #98 rails + #125 pricing/plan layer share one provider + secrets; build both together unless a test
+  // injected its own (the #98 tests inject only the manager and never exercise the plan routes).
+  const billingDefaults =
+    !opts.billingManager || !opts.planService ? createDefaultBilling(app.log) : null;
+  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
+  const planService = opts.planService ?? billingDefaults!.planService;
+  app.register(billingRoutes, { billingManager, planService });
   // #104 founder console: ONE read-only aggregation endpoint that gives the owner fleet status, the
   // venture pipeline (#96), revenue/willingness-to-pay (#98), budget burn (#71), the pending #13
   // approval queue (with decision-SLA ages), and the kill/maintenance switches — the whole daily
