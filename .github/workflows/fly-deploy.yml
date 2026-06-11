@@ -32,6 +32,9 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - name: Guard — skip cleanly when Fly deploy is not configured
+        # Runs BEFORE checkout, so the default `working-directory: platform` doesn't exist yet —
+        # pin this step to the runner workspace root or bash can't even start (No such file or directory).
+        working-directory: ${{ github.workspace }}
         run: |
           if [ -z "$FLY_API_TOKEN" ]; then
             echo "::notice title=Fly deploy not configured::set the FLY_API_TOKEN repo secret to enable API deploys — skipping."
