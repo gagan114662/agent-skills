@@ -7,6 +7,8 @@
 import { useEffect } from "react";
 import type { DeploymentDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
+import { VOICE } from "../../brand.js";
+import { EmptyState } from "../EmptyState.js";
 
 export function DeployPanel(): React.JSX.Element {
   const { deploy, activeChannelId } = useAppState();
@@ -23,7 +25,7 @@ export function DeployPanel(): React.JSX.Element {
       <aside className="deploy__sidebar" aria-label="Sessions">
         <h3>Sessions</h3>
         {deploy.sessions.length === 0 ? (
-          <p className="deploy__empty">No agent sessions in this channel yet.</p>
+          <EmptyState className="emptystate--compact">{VOICE.noSessions}</EmptyState>
         ) : (
           <ul>
             {deploy.sessions.map((s) => (
@@ -48,7 +50,7 @@ export function DeployPanel(): React.JSX.Element {
             {deploy.error}
           </p>
         )}
-        {activeSession ? <DeployStage /> : <p className="deploy__empty">Select a session to deploy its app.</p>}
+        {activeSession ? <DeployStage /> : <EmptyState>{VOICE.pickSessionToDeploy}</EmptyState>}
       </section>
     </div>
   );

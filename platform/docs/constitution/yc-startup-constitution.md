@@ -35,10 +35,10 @@ Know, for every venture, whether on current trajectory it reaches profitability 
 runs out of money. A venture that is default dead with no plan must be fixed, pivoted, or
 killed — kill discipline is a feature, not a failure.
 
-**Enforced by:** the venture KILL verdict (#96, `venture/decide.ts` — a score at/below the
-kill threshold terminates the venture and records the angle to memory) and the dollar-ceiling
-budget caps (`scale/caps.ts`, `scale/usage.ts`) that stop spend on a default-dead trajectory.
-The dedicated portfolio kill ladder (#107) deepens this when it merges.[^siblings]
+**Enforced by:** the #107 portfolio kill ladder (`portfolio/decide.ts` — DOUBLE_DOWN / MAINTAIN /
+PIVOT / SUNSET on launched ventures, the SUNSET gated by #13) plus the venture KILL verdict
+(#96, `venture/decide.ts`) and the dollar-ceiling budget caps (`scale/caps.ts`, `scale/usage.ts`)
+that stop spend on a default-dead trajectory.
 
 ### Article III — Talk to Your Users and Iterate
 > "Talk to users and build something they want." — Sam Altman, *Startup Playbook*;
@@ -120,7 +120,7 @@ predate it and are wired into the same constitution scorer so violations are det
 | Article | Principle | Enforcing system(s) | File paths |
 |---------|-----------|---------------------|------------|
 | **I** | Make something people want (love > like) | **Love-paradigm FUND gate (NEW #146)** + #101 demand rails | `apps/server/src/constitution/love-gate.ts`, `apps/server/src/demand/provenance.ts`, `apps/server/src/demand/signals.ts` |
-| **II** | Default alive, kill discipline | #96 venture KILL verdict + dollar-ceiling budget caps (#107 portfolio deepens, sibling) | `apps/server/src/venture/decide.ts`, `apps/server/src/scale/caps.ts`, `apps/server/src/scale/usage.ts` |
+| **II** | Default alive, kill discipline | #107 portfolio kill ladder + #96 venture KILL verdict + dollar-ceiling budget caps | `apps/server/src/portfolio/decide.ts`, `apps/server/src/venture/decide.ts`, `apps/server/src/scale/caps.ts` |
 | **III** | Talk to users & iterate | #96 iteration log + #101 demand evidence (#114 voice deepens, sibling) | `apps/server/src/venture/service.ts`, `apps/server/src/demand/service.ts` |
 | **IV** | Do things that don't scale | **Unscalable-ops fleet templates (NEW #146)** + #123 marketing fleet | `apps/server/src/marketing/blueprint.ts`, `apps/server/src/marketing/external-send.ts` |
 | **V** | Don't fool yourself — real growth | #106 outcome verifiers + #101 demand rails | `apps/server/src/verifiers/`, `apps/server/src/demand/provenance.ts` |
@@ -128,11 +128,12 @@ predate it and are wired into the same constitution scorer so violations are det
 | **VII** | Spend like you're poor | dollar ceilings + perf budgets + cost forecast (#108 runbook deepens, sibling) | `apps/server/src/scale/usage.ts`, `apps/server/src/perf/budgets.ts`, `apps/server/src/founder-console/aggregate.ts` |
 | **VIII** | Charge money, raise prices | #119 evidence-priced autonomy + **10/5/20 pricing ladder (NEW #146)** | `apps/server/src/gate-pricing/`, `apps/server/src/constitution/pricing-ladder.ts` |
 
-[^siblings]: Issue #146 names #107 (portfolio lifecycle), #114 (customer voice loop), and #108
-    (production cost-ceiling runbook) as the eventual owners of Articles II / III / VII. Those land
-    in sibling branches not yet merged to this base, so the rows above anchor to the enforcing code
-    that **does** exist on this branch today; the named systems deepen each Article when they merge.
-    This keeps the map auditable (every path resolves) rather than aspirational.
+[^siblings]: Issue #146 names #114 (customer voice loop) and #108 (production cost-ceiling runbook)
+    as the eventual owners of Articles III / VII. Those land in sibling branches not yet merged to
+    this base, so the rows above anchor to the enforcing code that **does** exist on this branch
+    today; the named systems deepen each Article when they merge. (#107 portfolio lifecycle has since
+    merged and now backs Article II directly.) This keeps the map auditable (every path resolves)
+    rather than aspirational.
 
 ### The constitution scorer (cross-cutting)
 

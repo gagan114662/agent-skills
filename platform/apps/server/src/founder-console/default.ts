@@ -4,6 +4,8 @@ import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
 import type { MoatService } from "../moat/service.js";
 import { resolveMoatCaps } from "../moat/caps.js";
+import type { PortfolioService } from "../portfolio/service.js";
+import { resolvePortfolioCaps } from "../portfolio/caps.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
@@ -37,9 +39,11 @@ export function createDefaultFounderConsoleService(deps: {
   billing: BillingManager;
   /** The #103 moat service — surfaces per-venture moat + flags the stagnant ones (read-only). */
   moat?: MoatService;
+  /** The #107 portfolio service — surfaces the launched-venture review decisions + sunset queue (read-only). */
+  portfolio?: PortfolioService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing, moat } = deps;
+  const { scale, billing, moat, portfolio } = deps;
   return new FounderConsoleService({
     fleet: {
       tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
@@ -236,6 +240,22 @@ export function createDefaultFounderConsoleService(deps: {
         return { openViolations: open.length, topCodes: [...new Set(open.map((v) => v.code))] };
       },
     },
+    // #107 portfolio lifecycle: the launched-venture review decisions + the sunset gate queue. The pane
+    // reduces these to the latest review per venture; `enabled` (default OFF) gates only its attention.
+    portfolio: portfolio
+      ? {
+          reviews: async (workspaceId) =>
+            (await portfolio.listReviews(workspaceId)).map((r) => ({
+              ventureIdeaId: r.ventureIdeaId,
+              decision: r.decision,
+              status: r.status,
+              score: r.score,
+              netCents: r.netCents,
+              createdAtMs: r.createdAt.getTime(),
+            })),
+          enabled: (workspaceId) => resolvePortfolioCaps(loadConfig(workspaceId).portfolio).enabled,
+        }
+      : undefined,
     now: deps.now,
   });
 }

@@ -3,6 +3,7 @@ import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ServerEvent } from "../../api/types.js";
 import { Workspace } from "../Workspace.js";
+import { VOICE } from "../../brand.js";
 import { renderWithStore } from "../../test/utils.js";
 import type { AgentSessionSummary } from "../../api/types.js";
 
@@ -40,7 +41,8 @@ describe("DeployPanel (#73 Deploy tab)", () => {
     const { store } = renderWithStore(<Workspace />, { sessions: [SESSION] });
     await store.bootstrap();
     await userEvent.click(screen.getByRole("button", { name: "Deploy" }));
-    expect(await screen.findByText("Select a session to deploy its app.")).toBeInTheDocument();
+    // The pick-a-session prompt now speaks the house voice (#145 empty-state pass).
+    expect(await screen.findByText(VOICE.pickSessionToDeploy)).toBeInTheDocument();
   });
 
   it("deploys the selected session and shows the live URL as a link", async () => {

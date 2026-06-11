@@ -208,6 +208,22 @@ export interface MoatVentureSnapshot {
   lastAccrualAtMs: number | null;
 }
 
+/** One portfolio review (#107) reduced to what the console pane counts — the latest review per venture.
+ * Mirrors `portfolio/types.ts` `PortfolioReviewRecord` minus the evidence snapshot (kept local + pure). */
+export interface PortfolioReviewSnapshot {
+  ventureIdeaId: string;
+  /** `DOUBLE_DOWN` | `MAINTAIN` | `PIVOT` | `SUNSET`. */
+  decision: string;
+  /** `recorded` | `sunset_pending` | `sunset_executed` | `sunset_rejected`. */
+  status: string;
+  /** 0–100 composite portfolio-health score. */
+  score: number;
+  /** `revenueCents − monthlyCostCents` (negative = burning). */
+  netCents: number;
+  /** When the review was recorded (epoch ms) — newest wins when deduping to latest-per-venture. */
+  createdAtMs: number;
+}
+
 /** The two safety switches surfaced read-only. */
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
@@ -253,6 +269,10 @@ export interface FounderConsoleInput {
   moatWindowDays?: number;
   /** Open constitution violations (#146). Optional ⇒ none (enforcement off / unwired). */
   constitution?: ConstitutionSnapshot;
+  /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
+  portfolio?: PortfolioReviewSnapshot[];
+  /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
+  portfolioEnabled?: boolean;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -418,6 +438,34 @@ export interface ConstitutionView {
   topCodes: string[];
 }
 
+/** One launched venture's latest portfolio decision (#107), surfaced on the console pane. */
+export interface PortfolioVentureView {
+  ventureIdeaId: string;
+  decision: string;
+  status: string;
+  score: number;
+  netCents: number;
+}
+
+/** The portfolio lifecycle roll-up (#107): launched-venture decision counts + the sunset gate queue. */
+export interface PortfolioView {
+  /** Whether the portfolio loop is enabled (gates the attention reason). */
+  enabled: boolean;
+  /** Distinct launched ventures with a review (the latest review per venture). */
+  reviewed: number;
+  doubleDown: number;
+  maintain: number;
+  pivot: number;
+  /** Ventures whose latest decision is SUNSET. */
+  sunset: number;
+  /** SUNSET reviews recommended but not yet requested (status `recorded`) — the kill backlog. */
+  sunsetsRecommended: number;
+  /** SUNSET reviews awaiting a human #13 approval (status `sunset_pending`). */
+  sunsetsPendingApproval: number;
+  /** The launched ventures + their latest decision (the dashboard surface). */
+  ventures: PortfolioVentureView[];
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -451,6 +499,8 @@ export interface FounderConsole {
   moat: MoatView;
   /** Open constitution violations (#146). Zero-valued when enforcement is off / unwired. */
   constitution: ConstitutionView;
+  /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
+  portfolio: PortfolioView;
   attention: AttentionView;
 }
 
@@ -613,6 +663,35 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     topCodes: input.constitution?.topCodes ?? [],
   };
 
+  // #107 portfolio lifecycle: reduce the reviews to the LATEST per venture (newest-first input), count
+  // by decision, and surface the sunset (kill) gate queue. Counts always report; the attention reason is
+  // gated on `portfolioEnabled` (mirrors moat) so a deployment that hasn't opted in is never nagged.
+  const portfolioReviews = input.portfolio ?? [];
+  const latestByVenture = new Map<string, PortfolioReviewSnapshot>();
+  for (const r of [...portfolioReviews].sort((a, b) => b.createdAtMs - a.createdAtMs)) {
+    if (!latestByVenture.has(r.ventureIdeaId)) latestByVenture.set(r.ventureIdeaId, r);
+  }
+  const latestReviews = [...latestByVenture.values()];
+  const portfolio: PortfolioView = {
+    enabled: input.portfolioEnabled ?? false,
+    reviewed: latestReviews.length,
+    doubleDown: latestReviews.filter((r) => r.decision === "DOUBLE_DOWN").length,
+    maintain: latestReviews.filter((r) => r.decision === "MAINTAIN").length,
+    pivot: latestReviews.filter((r) => r.decision === "PIVOT").length,
+    sunset: latestReviews.filter((r) => r.decision === "SUNSET").length,
+    sunsetsRecommended: latestReviews.filter(
+      (r) => r.decision === "SUNSET" && r.status === "recorded",
+    ).length,
+    sunsetsPendingApproval: latestReviews.filter((r) => r.status === "sunset_pending").length,
+    ventures: latestReviews.map((r) => ({
+      ventureIdeaId: r.ventureIdeaId,
+      decision: r.decision,
+      status: r.status,
+      score: r.score,
+      netCents: r.netCents,
+    })),
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -630,6 +709,12 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   }
   if (constitution.openViolations > 0) {
     reasons.push(`${pluralize(constitution.openViolations, "constitution violation")} flagged`);
+  }
+  if (portfolio.enabled && portfolio.sunsetsPendingApproval > 0) {
+    reasons.push(`${pluralize(portfolio.sunsetsPendingApproval, "venture sunset")} awaiting approval`);
+  }
+  if (portfolio.enabled && portfolio.sunsetsRecommended > 0) {
+    reasons.push(`${pluralize(portfolio.sunsetsRecommended, "venture")} recommended for sunset`);
   }
 
   return {
@@ -653,6 +738,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     planning,
     moat,
     constitution,
+    portfolio,
     attention: { required: reasons.length > 0, reasons },
   };
 }

@@ -327,4 +327,49 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(out.attention.required).toBe(true);
     expect(out.attention.reasons).toContain("2 constitution violations flagged");
   });
+
+  it("zeroes the portfolio pane when no reviews are supplied (#107)", () => {
+    const out = aggregateFounderConsole(input());
+    expect(out.portfolio).toMatchObject({ enabled: false, reviewed: 0, sunset: 0, ventures: [] });
+  });
+
+  it("counts the latest review per venture by decision and surfaces the sunset queue (#107)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        portfolioEnabled: true,
+        portfolio: [
+          // v1 has two reviews — the newer (SUNSET, pending) is the one that counts.
+          { ventureIdeaId: "v1", decision: "MAINTAIN", status: "recorded", score: 40, netCents: 0, createdAtMs: NOW - 9000 },
+          { ventureIdeaId: "v1", decision: "SUNSET", status: "sunset_pending", score: 10, netCents: -500, createdAtMs: NOW - 1000 },
+          { ventureIdeaId: "v2", decision: "DOUBLE_DOWN", status: "recorded", score: 85, netCents: 9000, createdAtMs: NOW - 2000 },
+          { ventureIdeaId: "v3", decision: "SUNSET", status: "recorded", score: 15, netCents: -200, createdAtMs: NOW - 3000 },
+        ],
+      }),
+    );
+    expect(out.portfolio.reviewed).toBe(3);
+    expect(out.portfolio.doubleDown).toBe(1);
+    expect(out.portfolio.sunset).toBe(2);
+    expect(out.portfolio.sunsetsPendingApproval).toBe(1); // v1
+    expect(out.portfolio.sunsetsRecommended).toBe(1); // v3 (SUNSET still 'recorded')
+    expect(out.attention.required).toBe(true);
+    expect(out.attention.reasons).toEqual(
+      expect.arrayContaining([
+        "1 venture sunset awaiting approval",
+        "1 venture recommended for sunset",
+      ]),
+    );
+  });
+
+  it("never raises portfolio attention while the loop is disabled (#107 default OFF)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        portfolioEnabled: false,
+        portfolio: [
+          { ventureIdeaId: "v1", decision: "SUNSET", status: "sunset_pending", score: 5, netCents: -900, createdAtMs: NOW },
+        ],
+      }),
+    );
+    expect(out.portfolio.sunsetsPendingApproval).toBe(1); // still reported
+    expect(out.attention.reasons).not.toContain("1 venture sunset awaiting approval");
+  });
 });

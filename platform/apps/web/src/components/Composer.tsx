@@ -1,7 +1,8 @@
 /** Message composer with @mention autocomplete. Used for channel posts and (compact) thread replies. */
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useStore } from "../store/StoreContext.js";
 import { activeMentionQuery, applyMentionSelection } from "../store/mentions.js";
+import { popConfetti } from "../lib/confetti.js";
 import { KindBadge } from "./Primitives.js";
 import { MessageQueue } from "./MessageQueue.js";
 import type { MemberHit } from "../api/types.js";
@@ -68,6 +69,14 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
     setOpen(false);
     if (onSubmit) await onSubmit(value);
     else await store.sendMessage(value);
+  }
+
+  /** Send via the button: a successful send earns a three-dot confetti pop at the button (#145 #5). */
+  async function submitFromButton(e: MouseEvent<HTMLButtonElement>): Promise<void> {
+    const hadText = text.trim().length > 0;
+    const r = e.currentTarget.getBoundingClientRect();
+    await submit();
+    if (hadText) popConfetti(r.left + r.width / 2, r.top + r.height / 2);
   }
 
   /** Stack the typed text instead of sending it now. `kind` picks queue (tail) vs steer (jump ahead). */
@@ -163,7 +172,12 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
             </button>
           </>
         )}
-        <button className="btn btn--primary" type="button" onClick={() => void submit()} aria-label="Send">
+        <button
+          className="btn btn--primary"
+          type="button"
+          onClick={(e) => void submitFromButton(e)}
+          aria-label="Send"
+        >
           Send
         </button>
       </div>

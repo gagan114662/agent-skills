@@ -58,6 +58,16 @@ export const VOICE = {
     "a second and try again.",
   /** Empty mentions inbox. */
   noMentions: "No mentions yet. Tag an agent by name and they'll get to work.",
+  /** Shown above the sign-in card when auth fails. The voice turns a dead end into a moment (#145). */
+  authError: "Well, that didn't pop. Give it another go —",
+  /** Empty approvals queue (per status reads naturally: "Nothing pending. …"). */
+  emptyApprovals: "All clear here. The agents will ping you the moment something needs a human.",
+  /** No agent sessions in a channel (Deploy / Review / Run rails). */
+  noSessions: "No agent sessions here yet. Kick one off and it'll show up on this rail.",
+  /** Deploy rail: a session is picked but nothing deployed. */
+  pickSessionToDeploy: "Pick a session on the left and we'll ship its app to a live URL.",
+  /** Founder console: nothing waiting. */
+  noPendingApprovals: "Nothing waiting on you. Go get a coffee — we've got this.",
 } as const;
 
 /**
@@ -78,6 +88,33 @@ export const DEPARTMENT_SPECTRUM: Readonly<Record<string, string>> = {
 /** The spectrum colour for a channel name, or undefined if it isn't a department channel. */
 export function departmentColor(channelName: string | null | undefined): string | undefined {
   return channelName ? DEPARTMENT_SPECTRUM[channelName] : undefined;
+}
+
+/**
+ * The seven named department agents (#123 fleet) → their department key. Each agent wears its
+ * department's spectrum hue on its avatar pop-mark and name chip (#145). Keyed by the lowercased
+ * display name so a directory entry ("Scout", "Echo", …) resolves straight to a colour.
+ */
+export const AGENT_DEPARTMENT: Readonly<Record<string, keyof typeof DEPARTMENT_SPECTRUM>> = {
+  scout: "seo",
+  echo: "social",
+  quill: "content",
+  postmark: "email",
+  bid: "ads",
+  lens: "analytics",
+  mark: "brand",
+};
+
+/**
+ * The spectrum colour for an agent, by display name. Falls back to the generic agent violet
+ * (`--agent`) for any agent that isn't one of the seven named department leads, so non-fleet agents
+ * still render as a coloured pop-mark rather than a grey shape (#145). Returns undefined for humans.
+ */
+export function agentColor(displayName: string | null | undefined): string | undefined {
+  if (!displayName) return undefined;
+  const first = displayName.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  const dept = AGENT_DEPARTMENT[first];
+  return dept ? DEPARTMENT_SPECTRUM[dept] : "#b07bff";
 }
 
 /**

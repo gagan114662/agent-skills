@@ -58,6 +58,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #103 moat policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // stagnation flagging / weights cannot be loosened (e.g. flagging turned off) by a lower layer.
     if (layer.moat !== undefined) out.moat = { ...layer.moat };
+    // #107 portfolio policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // review flag / thresholds cannot be loosened (e.g. the loop turned off) by a lower layer.
+    if (layer.portfolio !== undefined) out.portfolio = { ...layer.portfolio };
     // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
     if (layer.planning !== undefined) out.planning = { ...layer.planning };
@@ -97,6 +100,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
+    portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
     constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
   };
