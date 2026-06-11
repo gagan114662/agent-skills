@@ -3,6 +3,7 @@ import { loadEnv } from "./env.js";
 import { closeDb } from "./db/index.js";
 import { closeRedis } from "./redis/index.js";
 import { isMaintenanceActive } from "./maintenance/flag.js";
+import { backfillMarketingDepartments } from "./marketing/default.js";
 
 const env = loadEnv();
 const app = buildApp();
@@ -61,6 +62,14 @@ if (app.gitWorktreeReaper) {
     reapTimer.unref();
   }
 }
+
+// #138 marketing department fleet: idempotently backfill the agency (channels + named agents) for every
+// existing enabled workspace, once on boot — the only path that reaches workspaces created before the
+// fleet was turned on (the owner's). Per-workspace gated on config (default OFF → no-op everywhere the
+// fleet isn't enabled) and best-effort, so it never spends and never crashes startup.
+void backfillMarketingDepartments(app.log).catch((err) =>
+  app.log.error({ err }, "marketing department backfill sweep failed"),
+);
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "shutting down");

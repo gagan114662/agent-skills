@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { BRAND, applyBrand } from "./brand.js";
+import { BRAND, VOICE, DEPARTMENT_SPECTRUM, departmentColor, applyBrand } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +34,46 @@ describe("brand defaults", () => {
     applyBrand({ name: "Test", mark: "★", title: "Test Title", tagline: "t", accent: "#123456" });
     expect(document.title).toBe("Test Title");
     expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#123456");
+  });
+});
+
+describe("pop identity (#138)", () => {
+  it("uses Pop Vermilion as the accent", () => {
+    expect(BRAND.accent.toLowerCase()).toBe("#ff4524");
+  });
+
+  it("carries the Innocent-school house voice with the sign-off", () => {
+    expect(VOICE.signOff).toBe("made by robots, steered by humans.");
+    for (const key of ["loading", "emptyChannel", "noMessages", "offlineTitle", "offlineBody"] as const) {
+      expect(VOICE[key], `VOICE.${key}`).toBeTruthy();
+    }
+  });
+
+  it("maps the seven marketing departments to a spectrum, keyed by channel name", () => {
+    expect(Object.keys(DEPARTMENT_SPECTRUM).sort()).toEqual([
+      "ads",
+      "analytics",
+      "brand",
+      "content",
+      "email",
+      "seo",
+      "social",
+    ]);
+    expect(departmentColor("seo")).toBe("#ff4524");
+    expect(departmentColor("brand")).toBe("#b07bff");
+    expect(departmentColor("general")).toBeUndefined(); // shared rooms have no department hue
+    expect(departmentColor(null)).toBeUndefined();
+  });
+
+  it("the stylesheet :root carries the Paper/Ink/Vermilion palette", () => {
+    const css = readFileSync(resolve(HERE, "styles.css"), "utf8");
+    expect(css).toMatch(/--paper:\s*#f6f1e7/i);
+    expect(css).toMatch(/--ink:\s*#171310/i);
+    expect(css).toMatch(/--vermilion:\s*#ff4524/i);
+    // The playful motion curve from the brand book.
+    expect(css).toMatch(/cubic-bezier\(0\.2,\s*1\.4,\s*0\.3,\s*1\)/);
+    // Motion respects reduced-motion.
+    expect(css).toMatch(/prefers-reduced-motion/);
   });
 });
 
