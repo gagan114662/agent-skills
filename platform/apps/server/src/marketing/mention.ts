@@ -17,6 +17,36 @@ export type InvokeResult =
   | { ok: true; sessionId: string }
   | { ok: false; code: number; error: string };
 
+/**
+ * Subscription-first auth gate (#68, ADR-0068). When the deployment harness needs model auth and a
+ * workspace hasn't connected a Claude account, the persona posts a friendly connect prompt INSTEAD of
+ * launching — so a real @mention never crashes or silently dies, and never burns an admission slot or
+ * budget on a session that couldn't run. Absent (or `required:false`, i.e. the demo harness) → no
+ * gate, today's behavior. Per-tenant: `hasAuth` is always called with the caller's workspace.
+ */
+export interface MarketingAuthGate {
+  /** True when the deployment harness requires model auth (claude-code/codex). */
+  required: boolean;
+  /** Whether this workspace has resolved auth (its own subscription token, or the platform fallback). */
+  hasAuth(workspaceId: string): Promise<boolean>;
+  /** Post the brand-voice connect prompt as the persona, threaded under the @mention. */
+  postConnectPrompt(input: {
+    workspaceId: string;
+    channelId: string;
+    agentMemberId: string;
+    personaName: string;
+    parentMessageId: string;
+  }): Promise<{ id: string }>;
+}
+
+/** A persona that was @mentioned but couldn't run because the workspace has no Claude connected. */
+export interface ConnectPrompted {
+  personaId: string;
+  handle: string;
+  department: string;
+  messageId: string;
+}
+
 export interface MarketingMentionDeps {
   getChannel(channelId: string): Promise<{ id: string; workspaceId: string; name: string | null } | undefined>;
   isMarketingChannel(name: string | null): boolean;
@@ -40,6 +70,8 @@ export interface MarketingMentionDeps {
     messageId: string;
   }): Promise<{ id: string }>;
   departmentForHandle(handle: string): string | undefined;
+  /** #68: optional subscription-first auth gate. Absent → no gate (demo/local default). */
+  auth?: MarketingAuthGate;
 }
 
 export interface LaunchedMention {
@@ -51,7 +83,7 @@ export interface LaunchedMention {
 }
 
 export type MarketingMentionResult =
-  | { ok: true; launched: LaunchedMention[] }
+  | { ok: true; launched: LaunchedMention[]; connectPrompted: ConnectPrompted[] }
   | { ok: false; code: number; error: string };
 
 export class MarketingMentionService {
@@ -75,9 +107,33 @@ export class MarketingMentionService {
     }
 
     const launched: LaunchedMention[] = [];
+    const connectPrompted: ConnectPrompted[] = [];
     for (const persona of personas) {
       const department = this.deps.departmentForHandle(persona.name);
       if (!department) continue; // a mentioned non-marketing persona is skipped here
+
+      // #68 subscription-first gate: if the harness needs model auth and this workspace hasn't
+      // connected a Claude account, post a friendly connect prompt as the persona and move on — no
+      // launch, no admission slot, no budget. The demo harness sets required:false, so this is inert
+      // for the default posture and every existing test.
+      const gate = this.deps.auth;
+      if (gate?.required && !(await gate.hasAuth(identity.workspaceId))) {
+        const posted = await gate.postConnectPrompt({
+          workspaceId: identity.workspaceId,
+          channelId: input.channelId,
+          agentMemberId: persona.agentMemberId,
+          personaName: persona.name,
+          parentMessageId: input.messageId,
+        });
+        connectPrompted.push({
+          personaId: persona.id,
+          handle: persona.name,
+          department,
+          messageId: posted.id,
+        });
+        continue;
+      }
+
       const task = input.task ?? `@${persona.name}`;
       // A denial (kill switch / budget) throws out of `invoke` and propagates — no task is recorded.
       const result = await this.deps.invoke(identity, {
@@ -107,9 +163,9 @@ export class MarketingMentionService {
       });
     }
 
-    if (launched.length === 0) {
+    if (launched.length === 0 && connectPrompted.length === 0) {
       return { ok: false, code: 400, error: "no marketing agents are mentioned on this message" };
     }
-    return { ok: true, launched };
+    return { ok: true, launched, connectPrompted };
   }
 }

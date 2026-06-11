@@ -8,6 +8,8 @@
  * convenience passthrough of named `process.env` keys listed in `AGENT_SECRET_KEYS`. A real
  * deployment swaps in a vault-backed resolver implementing the same interface.
  */
+import { AGENT_AUTH_KEYS, type AgentAuthResolver } from "./agent-auth.js";
+
 export interface SecretsResolver {
   resolve(workspaceId: string): Promise<Record<string, string>>;
 }
@@ -48,5 +50,30 @@ export class StaticSecretsResolver implements SecretsResolver {
   constructor(private readonly secrets: Record<string, string>) {}
   resolve(): Promise<Record<string, string>> {
     return Promise.resolve({ ...this.secrets });
+  }
+}
+
+/**
+ * Subscription-first secrets resolver (#68, ADR-0068). Injects the per-tenant Claude subscription
+ * token (`CLAUDE_CODE_OAUTH_TOKEN`) so a session bills the OWNER's subscription — falling back to the
+ * operator platform key (`ANTHROPIC_API_KEY`) only when the workspace has none. The auth layer OWNS
+ * those two keys: any value an inner resolver supplies for them is stripped, so the chosen auth is
+ * authoritative and a platform key never ships alongside a subscription token. Other secrets from the
+ * inner resolver (e.g. `OPENAI_API_KEY` for the codex harness) pass through unchanged.
+ */
+export class SubscriptionSecretsResolver implements SecretsResolver {
+  constructor(
+    private readonly auth: AgentAuthResolver,
+    private readonly inner?: SecretsResolver,
+  ) {}
+
+  async resolve(workspaceId: string): Promise<Record<string, string>> {
+    const { secrets } = await this.auth.resolve(workspaceId);
+    const extra = this.inner ? await this.inner.resolve(workspaceId) : {};
+    const rest: Record<string, string> = {};
+    for (const [k, v] of Object.entries(extra)) {
+      if (!(AGENT_AUTH_KEYS as readonly string[]).includes(k)) rest[k] = v;
+    }
+    return { ...rest, ...secrets };
   }
 }

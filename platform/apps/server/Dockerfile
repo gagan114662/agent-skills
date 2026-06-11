@@ -26,7 +26,12 @@ RUN pnpm --filter @reload/shared build && pnpm --filter @reload/server build
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
+# Install the Claude Code CLI globally so the `claude-code` harness can run a REAL agent under
+# AGENT_RUNTIME=local (#68). Auth is per-tenant at runtime — the workspace's own subscription token
+# (CLAUDE_CODE_OAUTH_TOKEN), resolved per session and injected as env — so NO credential is baked into
+# the image. The binary is on PATH as `claude`, which the #69 preflight checks for.
 RUN corepack enable \
+  && npm install -g @anthropic-ai/claude-code \
   && addgroup -S reload \
   && adduser -S reload -G reload
 # Same /app path as the build stage keeps pnpm's symlinked node_modules valid.
