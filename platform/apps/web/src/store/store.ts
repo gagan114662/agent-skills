@@ -19,7 +19,7 @@ import type {
   SessionDiff,
 } from "@reload/shared";
 import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
-import { isApiUnavailable } from "../api/client.js";
+import { isApiUnavailable, isCapHit } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
 import {
   beginEdit,
@@ -134,6 +134,8 @@ export interface AppState {
    * conversation keeps its own stack across channel switches. */
   queues: Record<string, SessionQueue>;
   error: string | null;
+  /** #153 trial funnel: true when a tenant cap was hit (#71 402/429) → show the soft paywall nudge. */
+  paywall: boolean;
 }
 
 /** Re-export so consumers (components) get the queue types from the store barrel. */
@@ -252,6 +254,7 @@ const INITIAL: AppState = {
   deploy: INITIAL_DEPLOY,
   queues: {},
   error: null,
+  paywall: false,
 };
 
 export interface Store {
@@ -274,6 +277,11 @@ export interface Store {
   sendReply(rootId: string, body: string, alsoSendToChannel: boolean): Promise<void>;
   searchMembers(query: string): Promise<MemberHit[]>;
   markMentionsRead(): void;
+  // --- trial funnel soft paywall (#153) ---
+  /** Surface the soft paywall nudge (called when a tenant cap is hit). */
+  showPaywall(): void;
+  /** Dismiss the soft paywall nudge. */
+  dismissPaywall(): void;
   // --- composer message/steering queue (#54), scoped to the active channel ---
   /** Stack a message after everything already pending; drains when the agent is ready. */
   queueMessage(text: string): void;
@@ -619,9 +627,23 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     async sendMessage(body) {
       const channelId = state.activeChannelId;
       if (!channelId || !body.trim()) return;
-      const msg = await api.postMessage(channelId, body);
-      const list = state.messagesByChannel[channelId] ?? [];
-      set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: upsertMessage(list, msg) } });
+      try {
+        const msg = await api.postMessage(channelId, body);
+        const list = state.messagesByChannel[channelId] ?? [];
+        set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: upsertMessage(list, msg) } });
+      } catch (err) {
+        // A hit cap (#71 402/429) becomes the soft paywall nudge (#153), not a raw error.
+        if (isCapHit(err)) set({ paywall: true });
+        else throw err;
+      }
+    },
+
+    showPaywall() {
+      set({ paywall: true });
+    },
+
+    dismissPaywall() {
+      set({ paywall: false });
     },
 
     async openThread(messageId) {
@@ -638,7 +660,16 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     async sendReply(rootId, body, alsoSendToChannel) {
       const channelId = state.activeChannelId;
       if (!channelId || !body.trim()) return;
-      const reply = await api.postReply(channelId, rootId, body, alsoSendToChannel);
+      let reply;
+      try {
+        reply = await api.postReply(channelId, rootId, body, alsoSendToChannel);
+      } catch (err) {
+        if (isCapHit(err)) {
+          set({ paywall: true });
+          return;
+        }
+        throw err;
+      }
       const thread = state.thread;
       if (thread && thread.root.id === rootId) {
         set({ thread: { ...thread, replies: upsertMessage(thread.replies, reply) } });

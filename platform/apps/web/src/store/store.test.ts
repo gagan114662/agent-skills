@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authorLabel, createStore, upsertMessage, type StoreDeps } from "./store.js";
+import { ApiError } from "../api/client.js";
 import { makePolicy as pol, makeRequest as req } from "../test/approvals-fixtures.js";
 import type { Realtime } from "../api/realtime.js";
 import type { Identity, Message, ServerEvent } from "../api/types.js";
@@ -305,5 +306,30 @@ describe("store bootstrap + realtime", () => {
     store.subscribe(cb);
     await store.bootstrap();
     expect(cb).toHaveBeenCalled();
+  });
+
+  it("#153 a hit cap (402) surfaces the soft paywall instead of throwing", async () => {
+    env.deps.api.postMessage = vi.fn(async () => {
+      throw new ApiError("budget exceeded", 402);
+    });
+    const store = createStore(env.deps);
+    await store.bootstrap();
+    expect(store.getState().paywall).toBe(false);
+
+    await store.sendMessage("@quill draft a launch post"); // must not reject
+    expect(store.getState().paywall).toBe(true);
+
+    store.dismissPaywall();
+    expect(store.getState().paywall).toBe(false);
+  });
+
+  it("#153 a non-cap error from sending still propagates", async () => {
+    env.deps.api.postMessage = vi.fn(async () => {
+      throw new ApiError("nope", 500);
+    });
+    const store = createStore(env.deps);
+    await store.bootstrap();
+    await expect(store.sendMessage("hi")).rejects.toThrow();
+    expect(store.getState().paywall).toBe(false);
   });
 });

@@ -8,7 +8,7 @@
  * comes from `brand.ts` (BRAND/LANDING/FLEET/VOICE) so there are no hardcoded brand strings — brand.test
  * scans this directory for the rule.
  */
-import { BRAND, FLEET, LANDING, SECURITY, VOICE, agentColor } from "../../brand.js";
+import { BRAND, FLEET, LANDING, SECURITY, SITE, VOICE, agentColor } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
@@ -36,6 +36,13 @@ function LandingNav(): React.JSX.Element {
       <Link href="/" className="landing__brand" aria-label={BRAND.name}>
         <Wordmark />
       </Link>
+      <nav className="landing__nav-links" aria-label="Marketing site">
+        {SITE.nav.map((item) => (
+          <Link key={item.href} href={item.href} className="linklike landing__nav-link">
+            {item.label}
+          </Link>
+        ))}
+      </nav>
       <nav className="landing__nav-actions">
         <Link href="/login" className="linklike">
           {LANDING.hero.ctaSecondary}

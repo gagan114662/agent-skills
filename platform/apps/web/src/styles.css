@@ -3087,3 +3087,117 @@ select:focus-visible {
   padding-top: 1rem;
   text-align: right;
 }
+
+/* ===========================================================================
+   Marketing-site machine (#153): /compare /stories /guides /changelog /brand
+   Reuses the Paper/Ink/Vermilion palette + pop easing; all motion already sits
+   under the global prefers-reduced-motion guards.
+   =========================================================================== */
+
+.site {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.site__nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+.site__brand { display: inline-flex; text-decoration: none; }
+.site__nav-links { display: flex; gap: 1.1rem; flex-wrap: wrap; }
+.site__nav-link { font-weight: 700; opacity: 0.78; }
+.site__nav-link--active { opacity: 1; color: var(--vermilion); }
+.site__nav-actions { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
+
+.site__main { flex: 1; width: 100%; max-width: 860px; margin: 0 auto; padding: clamp(1.5rem, 5vw, 4rem) clamp(1rem, 4vw, 2rem); }
+
+/* page header */
+.site-page__head, .site-doc__head { margin-bottom: 2rem; }
+.site-page__eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; font-weight: 800; color: var(--vermilion); }
+.site-page__title { font-size: clamp(1.9rem, 5vw, 2.8rem); line-height: 1.1; margin: 0.4rem 0; }
+.site-page__sub { font-size: 1.15rem; opacity: 0.72; max-width: 48ch; }
+.site-page__note { opacity: 0.6; padding: 2rem 0; }
+
+/* index cards */
+.site-cards { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.site-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; transition: transform 0.18s var(--pop-ease), border-color 0.18s; }
+.site-card:hover { transform: translateY(-3px); border-color: var(--vermilion); }
+.site-card__link { display: block; padding: 1.25rem; text-decoration: none; color: inherit; }
+.site-card__title { margin: 0 0 0.4rem; font-size: 1.2rem; }
+.site-card__desc { margin: 0 0 0.75rem; opacity: 0.72; font-size: 0.95rem; }
+.site-card__by { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--vermilion); text-transform: capitalize; }
+
+/* document */
+.site-doc__back { display: inline-block; margin-bottom: 1.5rem; font-weight: 700; }
+.site-doc__title { font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.12; margin: 0; }
+.site-doc__meta { opacity: 0.6; margin-top: 0.5rem; text-transform: capitalize; }
+
+/* rendered markdown */
+.md { line-height: 1.7; font-size: 1.05rem; }
+.md__heading { margin: 2rem 0 0.75rem; line-height: 1.2; }
+.md__p { margin: 0 0 1rem; }
+.md__list { margin: 0 0 1rem 1.25rem; padding: 0; }
+.md__list li { margin: 0.3rem 0; }
+.md__quote { margin: 1.25rem 0; padding: 0.5rem 1.25rem; border-left: 3px solid var(--vermilion); font-style: italic; opacity: 0.85; }
+.md__code { background: var(--ink); color: var(--paper); padding: 1rem; border-radius: var(--radius); overflow-x: auto; font-size: 0.9rem; }
+.md__table-wrap { overflow-x: auto; margin: 1.25rem 0; }
+.md__table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+.md__table th, .md__table td { border: 1px solid var(--line); padding: 0.55rem 0.8rem; text-align: left; }
+.md__table th { background: color-mix(in srgb, var(--vermilion) 10%, #fff); font-weight: 800; }
+.md a { color: var(--vermilion); font-weight: 700; }
+
+/* brand kit page */
+.brand-block { margin: 2rem 0; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.brand-block__title { font-size: 1.3rem; margin: 0 0 0.75rem; }
+.brand-block__body { opacity: 0.75; max-width: 52ch; }
+.brand-marks { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+.brand-wordmark { font-size: 2rem; }
+.brand-swatches, .brand-spectrum { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.6rem; }
+.brand-swatches { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.brand-swatch { display: grid; grid-template-columns: auto 1fr; grid-auto-rows: auto; gap: 0.15rem 0.75rem; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.75rem; background: #fff; }
+.brand-swatch__chip, .brand-spectrum__chip { width: 2.2rem; height: 2.2rem; border-radius: 50%; grid-row: span 3; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+.brand-swatch__name { font-weight: 800; }
+.brand-swatch__hex, .brand-spectrum__hex { font-family: ui-monospace, monospace; font-size: 0.85rem; opacity: 0.7; }
+.brand-swatch__usage { grid-column: 2; opacity: 0.7; font-size: 0.85rem; }
+.brand-spectrum { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.brand-spectrum__item { display: flex; align-items: center; gap: 0.6rem; }
+.brand-spectrum__chip { width: 1.4rem; height: 1.4rem; }
+.brand-spectrum__name { font-weight: 700; }
+
+/* footer: Ask-AI deep links + dogfood credit */
+.site__footer { border-top: 1px solid var(--line); padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 4vw, 3rem); background: color-mix(in srgb, var(--vermilion) 5%, var(--paper)); }
+.site__ask-ai { max-width: 860px; margin: 0 auto 2rem; text-align: center; }
+.site__ask-ai-title { margin: 0 0 0.4rem; font-size: 1.25rem; }
+.site__ask-ai-blurb { margin: 0 auto 1rem; opacity: 0.72; max-width: 52ch; }
+.site__ask-ai-links { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+.site__ask-ai-link { text-decoration: none; }
+.site__footer-base { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; text-align: center; }
+.site__credit { font-weight: 700; opacity: 0.85; margin: 0.5rem 0 0; }
+.site__signoff { opacity: 0.55; font-size: 0.85rem; margin: 0; }
+
+/* trial-funnel soft paywall */
+.paywall { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(23,19,16,0.45); backdrop-filter: blur(3px); }
+.paywall__card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 2rem; max-width: 420px; width: calc(100% - 2rem); text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25); animation: pricing-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.paywall__title { margin: 0.75rem 0 0.5rem; font-size: 1.4rem; }
+.paywall__body { opacity: 0.78; margin: 0 0 0.75rem; }
+.paywall__plan { font-size: 0.85rem; opacity: 0.6; margin: 0 0 1.25rem; }
+.paywall__actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+
+/* connect the landing nav to the marketing site */
+.landing__nav-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+.landing__nav-link { font-weight: 700; opacity: 0.78; }
+
+@media (max-width: 640px) {
+  .site__nav-links { display: none; }
+}

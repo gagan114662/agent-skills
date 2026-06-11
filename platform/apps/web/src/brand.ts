@@ -290,3 +290,117 @@ export function applyBrand(brand: Brand = BRAND, doc: Document = document): void
   doc.title = brand.title;
   doc.documentElement.style.setProperty("--accent", brand.accent);
 }
+
+/**
+ * The marketing-site machine (#153) — the public storefront the fleet maintains. Every word lives here
+ * so the site components carry no hardcoded brand copy (brand.test scans them). The twist: every page is
+ * footed with the content-agent credit, because the agents really did draft this site.
+ */
+
+/** Shared chrome for every marketing-site page: nav, footer credit, and the Ask-AI deep links. */
+export const SITE = {
+  nav: [
+    { href: "/compare", label: "Compare" },
+    { href: "/stories", label: "Stories" },
+    { href: "/guides", label: "Guides" },
+    { href: "/changelog", label: "Changelog" },
+    { href: "/brand", label: "Brand" },
+  ],
+  ctaPrimary: "Start free",
+  ctaSecondary: "Sign in",
+  /** The dogfood credit on every content page — the agents drafted it, a human approved it. */
+  maintainedBy: "This page is maintained by Quill, our content agent — drafted by AI, approved by a human.",
+  /** Shown when a section or page has no published content yet (graceful, on-voice empty state). */
+  empty: "Nothing published here yet. Quill's still drafting — check back soon.",
+  /** Shown when the content API can't be reached (the page degrades instead of crashing). */
+  offline: "We can't reach the content shelf right now. The agents are looking into it — try again shortly.",
+  backToSite: "← Back",
+} as const;
+
+/** The GEO play (#153): footer links that pre-fill a prompt into the big AI assistants. */
+export const ASK_AI = {
+  heading: "Ask an AI about us",
+  blurb: "Curious but don't trust our marketing? Fair. Ask a neutral third party — we'll even pre-fill the question.",
+  /** The prompt pre-filled into each assistant. */
+  prompt: "Explain ipop.ai to me — the marketing agency of AI agents. What is it, who is it for, and what's the catch?",
+  providers: [
+    { key: "chatgpt", label: "ChatGPT", base: "https://chatgpt.com/?q=" },
+    { key: "claude", label: "Claude", base: "https://claude.ai/new?q=" },
+    { key: "perplexity", label: "Perplexity", base: "https://www.perplexity.ai/search?q=" },
+  ],
+} as const;
+
+/** Build the Ask-AI deep links with the prompt URL-encoded into each provider's query param. */
+export function askAiLinks(prompt: string = ASK_AI.prompt): { key: string; label: string; href: string }[] {
+  const q = encodeURIComponent(prompt);
+  return ASK_AI.providers.map((p) => ({ key: p.key, label: p.label, href: `${p.base}${q}` }));
+}
+
+/** Copy for the `/compare` index. The individual pages are repo markdown (drafted by Quill/Scout). */
+export const COMPARE = {
+  eyebrow: "Honest comparisons",
+  title: "ipop vs. the alternatives",
+  sub: "No strawmen. We'll tell you where the other option wins — and where a fleet that never sleeps does.",
+} as const;
+
+/** Copy for the `/stories` index. */
+export const STORIES = {
+  eyebrow: "Customer stories",
+  title: "Receipts, not testimonials",
+  sub: "Real setups, real numbers. First up: how our own fleet built and runs this very site.",
+} as const;
+
+/** Copy for the `/guides` index. */
+export const GUIDES = {
+  eyebrow: "Cornerstone guides",
+  title: "How this actually works",
+  sub: "Practical, honest walkthroughs — what AI agents do well, and exactly where a human still decides.",
+} as const;
+
+/** Copy for the `/changelog` index. */
+export const CHANGELOG = {
+  eyebrow: "Shipped",
+  title: "What the fleet shipped",
+  sub: "Drafted weekly by Echo from our merged pull requests, approved by a human before it's published.",
+} as const;
+
+/** A swatch on the `/brand` page. */
+export interface BrandSwatch {
+  readonly name: string;
+  readonly hex: string;
+  readonly usage: string;
+}
+
+/** Copy + assets for the `/brand` page — the pop marks, wordmark, palette, and voice from docs/brand. */
+export const BRAND_ASSETS = {
+  eyebrow: "Brand kit",
+  title: "The pop, in one place",
+  sub: "Marks, wordmark, palette, and voice. Use them when you write about us — and please keep the dot loud.",
+  markTitle: "The Pop Mark",
+  markBody: "A single vermilion dot — the popped i-dot, standing alone. It's our favicon, our splash, our signature.",
+  wordmarkTitle: "The wordmark",
+  wordmarkBody: "Lowercase, friendly, with the first i's dot popped in vermilion. Never set it in all-caps.",
+  paletteTitle: "Palette",
+  /** Paper / Ink / Vermilion — the three core colours from the brand book. */
+  palette: [
+    { name: "Paper", hex: "#f6f1e7", usage: "Backgrounds — warm, never stark white." },
+    { name: "Ink", hex: "#171310", usage: "Text — soft black, never #000." },
+    { name: "Pop Vermilion", hex: "#ff4524", usage: "The one loud colour. Use it sparingly, like a pop." },
+  ] as readonly BrandSwatch[],
+  voiceTitle: "Voice",
+  voiceBody: "Warm, first-person plural, a little silly. Receipts over adjectives. Empty states are moments, not dead ends.",
+  spectrumTitle: "Department spectrum",
+  spectrumBody: "One hue per marketing function, a warm-to-cool arc anchored on Pop Vermilion.",
+} as const;
+
+/** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
+export const PAYWALL = {
+  title: "You're flying — time for more runway",
+  body:
+    "Your free trial workspace hit a cap. Nothing's lost; your agents are just waiting on more room to work. " +
+    "Pick a plan and they're back at it in seconds.",
+  cta: "See plans",
+  dismiss: "Not now",
+  /** Shown as the small print under the nudge, naming the current plan. */
+  onPlan: (planName: string): string => `You're on the ${planName} trial.`,
+} as const;

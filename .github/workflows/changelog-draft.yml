@@ -1,0 +1,84 @@
+name: changelog-draft
+
+# The marketing-site machine's changelog loop (#153, ADR-0153): once a week, Echo summarises the past
+# week's merged pull-request titles into a release-notes DRAFT and opens a pull request with it. The
+# owner's PR review IS the publish gate — merging flips the entry's frontmatter to `status: published`
+# and the public /changelog serves it. Nothing reaches the site without that human approval, the same
+# commit-is-truth model the rest of the repo uses.
+#
+# The judgement is the unit-tested pure core in apps/server/src/site/changelog.ts; this workflow is just
+# the scheduler + the IO (gather PR titles with gh, run the drafter, open a PR). Disable per-fork with
+# the repo variable CHANGELOG_DRAFT_DISABLED=true.
+
+on:
+  schedule:
+    - cron: "0 14 * * 1" # Mondays 14:00 UTC — summarise the week that just ended
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "ISO date to summarise merged PRs from (default: 7 days ago)"
+        required: false
+
+concurrency:
+  group: changelog-draft
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform
+
+permissions:
+  contents: write # push the draft branch
+  pull-requests: write # open the gated PR
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    if: ${{ vars.CHANGELOG_DRAFT_DISABLED != 'true' }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      - name: Draft the week's changelog from merged PR titles
+        id: draft
+        run: |
+          SINCE="${{ github.event.inputs.since }}"
+          if [ -z "$SINCE" ]; then SINCE=$(date -u -d '7 days ago' +%Y-%m-%d); fi
+          WEEK=$(date -u -d "$SINCE" +%Y-%m-%d)
+          echo "week=$WEEK" >> "$GITHUB_OUTPUT"
+          # One "Title (#123)" per line for every PR merged since SINCE.
+          gh pr list --state merged --base main --limit 100 \
+            --search "merged:>=$SINCE" \
+            --json title,number \
+            --jq '.[] | "\(.title) (#\(.number))"' \
+            | pnpm --filter @reload/server changelog:draft -- --week="$WEEK"
+
+      - name: Open the gated publish PR
+        run: |
+          WEEK="${{ steps.draft.outputs.week }}"
+          BRANCH="changelog/$WEEK"
+          FILE="content/site/changelog/$WEEK.md"
+          if [ ! -f "platform/../$FILE" ] && [ ! -f "$FILE" ]; then
+            echo "No draft file produced — nothing to open."; exit 0
+          fi
+          git config user.name "echo (content agent)"
+          git config user.email "echo@ipop.ai"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "docs(changelog): draft week of $WEEK (echo) — awaiting owner approval"
+          git push -u origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "Changelog: week of $WEEK (drafted by Echo — approve to publish)" \
+            --body "Echo drafted this changelog from the week's merged PRs. **Review it, then flip \`status: draft\` → \`status: published\` and merge to publish.** This PR review is the #13 publish gate."
