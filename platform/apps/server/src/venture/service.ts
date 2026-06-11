@@ -1,12 +1,14 @@
-import { gapAngles, type PersonaScorecard } from "./rubric.js";
+import { combineDimensions, gapAngles, scorecardMeanScore, type PersonaScorecard } from "./rubric.js";
 import { decideVenture } from "./decide.js";
 import { ventureThresholds, type VentureCaps } from "./caps.js";
 import { budgetExceeded } from "../scale/usage.js";
 import {
-  aggregateWithDemandOverlay,
   demandScoreFromExternal,
+  overlayDemandDimension,
 } from "../demand/scorecard-evidence.js";
 import type { DemandEvidenceSource } from "../demand/service.js";
+import { overlayVoiceDimension, voiceDimensionScore } from "../voice/scorecard-evidence.js";
+import type { VoiceEvidenceSource } from "../voice/service.js";
 import type {
   Evidence,
   GapList,
@@ -161,6 +163,14 @@ export interface VentureServiceDeps {
    * reach a demand dimension.
    */
   demand?: DemandEvidenceSource;
+  /**
+   * #114 customer-voice overlay: the post-launch customer voice an idea has earned (support tickets,
+   * cancellations, NPS). When present and non-empty, the `problemSeverity` dimension's synthetic persona
+   * score is REPLACED by the real voice score (real users reacting to a shipped product is the most honest
+   * evidence the problem is acute). Default: absent → the scorecard is unchanged (default-OFF). Composes
+   * with the #101 demand overlay (different dimension), so both can apply independently.
+   */
+  voice?: VoiceEvidenceSource;
   now?: () => Date;
 }
 
@@ -239,23 +249,38 @@ export class VentureService {
     const { advocate, reviewer } = await this.deps.scorer.score(idea, evidence);
     const caps = this.deps.caps(workspaceId);
 
-    // #101: replace the synthetic (circular) demand dimension with real external willingness-to-pay
-    // evidence when the idea's fake-door smoke test has earned any. No external evidence ⇒ demandScore is
-    // null ⇒ the aggregate is byte-for-byte the plain dual-persona score (default-OFF).
+    // Compose the evidence overlays onto the combined dual-persona scorecard. Each overlay REPLACES only
+    // the one dimension it owns with real, externally-attributed evidence when present; with neither the
+    // score is byte-for-byte the plain dual-persona aggregate (default-OFF), and with only demand it is
+    // byte-for-byte the prior #101 behaviour.
+    // #101: real willingness-to-pay evidence from the idea's fake-door smoke test (replaces the circular
+    // synthetic demand dimension).
     const demandEvidence = this.deps.demand
       ? await this.deps.demand.externalDemandEvidence(workspaceId, ideaId)
       : [];
     const demandScore = demandEvidence.length ? demandScoreFromExternal(demandEvidence) : null;
-    const score = aggregateWithDemandOverlay(advocate, reviewer, caps.reviewerWeight, demandScore);
+    // #114: real post-launch customer voice (replaces the synthetic problemSeverity dimension).
+    const voiceEvidence = this.deps.voice
+      ? await this.deps.voice.userVoiceEvidence(workspaceId, ideaId)
+      : [];
+    const voiceScore = voiceEvidence.length ? voiceDimensionScore(voiceEvidence) : null;
+
+    let combined = combineDimensions(advocate, reviewer, caps.reviewerWeight);
+    if (demandScore !== null) combined = overlayDemandDimension(combined, demandScore);
+    if (voiceScore !== null) combined = overlayVoiceDimension(combined, voiceScore);
+    const score = scorecardMeanScore(combined);
 
     const prev = await this.deps.repo.latestScorecard(workspaceId, ideaId);
     const iteration = (prev?.iteration ?? 0) + 1;
     const expiresAt = new Date(this.now().getTime() + caps.scorecardTtlMinutes * 60_000);
 
+    const overlays: string[] = [];
+    if (demandScore !== null) overlays.push(`demand dimension replaced by ${demandEvidence.length} external signal(s)`);
+    if (voiceScore !== null) overlays.push(`problemSeverity replaced by ${voiceEvidence.length} customer-voice signal(s)`);
     const reasoning =
-      demandScore === null
+      overlays.length === 0
         ? `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}) → ${score}`
-        : `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}); demand dimension replaced by ${demandEvidence.length} external signal(s) → ${score}`;
+        : `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}); ${overlays.join("; ")} → ${score}`;
 
     return this.deps.repo.insertScorecard({
       workspaceId,

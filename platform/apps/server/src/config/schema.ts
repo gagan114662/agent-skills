@@ -342,6 +342,23 @@ export const moatSchema = z.object({
   weightAccumulatedEvals: z.number().nonnegative().optional(),
 });
 
+/**
+ * Customer Voice Loop policy (#114, ADR-0114). All **non-secret** knobs for the post-launch support /
+ * feedback / churn loop. Every field is optional and defaults to **off** (`enabled: false`,
+ * `autoTriageDraft: false`) so a deployment that sets nothing ingests + classifies + reads (harmless,
+ * tenant-scoped) but never has an agent draft a reply proactively — and outbound replies are ALWAYS the
+ * #13 human gate regardless of this block. The inbound webhook is separately secret-gated (no secret ⇒
+ * the route 503s). `digestWindowDays` is the trailing window the voice-of-customer digest rolls up.
+ */
+export const voiceSchema = z.object({
+  /** The proactive-voice flag (gates auto-draft posture) — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Trailing window (days) the voice-of-customer digest aggregates. */
+  digestWindowDays: z.number().int().positive().optional(),
+  /** Whether the triage agent drafts a reply on ticket ingest — default OFF (the ticket lands open). */
+  autoTriageDraft: z.boolean().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -383,6 +400,8 @@ export const settingsSchema = z.object({
   insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
   moat: moatSchema.optional(),
+  /** Customer Voice Loop policy (#114): post-launch support/feedback/churn loop (default OFF). */
+  voice: voiceSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -408,6 +427,7 @@ export type MarketingConfig = z.infer<typeof marketingSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
+export type VoiceConfig = z.infer<typeof voiceSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -445,6 +465,8 @@ export interface ResolvedConfig {
   insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
   moat: MoatConfig;
+  /** Customer Voice Loop policy (#114). A partial whose hard defaults `resolveVoiceCaps` fills. */
+  voice: VoiceConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -466,4 +488,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   growth: {},
   insight: {},
   moat: {},
+  voice: {},
 };

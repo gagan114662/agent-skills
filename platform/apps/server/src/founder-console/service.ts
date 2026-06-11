@@ -10,6 +10,7 @@ import {
   type SelfHealingSnapshot,
   type GrowthSnapshot,
   type VentureEvalSnapshot,
+  type VoiceSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -98,6 +99,11 @@ export interface MoatReader {
   windowDays(workspaceId: string): number;
 }
 
+/** The Customer Voice pane (#114). Optional — absent ⇒ the console renders a zeroed voice view. */
+export interface VoiceReader {
+  snapshot(workspaceId: string): Promise<VoiceSnapshot>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -116,6 +122,8 @@ export interface FounderConsoleDeps {
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
   moat?: MoatReader;
+  /** Customer Voice roll-up (#114) — optional, read-only. */
+  voice?: VoiceReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -147,6 +155,7 @@ export class FounderConsoleService {
       selfHealing,
       growth,
       moat,
+      voice,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -161,6 +170,7 @@ export class FounderConsoleService {
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
+        this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -193,6 +203,7 @@ export class FounderConsoleService {
       moat,
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
+      voice,
     });
   }
 }

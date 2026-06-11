@@ -55,6 +55,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #103 moat policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // stagnation flagging / weights cannot be loosened (e.g. flagging turned off) by a lower layer.
     if (layer.moat !== undefined) out.moat = { ...layer.moat };
+    // #114 voice policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // voice flag / auto-draft posture cannot be loosened (e.g. auto-draft turned on) by a lower layer.
+    if (layer.voice !== undefined) out.voice = { ...layer.voice };
   }
   return out;
 }
@@ -86,5 +89,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
+    voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
   };
 }

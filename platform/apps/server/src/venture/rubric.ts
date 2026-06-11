@@ -47,16 +47,21 @@ export function combineDimensions(
   return out;
 }
 
+/** Mean of a combined scorecard's per-dimension scores, scaled to 0–100. The single 0–100 reducer the
+ * evidence overlays (#101 demand, #114 voice) share after replacing the dimensions they own. */
+export function scorecardMeanScore(combined: PersonaScorecard): number {
+  const sum = RUBRIC_DIMENSIONS.reduce((acc, d) => acc + combined[d], 0);
+  const mean = sum / RUBRIC_DIMENSIONS.length; // 0–10
+  return Math.max(0, Math.min(100, mean * 10));
+}
+
 /** Mean of the combined per-dimension scores, scaled to 0–100. */
 export function aggregateScorecards(
   advocate: PersonaScorecard,
   reviewer: PersonaScorecard,
   reviewerWeight: number,
 ): number {
-  const combined = combineDimensions(advocate, reviewer, reviewerWeight);
-  const sum = RUBRIC_DIMENSIONS.reduce((acc, d) => acc + combined[d], 0);
-  const mean = sum / RUBRIC_DIMENSIONS.length; // 0–10
-  return Math.max(0, Math.min(100, mean * 10));
+  return scorecardMeanScore(combineDimensions(advocate, reviewer, reviewerWeight));
 }
 
 /** The dimension below which a combined score is "weak" and becomes an iteration angle. */
