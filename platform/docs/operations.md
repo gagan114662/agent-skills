@@ -45,6 +45,17 @@ docker run --rm -p 3000:3000 \
   -e REDIS_URL=redis://HOST:6379 reload-server
 ```
 
+### Fly deploy (api.ipop.ai)
+The production API (`reload-api` on Fly, https://api.ipop.ai) deploys via
+`.github/workflows/fly-deploy.yml` on every push to `main` touching `platform/**`, authenticated by the
+`FLY_API_TOKEN` repo secret. The image self-migrates on boot, and the workflow polls `/readyz` as its
+own proof. Manual deploy from a flyctl-logged-in machine:
+```bash
+cd platform && flyctl deploy --remote-only --config fly.toml -a reload-api
+curl -s https://reload-api.fly.dev/readyz   # {"status":"ready","db":"up","redis":"up"}
+```
+**Full setup (token minting, app secrets, rollback): [runbooks/fly-deploy.md](runbooks/fly-deploy.md).**
+
 ### Migrations
 Migrate-on-deploy is automatic (the `migrate` service / entrypoint). Manual control:
 ```bash

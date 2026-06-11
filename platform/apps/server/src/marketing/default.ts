@@ -10,6 +10,8 @@ import {
   getChannel,
 } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
+import { listWorkspaceIds } from "../db/repositories/workspaces.js";
+import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { listMentionsOnMessage } from "../db/repositories/mentions.js";
 import { getPersona, getPersonaByHandle, definePersona } from "../db/repositories/personas.js";
 import { createMarketingTask } from "../db/repositories/marketing-tasks.js";
@@ -20,6 +22,7 @@ import { loadConfig } from "../config/loader.js";
 import { MARKETING_CHANNELS, departmentForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
+import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
 
 /**
@@ -42,9 +45,12 @@ function ventureGatedSubagentLauncher(sessionManager: SessionManager): SubagentL
   };
 }
 
-/** The real-repo seam set for the seeder, with welcome launches through the gated launcher. */
-function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
-  const launcher = ventureGatedSubagentLauncher(sessionManager);
+/**
+ * The real-repo seams the seeder needs that DON'T require a SessionManager (channels, grants, personas,
+ * posting). The boot backfill (#138) uses exactly these — it never launches welcome sessions, so it can
+ * run from `index.ts` without reaching into `buildApp`'s SessionManager.
+ */
+function baseSeedDeps(): Omit<MarketingSeedDeps, "launchWelcome" | "recordTask"> {
   return {
     getChannelByName: async (workspaceId, name) => {
       const ch = (await listChannels(workspaceId)).find((c) => c.name === name);
@@ -85,6 +91,14 @@ function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
       return { id: p.id, agentMemberId: p.agentMemberId };
     },
     post: async (input) => channelPoster.post(input),
+  };
+}
+
+/** The full seam set for the seeder, adding welcome launches through the gated launcher. */
+function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
+  const launcher = ventureGatedSubagentLauncher(sessionManager);
+  return {
+    ...baseSeedDeps(),
     launchWelcome: async (input) => launcher.launch(input),
     recordTask: async (input) => createMarketingTask(input),
   };
@@ -125,6 +139,26 @@ export async function maybeAutoSeedOnSignup(
   } catch (err) {
     log.error({ err }, "marketing department auto-seed failed");
   }
+}
+
+/**
+ * Idempotently backfill the department fleet for every existing enabled workspace on boot (#138). Signup
+ * auto-seed only covers new workspaces; this is how the owner's pre-existing workspace (and any other
+ * tenant created before the fleet was turned on) gets its agency. Never launches welcome sessions (uses
+ * the launcher-free `baseSeedDeps`, `postWelcomeTasks: false`) so it cannot spend; best-effort per
+ * workspace via `runMarketingBackfill`. Returns counts for the boot log.
+ */
+export async function backfillMarketingDepartments(log: FastifyBaseLogger): Promise<MarketingBackfillResult> {
+  const deps = baseSeedDeps();
+  return runMarketingBackfill({
+    listWorkspaceIds,
+    ownerMemberId: async (workspaceId) =>
+      (await listWorkspaceMembers(workspaceId)).find((m) => m.kind === "human")?.id,
+    isEnabled: (workspaceId) => resolveMarketingCaps(loadConfig(workspaceId).marketing).enabled,
+    seed: ({ workspaceId, createdByMemberId }) =>
+      seedMarketingDepartment({ workspaceId, createdByMemberId, postWelcomeTasks: false }, deps).then(() => undefined),
+    log,
+  });
 }
 
 /** Build the @mention → real session trigger over the audited #59 gate + venture-gated launcher. */

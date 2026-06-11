@@ -43,7 +43,8 @@ describe("web console with no API backend", () => {
     );
 
     // The friendly fallback renders (no thrown render error) and we never entered the workspace.
-    expect(await screen.findByText(/API not connected/i)).toBeInTheDocument();
+    // Copy carries the #138 house voice ("can't reach the back office").
+    expect(await screen.findByText(/back office/i)).toBeInTheDocument();
     expect(store.getState().phase).toBe("offline");
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });

@@ -180,6 +180,28 @@ describe("env layer parsing (#58)", () => {
     });
     expect(csv.filesToCopy).toEqual(["A.md", "B.md"]);
   });
+
+  it("parses the #138 marketing enablement env vars (so fly.toml can turn the fleet on in prod)", () => {
+    const cfg = loadConfig(undefined, {
+      env: { RELOAD_MARKETING_ENABLED: "true", RELOAD_MARKETING_SEED_WELCOME_TASKS: "false" },
+      readFile: () => undefined,
+    });
+    expect(cfg.marketing).toEqual({ enabled: true, seedWelcomeTasks: false });
+  });
+
+  it("leaves marketing absent (default OFF) when the env vars are unset", () => {
+    const cfg = loadConfig(undefined, { env: {}, readFile: () => undefined });
+    expect(cfg.marketing).toEqual(CONFIG_DEFAULTS.marketing);
+  });
+
+  it("lets a managed layer still override env marketing (managed is the lock)", () => {
+    const cfg = loadConfig(undefined, {
+      env: { RELOAD_MARKETING_ENABLED: "true" },
+      readFile: (p) => (p.includes("managed") ? `[settings.marketing]\nenabled = false` : undefined),
+      managedPath: "/etc/reload/managed.toml",
+    });
+    expect(cfg.marketing.enabled).toBe(false);
+  });
 });
 
 describe("run command config (#56)", () => {
