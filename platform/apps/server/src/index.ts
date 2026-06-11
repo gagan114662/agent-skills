@@ -27,6 +27,11 @@ app.sreEngine.start(env.sre.intervalMs);
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
 app.flywheelEngine.start(env.flywheel.intervalMs);
 
+// #106 outcome verifiers: start the opt-in tick (VERIFIERS_INTERVAL_MS; default 0 = off) that turns
+// non-code claims into durable measured verdicts and escalates failures. Self-gates on the #99
+// maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
+app.verifierRunner.start(env.verifiers.intervalMs);
+
 // #100 insight miner: start the opt-in mining tick (INSIGHT_INTERVAL_MS; default 0 = off) that ranks
 // evidence sources and mines them into structured insights for the venture loop. Stopped on close.
 app.insightEngine.start(env.insight.intervalMs);
