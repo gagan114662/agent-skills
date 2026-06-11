@@ -16,6 +16,8 @@ export const FAILURE_CLASSES = [
   "watchdog_revival",
   "slo_breach",
   "venture_error",
+  // #146: a repeated constitution violation fingerprints + dedupes into an issue like any other failure.
+  "constitution_violation",
 ] as const;
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
 

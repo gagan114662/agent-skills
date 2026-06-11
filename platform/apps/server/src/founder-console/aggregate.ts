@@ -251,6 +251,8 @@ export interface FounderConsoleInput {
   moatEnabled?: boolean;
   /** The moat stagnation window in days (#103), for the attention message. Default 30. */
   moatWindowDays?: number;
+  /** Open constitution violations (#146). Optional ⇒ none (enforcement off / unwired). */
+  constitution?: ConstitutionSnapshot;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -404,6 +406,18 @@ export interface MoatView {
   flagged: MoatVentureView[];
 }
 
+/** Open constitution violations (#146) the owner should review. */
+export interface ConstitutionSnapshot {
+  openViolations: number;
+  /** The distinct violation codes present, for the attention message. */
+  topCodes: string[];
+}
+
+export interface ConstitutionView {
+  openViolations: number;
+  topCodes: string[];
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -435,6 +449,8 @@ export interface FounderConsole {
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
   moat: MoatView;
+  /** Open constitution violations (#146). Zero-valued when enforcement is off / unwired. */
+  constitution: ConstitutionView;
   attention: AttentionView;
 }
 
@@ -590,6 +606,13 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     })),
   };
 
+  // #146 constitution: surface the count of open (un-acknowledged) violations. Flag-only — these are
+  // heuristics, not physics; the owner reviews and decides. Always reported; zero when unwired/off.
+  const constitution: ConstitutionView = {
+    openViolations: input.constitution?.openViolations ?? 0,
+    topCodes: input.constitution?.topCodes ?? [],
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -604,6 +627,9 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     reasons.push(
       `${pluralize(moat.flaggedStagnant, "venture")} with stagnant moat (no accrual in ${moatWindowDays}d)`,
     );
+  }
+  if (constitution.openViolations > 0) {
+    reasons.push(`${pluralize(constitution.openViolations, "constitution violation")} flagged`);
   }
 
   return {
@@ -626,6 +652,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     growth,
     planning,
     moat,
+    constitution,
     attention: { required: reasons.length > 0, reasons },
   };
 }

@@ -378,6 +378,24 @@ export const planningSchema = z.object({
   maxDispatchesPerTick: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * YC Startup Constitution policy (#146, ADR-0146). All **non-secret** knobs for the enforced
+ * constitution. Every field is optional and defaults to **off** (`enabled: false`) so a deployment
+ * that sets nothing keeps today's behavior — no venture decision is scored or gated.
+ */
+export const constitutionSchema = z.object({
+  /** Master flag for constitution scoring + the Article I love-gate — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Article I: minimum distinct unaffiliated paying-intent signals a B2B venture needs to FUND. */
+  loveMinSignals: z.number().int().nonnegative().optional(),
+  /** Article VIII pricing ladder: coarse increment (%) when deal-loss is low. */
+  pricingCoarseStepPct: z.number().min(0).max(100).optional(),
+  /** Article VIII pricing ladder: fine increment (%) as deal-loss approaches the ceiling. */
+  pricingFineStepPct: z.number().min(0).max(100).optional(),
+  /** Article VIII pricing ladder: deal-loss (%) at/above which the ladder holds and flags. */
+  pricingDealLossCeilingPct: z.number().min(0).max(100).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -423,6 +441,8 @@ export const settingsSchema = z.object({
   moat: moatSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
   planning: planningSchema.optional(),
+  /** YC Startup Constitution policy (#146): decision scoring + Article I love-gate (default OFF). */
+  constitution: constitutionSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -450,6 +470,7 @@ export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
+export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -491,6 +512,8 @@ export interface ResolvedConfig {
   moat: MoatConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
   planning: PlanningConfig;
+  /** YC Startup Constitution policy (#146). A partial whose hard defaults `resolveConstitutionCaps` fills. */
+  constitution: ConstitutionConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -514,4 +537,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   insight: {},
   moat: {},
   planning: {},
+  constitution: {},
 };

@@ -27,15 +27,19 @@ export async function ventureRoutes(
     if (!assertWorkspace(id, wid, reply)) return;
 
     const body = (req.body ?? {}) as Partial<IdeaInput>;
-    const { problem, targetUser, insight, wedge, marketPath } = body;
+    const { problem, targetUser, insight, wedge, marketPath, segment } = body;
     if (!problem || !targetUser || !insight || !wedge || !marketPath) {
       return reply
         .code(400)
         .send({ error: "problem, targetUser, insight, wedge, marketPath are all required" });
     }
+    // #146: optional go-to-market segment — only 'b2b' | 'b2c' (null/absent ⇒ no segment).
+    if (segment != null && segment !== "b2b" && segment !== "b2c") {
+      return reply.code(400).send({ error: "segment, when present, must be 'b2b' or 'b2c'" });
+    }
     const idea = await service.submit(
       wid,
-      { problem, targetUser, insight, wedge, marketPath },
+      { problem, targetUser, insight, wedge, marketPath, segment: segment ?? null },
       id.memberId,
     );
     return reply.code(201).send(idea);

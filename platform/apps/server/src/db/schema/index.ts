@@ -32,3 +32,4 @@ export * from "./growth.js";
 export * from "./insights.js";
 export * from "./moat.js";
 export * from "./planning.js";
+export * from "./constitution.js";

@@ -59,6 +59,7 @@ import type { TeamCoordinator } from "./team/coordinator.js";
 import { createDefaultAutonomyEngine, autonomyLauncherFrom } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
 import { ventureRoutes } from "./routes/venture.js";
+import { createConstitutionGuard } from "./constitution/default.js";
 import {
   createDefaultVentureService,
   createDefaultVentureEngine,
@@ -437,14 +438,25 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // launcher so a session is only launched for a workspace holding a passing, unexpired scorecard.
   // The gate is config default-OFF (`VentureAdmission.check` short-circuits to admit), so wrapping the
   // launcher is safe for every workspace that hasn't opted in — unchanged behavior by default.
-  const ventureService = opts.venture ?? createDefaultVentureService(undefined, demandService);
+  // #146 YC Startup Constitution guard: scores every SOURCE/FUND/KILL decision against the Articles
+  // and (Article I love-gate only) can downgrade a B2B FUND → ESCALATE. Reads the #101 demand rails for
+  // evidence; feeds each violation to the #117 flywheel (lazily — the engine is created below) so a
+  // REPEAT fingerprints into an issue. Config default-OFF: until `constitution.enabled` is set, the
+  // guard scores nothing and behavior is unchanged.
+  const constitutionGuard = createConstitutionGuard({
+    demand: demandService,
+    flywheelRecord: (event) => app.flywheelEngine.record(event),
+    logger: app.log,
+  });
+  const ventureService =
+    opts.venture ?? createDefaultVentureService(undefined, demandService, constitutionGuard);
   app.register(ventureRoutes, { service: ventureService });
   // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
   // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.
   app.register(demandRoutes, { service: demandService });
   // The scheduled tick advances active evaluations on infrastructure time (default OFF — started in
   // index.ts only when VENTURE_INTERVAL_MS > 0); each advance self-gates on the kill switch + budget.
-  const ventureEngine = createDefaultVentureEngine(app.log, demandService);
+  const ventureEngine = createDefaultVentureEngine(app.log, demandService, constitutionGuard);
   app.addHook("onClose", async () => {
     ventureEngine.stop();
   });

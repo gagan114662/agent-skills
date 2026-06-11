@@ -34,6 +34,9 @@ export const IDEA_STATUSES = [
 
 export const VENTURE_VERDICTS = ["FUND", "ITERATE", "KILL", "ESCALATE"] as const;
 
+/** Go-to-market segment (#146, Article I). Optional at intake — null ⇒ the B2B love-gate never bites. */
+export const VENTURE_SEGMENTS = ["b2b", "b2c"] as const;
+
 export const EVALUATION_STATUSES = ["active", "terminal"] as const;
 
 /** The intake artifact (problem, user, insight, wedge, market path) + its lifecycle status. */
@@ -49,6 +52,8 @@ export const ventureIdeas = pgTable(
     insight: text("insight").notNull(),
     wedge: text("wedge").notNull(),
     marketPath: text("market_path").notNull(),
+    /** Go-to-market segment (#146) — nullable; the B2B love-gate only bites when this is 'b2b'. */
+    segment: text("segment", { enum: VENTURE_SEGMENTS }),
     status: text("status", { enum: IDEA_STATUSES }).notNull().default("intake"),
     epicTaskId: uuid("epic_task_id").references(() => tasks.id, { onDelete: "set null" }),
     createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
@@ -61,6 +66,10 @@ export const ventureIdeas = pgTable(
     statusCk: check(
       "venture_ideas_status_ck",
       sql`${t.status} IN ('intake','scoring','iterating','funded','killed','escalated')`,
+    ),
+    segmentCk: check(
+      "venture_ideas_segment_ck",
+      sql`${t.segment} IS NULL OR ${t.segment} IN ('b2b','b2c')`,
     ),
   }),
 );

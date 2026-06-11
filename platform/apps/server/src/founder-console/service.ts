@@ -11,6 +11,7 @@ import {
   type SelfHealingSnapshot,
   type GrowthSnapshot,
   type VentureEvalSnapshot,
+  type ConstitutionSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -104,6 +105,11 @@ export interface MoatReader {
   windowDays(workspaceId: string): number;
 }
 
+/** Open constitution violations (#146). Optional — absent ⇒ the console renders a zeroed view. */
+export interface ConstitutionReader {
+  openViolations(workspaceId: string): Promise<ConstitutionSnapshot>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -124,6 +130,8 @@ export interface FounderConsoleDeps {
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
   moat?: MoatReader;
+  /** Open constitution violations (#146) — optional, read-only. */
+  constitution?: ConstitutionReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -156,6 +164,7 @@ export class FounderConsoleService {
       growth,
       planning,
       moat,
+      constitution,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -171,6 +180,8 @@ export class FounderConsoleService {
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
+        this.deps.constitution?.openViolations(workspaceId) ??
+          Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -204,6 +215,7 @@ export class FounderConsoleService {
       moat,
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
+      constitution,
     });
   }
 }

@@ -61,6 +61,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
     if (layer.planning !== undefined) out.planning = { ...layer.planning };
+    // #146 constitution policy: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's constitution flag / thresholds cannot be loosened (e.g. enforcement turned off) by a
+    // lower layer.
+    if (layer.constitution !== undefined) out.constitution = { ...layer.constitution };
   }
   return out;
 }
@@ -94,5 +98,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
+    constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
   };
 }
