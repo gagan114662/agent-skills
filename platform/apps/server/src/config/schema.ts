@@ -498,6 +498,23 @@ export const rbacSchema = z.object({
 });
 
 /**
+ * Automations policy (#147, ADR-0147). All **non-secret** knobs for the scheduled/webhook agent-task
+ * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
+ * nothing fires no scheduled runs (creating automations is still allowed — they simply never tick).
+ * `maxRunsPerWindow`/`windowMinutes` are the per-tenant rate limit; `maxPerWorkspace` caps definitions.
+ */
+export const automationsSchema = z.object({
+  /** The automations-tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on runs launched per workspace inside `windowMinutes` (the rate limit). */
+  maxRunsPerWindow: z.number().int().nonnegative().optional(),
+  /** The rate-limit window, in minutes. */
+  windowMinutes: z.number().int().positive().optional(),
+  /** Hard cap on automation definitions a workspace may create. */
+  maxPerWorkspace: z.number().int().positive().optional(),
+});
+
+/**
  * YC Startup Constitution policy (#146, ADR-0146). All **non-secret** knobs for the enforced
  * constitution. Every field is optional and defaults to **off** (`enabled: false`) so a deployment
  * that sets nothing keeps today's behavior — no venture decision is scored or gated.
@@ -588,6 +605,8 @@ export const settingsSchema = z.object({
   egress: egressSchema.optional(),
   /** Teams/RBAC policy (#151): enforce workspace roles on approval clearing (default OFF). */
   rbac: rbacSchema.optional(),
+  /** Automations policy (#147): scheduled/webhook agent tasks + per-tenant run caps (default OFF). */
+  automations: automationsSchema.optional(),
   /** YC Startup Constitution policy (#146): decision scoring + Article I love-gate (default OFF). */
   constitution: constitutionSchema.optional(),
   /** Fleet skills + semantic layer + eval policy (#155): freshness ceiling + eval regression tolerance (default OFF). */
@@ -625,12 +644,13 @@ export type PlanningConfig = z.infer<typeof planningSchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
 export type EgressConfig = z.infer<typeof egressSchema>;
 export type RbacConfig = z.infer<typeof rbacSchema>;
+export type AutomationsConfig = z.infer<typeof automationsSchema>;
 export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
 export type FleetConfig = z.infer<typeof fleetSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
- * its own `[scale]` (#147, ADR-0147). **Deliberately ON by default** — the one config block that is
+ * its own `[scale]` (#160). **Deliberately ON by default** — the one config block that is
  * not opt-in — because checkout→caps is not wired yet and a workspace with NO usable tier cannot run
  * agents at all (a fresh/owner workspace would be dead on arrival). `tenantConcurrency: 1` is a real,
  * usable ceiling (one live session at a time); `budgetCents: 500` is a $5/window soft cap that only
@@ -692,6 +712,8 @@ export interface ResolvedConfig {
   egress: EgressConfig;
   /** Teams/RBAC policy (#151). A partial whose defaults `resolveRbacConfig` fills. */
   rbac: RbacConfig;
+  /** Automations policy (#147). A partial whose hard defaults `resolveAutomationCaps` fills. */
+  automations: AutomationsConfig;
   /** YC Startup Constitution policy (#146). A partial whose hard defaults `resolveConstitutionCaps` fills. */
   constitution: ConstitutionConfig;
   /** Fleet skills + semantic + eval policy (#155). A partial whose hard defaults `resolveFleetCaps` fills. */
@@ -730,6 +752,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   credentialScopes: {},
   egress: {},
   rbac: {},
+  automations: {},
   constitution: {},
   fleet: {},
 };

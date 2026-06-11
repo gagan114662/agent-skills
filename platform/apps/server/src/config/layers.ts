@@ -79,6 +79,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #151 rbac policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // role enforcement cannot be turned off by a lower layer.
     if (layer.rbac !== undefined) out.rbac = { ...layer.rbac };
+    // #147 automations policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // automations flag / run caps cannot be loosened by a lower layer.
+    if (layer.automations !== undefined) out.automations = { ...layer.automations };
     // #146 constitution policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's constitution flag / thresholds cannot be loosened (e.g. enforcement turned off) by a
     // lower layer.
@@ -125,6 +128,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     credentialScopes: merged.credentialScopes ?? { ...CONFIG_DEFAULTS.credentialScopes },
     egress: merged.egress ?? { ...CONFIG_DEFAULTS.egress },
     rbac: merged.rbac ?? { ...CONFIG_DEFAULTS.rbac },
+    automations: merged.automations ?? { ...CONFIG_DEFAULTS.automations },
     constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
     fleet: merged.fleet ?? { ...CONFIG_DEFAULTS.fleet },
   };

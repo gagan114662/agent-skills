@@ -298,3 +298,91 @@ export type ServerEvent =
   | { type: "deploy_log"; sessionId: string; channelId: string; deploymentId: string; chunk: string }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
+
+// ---- Ona-class agent infrastructure (#147) ------------------------------------------------------
+
+/** A schedule cadence spec for an automation (mirrors the server `ScheduleSpec`). */
+export interface ScheduleSpecDto {
+  cadence: "interval" | "hourly" | "daily" | "weekly";
+  everyMinutes?: number;
+  dayOfWeek?: number;
+  hour?: number;
+  minute?: number;
+}
+
+/** An automation definition, from `GET /workspaces/:wid/automations`. */
+export interface AutomationDto {
+  id: string;
+  workspaceId: string;
+  name: string;
+  triggerKind: "schedule" | "webhook";
+  schedule: ScheduleSpecDto | null;
+  templateKey: string;
+  params: Record<string, string>;
+  channelId: string;
+  agentHandle: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Returned ONCE on create for a webhook trigger (the bearer token). */
+  webhookToken?: string;
+}
+
+/** A run-ledger row, from `POST .../run` and the audit feed. */
+export interface AutomationRunDto {
+  id: string;
+  automationId: string;
+  trigger: "schedule" | "webhook" | "manual";
+  status: "launched" | "skipped" | "blocked" | "failed";
+  reason: string;
+  sessionId: string | null;
+  task: string;
+  createdAt: string;
+}
+
+/** A task-template gallery entry; `agentHandle` is attached when fetched for a channel. */
+export interface TaskTemplateDto {
+  key: string;
+  department: string;
+  title: string;
+  description: string;
+  body: string;
+  params: { key: string; label: string; placeholder: string }[];
+  agentHandle?: string;
+}
+
+/** One normalized audit event, from `GET /workspaces/:wid/audit`. */
+export interface AuditEventDto {
+  at: string;
+  kind: string;
+  source: "approval" | "automation" | "agent";
+  actorMemberId: string | null;
+  actorLabel: string;
+  summary: string;
+  gatedBy: "approval" | "venture+budget" | "none";
+  status: string;
+  ref: string;
+}
+
+/** A live session row, from `GET /workspaces/:wid/mission-control`. */
+export interface LiveSessionDto {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: string;
+  elapsedMs: number;
+  estimatedCostCents: number;
+  startedAt: string | null;
+  progressAt: string;
+}
+
+/** The live mission-control roll-up. */
+export interface MissionControlDto {
+  sessions: LiveSessionDto[];
+  count: number;
+  totalEstimatedCostCents: number;
+  rateCentsPerMinute: number;
+  costIsEstimate: true;
+}

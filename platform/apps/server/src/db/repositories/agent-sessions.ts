@@ -247,6 +247,48 @@ export async function listLiveSessions(): Promise<LiveSessionRow[]> {
   return rows.map((r) => ({ ...r, progressAt: new Date(r.progressAt) })) as LiveSessionRow[];
 }
 
+/** One workspace's live (non-terminal) sessions — the #147 mission-control source (tenant-scoped). */
+export interface WorkspaceLiveSession {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: SessionStatus;
+  /** When the session was created (the elapsed-time anchor when `startedAt` is null). */
+  createdAt: Date;
+  /** When the session began running, or null (provisioning). */
+  startedAt: Date | null;
+  /** COALESCE(last_heartbeat_at, started_at, created_at) — the session's last proof of progress. */
+  progressAt: Date;
+}
+
+export async function listWorkspaceLiveSessions(workspaceId: string): Promise<WorkspaceLiveSession[]> {
+  const rows = await db
+    .select({
+      id: agentSessions.id,
+      channelId: agentSessions.channelId,
+      agentMemberId: agentSessions.agentMemberId,
+      status: agentSessions.status,
+      createdAt: agentSessions.createdAt,
+      startedAt: agentSessions.startedAt,
+      progressAt: sql<string>`COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.startedAt}, ${agentSessions.createdAt})`,
+    })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.workspaceId, workspaceId),
+        inArray(agentSessions.status, ["provisioning", "running"]),
+      ),
+    )
+    .orderBy(desc(agentSessions.createdAt));
+  return rows.map((r) => ({ ...r, progressAt: new Date(r.progressAt) })) as WorkspaceLiveSession[];
+}
+
+/** A single session by id (no channel scope) — mission-control resolves its workspace + channel here. */
+export async function getAgentSessionById(id: string): Promise<AgentSession | undefined> {
+  const [row] = await db.select(COLUMNS).from(agentSessions).where(eq(agentSessions.id, id)).limit(1);
+  return row as AgentSession | undefined;
+}
+
 /** Sessions for a channel, newest first. */
 export async function listAgentSessions(channelId: string): Promise<AgentSession[]> {
   const rows = await db

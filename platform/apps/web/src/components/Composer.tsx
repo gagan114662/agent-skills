@@ -5,6 +5,7 @@ import { activeMentionQuery, applyMentionSelection } from "../store/mentions.js"
 import { popConfetti } from "../lib/confetti.js";
 import { KindBadge } from "./Primitives.js";
 import { MessageQueue } from "./MessageQueue.js";
+import { TemplatePicker } from "./TemplatePicker.js";
 import type { MemberHit } from "../api/types.js";
 
 export interface ComposerProps {
@@ -131,6 +132,14 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
   return (
     <div className={`composer${compact ? " composer--compact" : ""}`}>
       {queue && <MessageQueue />}
+      {queue && (
+        <TemplatePicker
+          onPick={(t) => {
+            setText(t);
+            requestAnimationFrame(() => ref.current?.focus());
+          }}
+        />
+      )}
       {open && options.length > 0 && (
         <ul className="mention-menu" role="listbox" aria-label="Mention a member">
           {options.map((m, i) => (

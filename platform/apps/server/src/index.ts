@@ -42,6 +42,10 @@ app.insightEngine.start(env.insight.intervalMs);
 // budget + kill-switch aware). Stopped on server close via buildApp.
 app.planningEngine.start(env.planning.intervalMs);
 
+// #147 automations: start the opt-in tick (AUTOMATIONS_INTERVAL_MS; default 0 = off) that launches
+// due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
+app.automationEngine.start(env.automations.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;
