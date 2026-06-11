@@ -16,6 +16,13 @@ export type MemberKind = "human" | "agent";
 export type ChannelKind = "public" | "dm";
 export type PresenceStatus = "online" | "away" | "offline";
 
+/** Connect Claude credential state (#68), from `GET /me/agent-credentials`. Never carries the token. */
+export interface CredentialStatus {
+  connected: boolean;
+  fingerprint: string | null;
+  connectedAt?: string | null;
+}
+
 /** Current caller, from `GET /me`. */
 export interface Identity {
   workspaceId: string;

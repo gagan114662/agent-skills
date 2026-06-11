@@ -19,6 +19,10 @@ import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { SubagentService, type SubagentLauncher } from "../subagents/service.js";
 import { createVentureAdmission } from "../venture/default.js";
 import { loadConfig } from "../config/loader.js";
+import { loadEnv } from "../env.js";
+import { harnessRequiresAuth } from "../runtime/agent-auth.js";
+import { createAgentAuthResolver } from "../runtime/auth-default.js";
+import { buildConnectPrompt } from "./connect-prompt.js";
 import { MARKETING_CHANNELS, departmentForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
@@ -163,6 +167,7 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
 
 /** Build the @mention → real session trigger over the audited #59 gate + venture-gated launcher. */
 export function createMarketingMentionService(sessionManager: SessionManager): MarketingMentionService {
+  const authResolver = createAgentAuthResolver();
   const subagents = new SubagentService({
     getPersona,
     getChannelWorkspace: async (channelId) => (await getChannel(channelId))?.workspaceId,
@@ -184,6 +189,23 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         name: p.name,
       })),
     invoke: (identity, input) => subagents.invoke(identity, input),
+    // #68 subscription-first auth gate: when the deployment runs a REAL harness (claude-code/codex) and
+    // a workspace hasn't connected a Claude account, the persona posts a friendly connect prompt
+    // instead of launching — no session, no admission slot, no budget. For the default demo harness
+    // `required` is false, so this is inert and behavior is unchanged. The auth resolver is the SAME
+    // one the SessionManager injects secrets from, so the gate and the runtime can never disagree.
+    auth: {
+      required: harnessRequiresAuth(loadEnv().agent.harness),
+      hasAuth: async (workspaceId) => (await authResolver.resolve(workspaceId)).mode !== "none",
+      postConnectPrompt: async (input) =>
+        channelPoster.post({
+          workspaceId: input.workspaceId,
+          channelId: input.channelId,
+          agentMemberId: input.agentMemberId,
+          body: buildConnectPrompt(input.personaName),
+          parentMessageId: input.parentMessageId,
+        }),
+    },
     recordTask: async (input) =>
       createMarketingTask({
         workspaceId: input.workspaceId,

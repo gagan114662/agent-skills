@@ -14,9 +14,14 @@ primary_region = "yyz"
   PORT = "8080"
   NODE_ENV = "production"
   RELOAD_PROFILE = "prod"
-  # Demo harness + local runtime: the API boots and serves chat/console traffic without any
-  # cloud-agent credentials. Real agent runtimes are an owner follow-up (no secrets baked in).
-  AGENT_HARNESS = "demo"
+  # Real agents in production (#68): the `claude-code` harness runs an actual Claude session per
+  # @mention, in-host (AGENT_RUNTIME=local; the `claude` CLI is baked into the image). Auth is
+  # SUBSCRIPTION-FIRST and per-tenant — each workspace connects its OWN Claude (Settings → Connect
+  # Claude → CLAUDE_CODE_OAUTH_TOKEN in the per-tenant vault), so no model credential is baked here.
+  # A workspace that hasn't connected gets a friendly in-channel "connect your account" reply, never a
+  # crash. Optional operator fallback: `fly secrets set -a reload-api ANTHROPIC_API_KEY=…` (used only
+  # for tenants who've connected nothing). Tracing: `fly secrets set -a reload-api BRAINTRUST_API_KEY=…`.
+  AGENT_HARNESS = "claude-code"
   AGENT_RUNTIME = "local"
   # Owner directive: live ipop agents default to Fable. The harness emits an env-gated --model flag
   # (#52) that reads this; per-session model selection (#52) can still override it.
@@ -50,4 +55,7 @@ primary_region = "yyz"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # Bumped from 512mb (#68): a real in-host `claude-code` session needs headroom beyond the API
+  # server itself. Concurrency is still capped by the #71 admission chokepoint; scale up if a tenant's
+  # budget allows more parallel sessions.
+  memory = "1024mb"
