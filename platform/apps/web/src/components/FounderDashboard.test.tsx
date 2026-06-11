@@ -22,6 +22,33 @@ describe("FounderDashboard (#104)", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
+  it("renders the reliability insights pane (#148): MTTR, frequency, open count, noisiest", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          reliability: {
+            mttrMs: 30 * 60_000, // 30 min
+            incidentsLast7d: 2,
+            incidentsLast30d: 5,
+            openCount: 1,
+            total: 9,
+            noisiestComponents: [{ service: "api", count: 4 }],
+          },
+        })}
+      />,
+    );
+    const card = screen.getByRole("heading", { name: /reliability/i }).closest("article")!;
+    expect(card).toHaveTextContent(/30 min/i); // MTTR formatted
+    expect(card).toHaveTextContent("api"); // noisiest component
+    expect(card).toHaveTextContent("1"); // open incidents
+  });
+
+  it("renders a zeroed reliability pane when the field is absent (loop off / unwired)", () => {
+    render(<FounderDashboard console={console_()} />);
+    const card = screen.getByRole("heading", { name: /reliability/i }).closest("article")!;
+    expect(card).toHaveTextContent(/—|n\/a|no incidents/i); // no MTTR yet
+  });
+
   it("shows an all-clear banner when nothing needs the owner", () => {
     render(<FounderDashboard console={console_()} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

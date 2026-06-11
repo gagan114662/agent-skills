@@ -87,6 +87,19 @@ export interface PostmortemLinkView {
   resolvedAtMs: number;
 }
 
+/** The reliability insights pane (#148): MTTR + frequency + noisiest components off `sre_incidents`. */
+export interface ReliabilityInsightsView {
+  /** Mean time to resolve (ms) over resolved incidents, or null when none have resolved. */
+  mttrMs: number | null;
+  incidentsLast7d: number;
+  incidentsLast30d: number;
+  /** Currently active (non-resolved) incidents. */
+  openCount: number;
+  total: number;
+  /** Services ranked by incident count, descending. */
+  noisiestComponents: Array<{ service: string; count: number }>;
+}
+
 /** The global maintenance flag (#99); `unavailable` when Redis could not be read (fail open). */
 export interface MaintenanceSnapshot {
   enabled: boolean;
@@ -262,6 +275,8 @@ export interface FounderConsoleInput {
   switches: SwitchSnapshot;
   /** Recent SRE postmortems (#112), newest first. Optional ⇒ defaults to none (loop off / unwired). */
   postmortems?: PostmortemLinkView[];
+  /** Reliability insights (#148) off `sre_incidents`. Optional ⇒ a zeroed pane (loop off / unwired). */
+  reliability?: ReliabilityInsightsView;
   /** The #119 evidence-priced autonomy boundaries (owned classes + change history). */
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
@@ -516,6 +531,8 @@ export interface FounderConsole {
   switches: SwitchSnapshot;
   /** Recent SRE postmortems (#112), newest first — the durable trace each incident left. */
   postmortems: PostmortemLinkView[];
+  /** Reliability insights (#148): MTTR, frequency, open count, noisiest components. */
+  reliability: ReliabilityInsightsView;
   /** The #119 evidence-priced autonomy boundaries: classes agents own + the change history. */
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
@@ -608,6 +625,16 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   const postmortems: PostmortemLinkView[] = [...(input.postmortems ?? [])].sort(
     (a, b) => b.resolvedAtMs - a.resolvedAtMs,
   );
+
+  // #148 reliability insights — zeroed when the SRE loop is off/unwired (no incidents reader).
+  const reliability: ReliabilityInsightsView = input.reliability ?? {
+    mttrMs: null,
+    incidentsLast7d: 0,
+    incidentsLast30d: 0,
+    openCount: 0,
+    total: 0,
+    noisiestComponents: [],
+  };
 
   const fingerprints = input.selfHealing?.fingerprints ?? [];
   const dispatches = input.selfHealing?.dispatches ?? [];
@@ -778,6 +805,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     pendingApprovals,
     switches,
     postmortems,
+    reliability,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
     growth,

@@ -14,7 +14,8 @@ import { listEvaluations } from "../db/repositories/venture.js";
 import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
-import { listPostmortems } from "../db/repositories/sre.js";
+import { listPostmortems, listIncidents } from "../db/repositories/sre.js";
+import { computeReliabilityInsights } from "../reliability/insights/aggregate.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 import { ownedBoundaries, listBoundaryChanges } from "../db/repositories/gate-evidence.js";
 import {
@@ -114,6 +115,12 @@ export function createDefaultFounderConsoleService(deps: {
           path: i.postmortemPath as string,
           resolvedAtMs: (i.resolvedAt ?? i.openedAt).getTime(),
         })),
+    },
+    // #148: MTTR / frequency / noisiest components off the SAME `sre_incidents` rows, computed by the
+    // pure insights module (so the console pane matches the public status page's view). Read-only.
+    reliability: {
+      insights: async (workspaceId) =>
+        computeReliabilityInsights(await listIncidents(workspaceId, { limit: 200 }), new Date()),
     },
     gateBoundaries: {
       boundaries: async (workspaceId) => {

@@ -7,6 +7,7 @@ import {
   type PendingApprovalSnapshot,
   type PlanningSnapshot,
   type PostmortemLinkView,
+  type ReliabilityInsightsView,
   type RevenueSnapshot,
   type SelfHealingSnapshot,
   type GrowthSnapshot,
@@ -65,6 +66,11 @@ export interface SwitchesReader {
 /** Recent SRE postmortems (#112) for the workspace, newest first. */
 export interface PostmortemsReader {
   recent(workspaceId: string): Promise<PostmortemLinkView[]>;
+}
+
+/** Reliability insights (#148) off `sre_incidents`. Optional — absent ⇒ the console renders a zeroed pane. */
+export interface ReliabilityReader {
+  insights(workspaceId: string): Promise<ReliabilityInsightsView>;
 }
 
 /** The #119 evidence-priced autonomy boundaries: owned classes + the change history. */
@@ -133,6 +139,8 @@ export interface FounderConsoleDeps {
   switches: SwitchesReader;
   /** Optional SRE postmortems reader (#112). Absent ⇒ none surfaced (the loop is off / unwired). */
   postmortems?: PostmortemsReader;
+  /** Optional reliability insights reader (#148). Absent ⇒ a zeroed reliability pane. */
+  reliability?: ReliabilityReader;
   gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
@@ -176,6 +184,7 @@ export class FounderConsoleService {
       killSwitch,
       maintenance,
       postmortems,
+      reliability,
       gateBoundaries,
       usageTrend,
       selfHealing,
@@ -194,6 +203,7 @@ export class FounderConsoleService {
         this.deps.switches.killSwitch(workspaceId),
         this.deps.switches.maintenance(),
         this.deps.postmortems?.recent(workspaceId) ?? Promise.resolve([]),
+        this.deps.reliability?.insights(workspaceId) ?? Promise.resolve(undefined),
         this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
@@ -226,6 +236,7 @@ export class FounderConsoleService {
       approvals,
       switches: { killSwitch, maintenance },
       postmortems,
+      reliability,
       gateBoundaries,
       selfHealing,
       growth,
