@@ -129,3 +129,21 @@ export const dbDeploymentStore: DeploymentStore = {
     return rows as Deployment[];
   },
 };
+
+/**
+ * Workspace-wide recent deploys (#148): the SRE investigation correlates whether a deploy landed just
+ * before an incident. Scoped to `workspace_id` (the #3 tenant boundary) rather than a single channel —
+ * an incident is workspace-level, so it must see every recent deploy in the tenant.
+ */
+export async function listRecentDeploysForWorkspace(
+  workspaceId: string,
+  limit = 20,
+): Promise<Deployment[]> {
+  const rows = await db
+    .select(COLUMNS)
+    .from(deployments)
+    .where(eq(deployments.workspaceId, workspaceId))
+    .orderBy(desc(deployments.createdAt))
+    .limit(limit);
+  return rows as Deployment[];
+}
