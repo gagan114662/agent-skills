@@ -14,6 +14,7 @@ import {
   type VentureRepo,
 } from "./service.js";
 import type { DemandEvidenceSource } from "../demand/service.js";
+import type { VoiceEvidenceSource } from "../voice/service.js";
 import { RUBRIC_DIMENSIONS, type PersonaScorecard } from "./rubric.js";
 import { windowKey } from "../scale/usage.js";
 import {
@@ -173,6 +174,7 @@ const epicEmitter: EpicEmitter = {
 export function createDefaultVentureService(
   now?: () => Date,
   demand?: DemandEvidenceSource,
+  voice?: VoiceEvidenceSource,
 ): VentureService {
   return new VentureService({
     repo: ventureRepo,
@@ -188,6 +190,8 @@ export function createDefaultVentureService(
     // Infrastructure-time advancement is gated by the same #17 kill switch as autonomy launches.
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     demand,
+    // #114 customer-voice overlay: real post-launch voice replaces the synthetic problemSeverity dimension.
+    voice,
     now,
   });
 }

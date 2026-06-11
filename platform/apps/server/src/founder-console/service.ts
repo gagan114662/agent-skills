@@ -12,6 +12,7 @@ import {
   type GrowthSnapshot,
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
+  type VoiceSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -105,6 +106,11 @@ export interface MoatReader {
   windowDays(workspaceId: string): number;
 }
 
+/** The Customer Voice pane (#114). Optional — absent ⇒ the console renders a zeroed voice view. */
+export interface VoiceReader {
+  snapshot(workspaceId: string): Promise<VoiceSnapshot>;
+}
+
 /** Portfolio reviews (#107) + whether the loop is enabled. Optional — absent ⇒ a zeroed portfolio view
  * (works before the subsystem is wired, like the moat reader). */
 export interface PortfolioReader {
@@ -132,6 +138,8 @@ export interface FounderConsoleDeps {
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
   moat?: MoatReader;
+  /** Customer Voice roll-up (#114) — optional, read-only. */
+  voice?: VoiceReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
   portfolio?: PortfolioReader;
   /** Injectable clock (tests pin it). */
@@ -166,6 +174,7 @@ export class FounderConsoleService {
       growth,
       planning,
       moat,
+      voice,
       portfolioReviews,
     ] =
       await Promise.all([
@@ -182,6 +191,7 @@ export class FounderConsoleService {
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
+        this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
 
@@ -216,6 +226,7 @@ export class FounderConsoleService {
       moat,
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
+      voice,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
     });

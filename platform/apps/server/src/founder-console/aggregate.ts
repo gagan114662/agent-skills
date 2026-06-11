@@ -225,6 +225,23 @@ export interface PortfolioReviewSnapshot {
 }
 
 /** The two safety switches surfaced read-only. */
+/** The Customer Voice read-struct (#114): the post-launch support/churn roll-up, already computed by the
+ * reader off the same pure digest/metrics the routes use (so the console + API never disagree). */
+export interface VoiceSnapshot {
+  /** Tickets not yet replied/closed — the inbox that still needs a human. */
+  ticketsNeedingHuman: number;
+  /** NPS over the digest window (−100…100), or null when there are no NPS responses. */
+  npsScore: number | null;
+  /** High-churn-risk signals in the window. */
+  highChurnRisk: number;
+  /** Negative-sentiment signals in the window. */
+  negativeSentiment: number;
+  /** Total voice signals in the window. */
+  totalSignals: number;
+  /** The drafted digest headline. */
+  digestHeadline: string;
+}
+
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
   killSwitch: boolean;
@@ -267,6 +284,8 @@ export interface FounderConsoleInput {
   moatEnabled?: boolean;
   /** The moat stagnation window in days (#103), for the attention message. Default 30. */
   moatWindowDays?: number;
+  /** Customer Voice roll-up (#114) — optional so the console works before the voice loop is wired. */
+  voice?: VoiceSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
@@ -424,6 +443,16 @@ export interface MoatView {
   flagged: MoatVentureView[];
 }
 
+/** The Customer Voice roll-up (#114): the support inbox + churn/NPS pulse. Zeroed when voice is unwired. */
+export interface VoiceView {
+  ticketsNeedingHuman: number;
+  npsScore: number | null;
+  highChurnRisk: number;
+  negativeSentiment: number;
+  totalSignals: number;
+  digestHeadline: string;
+}
+
 /** One launched venture's latest portfolio decision (#107), surfaced on the console pane. */
 export interface PortfolioVentureView {
   ventureIdeaId: string;
@@ -483,6 +512,8 @@ export interface FounderConsole {
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
   moat: MoatView;
+  /** The Customer Voice roll-up (#114). Zero-valued when the voice loop is unwired. */
+  voice: VoiceView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
   portfolio: PortfolioView;
   attention: AttentionView;
@@ -640,6 +671,18 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     })),
   };
 
+  // #114 customer voice: the post-launch support inbox + churn/NPS pulse. Zeroed when unwired so the
+  // console renders before the voice loop is configured. Tickets needing a human are an attention reason
+  // (talking to users is the irreducible human work the premortem is about).
+  const voice: VoiceView = {
+    ticketsNeedingHuman: input.voice?.ticketsNeedingHuman ?? 0,
+    npsScore: input.voice?.npsScore ?? null,
+    highChurnRisk: input.voice?.highChurnRisk ?? 0,
+    negativeSentiment: input.voice?.negativeSentiment ?? 0,
+    totalSignals: input.voice?.totalSignals ?? 0,
+    digestHeadline: input.voice?.digestHeadline ?? "",
+  };
+
   // #107 portfolio lifecycle: reduce the reviews to the LATEST per venture (newest-first input), count
   // by decision, and surface the sunset (kill) gate queue. Counts always report; the attention reason is
   // gated on `portfolioEnabled` (mirrors moat) so a deployment that hasn't opted in is never nagged.
@@ -684,6 +727,9 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
       `${pluralize(moat.flaggedStagnant, "venture")} with stagnant moat (no accrual in ${moatWindowDays}d)`,
     );
   }
+  if (voice.ticketsNeedingHuman > 0) {
+    reasons.push(`${pluralize(voice.ticketsNeedingHuman, "support ticket")} need a human`);
+  }
   if (portfolio.enabled && portfolio.sunsetsPendingApproval > 0) {
     reasons.push(`${pluralize(portfolio.sunsetsPendingApproval, "venture sunset")} awaiting approval`);
   }
@@ -711,6 +757,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     growth,
     planning,
     moat,
+    voice,
     portfolio,
     attention: { required: reasons.length > 0, reasons },
   };

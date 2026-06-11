@@ -3,6 +3,7 @@ import type { Verdict } from "./aggregate.js";
 import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
 import type { MoatService } from "../moat/service.js";
+import type { CustomerVoiceService } from "../voice/service.js";
 import { resolveMoatCaps } from "../moat/caps.js";
 import type { PortfolioService } from "../portfolio/service.js";
 import { resolvePortfolioCaps } from "../portfolio/caps.js";
@@ -38,11 +39,13 @@ export function createDefaultFounderConsoleService(deps: {
   billing: BillingManager;
   /** The #103 moat service — surfaces per-venture moat + flags the stagnant ones (read-only). */
   moat?: MoatService;
+  /** The #114 customer-voice service — surfaces the support inbox + churn/NPS pulse (read-only). */
+  voice?: CustomerVoiceService;
   /** The #107 portfolio service — surfaces the launched-venture review decisions + sunset queue (read-only). */
   portfolio?: PortfolioService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing, moat, portfolio } = deps;
+  const { scale, billing, moat, voice, portfolio } = deps;
   return new FounderConsoleService({
     fleet: {
       tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
@@ -229,6 +232,23 @@ export function createDefaultFounderConsoleService(deps: {
           },
           enabled: (workspaceId) => resolveMoatCaps(loadConfig(workspaceId).moat).enabled,
           windowDays: (workspaceId) => resolveMoatCaps(loadConfig(workspaceId).moat).stagnationWindowDays,
+        }
+      : undefined,
+    // #114 customer voice: the support inbox + churn/NPS pulse, computed off the SAME pure digest the
+    // route uses (so the console + API never disagree). Read-only.
+    voice: voice
+      ? {
+          snapshot: async (workspaceId) => {
+            const digest = await voice.digest(workspaceId);
+            return {
+              ticketsNeedingHuman: digest.ticketsNeedingHuman,
+              npsScore: digest.npsScore,
+              highChurnRisk: digest.churnHigh,
+              negativeSentiment: digest.sentiment.negative,
+              totalSignals: digest.totalSignals,
+              digestHeadline: digest.headline,
+            };
+          },
         }
       : undefined,
     // #107 portfolio lifecycle: the launched-venture review decisions + the sunset gate queue. The pane
