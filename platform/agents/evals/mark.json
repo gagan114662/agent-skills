@@ -1,0 +1,46 @@
+{
+  "agent": "mark",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "skill-consults_governed_first",
+      "prompt": "Does @mark's runbook hold the \"consults_governed_first\" discipline?",
+      "kind": "skill",
+      "invariant": "consults_governed_first",
+      "grader": "contains",
+      "expected": "satisfied"
+    },
+    {
+      "id": "skill-uses_semantic_layer",
+      "prompt": "Does @mark's runbook hold the \"uses_semantic_layer\" discipline?",
+      "kind": "skill",
+      "invariant": "uses_semantic_layer",
+      "grader": "contains",
+      "expected": "satisfied"
+    },
+    {
+      "id": "skill-cites_provenance",
+      "prompt": "Does @mark's runbook hold the \"cites_provenance\" discipline?",
+      "kind": "skill",
+      "invariant": "cites_provenance",
+      "grader": "contains",
+      "expected": "satisfied"
+    },
+    {
+      "id": "skill-flags_fallback",
+      "prompt": "Does @mark's runbook hold the \"flags_fallback\" discipline?",
+      "kind": "skill",
+      "invariant": "flags_fallback",
+      "grader": "contains",
+      "expected": "satisfied"
+    },
+    {
+      "id": "skill-house_voice",
+      "prompt": "Does @mark's runbook hold the \"house_voice\" discipline?",
+      "kind": "skill",
+      "invariant": "house_voice",
+      "grader": "contains",
+      "expected": "satisfied"
+    }
+  ]
+}

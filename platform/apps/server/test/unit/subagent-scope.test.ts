@@ -54,6 +54,28 @@ describe("subagent tool scope (#59)", () => {
       expect(env.AGENT_ALLOWED_TOOLS).toBeUndefined();
       expect(env.AGENT_APPEND_SYSTEM_PROMPT).toBe("Talk only.");
     });
+
+    it("sets AGENT_SKILLS to the comma-joined skill ids (#155)", () => {
+      const env = personaHarnessEnv({ systemPrompt: "x", model: null }, ["Read"], [
+        "lens/knowledge",
+        "lens/runbook",
+      ]);
+      expect(env.AGENT_SKILLS).toBe("lens/knowledge,lens/runbook");
+    });
+
+    it("omits AGENT_SKILLS when the agent has no skill kit (unchanged behavior)", () => {
+      const env = personaHarnessEnv({ systemPrompt: "x", model: null }, ["Read"]);
+      expect(env.AGENT_SKILLS).toBeUndefined();
+    });
+
+    it("drops a hostile skill id (shell-unsafe) — defense in depth like tool names (#155)", () => {
+      const env = personaHarnessEnv({ systemPrompt: "x", model: null }, [], [
+        "ok/skill",
+        "bad; rm -rf /",
+        "  ",
+      ]);
+      expect(env.AGENT_SKILLS).toBe("ok/skill");
+    });
   });
 
   describe("validatePersonaInput — bounded, non-secret, mention-safe", () => {

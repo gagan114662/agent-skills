@@ -46,6 +46,12 @@ export interface SubagentServiceDeps {
   ): Promise<Capability | null>;
   /** Member ids @-mentioned on a message (#6), to bind an invocation to its mention. */
   mentionedMemberIds(messageId: string): Promise<string[]>;
+  /**
+   * The per-agent skill kit a session loads (#155). Resolves a persona to its skill ids (default: none).
+   * The marketing wiring binds this to the blueprint (skills by @handle); a generic persona returns [].
+   * Skills reach the harness via `AGENT_SKILLS` (env, never argv).
+   */
+  resolveSkills?: (persona: AgentPersona) => string[];
   launcher: SubagentLauncher;
 }
 
@@ -125,7 +131,7 @@ export class SubagentService {
       createdByMemberId: identity.memberId,
       task: input.task,
       parentMessageId: input.messageId,
-      harnessEnv: personaHarnessEnv(persona, scope),
+      harnessEnv: personaHarnessEnv(persona, scope, this.deps.resolveSkills?.(persona) ?? []),
     });
     return { ok: true, sessionId: session.id };
   }

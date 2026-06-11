@@ -209,3 +209,42 @@ jobs:
           name: demo-videos
           path: platform/docs/demos/*.mp4
           if-no-files-found: warn
+
+  evals:
+    # #155 (ADR-0155 §4): the offline fleet eval gate. Runs every agent's deterministic, model-free eval
+    # suite through the same semantic-layer answerer the server uses, compares against the committed
+    # baseline, and FAILS on a regression (skills drift 95% → 65% accuracy in a month without this latch).
+    # No DB / no model spend — the suites are pure. The delta table is the PR's before/after proof.
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Run fleet evals + enforce baseline (before/after delta)
+        run: pnpm --filter @reload/server evals | tee "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: platform/.eval-report.json
+          if-no-files-found: warn
+
+  colocation:
+    # #155 (ADR-0155 §5): the anti-drift latch. Fails a PR that changes a metric surface (a governed scorer
+    # or a migration touching a governed table) WITHOUT a paired skill/eval update — skills are maintained
+    # as code, colocated with the data model they describe. Needs full history for the merge-base diff.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check skill/eval colocation with metric surfaces
+        run: node scripts/check-skill-colocation.mjs

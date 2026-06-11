@@ -23,7 +23,7 @@ import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
 import { createAgentAuthResolver } from "../runtime/auth-default.js";
 import { buildConnectPrompt } from "./connect-prompt.js";
-import { MARKETING_CHANNELS, departmentForHandle } from "./blueprint.js";
+import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
@@ -173,6 +173,7 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
     getChannelWorkspace: async (channelId) => (await getChannel(channelId))?.workspaceId,
     channelCapabilityFor: effectiveChannelCapabilityFor,
     mentionedMemberIds: async (messageId) => (await listMentionsOnMessage(messageId)).map((m) => m.memberId),
+    resolveSkills: (persona) => skillsForHandle(persona.name), // #155: load the agent's skill kit per session
     launcher: ventureGatedSubagentLauncher(sessionManager),
   });
 

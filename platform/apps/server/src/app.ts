@@ -103,6 +103,12 @@ import { createDefaultFounderConsoleService } from "./founder-console/default.js
 import type { FounderConsoleService } from "./founder-console/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
+import { semanticRoutes } from "./routes/semantic.js";
+import { createDefaultSemanticLayerService } from "./semantic/default.js";
+import type { SemanticLayerService } from "./semantic/service.js";
+import { evalRoutes } from "./routes/evals.js";
+import { createDefaultEvalService } from "./evals/default.js";
+import type { EvalService } from "./evals/service.js";
 import type { GrowthService } from "./growth/service.js";
 import { portfolioRoutes } from "./routes/portfolio.js";
 import { createDefaultPortfolioService } from "./portfolio/default.js";
@@ -245,6 +251,10 @@ export interface BuildAppOptions {
   missionControl?: MissionControlService;
   /** #147 audit trail: tests inject a read-only service over fakes; default reads existing append-only rows. */
   audit?: AuditService;
+  /** #155 semantic layer: tests inject a service over a fake resolver; default reads the governed summaries. */
+  semantic?: SemanticLayerService;
+  /** #155 eval-gated maintenance: tests inject a service over fakes; default wires the flywheel feed. */
+  evals?: EvalService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -423,6 +433,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   // Built before the console + portfolio loop so both can read per-venture growth.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
   // decides DOUBLE_DOWN/MAINTAIN/PIVOT/SUNSET, and gates a SUNSET (kill) behind the #13 `portfolio.sunset`
@@ -449,6 +460,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   app.register(growthRoutes, { service: growthService });
+  app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build
   // sessions. Record backlog items (RICE inputs derived from evidence counts), read the ranked backlog,
@@ -610,6 +622,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(missionControlRoutes, { service: missionControl, sessionManager });
   const auditService = opts.audit ?? createDefaultAuditService();
   app.register(auditRoutes, { service: auditService });
+  // #155 eval-gated maintenance: run an agent's offline eval suite → persist `eval_runs` → trace →
+  // (when enabled) feed a regression to the flywheel above as an `eval_regression` failure. Default OFF
+  // gates only the proactive feed; running + recording an eval is always available + tenant-scoped.
+  const evalService = opts.evals ?? createDefaultEvalService({ flywheel: flywheelEngine });
+  app.register(evalRoutes, { service: evalService });
   // #106 outcome verifiers: the measured-gate runner. It turns non-code claims (deploy live? revenue
   // real? growth moved? fix held?) into durable `verifier_results` evidence rows via pure verifier
   // modules, and a FAILED verification opens a #13 escalation (never silently passes). It is config
