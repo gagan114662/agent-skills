@@ -11,6 +11,7 @@ import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, VOICE } from "../brand.js";
 import { Link, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
+import { PopMark } from "./PopMark.js";
 
 type Mode = "login" | "signup";
 
@@ -44,7 +45,7 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
 export function Splash(): React.JSX.Element {
   return (
     <div className="splash">
-      <div className="splash__mark splash__mark--pop">{BRAND.mark}</div>
+      <PopMark burst />
       <p>{VOICE.loading}</p>
     </div>
   );
@@ -58,7 +59,7 @@ export function Splash(): React.JSX.Element {
 export function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
   return (
     <div className="splash">
-      <div className="splash__mark splash__mark--pop">{BRAND.mark}</div>
+      <PopMark />
       <h1>{VOICE.offlineTitle}</h1>
       <p>{VOICE.offlineBody}</p>
       <button className="btn btn--primary" type="button" onClick={onRetry}>
@@ -100,6 +101,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   return (
     <div className="auth">
       <form className="auth__card" onSubmit={onSubmit}>
+        <PopMark burst className="auth__popmark" />
         <Link href="/" className="auth__brand" aria-label={BRAND.name}>
           <Wordmark />
         </Link>
@@ -150,7 +152,11 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           </label>
         )}
 
-        {error && <p className="auth__error">{error}</p>}
+        {error && (
+          <p className="auth__error" role="alert">
+            {VOICE.authError} {error}
+          </p>
+        )}
 
         <button className="btn btn--primary" type="submit" disabled={busy}>
           {mode === "login" ? "Sign in" : "Create account"}

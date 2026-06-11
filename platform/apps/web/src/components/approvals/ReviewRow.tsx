@@ -1,10 +1,11 @@
 /** One approval request in the review queue: summary, requester, action, amount, TTL, and — for a
  * human who is not the requester — Approve / Reject (reason required) controls (mirrors the server
  * `requireHuman` + self-approval guard; the server still enforces them, see ADR-0026). */
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
+import { popConfetti } from "../../lib/confetti.js";
 import { formatAge, formatTtl, isExpired } from "./ttl.js";
 
 export function ReviewRow({
@@ -25,10 +26,13 @@ export function ReviewRow({
   const canDecide = isHuman && !isOwn && request.status === "pending";
   const ttl = formatTtl(request.expiresAt, now);
 
-  async function approve(): Promise<void> {
+  async function approve(e: MouseEvent<HTMLButtonElement>): Promise<void> {
+    const r = e.currentTarget.getBoundingClientRect();
     setBusy(true);
     await store.decideApprove(request.id);
     setBusy(false);
+    // A green light earns a confetti pop at the button (#145 criterion #5).
+    popConfetti(r.left + r.width / 2, r.top + r.height / 2);
   }
 
   async function submitReject(): Promise<void> {
@@ -97,7 +101,7 @@ export function ReviewRow({
             </form>
           ) : (
             <>
-              <button className="btn btn--primary" disabled={busy} onClick={() => void approve()}>
+              <button className="btn btn--primary" disabled={busy} onClick={(e) => void approve(e)}>
                 Approve
               </button>
               <button className="btn btn--danger" disabled={busy} onClick={() => setRejecting(true)}>

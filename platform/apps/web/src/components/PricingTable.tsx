@@ -4,6 +4,7 @@
  * Kept free of fetch/store so it stays unit-testable; {@link PricingPanel} wires the data + checkout.
  */
 import type { ActivePlanDto, PlanDto } from "@reload/shared";
+import { popConfetti } from "../lib/confetti.js";
 
 /** Render whole-dollar prices cleanly: 4900¢ → "$49", 19900¢ → "$199". */
 export function formatPrice(cents: number): string {
@@ -75,7 +76,12 @@ export function PricingTable({
                 className="btn pricing-card__cta"
                 aria-label={`Choose the ${plan.name} plan`}
                 disabled={isCurrent || isPending}
-                onClick={() => onChoose(plan.key)}
+                onClick={(e) => {
+                  // A confetti pop at the CTA the moment checkout opens (#145 criterion #5).
+                  const r = e.currentTarget.getBoundingClientRect();
+                  popConfetti(r.left + r.width / 2, r.top + r.height / 2);
+                  onChoose(plan.key);
+                }}
               >
                 {isCurrent ? "Your plan" : isPending ? "Opening checkout…" : "Choose"}
               </button>

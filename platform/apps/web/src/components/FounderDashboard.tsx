@@ -7,6 +7,9 @@
  * store or network. It NEVER mutates — approve/kill/maintenance happen on their own surfaces.
  */
 import type { FounderConsoleDto } from "../api/types.js";
+import { VOICE } from "../brand.js";
+import { EmptyState } from "./EmptyState.js";
+import { PopLoader } from "./PopLoader.js";
 
 /** Cents → a `$x.xx` string. */
 function dollars(cents: number): string {
@@ -29,7 +32,7 @@ export function FounderDashboard({
     return (
       <section className="founder" aria-label="Founder console">
         <header className="founder__head">Founder Console</header>
-        <p className="founder__loading">Loading console…</p>
+        <PopLoader label="Loading the console…" />
       </section>
     );
   }
@@ -52,7 +55,7 @@ export function FounderDashboard({
         <article className="founder__card">
           <h3>Pending approvals</h3>
           {pendingApprovals.length === 0 ? (
-            <p className="founder__empty">No pending approvals.</p>
+            <EmptyState className="emptystate--compact">{VOICE.noPendingApprovals}</EmptyState>
           ) : (
             <ul className="founder__queue">
               {pendingApprovals.map((a) => (

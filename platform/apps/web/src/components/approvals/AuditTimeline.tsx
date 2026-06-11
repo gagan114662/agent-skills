@@ -31,7 +31,8 @@ export function AuditTimeline({
   now?: number;
 }): React.JSX.Element {
   const { directory } = useAppState();
-  if (events.length === 0) return <p className="timeline__empty">No audit events.</p>;
+  if (events.length === 0)
+    return <p className="timeline__empty">Nothing's happened here yet — the trail starts on the first decision.</p>;
   return (
     <ol className="timeline">
       {events.map((ev) => {

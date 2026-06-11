@@ -11,6 +11,7 @@
 import { BRAND, FLEET, LANDING, VOICE, agentColor } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
+import { PopMark } from "../PopMark.js";
 import { HeroVignette } from "./HeroVignette.js";
 
 export function Landing(): React.JSX.Element {
@@ -66,7 +67,7 @@ function Hero(): React.JSX.Element {
         </div>
       </div>
       <div className="landing__hero-stage">
-        <div className="landing__popmark popmark" aria-hidden="true" />
+        <PopMark burst className="landing__popmark" />
         <HeroVignette />
       </div>
     </section>
@@ -104,14 +105,14 @@ function Department(): React.JSX.Element {
       <p className="landing__section-sub">{LANDING.sections.fleetSub}</p>
       <ul className="landing__roster">
         {FLEET.map((agent) => {
-          const color = agentColor(agent);
+          const color = agentColor(agent.name) ?? BRAND.accent;
           return (
             <li
               key={agent.handle}
               className="landing__agent"
               style={{ ["--agent-hue" as string]: color }}
             >
-              <span className="landing__agent-mark" style={{ background: color }} aria-hidden="true" />
+              <PopMark color={color} size={30} className="landing__agent-mark" />
               <h3 className="landing__agent-name">{agent.name}</h3>
               <p className="landing__agent-handle" style={{ color }}>
                 @{agent.handle}

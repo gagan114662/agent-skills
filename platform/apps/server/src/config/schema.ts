@@ -359,6 +359,33 @@ export const moatSchema = z.object({
 });
 
 /**
+ * Portfolio Lifecycle Loop policy (#107, ADR-0107). All **non-secret** knobs for the launched-venture
+ * review loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that
+ * sets nothing keeps today's behavior — reviews still compute/persist on demand (harmless, tenant-scoped)
+ * but the Founder Console raises no portfolio attention and no proactive tick runs. SUNSET execution
+ * stays #13-gated regardless. The threshold/weight fields parameterize the pure `decidePortfolio` ladder
+ * and ARE the per-venture targets the review judges against (the tenant's layered, lockable policy).
+ */
+export const portfolioSchema = z.object({
+  /** The portfolio-loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Composite health (0–100) at/above which a venture earns more investment (DOUBLE_DOWN). */
+  doubleDownScore: z.number().min(0).max(100).optional(),
+  /** Composite health (0–100) at/below which a venture is a SUNSET candidate. */
+  sunsetScore: z.number().min(0).max(100).optional(),
+  /** Days since launch below which the loop holds at MAINTAIN (grace window for a fresh launch). */
+  minReviewAgeDays: z.number().int().nonnegative().optional(),
+  /** Per-signal points for the bounded demand sub-score (capped at 100). */
+  demandSignalPoints: z.number().nonnegative().optional(),
+  /** Weight on the growth score in the composite (≥ 0). */
+  weightGrowth: z.number().nonnegative().optional(),
+  /** Weight on the moat score in the composite (≥ 0). */
+  weightMoat: z.number().nonnegative().optional(),
+  /** Weight on the demand sub-score in the composite (≥ 0). */
+  weightDemand: z.number().nonnegative().optional(),
+});
+
+/**
  * Product Planning Loop policy (#115, ADR-0115). All **non-secret** knobs for the feedback+metrics →
  * RICE-ranked backlog → specs → agent sessions loop. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing drafts no specs and proposes no sessions —
@@ -421,6 +448,8 @@ export const settingsSchema = z.object({
   insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
   moat: moatSchema.optional(),
+  /** Portfolio Lifecycle Loop policy (#107): launched-venture review thresholds + weights (default OFF). */
+  portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
   planning: planningSchema.optional(),
 });
@@ -449,6 +478,7 @@ export type VerifierConfig = z.infer<typeof verifiersSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
+export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
@@ -489,6 +519,8 @@ export interface ResolvedConfig {
   insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
   moat: MoatConfig;
+  /** Portfolio Lifecycle Loop policy (#107). A partial whose hard defaults `resolvePortfolioCaps` fills. */
+  portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
   planning: PlanningConfig;
 }
@@ -513,5 +545,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   growth: {},
   insight: {},
   moat: {},
+  portfolio: {},
   planning: {},
 };

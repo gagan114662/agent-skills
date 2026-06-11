@@ -94,9 +94,10 @@ describe("landing fleet + copy (#149)", () => {
     for (const agent of FLEET) {
       expect(agent.name, agent.handle).toBeTruthy();
       expect(agent.personality, agent.handle).toBeTruthy();
-      // Every agent's department keys the spectrum, and agentColor resolves to that hue.
+      // Every agent's department keys the spectrum, and agentColor (by display name, #145) resolves
+      // to that same hue — the landing roster and the in-app avatars wear one colour per agent.
       expect(DEPARTMENT_SPECTRUM[agent.department], agent.handle).toBeTruthy();
-      expect(agentColor(agent)).toBe(departmentColor(agent.department));
+      expect(agentColor(agent.name)).toBe(departmentColor(agent.department));
     }
   });
 
