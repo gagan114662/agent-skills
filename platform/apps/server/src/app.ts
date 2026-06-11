@@ -67,6 +67,10 @@ import {
 import { VentureService } from "./venture/service.js";
 import type { VentureEngine } from "./venture/engine.js";
 import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
+import { moatRoutes } from "./routes/moat.js";
+import { MoatService } from "./moat/service.js";
+import { createDefaultMoatService } from "./moat/default.js";
+import { listEvaluations } from "./db/repositories/venture.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
@@ -165,6 +169,8 @@ export interface BuildAppOptions {
   preflight?: () => PreflightReport;
   /** #96 venture loop: tests inject a service over a deterministic scorer; default builds the real one. */
   venture?: VentureService;
+  /** #103 moat accrual: tests inject a service over a fake ledger; default builds the real one. */
+  moat?: MoatService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
   /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -334,9 +340,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // review in one read. Built over the SAME `scale` (so fleet/budget match admission) + `billingManager`
   // (so revenue matches billing). Strictly read-only: approve/kill/maintenance flip through their
   // existing routes, never here. Tenant-scoped via `assertWorkspace`.
+  // #103 moat accrual: the per-venture moat ledger + pure scoring. Recording/scoring always work; the
+  // Founder Console stagnation flagging is config default-OFF. Built before the console so the console
+  // can surface each venture's moat + flag the ones that have stopped compounding (read-only).
+  const moatService = opts.moat ?? createDefaultMoatService();
+  app.register(moatRoutes, {
+    service: moatService,
+    ventureIds: async (workspaceId) => (await listEvaluations(workspaceId)).map((e) => e.ideaId),
+  });
   const founderConsole =
     opts.founderConsole ??
-    createDefaultFounderConsoleService({ scale, billing: billingManager });
+    createDefaultFounderConsoleService({ scale, billing: billingManager, moat: moatService });
   app.register(founderConsoleRoutes, { service: founderConsole });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107

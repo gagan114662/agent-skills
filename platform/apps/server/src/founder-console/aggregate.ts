@@ -173,6 +173,18 @@ export interface GrowthSnapshot {
   experiments: GrowthExperimentStatusSnapshot[];
 }
 
+/** One venture's moat roll-up (#103) reduced to what the console pane needs. Mirrors `moat/types.ts`
+ * `VentureMoat` minus the per-dimension breakdown (kept local to keep this module pure). */
+export interface MoatVentureSnapshot {
+  ventureIdeaId: string;
+  /** 0–100 weighted moat score. */
+  score: number;
+  /** True when zero accrual landed in the stagnation window (the pivot/kill signal). */
+  stagnant: boolean;
+  accrualsInWindow: number;
+  lastAccrualAtMs: number | null;
+}
+
 /** The two safety switches surfaced read-only. */
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
@@ -208,6 +220,12 @@ export interface FounderConsoleInput {
   infraBudgetCeilingCents: number;
   /** The tenant's in-flight cap (#71) for the right-sizing utilization; 0 = unlimited. */
   tenantConcurrency: number;
+  /** Per-venture moat roll-ups (#103). Optional ⇒ defaults to none (moat unwired). */
+  moat?: MoatVentureSnapshot[];
+  /** Whether moat stagnation flagging is enabled (#103 `moat.enabled`). Default false. */
+  moatEnabled?: boolean;
+  /** The moat stagnation window in days (#103), for the attention message. Default 30. */
+  moatWindowDays?: number;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -311,6 +329,28 @@ export interface CostForecastView {
   infraBudget: InfraBudgetStatus;
 }
 
+/** One flagged-stagnant venture surfaced in the console moat pane (#103). */
+export interface MoatVentureView {
+  ventureIdeaId: string;
+  score: number;
+  accrualsInWindow: number;
+  lastAccrualAtMs: number | null;
+}
+
+/** The moat-accrual roll-up (#103): how many ventures are tracked + which have stopped compounding. */
+export interface MoatView {
+  /** Whether stagnation flagging is enabled (gates the attention reason). */
+  enabled: boolean;
+  /** The stagnation window in days. */
+  windowDays: number;
+  /** Ventures with a moat roll-up this tick. */
+  tracked: number;
+  /** Tracked ventures with zero accrual in the window. */
+  flaggedStagnant: number;
+  /** The stagnant ventures (the pivot/kill candidates #107 acts on). */
+  flagged: MoatVentureView[];
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -338,6 +378,8 @@ export interface FounderConsole {
   selfHealing: SelfHealingView;
   /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
   growth: GrowthView;
+  /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
+  moat: MoatView;
   attention: AttentionView;
 }
 
@@ -449,6 +491,26 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     externalPostsSubmitted: growthExperiments.filter((e) => e.hasExternalPost).length,
   };
 
+  // #103 moat accrual: surface every tracked venture's moat roll-up and flag the ones that have
+  // stopped compounding (zero accrual in the window). The count is always reported; the attention
+  // reason is gated on `moatEnabled` (mirrors how #119 evidence recording is always-on but the
+  // pricer is gated) so a deployment that hasn't opted in is never nagged.
+  const moatSnapshots = input.moat ?? [];
+  const moatWindowDays = input.moatWindowDays ?? 30;
+  const flaggedMoat = moatSnapshots.filter((m) => m.stagnant);
+  const moat: MoatView = {
+    enabled: input.moatEnabled ?? false,
+    windowDays: moatWindowDays,
+    tracked: moatSnapshots.length,
+    flaggedStagnant: flaggedMoat.length,
+    flagged: flaggedMoat.map((m) => ({
+      ventureIdeaId: m.ventureIdeaId,
+      score: m.score,
+      accrualsInWindow: m.accrualsInWindow,
+      lastAccrualAtMs: m.lastAccrualAtMs,
+    })),
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -459,6 +521,11 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     reasons.push(`${pluralize(escalatedAwaitingReview, "failure")} recurred after fix (review required)`);
   }
   if (queuedForApproval > 0) reasons.push(pluralize(queuedForApproval, "flywheel fix awaiting approval"));
+  if (moat.enabled && moat.flaggedStagnant > 0) {
+    reasons.push(
+      `${pluralize(moat.flaggedStagnant, "venture")} with stagnant moat (no accrual in ${moatWindowDays}d)`,
+    );
+  }
 
   return {
     workspaceId: input.workspaceId,
@@ -478,6 +545,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
     growth,
+    moat,
     attention: { required: reasons.length > 0, reasons },
   };
 }
