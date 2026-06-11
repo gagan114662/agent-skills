@@ -12,6 +12,7 @@ import {
   type PersonaScorer,
   type UsageMeter,
   type VentureRepo,
+  type ConstitutionGuard,
 } from "./service.js";
 import type { DemandEvidenceSource } from "../demand/service.js";
 import type { VoiceEvidenceSource } from "../voice/service.js";
@@ -174,6 +175,7 @@ const epicEmitter: EpicEmitter = {
 export function createDefaultVentureService(
   now?: () => Date,
   demand?: DemandEvidenceSource,
+  constitution?: ConstitutionGuard,
   voice?: VoiceEvidenceSource,
 ): VentureService {
   return new VentureService({
@@ -190,6 +192,8 @@ export function createDefaultVentureService(
     // Infrastructure-time advancement is gated by the same #17 kill switch as autonomy launches.
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     demand,
+    // #146 constitution enforcement (default-OFF unless the config block + the guard are present).
+    constitution,
     // #114 customer-voice overlay: real post-launch voice replaces the synthetic problemSeverity dimension.
     voice,
     now,
@@ -200,9 +204,10 @@ export function createDefaultVentureService(
 export function createDefaultVentureEngine(
   logger: SessionLogger,
   demand?: DemandEvidenceSource,
+  constitution?: ConstitutionGuard,
 ): VentureEngine {
   return new VentureEngine({
-    service: createDefaultVentureService(undefined, demand),
+    service: createDefaultVentureService(undefined, demand, constitution),
     listActiveEvaluationWorkspaces,
     logger,
   });
