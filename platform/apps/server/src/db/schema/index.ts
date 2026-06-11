@@ -27,5 +27,6 @@ export * from "./gate-evidence.js";
 export * from "./flywheel.js";
 export * from "./marketing-tasks.js";
 export * from "./demand.js";
+export * from "./growth.js";
 export * from "./insights.js";
 export * from "./moat.js";

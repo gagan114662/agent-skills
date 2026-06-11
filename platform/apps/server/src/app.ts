@@ -92,6 +92,9 @@ import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
 import type { FounderConsoleService } from "./founder-console/service.js";
+import { growthRoutes } from "./routes/growth.js";
+import { createDefaultGrowthService } from "./growth/default.js";
+import type { GrowthService } from "./growth/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
@@ -194,6 +197,8 @@ export interface BuildAppOptions {
   founderConsole?: FounderConsoleService;
   /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
   gatePricing?: GatePricingService;
+  /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
+  growth?: GrowthService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -364,6 +369,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     opts.founderConsole ??
     createDefaultFounderConsoleService({ scale, billing: billingManager, moat: moatService });
   app.register(founderConsoleRoutes, { service: founderConsole });
+  // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
+  // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
+  // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
+  // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
+  const growthService = opts.growth ?? createDefaultGrowthService();
+  app.register(growthRoutes, { service: growthService });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
