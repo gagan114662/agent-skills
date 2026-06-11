@@ -34,6 +34,15 @@ export async function getWorkspaceMember(
   return row as Member | undefined;
 }
 
+/** Every member in a workspace (humans + agents) — the team roster source (#123). */
+export async function listWorkspaceMembers(workspaceId: string): Promise<Member[]> {
+  const rows = await db
+    .select({ id: members.id, kind: members.kind, displayName: members.displayName })
+    .from(members)
+    .where(eq(members.workspaceId, workspaceId));
+  return rows as Member[];
+}
+
 /** Create a human user (global) and their member row in a workspace. */
 export async function createHumanMember(input: {
   workspaceId: string;

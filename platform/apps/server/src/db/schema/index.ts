@@ -21,3 +21,4 @@ export * from "./deployments.js";
 export * from "./revenue.js";
 export * from "./venture.js";
 export * from "./watchdog.js";
+export * from "./marketing-tasks.js";

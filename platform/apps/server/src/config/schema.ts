@@ -196,6 +196,20 @@ export const watchdogSchema = z.object({
   backoffMs: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Marketing department fleet policy (#123, ADR-0123). All **non-secret**. Every field is optional and
+ * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's signup
+ * behavior (no auto-seed). ipop.ai opts in via the managed layer; `enabled` gates only seed-on-signup
+ * (the explicit seed route always works). `seedWelcomeTasks` launches one welcome session per
+ * department on seed (the "prove each agent alive" brief).
+ */
+export const marketingSchema = z.object({
+  /** Auto-seed the department fleet on signup — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Launch one welcome session per department when seeding (default true). */
+  seedWelcomeTasks: z.boolean().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -223,6 +237,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
+  marketing: marketingSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -240,6 +256,7 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type MarketingConfig = z.infer<typeof marketingSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -263,6 +280,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
+  marketing: MarketingConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -277,4 +296,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  marketing: {},
 };
