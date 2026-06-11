@@ -204,6 +204,33 @@ export const watchdogSchema = z.object({
 });
 
 /**
+ * SRE Loop policy (#112, ADR-0112). All **non-secret** knobs for the agent-on-call loop. Every field
+ * is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
+ * today's behavior (no SLO evaluation, no incidents). `services` declares the per-service SLO targets
+ * the loop evaluates off `/metrics` + health probes; `cooldownMs` bounds re-paging on a sustained
+ * breach.
+ */
+export const sreServiceSchema = z.object({
+  /** The service name evaluated (e.g. "api", "db", "redis"). */
+  service: z.string().min(1),
+  /** Availability SLO: minimum success ratio (0..1), e.g. 0.999. Omit to skip this dimension. */
+  availabilityTarget: z.number().min(0).max(1).optional(),
+  /** Latency SLO: maximum acceptable p95 latency in milliseconds. Omit to skip. */
+  latencyP95Ms: z.number().positive().optional(),
+  /** Queue-lag SLO: maximum acceptable queue lag in seconds. Omit to skip. */
+  queueLagSeconds: z.number().nonnegative().optional(),
+});
+
+export const sreSchema = z.object({
+  /** The on-call loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Minimum time (ms) between re-page notifications for one sustained breach (the cooldown). */
+  cooldownMs: z.number().int().nonnegative().optional(),
+  /** Per-service SLO targets the loop evaluates. Empty ⇒ nothing to evaluate. */
+  services: z.array(sreServiceSchema).optional(),
+});
+
+/**
  * Evidence-Priced Autonomy policy (#119, ADR-0119). All **non-secret** knobs for the gate pricer that
  * auto-relaxes / re-tightens #95 approval rules on measured decision error. Every field is optional and
  * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's static gates —
@@ -284,6 +311,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
+  sre: sreSchema.optional(),
   /** Evidence-Priced Autonomy policy (#119): the gate pricer that auto-relaxes/re-tightens #95 rules. */
   gatePricing: gatePricingSchema.optional(),
   /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
@@ -307,6 +336,8 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type SreConfig = z.infer<typeof sreSchema>;
+export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
@@ -333,6 +364,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
+  sre: SreConfig;
   /** Evidence-Priced Autonomy policy (#119). A partial whose hard defaults `resolveGatePricingCaps` fills. */
   gatePricing: GatePricingConfig;
   /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
@@ -353,6 +386,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  sre: {},
   gatePricing: {},
   flywheel: {},
   marketing: {},

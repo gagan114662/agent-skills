@@ -1,0 +1,58 @@
+name: sre-drill
+
+# Scheduled GAME-DAY chaos drill (#112, ADR-0112): an on-call path you have never exercised is just a
+# hope. This injects a Redis-down / PG-down / api-erroring signal into the SRE Loop against a THROWAWAY
+# Postgres service container and asserts the on-call path fires — an incident opens and a triage launch
+# is attempted — failing LOUDLY on any problem. So a broken alert pipeline is caught on a Tuesday, not
+# during a real outage.
+#
+# The drill is self-contained: it seeds its own isolated workspace, uses a counting fake triage
+# launcher (no real agent / no model spend), and writes genuine sre_incidents rows it cleans up.
+
+on:
+  schedule:
+    - cron: "30 6 * * *" # daily 06:30 UTC (after the dr-drill at 06:00)
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: platform
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reload
+          POSTGRES_PASSWORD: reload
+          POSTGRES_DB: reload
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U reload -d reload"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://reload:reload@localhost:5432/reload
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate the source DB
+        run: pnpm --filter @reload/server db:migrate
+      - name: GAME-DAY drill — inject chaos → assert incident + triage (loud failure)
+        run: pnpm --filter @reload/server sre:drill

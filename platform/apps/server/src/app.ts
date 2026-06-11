@@ -69,6 +69,9 @@ import type { VentureEngine } from "./venture/engine.js";
 import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
+import type { SreEngine } from "./sre/engine.js";
+import { createDefaultSreEngine } from "./sre/default.js";
+import { sreRoutes } from "./routes/sre.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
@@ -95,6 +98,8 @@ declare module "fastify" {
     ventureEngine: VentureEngine;
     /** The #105 fleet watchdog; `index.ts` starts its opt-in supervisor tick (WATCHDOG_INTERVAL_MS). */
     watchdogEngine: WatchdogEngine;
+    /** The #112 SRE on-call loop; `index.ts` starts its opt-in tick (SRE_INTERVAL_MS). */
+    sreEngine: SreEngine;
     /** The #119 evidence pricer; config default-OFF, driven per-workspace via `tick(workspaceId)`. */
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
@@ -159,6 +164,8 @@ export interface BuildAppOptions {
   venture?: VentureService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
+  /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  sre?: SreEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
   /**
@@ -398,6 +405,21 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     watchdogEngine.stop();
   });
   app.decorate("watchdogEngine", watchdogEngine);
+  // #112 SRE loop: the agent on-call. It reads the existing #19 `/metrics` + health probes, evaluates
+  // each opted-in workspace's declared SLOs (availability / p95 latency / queue lag) against their
+  // error budgets, and on a breach opens a durable `sre_incidents` row, notifies, and launches a
+  // triage agent through the SAME #92 launcher (past the same #71 admission) with a failure bundle.
+  // A critical breach escalates risky remediation to the #13 queue; recovery resolves the incident
+  // and drafts a postmortem under docs/postmortems/ (linked from the #104 Founder Console). The tick
+  // is opt-in (SRE_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
+  // drive `tickWorkspace()`. Config default-OFF (`sre.enabled`), so wiring it changes nothing until a
+  // deployment opts in. Stopped on server close so no timer leaks past shutdown. Read-only routes.
+  const sreEngine = opts.sre ?? createDefaultSreEngine(app.log, sessionManager);
+  app.addHook("onClose", async () => {
+    sreEngine.stop();
+  });
+  app.decorate("sreEngine", sreEngine);
+  app.register(sreRoutes);
   // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action
   // experiment. It reads the trailing window of #13 decision outcomes per action class (recorded into
   // gate_evidence on every approve/reject) and, with structural hysteresis, RELAXes a clean reversible

@@ -22,6 +22,8 @@ export interface Env {
   venture: VentureEnv;
   /** Fleet-watchdog scheduled tick (#105). */
   watchdog: WatchdogEnv;
+  /** SRE Loop scheduled tick (#112). */
+  sre: SreEnv;
   /** Self-healing flywheel scheduled tick (#117). */
   flywheel: FlywheelEnv;
   /** Notifications (#8). */
@@ -131,6 +133,11 @@ export interface WatchdogEnv {
   intervalMs: number;
 }
 
+export interface SreEnv {
+  /** SRE-tick interval in ms. Default `0` = the background on-call loop is OFF (opt-in, #112). */
+  intervalMs: number;
+}
+
 export interface FlywheelEnv {
   /** Flywheel-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #117). */
   intervalMs: number;
@@ -232,6 +239,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     watchdog: {
       // Default 0 (off): the supervisor timer is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.WATCHDOG_INTERVAL_MS ?? 0) || 0,
+    },
+    sre: {
+      // Default 0 (off): the on-call loop timer is opt-in so tests/CI drive `tickAll()` deterministically.
+      intervalMs: Number(source.SRE_INTERVAL_MS ?? 0) || 0,
     },
     flywheel: {
       // Default 0 (off): the flywheel loop is opt-in so tests/CI drive `tickAll()` deterministically.

@@ -76,6 +76,17 @@ export interface PendingApprovalSnapshot {
   createdAtMs: number;
 }
 
+/** One drafted postmortem the SRE Loop (#112) left behind, surfaced as a read-only link. */
+export interface PostmortemLinkView {
+  incidentId: string;
+  service: string;
+  sloKind: string;
+  /** The repo-relative path under docs/postmortems/. */
+  path: string;
+  /** When the incident resolved (epoch ms) — newest first in the console. */
+  resolvedAtMs: number;
+}
+
 /** The global maintenance flag (#99); `unavailable` when Redis could not be read (fail open). */
 export interface MaintenanceSnapshot {
   enabled: boolean;
@@ -162,6 +173,8 @@ export interface FounderConsoleInput {
   budget: BudgetSnapshot;
   approvals: PendingApprovalSnapshot[];
   switches: SwitchSnapshot;
+  /** Recent SRE postmortems (#112), newest first. Optional ⇒ defaults to none (loop off / unwired). */
+  postmortems?: PostmortemLinkView[];
   /** The #119 evidence-priced autonomy boundaries (owned classes + change history). */
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
@@ -278,6 +291,8 @@ export interface FounderConsole {
   /** The pending #13 queue, oldest-first (longest-waiting = highest priority). */
   pendingApprovals: PendingActionView[];
   switches: SwitchSnapshot;
+  /** Recent SRE postmortems (#112), newest first — the durable trace each incident left. */
+  postmortems: PostmortemLinkView[];
   /** The #119 evidence-priced autonomy boundaries: classes agents own + the change history. */
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
@@ -354,6 +369,11 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     }))
     .sort((x, y) => x.createdAtMs - y.createdAtMs);
 
+  // Newest-first: the most recent incident's postmortem is the most relevant to the daily review.
+  const postmortems: PostmortemLinkView[] = [...(input.postmortems ?? [])].sort(
+    (a, b) => b.resolvedAtMs - a.resolvedAtMs,
+  );
+
   const fingerprints = input.selfHealing?.fingerprints ?? [];
   const dispatches = input.selfHealing?.dispatches ?? [];
   const escalatedAwaitingReview = fingerprints.filter((f) => f.excludedFromAutoDispatch).length;
@@ -395,6 +415,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     costForecast,
     pendingApprovals,
     switches,
+    postmortems,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
     attention: { required: reasons.length > 0, reasons },

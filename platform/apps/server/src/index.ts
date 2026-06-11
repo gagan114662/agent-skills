@@ -19,6 +19,10 @@ app.ventureEngine.start(env.venture.intervalMs);
 // detects stalled sessions and revives/escalates them. Stopped on server close via buildApp's hook.
 app.watchdogEngine.start(env.watchdog.intervalMs);
 
+// #112 SRE loop: start the opt-in on-call tick (SRE_INTERVAL_MS; default 0 = off) that evaluates SLOs
+// off /metrics + health, opens incidents, launches triage, and drafts postmortems. Self-gates on the
+// #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
+app.sreEngine.start(env.sre.intervalMs);
 // #117 self-healing flywheel: start the opt-in tick (FLYWHEEL_INTERVAL_MS; default 0 = off) that turns
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
 app.flywheelEngine.start(env.flywheel.intervalMs);

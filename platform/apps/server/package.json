@@ -16,6 +16,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "billing:bootstrap": "tsx src/billing/bootstrap-cli.ts",
     "dr:drill": "tsx src/dr/drill-cli.ts",
+    "sre:drill": "tsx src/sre/drill-cli.ts",
     "preflight": "tsx scripts/preflight.ts",
     "openapi:dump": "tsx scripts/dump-openapi.ts",
     "trace:smoke": "tsx scripts/braintrust-smoke.ts",

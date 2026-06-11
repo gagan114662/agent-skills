@@ -4,6 +4,7 @@ import {
   type GateBoundariesSnapshot,
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
+  type PostmortemLinkView,
   type RevenueSnapshot,
   type SelfHealingSnapshot,
   type VentureEvalSnapshot,
@@ -55,6 +56,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** Recent SRE postmortems (#112) for the workspace, newest first. */
+export interface PostmortemsReader {
+  recent(workspaceId: string): Promise<PostmortemLinkView[]>;
+}
+
 /** The #119 evidence-priced autonomy boundaries: owned classes + the change history. */
 export interface GateBoundaryReader {
   boundaries(workspaceId: string): Promise<GateBoundariesSnapshot>;
@@ -84,6 +90,8 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  /** Optional SRE postmortems reader (#112). Absent ⇒ none surfaced (the loop is off / unwired). */
+  postmortems?: PostmortemsReader;
   gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
@@ -114,6 +122,7 @@ export class FounderConsoleService {
       approvals,
       killSwitch,
       maintenance,
+      postmortems,
       gateBoundaries,
       usageTrend,
       selfHealing,
@@ -125,6 +134,7 @@ export class FounderConsoleService {
         this.deps.approvals.pending(workspaceId),
         this.deps.switches.killSwitch(workspaceId),
         this.deps.switches.maintenance(),
+        this.deps.postmortems?.recent(workspaceId) ?? Promise.resolve([]),
         this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
@@ -149,6 +159,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      postmortems,
       gateBoundaries,
       selfHealing,
       usageTrend,

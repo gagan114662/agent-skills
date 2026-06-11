@@ -150,6 +150,71 @@ export function recordWatchdogAction(action: string): void {
   watchdogActions.set(action, (watchdogActions.get(action) ?? 0) + 1);
 }
 
+// --- SRE loop (#112) --------------------------------------------------------
+// Agent on-call: ticks executed + actions applied by kind (open | escalate | resolve | notify |
+// noop:*). Cardinality discipline (as everywhere): the only label is the bounded action kind —
+// tenant ids are NEVER labels (they live in logs/traces).
+let sreTicks = 0;
+const sreActions = new Map<string, number>();
+
+/** One SRE tick ran (a single pass over a workspace's declared SLOs). */
+export function recordSreTick(): void {
+  sreTicks += 1;
+}
+
+/** One SRE action was applied/decided (open | escalate | resolve | notify | noop:*). */
+export function recordSreAction(action: string): void {
+  sreActions.set(action, (sreActions.get(action) ?? 0) + 1);
+}
+
+/**
+ * Read-only snapshot of the HTTP series the SRE signal source derives SLOs from (#112). Aggregated
+ * across all route templates: total requests, server-error (5xx) count, and an approximate p95 latency
+ * in milliseconds (the upper bound of the bucket the 95th percentile falls in). No new state — it
+ * reads the same counters `/metrics` renders, so the loop alerts off exactly what we expose.
+ */
+export interface HttpMetricsSnapshot {
+  requests: number;
+  errors: number;
+  p95LatencyMs: number;
+}
+
+export function snapshotHttpMetrics(): HttpMetricsSnapshot {
+  let requests = 0;
+  let errors = 0;
+  for (const s of httpTotals.values()) {
+    requests += s.count;
+    if (s.status >= 500) errors += s.count;
+  }
+
+  // Aggregate the per-route duration histograms into one, then read the 95th-percentile bucket.
+  const agg = DURATION_BUCKETS.map(() => 0);
+  let aggInf = 0;
+  let aggCount = 0;
+  for (const d of durations.values()) {
+    for (let i = 0; i < DURATION_BUCKETS.length; i++) agg[i] = (agg[i] ?? 0) + (d.bucketCounts[i] ?? 0);
+    aggInf += d.inf;
+    aggCount += d.count;
+  }
+  let p95LatencyMs = 0;
+  if (aggCount > 0) {
+    const threshold = 0.95 * aggCount;
+    let cumulative = 0;
+    let found = false;
+    for (let i = 0; i < DURATION_BUCKETS.length; i++) {
+      cumulative += agg[i] ?? 0;
+      if (cumulative >= threshold) {
+        p95LatencyMs = (DURATION_BUCKETS[i] ?? 0) * 1000;
+        found = true;
+        break;
+      }
+    }
+    if (!found && aggInf > 0) p95LatencyMs = (DURATION_BUCKETS[DURATION_BUCKETS.length - 1] ?? 0) * 1000;
+  }
+
+  return { requests, errors, p95LatencyMs };
+}
+
 // --- self-healing flywheel (#117) -------------------------------------------
 // Failure→issue→fix loop: ticks executed + actions by kind (ingest:new | ingest:dedup |
 // ingest:recurred | issue:draft | issue:comment | issue:reopen | issue:rate_limited | dispatch:auto |
@@ -253,6 +318,8 @@ export function resetMetrics(): void {
   autonomyActions.clear();
   watchdogTicks = 0;
   watchdogActions.clear();
+  sreTicks = 0;
+  sreActions.clear();
   flywheelTicks = 0;
   flywheelActions.clear();
   warmHits = 0;
@@ -397,6 +464,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE watchdog_actions_total counter");
   for (const [action, count] of watchdogActions) {
     lines.push(`watchdog_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- SRE loop (#112) ---
+  lines.push("# HELP sre_ticks_total SRE on-call loop ticks executed.");
+  lines.push("# TYPE sre_ticks_total counter");
+  lines.push(`sre_ticks_total ${sreTicks}`);
+
+  lines.push("# HELP sre_actions_total SRE on-call actions by kind.");
+  lines.push("# TYPE sre_actions_total counter");
+  for (const [action, count] of sreActions) {
+    lines.push(`sre_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- self-healing flywheel (#117) ---

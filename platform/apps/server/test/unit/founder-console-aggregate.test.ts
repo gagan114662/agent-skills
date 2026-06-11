@@ -296,4 +296,20 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     );
     expect(out.attention.reasons).toEqual(["1 pending approval"]);
   });
+
+  it("defaults SRE postmortems to an empty list when none are supplied (#112)", () => {
+    expect(aggregateFounderConsole(input()).postmortems).toEqual([]);
+  });
+
+  it("surfaces SRE postmortems newest-first (#112)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        postmortems: [
+          { incidentId: "i1", service: "api", sloKind: "latency_p95", path: "docs/postmortems/a.md", resolvedAtMs: NOW - 5000 },
+          { incidentId: "i2", service: "redis", sloKind: "availability", path: "docs/postmortems/b.md", resolvedAtMs: NOW - 1000 },
+        ],
+      }),
+    );
+    expect(out.postmortems.map((p) => p.incidentId)).toEqual(["i2", "i1"]);
+  });
 });
