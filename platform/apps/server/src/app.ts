@@ -95,6 +95,9 @@ import type { FounderConsoleService } from "./founder-console/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import type { GrowthService } from "./growth/service.js";
+import { portfolioRoutes } from "./routes/portfolio.js";
+import { createDefaultPortfolioService } from "./portfolio/default.js";
+import type { PortfolioService } from "./portfolio/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
@@ -199,6 +202,9 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #107 portfolio lifecycle loop: tests inject a service over fakes; default reads the live moat/
+   * growth/demand/billing surfaces. */
+  portfolio?: PortfolioService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -365,16 +371,38 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     service: moatService,
     ventureIds: async (workspaceId) => (await listEvaluations(workspaceId)).map((e) => e.ideaId),
   });
-  const founderConsole =
-    opts.founderConsole ??
-    createDefaultFounderConsoleService({ scale, billing: billingManager, moat: moatService });
-  app.register(founderConsoleRoutes, { service: founderConsole });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
+  // Built before the console + portfolio loop so both can read per-venture growth.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
+  // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
+  // decides DOUBLE_DOWN/MAINTAIN/PIVOT/SUNSET, and gates a SUNSET (kill) behind the #13 `portfolio.sunset`
+  // approval (sensitive by default — a human approves; an agent never kills its own venture). On an
+  // approved sunset the lesson is written to the #15 memory graph so it compounds. Reviews compute/persist
+  // always (read-mostly); the proactive posture is config default-OFF. Built before the console so the
+  // console can surface the compact portfolio pane.
+  const portfolioService =
+    opts.portfolio ??
+    createDefaultPortfolioService({
+      moat: moatService,
+      growth: growthService,
+      demand: demandService,
+      billing: billingManager,
+    });
+  const founderConsole =
+    opts.founderConsole ??
+    createDefaultFounderConsoleService({
+      scale,
+      billing: billingManager,
+      moat: moatService,
+      portfolio: portfolioService,
+    });
+  app.register(founderConsoleRoutes, { service: founderConsole });
   app.register(growthRoutes, { service: growthService });
+  app.register(portfolioRoutes, { service: portfolioService });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to

@@ -9,6 +9,7 @@ import {
   type RevenueSnapshot,
   type SelfHealingSnapshot,
   type GrowthSnapshot,
+  type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
@@ -98,6 +99,13 @@ export interface MoatReader {
   windowDays(workspaceId: string): number;
 }
 
+/** Portfolio reviews (#107) + whether the loop is enabled. Optional — absent ⇒ a zeroed portfolio view
+ * (works before the subsystem is wired, like the moat reader). */
+export interface PortfolioReader {
+  reviews(workspaceId: string): Promise<PortfolioReviewSnapshot[]>;
+  enabled(workspaceId: string): boolean;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -116,6 +124,8 @@ export interface FounderConsoleDeps {
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
   moat?: MoatReader;
+  /** Portfolio lifecycle reviews (#107) — optional, read-only. */
+  portfolio?: PortfolioReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -147,6 +157,7 @@ export class FounderConsoleService {
       selfHealing,
       growth,
       moat,
+      portfolioReviews,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -161,6 +172,7 @@ export class FounderConsoleService {
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
+        this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
 
     return aggregateFounderConsole({
@@ -193,6 +205,8 @@ export class FounderConsoleService {
       moat,
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
+      portfolio: portfolioReviews,
+      portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
     });
   }
 }
