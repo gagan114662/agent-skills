@@ -77,6 +77,56 @@ jobs:
           pnpm --filter @reload/server db:rollback
           pnpm --filter @reload/server db:migrate
 
+  perf:
+    # #113 performance & capacity rails: boot the real server, hammer the hot paths with the
+    # dependency-free load driver, and FAIL the PR on a budget regression (min req/s floor, max p99,
+    # max error rate). Same Postgres+Redis service block as `integration` (the suite signs up a session
+    # for the authenticated scenario). Regenerates docs/capacity.md as a side effect (not committed here).
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reload
+          POSTGRES_PASSWORD: reload
+          POSTGRES_DB: reload
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U reload -d reload"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://reload:reload@localhost:5432/reload
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate up
+        run: pnpm --filter @reload/server db:migrate
+      - name: Load test + enforce perf budgets
+        run: pnpm --filter @reload/server perf
+      - name: Upload measured capacity model
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-model
+          path: platform/docs/capacity.md
+          if-no-files-found: warn
+
   deploy:
     # #19 acceptance: one pipeline deploys the full stack. Builds the server image and
     # boots server + Postgres + Redis (migrate-on-deploy) via compose, then smoke-tests
