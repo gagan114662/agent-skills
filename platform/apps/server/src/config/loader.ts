@@ -3,7 +3,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { mergeLayers, mergeSettings } from "./layers.js";
-import { settingsSchema, type ResolvedConfig, type Settings } from "./schema.js";
+import {
+  settingsSchema,
+  TRIAL_SCALE_DEFAULTS,
+  type ResolvedConfig,
+  type ScaleConfig,
+  type Settings,
+} from "./schema.js";
 
 export { mergeLayers, mergeSettings };
 export { CONFIG_DEFAULTS } from "./schema.js";
@@ -94,9 +100,36 @@ function parseFileList(value: string): string[] {
     .filter(Boolean);
 }
 
+/** Parse a non-negative integer env value, falling back to `fallback` on absent/garbage (never throws). */
+function envInt(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
+/**
+ * Resolve the trial free-tier scale block from the env base layer (#147, ADR-0147). **Default-ON**: an
+ * absent `RELOAD_TRIAL_ENABLED` yields the usable free tier ({@link TRIAL_SCALE_DEFAULTS}) so a fresh
+ * workspace can run agents before checkout→caps is wired. `RELOAD_TRIAL_ENABLED=false`/`0` returns an
+ * **empty** block (present, so it overrides the baseline → 0 caps = today's unlimited behavior).
+ * `RELOAD_TRIAL_TENANT_CONCURRENCY` / `RELOAD_TRIAL_BUDGET_CENTS` tune the tier. This is the LOWEST
+ * layer, so any higher `[scale]` (a paid plan's per-tenant managed override) fully replaces it.
+ */
+function trialScale(env: NodeJS.ProcessEnv): ScaleConfig {
+  const enabled = env.RELOAD_TRIAL_ENABLED !== "false" && env.RELOAD_TRIAL_ENABLED !== "0";
+  if (!enabled) return {};
+  return {
+    tenantConcurrency: envInt(env.RELOAD_TRIAL_TENANT_CONCURRENCY, TRIAL_SCALE_DEFAULTS.tenantConcurrency),
+    budgetCents: envInt(env.RELOAD_TRIAL_BUDGET_CENTS, TRIAL_SCALE_DEFAULTS.budgetCents),
+  };
+}
+
 /** The env base layer: the lowest-precedence source (preserves the env-only status quo). */
 function envLayer(env: NodeJS.ProcessEnv): Settings {
   const raw: Record<string, unknown> = {};
+  // #147 trial free tier: ON by default in the env base layer (the one non-opt-in block). A higher
+  // layer that sets [scale] (a paid plan's managed override) replaces it wholesale.
+  raw.scale = trialScale(env);
   const privacy = env.RELOAD_DATA_PRIVACY_MODE;
   if (privacy !== undefined) raw.dataPrivacyMode = privacy === "true" || privacy === "1";
   const files = env.RELOAD_FILES_TO_COPY;

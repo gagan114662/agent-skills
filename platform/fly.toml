@@ -35,6 +35,14 @@ primary_region = "yyz"
   # welcome sessions, so it never spends — @mentions still go through the venture + #13 approval gates.
   RELOAD_MARKETING_ENABLED = "true"
   RELOAD_MARKETING_SEED_WELCOME_TASKS = "false"
+  # #147 trial free tier (ADR-0147): every workspace without a paid plan gets a usable, metered free
+  # tier so a fresh/owner workspace can run agents BEFORE checkout→caps is wired. Default-ON in code;
+  # set here explicitly so the live free-tier policy is visible + tunable without a redeploy of code.
+  # A paid plan's per-tenant managed [scale] override replaces these. Set RELOAD_TRIAL_ENABLED=false to
+  # restore the pre-#147 unlimited-by-default behavior.
+  RELOAD_TRIAL_ENABLED = "true"
+  RELOAD_TRIAL_TENANT_CONCURRENCY = "1"
+  RELOAD_TRIAL_BUDGET_CENTS = "500"
 
 [http_service]
   internal_port = 8080
