@@ -50,21 +50,63 @@
   100% { transform: scale(1); }
 }
 @keyframes squash-stretch {
+  /* Press feedback — an 8% squash & stretch (#145 criterion #1). */
   0% { transform: scale(1, 1); }
-  40% { transform: scale(1.06, 0.94); }
-  70% { transform: scale(0.97, 1.03); }
+  40% { transform: scale(1.08, 0.92); }
+  70% { transform: scale(0.96, 1.04); }
   100% { transform: scale(1, 1); }
 }
 @keyframes happy-wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-9deg); }
-  75% { transform: rotate(9deg); }
+  /* Idle "I'm alive" tell for the Pop Mark dot (keeps the dot horizontally centred). */
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  25% { transform: translateX(-50%) rotate(-9deg); }
+  75% { transform: translateX(-50%) rotate(9deg); }
 }
-@keyframes pop-dot {
-  0%, 60%, 100% { transform: translateX(-50%) translateY(0) scale(1, 1); }
-  70% { transform: translateX(-50%) translateY(-0.18em) scale(0.82, 1.2); }
-  82% { transform: translateX(-50%) translateY(0.02em) scale(1.18, 0.82); }
-  92% { transform: translateX(-50%) translateY(0) scale(0.96, 1.04); }
+/* The wordmark i-dot's calm idle bob (#145 criterion #2): a gentle float + tilt, not a constant hop. */
+@keyframes idle-bob {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
+  50% { transform: translateX(-50%) translateY(-7px) rotate(-2deg); }
+}
+/* New messages enter with a swell-pop: .96 → 1.02 → 1 (#145 criterion #4). */
+@keyframes msg-pop {
+  0% { transform: scale(0.96); opacity: 0; }
+  60% { transform: scale(1.02); opacity: 1; }
+  100% { transform: scale(1); }
+}
+/* Switching top-nav tabs swell-fades the content in (#145 criterion #7) — no hard cut. */
+@keyframes view-fade {
+  0% { opacity: 0; transform: scale(0.992) translateY(5px); }
+  100% { opacity: 1; transform: none; }
+}
+/* A single happy wiggle on a channel's # glyph on hover (#145 criterion #3): ±3°, once, never loops. */
+@keyframes hash-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-3deg); }
+  70% { transform: rotate(3deg); }
+}
+/* The three-dot pop loader (#145 criterion #9): each dot scales in sequence with the brand bezier. */
+@keyframes pop-loader {
+  0%, 100% { transform: scale(0.5); opacity: 0.35; }
+  50% { transform: scale(1); opacity: 1; }
+}
+/* The Pop Mark's full pop cycle on load (#145 criterion #1): dot swells past 1, overshoots, settles. */
+@keyframes pop-cycle {
+  0% { transform: translateX(-50%) scale(0, 0); }
+  45% { transform: translateX(-50%) scale(1.35, 0.8); }
+  70% { transform: translateX(-50%) scale(0.86, 1.16); }
+  100% { transform: translateX(-50%) scale(1, 1); }
+}
+/* Each of the six rays shoots outward along its own angle (set via --ray-angle), then fades. */
+@keyframes ray-burst {
+  0% { opacity: 0; transform: rotate(var(--ray-angle, 0deg)) translateY(-4%) scale(0.4); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--ray-angle, 0deg)) translateY(-78%) scale(1); }
+}
+/* The success confetti: three dots fly out from the interaction point (#145 criterion #5). */
+@keyframes confetti-fly {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--cx, 0), var(--cy, -24px)) scale(1); }
 }
 
 /* The ipop wordmark — heavy rounded, with a popped i-dot (the brand heartbeat). */
@@ -91,7 +133,8 @@
   border-radius: 50%;
   transform: translateX(-50%);
   transform-origin: center bottom;
-  animation: pop-dot 2.6s var(--pop-ease) infinite;
+  /* The brand heartbeat: a calm idle bob everywhere the wordmark appears (#145 criterion #2). */
+  animation: idle-bob 3.2s ease-in-out infinite;
 }
 
 * {
@@ -121,7 +164,7 @@ button {
   color: var(--text);
   border-radius: var(--radius);
   padding: 8px 14px;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, transform 0.16s var(--pop-ease);
 }
 .btn:hover {
   background: var(--bg-2);
@@ -134,9 +177,29 @@ button {
 }
 .btn--primary:hover {
   background: var(--accent-press);
+  /* Overshoot hover with the brand bezier (#145 criterion #6) — primary CTAs lean toward you. */
+  transform: scale(1.03);
+}
+.btn--primary:active {
+  transform: scale(0.99);
 }
 .btn:active {
-  animation: squash-stretch 0.32s var(--pop-ease);
+  animation: squash-stretch 0.34s var(--pop-ease);
+}
+
+/* Focus rings are Pop Vermilion across every interactive surface (#145 criterion #6). */
+.btn:focus-visible,
+.iconbtn:focus-visible,
+.tab:focus-visible,
+.topbar__navbtn:focus-visible,
+.channelrow:focus-visible,
+.linklike:focus-visible,
+.review-row__main:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .btn--primary:disabled {
   opacity: 0.5;
@@ -416,6 +479,11 @@ button {
 .channelrow__hash {
   color: var(--text-faint);
   font-weight: 800;
+  display: inline-block;
+}
+/* Hovering a channel gives its # a single happy wiggle — ±3°, once, never looping (#145 criterion #3). */
+.channelrow:hover .channelrow__hash {
+  animation: hash-wiggle 0.4s ease-in-out;
 }
 /* Department channels (#123 fleet) wear their spectrum hue on the hash glyph (#138 pop identity). */
 .channelrow--dept .channelrow__hash {
@@ -473,6 +541,8 @@ button {
   gap: 10px;
   padding: 7px 8px;
   border-radius: 8px;
+  /* New messages enter with a swell-pop (#145 criterion #4) — they arrive, they don't just appear. */
+  animation: msg-pop 0.26s var(--pop-ease);
 }
 .message:hover {
   background: var(--bg-1);
@@ -539,9 +609,19 @@ button {
   background: var(--accent-dim);
   color: var(--accent-press);
 }
+/* Agent avatars are department-coloured Pop Marks, not generic shapes (#145 criterion #4). The hue
+   rides in on --pop-color (set per agent from the department spectrum); a wash tints the tile. */
 .avatar--agent {
-  background: var(--agent-dim);
-  color: #6d4bb5;
+  background: color-mix(in srgb, var(--pop-color, var(--agent)) 15%, var(--paper));
+}
+.avatar--agent .popmark {
+  --pop-size: 22px;
+  border-width: 3px;
+  border-color: var(--pop-color, var(--agent));
+}
+.memberrow .avatar--agent .popmark {
+  --pop-size: 17px;
+  border-width: 2px;
 }
 .kind {
   font-size: 10px;
@@ -2126,15 +2206,216 @@ button {
   animation: happy-wiggle 3s ease-in-out infinite;
 }
 
+/* ===== #145 motion system — Pop Mark component, loader, confetti, empty states, transitions ===== */
+
+/* The Pop Mark component (PopMark.tsx): a vermilion dot leaping out of an ink ring. `--pop-color`
+   tints it to a department hue; `--pop-size` overrides the diameter. Idle, the dot happy-wiggles. */
+.popmark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--pop-size, 56px);
+  height: var(--pop-size, 56px);
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+}
+.popmark__dot {
+  position: absolute;
+  left: 50%;
+  top: 9%;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: var(--pop-color, var(--vermilion));
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  animation: happy-wiggle 3s ease-in-out infinite;
+}
+/* The full pop cycle on load (#145 criterion #1): the dot pops in, the six rays burst at 60°. */
+.popmark--burst .popmark__dot {
+  animation: pop-cycle 0.7s var(--pop-ease);
+}
+.popmark__rays {
+  position: absolute;
+  inset: 0;
+}
+.popmark__ray {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13%;
+  height: 13%;
+  margin: -6.5% 0 0 -6.5%;
+  border-radius: 50%;
+  background: var(--pop-color, var(--vermilion));
+  opacity: 0;
+  animation: ray-burst 0.6s var(--pop-ease) forwards;
+}
+
+/* The three-dot pop loader (PopLoader.tsx) — the only loading affordance in the app. */
+.poploader {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.poploader--block {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0;
+}
+.poploader__dots {
+  display: inline-flex;
+  gap: 5px;
+}
+.poploader__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pop-loader 1s var(--pop-ease) infinite;
+}
+.poploader__dot:nth-child(2) {
+  background: var(--dept-content);
+  animation-delay: 0.16s;
+}
+.poploader__dot:nth-child(3) {
+  background: var(--dept-analytics);
+  animation-delay: 0.32s;
+}
+
+/* The success confetti burst (confetti.ts) — three dots fly out from the interaction point. */
+.confetti-burst {
+  position: fixed;
+  z-index: 60;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.confetti-burst__dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0;
+  animation: confetti-fly 0.9s var(--pop-ease) forwards;
+}
+.confetti-burst__dot:nth-child(1) {
+  background: var(--vermilion);
+  --cx: -18px;
+  --cy: -22px;
+}
+.confetti-burst__dot:nth-child(2) {
+  background: var(--dept-content);
+  --cx: 2px;
+  --cy: -28px;
+  animation-delay: 0.05s;
+}
+.confetti-burst__dot:nth-child(3) {
+  background: var(--dept-analytics);
+  --cx: 18px;
+  --cy: -20px;
+  animation-delay: 0.1s;
+}
+
+/* The shared empty-state block (EmptyState.tsx): a small static Pop Mark above a line of voice copy. */
+.emptystate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 36px 20px;
+  color: var(--text-dim);
+}
+.emptystate__mark {
+  --pop-size: 40px;
+  border-width: 3px;
+}
+.emptystate__copy {
+  margin: 0;
+  max-width: 38ch;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+/* Compact variant for tight spots (a console card, a narrow rail). */
+.emptystate--compact {
+  padding: 16px 8px;
+  gap: 9px;
+}
+.emptystate--compact .emptystate__mark {
+  --pop-size: 30px;
+}
+.emptystate--compact .emptystate__copy {
+  font-size: 12.5px;
+}
+
+/* Tab view transition (#145 criterion #7): each switched view swell-fades in, keyed so it replays. */
+.workspace__view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workspace__view > * {
+  flex: 1;
+  min-height: 0;
+}
+.view-fade {
+  animation: view-fade 0.18s var(--pop-ease);
+}
+
+/* Agent name chips wear the department colour (#145 criterion #4). */
+.message__author--agent {
+  color: var(--pop-color, var(--agent));
+}
+.kind--agent.kind--dept {
+  background: color-mix(in srgb, var(--pop-color, var(--agent)) 16%, var(--paper));
+  color: color-mix(in srgb, var(--pop-color, var(--agent)) 70%, var(--ink));
+}
+
+/* Login Pop Mark: the hero mark above the wordmark on the auth card (#145 criterion #1). */
+.auth__popmark {
+  --pop-size: 46px;
+  margin-bottom: 2px;
+}
+
+/*
+ * Reduced-motion gate (#145 criterion #10). Every animation in the system is neutralised here; the
+ * static state still reads as designed (rings, dots, chips, pills all keep their shape and colour —
+ * only the movement stops). The confetti and ray bursts are purely decorative, so they're hidden.
+ */
 @media (prefers-reduced-motion: reduce) {
   .wordmark__dot,
+  .popmark,
+  .popmark__dot,
+  .popmark--burst .popmark__dot,
+  .popmark__rays,
+  .popmark__ray,
+  .poploader__dot,
+  .confetti-burst__dot,
+  .message,
+  .view-fade,
+  .channelrow--active,
+  .channelrow:hover .channelrow__hash,
   .splash__mark--pop::after,
   .pane--empty__mark,
   .pane--empty__mark::after,
-  .channelrow--active {
-    animation: none;
-  }
   .btn:active {
-    animation: none;
+    animation: none !important;
+    transition: none !important;
+  }
+  .btn--primary:hover,
+  .pricing-card:hover,
+  .pricing-card__cta:hover {
+    transform: none !important;
+  }
+  /* Purely decorative bursts have no static meaning — drop them entirely. */
+  .confetti-burst,
+  .popmark__ray {
+    display: none !important;
   }
 }
