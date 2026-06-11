@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
@@ -11,7 +11,13 @@ import { newId } from "../../src/db/id.js";
  * report, and the RBAC gate on clearing #13 approvals. RBAC is enabled process-wide for this file via
  * env (the #151 RELOAD_RBAC_ENABLED toggle); with no role row a member still clears (bootstrap), so the
  * non-role flows are unaffected.
+ *
+ * Each case drives many sequential DB round-trips (signup → role grants → approval clear), so under a
+ * contended shared Postgres (Conductor's sibling-workspace hazard) the default 20s timeout is too tight.
+ * Lift it for this file so a slow-but-correct run isn't reported as a failure — the assertions are
+ * unchanged.
  */
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 let app: FastifyInstance;
 const slugs: string[] = [];
