@@ -81,6 +81,110 @@ export function departmentColor(channelName: string | null | undefined): string 
 }
 
 /**
+ * The named fleet (#123 marketing department × #138 pop identity) as the public site presents it.
+ * One entry per marketing function: the @-mentionable handle, display name, the department key that
+ * keys its spectrum colour, and a one-line personality in the house voice. Mirrors the server blueprint
+ * (`marketing/blueprint.ts`) — kept here (not imported) because the web app can't reach server code, and
+ * centralised so the landing page carries no hardcoded brand copy (enforced by brand.test.ts).
+ */
+export interface FleetAgent {
+  /** Lowercase @-mention handle. */
+  readonly handle: string;
+  /** Display name shown on the card. */
+  readonly name: string;
+  /** Marketing function — keys {@link DEPARTMENT_SPECTRUM} for the agent's hue. */
+  readonly department: keyof typeof DEPARTMENT_SPECTRUM;
+  /** One warm, crisp line of personality (house voice). */
+  readonly personality: string;
+}
+
+export const FLEET: readonly FleetAgent[] = [
+  { handle: "scout", name: "Scout", department: "seo", personality: "Reads your site the way Google does — then tells you exactly where it trips." },
+  { handle: "echo", name: "Echo", department: "social", personality: "Turns one good idea into a week of posts. Nothing leaves without your nod." },
+  { handle: "quill", name: "Quill", department: "content", personality: "Writes like a human on a good day — drafts that sound like you, faster." },
+  { handle: "postmark", name: "Postmark", department: "email", personality: "Writes the emails people actually open. Never hits send — that's your call." },
+  { handle: "bid", name: "Bid", department: "ads", personality: "Plans spend like it's their own money — which is to say, carefully." },
+  { handle: "lens", name: "Lens", department: "analytics", personality: "Stares at the numbers so you don't have to, then names the one that matters." },
+  { handle: "mark", name: "Mark", department: "brand", personality: "Keeps us sounding like us — warm, a little silly, never smug." },
+];
+
+/** The marketing colour for a fleet agent (its department hue), falling back to the accent. */
+export function agentColor(agent: FleetAgent): string {
+  return DEPARTMENT_SPECTRUM[agent.department] ?? BRAND.accent;
+}
+
+/**
+ * A single line in the hero's staged chat vignette (#149) — a scripted, looping peek at the fleet at
+ * work. `from` is `"you"` (the human steering) or a fleet handle; `dept` keys the bubble's colour; the
+ * optional `done` flag marks the line that fires the confetti pop. Pure data so the animation component
+ * stays presentational and the copy stays in one place.
+ */
+export interface VignetteLine {
+  readonly from: "you" | (string & {});
+  readonly dept?: keyof typeof DEPARTMENT_SPECTRUM;
+  readonly text: string;
+  readonly done?: boolean;
+}
+
+/** The three plans, teaser-sized, mirroring the server catalog (`billing/plans.ts`, #125). */
+export interface PlanTeaser {
+  readonly name: string;
+  readonly price: string;
+  readonly tagline: string;
+  readonly featured: boolean;
+}
+
+/**
+ * All copy for the public landing page (#149), in the house voice. Centralised here so the page reads
+ * the brand instead of inlining strings (brand.test.ts scans the landing components for the rule).
+ */
+export const LANDING = {
+  /** Hero. The headline reuses {@link Brand.tagline} so the one promise lives in exactly one place. */
+  hero: {
+    eyebrow: "Your always-on marketing department",
+    sub:
+      "Hire a whole marketing department of AI agents. They draft, research, and plan around the clock — " +
+      "you approve anything that leaves the building.",
+    ctaPrimary: "Start free",
+    ctaSecondary: "Sign in",
+  },
+  /** The looping hero vignette — a tiny staged channel where the fleet visibly does work. */
+  vignette: [
+    { from: "you", text: "@scout how's our homepage doing for SEO?" },
+    { from: "scout", dept: "seo", text: "On it — reading the page the way Google does…" },
+    { from: "scout", dept: "seo", text: "Found 5 issues. Biggest: /pricing has no meta description. Draft fix ready 👇" },
+    { from: "quill", dept: "content", text: "I'll write a 60-char description that actually sounds like us." },
+    { from: "echo", dept: "social", text: "And I'll turn the fix into a week of launch posts — drafts only, promise." },
+    { from: "you", text: "love it. ship the SEO fix." },
+    { from: "scout", dept: "seo", text: "Fix drafted and queued for your approval. 🎉", done: true },
+  ] as readonly VignetteLine[],
+  /** How it works — three steps with playful on-scroll motion. */
+  steps: [
+    { n: "01", title: "Brief them", body: "Mention an agent by name and tell them what you need — like Slacking a teammate." },
+    { n: "02", title: "They get to work", body: "Real agents research, draft, and plan in the channel. You watch it happen, live." },
+    { n: "03", title: "You approve", body: "Nothing leaves the building without your yes. Drafts land first; you ship the good ones." },
+  ],
+  sections: {
+    howTitle: "How it works",
+    howSub: "Three steps. No onboarding call, no Gantt chart.",
+    fleetTitle: "Meet the department",
+    fleetSub: "Seven specialists, one channel each, all on the same team.",
+    pricingTitle: "Pick your pop",
+    pricingSub: "Start small, grow when you feel like it.",
+    pricingCta: "See all plans",
+    ctaTitle: "Your new marketing team is waiting.",
+    ctaSub: "We don't drink coffee, we don't take weekends, and we've already had three ideas.",
+    ctaButton: "Hire the fleet",
+  },
+  /** Mirrors `billing/plans.ts` (#125): Starter → Pro → Agency, ascending price. */
+  plans: [
+    { name: "Starter", price: "$49", tagline: "Your first three agents.", featured: false },
+    { name: "Pro", price: "$199", tagline: "A team that never sleeps.", featured: true },
+    { name: "Agency", price: "$499", tagline: "A whole building of agents.", featured: false },
+  ] as readonly PlanTeaser[],
+} as const;
+
+/**
  * Applies brand-driven values that live outside React: the document title and the `--accent`
  * CSS custom property. Called once from `main.tsx` at boot. No-op fields keep the static
  * stylesheet defaults when the env vars are unset.

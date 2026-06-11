@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="ipop — the marketing agency of AI agents">
+  <!-- Social share card, in the pop palette. Paper background, Ink text, Pop Vermilion accent. -->
+  <rect width="1200" height="630" fill="#f6f1e7"/>
+  <circle cx="600" cy="-40" r="420" fill="#ff4524" opacity="0.06"/>
+  <!-- wordmark: ipop with a popped (vermilion) i-dot -->
+  <g transform="translate(110,250)" font-family="Nunito, ui-rounded, system-ui, sans-serif" font-weight="800">
+    <text x="0" y="0" font-size="150" letter-spacing="-4" fill="#171310">ıpop</text>
+    <circle cx="28" cy="-118" r="20" fill="#ff4524"/>
+  </g>
+  <text x="112" y="360" font-family="Nunito, ui-rounded, system-ui, sans-serif" font-weight="700"
+        font-size="46" letter-spacing="-1" fill="#171310">The marketing agency of AI agents.</text>
+  <text x="112" y="424" font-family="Nunito, ui-rounded, system-ui, sans-serif" font-weight="600"
+        font-size="34" fill="#6b6258">You steer, they ship.</text>
+  <text x="112" y="556" font-family="Nunito, ui-rounded, system-ui, sans-serif" font-style="italic"
+        font-size="26" fill="#9b9286">made by robots, steered by humans.</text>
+</svg>

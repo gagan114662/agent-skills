@@ -2138,3 +2138,515 @@ button {
     animation: none;
   }
 }
+
+/* ===== #149 public landing page — the storefront a logged-out visitor sees at "/" ===== */
+/* Strictly per docs/brand/ipop-brand-identity.html: Paper/Ink/Vermilion, the pop easing on every move,
+   the popped-i wordmark, all gated behind prefers-reduced-motion (see the block at the end). Motion is
+   shared with the chrome: swell-pop / happy-wiggle / squash-stretch / pop-dot are reused, not redefined
+   (coordinated with #145 motion polish). */
+
+.landing {
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+.landing main {
+  display: block;
+}
+
+/* --- top nav --- */
+.landing__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 28px;
+}
+.landing__brand {
+  text-decoration: none;
+  color: inherit;
+}
+.landing__brand .wordmark {
+  font-size: 26px;
+}
+.landing__nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.landing__nav-actions .linklike {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--ink);
+}
+.landing__nav-actions .linklike:hover {
+  color: var(--accent);
+}
+.landing__nav-cta {
+  text-decoration: none;
+}
+
+/* --- hero --- */
+.landing__hero {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 28px 72px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
+}
+.landing__hero-copy {
+  animation: swell-pop 0.6s var(--pop-ease) both;
+}
+.landing__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.landing__headline {
+  font-size: clamp(34px, 5vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin: 0 0 18px;
+  max-width: 16ch;
+}
+.landing__sub {
+  font-size: 18px;
+  color: var(--text-dim);
+  max-width: 48ch;
+  margin: 0 0 28px;
+}
+.landing__cta-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.landing__cta {
+  text-decoration: none;
+  padding: 13px 24px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.landing__cta--ghost {
+  background: transparent;
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.landing__cta--ghost:hover {
+  background: var(--bg-1);
+}
+
+/* --- hero stage: the Pop Mark + the looping chat vignette --- */
+.landing__hero-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.landing__popmark {
+  position: absolute;
+  top: -30px;
+  right: 4px;
+  width: 64px;
+  height: 64px;
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  z-index: 2;
+  animation: swell-pop 0.7s var(--pop-ease) both;
+}
+.landing__popmark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--vermilion);
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  animation: happy-wiggle 3s ease-in-out infinite;
+}
+
+/* The vignette is a tiny chat surface (a "channel") with messages popping in. */
+.vignette {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px -28px rgba(23, 19, 16, 0.4);
+  overflow: hidden;
+}
+.vignette__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.vignette__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.vignette__channel {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.vignette__lines {
+  list-style: none;
+  margin: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 340px;
+}
+.vignette__line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 0.35s var(--pop-ease), transform 0.35s var(--pop-ease);
+}
+.vignette__line.is-shown {
+  opacity: 1;
+  transform: none;
+}
+.vignette__line--you {
+  align-items: flex-end;
+}
+.vignette__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.vignette__avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.vignette__bubble {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 13px;
+  font-size: 14px;
+  line-height: 1.45;
+  max-width: 32ch;
+  color: var(--ink);
+}
+.vignette__line--you .vignette__bubble {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  border-left-color: var(--accent);
+}
+.vignette__confetti {
+  margin-top: 6px;
+}
+
+/* Three-dot confetti (brand book) — a small win celebration. */
+.confetti {
+  display: inline-flex;
+  gap: 5px;
+  vertical-align: middle;
+}
+.confetti span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vermilion);
+  animation: swell-pop 1.2s var(--pop-ease) infinite;
+}
+.confetti span:nth-child(2) {
+  background: var(--dept-content);
+  animation-delay: 0.15s;
+}
+.confetti span:nth-child(3) {
+  background: var(--dept-analytics);
+  animation-delay: 0.3s;
+}
+
+/* --- shared section scaffolding --- */
+.landing__section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 64px 28px;
+}
+.landing__section-title {
+  font-size: clamp(26px, 3.4vw, 38px);
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  text-align: center;
+}
+.landing__section-sub {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 17px;
+  margin: 0 auto 40px;
+  max-width: 46ch;
+}
+
+/* --- how it works --- */
+.landing__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.landing__step {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+}
+.landing__step-n {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+.landing__step-title {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.landing__step-body {
+  color: var(--text-dim);
+  margin: 0;
+}
+
+/* --- meet the department --- */
+.landing__roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+.landing__agent {
+  position: relative;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--agent-hue, var(--accent));
+  border-radius: 16px;
+  padding: 24px;
+  transition: transform 0.2s var(--pop-ease), box-shadow 0.2s var(--pop-ease);
+}
+.landing__agent:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px -26px rgba(23, 19, 16, 0.45);
+}
+.landing__agent-mark {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  margin-bottom: 12px;
+}
+.landing__agent-name {
+  font-size: 19px;
+  margin: 0;
+}
+.landing__agent-handle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 2px 0 10px;
+}
+.landing__agent-personality {
+  color: var(--text-dim);
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* --- pricing teaser --- */
+.landing__plans {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.landing__plan {
+  position: relative;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+}
+.landing__plan--featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.landing__plan-ribbon {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.landing__plan-name {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.landing__plan-price {
+  margin: 0 0 8px;
+}
+.landing__plan-amount {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.landing__plan-period {
+  color: var(--text-faint);
+  font-size: 14px;
+}
+.landing__plan-tagline {
+  color: var(--text-dim);
+  margin: 0;
+  font-size: 14px;
+}
+.landing__pricing-link {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+/* --- closing CTA --- */
+.landing__final {
+  text-align: center;
+  background: radial-gradient(900px 400px at 50% 0%, rgba(255, 69, 36, 0.08), transparent 60%);
+  border-radius: 24px;
+  margin-bottom: 24px;
+}
+.landing__final-title {
+  font-size: clamp(28px, 4vw, 44px);
+  letter-spacing: -0.025em;
+  margin: 0 0 10px;
+}
+.landing__final-sub {
+  color: var(--text-dim);
+  font-size: 18px;
+  max-width: 44ch;
+  margin: 0 auto 28px;
+}
+.landing__final-cta {
+  font-size: 17px;
+  padding: 14px 30px;
+}
+
+/* --- footer --- */
+.landing__footer {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 28px 64px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.landing__footer-mark.wordmark {
+  font-size: 20px;
+}
+.landing__signoff {
+  color: var(--text-faint);
+  font-style: italic;
+  margin: 0;
+}
+
+/* On-scroll reveal for the cards — upgrades to scroll-driven animation where supported, otherwise the
+   cards simply render in place (no hidden content). Gated by reduced-motion below. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .landing__step,
+    .landing__agent,
+    .landing__plan {
+      animation: swell-pop 0.6s var(--pop-ease) both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 28%;
+    }
+  }
+}
+
+/* --- mobile --- */
+@media (max-width: 860px) {
+  .landing__hero {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding-top: 16px;
+  }
+  .landing__popmark {
+    top: -22px;
+    right: 50%;
+    transform: translateX(50%);
+  }
+  .landing__steps,
+  .landing__plans {
+    grid-template-columns: 1fr;
+  }
+  .landing__headline {
+    max-width: none;
+  }
+}
+@media (max-width: 480px) {
+  .landing__nav {
+    padding: 16px;
+  }
+  .landing__section {
+    padding: 44px 18px;
+  }
+}
+
+/* The pop is a delight, never a tax — every landing animation is off when reduced motion is preferred. */
+@media (prefers-reduced-motion: reduce) {
+  .landing__hero-copy,
+  .landing__popmark,
+  .landing__popmark::after,
+  .landing__step,
+  .landing__agent,
+  .landing__plan,
+  .confetti span {
+    animation: none;
+  }
+  .landing__agent:hover {
+    transform: none;
+  }
+  .vignette__line {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+}
