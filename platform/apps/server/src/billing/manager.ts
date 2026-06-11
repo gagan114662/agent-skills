@@ -166,6 +166,22 @@ export interface PlanActivator {
   activate(workspaceId: string, planKey: string, providerEventId: string): Promise<unknown>;
 }
 
+/**
+ * The demand-signal seam (#101): when a deduped payment webhook carries `metadata.kind = "demand_smoke"`,
+ * the manager hands the charge to the Demand Validation Rails as the apex external `paid` signal (and the
+ * ethics auto-refund fires there). Declared here (rather than importing the demand service) so #101
+ * depends on #98, never the reverse — the same one-way dependency as the #125 {@link PlanActivator}.
+ */
+export interface DemandSignalIngestor {
+  ingestCheckout(input: {
+    workspaceId: string;
+    experimentId: string;
+    externalRef: string;
+    amountCents: number;
+    currency: string;
+  }): Promise<unknown>;
+}
+
 export interface BillingManagerDeps {
   provider: BillingProvider;
   store: BillingStore;
@@ -174,6 +190,8 @@ export interface BillingManagerDeps {
   deployments: DeploymentLookup;
   /** Optional #125 plan activation: invoked for a `plan_checkout` payment event (best-effort). */
   planActivator?: PlanActivator;
+  /** Optional #101 demand ingest: invoked for a `demand_smoke` payment event (best-effort). */
+  demandIngestor?: DemandSignalIngestor;
   loadConfig?: (workspaceId: string) => ResolvedConfig;
   publish?: (channelId: string, event: BillingStatusEvent) => void;
   logger?: SessionLogger;
@@ -188,6 +206,7 @@ export class BillingManager {
   private readonly secrets: SecretsResolver;
   private readonly deployments: DeploymentLookup;
   private readonly planActivator?: PlanActivator;
+  private readonly demandIngestor?: DemandSignalIngestor;
   private readonly load: (workspaceId: string) => ResolvedConfig;
   private readonly publish: (channelId: string, event: BillingStatusEvent) => void;
   private readonly logger?: SessionLogger;
@@ -201,6 +220,7 @@ export class BillingManager {
     this.secrets = deps.secrets;
     this.deployments = deps.deployments;
     this.planActivator = deps.planActivator;
+    this.demandIngestor = deps.demandIngestor;
     this.load = deps.loadConfig ?? ((workspaceId) => loadConfig(workspaceId));
     this.publish =
       deps.publish ??
@@ -378,6 +398,22 @@ export class BillingManager {
           await this.planActivator.activate(workspaceId, parsed.metadata.planKey, parsed.id);
         } catch (err) {
           this.logger?.warn({ workspaceId, err }, "billing: plan activation failed");
+        }
+      }
+      // #101: a demand smoke-test checkout is the apex external willingness-to-pay signal. Hand it to the
+      // Demand Validation Rails (which records the `paid` signal + fires the ethics auto-refund). Best-
+      // effort + exactly-once (the revenue dedupe above guarantees one delivery reaches here).
+      if (parsed.metadata.kind === "demand_smoke" && parsed.metadata.experimentId && this.demandIngestor) {
+        try {
+          await this.demandIngestor.ingestCheckout({
+            workspaceId,
+            experimentId: parsed.metadata.experimentId,
+            externalRef: parsed.id,
+            amountCents: parsed.amountCents,
+            currency: parsed.currency,
+          });
+        } catch (err) {
+          this.logger?.warn({ workspaceId, err }, "billing: demand signal ingest failed");
         }
       }
     }

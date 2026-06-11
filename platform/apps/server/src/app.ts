@@ -67,6 +67,9 @@ import {
 import { VentureService } from "./venture/service.js";
 import type { VentureEngine } from "./venture/engine.js";
 import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
+import { demandRoutes } from "./routes/demand.js";
+import { createDefaultDemandService } from "./demand/default.js";
+import { DemandValidationService } from "./demand/service.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
@@ -162,6 +165,8 @@ export interface BuildAppOptions {
   preflight?: () => PreflightReport;
   /** #96 venture loop: tests inject a service over a deterministic scorer; default builds the real one. */
   venture?: VentureService;
+  /** #101 demand validation rails: tests inject one service (shared by routes + billing ingest + venture overlay). */
+  demand?: DemandValidationService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
   /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -318,8 +323,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // action; payouts stay manual in the Stripe dashboard.
   // #98 rails + #125 pricing/plan layer share one provider + secrets; build both together unless a test
   // injected its own (the #98 tests inject only the manager and never exercise the plan routes).
+  // #101 demand validation rails: ONE service instance shared by the demand routes, the billing webhook's
+  // `demandIngestor` (so a `demand_smoke` checkout becomes an external `paid` signal), and the #96 venture
+  // demand overlay (so the scorecard's demand dimension consumes only this externally-attributed evidence).
+  const demandService = opts.demand ?? createDefaultDemandService(app.log);
   const billingDefaults =
-    !opts.billingManager || !opts.planService ? createDefaultBilling(app.log) : null;
+    !opts.billingManager || !opts.planService ? createDefaultBilling(app.log, demandService) : null;
   const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
   const planService = opts.planService ?? billingDefaults!.planService;
   app.register(billingRoutes, { billingManager, planService });
@@ -371,11 +380,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // launcher so a session is only launched for a workspace holding a passing, unexpired scorecard.
   // The gate is config default-OFF (`VentureAdmission.check` short-circuits to admit), so wrapping the
   // launcher is safe for every workspace that hasn't opted in — unchanged behavior by default.
-  const ventureService = opts.venture ?? createDefaultVentureService();
+  const ventureService = opts.venture ?? createDefaultVentureService(undefined, demandService);
   app.register(ventureRoutes, { service: ventureService });
+  // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
+  // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.
+  app.register(demandRoutes, { service: demandService });
   // The scheduled tick advances active evaluations on infrastructure time (default OFF — started in
   // index.ts only when VENTURE_INTERVAL_MS > 0); each advance self-gates on the kill switch + budget.
-  const ventureEngine = createDefaultVentureEngine(app.log);
+  const ventureEngine = createDefaultVentureEngine(app.log, demandService);
   app.addHook("onClose", async () => {
     ventureEngine.stop();
   });
