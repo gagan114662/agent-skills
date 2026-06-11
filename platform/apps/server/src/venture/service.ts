@@ -1,7 +1,12 @@
-import { aggregateScorecards, gapAngles, type PersonaScorecard } from "./rubric.js";
+import { gapAngles, type PersonaScorecard } from "./rubric.js";
 import { decideVenture } from "./decide.js";
 import { ventureThresholds, type VentureCaps } from "./caps.js";
 import { budgetExceeded } from "../scale/usage.js";
+import {
+  aggregateWithDemandOverlay,
+  demandScoreFromExternal,
+} from "../demand/scorecard-evidence.js";
+import type { DemandEvidenceSource } from "../demand/service.js";
 import type {
   Evidence,
   GapList,
@@ -148,6 +153,14 @@ export interface VentureServiceDeps {
   scaleBudgetCents?: (workspaceId: string) => number;
   /** The #17 kill switch for the workspace. Default: never engaged. */
   killSwitch?: (workspaceId: string) => Promise<boolean>;
+  /**
+   * #101 demand overlay: the externally-attributed willingness-to-pay evidence an idea has earned from a
+   * fake-door smoke test. When present and non-empty, the demand dimension's synthetic persona score is
+   * REPLACED by the real external score. Default: absent → the scorecard is unchanged (default-OFF). The
+   * seam returns the branded `ExternalDemandEvidence`, so self-generated (circular) evidence can never
+   * reach a demand dimension.
+   */
+  demand?: DemandEvidenceSource;
   now?: () => Date;
 }
 
@@ -225,11 +238,24 @@ export class VentureService {
     const evidence = await this.deps.evidence.gather(idea);
     const { advocate, reviewer } = await this.deps.scorer.score(idea, evidence);
     const caps = this.deps.caps(workspaceId);
-    const score = aggregateScorecards(advocate, reviewer, caps.reviewerWeight);
+
+    // #101: replace the synthetic (circular) demand dimension with real external willingness-to-pay
+    // evidence when the idea's fake-door smoke test has earned any. No external evidence ⇒ demandScore is
+    // null ⇒ the aggregate is byte-for-byte the plain dual-persona score (default-OFF).
+    const demandEvidence = this.deps.demand
+      ? await this.deps.demand.externalDemandEvidence(workspaceId, ideaId)
+      : [];
+    const demandScore = demandEvidence.length ? demandScoreFromExternal(demandEvidence) : null;
+    const score = aggregateWithDemandOverlay(advocate, reviewer, caps.reviewerWeight, demandScore);
 
     const prev = await this.deps.repo.latestScorecard(workspaceId, ideaId);
     const iteration = (prev?.iteration ?? 0) + 1;
     const expiresAt = new Date(this.now().getTime() + caps.scorecardTtlMinutes * 60_000);
+
+    const reasoning =
+      demandScore === null
+        ? `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}) → ${score}`
+        : `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}); demand dimension replaced by ${demandEvidence.length} external signal(s) → ${score}`;
 
     return this.deps.repo.insertScorecard({
       workspaceId,
@@ -238,7 +264,7 @@ export class VentureService {
       score,
       advocate,
       reviewer,
-      reasoning: `combined advocate+reviewer (reviewerWeight ${caps.reviewerWeight}) → ${score}`,
+      reasoning,
       expiresAt,
     });
   }
