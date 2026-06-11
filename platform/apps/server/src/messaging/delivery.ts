@@ -14,8 +14,49 @@ import { notify } from "../notifications/service.js";
  * best-effort (a Redis/notify hiccup is logged, never failing the write that already succeeded):
  *   - realtime broadcast to the channel (#5) — this is what makes a message appear live in the web UI;
  *   - @mention resolution → realtime `mention` push (#6) + durable notification (#8);
- *   - DM / thread-reply notifications (#8).
+ *   - DM / thread-reply notifications (#8);
+ *   - the #123 marketing @mention → real-session trigger (registered at boot — see below).
  */
+
+/**
+ * The #123 marketing @mention → real-session trigger, registered once at app boot via
+ * {@link setMarketingMentionTrigger}. This is the wire that turns a plain `@scout …` post in a
+ * department channel into a launched session: WITHOUT it, the launch only ran via the standalone
+ * `POST /channels/:cid/messages/:mid/marketing` endpoint that no client ever calls, so a real
+ * @mention silently did nothing (`sessionsStarted` stayed 0). It lives here, in the shared fan-out,
+ * so every post path (REST + MCP) triggers it through one seam. It does its OWN gating (human author,
+ * marketing channel, mentioned persona) and is invoked best-effort — a launch denial (kill switch /
+ * budget) or any error is logged, never failing the message write that already succeeded.
+ */
+export type MarketingMentionTrigger = (
+  identity: Identity,
+  channel: Channel,
+  message: Message,
+) => Promise<void>;
+
+let marketingMentionTrigger: MarketingMentionTrigger | undefined;
+
+/** Register (or clear, with `undefined`) the marketing @mention trigger. Called from `buildApp`. */
+export function setMarketingMentionTrigger(fn: MarketingMentionTrigger | undefined): void {
+  marketingMentionTrigger = fn;
+}
+
+/** Run the registered marketing trigger for a just-posted message, best-effort. No-op when unset. */
+async function fireMarketingMention(
+  log: FastifyBaseLogger,
+  identity: Identity,
+  channel: Channel,
+  message: Message,
+): Promise<void> {
+  if (!marketingMentionTrigger) return;
+  try {
+    await marketingMentionTrigger(identity, channel, message);
+  } catch (err) {
+    // A kill-switch/budget denial (AdmissionError) or any failure must not fail the write — the
+    // safety property (no session launched) still holds; we only lose the launch, which we log.
+    log.error({ err }, "marketing @mention launch failed");
+  }
+}
 
 /**
  * Derive @mentions from a just-posted message, persist them, and push a realtime `mention` plus a
@@ -100,6 +141,8 @@ export async function deliverPostedMessage(
   );
   await fanOutMentions(log, identity, message);
   await notifyDmRecipients(log, identity, channel, message);
+  // #123: a top-level @mention of a department agent in its channel launches a real session.
+  await fireMarketingMention(log, identity, channel, message);
 }
 
 /**
