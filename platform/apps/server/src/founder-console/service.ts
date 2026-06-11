@@ -10,6 +10,7 @@ import {
   type RevenueSnapshot,
   type SelfHealingSnapshot,
   type GrowthSnapshot,
+  type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
   type VoiceSnapshot,
 } from "./aggregate.js";
@@ -110,6 +111,13 @@ export interface VoiceReader {
   snapshot(workspaceId: string): Promise<VoiceSnapshot>;
 }
 
+/** Portfolio reviews (#107) + whether the loop is enabled. Optional — absent ⇒ a zeroed portfolio view
+ * (works before the subsystem is wired, like the moat reader). */
+export interface PortfolioReader {
+  reviews(workspaceId: string): Promise<PortfolioReviewSnapshot[]>;
+  enabled(workspaceId: string): boolean;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -132,6 +140,8 @@ export interface FounderConsoleDeps {
   moat?: MoatReader;
   /** Customer Voice roll-up (#114) — optional, read-only. */
   voice?: VoiceReader;
+  /** Portfolio lifecycle reviews (#107) — optional, read-only. */
+  portfolio?: PortfolioReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -165,6 +175,7 @@ export class FounderConsoleService {
       planning,
       moat,
       voice,
+      portfolioReviews,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -181,6 +192,7 @@ export class FounderConsoleService {
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
         this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
 
     return aggregateFounderConsole({
@@ -215,6 +227,8 @@ export class FounderConsoleService {
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
       voice,
+      portfolio: portfolioReviews,
+      portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
     });
   }
 }

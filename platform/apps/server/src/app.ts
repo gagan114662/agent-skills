@@ -101,6 +101,9 @@ import type { FounderConsoleService } from "./founder-console/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import type { GrowthService } from "./growth/service.js";
+import { portfolioRoutes } from "./routes/portfolio.js";
+import { createDefaultPortfolioService } from "./portfolio/default.js";
+import type { PortfolioService } from "./portfolio/service.js";
 import { planningRoutes } from "./routes/planning.js";
 import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
@@ -216,6 +219,9 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #107 portfolio lifecycle loop: tests inject a service over fakes; default reads the live moat/
+   * growth/demand/billing surfaces. */
+  portfolio?: PortfolioService;
   /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
   planning?: PlanningService;
 }
@@ -387,18 +393,42 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #114 customer voice loop: ONE service instance shared by the voice routes (inbound webhook + tenant
   // reads + the #13-gated reply), the #104 founder console voice pane, and the #96 venture voice overlay
   // (so the scorecard's problemSeverity dimension consumes the same post-launch customer-voice evidence).
+  // Built before the console so it can surface the voice pane.
   const voiceService = opts.voice ?? createDefaultCustomerVoiceService();
   app.register(voiceRoutes, { service: voiceService });
-  const founderConsole =
-    opts.founderConsole ??
-    createDefaultFounderConsoleService({ scale, billing: billingManager, moat: moatService, voice: voiceService });
-  app.register(founderConsoleRoutes, { service: founderConsole });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
+  // Built before the console + portfolio loop so both can read per-venture growth.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
+  // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
+  // decides DOUBLE_DOWN/MAINTAIN/PIVOT/SUNSET, and gates a SUNSET (kill) behind the #13 `portfolio.sunset`
+  // approval (sensitive by default — a human approves; an agent never kills its own venture). On an
+  // approved sunset the lesson is written to the #15 memory graph so it compounds. Reviews compute/persist
+  // always (read-mostly); the proactive posture is config default-OFF. Built before the console so the
+  // console can surface the compact portfolio pane.
+  const portfolioService =
+    opts.portfolio ??
+    createDefaultPortfolioService({
+      moat: moatService,
+      growth: growthService,
+      demand: demandService,
+      billing: billingManager,
+    });
+  const founderConsole =
+    opts.founderConsole ??
+    createDefaultFounderConsoleService({
+      scale,
+      billing: billingManager,
+      moat: moatService,
+      portfolio: portfolioService,
+      voice: voiceService,
+    });
+  app.register(founderConsoleRoutes, { service: founderConsole });
   app.register(growthRoutes, { service: growthService });
+  app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build
   // sessions. Record backlog items (RICE inputs derived from evidence counts), read the ranked backlog,
   // and run the planning tick — the top item is drafted into a spec and proposed through the

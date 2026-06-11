@@ -31,6 +31,16 @@ export const AUTONOMY_COMPLETE_ACTION = "autonomy.complete" as const;
 export const DR_RESTORE_ACTION = "dr.restore" as const;
 
 /**
+ * The action kind a portfolio SUNSET (kill of a launched venture) is gated under (#107, ADR-0107).
+ * Like `autonomy.complete` and `dr.restore` it is never submitted through the #13 action route; the
+ * portfolio loop evaluates it against the same workspace `approval_policies` so a sunset ALWAYS needs an
+ * explicit human approval by default (an agent can never approve its own kill — ADR-0013). A SUNSET is
+ * irreversible (it flips the venture `killed` + writes the post-mortem), so it stays gated unless a
+ * workspace explicitly opts out with one rule.
+ */
+export const PORTFOLIO_SUNSET_ACTION = "portfolio.sunset" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
@@ -42,6 +52,8 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   AUTONOMY_COMPLETE_ACTION,
   // #99 a destructive disaster-recovery restore always needs a human (never agent-initiated). ADR-0099.
   DR_RESTORE_ACTION,
+  // #107 a portfolio SUNSET (kill of a launched venture) is irreversible — always a human gate. ADR-0107.
+  PORTFOLIO_SUNSET_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",

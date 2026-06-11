@@ -1,8 +1,9 @@
 /** Center column: the active channel header, its message list, and the composer. */
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { VOICE } from "../brand.js";
+import { VOICE, agentColor } from "../brand.js";
 import { authorLabel, type AppState } from "../store/store.js";
 import { Avatar, KindBadge } from "./Primitives.js";
+import { EmptyState } from "./EmptyState.js";
 import { Composer } from "./Composer.js";
 import type { Message } from "../api/types.js";
 
@@ -37,7 +38,7 @@ export function MessagePane(): React.JSX.Element {
 
       <div className="messagelist">
         {messages.length === 0 ? (
-          <p className="messagelist__empty">{VOICE.noMessages}</p>
+          <EmptyState className="messagelist__empty">{VOICE.noMessages}</EmptyState>
         ) : (
           messages.map((m) => <MessageItem key={m.id} message={m} state={state} />)
         )}
@@ -54,14 +55,20 @@ function MessageItem({ message, state }: { message: Message; state: AppState }):
   const name = authorLabel(state.directory, message.authorMemberId);
   const kind = entry?.kind ?? "human";
   const isReply = message.parentMessageId !== null;
+  const deptColor = kind === "agent" ? agentColor(name) : undefined;
 
   return (
     <article className={`message${kind === "agent" ? " message--agent" : ""}`}>
       <Avatar name={name} kind={kind} />
       <div className="message__body">
         <div className="message__meta">
-          <span className="message__author">{name}</span>
-          {kind === "agent" && <KindBadge kind="agent" />}
+          <span
+            className={`message__author${kind === "agent" ? " message__author--agent" : ""}`}
+            style={deptColor ? ({ "--pop-color": deptColor } as React.CSSProperties) : undefined}
+          >
+            {name}
+          </span>
+          {kind === "agent" && <KindBadge kind="agent" color={deptColor} />}
           {isReply && <span className="message__replytag">in thread</span>}
           {message.alsoSentToChannel && <span className="message__replytag">also to channel</span>}
         </div>
