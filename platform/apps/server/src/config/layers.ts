@@ -46,6 +46,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // seed-on-signup flag cannot be flipped on/off by a lower layer.
     if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
+    // #100 insight policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // mining flag / cost cap / source cut cannot be loosened (e.g. mining turned off) by a lower layer.
+    if (layer.insight !== undefined) out.insight = { ...layer.insight };
   }
   return out;
 }
@@ -74,5 +77,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
+    insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
   };
 }

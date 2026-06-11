@@ -26,3 +26,4 @@ export * from "./sre.js";
 export * from "./gate-evidence.js";
 export * from "./flywheel.js";
 export * from "./marketing-tasks.js";
+export * from "./insights.js";

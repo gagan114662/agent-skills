@@ -284,6 +284,28 @@ export const marketingSchema = z.object({
   seedWelcomeTasks: z.boolean().optional(),
 });
 
+/**
+ * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
+ * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
+ * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
+ * agent-session mining path is gated/charged; owner-secret intake and source ranking are ungated.
+ * `freshnessHalfLifeDays` parameterizes the recency decay; `mineCostCents` is the per-pass charge
+ * against the #71 tenant budget; `minSourceStrength` is the "list is the strategy" cut (only mine
+ * sources at/above this evidence strength); `maxInsightsPerMine` rate-limits insights per pass.
+ */
+export const insightSchema = z.object({
+  /** The mining flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Half-life (days) of the freshness decay applied to source/insight recency. */
+  freshnessHalfLifeDays: z.number().positive().optional(),
+  /** Estimated cost (cents) charged to tenant usage per mining pass — the dollar-ceiling input. */
+  mineCostCents: z.number().int().nonnegative().optional(),
+  /** Hard cap on insights produced in a single mining pass (top-ranked sources first). */
+  maxInsightsPerMine: z.number().int().nonnegative().optional(),
+  /** Minimum source evidence strength (0–100) to mine — the "list is the strategy" cut. */
+  minSourceStrength: z.number().int().min(0).max(100).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -319,6 +341,8 @@ export const settingsSchema = z.object({
   flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
+  /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
+  insight: insightSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -341,6 +365,7 @@ export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
+export type InsightConfig = z.infer<typeof insightSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -372,6 +397,8 @@ export interface ResolvedConfig {
   flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
+  /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
+  insight: InsightConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -390,4 +417,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   gatePricing: {},
   flywheel: {},
   marketing: {},
+  insight: {},
 };
