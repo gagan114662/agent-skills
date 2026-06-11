@@ -71,6 +71,9 @@ import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission
 import { demandRoutes } from "./routes/demand.js";
 import { createDefaultDemandService } from "./demand/default.js";
 import { DemandValidationService } from "./demand/service.js";
+import { voiceRoutes } from "./routes/voice.js";
+import { createDefaultCustomerVoiceService } from "./voice/default.js";
+import { CustomerVoiceService } from "./voice/service.js";
 import { moatRoutes } from "./routes/moat.js";
 import { MoatService } from "./moat/service.js";
 import { createDefaultMoatService } from "./moat/default.js";
@@ -194,6 +197,8 @@ export interface BuildAppOptions {
   venture?: VentureService;
   /** #101 demand validation rails: tests inject one service (shared by routes + billing ingest + venture overlay). */
   demand?: DemandValidationService;
+  /** #114 customer voice loop: tests inject one service (shared by routes + #104 console + venture overlay). */
+  voice?: CustomerVoiceService;
   /** #103 moat accrual: tests inject a service over a fake ledger; default builds the real one. */
   moat?: MoatService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -386,6 +391,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     service: moatService,
     ventureIds: async (workspaceId) => (await listEvaluations(workspaceId)).map((e) => e.ideaId),
   });
+  // #114 customer voice loop: ONE service instance shared by the voice routes (inbound webhook + tenant
+  // reads + the #13-gated reply), the #104 founder console voice pane, and the #96 venture voice overlay
+  // (so the scorecard's problemSeverity dimension consumes the same post-launch customer-voice evidence).
+  // Built before the console so it can surface the voice pane.
+  const voiceService = opts.voice ?? createDefaultCustomerVoiceService();
+  app.register(voiceRoutes, { service: voiceService });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
@@ -414,6 +425,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       billing: billingManager,
       moat: moatService,
       portfolio: portfolioService,
+      voice: voiceService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   app.register(growthRoutes, { service: growthService });
@@ -476,8 +488,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelRecord: (event) => app.flywheelEngine.record(event),
     logger: app.log,
   });
+  // #114 customer-voice overlay is also threaded into the venture service so real post-launch voice can
+  // replace the synthetic problemSeverity dimension (default-OFF until the voice loop is configured).
   const ventureService =
-    opts.venture ?? createDefaultVentureService(undefined, demandService, constitutionGuard);
+    opts.venture ??
+    createDefaultVentureService(undefined, demandService, constitutionGuard, voiceService);
   app.register(ventureRoutes, { service: ventureService });
   // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
   // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.

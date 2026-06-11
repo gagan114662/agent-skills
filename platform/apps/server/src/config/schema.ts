@@ -359,6 +359,23 @@ export const moatSchema = z.object({
 });
 
 /**
+ * Customer Voice Loop policy (#114, ADR-0114). All **non-secret** knobs for the post-launch support /
+ * feedback / churn loop. Every field is optional and defaults to **off** (`enabled: false`,
+ * `autoTriageDraft: false`) so a deployment that sets nothing ingests + classifies + reads (harmless,
+ * tenant-scoped) but never has an agent draft a reply proactively — and outbound replies are ALWAYS the
+ * #13 human gate regardless of this block. The inbound webhook is separately secret-gated (no secret ⇒
+ * the route 503s). `digestWindowDays` is the trailing window the voice-of-customer digest rolls up.
+ */
+export const voiceSchema = z.object({
+  /** The proactive-voice flag (gates auto-draft posture) — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Trailing window (days) the voice-of-customer digest aggregates. */
+  digestWindowDays: z.number().int().positive().optional(),
+  /** Whether the triage agent drafts a reply on ticket ingest — default OFF (the ticket lands open). */
+  autoTriageDraft: z.boolean().optional(),
+});
+
+/**
  * Portfolio Lifecycle Loop policy (#107, ADR-0107). All **non-secret** knobs for the launched-venture
  * review loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that
  * sets nothing keeps today's behavior — reviews still compute/persist on demand (harmless, tenant-scoped)
@@ -466,6 +483,8 @@ export const settingsSchema = z.object({
   insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
   moat: moatSchema.optional(),
+  /** Customer Voice Loop policy (#114): post-launch support/feedback/churn loop (default OFF). */
+  voice: voiceSchema.optional(),
   /** Portfolio Lifecycle Loop policy (#107): launched-venture review thresholds + weights (default OFF). */
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
@@ -498,6 +517,7 @@ export type VerifierConfig = z.infer<typeof verifiersSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
+export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
@@ -540,6 +560,8 @@ export interface ResolvedConfig {
   insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
   moat: MoatConfig;
+  /** Customer Voice Loop policy (#114). A partial whose hard defaults `resolveVoiceCaps` fills. */
+  voice: VoiceConfig;
   /** Portfolio Lifecycle Loop policy (#107). A partial whose hard defaults `resolvePortfolioCaps` fills. */
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
@@ -568,6 +590,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   growth: {},
   insight: {},
   moat: {},
+  voice: {},
   portfolio: {},
   planning: {},
   constitution: {},

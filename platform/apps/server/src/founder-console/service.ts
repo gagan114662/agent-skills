@@ -13,6 +13,7 @@ import {
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
   type ConstitutionSnapshot,
+  type VoiceSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -111,6 +112,11 @@ export interface ConstitutionReader {
   openViolations(workspaceId: string): Promise<ConstitutionSnapshot>;
 }
 
+/** The Customer Voice pane (#114). Optional — absent ⇒ the console renders a zeroed voice view. */
+export interface VoiceReader {
+  snapshot(workspaceId: string): Promise<VoiceSnapshot>;
+}
+
 /** Portfolio reviews (#107) + whether the loop is enabled. Optional — absent ⇒ a zeroed portfolio view
  * (works before the subsystem is wired, like the moat reader). */
 export interface PortfolioReader {
@@ -140,6 +146,8 @@ export interface FounderConsoleDeps {
   moat?: MoatReader;
   /** Open constitution violations (#146) — optional, read-only. */
   constitution?: ConstitutionReader;
+  /** Customer Voice roll-up (#114) — optional, read-only. */
+  voice?: VoiceReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
   portfolio?: PortfolioReader;
   /** Injectable clock (tests pin it). */
@@ -175,6 +183,7 @@ export class FounderConsoleService {
       planning,
       moat,
       constitution,
+      voice,
       portfolioReviews,
     ] =
       await Promise.all([
@@ -193,6 +202,7 @@ export class FounderConsoleService {
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
         this.deps.constitution?.openViolations(workspaceId) ??
           Promise.resolve(undefined),
+        this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
 
@@ -228,6 +238,7 @@ export class FounderConsoleService {
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
       constitution,
+      voice,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
     });

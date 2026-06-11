@@ -15,6 +15,7 @@ import {
   type ConstitutionGuard,
 } from "./service.js";
 import type { DemandEvidenceSource } from "../demand/service.js";
+import type { VoiceEvidenceSource } from "../voice/service.js";
 import { RUBRIC_DIMENSIONS, type PersonaScorecard } from "./rubric.js";
 import { windowKey } from "../scale/usage.js";
 import {
@@ -175,6 +176,7 @@ export function createDefaultVentureService(
   now?: () => Date,
   demand?: DemandEvidenceSource,
   constitution?: ConstitutionGuard,
+  voice?: VoiceEvidenceSource,
 ): VentureService {
   return new VentureService({
     repo: ventureRepo,
@@ -192,6 +194,8 @@ export function createDefaultVentureService(
     demand,
     // #146 constitution enforcement (default-OFF unless the config block + the guard are present).
     constitution,
+    // #114 customer-voice overlay: real post-launch voice replaces the synthetic problemSeverity dimension.
+    voice,
     now,
   });
 }
