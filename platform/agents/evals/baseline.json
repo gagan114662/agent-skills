@@ -1,0 +1,47 @@
+{
+  "tolerance": 0,
+  "agents": {
+    "scout": {
+      "agent": "scout",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 7
+    },
+    "echo": {
+      "agent": "echo",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 8
+    },
+    "quill": {
+      "agent": "quill",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 7
+    },
+    "postmark": {
+      "agent": "postmark",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 7
+    },
+    "bid": {
+      "agent": "bid",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 9
+    },
+    "lens": {
+      "agent": "lens",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 14
+    },
+    "mark": {
+      "agent": "mark",
+      "version": "1.0.0",
+      "passRate": 1,
+      "total": 5
+    }
+  }
+}

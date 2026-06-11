@@ -41,19 +41,29 @@ export interface PersonaPromptConfig {
   model: string | null;
 }
 
+/** A valid skill id charset (e.g. `lens/runbook`) — mention-safe + shell-safe, like a tool name. */
+const SKILL_ID_RE = /^[A-Za-z0-9._/-]+$/;
+
 /**
- * Map a persona + its resolved tool scope to the harness env contract. Only sets a key when it has a
- * value: an empty scope omits `AGENT_ALLOWED_TOOLS` entirely (the harness then applies no tool
- * restriction var — the persona simply has no extra allow-list to pass).
+ * Map a persona + its resolved tool scope (+ its skill kit) to the harness env contract. Only sets a key
+ * when it has a value: an empty scope omits `AGENT_ALLOWED_TOOLS` and an empty skill list omits
+ * `AGENT_SKILLS`, so a non-persona / skill-less session's behavior is unchanged.
+ *
+ * `AGENT_SKILLS` (#155) carries the comma-joined skill ids this session loads — the same env-not-argv
+ * contract as the prompt/tools/model. The runtime (#68) reads it to load the agent's versioned knowledge +
+ * runbook skills per session; skill ids are charset-validated so a hostile id can never inject shell.
  */
 export function personaHarnessEnv(
   persona: PersonaPromptConfig,
   scope: string[],
+  skills: string[] = [],
 ): Record<string, string> {
   const env: Record<string, string> = {
     AGENT_APPEND_SYSTEM_PROMPT: persona.systemPrompt,
   };
   if (scope.length > 0) env.AGENT_ALLOWED_TOOLS = scope.join(",");
+  const safeSkills = dedupe(skills.map((s) => s.trim())).filter((s) => s && SKILL_ID_RE.test(s));
+  if (safeSkills.length > 0) env.AGENT_SKILLS = safeSkills.join(",");
   return env;
 }
 
