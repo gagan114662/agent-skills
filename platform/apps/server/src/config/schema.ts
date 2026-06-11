@@ -284,6 +284,28 @@ export const marketingSchema = z.object({
   seedWelcomeTasks: z.boolean().optional(),
 });
 
+/**
+ * Moat-accrual policy (#103, ADR-0103). All **non-secret** knobs for the moat scoring + stagnation
+ * flagging. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that
+ * sets nothing keeps today's behavior — moat is recorded/scored on demand but no venture is flagged.
+ * `stagnationWindowDays` is the trailing window a zero-accrual venture is flagged over; the `weight*`
+ * fields parameterize the pure `scoreMoat` aggregate (equal-weighted by default).
+ */
+export const moatSchema = z.object({
+  /** The Founder Console stagnation-flagging flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Trailing window (days) a venture with zero accrual is flagged stagnant over. */
+  stagnationWindowDays: z.number().int().positive().optional(),
+  /** Weight on the proprietary-data dimension when combining subscores (≥ 0). */
+  weightProprietaryData: z.number().nonnegative().optional(),
+  /** Weight on the switching-costs dimension (≥ 0). */
+  weightSwitchingCosts: z.number().nonnegative().optional(),
+  /** Weight on the distribution-lock-in dimension (≥ 0). */
+  weightDistributionLockIn: z.number().nonnegative().optional(),
+  /** Weight on the accumulated-evals/skills dimension (≥ 0). */
+  weightAccumulatedEvals: z.number().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -319,6 +341,8 @@ export const settingsSchema = z.object({
   flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
+  /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
+  moat: moatSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -341,6 +365,7 @@ export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
+export type MoatConfig = z.infer<typeof moatSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -372,6 +397,8 @@ export interface ResolvedConfig {
   flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
+  /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
+  moat: MoatConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -390,4 +417,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   gatePricing: {},
   flywheel: {},
   marketing: {},
+  moat: {},
 };

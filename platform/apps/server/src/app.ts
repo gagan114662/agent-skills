@@ -70,6 +70,10 @@ import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission
 import { demandRoutes } from "./routes/demand.js";
 import { createDefaultDemandService } from "./demand/default.js";
 import { DemandValidationService } from "./demand/service.js";
+import { moatRoutes } from "./routes/moat.js";
+import { MoatService } from "./moat/service.js";
+import { createDefaultMoatService } from "./moat/default.js";
+import { listEvaluations } from "./db/repositories/venture.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
@@ -167,6 +171,8 @@ export interface BuildAppOptions {
   venture?: VentureService;
   /** #101 demand validation rails: tests inject one service (shared by routes + billing ingest + venture overlay). */
   demand?: DemandValidationService;
+  /** #103 moat accrual: tests inject a service over a fake ledger; default builds the real one. */
+  moat?: MoatService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
   /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -338,9 +344,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // review in one read. Built over the SAME `scale` (so fleet/budget match admission) + `billingManager`
   // (so revenue matches billing). Strictly read-only: approve/kill/maintenance flip through their
   // existing routes, never here. Tenant-scoped via `assertWorkspace`.
+  // #103 moat accrual: the per-venture moat ledger + pure scoring. Recording/scoring always work; the
+  // Founder Console stagnation flagging is config default-OFF. Built before the console so the console
+  // can surface each venture's moat + flag the ones that have stopped compounding (read-only).
+  const moatService = opts.moat ?? createDefaultMoatService();
+  app.register(moatRoutes, {
+    service: moatService,
+    ventureIds: async (workspaceId) => (await listEvaluations(workspaceId)).map((e) => e.ideaId),
+  });
   const founderConsole =
     opts.founderConsole ??
-    createDefaultFounderConsoleService({ scale, billing: billingManager });
+    createDefaultFounderConsoleService({ scale, billing: billingManager, moat: moatService });
   app.register(founderConsoleRoutes, { service: founderConsole });
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
