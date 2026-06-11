@@ -13,7 +13,8 @@ import { postMessage } from "../db/repositories/messages.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
-import { EnvSecretsResolver } from "./secrets-resolver.js";
+import { EnvSecretsResolver, SubscriptionSecretsResolver } from "./secrets-resolver.js";
+import { createAgentAuthResolver } from "./auth-default.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { harnessLineDecoder } from "./stream-json.js";
 import { harnessSpec, type HarnessKind } from "./harness.js";
@@ -92,7 +93,12 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     }),
     store: dbStore,
     poster: channelPoster,
-    secrets: new EnvSecretsResolver(),
+    // #68 subscription-first: inject the workspace's OWN Claude subscription token
+    // (`CLAUDE_CODE_OAUTH_TOKEN`) per tenant, falling back to the operator platform key only when the
+    // workspace has none. Other secrets (e.g. `OPENAI_API_KEY` for codex) still flow via the inner
+    // env resolver. The auth layer owns the credential keys so a platform key never ships alongside a
+    // subscription token.
+    secrets: new SubscriptionSecretsResolver(createAgentAuthResolver(), new EnvSecretsResolver()),
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     // #50: the env default harness kind (persisted when a launch makes no per-session override).
     harnessKind: env.harness,

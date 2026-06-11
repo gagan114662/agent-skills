@@ -13,11 +13,13 @@ import { ApprovalsPanel } from "./approvals/ApprovalsPanel.js";
 import { DeployPanel } from "./deploy/DeployPanel.js";
 import { FounderPanel } from "./FounderPanel.js";
 import { PricingPanel } from "./PricingPanel.js";
+import { ConnectClaudePanel } from "./ConnectClaudePanel.js";
 
 // Product chrome surfaces only. Review/Run/Usage stay reachable for operators via the existing
 // API/routes (and their panel components remain), but are no longer part of the product nav (#122).
-// Pricing (#125) is the customer-facing plan + checkout surface.
-type View = "chat" | "approvals" | "deploy" | "founder" | "pricing";
+// Pricing (#125) is the customer-facing plan + checkout surface. Settings (#68) is where the owner
+// connects their own Claude subscription so the fleet agents actually run.
+type View = "chat" | "approvals" | "deploy" | "founder" | "pricing" | "settings";
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
@@ -28,6 +30,8 @@ export function Workspace(): React.JSX.Element {
       <div className="workspace__view view-fade" key={view}>
         {view === "founder" ? (
           <FounderPanel />
+        ) : view === "settings" ? (
+          <ConnectClaudePanel />
         ) : view === "pricing" ? (
           <PricingPanel />
         ) : view === "approvals" ? (
@@ -106,6 +110,13 @@ function TopBar({
           onClick={() => onSelectView("pricing")}
         >
           Pricing
+        </button>
+        <button
+          className={`topbar__navbtn${view === "settings" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "settings"}
+          onClick={() => onSelectView("settings")}
+        >
+          Settings
         </button>
       </nav>
       <div className="topbar__spacer" />

@@ -34,3 +34,4 @@ export * from "./moat.js";
 export * from "./voice.js";
 export * from "./portfolio.js";
 export * from "./planning.js";
+export * from "./agent-credentials.js";
