@@ -14,6 +14,7 @@
     "db:rollback": "tsx src/db/migrate.ts down",
     "db:reset": "tsx src/db/migrate.ts reset",
     "db:seed": "tsx src/db/seed.ts",
+    "billing:bootstrap": "tsx src/billing/bootstrap-cli.ts",
     "dr:drill": "tsx src/dr/drill-cli.ts",
     "sre:drill": "tsx src/sre/drill-cli.ts",
     "preflight": "tsx scripts/preflight.ts",

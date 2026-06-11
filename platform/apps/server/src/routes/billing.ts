@@ -1,5 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { PaymentLinkDto, RevenueSummaryDto } from "@reload/shared";
+import type {
+  ActivePlanDto,
+  CheckoutResponseDto,
+  PaymentLinkDto,
+  PlanDto,
+  PlansResponseDto,
+  RevenueSummaryDto,
+} from "@reload/shared";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { requireChannelCapability } from "../auth/access.js";
 import { getAgentSession, type AgentSession } from "../db/repositories/agent-sessions.js";
@@ -11,11 +18,20 @@ import {
   type PaymentLink,
   type RevenueSummary,
 } from "../billing/manager.js";
+import {
+  UnknownPlanError,
+  type ActivePlan,
+  type PlanBillingService,
+  type PlanListing,
+} from "../billing/plan-service.js";
+import type { Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
 import type { PriceInterval } from "../billing/provider.js";
 
 export interface BillingRoutesOptions {
   billingManager: BillingManager;
+  /** The #125 pricing/plan layer (catalog + workspace-scoped checkout). */
+  planService: PlanBillingService;
 }
 
 const MAX_NAME_LEN = 200;
@@ -34,7 +50,7 @@ const VALID_INTERVALS: readonly PriceInterval[] = ["day", "week", "month", "year
  * action (see `approvals/runtime.ts`); payouts stay manual in the Stripe dashboard.
  */
 export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOptions): Promise<void> {
-  const { billingManager } = opts;
+  const { billingManager, planService } = opts;
 
   async function authorize(
     req: FastifyRequest,
@@ -91,6 +107,9 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
   }
 
   function mapError(err: unknown, reply: FastifyReply): FastifyReply {
+    if (err instanceof UnknownPlanError) {
+      return reply.code(400).send({ error: "unknown plan" });
+    }
     if (err instanceof NoBillingConfigError) {
       return reply.code(409).send({ error: "billing not enabled" });
     }
@@ -101,6 +120,40 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       return reply.code(502).send({ error: "billing provider error", detail: err.message });
     }
     throw err;
+  }
+
+  function toPlanDto(p: Plan): PlanDto {
+    return {
+      key: p.key,
+      name: p.name,
+      tagline: p.tagline,
+      priceCents: p.priceCents,
+      currency: p.currency,
+      interval: p.interval,
+      agentSeats: p.agentSeats,
+      monthlySessionBudgetCents: p.monthlySessionBudgetCents,
+      fleetSize: p.fleetSize,
+      highlights: [...p.highlights],
+      featured: p.featured,
+    };
+  }
+
+  function toActivePlanDto(a: ActivePlan): ActivePlanDto {
+    return {
+      planKey: a.planKey,
+      status: a.status,
+      agentSeats: a.agentSeats,
+      monthlySessionBudgetCents: a.monthlySessionBudgetCents,
+      fleetSize: a.fleetSize,
+      activatedAt: a.activatedAt.toISOString(),
+    };
+  }
+
+  function toListingDto(l: PlanListing): PlansResponseDto {
+    return {
+      plans: l.plans.map(toPlanDto),
+      current: l.current ? toActivePlanDto(l.current) : null,
+    };
   }
 
   // Mint a payment link for the session's deployed app (inbound money).
@@ -147,6 +200,40 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
         interval,
       });
       return reply.code(201).send(toLinkDto(link));
+    } catch (err) {
+      return mapError(err, reply);
+    }
+  });
+
+  // The /pricing catalog + the workspace's active plan (#125). Un-gated: the page renders even before
+  // billing is configured (`current` is null until a plan is activated).
+  app.get("/workspaces/:wid/billing/plans", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const listing = await planService.listPlans(wid);
+    return reply.send(toListingDto(listing));
+  });
+
+  // Plan click → a real Stripe Checkout / payment link via the #98 provider seam (#125). INBOUND money.
+  // Gated identically to the payment-link route: 409 (opt-in / privacy), 400 (unknown plan), 502 (provider).
+  app.post("/workspaces/:wid/billing/checkout", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const body = (req.body ?? {}) as { planKey?: unknown };
+    const planKey = typeof body.planKey === "string" ? body.planKey : "";
+    if (!planKey) return reply.code(400).send({ error: "planKey required" });
+    try {
+      const out = await planService.createCheckout({
+        workspaceId: wid,
+        planKey,
+        createdByMemberId: id.memberId,
+      });
+      const dto: CheckoutResponseDto = { url: out.url, planKey: out.planKey };
+      return reply.code(201).send(dto);
     } catch (err) {
       return mapError(err, reply);
     }

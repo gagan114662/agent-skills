@@ -223,6 +223,20 @@ export const sreSchema = z.object({
   services: z.array(sreServiceSchema).optional(),
 });
 
+/**
+ * Marketing department fleet policy (#123, ADR-0123). All **non-secret**. Every field is optional and
+ * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's signup
+ * behavior (no auto-seed). ipop.ai opts in via the managed layer; `enabled` gates only seed-on-signup
+ * (the explicit seed route always works). `seedWelcomeTasks` launches one welcome session per
+ * department on seed (the "prove each agent alive" brief).
+ */
+export const marketingSchema = z.object({
+  /** Auto-seed the department fleet on signup — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Launch one welcome session per department when seeding (default true). */
+  seedWelcomeTasks: z.boolean().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -252,6 +266,8 @@ export const settingsSchema = z.object({
   watchdog: watchdogSchema.optional(),
   /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
   sre: sreSchema.optional(),
+  /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
+  marketing: marketingSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -271,6 +287,7 @@ export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
 export type SreConfig = z.infer<typeof sreSchema>;
 export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
+export type MarketingConfig = z.infer<typeof marketingSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -296,6 +313,8 @@ export interface ResolvedConfig {
   watchdog: WatchdogConfig;
   /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
   sre: SreConfig;
+  /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
+  marketing: MarketingConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -311,4 +330,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   venture: {},
   watchdog: {},
   sre: {},
+  marketing: {},
 };

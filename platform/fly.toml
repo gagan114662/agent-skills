@@ -18,6 +18,9 @@ primary_region = "yyz"
   # cloud-agent credentials. Real agent runtimes are an owner follow-up (no secrets baked in).
   AGENT_HARNESS = "demo"
   AGENT_RUNTIME = "local"
+  # Owner directive: live ipop agents default to Fable. The harness emits an env-gated --model flag
+  # (#52) that reads this; per-session model selection (#52) can still override it.
+  ANTHROPIC_MODEL = "claude-fable-5"
   # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
   RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
 
