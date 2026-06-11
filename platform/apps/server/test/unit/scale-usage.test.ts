@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   windowKey,
+  nextWindowKey,
+  recentWindowKeys,
   estimateCostCents,
   budgetExceeded,
   EMPTY_USAGE,
@@ -12,6 +14,25 @@ describe("scale/usage (#71 — pure cost + window math)", () => {
     expect(windowKey(new Date("2026-01-31T23:59:59Z"))).toBe("2026-01");
     // January (month 0) is zero-padded
     expect(windowKey(new Date("2026-12-01T00:00:00Z"))).toBe("2026-12");
+  });
+
+  it("nextWindowKey rolls into the following month, including across a year boundary (#113)", () => {
+    expect(nextWindowKey(new Date("2026-06-09T12:00:00Z"))).toBe("2026-07");
+    expect(nextWindowKey(new Date("2026-12-31T23:59:59Z"))).toBe("2027-01");
+  });
+
+  it("recentWindowKeys returns the last N windows oldest→newest, crossing year boundaries (#113)", () => {
+    expect(recentWindowKeys(new Date("2026-06-15T00:00:00Z"), 3)).toEqual([
+      "2026-04",
+      "2026-05",
+      "2026-06",
+    ]);
+    expect(recentWindowKeys(new Date("2026-01-15T00:00:00Z"), 3)).toEqual([
+      "2025-11",
+      "2025-12",
+      "2026-01",
+    ]);
+    expect(recentWindowKeys(new Date("2026-06-15T00:00:00Z"), 0)).toEqual([]);
   });
 
   it("estimateCostCents rounds compute-minutes times the rate", () => {

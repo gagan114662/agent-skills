@@ -80,6 +80,9 @@ import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
+import type { SaturationCollectorDeps } from "./observability/saturation.js";
+import { getPool } from "./db/index.js";
+import { getRedis } from "./redis/index.js";
 import type { CloudWorkspaceManager } from "./workspace/manager.js";
 
 declare module "fastify" {
@@ -172,7 +175,34 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #108: env-gated CORS so the Vercel-hosted console (https://ipop.ai) can make credentialed calls
   // to this API on a different origin (https://api.ipop.ai). No-op unless RELOAD_WEB_ORIGIN is set.
   registerCors(app);
-  registerObservability(app);
+  // #71 cloud scale: ONE Admission instance (kill switch, budget, concurrency caps, region placement)
+  // shared between the SessionManager (which mutates its counters) and the usage/founder-console/metrics
+  // readers. Built here (before observability) so the #113 saturation sampler can read its global
+  // in-flight count as the scrape-time queue-depth signal. With all caps 0 (the default) it admits
+  // everything — unchanged #25 behavior.
+  const scale = opts.scale ?? createScale(0);
+  // #113 saturation signals sampled at /metrics scrape time: admission queue depth, PG pool wait, and
+  // Redis ping latency (event-loop lag is a process-singleton inside saturation.ts). All fail-soft —
+  // a slow/dead dependency degrades the metric, never the scrape (see plugin.ts withTimeout).
+  const saturation: SaturationCollectorDeps = {
+    queueDepth: () => scale.admission.snapshot("").global,
+    pgPoolStats: () => {
+      const p = getPool();
+      return { total: p.totalCount, idle: p.idleCount, waiting: p.waitingCount };
+    },
+    redisPing: async () => {
+      const startedAt = performance.now();
+      try {
+        const redis = getRedis();
+        if (redis.status !== "ready") await redis.connect().catch(() => undefined);
+        if ((await redis.ping()) !== "PONG") return null;
+        return (performance.now() - startedAt) / 1000;
+      } catch {
+        return null;
+      }
+    },
+  };
+  registerObservability(app, { saturation });
   // #99 disaster recovery: a root write-gate that rejects writes (503) while the platform is in
   // maintenance mode (a Redis flag, read per-request — flips in seconds with no redeploy). Installed
   // directly on the root like observability so it covers every route plugin. Reads always pass; an
@@ -221,11 +251,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
-  // #71 cloud scale: ONE Admission instance (kill switch, budget, concurrency caps, region
-  // placement) shared between the SessionManager (which mutates its counters) and the usage route
-  // (which reads them). Built before the manager so they share state. With all caps 0 (the default)
-  // it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
-  const scale = opts.scale ?? createScale(0);
+  // #71 cloud scale: the SessionManager mutates the SAME `scale.admission` counters built above (so the
+  // usage route + #113 saturation queue-depth read what the manager runs). With all caps 0 (the
+  // default) it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
   app.register(agentSessionRoutes, { sessionManager });
   app.register(scaleRoutes, { admission: scale.admission, config: scale.config });

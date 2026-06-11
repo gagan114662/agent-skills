@@ -3,9 +3,9 @@ import type { Verdict } from "./aggregate.js";
 import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
 import { resolveScaleCaps } from "../scale/caps.js";
-import { windowKey } from "../scale/usage.js";
+import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
 import { listEvaluations } from "../db/repositories/venture.js";
-import { getUsage } from "../db/repositories/tenant-usage.js";
+import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
@@ -52,6 +52,16 @@ export function createDefaultFounderConsoleService(deps: {
       window: (now) => windowKey(now),
       usage: (workspaceId, window) => getUsage(workspaceId, window),
       budgetCents: (workspaceId) => resolveScaleCaps(scale.config(workspaceId).scale).budgetCents,
+    },
+    // #113 cost forecast: the trend is the last 6 windows of tenant_usage; the caps come from the SAME
+    // resolved scale policy admission enforces (so the infra ceiling + tenant concurrency match reality).
+    forecast: {
+      trend: (workspaceId, now) => getUsageTrend(workspaceId, recentWindowKeys(now, 6)),
+      forecastWindow: (now) => nextWindowKey(now),
+      infraBudgetCeilingCents: (workspaceId) =>
+        resolveScaleCaps(scale.config(workspaceId).scale).infraBudgetCeilingCents,
+      tenantConcurrency: (workspaceId) =>
+        resolveScaleCaps(scale.config(workspaceId).scale).tenantConcurrency,
     },
     approvals: {
       pending: async (workspaceId) =>

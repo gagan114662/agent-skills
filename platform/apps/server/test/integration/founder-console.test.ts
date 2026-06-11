@@ -8,7 +8,7 @@ import { newId } from "../../src/db/id.js";
 import { createRequest } from "../../src/db/repositories/approvals.js";
 import { recordSessionStart, recordSessionCompute } from "../../src/db/repositories/tenant-usage.js";
 import { dbBillingStore } from "../../src/db/repositories/billing.js";
-import { windowKey } from "../../src/scale/usage.js";
+import { windowKey, nextWindowKey, recentWindowKeys } from "../../src/scale/usage.js";
 
 const app = buildApp();
 const slugs: string[] = [];
@@ -107,6 +107,26 @@ describe("founder console route (integration, real Postgres)", () => {
 
     expect(body.attention.required).toBe(true);
     expect(body.attention.reasons).toContain("1 pending approval");
+  });
+
+  it("surfaces a cost forecast projected from the real tenant_usage trend (#113)", async () => {
+    const { cookie, workspaceId } = await seed();
+    const now = new Date();
+    // Seed the last three windows with a rising cost trend: 1000 → 1500 → 2000 cents.
+    const [w0, w1, w2] = recentWindowKeys(now, 3);
+    await recordSessionCompute(workspaceId, w0!, 600, 1000);
+    await recordSessionCompute(workspaceId, w1!, 900, 1500);
+    await recordSessionCompute(workspaceId, w2!, 1200, 2000);
+
+    const body = (await get(`/workspaces/${workspaceId}/founder-console`, cookie)).json();
+
+    expect(body.costForecast.window).toBe(nextWindowKey(now));
+    expect(body.costForecast.basis).toBe("trend");
+    // last + average delta = 2000 + 500 = 2500
+    expect(body.costForecast.projectedCostCents).toBe(2500);
+    // No infra ceiling configured for a fresh tenant → never a projected breach.
+    expect(body.costForecast.infraBudget.exceeded).toBe(false);
+    expect(body.costForecast.rightSizing.recommendation).toBe("hold"); // no cap set → null utilization
   });
 
   it("is tenant-isolated: one workspace cannot read another's console (403)", async () => {

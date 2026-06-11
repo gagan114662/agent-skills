@@ -24,6 +24,10 @@ function input(over: Partial<FounderConsoleInput> = {}): FounderConsoleInput {
     approvals: [],
     switches: { killSwitch: false, maintenance: { enabled: false } },
     gateBoundaries: { owned: [], history: [] },
+    usageTrend: [],
+    forecastWindow: "2026-07",
+    infraBudgetCeilingCents: 0,
+    tenantConcurrency: 0,
     ...over,
   };
 }
@@ -226,6 +230,62 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
   it("has empty autonomy boundaries by default (no class auto-relaxed yet)", () => {
     const out = aggregateFounderConsole(input());
     expect(out.autonomyBoundaries).toEqual({ owned: [], history: [] });
+  });
+
+  it("surfaces a cost forecast projected from the usage trend (#113)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        forecastWindow: "2026-07",
+        usageTrend: [
+          { window: "2026-04", computeSeconds: 600, estimatedCostCents: 1000, sessionsStarted: 4 },
+          { window: "2026-05", computeSeconds: 900, estimatedCostCents: 1500, sessionsStarted: 6 },
+          { window: "2026-06", computeSeconds: 1200, estimatedCostCents: 2000, sessionsStarted: 8 },
+        ],
+      }),
+    );
+    expect(out.costForecast.window).toBe("2026-07");
+    expect(out.costForecast.basis).toBe("trend");
+    expect(out.costForecast.projectedCostCents).toBe(2500);
+  });
+
+  it("recommends right-sizing from live tenant utilization (#113)", () => {
+    const up = aggregateFounderConsole(
+      input({ fleet: { tenantInFlight: 9, globalInFlight: 9, sessionsThisWindow: 0 }, tenantConcurrency: 10 }),
+    );
+    expect(up.costForecast.rightSizing.recommendation).toBe("scale_up");
+
+    const down = aggregateFounderConsole(
+      input({ fleet: { tenantInFlight: 1, globalInFlight: 1, sessionsThisWindow: 0 }, tenantConcurrency: 10 }),
+    );
+    expect(down.costForecast.rightSizing.recommendation).toBe("scale_down");
+  });
+
+  it("flags an infra-budget-ceiling breach and raises it to attention (#113, #108)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        forecastWindow: "2026-07",
+        infraBudgetCeilingCents: 1500,
+        usageTrend: [
+          { window: "2026-05", computeSeconds: 900, estimatedCostCents: 1500, sessionsStarted: 6 },
+          { window: "2026-06", computeSeconds: 1200, estimatedCostCents: 2000, sessionsStarted: 8 },
+        ],
+      }),
+    );
+    expect(out.costForecast.infraBudget.exceeded).toBe(true);
+    expect(out.attention.required).toBe(true);
+    expect(out.attention.reasons).toContain("infra budget ceiling projected breach");
+  });
+
+  it("does not warn on infra budget when no ceiling is set", () => {
+    const out = aggregateFounderConsole(
+      input({
+        usageTrend: [
+          { window: "2026-06", computeSeconds: 1200, estimatedCostCents: 9_999_999, sessionsStarted: 8 },
+        ],
+      }),
+    );
+    expect(out.costForecast.infraBudget.exceeded).toBe(false);
+    expect(out.attention.reasons).not.toContain("infra budget ceiling projected breach");
   });
 
   it("singularizes the pending-approval reason for exactly one item", () => {
