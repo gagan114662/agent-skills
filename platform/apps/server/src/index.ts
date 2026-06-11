@@ -19,6 +19,10 @@ app.ventureEngine.start(env.venture.intervalMs);
 // detects stalled sessions and revives/escalates them. Stopped on server close via buildApp's hook.
 app.watchdogEngine.start(env.watchdog.intervalMs);
 
+// #117 self-healing flywheel: start the opt-in tick (FLYWHEEL_INTERVAL_MS; default 0 = off) that turns
+// deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
+app.flywheelEngine.start(env.flywheel.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

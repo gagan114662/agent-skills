@@ -69,6 +69,8 @@ import type { VentureEngine } from "./venture/engine.js";
 import { VentureAdmissionError, ventureGatedLauncher } from "./venture/admission.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
+import type { FlywheelEngine } from "./flywheel/engine.js";
+import { createDefaultFlywheelEngine } from "./flywheel/default.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -95,6 +97,8 @@ declare module "fastify" {
     watchdogEngine: WatchdogEngine;
     /** The #119 evidence pricer; config default-OFF, driven per-workspace via `tick(workspaceId)`. */
     gatePricingService: GatePricingService;
+    /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
+    flywheelEngine: FlywheelEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -155,6 +159,8 @@ export interface BuildAppOptions {
   venture?: VentureService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   watchdog?: WatchdogEngine;
+  /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
+  flywheel?: FlywheelEngine;
   /**
    * #104 founder console: tests inject a read-only aggregation service over fakes; default builds one
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
@@ -403,6 +409,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // time, like the venture/watchdog ticks); tests drive `tick()` directly. Decorated for that access.
   const gatePricingService = opts.gatePricing ?? createDefaultGatePricingService(app.log);
   app.decorate("gatePricingService", gatePricingService);
+  // #117 self-healing flywheel: the second infrastructure-time supervisor. It fingerprints + dedups
+  // every agent failure (redacted via #25), synthesizes ONE GitHub issue per fingerprint via the #57
+  // path on a kill-switch-gated tick, and dispatches budget-/concurrency-capped fix sessions through
+  // the SAME #92 launcher (auto only for #95-allowed classes, else queued for #104). It is config
+  // default-OFF (`flywheel.enabled`) + the timer is opt-in (FLYWHEEL_INTERVAL_MS, started in index.ts),
+  // so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  const flywheelEngine = opts.flywheel ?? createDefaultFlywheelEngine(app.log, sessionManager);
+  app.addHook("onClose", async () => {
+    flywheelEngine.stop();
+  });
+  app.decorate("flywheelEngine", flywheelEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and

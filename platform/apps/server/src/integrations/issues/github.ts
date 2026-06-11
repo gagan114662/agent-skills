@@ -88,4 +88,56 @@ export class GitHubIssueProvider implements IssueProvider {
     const data = (await res.json()) as { html_url?: string };
     return { url: data.html_url ?? "" };
   }
+
+  /**
+   * Create a new issue (#117) — `POST /repos/{owner}/{repo}/issues`. The body is already redacted by the
+   * flywheel before it reaches here (#25), and the token is sent as a bearer header, never logged. A
+   * non-2xx throws a content-free {@link IssueProviderError}. Additive to #57 (read + comment only).
+   */
+  async createIssue(
+    target: { owner: string; repo: string },
+    token: string | undefined,
+    input: { title: string; body: string; labels?: string[] },
+  ): Promise<{ number: number; ref: string; state: string; url: string }> {
+    const path = `/repos/${target.owner}/${target.repo}/issues`;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers: { ...this.headers(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ title: input.title, body: input.body, labels: input.labels }),
+      });
+    } catch {
+      throw new IssueProviderError("github", "create issue request failed");
+    }
+    if (!res.ok) throw new IssueProviderError("github", `failed to create issue (status ${res.status})`);
+    const data = (await res.json()) as GitHubIssue;
+    return {
+      number: data.number,
+      ref: `github:${target.owner}/${target.repo}#${data.number}`,
+      state: data.state ?? "open",
+      url: data.html_url ?? `https://github.com/${target.owner}/${target.repo}/issues/${data.number}`,
+    };
+  }
+
+  /**
+   * Reopen an issue (#117) — `PATCH /repos/{owner}/{repo}/issues/{n}` with `state: "open"`. Used when a
+   * fixed fingerprint recurs (the #106 outcome verifier). Returns the resulting state.
+   */
+  async reopenIssue(ref: IssueRef, token?: string): Promise<{ state: string }> {
+    const path = `/repos/${ref.owner}/${ref.repo}/issues/${ref.number}`;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method: "PATCH",
+        headers: { ...this.headers(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ state: "open" }),
+      });
+    } catch {
+      throw new IssueProviderError("github", "reopen request failed");
+    }
+    if (!res.ok) throw new IssueProviderError("github", `failed to reopen issue (status ${res.status})`);
+    const data = (await res.json()) as { state?: string };
+    return { state: data.state ?? "open" };
+  }
 }

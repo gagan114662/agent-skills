@@ -10,6 +10,10 @@ import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 import { ownedBoundaries, listBoundaryChanges } from "../db/repositories/gate-evidence.js";
+import {
+  flywheelFingerprintStore,
+  flywheelDispatchStore,
+} from "../db/repositories/flywheel.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -95,6 +99,34 @@ export function createDefaultFounderConsoleService(deps: {
             windowSize: c.windowSize,
             atMs: c.createdAt.getTime(),
             reason: c.reason,
+          })),
+        };
+      },
+    },
+    // #117 self-healing flywheel pane: read-only fingerprint + dispatch state for the daily review.
+    flywheel: {
+      state: async (workspaceId) => {
+        const [fingerprints, dispatches] = await Promise.all([
+          flywheelFingerprintStore.listForConsole(workspaceId),
+          flywheelDispatchStore.listForConsole(workspaceId),
+        ]);
+        return {
+          fingerprints: fingerprints.map((f) => ({
+            id: f.id,
+            signature: f.signature,
+            failureClass: f.failureClass,
+            status: f.status,
+            occurrenceCount: f.occurrenceCount,
+            issueRef: f.issueRef,
+            excludedFromAutoDispatch: f.excludedFromAutoDispatch,
+            escalated: f.escalated,
+          })),
+          dispatches: dispatches.map((d) => ({
+            id: d.id,
+            fingerprintId: d.fingerprintId,
+            mode: d.mode,
+            status: d.status,
+            reason: d.reason,
           })),
         };
       },
