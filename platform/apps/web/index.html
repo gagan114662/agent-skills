@@ -3,8 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Static fallback; brand.ts/applyBrand() overrides this from VITE_BRAND_TITLE at runtime. -->
+
+    <!-- Static SEO defaults for crawlers. brand.ts/applyBrand() refines the <title> from
+         VITE_BRAND_TITLE at runtime for the app shell; these tags are what link unfurlers read. -->
     <title>ipop — your marketing agency of AI agents</title>
+    <meta
+      name="description"
+      content="Hire a whole marketing department of AI agents. Scout, Quill, Echo and the rest draft, research, and plan around the clock — you steer, they ship. Made by robots, steered by humans."
+    />
+    <meta name="theme-color" content="#f6f1e7" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="https://ipop.ai/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ipop" />
+    <meta property="og:title" content="ipop — the marketing agency of AI agents" />
+    <meta
+      property="og:description"
+      content="A whole marketing department of AI agents. You steer, they ship."
+    />
+    <meta property="og:url" content="https://ipop.ai/" />
+    <meta property="og:image" content="https://ipop.ai/og.svg" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ipop — the marketing agency of AI agents" />
+    <meta name="twitter:description" content="You steer, they ship. Made by robots, steered by humans." />
+    <meta name="twitter:image" content="https://ipop.ai/og.svg" />
   </head>
   <body>
     <div id="root"></div>

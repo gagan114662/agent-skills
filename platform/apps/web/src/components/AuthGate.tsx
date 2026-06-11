@@ -1,31 +1,54 @@
-/** Auth boundary: bootstraps the session, shows a sign-in/sign-up screen, then renders the app. */
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+/**
+ * The top-level boundary: it bootstraps the session and decides which screen a visitor sees.
+ *
+ * Routing (#149): logged-in visitors get the app at any path; logged-out visitors get the public
+ * marketing landing at `/`, and the sign-in / sign-up forms at `/login` and `/signup`. The landing is
+ * code-split (lazy) so it never ships in the bundle a signed-in user downloads. Loading and API-offline
+ * states keep their friendly house-voice screens.
+ */
+import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, VOICE } from "../brand.js";
+import { Link, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 
 type Mode = "login" | "signup";
 
+// Code-split the marketing site: signed-in users never download it.
+const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
+
 export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
   const store = useStore();
   const { phase } = useAppState();
+  const path = useRoute();
 
   useEffect(() => {
     void store.bootstrap();
   }, [store]);
 
   if (phase === "ready") return <>{children}</>;
-  if (phase === "loading") {
-    return (
-      <div className="splash">
-        <PopMark burst />
-        <p>{VOICE.loading}</p>
-      </div>
-    );
-  }
+  if (phase === "loading") return <Splash />;
   if (phase === "offline") return <OfflineNotice onRetry={() => void store.bootstrap()} />;
-  return <AuthForm />;
+
+  // Logged out: the public landing at "/", the auth forms at their own routes.
+  if (path === "/login") return <AuthForm initialMode="login" />;
+  if (path === "/signup") return <AuthForm initialMode="signup" />;
+  return (
+    <Suspense fallback={<Splash />}>
+      <Landing />
+    </Suspense>
+  );
+}
+
+/** The brand splash, shown while the session bootstraps (and as the lazy-landing fallback). */
+export function Splash(): React.JSX.Element {
+  return (
+    <div className="splash">
+      <PopMark burst />
+      <p>{VOICE.loading}</p>
+    </div>
+  );
 }
 
 /**
@@ -33,7 +56,7 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
  * wired yet — #108). A clear, non-crashing state beats a blank page; "Retry" re-runs bootstrap once
  * the API is live.
  */
-function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
+export function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
   return (
     <div className="splash">
       <PopMark />
@@ -47,9 +70,10 @@ function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element 
   );
 }
 
-function AuthForm(): React.JSX.Element {
+export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Element {
   const store = useStore();
-  const [mode, setMode] = useState<Mode>("login");
+  // The route is the source of truth for which form shows; switching modes is a navigation.
+  const mode = initialMode;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -78,9 +102,9 @@ function AuthForm(): React.JSX.Element {
     <div className="auth">
       <form className="auth__card" onSubmit={onSubmit}>
         <PopMark burst className="auth__popmark" />
-        <div className="auth__brand">
+        <Link href="/" className="auth__brand" aria-label={BRAND.name}>
           <Wordmark />
-        </div>
+        </Link>
         <p className="auth__tag">{BRAND.tagline}</p>
 
         {mode === "signup" && (
@@ -142,16 +166,16 @@ function AuthForm(): React.JSX.Element {
           {mode === "login" ? (
             <>
               New here?{" "}
-              <button type="button" className="linklike" onClick={() => setMode("signup")}>
+              <Link href="/signup" className="linklike">
                 Create one
-              </button>
+              </Link>
             </>
           ) : (
             <>
               Already have an account?{" "}
-              <button type="button" className="linklike" onClick={() => setMode("login")}>
+              <Link href="/login" className="linklike">
                 Sign in instead
-              </button>
+              </Link>
             </>
           )}
         </p>

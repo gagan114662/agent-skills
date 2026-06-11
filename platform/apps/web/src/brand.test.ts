@@ -10,7 +10,16 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { BRAND, VOICE, DEPARTMENT_SPECTRUM, departmentColor, applyBrand } from "./brand.js";
+import {
+  BRAND,
+  VOICE,
+  DEPARTMENT_SPECTRUM,
+  departmentColor,
+  applyBrand,
+  FLEET,
+  agentColor,
+  LANDING,
+} from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -77,12 +86,53 @@ describe("pop identity (#138)", () => {
   });
 });
 
+describe("landing fleet + copy (#149)", () => {
+  it("names the seven marketing specialists, each tied to a real department hue", () => {
+    expect(FLEET).toHaveLength(7);
+    const handles = FLEET.map((a) => a.handle);
+    expect(new Set(handles).size).toBe(7); // no duplicates
+    for (const agent of FLEET) {
+      expect(agent.name, agent.handle).toBeTruthy();
+      expect(agent.personality, agent.handle).toBeTruthy();
+      // Every agent's department keys the spectrum, and agentColor (by display name, #145) resolves
+      // to that same hue — the landing roster and the in-app avatars wear one colour per agent.
+      expect(DEPARTMENT_SPECTRUM[agent.department], agent.handle).toBeTruthy();
+      expect(agentColor(agent.name)).toBe(departmentColor(agent.department));
+    }
+  });
+
+  it("covers all seven departments exactly once", () => {
+    expect(FLEET.map((a) => a.department).sort()).toEqual(Object.keys(DEPARTMENT_SPECTRUM).sort());
+  });
+
+  it("carries hero copy, three how-it-works steps, and a pricing teaser of three plans", () => {
+    expect(LANDING.hero.ctaPrimary).toBeTruthy();
+    expect(LANDING.hero.ctaSecondary).toBeTruthy();
+    expect(LANDING.steps).toHaveLength(3);
+    expect(LANDING.plans).toHaveLength(3);
+    expect(LANDING.plans.filter((p) => p.featured)).toHaveLength(1); // one recommended tier
+  });
+
+  it("scripts a vignette that ends on a completed task (the confetti beat)", () => {
+    expect(LANDING.vignette.length).toBeGreaterThan(2);
+    expect(LANDING.vignette.some((line) => line.done)).toBe(true);
+    // Every agent line references a real fleet handle (so the bubble can wear its colour).
+    const handles = new Set(FLEET.map((a) => a.handle));
+    for (const line of LANDING.vignette) {
+      if (line.from !== "you") expect(handles.has(line.from), line.from).toBe(true);
+    }
+  });
+});
+
 describe("no hardcoded brand strings in product chrome", () => {
   // Components that render the product shell. Every brand string here must come from BRAND.*.
   const CHROME_COMPONENTS = [
     "components/Workspace.tsx",
     "components/AuthGate.tsx",
     "components/ChannelSidebar.tsx",
+    // The public landing (#149) is the most brand-heavy surface — every word must come from brand.ts.
+    "components/landing/Landing.tsx",
+    "components/landing/HeroVignette.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.
@@ -99,8 +149,8 @@ describe("no hardcoded brand strings in product chrome", () => {
         .join("\n");
       expect(codeLines).not.toMatch(/Reload/);
       expect(codeLines).not.toMatch(/ipop/i);
-      // It must actually import the brand config rather than inline its own copy.
-      expect(src).toMatch(/from "\.\.\/brand\.js"/);
+      // It must actually import the brand config rather than inline its own copy (any nesting depth).
+      expect(src).toMatch(/from "(?:\.\.\/)+brand\.js"/);
     });
   }
 });
