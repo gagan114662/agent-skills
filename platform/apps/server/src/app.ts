@@ -78,6 +78,10 @@ import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
+import { insightRoutes } from "./routes/insights.js";
+import { createDefaultInsightMiner, createDefaultInsightEngine } from "./insight/default.js";
+import { InsightMiner } from "./insight/service.js";
+import type { InsightEngine } from "./insight/engine.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -108,6 +112,8 @@ declare module "fastify" {
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
     flywheelEngine: FlywheelEngine;
+    /** The #100 insight miner; `index.ts` starts its opt-in mining tick (INSIGHT_INTERVAL_MS). */
+    insightEngine: InsightEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -174,6 +180,8 @@ export interface BuildAppOptions {
   sre?: SreEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
+  /** #100 insight miner: tests inject a miner over a deterministic stub; default builds the real one. */
+  insight?: InsightMiner;
   /**
    * #104 founder console: tests inject a read-only aggregation service over fakes; default builds one
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
@@ -456,6 +464,19 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelEngine.stop();
   });
   app.decorate("flywheelEngine", flywheelEngine);
+  // #100 insight miner: the SOURCE-stage upgrade for the venture loop. It ranks evidence sources
+  // ("the list is the strategy"), mines them into structured insights (the agent-session path,
+  // kill-switch + #71-budget gated), captures owner secrets as first-class artifacts, dedupes killed
+  // angles against the #15 memory graph (never return uncited), and promotes insights into #96 venture
+  // ideas with provenance links. It is config default-OFF (`insight.enabled`) + the timer is opt-in
+  // (INSIGHT_INTERVAL_MS, started in index.ts), so wiring it changes nothing until a deployment opts in.
+  const insightMiner = opts.insight ?? createDefaultInsightMiner();
+  app.register(insightRoutes, { miner: insightMiner });
+  const insightEngine = createDefaultInsightEngine(app.log);
+  app.addHook("onClose", async () => {
+    insightEngine.stop();
+  });
+  app.decorate("insightEngine", insightEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
