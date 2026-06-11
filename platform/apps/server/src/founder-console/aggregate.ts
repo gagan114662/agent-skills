@@ -95,6 +95,34 @@ export interface MaintenanceSnapshot {
   unavailable?: boolean;
 }
 
+/** One deduped failure fingerprint (#117) reduced to what the console pane needs. */
+export interface FlywheelFingerprintSnapshot {
+  id: string;
+  signature: string;
+  failureClass: string;
+  status: string;
+  occurrenceCount: number;
+  issueRef: string | null;
+  /** Recurrence-after-fix: barred from auto-dispatch, needs human review (#106). */
+  excludedFromAutoDispatch: boolean;
+  escalated: boolean;
+}
+
+/** One fix dispatch (#117) reduced to what the console queue needs. */
+export interface FlywheelDispatchSnapshot {
+  id: string;
+  fingerprintId: string;
+  mode: string;
+  status: string;
+  reason: string;
+}
+
+/** The self-healing flywheel read-structs (#117). */
+export interface SelfHealingSnapshot {
+  fingerprints: FlywheelFingerprintSnapshot[];
+  dispatches: FlywheelDispatchSnapshot[];
+}
+
 /** The two safety switches surfaced read-only. */
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
@@ -116,6 +144,8 @@ export interface FounderConsoleInput {
   switches: SwitchSnapshot;
   /** Recent SRE postmortems (#112), newest first. Optional ⇒ defaults to none (loop off / unwired). */
   postmortems?: PostmortemLinkView[];
+  /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
+  selfHealing?: SelfHealingSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
   usageTrend: UsageTrendPoint[];
   /** The window the forecast projects (the next calendar month). */
@@ -170,6 +200,22 @@ export interface PendingActionView {
   createdAtMs: number;
 }
 
+/** The self-healing flywheel roll-up (#117): lifecycle counts + the human-review/queue surfaces. */
+export interface SelfHealingView {
+  totalFingerprints: number;
+  open: number;
+  issued: number;
+  fixing: number;
+  fixed: number;
+  recurred: number;
+  /** Recurred-after-fix fingerprints barred from auto-dispatch — a human must review (#106). */
+  escalatedAwaitingReview: number;
+  /** Fixes auto-launched by the flywheel (mode auto, in flight). */
+  autoDispatched: number;
+  /** Fixes queued for human approval (mode queued). */
+  queuedForApproval: number;
+}
+
 /** Next-window compute-cost projection + right-sizing + infra-ceiling status (#113). */
 export interface CostForecastView {
   /** The window being forecast (next calendar month). */
@@ -208,6 +254,8 @@ export interface FounderConsole {
   switches: SwitchSnapshot;
   /** Recent SRE postmortems (#112), newest first — the durable trace each incident left. */
   postmortems: PostmortemLinkView[];
+  /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
+  selfHealing: SelfHealingView;
   attention: AttentionView;
 }
 
@@ -285,12 +333,32 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     (a, b) => b.resolvedAtMs - a.resolvedAtMs,
   );
 
+  const fingerprints = input.selfHealing?.fingerprints ?? [];
+  const dispatches = input.selfHealing?.dispatches ?? [];
+  const escalatedAwaitingReview = fingerprints.filter((f) => f.excludedFromAutoDispatch).length;
+  const queuedForApproval = dispatches.filter((d) => d.mode === "queued" && d.status === "queued").length;
+  const selfHealing: SelfHealingView = {
+    totalFingerprints: fingerprints.length,
+    open: fingerprints.filter((f) => f.status === "open").length,
+    issued: fingerprints.filter((f) => f.status === "issued").length,
+    fixing: fingerprints.filter((f) => f.status === "fixing").length,
+    fixed: fingerprints.filter((f) => f.status === "fixed").length,
+    recurred: fingerprints.filter((f) => f.status === "recurred").length,
+    escalatedAwaitingReview,
+    autoDispatched: dispatches.filter((d) => d.mode === "auto" && d.status === "dispatched").length,
+    queuedForApproval,
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
   if (overBudget) reasons.push("over budget");
   if (infraBudget.exceeded) reasons.push("infra budget ceiling projected breach");
   if (pendingApprovals.length > 0) reasons.push(pluralize(pendingApprovals.length, "pending approval"));
+  if (escalatedAwaitingReview > 0) {
+    reasons.push(`${pluralize(escalatedAwaitingReview, "failure")} recurred after fix (review required)`);
+  }
+  if (queuedForApproval > 0) reasons.push(pluralize(queuedForApproval, "flywheel fix awaiting approval"));
 
   return {
     workspaceId: input.workspaceId,
@@ -307,6 +375,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     pendingApprovals,
     switches,
     postmortems,
+    selfHealing,
     attention: { required: reasons.length > 0, reasons },
   };
 }

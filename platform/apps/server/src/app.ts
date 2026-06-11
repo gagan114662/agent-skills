@@ -72,6 +72,8 @@ import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
 import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
+import type { FlywheelEngine } from "./flywheel/engine.js";
+import { createDefaultFlywheelEngine } from "./flywheel/default.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -96,6 +98,8 @@ declare module "fastify" {
     watchdogEngine: WatchdogEngine;
     /** The #112 SRE on-call loop; `index.ts` starts its opt-in tick (SRE_INTERVAL_MS). */
     sreEngine: SreEngine;
+    /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
+    flywheelEngine: FlywheelEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -158,6 +162,8 @@ export interface BuildAppOptions {
   watchdog?: WatchdogEngine;
   /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   sre?: SreEngine;
+  /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
+  flywheel?: FlywheelEngine;
   /**
    * #104 founder console: tests inject a read-only aggregation service over fakes; default builds one
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
@@ -408,6 +414,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.decorate("sreEngine", sreEngine);
   app.register(sreRoutes);
+  // #117 self-healing flywheel: the second infrastructure-time supervisor. It fingerprints + dedups
+  // every agent failure (redacted via #25), synthesizes ONE GitHub issue per fingerprint via the #57
+  // path on a kill-switch-gated tick, and dispatches budget-/concurrency-capped fix sessions through
+  // the SAME #92 launcher (auto only for #95-allowed classes, else queued for #104). It is config
+  // default-OFF (`flywheel.enabled`) + the timer is opt-in (FLYWHEEL_INTERVAL_MS, started in index.ts),
+  // so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  const flywheelEngine = opts.flywheel ?? createDefaultFlywheelEngine(app.log, sessionManager);
+  app.addHook("onClose", async () => {
+    flywheelEngine.stop();
+  });
+  app.decorate("flywheelEngine", flywheelEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
