@@ -13,6 +13,7 @@ import {
   type UsageMeter,
   type VentureRepo,
 } from "./service.js";
+import type { DemandEvidenceSource } from "../demand/service.js";
 import { RUBRIC_DIMENSIONS, type PersonaScorecard } from "./rubric.js";
 import { windowKey } from "../scale/usage.js";
 import {
@@ -164,8 +165,15 @@ const epicEmitter: EpicEmitter = {
   },
 };
 
-/** Build the production VentureService over the real repo + the #13/#14/#15/#71 seams. */
-export function createDefaultVentureService(now?: () => Date): VentureService {
+/**
+ * Build the production VentureService over the real repo + the #13/#14/#15/#71 seams. The optional #101
+ * `demand` source supplies externally-attributed willingness-to-pay evidence; when present and non-empty
+ * for an idea, it REPLACES the synthetic demand-dimension score (default-OFF: absent ⇒ unchanged scoring).
+ */
+export function createDefaultVentureService(
+  now?: () => Date,
+  demand?: DemandEvidenceSource,
+): VentureService {
   return new VentureService({
     repo: ventureRepo,
     evidence: stubEvidenceGatherer,
@@ -179,14 +187,18 @@ export function createDefaultVentureService(now?: () => Date): VentureService {
     scaleBudgetCents: (workspaceId) => resolveScaleCaps(loadConfig(workspaceId).scale).budgetCents,
     // Infrastructure-time advancement is gated by the same #17 kill switch as autonomy launches.
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
+    demand,
     now,
   });
 }
 
 /** Build the production VentureEngine (#96 scheduled tick). The timer is started in `index.ts`. */
-export function createDefaultVentureEngine(logger: SessionLogger): VentureEngine {
+export function createDefaultVentureEngine(
+  logger: SessionLogger,
+  demand?: DemandEvidenceSource,
+): VentureEngine {
   return new VentureEngine({
-    service: createDefaultVentureService(),
+    service: createDefaultVentureService(undefined, demand),
     listActiveEvaluationWorkspaces,
     logger,
   });

@@ -6,7 +6,7 @@ import { dbDeploymentStore } from "../db/repositories/deployments.js";
 import { dbPlanPriceStore, dbWorkspacePlanStore } from "../db/repositories/plans.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { createBillingProvider } from "./factory.js";
-import { BillingManager, type DeploymentLookup } from "./manager.js";
+import { BillingManager, type DeploymentLookup, type DemandSignalIngestor } from "./manager.js";
 import { PlanBillingService } from "./plan-service.js";
 
 /**
@@ -16,7 +16,10 @@ import { PlanBillingService } from "./plan-service.js";
  * {@link PlanBillingService} (catalog + workspace-scoped checkout) shares the same provider + secrets and
  * is wired into the manager as the `planActivator` so a `plan_checkout` webhook activates the plan.
  */
-export function createDefaultBilling(logger: SessionLogger): {
+export function createDefaultBilling(
+  logger: SessionLogger,
+  demandIngestor?: DemandSignalIngestor,
+): {
   billingManager: BillingManager;
   planService: PlanBillingService;
 } {
@@ -41,6 +44,8 @@ export function createDefaultBilling(logger: SessionLogger): {
     secrets,
     deployments,
     planActivator: planService,
+    // #101: a `demand_smoke` checkout webhook becomes the apex external willingness-to-pay signal.
+    demandIngestor,
     toleranceSec: env.billing.webhookToleranceSeconds,
     logger,
   });
