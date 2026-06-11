@@ -32,6 +32,10 @@ app.flywheelEngine.start(env.flywheel.intervalMs);
 // maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
 app.verifierRunner.start(env.verifiers.intervalMs);
 
+// #100 insight miner: start the opt-in mining tick (INSIGHT_INTERVAL_MS; default 0 = off) that ranks
+// evidence sources and mines them into structured insights for the venture loop. Stopped on close.
+app.insightEngine.start(env.insight.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

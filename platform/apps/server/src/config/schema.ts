@@ -301,6 +301,28 @@ export const marketingSchema = z.object({
 });
 
 /**
+ * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
+ * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
+ * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
+ * agent-session mining path is gated/charged; owner-secret intake and source ranking are ungated.
+ * `freshnessHalfLifeDays` parameterizes the recency decay; `mineCostCents` is the per-pass charge
+ * against the #71 tenant budget; `minSourceStrength` is the "list is the strategy" cut (only mine
+ * sources at/above this evidence strength); `maxInsightsPerMine` rate-limits insights per pass.
+ */
+export const insightSchema = z.object({
+  /** The mining flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Half-life (days) of the freshness decay applied to source/insight recency. */
+  freshnessHalfLifeDays: z.number().positive().optional(),
+  /** Estimated cost (cents) charged to tenant usage per mining pass — the dollar-ceiling input. */
+  mineCostCents: z.number().int().nonnegative().optional(),
+  /** Hard cap on insights produced in a single mining pass (top-ranked sources first). */
+  maxInsightsPerMine: z.number().int().nonnegative().optional(),
+  /** Minimum source evidence strength (0–100) to mine — the "list is the strategy" cut. */
+  minSourceStrength: z.number().int().min(0).max(100).optional(),
+});
+
+/**
  * Moat-accrual policy (#103, ADR-0103). All **non-secret** knobs for the moat scoring + stagnation
  * flagging. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that
  * sets nothing keeps today's behavior — moat is recorded/scored on demand but no venture is flagged.
@@ -359,6 +381,8 @@ export const settingsSchema = z.object({
   marketing: marketingSchema.optional(),
   /** Outcome Verifiers policy (#106): the measured-gate runner + escalation (default OFF). */
   verifiers: verifiersSchema.optional(),
+  /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
+  insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
   moat: moatSchema.optional(),
 });
@@ -384,6 +408,7 @@ export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
 export type VerifierConfig = z.infer<typeof verifiersSchema>;
+export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
@@ -418,6 +443,8 @@ export interface ResolvedConfig {
   marketing: MarketingConfig;
   /** Outcome Verifiers policy (#106). A partial whose hard defaults `resolveVerifierCaps` fills. */
   verifiers: VerifierConfig;
+  /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
+  insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
   moat: MoatConfig;
 }
@@ -439,5 +466,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   flywheel: {},
   marketing: {},
   verifiers: {},
+  insight: {},
   moat: {},
 };
