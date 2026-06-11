@@ -129,7 +129,7 @@ describe("VerifierRunner.verify", () => {
   });
 
   it("records failed but does NOT escalate when escalateOnFailure is off (still never 'passed')", async () => {
-    const { runner, store, escalator } = build({
+    const { runner, escalator } = build({
       observation: { kind: "deploy_live", httpStatus: 500, healthy: false },
       caps: { escalateOnFailure: false },
     });
@@ -139,7 +139,7 @@ describe("VerifierRunner.verify", () => {
   });
 
   it("records an errored row and never escalates on an un-measurable probe", async () => {
-    const { runner, store, escalator } = build({
+    const { runner, escalator } = build({
       observation: { kind: "deploy_live", errored: true, reason: "ECONNREFUSED" },
     });
     const { record, action } = await runner.verify(claim);
@@ -149,7 +149,7 @@ describe("VerifierRunner.verify", () => {
   });
 
   it("persists failed even when the escalator throws (the verdict is never lost)", async () => {
-    const { runner, store } = build({
+    const { runner } = build({
       observation: { kind: "deploy_live", httpStatus: 500, healthy: false },
     });
     // override escalator to throw
