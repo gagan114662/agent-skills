@@ -25,13 +25,25 @@ RUN pnpm --filter @reload/shared build && pnpm --filter @reload/server build
 # ---- runtime stage ----
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
+# Working HOME for the non-root runtime user (#166). Docker's `USER` directive does NOT set $HOME, and
+# the `claude` CLI needs a writable home for its config/credentials dir. Pin it to the reload user's
+# home so the harness child inherits a valid, writable HOME (verified: /home/reload, owned by reload).
+ENV HOME=/home/reload
 WORKDIR /app
-# Install the Claude Code CLI globally so the `claude-code` harness can run a REAL agent under
-# AGENT_RUNTIME=local (#68). Auth is per-tenant at runtime — the workspace's own subscription token
+# #166 ROOT CAUSE FIX: the agent harness spawns `bash -lc "claude -p …"` (runtime/harness.ts), but this
+# base image is Alpine, which ships only busybox `ash` as /bin/sh and has NO `bash`. So `spawn("bash")`
+# failed with ENOENT before any agent ran — the child never returned an exit code, the session landed as
+# `failed` with a null exit, and the channel showed "session failed (exit n/a)". Installing bash makes the
+# harness command spawnable. bash is left unpinned (any Alpine 5.x is fine) so an apk patch-version
+# rotation can't break the build that ships this fix; the agent-affecting pin is on the claude CLI below.
+#
+# Install the Claude Code CLI globally (PINNED, #166) so the `claude-code` harness can run a REAL agent
+# under AGENT_RUNTIME=local (#68). Auth is per-tenant at runtime — the workspace's own subscription token
 # (CLAUDE_CODE_OAUTH_TOKEN), resolved per session and injected as env — so NO credential is baked into
 # the image. The binary is on PATH as `claude`, which the #69 preflight checks for.
 RUN corepack enable \
-  && npm install -g @anthropic-ai/claude-code \
+  && apk add --no-cache bash \
+  && npm install -g @anthropic-ai/claude-code@2.1.173 \
   && addgroup -S reload \
   && adduser -S reload -G reload
 # Same /app path as the build stage keeps pnpm's symlinked node_modules valid.
