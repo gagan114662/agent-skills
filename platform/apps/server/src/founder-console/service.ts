@@ -1,6 +1,7 @@
 import {
   aggregateFounderConsole,
   type FounderConsole,
+  type GateBoundariesSnapshot,
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
   type RevenueSnapshot,
@@ -54,6 +55,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** The #119 evidence-priced autonomy boundaries: owned classes + the change history. */
+export interface GateBoundaryReader {
+  boundaries(workspaceId: string): Promise<GateBoundariesSnapshot>;
+}
+
 /** The self-healing flywheel pane (#117). Optional — absent ⇒ the console renders zeroed self-healing. */
 export interface FlywheelReader {
   state(workspaceId: string): Promise<SelfHealingSnapshot>;
@@ -78,6 +84,7 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
@@ -100,7 +107,17 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance, usageTrend, selfHealing] =
+    const [
+      ventures,
+      revenue,
+      usage,
+      approvals,
+      killSwitch,
+      maintenance,
+      gateBoundaries,
+      usageTrend,
+      selfHealing,
+    ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
         this.deps.revenue.summary(workspaceId),
@@ -108,6 +125,7 @@ export class FounderConsoleService {
         this.deps.approvals.pending(workspaceId),
         this.deps.switches.killSwitch(workspaceId),
         this.deps.switches.maintenance(),
+        this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
       ]);
@@ -131,6 +149,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      gateBoundaries,
       selfHealing,
       usageTrend,
       forecastWindow: this.deps.forecast.forecastWindow(now),

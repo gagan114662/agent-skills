@@ -266,8 +266,19 @@ export async function approvalRoutes(
     const reason = typeof (req.body as { reason?: unknown })?.reason === "string"
       ? (req.body as { reason: string }).reason
       : null;
+    // #119: an optional edit to a drafted-content field — when present the executor runs the EDITED
+    // draft and the decision is recorded as `edited` (with its Levenshtein distance) rather than
+    // `approved`, the per-action correction signal the evidence pricer reads.
+    const rawEdit = (req.body as { edit?: unknown })?.edit;
+    const edit =
+      rawEdit &&
+      typeof rawEdit === "object" &&
+      typeof (rawEdit as { field?: unknown }).field === "string" &&
+      typeof (rawEdit as { value?: unknown }).value === "string"
+        ? { field: (rawEdit as { field: string }).field, value: (rawEdit as { value: string }).value }
+        : null;
 
-    const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason);
+    const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit);
     if (decision.outcome === "conflict") {
       return reply.code(409).send({ error: "request already decided" });
     }

@@ -9,6 +9,7 @@ import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
+import { ownedBoundaries, listBoundaryChanges } from "../db/repositories/gate-evidence.js";
 import {
   flywheelFingerprintStore,
   flywheelDispatchStore,
@@ -81,6 +82,25 @@ export function createDefaultFounderConsoleService(deps: {
       maintenance: async () => {
         const m = await getMaintenanceState();
         return { enabled: m.enabled, since: m.since, reason: m.reason, unavailable: m.unavailable };
+      },
+    },
+    gateBoundaries: {
+      boundaries: async (workspaceId) => {
+        const [owned, changes] = await Promise.all([
+          ownedBoundaries(workspaceId),
+          listBoundaryChanges(workspaceId),
+        ]);
+        return {
+          owned,
+          history: changes.map((c) => ({
+            actionType: c.actionType,
+            direction: c.direction,
+            errorRate: c.errorRate,
+            windowSize: c.windowSize,
+            atMs: c.createdAt.getTime(),
+            reason: c.reason,
+          })),
+        };
       },
     },
     // #117 self-healing flywheel pane: read-only fingerprint + dispatch state for the daily review.
