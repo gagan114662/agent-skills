@@ -98,6 +98,9 @@ import type { FounderConsoleService } from "./founder-console/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import type { GrowthService } from "./growth/service.js";
+import { planningRoutes } from "./routes/planning.js";
+import { createDefaultPlanningService } from "./planning/default.js";
+import type { PlanningService } from "./planning/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
@@ -125,6 +128,8 @@ declare module "fastify" {
     verifierRunner: VerifierRunner;
     /** The #100 insight miner; `index.ts` starts its opt-in mining tick (INSIGHT_INTERVAL_MS). */
     insightEngine: InsightEngine;
+    /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
+    planningEngine: PlanningService;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -206,6 +211,8 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
+  planning?: PlanningService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -382,6 +389,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   const growthService = opts.growth ?? createDefaultGrowthService();
   app.register(growthRoutes, { service: growthService });
+  // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build
+  // sessions. Record backlog items (RICE inputs derived from evidence counts), read the ranked backlog,
+  // and run the planning tick — the top item is drafted into a spec and proposed through the
+  // venture-gated #96 launcher; pivots / over-budget / not-#95-allowed dispatches #13-gate. Default-OFF.
+  const planningService = opts.planning ?? createDefaultPlanningService(sessionManager);
+  app.register(planningRoutes, { service: planningService });
+  app.addHook("onClose", async () => {
+    planningService.stop();
+  });
+  app.decorate("planningEngine", planningService);
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to

@@ -5,6 +5,7 @@ import {
   type MaintenanceSnapshot,
   type MoatVentureSnapshot,
   type PendingApprovalSnapshot,
+  type PlanningSnapshot,
   type PostmortemLinkView,
   type RevenueSnapshot,
   type SelfHealingSnapshot,
@@ -78,6 +79,11 @@ export interface GrowthReader {
   state(workspaceId: string): Promise<GrowthSnapshot>;
 }
 
+/** The planning roadmap pane (#115). Optional — absent ⇒ the console renders an empty roadmap. */
+export interface PlanningReader {
+  state(workspaceId: string): Promise<PlanningSnapshot>;
+}
+
 /** Cost-forecast inputs (#113): the usage trend + the resolved caps the projection/right-sizing read. */
 export interface ForecastReader {
   /** Recent per-window usage (#71 `tenant_usage`), oldest→newest, for the forecast lookback. */
@@ -112,6 +118,8 @@ export interface FounderConsoleDeps {
   flywheel?: FlywheelReader;
   /** Growth loop (#102) — optional, read-only. */
   growth?: GrowthReader;
+  /** Product Planning Loop roadmap (#115) — optional, read-only. */
+  planning?: PlanningReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
@@ -146,6 +154,7 @@ export class FounderConsoleService {
       usageTrend,
       selfHealing,
       growth,
+      planning,
       moat,
     ] =
       await Promise.all([
@@ -160,6 +169,7 @@ export class FounderConsoleService {
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
       ]);
 
@@ -186,6 +196,7 @@ export class FounderConsoleService {
       gateBoundaries,
       selfHealing,
       growth,
+      planning,
       usageTrend,
       forecastWindow: this.deps.forecast.forecastWindow(now),
       infraBudgetCeilingCents: this.deps.forecast.infraBudgetCeilingCents(workspaceId),
