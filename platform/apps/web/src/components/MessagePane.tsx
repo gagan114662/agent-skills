@@ -1,5 +1,6 @@
 /** Center column: the active channel header, its message list, and the composer. */
 import { useAppState, useStore } from "../store/StoreContext.js";
+import { VOICE } from "../brand.js";
 import { authorLabel, type AppState } from "../store/store.js";
 import { Avatar, KindBadge } from "./Primitives.js";
 import { Composer } from "./Composer.js";
@@ -19,7 +20,8 @@ export function MessagePane(): React.JSX.Element {
   if (!channel) {
     return (
       <section className="pane pane--empty">
-        <p>Pick a channel to start.</p>
+        <div className="pane--empty__mark" aria-hidden="true" />
+        <p>{VOICE.emptyChannel}</p>
       </section>
     );
   }
@@ -35,7 +37,7 @@ export function MessagePane(): React.JSX.Element {
 
       <div className="messagelist">
         {messages.length === 0 ? (
-          <p className="messagelist__empty">No messages yet — say hello 👋</p>
+          <p className="messagelist__empty">{VOICE.noMessages}</p>
         ) : (
           messages.map((m) => <MessageItem key={m.id} message={m} state={state} />)
         )}

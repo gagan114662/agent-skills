@@ -110,4 +110,18 @@ describe("#123 seedMarketingDepartment", () => {
     expect(f.launches).toHaveLength(0);
     expect(f.tasks).toHaveLength(0);
   });
+
+  it("posts intros only on creation — re-seeding an existing agency posts no new messages (#138)", async () => {
+    // The boot backfill (#138) re-runs the seeder on every restart for existing workspaces. Intros and
+    // the #general welcome must be posted once (when an agent/channel is first created), never again,
+    // or every reboot would spam the rooms. Channel/persona creation is already idempotent; this guards
+    // the message side.
+    const f = makeFakes();
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
+    const postsAfterFirst = f.posts.length;
+    expect(postsAfterFirst).toBeGreaterThanOrEqual(MARKETING_DEPARTMENTS.length + 1); // 7 intros + welcome
+
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
+    expect(f.posts.length).toBe(postsAfterFirst); // nothing new on re-seed
+  });
 });

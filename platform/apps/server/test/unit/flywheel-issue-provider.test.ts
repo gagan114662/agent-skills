@@ -56,3 +56,56 @@ describe("GitHubIssueProvider.reopenIssue (#117 — the #106 outcome verifier)",
     expect(JSON.parse(init.body)).toEqual({ state: "open" });
   });
 });
+
+describe("GitHubIssueProvider.listOpenIssuesByLabel (#108 — the uptime dedupe read)", () => {
+  it("GETs open issues filtered by label and returns {number, body} rows", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify([
+          { number: 12, body: "down <!-- uptime-monitor:api -->" },
+          { number: 13, body: "down <!-- uptime-monitor:web -->" },
+        ]),
+        { status: 200 },
+      ),
+    ) as unknown as typeof fetch;
+
+    const rows = await provider(fetchImpl).listOpenIssuesByLabel(
+      { owner: "acme", repo: "web" },
+      "tok",
+      "uptime-alert",
+    );
+
+    expect(rows).toEqual([
+      { number: 12, body: "down <!-- uptime-monitor:api -->" },
+      { number: 13, body: "down <!-- uptime-monitor:web -->" },
+    ]);
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/repos/acme/web/issues?");
+    expect(url).toContain("state=open");
+    expect(url).toContain("labels=uptime-alert");
+    expect(init.method ?? "GET").toBe("GET");
+    expect(init.headers.Authorization).toBe("Bearer tok");
+  });
+
+  it("throws a content-free error on a non-2xx", async () => {
+    const fetchImpl = vi.fn(async () => new Response("nope", { status: 401 })) as unknown as typeof fetch;
+    await expect(
+      provider(fetchImpl).listOpenIssuesByLabel({ owner: "a", repo: "b" }, "tok", "uptime-alert"),
+    ).rejects.toBeInstanceOf(IssueProviderError);
+  });
+});
+
+describe("GitHubIssueProvider.closeIssue (#108 — the uptime recovery write)", () => {
+  it("PATCHes state=closed and returns the resulting state", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ state: "closed" }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const res = await provider(fetchImpl).closeIssue(parseIssueRef("github:acme/web#7"), "tok");
+    expect(res.state).toBe("closed");
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("https://api.github.com/repos/acme/web/issues/7");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ state: "closed" });
+  });
+});

@@ -271,6 +271,22 @@ export const flywheelSchema = z.object({
 });
 
 /**
+ * Outcome Verifiers policy (#106, ADR-0106). All **non-secret** knobs for the measured-gate runner that
+ * turns non-code claims (deploy live? revenue real? growth moved? fix held?) into durable evidence rows.
+ * Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
+ * runs no verification. `escalateOnFailure` is the "no silent pass" rail (default true — a failed gate
+ * opens a #13 escalation); `maxPerTick` bounds verifications + escalations per workspace pass.
+ */
+export const verifiersSchema = z.object({
+  /** The verifier loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Whether a measured FAILURE opens a #13 escalation (default true — never silently pass). */
+  escalateOnFailure: z.boolean().optional(),
+  /** Hard cap on verifications performed in a single workspace tick. */
+  maxPerTick: z.number().int().positive().optional(),
+});
+
+/**
  * Marketing department fleet policy (#123, ADR-0123). All **non-secret**. Every field is optional and
  * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's signup
  * behavior (no auto-seed). ipop.ai opts in via the managed layer; `enabled` gates only seed-on-signup
@@ -404,6 +420,8 @@ export const settingsSchema = z.object({
   flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
+  /** Outcome Verifiers policy (#106): the measured-gate runner + escalation (default OFF). */
+  verifiers: verifiersSchema.optional(),
   /** Growth-loop policy (#102): distribution instrumentation + funnel scoring (default OFF). */
   growth: growthSchema.optional(),
   /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
@@ -434,6 +452,7 @@ export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
+export type VerifierConfig = z.infer<typeof verifiersSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
@@ -469,6 +488,8 @@ export interface ResolvedConfig {
   flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
+  /** Outcome Verifiers policy (#106). A partial whose hard defaults `resolveVerifierCaps` fills. */
+  verifiers: VerifierConfig;
   /** Growth-loop policy (#102). A partial whose hard defaults `resolveGrowthCaps` fills. */
   growth: GrowthConfig;
   /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
@@ -495,6 +516,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   gatePricing: {},
   flywheel: {},
   marketing: {},
+  verifiers: {},
   growth: {},
   insight: {},
   moat: {},

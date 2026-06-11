@@ -30,7 +30,9 @@ describe("Workspace shell", () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
 
-    expect(screen.getAllByText(/ipop/).length).toBeGreaterThan(0);
+    // The wordmark (#138) splits the name into glyphs with a popped i-dot, so the brand is exposed via
+    // the accessible label rather than a single text node.
+    expect(screen.getAllByLabelText(/ipop/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Reload/)).toBeNull();
   });
 

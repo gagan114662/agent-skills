@@ -23,6 +23,13 @@ primary_region = "yyz"
   ANTHROPIC_MODEL = "claude-fable-5"
   # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
   RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
+  # #138 marketing department fleet: turn the agency ON for the live product (the config env base layer,
+  # #58). Every workspace is seeded on signup AND backfilled idempotently on boot, so the owner lands in
+  # a working agency (SEO/Social/Content/Email/Paid/Analytics/Brand) instead of an empty channel list.
+  # seedWelcomeTasks stays false: the seed/backfill creates channels + named agents but launches NO
+  # welcome sessions, so it never spends — @mentions still go through the venture + #13 approval gates.
+  RELOAD_MARKETING_ENABLED = "true"
+  RELOAD_MARKETING_SEED_WELCOME_TASKS = "false"
 
 [http_service]
   internal_port = 8080

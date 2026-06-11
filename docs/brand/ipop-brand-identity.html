@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ipop — brand identity (the pop book)</title>
+    <!--
+      ipop brand identity — the owner-approved "pop" book (#138).
+
+      This is the SOURCE OF TRUTH for the ipop pop identity. It is committed (not just referenced) so the
+      web console can be implemented against it and it can never drift out of the repo again. The web app
+      mirrors these exact tokens: palette → apps/web/src/styles.css :root, wordmark + voice + department
+      spectrum → apps/web/src/brand.ts, motion → apps/web/src/styles.css @keyframes. See ADR-0138.
+
+      House voice: Innocent Drinks school — warm, first-person plural, a little silly, receipts over
+      adjectives, one wink at most. Sign-off everywhere: "made by robots, steered by humans."
+    -->
+    <style>
+      :root {
+        /* Core palette — the three that define the brand. */
+        --paper: #f6f1e7; /* background — warm off-white, the "paper" */
+        --ink: #171310; /* text — near-black with a brown cast, the "ink" */
+        --vermilion: #ff4524; /* accent — Pop Vermilion, the one loud colour */
+        --vermilion-press: #e23a1c; /* pressed/hover vermilion */
+        --paper-2: #efe7d8; /* raised paper (cards, rows) */
+        --paper-3: #e7dcc8; /* lines / hairlines */
+        --ink-dim: #6b6258; /* secondary text */
+        --ink-faint: #9b9286; /* tertiary text */
+
+        /* Department spectrum — one hue per marketing function (#123 fleet). A warm→cool arc anchored on
+           Pop Vermilion. Used to tint each preloaded department channel + its named agent. */
+        --dept-seo: #ff4524; /* SEO · Scout — vermilion (the anchor) */
+        --dept-social: #ff7a00; /* Social · Echo — tangerine */
+        --dept-content: #f0b429; /* Content · Quill — honey */
+        --dept-email: #2fb170; /* Email · Postmark — leaf */
+        --dept-paid: #1fa2c4; /* Paid · Bid — lagoon */
+        --dept-analytics: #5b6cff; /* Analytics · Lens — indigo */
+        --dept-brand: #b07bff; /* Brand · Mark — violet */
+
+        /* Motion — the pop. Swell → overshoot → settle. */
+        --pop-ease: cubic-bezier(0.2, 1.4, 0.3, 1);
+        --radius: 12px;
+        font-family: "Nunito", ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 880px; margin: 0 auto; padding: 56px 28px 96px; }
+      h1 { font-size: 40px; margin: 0 0 4px; letter-spacing: -0.02em; }
+      h2 { font-size: 22px; margin: 48px 0 12px; letter-spacing: -0.01em; }
+      p { max-width: 64ch; }
+      .lede { font-size: 18px; color: var(--ink-dim); }
+      code { background: var(--paper-3); padding: 1px 6px; border-radius: 6px; font-size: 0.9em; }
+
+      /* --- The wordmark: "ipop" with a popped i-dot --- */
+      .wordmark {
+        font-weight: 800;
+        font-size: 56px;
+        letter-spacing: -0.03em;
+        display: inline-flex;
+        align-items: flex-end;
+        line-height: 1;
+        user-select: none;
+      }
+      .wordmark__i { position: relative; }
+      .wordmark__dot {
+        position: absolute;
+        top: -0.16em;
+        left: 50%;
+        width: 0.2em;
+        height: 0.2em;
+        background: var(--vermilion);
+        border-radius: 50%;
+        transform: translateX(-50%);
+        transform-origin: center bottom;
+        animation: pop-dot 2.4s var(--pop-ease) infinite;
+      }
+      @keyframes pop-dot {
+        0%, 60%, 100% { transform: translateX(-50%) translateY(0) scale(1, 1); }
+        70% { transform: translateX(-50%) translateY(-0.18em) scale(0.82, 1.2); } /* stretch up */
+        82% { transform: translateX(-50%) translateY(0.02em) scale(1.18, 0.82); } /* squash on landing */
+        92% { transform: translateX(-50%) translateY(0) scale(0.96, 1.04); } /* settle */
+      }
+
+      /* --- The Pop Mark: a vermilion dot leaping out of a ring (the favicon / standalone mark) --- */
+      .popmark {
+        position: relative; width: 64px; height: 64px;
+        border: 4px solid var(--ink); border-radius: 50%;
+      }
+      .popmark::after {
+        content: ""; position: absolute; left: 50%; top: 6px;
+        width: 18px; height: 18px; border-radius: 50%; background: var(--vermilion);
+        transform: translateX(-50%);
+        animation: happy-wiggle 3s ease-in-out infinite;
+      }
+
+      /* --- Motion vocabulary --- */
+      @keyframes swell-pop { /* the canonical entrance: swell → overshoot → settle */
+        0% { transform: scale(0.92); opacity: 0; }
+        60% { transform: scale(1.03); opacity: 1; }
+        100% { transform: scale(1); }
+      }
+      @keyframes squash-stretch { /* button / channel-row press */
+        0% { transform: scale(1, 1); }
+        40% { transform: scale(1.06, 0.94); }
+        70% { transform: scale(0.97, 1.03); }
+        100% { transform: scale(1, 1); }
+      }
+      @keyframes happy-wiggle { /* idle agents, the cute "alive" tell */
+        0%, 100% { transform: translateX(-50%) rotate(0deg); }
+        25% { transform: translateX(-50%) rotate(-9deg); }
+        75% { transform: translateX(-50%) rotate(9deg); }
+      }
+
+      /* --- swatches --- */
+      .swatches { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+      .swatch { width: 150px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--paper-3); }
+      .swatch__chip { height: 64px; }
+      .swatch__meta { padding: 8px 10px; font-size: 13px; background: var(--paper-2); }
+      .swatch__meta b { display: block; }
+      .swatch__meta span { color: var(--ink-dim); }
+
+      .btn {
+        background: var(--vermilion); color: #fff; border: none; font: inherit; font-weight: 700;
+        padding: 11px 20px; border-radius: var(--radius); cursor: pointer;
+      }
+      .btn:active { animation: squash-stretch 0.32s var(--pop-ease); }
+
+      .voice { background: var(--paper-2); border-left: 4px solid var(--vermilion); padding: 14px 18px; border-radius: 0 var(--radius) var(--radius) 0; margin: 10px 0; }
+      .voice em { color: var(--ink-dim); font-style: normal; display: block; font-size: 13px; margin-top: 4px; }
+
+      .confetti { display: inline-flex; gap: 5px; vertical-align: middle; }
+      .confetti span { width: 7px; height: 7px; border-radius: 50%; background: var(--vermilion); animation: swell-pop 1.2s var(--pop-ease) infinite; }
+      .confetti span:nth-child(2) { background: var(--dept-content); animation-delay: 0.15s; }
+      .confetti span:nth-child(3) { background: var(--dept-analytics); animation-delay: 0.3s; }
+
+      .footer { margin-top: 64px; color: var(--ink-faint); font-size: 14px; }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="wordmark" aria-label="ipop">
+        <span class="wordmark__i">i<span class="wordmark__dot"></span></span><span>pop</span>
+      </div>
+      <h1>The pop book</h1>
+      <p class="lede">
+        ipop is a marketing agency staffed by AI agents. The brand should feel like that team: warm,
+        quick, a little playful — robots with a sense of humour. You steer, they ship.
+        <strong>made by robots, steered by humans.</strong>
+      </p>
+
+      <h2>Palette</h2>
+      <p>Three colours do the work. Paper is the room, Ink is the voice, Pop Vermilion is the one thing
+        that moves. Everything else is a tint of paper or ink.</p>
+      <div class="swatches">
+        <div class="swatch"><div class="swatch__chip" style="background:#f6f1e7;border-bottom:1px solid #e7dcc8"></div><div class="swatch__meta"><b>Paper</b><span>#F6F1E7 · background</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#171310"></div><div class="swatch__meta"><b>Ink</b><span>#171310 · text</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#ff4524"></div><div class="swatch__meta"><b>Pop Vermilion</b><span>#FF4524 · accent</span></div></div>
+      </div>
+
+      <h2>Wordmark &amp; Pop Mark</h2>
+      <p>The wordmark is <code>ipop</code> set in a heavy rounded weight. The dot of the <em>i</em> is the
+        brand's heartbeat — it <strong>pops</strong>: a little hop with a stretch on the way up and a
+        squash on the landing (the wordmark above is live). The standalone Pop Mark is that same vermilion
+        dot leaping out of an ink ring — use it as the favicon and the loading/splash mark.</p>
+      <div style="display:flex;align-items:center;gap:32px;margin-top:8px">
+        <div class="popmark" aria-label="Pop Mark"></div>
+        <span style="color:var(--ink-dim);font-size:14px">Pop Mark — favicon, splash, empty states</span>
+      </div>
+
+      <h2>Department spectrum</h2>
+      <p>The seven marketing functions each get a hue, a warm→cool arc anchored on Vermilion. Each
+        preloaded department channel and its named agent (#123 fleet) wears its colour.</p>
+      <div class="swatches">
+        <div class="swatch"><div class="swatch__chip" style="background:#ff4524"></div><div class="swatch__meta"><b>SEO</b><span>Scout · #FF4524</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#ff7a00"></div><div class="swatch__meta"><b>Social</b><span>Echo · #FF7A00</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#f0b429"></div><div class="swatch__meta"><b>Content</b><span>Quill · #F0B429</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#2fb170"></div><div class="swatch__meta"><b>Email</b><span>Postmark · #2FB170</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#1fa2c4"></div><div class="swatch__meta"><b>Paid</b><span>Bid · #1FA2C4</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#5b6cff"></div><div class="swatch__meta"><b>Analytics</b><span>Lens · #5B6CFF</span></div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#b07bff"></div><div class="swatch__meta"><b>Brand</b><span>Mark · #B07BFF</span></div></div>
+      </div>
+
+      <h2>Motion — the pop</h2>
+      <p>Motion is the personality. One easing curve does almost everything:
+        <code>cubic-bezier(.2, 1.4, .3, 1)</code> — a swell, a small overshoot, then a settle. Four moves:</p>
+      <ul>
+        <li><b>Swell &amp; settle</b> — entrances (cards, panels, the i-dot).</li>
+        <li><b>Squash &amp; stretch</b> — presses (buttons, channel rows). <button class="btn">press me</button></li>
+        <li><b>Happy wiggle</b> — idle agents, the cute "I'm alive" tell.</li>
+        <li><b>Three-dot confetti</b> — small wins (a draft lands, a send is approved). <span class="confetti"><span></span><span></span><span></span></span></li>
+      </ul>
+      <p>All motion is gated behind <code>@media (prefers-reduced-motion: reduce)</code> — the pop is a
+        delight, never a tax on people who turn it off.</p>
+
+      <h2>Voice — made by robots, steered by humans</h2>
+      <p>Innocent-Drinks school: warm, first-person plural, a little silly, receipts over adjectives, one
+        wink at most. Never smug, never corporate. Empty states and errors are where the voice earns its
+        keep — they're moments, not dead ends.</p>
+      <div class="voice">Welcome — “Hello. We're your new marketing department. We don't drink coffee, we
+        don't take weekends, and we've already had three ideas. Mention any of us by name and we'll get to
+        work — drafts land here first, you approve anything that leaves the building.”
+        <em>welcome / first run</em></div>
+      <div class="voice">Empty channel — “Nothing here yet. The agents are pacing around the kitchen
+        waiting for a brief.” <em>empty state</em></div>
+      <div class="voice">No messages — “Quiet in here. Say hello — they don't bite (they can't, they're
+        software).” <em>empty message list</em></div>
+      <div class="voice">API offline — “We loaded, but we can't reach the back office yet. The agents are
+        outside knocking. Give it a second and try again.” <em>error state</em></div>
+      <div class="voice" style="border-color:var(--ink)">Sign-off, everywhere — “made by robots, steered by
+        humans.”</div>
+
+      <div class="footer">
+        ipop pop identity · committed source of truth (#138). The web console mirrors these tokens exactly;
+        if you change the brand, change it here first. made by robots, steered by humans.
+      </div>
+    </div>
+  </body>
+</html>
