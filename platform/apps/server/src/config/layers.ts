@@ -37,6 +37,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #112 SRE policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // on-call flag / SLO targets cannot be loosened (e.g. the loop turned off) by a lower layer.
     if (layer.sre !== undefined) out.sre = { ...layer.sre };
+    // #148 reliability policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // paging/status-page flags cannot be loosened (e.g. paging turned off) by a lower layer.
+    if (layer.reliability !== undefined) out.reliability = { ...layer.reliability };
     // #119 gate-pricing policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's pricer flag / rails cannot be loosened (e.g. auto-relax turned off) by a lower layer.
     if (layer.gatePricing !== undefined) out.gatePricing = { ...layer.gatePricing };
@@ -105,6 +108,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     venture: merged.venture ?? { ...CONFIG_DEFAULTS.venture },
     watchdog: merged.watchdog ?? { ...CONFIG_DEFAULTS.watchdog },
     sre: merged.sre ?? { ...CONFIG_DEFAULTS.sre },
+    reliability: merged.reliability ?? { ...CONFIG_DEFAULTS.reliability },
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },

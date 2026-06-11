@@ -231,6 +231,39 @@ export const sreSchema = z.object({
 });
 
 /**
+ * Reliability surface policy (#148, ADR-0148): the incident.io-class operating layer on top of the #112
+ * SRE loop — owner paging, chat-native incidents, the AI investigation note, and the public status
+ * page. Every field is optional and defaults to **off** (`enabled: false`, `statusPageEnabled: false`)
+ * so a deployment that sets nothing keeps today's #112 behavior (one ops-channel post, no pages, no
+ * public page). `enabled` is the master switch for paging + war-room channels + investigation;
+ * `statusPageEnabled` independently opts the workspace's slug into the no-auth `/status/:slug` page.
+ * Quiet hours hold non-critical pages; `maxPagesPerHour` rate-limits; `escalateAfterMs` is the unacked
+ * re-page interval. Secret-var NAMES only (`smtpUrlVar`) — never a value.
+ */
+export const reliabilitySchema = z.object({
+  /** Master flag for owner paging + chat-native incidents + AI investigation — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Quiet-hours window start (whole UTC hour 0..23, inclusive). Set with the end to enable. */
+  quietHoursStartHourUtc: z.number().int().min(0).max(23).optional(),
+  /** Quiet-hours window end (whole UTC hour 0..23, exclusive). Equal to start ⇒ no quiet window. */
+  quietHoursEndHourUtc: z.number().int().min(0).max(23).optional(),
+  /** Hard cap on pages delivered to the owner per rolling hour (rate limit). */
+  maxPagesPerHour: z.number().int().positive().optional(),
+  /** Minimum ms between escalation re-pages for one unacked incident. */
+  escalateAfterMs: z.number().int().nonnegative().optional(),
+  /** Whether a resolved/recovered incident sends a closure page (default true). */
+  pageOnResolve: z.boolean().optional(),
+  /** How far before an incident a deploy still counts as a likely cause (the investigation window). */
+  deployWindowMs: z.number().int().nonnegative().optional(),
+  /** Opt the workspace's slug into the public no-auth `/status/:slug` page — default OFF. */
+  statusPageEnabled: z.boolean().optional(),
+  /** Sender address for email pages (display only; the transport is the plug). */
+  emailFrom: z.string().optional(),
+  /** The env-var NAME (never a value) holding the SMTP URL the email transport reads. */
+  smtpUrlVar: z.string().optional(),
+});
+
+/**
  * Evidence-Priced Autonomy policy (#119, ADR-0119). All **non-secret** knobs for the gate pricer that
  * auto-relaxes / re-tightens #95 approval rules on measured decision error. Every field is optional and
  * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's static gates —
@@ -511,6 +544,8 @@ export const settingsSchema = z.object({
   watchdog: watchdogSchema.optional(),
   /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
   sre: sreSchema.optional(),
+  /** Reliability surface policy (#148): owner paging, chat-native incidents, AI investigation, status page. */
+  reliability: reliabilitySchema.optional(),
   /** Evidence-Priced Autonomy policy (#119): the gate pricer that auto-relaxes/re-tightens #95 rules. */
   gatePricing: gatePricingSchema.optional(),
   /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
@@ -558,6 +593,7 @@ export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
 export type SreConfig = z.infer<typeof sreSchema>;
 export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
+export type ReliabilityConfig = z.infer<typeof reliabilitySchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
@@ -609,6 +645,8 @@ export interface ResolvedConfig {
   watchdog: WatchdogConfig;
   /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
   sre: SreConfig;
+  /** Reliability surface policy (#148). A partial whose hard defaults `resolveReliabilityCaps` fills. */
+  reliability: ReliabilityConfig;
   /** Evidence-Priced Autonomy policy (#119). A partial whose hard defaults `resolveGatePricingCaps` fills. */
   gatePricing: GatePricingConfig;
   /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
@@ -657,6 +695,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   venture: {},
   watchdog: {},
   sre: {},
+  reliability: {},
   gatePricing: {},
   flywheel: {},
   marketing: {},

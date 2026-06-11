@@ -63,6 +63,45 @@ function parseRepo(slug: string | undefined): { owner: string; repo: string } | 
   return m ? { owner: m[1]!, repo: m[2]! } : null;
 }
 
+/**
+ * #148: best-effort owner page off an uptime alert, wired to the SAME `PagerService` the SRE loop uses.
+ * Opt-in + DB-dependent: only fires when `RELIABILITY_PAGE_WORKSPACE_SLUG` names the workspace whose
+ * owner to page (so the default Actions run — no DB — stays report-only). The DB modules are imported
+ * LAZILY so the un-configured path never opens a connection. Every failure is swallowed: a paging
+ * problem must never mask the probe result.
+ */
+async function pageOwnerForUptime(action: "open" | "recover", targetName: string): Promise<void> {
+  const slug = process.env.RELIABILITY_PAGE_WORKSPACE_SLUG;
+  if (!slug) return;
+  try {
+    const [{ getWorkspaceBySlug }, { createPagerService }, { resolveReliabilityCaps }, { loadConfig }] =
+      await Promise.all([
+        import("../db/repositories/workspaces.js"),
+        import("../reliability/default.js"),
+        import("../reliability/caps.js"),
+        import("../config/loader.js"),
+      ]);
+    const ws = await getWorkspaceBySlug(slug);
+    if (!ws) return;
+    if (!resolveReliabilityCaps(loadConfig(ws.id).reliability).enabled) return;
+    const pager = createPagerService(console as never);
+    const down = action === "open";
+    await pager.page({
+      workspaceId: ws.id,
+      source: "uptime",
+      incidentId: null,
+      kind: down ? "uptime_down" : "uptime_recover",
+      severity: "critical",
+      lastPagedAt: null,
+      ackedAt: null,
+      subject: `[ipop] uptime ${down ? "DOWN" : "recovered"}: ${targetName}`,
+      body: `Uptime monitor: ${targetName} is ${down ? "DOWN" : "back up"}.`,
+    });
+  } catch (err) {
+    console.error("  ! uptime owner-page skipped:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function main(): Promise<void> {
   const targets = parseTargets(process.env.UPTIME_TARGETS);
   const timeoutMs = Number(process.env.UPTIME_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
@@ -106,10 +145,12 @@ async function main(): Promise<void> {
           labels: decision.labels,
         });
         console.log(`  → opened alert issue #${created.number}`);
+        await pageOwnerForUptime("open", target.name); // #148: also page the owner (opt-in, best-effort)
       } else if (decision.action === "recover") {
         await provider.postComment(ref(decision.issueNumber), token, decision.comment);
         await provider.closeIssue(ref(decision.issueNumber), token);
         console.log(`  → recovered: commented + closed issue #${decision.issueNumber}`);
+        await pageOwnerForUptime("recover", target.name);
       }
     } catch (err) {
       // Never let an issue-side failure mask a probe result — log and keep the down signal.
