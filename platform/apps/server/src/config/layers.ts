@@ -46,6 +46,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // seed-on-signup flag cannot be flipped on/off by a lower layer.
     if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
+    // #106 verifiers policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // verifier flag / "no silent pass" escalation rail cannot be loosened by a lower layer.
+    if (layer.verifiers !== undefined) out.verifiers = { ...layer.verifiers };
     // #102 growth policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // growth flag / traffic floor cannot be loosened by a lower layer.
     if (layer.growth !== undefined) out.growth = { ...layer.growth };
@@ -58,6 +61,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #114 voice policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // voice flag / auto-draft posture cannot be loosened (e.g. auto-draft turned on) by a lower layer.
     if (layer.voice !== undefined) out.voice = { ...layer.voice };
+    // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
+    if (layer.planning !== undefined) out.planning = { ...layer.planning };
   }
   return out;
 }
@@ -86,9 +92,11 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
+    verifiers: merged.verifiers ?? { ...CONFIG_DEFAULTS.verifiers },
     growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
     voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
+    planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
   };
 }

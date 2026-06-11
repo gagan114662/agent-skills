@@ -45,6 +45,17 @@ docker run --rm -p 3000:3000 \
   -e REDIS_URL=redis://HOST:6379 reload-server
 ```
 
+### Fly deploy (api.ipop.ai)
+The production API (`reload-api` on Fly, https://api.ipop.ai) deploys via
+`.github/workflows/fly-deploy.yml` on every push to `main` touching `platform/**`, authenticated by the
+`FLY_API_TOKEN` repo secret. The image self-migrates on boot, and the workflow polls `/readyz` as its
+own proof. Manual deploy from a flyctl-logged-in machine:
+```bash
+cd platform && flyctl deploy --remote-only --config fly.toml -a reload-api
+curl -s https://reload-api.fly.dev/readyz   # {"status":"ready","db":"up","redis":"up"}
+```
+**Full setup (token minting, app secrets, rollback): [runbooks/fly-deploy.md](runbooks/fly-deploy.md).**
+
 ### Migrations
 Migrate-on-deploy is automatic (the `migrate` service / entrypoint). Manual control:
 ```bash
@@ -130,6 +141,30 @@ Scrape config and SLO alert rules are committed as code:
 
 Standing up managed Prometheus/Grafana/Alertmanager is environment-specific; wire these
 files into your monitoring stack.
+
+### Uptime monitoring (#108)
+An **external** heartbeat watches the two public URLs from GitHub's infrastructure — *not* ours, so it
+notices when our box is down (a Prometheus alert on a dead server can't fire). The scheduled workflow
+`.github/workflows/uptime-check.yml` runs every 5 min and probes:
+
+| Target | URL | Healthy when |
+|---|---|---|
+| `api` | `https://api.ipop.ai/readyz` | HTTP 200 **and** body contains `ready` |
+| `web` | `https://ipop.ai/` | HTTP 200 |
+
+On failure it **opens a GitHub issue** (label `uptime-alert`); while an issue is already open it does
+nothing (no 5-min spam); on recovery it comments and closes it. **The open issue is the alert state** —
+there is no database, so the monitor survives the laptop closing. Issues fan out to the owner's
+notifications and the Founder Console (#104) issue feed. The decision logic is the unit-tested pure core
+`apps/server/src/uptime/check.ts`; run it by hand (report-only, no token needed):
+
+```bash
+pnpm --filter @reload/server uptime:check     # ✓/✗ per target; exits non-zero if anything is down
+```
+
+Override the watch list with the `UPTIME_TARGETS` repo variable (a JSON array of probe targets); disable
+the workflow per-fork with the `UPTIME_DISABLED=true` repo variable. The monthly hosting bill is bounded
+separately — see the [cost-ceiling runbook](playbooks/cost-ceiling.md).
 
 ---
 

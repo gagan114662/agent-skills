@@ -84,6 +84,9 @@ import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
+import type { VerifierRunner } from "./verifiers/engine.js";
+import { createDefaultVerifierRunner } from "./verifiers/default.js";
+import { verifierRoutes } from "./routes/verifiers.js";
 import { insightRoutes } from "./routes/insights.js";
 import { createDefaultInsightMiner, createDefaultInsightEngine } from "./insight/default.js";
 import { InsightMiner } from "./insight/service.js";
@@ -98,6 +101,9 @@ import type { FounderConsoleService } from "./founder-console/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import type { GrowthService } from "./growth/service.js";
+import { planningRoutes } from "./routes/planning.js";
+import { createDefaultPlanningService } from "./planning/default.js";
+import type { PlanningService } from "./planning/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
@@ -121,8 +127,12 @@ declare module "fastify" {
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
     flywheelEngine: FlywheelEngine;
+    /** The #106 outcome-verifier runner; `index.ts` starts its opt-in tick (VERIFIERS_INTERVAL_MS). */
+    verifierRunner: VerifierRunner;
     /** The #100 insight miner; `index.ts` starts its opt-in mining tick (INSIGHT_INTERVAL_MS). */
     insightEngine: InsightEngine;
+    /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
+    planningEngine: PlanningService;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -193,6 +203,8 @@ export interface BuildAppOptions {
   sre?: SreEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
+  /** #106 outcome verifiers: tests inject a runner and drive `verify`/`tickWorkspace()`; default builds the real one. */
+  verifiers?: VerifierRunner;
   /** #100 insight miner: tests inject a miner over a deterministic stub; default builds the real one. */
   insight?: InsightMiner;
   /**
@@ -204,6 +216,8 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
+  planning?: PlanningService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -385,6 +399,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   const growthService = opts.growth ?? createDefaultGrowthService();
   app.register(growthRoutes, { service: growthService });
+  // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build
+  // sessions. Record backlog items (RICE inputs derived from evidence counts), read the ranked backlog,
+  // and run the planning tick — the top item is drafted into a spec and proposed through the
+  // venture-gated #96 launcher; pivots / over-budget / not-#95-allowed dispatches #13-gate. Default-OFF.
+  const planningService = opts.planning ?? createDefaultPlanningService(sessionManager);
+  app.register(planningRoutes, { service: planningService });
+  app.addHook("onClose", async () => {
+    planningService.stop();
+  });
+  app.decorate("planningEngine", planningService);
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
@@ -475,6 +499,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.decorate("sreEngine", sreEngine);
   app.register(sreRoutes);
+  // #106 outcome verifiers: read-only surface for a workspace's durable verification verdicts.
+  app.register(verifierRoutes);
   // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action
   // experiment. It reads the trailing window of #13 decision outcomes per action class (recorded into
   // gate_evidence on every approve/reject) and, with structural hysteresis, RELAXes a clean reversible
@@ -497,6 +523,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelEngine.stop();
   });
   app.decorate("flywheelEngine", flywheelEngine);
+  // #106 outcome verifiers: the measured-gate runner. It turns non-code claims (deploy live? revenue
+  // real? growth moved? fix held?) into durable `verifier_results` evidence rows via pure verifier
+  // modules, and a FAILED verification opens a #13 escalation (never silently passes). It is config
+  // default-OFF (`verifiers.enabled`) + the timer is opt-in (VERIFIERS_INTERVAL_MS, started in
+  // index.ts), so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  const verifierRunner = opts.verifiers ?? createDefaultVerifierRunner(app.log);
+  app.addHook("onClose", async () => {
+    verifierRunner.stop();
+  });
+  app.decorate("verifierRunner", verifierRunner);
   // #100 insight miner: the SOURCE-stage upgrade for the venture loop. It ranks evidence sources
   // ("the list is the strategy"), mines them into structured insights (the agent-session path,
   // kill-switch + #71-budget gated), captures owner secrets as first-class artifacts, dedupes killed

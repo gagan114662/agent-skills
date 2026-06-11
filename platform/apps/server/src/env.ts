@@ -26,8 +26,12 @@ export interface Env {
   sre: SreEnv;
   /** Self-healing flywheel scheduled tick (#117). */
   flywheel: FlywheelEnv;
+  /** Outcome-verifier scheduled tick (#106). */
+  verifiers: VerifiersEnv;
   /** Insight Miner scheduled tick (#100). */
   insight: InsightEnv;
+  /** Product Planning Loop scheduled tick (#115). */
+  planning: PlanningEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -145,8 +149,18 @@ export interface FlywheelEnv {
   intervalMs: number;
 }
 
+export interface VerifiersEnv {
+  /** Verifier-tick interval in ms. Default `0` = the background runner is OFF (opt-in, #106). */
+  intervalMs: number;
+}
+
 export interface InsightEnv {
   /** Insight-mining tick interval in ms. Default `0` = the background loop is OFF (opt-in, #100). */
+  intervalMs: number;
+}
+
+export interface PlanningEnv {
+  /** Planning-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #115). */
   intervalMs: number;
 }
 
@@ -255,9 +269,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // Default 0 (off): the flywheel loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.FLYWHEEL_INTERVAL_MS ?? 0) || 0,
     },
+    verifiers: {
+      // Default 0 (off): the verifier runner is opt-in so tests/CI drive `tickWorkspace()` deterministically.
+      intervalMs: Number(source.VERIFIERS_INTERVAL_MS ?? 0) || 0,
+    },
     insight: {
       // Default 0 (off): the insight-mining loop is opt-in so tests/CI drive `mine()` deterministically.
       intervalMs: Number(source.INSIGHT_INTERVAL_MS ?? 0) || 0,
+    },
+    planning: {
+      // Default 0 (off): the planning loop is opt-in so tests/CI drive `tick()` deterministically.
+      intervalMs: Number(source.PLANNING_INTERVAL_MS ?? 0) || 0,
     },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.

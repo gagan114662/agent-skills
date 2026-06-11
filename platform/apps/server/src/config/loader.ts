@@ -103,6 +103,18 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (files !== undefined) raw.filesToCopy = parseFileList(files);
   const root = env.RELOAD_WORKSPACE_ROOT;
   if (root !== undefined) raw.workspaceRoot = root;
+  // #138 marketing department fleet: let the deployment env turn the agency on (ipop.ai's fly.toml sets
+  // these) without baking a managed.toml into the image. Hard default stays OFF (env vars unset → no
+  // marketing block); a managed layer still wins as the lock. seedWelcomeTasks stays false in prod so
+  // the seed/backfill never launches (spends on) welcome sessions.
+  const mktEnabled = env.RELOAD_MARKETING_ENABLED;
+  const mktWelcome = env.RELOAD_MARKETING_SEED_WELCOME_TASKS;
+  if (mktEnabled !== undefined || mktWelcome !== undefined) {
+    const marketing: Record<string, unknown> = {};
+    if (mktEnabled !== undefined) marketing.enabled = mktEnabled === "true" || mktEnabled === "1";
+    if (mktWelcome !== undefined) marketing.seedWelcomeTasks = mktWelcome === "true" || mktWelcome === "1";
+    raw.marketing = marketing;
+  }
   return parseLayer(raw, "env");
 }
 

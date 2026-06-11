@@ -3,6 +3,7 @@ import { loadEnv } from "./env.js";
 import { closeDb } from "./db/index.js";
 import { closeRedis } from "./redis/index.js";
 import { isMaintenanceActive } from "./maintenance/flag.js";
+import { backfillMarketingDepartments } from "./marketing/default.js";
 
 const env = loadEnv();
 const app = buildApp();
@@ -27,9 +28,19 @@ app.sreEngine.start(env.sre.intervalMs);
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
 app.flywheelEngine.start(env.flywheel.intervalMs);
 
+// #106 outcome verifiers: start the opt-in tick (VERIFIERS_INTERVAL_MS; default 0 = off) that turns
+// non-code claims into durable measured verdicts and escalates failures. Self-gates on the #99
+// maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
+app.verifierRunner.start(env.verifiers.intervalMs);
+
 // #100 insight miner: start the opt-in mining tick (INSIGHT_INTERVAL_MS; default 0 = off) that ranks
 // evidence sources and mines them into structured insights for the venture loop. Stopped on close.
 app.insightEngine.start(env.insight.intervalMs);
+
+// #115 product planning loop: start the opt-in tick (PLANNING_INTERVAL_MS; default 0 = off) that
+// re-ranks the backlog, drafts a spec for the top item, and proposes a build session (venture-gated,
+// budget + kill-switch aware). Stopped on server close via buildApp.
+app.planningEngine.start(env.planning.intervalMs);
 
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
@@ -61,6 +72,14 @@ if (app.gitWorktreeReaper) {
     reapTimer.unref();
   }
 }
+
+// #138 marketing department fleet: idempotently backfill the agency (channels + named agents) for every
+// existing enabled workspace, once on boot — the only path that reaches workspaces created before the
+// fleet was turned on (the owner's). Per-workspace gated on config (default OFF → no-op everywhere the
+// fleet isn't enabled) and best-effort, so it never spends and never crashes startup.
+void backfillMarketingDepartments(app.log).catch((err) =>
+  app.log.error({ err }, "marketing department backfill sweep failed"),
+);
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "shutting down");

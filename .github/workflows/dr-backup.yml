@@ -7,6 +7,11 @@ name: dr-backup
 #
 # RPO is the dump cadence: hourly here. Tighten the cron for a smaller RPO, or run managed Postgres
 # (Neon) PITR for minute-level RPO (the dump is then the off-site, vendor-independent 3-2-1 copy).
+#
+# PRODUCTION TARGET (#108): DR_DATABASE_URL MUST be the live Fly managed Postgres — the SAME connection
+# string as the `DATABASE_URL` secret on app `reload-api` (`fly secrets list --app reload-api`). This is
+# what makes the backup point at the real company. The restore side is documented in
+# platform/docs/playbooks/restore-runbook.md.
 
 on:
   schedule:

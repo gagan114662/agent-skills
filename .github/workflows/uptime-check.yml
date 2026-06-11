@@ -1,0 +1,51 @@
+name: uptime-check
+
+# External heartbeat for the live platform (#108, ADR-0108): probes the two public URLs
+# (https://api.ipop.ai/readyz and https://ipop.ai) every 5 minutes from GitHub's infrastructure — NOT
+# ours, so it can notice when our box is down. On failure it OPENS a GitHub issue (labelled
+# `uptime-alert`); while one is already open it does nothing (no 5-minute spam); on recovery it comments
+# and closes it. The open issue IS the "currently alerting" state, so there is no database to keep — the
+# whole monitor survives the laptop closing. The judgment is the unit-tested pure core in
+# apps/server/src/uptime/check.ts; this workflow is just the scheduler + the IO env.
+#
+# Disable per-fork by setting the repo variable UPTIME_DISABLED=true. Override the watch list with the
+# UPTIME_TARGETS secret/var (a JSON array of probe targets) — empty means the two ipop defaults.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes — the alerting latency is this cadence + the probe timeout
+  workflow_dispatch: {} # manual probe (e.g. right after a deploy)
+
+concurrency:
+  group: uptime-check
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform
+
+permissions:
+  issues: write # open / comment / close the uptime-alert issue — nothing else
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    if: ${{ vars.UPTIME_DISABLED != 'true' }}
+    env:
+      # GITHUB_TOKEN (auto-provided) + GITHUB_REPOSITORY (auto) let the CLI open/close issues. With the
+      # token absent the CLI is report-only and just exits non-zero on a down target — see check-cli.ts.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UPTIME_TARGETS: ${{ vars.UPTIME_TARGETS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Probe the live URLs → open/recover the uptime-alert issue
+        run: pnpm --filter @reload/server uptime:check

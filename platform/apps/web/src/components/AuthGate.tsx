@@ -1,7 +1,8 @@
 /** Auth boundary: bootstraps the session, shows a sign-in/sign-up screen, then renders the app. */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND } from "../brand.js";
+import { BRAND, VOICE } from "../brand.js";
+import { Wordmark } from "./Wordmark.js";
 
 type Mode = "login" | "signup";
 
@@ -17,8 +18,8 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   if (phase === "loading") {
     return (
       <div className="splash">
-        <div className="splash__mark">{BRAND.mark}</div>
-        <p>Connecting to your workspace…</p>
+        <div className="splash__mark splash__mark--pop">{BRAND.mark}</div>
+        <p>{VOICE.loading}</p>
       </div>
     );
   }
@@ -34,15 +35,13 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
 function OfflineNotice({ onRetry }: { onRetry: () => void }): React.JSX.Element {
   return (
     <div className="splash">
-      <div className="splash__mark">{BRAND.mark}</div>
-      <h1>API not connected</h1>
-      <p>
-        The {BRAND.name} web console loaded, but it can&apos;t reach the API server yet. Sign-in and
-        workspace data are unavailable until the backend is online.
-      </p>
+      <div className="splash__mark splash__mark--pop">{BRAND.mark}</div>
+      <h1>{VOICE.offlineTitle}</h1>
+      <p>{VOICE.offlineBody}</p>
       <button className="btn btn--primary" type="button" onClick={onRetry}>
-        Retry
+        Try again
       </button>
+      <p className="splash__signoff">{VOICE.signOff}</p>
     </div>
   );
 }
@@ -78,7 +77,7 @@ function AuthForm(): React.JSX.Element {
     <div className="auth">
       <form className="auth__card" onSubmit={onSubmit}>
         <div className="auth__brand">
-          <span className="auth__mark">{BRAND.mark}</span> {BRAND.name}
+          <Wordmark />
         </div>
         <p className="auth__tag">{BRAND.tagline}</p>
 
