@@ -23,6 +23,7 @@ import { pingDb } from "../db/index.js";
 import { pingRedis } from "../redis/index.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
 import { channelPoster } from "../runtime/default.js";
+import { createReliabilityNotifier } from "../reliability/default.js";
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 
 /**
@@ -170,7 +171,20 @@ export function createDefaultSreEngine(
     triageTarget,
     bundle: bundleSource,
     escalator: approvalEscalator,
-    notifier: channelNotifier,
+    // #148: the reliability coordinator IS the notifier. For an opted-in workspace it runs the
+    // incident.io-class surface (war-room channel, AI investigation, owner paging); for everyone else
+    // it delegates to `channelNotifier` — byte-for-byte today's #112 ops-channel post.
+    notifier: createReliabilityNotifier({
+      fallback: channelNotifier,
+      poster: async (workspaceId) => {
+        const target = await resolveOpsTarget(workspaceId);
+        return target ? { agentMemberId: target.agentMemberId } : null;
+      },
+      channelPost: async (input) => {
+        await channelPoster.post(input);
+      },
+      logger,
+    }),
     postmortems: filePostmortemWriter,
     // #99: pause the loop during maintenance (same Redis flag the write-gate + other loops read).
     maintenancePaused: () => isMaintenanceActive(),

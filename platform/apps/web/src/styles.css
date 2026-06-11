@@ -2910,3 +2910,76 @@ select:focus-visible {
     transform: none;
   }
 }
+
+/* ── Public status page (#148) ────────────────────────────────────────────── */
+.status {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+  font-family: var(--font-body, system-ui, sans-serif);
+  color: var(--ink, #1a1a1a);
+}
+.status--empty,
+.status--loading {
+  text-align: center;
+  padding-top: 6rem;
+}
+.status__head {
+  border-bottom: 1px solid var(--hairline, #e5e5e5);
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.75rem;
+}
+.status__head h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.6rem;
+}
+.status__overall {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.status__overall--operational { color: #1a7f37; }
+.status__overall--degraded { color: #bf8700; }
+.status__overall--major_outage { color: #cf222e; }
+.status section { margin-bottom: 2rem; }
+.status section h2 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted, #6b6b6b);
+  margin: 0 0 0.75rem;
+}
+.status__components ul,
+.status__incidents ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.status__component,
+.status__incident {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--hairline, #f0f0f0);
+}
+.status__component-name { font-weight: 500; }
+.status__incident { justify-content: space-between; }
+.status__incident-title { font-weight: 500; }
+.status__incident-status {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted, #6b6b6b);
+}
+.status__incident time,
+.status__foot time {
+  font-size: 0.8rem;
+  color: var(--ink-muted, #6b6b6b);
+}
+.status__none { color: var(--ink-muted, #6b6b6b); }
+.status__foot {
+  border-top: 1px solid var(--hairline, #e5e5e5);
+  padding-top: 1rem;
+  text-align: right;
+}
