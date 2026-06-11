@@ -107,6 +107,16 @@ import type { PortfolioService } from "./portfolio/service.js";
 import { planningRoutes } from "./routes/planning.js";
 import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
+import { automationRoutes } from "./routes/automations.js";
+import { createDefaultAutomationEngine } from "./automations/default.js";
+import { automationStore } from "./db/repositories/automations.js";
+import type { AutomationEngine } from "./automations/engine.js";
+import { missionControlRoutes } from "./routes/mission-control.js";
+import { createDefaultMissionControlService } from "./mission-control/default.js";
+import type { MissionControlService } from "./mission-control/service.js";
+import { auditRoutes } from "./routes/audit.js";
+import { createDefaultAuditService } from "./audit/default.js";
+import type { AuditService } from "./audit/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
@@ -136,6 +146,8 @@ declare module "fastify" {
     insightEngine: InsightEngine;
     /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
     planningEngine: PlanningService;
+    /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
+    automationEngine: AutomationEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -224,6 +236,12 @@ export interface BuildAppOptions {
   portfolio?: PortfolioService;
   /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
   planning?: PlanningService;
+  /** #147 automations: tests inject an engine over a fake launcher; default builds the real repo-backed one. */
+  automations?: AutomationEngine;
+  /** #147 mission control: tests inject a read-only service over fakes; default reads the live #25 sessions. */
+  missionControl?: MissionControlService;
+  /** #147 audit trail: tests inject a read-only service over fakes; default reads existing append-only rows. */
+  audit?: AuditService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -553,6 +571,21 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelEngine.stop();
   });
   app.decorate("flywheelEngine", flywheelEngine);
+  // #147 automations: owner-defined scheduled/webhook agent tasks. A default-OFF, kill-switch-gated
+  // tick launches each due automation through the SAME #123 venture-gated launcher a human @mention
+  // uses (so #96/#71 gating + #13-gated sends are inherited), recording a durable run. Run-now + the
+  // public webhook route share `runAutomation`. The timer is opt-in (AUTOMATIONS_INTERVAL_MS, started
+  // in index.ts). Mission control + the audit trail are read-only viewers over existing rows.
+  const automationEngine = opts.automations ?? createDefaultAutomationEngine(app.log, sessionManager);
+  app.register(automationRoutes, { engine: automationEngine, store: automationStore });
+  app.addHook("onClose", async () => {
+    automationEngine.stop();
+  });
+  app.decorate("automationEngine", automationEngine);
+  const missionControl = opts.missionControl ?? createDefaultMissionControlService();
+  app.register(missionControlRoutes, { service: missionControl, sessionManager });
+  const auditService = opts.audit ?? createDefaultAuditService();
+  app.register(auditRoutes, { service: auditService });
   // #106 outcome verifiers: the measured-gate runner. It turns non-code claims (deploy live? revenue
   // real? growth moved? fix held?) into durable `verifier_results` evidence rows via pure verifier
   // modules, and a FAILED verification opens a #13 escalation (never silently passes). It is config

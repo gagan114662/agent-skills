@@ -422,6 +422,23 @@ export const planningSchema = z.object({
   maxDispatchesPerTick: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Automations policy (#147, ADR-0147). All **non-secret** knobs for the scheduled/webhook agent-task
+ * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
+ * nothing fires no scheduled runs (creating automations is still allowed — they simply never tick).
+ * `maxRunsPerWindow`/`windowMinutes` are the per-tenant rate limit; `maxPerWorkspace` caps definitions.
+ */
+export const automationsSchema = z.object({
+  /** The automations-tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on runs launched per workspace inside `windowMinutes` (the rate limit). */
+  maxRunsPerWindow: z.number().int().nonnegative().optional(),
+  /** The rate-limit window, in minutes. */
+  windowMinutes: z.number().int().positive().optional(),
+  /** Hard cap on automation definitions a workspace may create. */
+  maxPerWorkspace: z.number().int().positive().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -471,6 +488,8 @@ export const settingsSchema = z.object({
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
   planning: planningSchema.optional(),
+  /** Automations policy (#147): scheduled/webhook agent tasks + per-tenant run caps (default OFF). */
+  automations: automationsSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -500,6 +519,7 @@ export type MoatConfig = z.infer<typeof moatSchema>;
 export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
+export type AutomationsConfig = z.infer<typeof automationsSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -545,6 +565,8 @@ export interface ResolvedConfig {
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
   planning: PlanningConfig;
+  /** Automations policy (#147). A partial whose hard defaults `resolveAutomationCaps` fills. */
+  automations: AutomationsConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -570,4 +592,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   voice: {},
   portfolio: {},
   planning: {},
+  automations: {},
 };

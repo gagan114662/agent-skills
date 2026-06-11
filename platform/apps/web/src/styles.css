@@ -2910,3 +2910,39 @@ select:focus-visible {
     transform: none;
   }
 }
+
+/* ---- Ona-class agent infrastructure (#147): automations / audit / mission control --------------- */
+.workspace__panel { padding: 24px; overflow-y: auto; max-width: 1100px; margin: 0 auto; width: 100%; }
+.workspace__panel h2 { margin: 0 0 4px; }
+.muted { color: var(--ink-muted, #6b6b72); font-size: 0.85rem; }
+.automations__form {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 16px 0; padding: 12px; border: 1px solid var(--line, #e6e6ea); border-radius: 10px;
+}
+.automations__form input, .automations__form select {
+  padding: 6px 8px; border: 1px solid var(--line, #e6e6ea); border-radius: 8px; font: inherit;
+}
+.automations__form input[type="number"] { width: 64px; }
+.automations__token { margin: 8px 0; padding: 8px 12px; background: var(--paper-2, #f6f6f4); border-radius: 8px; }
+.automations__list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.automations__item {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px; border: 1px solid var(--line, #e6e6ea); border-radius: 10px;
+}
+.automations__actions, .mission__controls { display: flex; gap: 6px; align-items: center; }
+.audit__table, .mission__table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.audit__table th, .audit__table td, .mission__table th, .mission__table td {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line, #e6e6ea); font-size: 0.88rem;
+}
+.audit__table th, .mission__table th { color: var(--ink-muted, #6b6b72); font-weight: 600; }
+.composer__templates { position: relative; margin-bottom: 6px; }
+.template-menu {
+  list-style: none; margin: 4px 0 0; padding: 4px; position: absolute; z-index: 20; bottom: 100%;
+  background: var(--paper, #fff); border: 1px solid var(--line, #e6e6ea); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); min-width: 280px;
+}
+.template-option { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  background: none; border: 0; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.template-option:hover { background: var(--paper-2, #f6f6f4); }
+.template-option__title { font-weight: 600; }
+.template-option__desc { color: var(--ink-muted, #6b6b72); font-size: 0.8rem; }
