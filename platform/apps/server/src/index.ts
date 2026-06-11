@@ -37,6 +37,11 @@ app.verifierRunner.start(env.verifiers.intervalMs);
 // evidence sources and mines them into structured insights for the venture loop. Stopped on close.
 app.insightEngine.start(env.insight.intervalMs);
 
+// #115 product planning loop: start the opt-in tick (PLANNING_INTERVAL_MS; default 0 = off) that
+// re-ranks the backlog, drafts a spec for the top item, and proposes a build session (venture-gated,
+// budget + kill-switch aware). Stopped on server close via buildApp.
+app.planningEngine.start(env.planning.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

@@ -385,6 +385,26 @@ export const portfolioSchema = z.object({
   weightDemand: z.number().nonnegative().optional(),
 });
 
+/**
+ * Product Planning Loop policy (#115, ADR-0115). All **non-secret** knobs for the feedback+metrics →
+ * RICE-ranked backlog → specs → agent sessions loop. Every field is optional and defaults to **off**
+ * (`enabled: false`) so a deployment that sets nothing drafts no specs and proposes no sessions —
+ * recording backlog items + reading the ranked backlog stay available regardless (harmless). `enabled`
+ * gates only the proactive tick. `autoEffortCeiling` is the effort above which an item is an
+ * "over-budget effort" (→ #13 gate); `dispatchCostCents` is the per-dispatch charge against the #71
+ * budget; `maxDispatchesPerTick` bounds proposals per pass.
+ */
+export const planningSchema = z.object({
+  /** The planning-tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Effort (points) above which an item is an "over-budget effort" → #13 gate (never auto). */
+  autoEffortCeiling: z.number().int().nonnegative().optional(),
+  /** Estimated cost (cents) charged to tenant usage per auto-dispatch — the dollar-ceiling input. */
+  dispatchCostCents: z.number().int().nonnegative().optional(),
+  /** Hard cap on auto-dispatches proposed in a single tick (top-ranked first). */
+  maxDispatchesPerTick: z.number().int().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -430,6 +450,8 @@ export const settingsSchema = z.object({
   moat: moatSchema.optional(),
   /** Portfolio Lifecycle Loop policy (#107): launched-venture review thresholds + weights (default OFF). */
   portfolio: portfolioSchema.optional(),
+  /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
+  planning: planningSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -457,6 +479,7 @@ export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
+export type PlanningConfig = z.infer<typeof planningSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -498,6 +521,8 @@ export interface ResolvedConfig {
   moat: MoatConfig;
   /** Portfolio Lifecycle Loop policy (#107). A partial whose hard defaults `resolvePortfolioCaps` fills. */
   portfolio: PortfolioConfig;
+  /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
+  planning: PlanningConfig;
 }
 
 /** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
@@ -521,4 +546,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   insight: {},
   moat: {},
   portfolio: {},
+  planning: {},
 };

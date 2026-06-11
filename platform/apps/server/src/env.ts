@@ -30,6 +30,8 @@ export interface Env {
   verifiers: VerifiersEnv;
   /** Insight Miner scheduled tick (#100). */
   insight: InsightEnv;
+  /** Product Planning Loop scheduled tick (#115). */
+  planning: PlanningEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -157,6 +159,11 @@ export interface InsightEnv {
   intervalMs: number;
 }
 
+export interface PlanningEnv {
+  /** Planning-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #115). */
+  intervalMs: number;
+}
+
 export interface NotifyEnv {
   /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
   webhookUrl?: string;
@@ -269,6 +276,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     insight: {
       // Default 0 (off): the insight-mining loop is opt-in so tests/CI drive `mine()` deterministically.
       intervalMs: Number(source.INSIGHT_INTERVAL_MS ?? 0) || 0,
+    },
+    planning: {
+      // Default 0 (off): the planning loop is opt-in so tests/CI drive `tick()` deterministically.
+      intervalMs: Number(source.PLANNING_INTERVAL_MS ?? 0) || 0,
     },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.

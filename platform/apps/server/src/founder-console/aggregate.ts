@@ -173,6 +173,29 @@ export interface GrowthSnapshot {
   experiments: GrowthExperimentStatusSnapshot[];
 }
 
+/** One ranked backlog item (#115) reduced to what the roadmap pane shows. */
+export interface PlanningItemSnapshot {
+  id: string;
+  title: string;
+  source: string;
+  /** The why-ranked-here evidence link (source_ref). */
+  sourceRef: string;
+  /** The RICE score that earned the rank (computed by the reader off the same pure scorer the routes use). */
+  score: number;
+  /** 1-based rank position. */
+  position: number;
+  status: string;
+  isPivot: boolean;
+  /** A #13 approval is pending for this item's dispatch. */
+  awaitingApproval: boolean;
+}
+
+/** The Product Planning Loop read-struct (#115): the ranked backlog + whether the loop is enabled. */
+export interface PlanningSnapshot {
+  enabled: boolean;
+  items: PlanningItemSnapshot[];
+}
+
 /** One venture's moat roll-up (#103) reduced to what the console pane needs. Mirrors `moat/types.ts`
  * `VentureMoat` minus the per-dimension breakdown (kept local to keep this module pure). */
 export interface MoatVentureSnapshot {
@@ -236,6 +259,8 @@ export interface FounderConsoleInput {
   infraBudgetCeilingCents: number;
   /** The tenant's in-flight cap (#71) for the right-sizing utilization; 0 = unlimited. */
   tenantConcurrency: number;
+  /** Product Planning Loop state (#115) — optional so the console works before the planning loop is wired. */
+  planning?: PlanningSnapshot;
   /** Per-venture moat roll-ups (#103). Optional ⇒ defaults to none (moat unwired). */
   moat?: MoatVentureSnapshot[];
   /** Whether moat stagnation flagging is enabled (#103 `moat.enabled`). Default false. */
@@ -332,6 +357,34 @@ export interface GrowthView {
   externalPostsSubmitted: number;
 }
 
+/** One roadmap row (#115): a ranked backlog item with its why-ranked-here evidence link. */
+export interface PlanningRoadmapItemView {
+  id: string;
+  title: string;
+  source: string;
+  /** The why-ranked-here evidence link (source_ref). */
+  evidenceRef: string;
+  score: number;
+  position: number;
+  status: string;
+  isPivot: boolean;
+  awaitingApproval: boolean;
+}
+
+/** The Product Planning Loop roll-up (#115): the ranked roadmap + lifecycle counts. */
+export interface PlanningView {
+  /** Whether the proactive planning tick is enabled (#115 `planning.enabled`). */
+  enabled: boolean;
+  total: number;
+  proposed: number;
+  specced: number;
+  dispatched: number;
+  /** Items whose dispatch is queued for #13 approval (pivot / over-budget / not #95-allowed). */
+  awaitingApproval: number;
+  /** The ranked backlog, highest RICE first — the roadmap with why-ranked-here links per item. */
+  roadmap: PlanningRoadmapItemView[];
+}
+
 /** Next-window compute-cost projection + right-sizing + infra-ceiling status (#113). */
 export interface CostForecastView {
   /** The window being forecast (next calendar month). */
@@ -426,6 +479,8 @@ export interface FounderConsole {
   selfHealing: SelfHealingView;
   /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
   growth: GrowthView;
+  /** The Product Planning Loop roadmap (#115). Empty when the planning loop is unwired. */
+  planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
   moat: MoatView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
@@ -541,6 +596,30 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     externalPostsSubmitted: growthExperiments.filter((e) => e.hasExternalPost).length,
   };
 
+  // #115 product planning loop: reshape the ranked backlog into the roadmap pane — each row carries its
+  // why-ranked-here evidence link + RICE score. Counting only (the score is computed by the reader off
+  // the same pure scorer the routes use), so this stays pure + deterministic.
+  const planningItems = input.planning?.items ?? [];
+  const planning: PlanningView = {
+    enabled: input.planning?.enabled ?? false,
+    total: planningItems.length,
+    proposed: planningItems.filter((i) => i.status === "proposed").length,
+    specced: planningItems.filter((i) => i.status === "specced").length,
+    dispatched: planningItems.filter((i) => i.status === "dispatched").length,
+    awaitingApproval: planningItems.filter((i) => i.awaitingApproval).length,
+    roadmap: planningItems.map((i) => ({
+      id: i.id,
+      title: i.title,
+      source: i.source,
+      evidenceRef: i.sourceRef,
+      score: i.score,
+      position: i.position,
+      status: i.status,
+      isPivot: i.isPivot,
+      awaitingApproval: i.awaitingApproval,
+    })),
+  };
+
   // #103 moat accrual: surface every tracked venture's moat roll-up and flag the ones that have
   // stopped compounding (zero accrual in the window). The count is always reported; the attention
   // reason is gated on `moatEnabled` (mirrors how #119 evidence recording is always-on but the
@@ -630,6 +709,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
     growth,
+    planning,
     moat,
     portfolio,
     attention: { required: reasons.length > 0, reasons },

@@ -23,6 +23,9 @@ import {
 import { listEvents, listExperiments } from "../db/repositories/growth.js";
 import { resolveGrowthCaps } from "../growth/caps.js";
 import { funnelFromEvents, scoreGrowth } from "../growth/score.js";
+import { listBacklogItems } from "../db/repositories/planning.js";
+import { resolvePlanningCaps } from "../planning/caps.js";
+import { rankBacklog } from "../planning/rice.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -182,6 +185,28 @@ export function createDefaultFounderConsoleService(deps: {
           experiments: experiments.map((x) => ({
             status: x.status,
             hasExternalPost: x.approvalRequestId !== null,
+          })),
+        };
+      },
+    },
+    // #115 planning roadmap pane: read the backlog, rank it off the SAME pure RICE scorer the routes use
+    // (so the console roadmap matches the API), and reshape to the read-struct with the why-ranked-here
+    // evidence link per item. Read-only; `enabled` comes from the resolved planning caps (default OFF).
+    planning: {
+      state: async (workspaceId) => {
+        const ranked = rankBacklog(await listBacklogItems(workspaceId));
+        return {
+          enabled: resolvePlanningCaps(loadConfig(workspaceId).planning).enabled,
+          items: ranked.map((r) => ({
+            id: r.item.id,
+            title: r.item.title,
+            source: r.item.source,
+            sourceRef: r.item.sourceRef,
+            score: r.score,
+            position: r.position,
+            status: r.item.status,
+            isPivot: r.item.isPivot,
+            awaitingApproval: r.item.approvalRequestId !== null,
           })),
         };
       },
