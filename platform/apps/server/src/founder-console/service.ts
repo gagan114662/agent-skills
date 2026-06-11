@@ -12,6 +12,7 @@ import {
   type GrowthSnapshot,
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
+  type ConstitutionSnapshot,
   type VoiceSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
@@ -106,6 +107,11 @@ export interface MoatReader {
   windowDays(workspaceId: string): number;
 }
 
+/** Open constitution violations (#146). Optional — absent ⇒ the console renders a zeroed view. */
+export interface ConstitutionReader {
+  openViolations(workspaceId: string): Promise<ConstitutionSnapshot>;
+}
+
 /** The Customer Voice pane (#114). Optional — absent ⇒ the console renders a zeroed voice view. */
 export interface VoiceReader {
   snapshot(workspaceId: string): Promise<VoiceSnapshot>;
@@ -138,6 +144,8 @@ export interface FounderConsoleDeps {
   forecast: ForecastReader;
   /** Per-venture moat roll-ups (#103) — optional, read-only. */
   moat?: MoatReader;
+  /** Open constitution violations (#146) — optional, read-only. */
+  constitution?: ConstitutionReader;
   /** Customer Voice roll-up (#114) — optional, read-only. */
   voice?: VoiceReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
@@ -174,6 +182,7 @@ export class FounderConsoleService {
       growth,
       planning,
       moat,
+      constitution,
       voice,
       portfolioReviews,
     ] =
@@ -191,6 +200,8 @@ export class FounderConsoleService {
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
+        this.deps.constitution?.openViolations(workspaceId) ??
+          Promise.resolve(undefined),
         this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
@@ -226,6 +237,7 @@ export class FounderConsoleService {
       moat,
       moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
+      constitution,
       voice,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,

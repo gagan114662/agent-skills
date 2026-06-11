@@ -1,4 +1,5 @@
 import type { PersonaScorecard, RubricDimension } from "./rubric.js";
+import type { VentureSegment } from "../constitution/types.js";
 
 /**
  * Typed artifacts for the Venture Loop (#96). These are the loop's structured feedback surfaces —
@@ -31,12 +32,16 @@ export interface IdeaInput {
   insight: string;
   wedge: string;
   marketPath: string;
+  /** Go-to-market segment (#146, Article I). Optional — absent ⇒ the B2B love-gate never bites. */
+  segment?: VentureSegment | null;
 }
 
 /** A persisted idea. */
 export interface VentureIdea extends IdeaInput {
   id: string;
   workspaceId: string;
+  /** Persisted segment is always present as a value (null when not declared). */
+  segment: VentureSegment | null;
   status: IdeaStatus;
   /** The epic task emitted on FUND (null until funded). */
   epicTaskId: string | null;

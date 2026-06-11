@@ -32,6 +32,7 @@ const IDEA_COLS = {
   insight: ventureIdeas.insight,
   wedge: ventureIdeas.wedge,
   marketPath: ventureIdeas.marketPath,
+  segment: ventureIdeas.segment,
   status: ventureIdeas.status,
   epicTaskId: ventureIdeas.epicTaskId,
   createdByMemberId: ventureIdeas.createdByMemberId,
@@ -50,6 +51,7 @@ export async function createIdea(
       insight: input.insight,
       wedge: input.wedge,
       marketPath: input.marketPath,
+      segment: input.segment ?? null,
       createdByMemberId: input.createdByMemberId,
     })
     .returning(IDEA_COLS);

@@ -42,6 +42,41 @@ function ratio(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
+/**
+ * The "paying-intent" classes (#146, Article I): every active class — a stranger who clicked the CTA,
+ * started checkout, joined the waitlist, or paid. A passive `visit` is excluded (it is not intent).
+ * The love-paradigm FUND gate counts distinct unaffiliated signals among these.
+ */
+export const PAYING_INTENT_CLASSES: readonly DemandSignalClass[] = [
+  "cta_click",
+  "checkout_started",
+  "waitlist",
+  "paid",
+] as const;
+
+/**
+ * Count **distinct unaffiliated paying-intent signals** for the love-paradigm gate (#146, Article I).
+ * "Unaffiliated" reuses #101's structural definition — only **externally-attributed** signals (from
+ * outside the building) count; self-generated (circular) evidence never does. "Distinct" dedupes by
+ * `externalRef` (the same stranger acting twice is one signal). `visit` is excluded as passive.
+ * Pure + deterministic.
+ */
+export function countUnaffiliatedPayingIntent(
+  signals: DemandSignal[],
+  classes: readonly DemandSignalClass[] = PAYING_INTENT_CLASSES,
+): number {
+  const allowed = new Set(classes);
+  const refs = new Set<string>();
+  for (const s of signals) {
+    if (!allowed.has(s.signalClass)) continue;
+    if (!isExternallyAttributed(s.provenance)) continue;
+    const ref = s.provenance.attribution.externalRef.trim();
+    if (ref.length === 0) continue; // a blank ref is not attributable to a stranger
+    refs.add(ref);
+  }
+  return refs.size;
+}
+
 /** Aggregate externally-attributed signals into per-stage counts + conversion rates. */
 export function aggregateFunnel(signals: DemandSignal[]): Funnel {
   const counts: FunnelCounts = {

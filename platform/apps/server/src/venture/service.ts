@@ -7,6 +7,10 @@ import {
   overlayDemandDimension,
 } from "../demand/scorecard-evidence.js";
 import type { DemandEvidenceSource } from "../demand/service.js";
+import { evaluateLoveGate } from "../constitution/love-gate.js";
+import { scoreDecision } from "../constitution/scorer.js";
+import type { ConstitutionCaps } from "../constitution/caps.js";
+import type { ConstitutionViolation, DecisionStage } from "../constitution/types.js";
 import { overlayVoiceDimension, voiceDimensionScore } from "../voice/scorecard-evidence.js";
 import type { VoiceEvidenceSource } from "../voice/service.js";
 import type {
@@ -140,6 +144,40 @@ export interface EpicEmitter {
   }): Promise<{ id: string }>;
 }
 
+/**
+ * #146 constitution evidence: the demand-derived facts a decision is scored against, gathered behind one
+ * seam so the pure checks stay pure. All from the #101 demand rails (externally-attributed only).
+ */
+export interface ConstitutionEvidence {
+  /** Distinct unaffiliated (externally-attributed) paying-intent signals for the idea (Article I). */
+  unaffiliatedPayingIntentSignals: number;
+  /** Whether ANY externally-attributed demand evidence exists (Article V). */
+  externalDemandPresent: boolean;
+  /** Whether a realized `paid` signal exists (Article VIII). */
+  paidSignalPresent: boolean;
+}
+
+/**
+ * #146 constitution guard: the optional seam that scores a SOURCE/FUND/KILL decision against the YC
+ * Startup Constitution. Default absent ⇒ the loop is byte-for-byte today's. The ONE verdict-changing
+ * check (Article I love-gate) downgrades FUND → ESCALATE (a human-routed flag, never a silent fund);
+ * every other check is flag-only. `record` persists the violations, surfaces them to the owner, and
+ * feeds the flywheel — it never mutates the decision.
+ */
+export interface ConstitutionGuard {
+  enabled(workspaceId: string): boolean;
+  caps(workspaceId: string): ConstitutionCaps;
+  evidenceFor(workspaceId: string, ideaId: string): Promise<ConstitutionEvidence>;
+  record(input: {
+    workspaceId: string;
+    ideaId: string;
+    stage: DecisionStage;
+    /** The verdict under consideration (or the stage name at SOURCE). */
+    verdict: string;
+    violations: ConstitutionViolation[];
+  }): Promise<void>;
+}
+
 export interface VentureServiceDeps {
   repo: VentureRepo;
   evidence: EvidenceGatherer;
@@ -147,6 +185,12 @@ export interface VentureServiceDeps {
   approvals: ApprovalEnqueuer;
   memory: MemoryRecorder;
   epics: EpicEmitter;
+  /**
+   * #146 constitution enforcement. Default absent ⇒ no decision is scored or gated (default-OFF). When
+   * present and enabled, every SOURCE/FUND/KILL decision is scored; the Article I love-gate can downgrade
+   * a B2B FUND → ESCALATE.
+   */
+  constitution?: ConstitutionGuard;
   /** Per-workspace resolved venture policy (thresholds, reviewer weight, scorecard TTL, cost). */
   caps: (workspaceId: string) => VentureCaps;
   /** Dollar-ceiling meter (#71 tenant usage). Default: a no-op meter (cost 0, never bites). */
@@ -236,6 +280,8 @@ export class VentureService {
   ): Promise<VentureIdea> {
     const idea = await this.deps.repo.createIdea({ ...input, workspaceId, createdByMemberId });
     await this.deps.repo.getOrCreateEvaluation(workspaceId, idea.id);
+    // #146 SOURCE-stage constitution scoring (flag-only — never blocks intake).
+    await this.scoreConstitutionAtSource(workspaceId, idea);
     return idea;
   }
 
@@ -325,6 +371,15 @@ export class VentureService {
       thresholds,
     });
 
+    // #146 constitution overlay: score the decision against the Articles and (for the Article I
+    // love-gate only) downgrade the verdict. The final verdict drives every write below.
+    const { verdict, reasoning } = await this.applyConstitutionAtDecide(
+      workspaceId,
+      idea,
+      decision.verdict,
+      decision.reasoning,
+    );
+
     const evidence = await this.deps.evidence.gather(idea);
     const gapList: GapList = {
       gaps: proposedAngles.map((d) => ({ dimension: d, note: `strengthen ${d}` })),
@@ -334,32 +389,27 @@ export class VentureService {
       ideaId,
       iteration: sc.iteration,
       score: sc.score,
-      verdict: decision.verdict,
+      verdict,
       gapList,
       angles: proposedAngles,
       evidence,
-      workingMemorySummary: decision.reasoning,
+      workingMemorySummary: reasoning,
     });
-    await this.deps.repo.setScorecardVerdict(
-      workspaceId,
-      sc.id,
-      decision.verdict,
-      decision.verdict === "FUND",
-    );
+    await this.deps.repo.setScorecardVerdict(workspaceId, sc.id, verdict, verdict === "FUND");
     await this.persistEvaluationProgress(
       workspaceId,
       evaluation,
       sc,
-      decision.verdict,
+      verdict,
       proposedAngles,
       failedAngles,
     );
-    await this.applyVerdict(workspaceId, idea, sc.score, decision.verdict, decision.reasoning);
+    await this.applyVerdict(workspaceId, idea, sc.score, verdict, reasoning);
 
     return {
-      verdict: decision.verdict,
-      reasoning: decision.reasoning,
-      scorecard: { ...sc, verdict: decision.verdict, funded: decision.verdict === "FUND" },
+      verdict,
+      reasoning,
+      scorecard: { ...sc, verdict, funded: verdict === "FUND" },
     };
   }
 
@@ -456,6 +506,86 @@ export class VentureService {
     const latestScorecard = (await this.deps.repo.latestScorecard(workspaceId, ideaId)) ?? null;
     const iterations = await this.deps.repo.listIterations(workspaceId, ideaId);
     return { idea, latestScorecard, iterations };
+  }
+
+  /**
+   * #146 SOURCE-stage constitution scoring. Flag-only — records any early-warning violations (e.g. a
+   * B2B idea sourced with no demand evidence yet) but never blocks intake. No-op when the guard is
+   * absent or disabled (default-OFF).
+   */
+  private async scoreConstitutionAtSource(workspaceId: string, idea: VentureIdea): Promise<void> {
+    const guard = this.deps.constitution;
+    if (!guard || !guard.enabled(workspaceId)) return;
+    const caps = guard.caps(workspaceId);
+    const ev = await guard.evidenceFor(workspaceId, idea.id);
+    const { violations } = scoreDecision(
+      {
+        stage: "SOURCE",
+        segment: idea.segment,
+        unaffiliatedPayingIntentSignals: ev.unaffiliatedPayingIntentSignals,
+        externalDemandPresent: ev.externalDemandPresent,
+        paidSignalPresent: ev.paidSignalPresent,
+      },
+      caps,
+    );
+    if (violations.length > 0) {
+      await guard.record({ workspaceId, ideaId: idea.id, stage: "SOURCE", verdict: "SOURCE", violations });
+    }
+  }
+
+  /**
+   * #146 FUND/KILL-stage constitution overlay. Runs the Article I love-gate (the ONLY check that
+   * changes a verdict — downgrades a B2B FUND lacking love evidence to ESCALATE, routing it to a
+   * human) and the deterministic scorer (flag-only), records the violations, and returns the final
+   * verdict + reasoning. No-op (returns the base verdict unchanged) when the guard is absent/disabled
+   * or the verdict is not a FUND/KILL decision.
+   */
+  private async applyConstitutionAtDecide(
+    workspaceId: string,
+    idea: VentureIdea,
+    baseVerdict: Verdict,
+    baseReasoning: string,
+  ): Promise<{ verdict: Verdict; reasoning: string }> {
+    const guard = this.deps.constitution;
+    if (!guard || !guard.enabled(workspaceId)) return { verdict: baseVerdict, reasoning: baseReasoning };
+    const stage: DecisionStage | null =
+      baseVerdict === "FUND" ? "FUND" : baseVerdict === "KILL" ? "KILL" : null;
+    if (!stage) return { verdict: baseVerdict, reasoning: baseReasoning };
+
+    const caps = guard.caps(workspaceId);
+    const ev = await guard.evidenceFor(workspaceId, idea.id);
+
+    const love = evaluateLoveGate({
+      enabled: caps.enabled,
+      verdict: baseVerdict,
+      segment: idea.segment,
+      unaffiliatedPayingIntentSignals: ev.unaffiliatedPayingIntentSignals,
+      minSignals: caps.loveMinSignals,
+      stage: "FUND",
+    });
+    const finalVerdict: Verdict = love.gated ? "ESCALATE" : baseVerdict;
+
+    const { violations } = scoreDecision(
+      {
+        stage,
+        segment: idea.segment,
+        unaffiliatedPayingIntentSignals: ev.unaffiliatedPayingIntentSignals,
+        externalDemandPresent: ev.externalDemandPresent,
+        paidSignalPresent: ev.paidSignalPresent,
+      },
+      caps,
+    );
+    if (violations.length > 0) {
+      await guard.record({ workspaceId, ideaId: idea.id, stage, verdict: baseVerdict, violations });
+    }
+
+    const reasoning = love.gated
+      ? `${baseReasoning} — Article I love-paradigm gate: a B2B venture cannot FUND without ` +
+        `≥${caps.loveMinSignals} unaffiliated paying-intent signals (found ` +
+        `${ev.unaffiliatedPayingIntentSignals}); escalating to a human instead of funding`
+      : baseReasoning;
+
+    return { verdict: finalVerdict, reasoning };
   }
 
   /** Persist the durable loop cursor after a decision: advance + remember failed angles on ITERATE,
