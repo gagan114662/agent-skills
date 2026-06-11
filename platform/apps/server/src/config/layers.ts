@@ -46,6 +46,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // seed-on-signup flag cannot be flipped on/off by a lower layer.
     if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
+    // #106 verifiers policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // verifier flag / "no silent pass" escalation rail cannot be loosened by a lower layer.
+    if (layer.verifiers !== undefined) out.verifiers = { ...layer.verifiers };
   }
   return out;
 }
@@ -74,5 +77,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
+    verifiers: merged.verifiers ?? { ...CONFIG_DEFAULTS.verifiers },
   };
 }

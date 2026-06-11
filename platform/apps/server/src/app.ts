@@ -74,6 +74,9 @@ import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
+import type { VerifierRunner } from "./verifiers/engine.js";
+import { createDefaultVerifierRunner } from "./verifiers/default.js";
+import { verifierRoutes } from "./routes/verifiers.js";
 import { cloudWorkspaceRoutes } from "./routes/cloud-workspaces.js";
 import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
@@ -104,6 +107,8 @@ declare module "fastify" {
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
     flywheelEngine: FlywheelEngine;
+    /** The #106 outcome-verifier runner; `index.ts` starts its opt-in tick (VERIFIERS_INTERVAL_MS). */
+    verifierRunner: VerifierRunner;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -168,6 +173,8 @@ export interface BuildAppOptions {
   sre?: SreEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
+  /** #106 outcome verifiers: tests inject a runner and drive `verify`/`tickWorkspace()`; default builds the real one. */
+  verifiers?: VerifierRunner;
   /**
    * #104 founder console: tests inject a read-only aggregation service over fakes; default builds one
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
@@ -420,6 +427,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.decorate("sreEngine", sreEngine);
   app.register(sreRoutes);
+  // #106 outcome verifiers: read-only surface for a workspace's durable verification verdicts.
+  app.register(verifierRoutes);
   // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action
   // experiment. It reads the trailing window of #13 decision outcomes per action class (recorded into
   // gate_evidence on every approve/reject) and, with structural hysteresis, RELAXes a clean reversible
@@ -442,6 +451,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelEngine.stop();
   });
   app.decorate("flywheelEngine", flywheelEngine);
+  // #106 outcome verifiers: the measured-gate runner. It turns non-code claims (deploy live? revenue
+  // real? growth moved? fix held?) into durable `verifier_results` evidence rows via pure verifier
+  // modules, and a FAILED verification opens a #13 escalation (never silently passes). It is config
+  // default-OFF (`verifiers.enabled`) + the timer is opt-in (VERIFIERS_INTERVAL_MS, started in
+  // index.ts), so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  const verifierRunner = opts.verifiers ?? createDefaultVerifierRunner(app.log);
+  app.addHook("onClose", async () => {
+    verifierRunner.stop();
+  });
+  app.decorate("verifierRunner", verifierRunner);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
