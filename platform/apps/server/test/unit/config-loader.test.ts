@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { loadConfig, mergeLayers, type ConfigSources } from "../../src/config/loader.js";
 import { CONFIG_DEFAULTS } from "../../src/config/schema.js";
+import { resolveScaleCaps } from "../../src/scale/caps.js";
 
 /**
  * File-backed config layering (#58). Precedence is **env < user < repo < managed** (managed is the
@@ -201,6 +202,48 @@ describe("env layer parsing (#58)", () => {
       managedPath: "/etc/reload/managed.toml",
     });
     expect(cfg.marketing.enabled).toBe(false);
+  });
+});
+
+describe("trial free-tier caps (default-ON — the product's free tier)", () => {
+  it("default-ON: a workspace with no plan/config gets usable trial caps (concurrency 1, budget 500)", () => {
+    // Unlike every other config block (which defaults OFF), the scale free-tier is ON by default so a
+    // fresh/owner workspace can run agents BEFORE checkout is wired (ADR-0147). 0 caps = "unlimited" in
+    // admission, so the bug was the *absence* of a usable tier, not a too-low one.
+    const cfg = loadConfig(undefined, { env: {}, readFile: () => undefined });
+    expect(cfg.scale).toEqual({ tenantConcurrency: 1, budgetCents: 500 });
+    // The fleet-wide ceiling is NOT a trial concern — it stays unset (env default / unlimited).
+    expect(cfg.scale.globalConcurrency).toBeUndefined();
+  });
+
+  it("RELOAD_TRIAL_TENANT_CONCURRENCY / RELOAD_TRIAL_BUDGET_CENTS tune the free tier", () => {
+    const cfg = loadConfig(undefined, {
+      env: { RELOAD_TRIAL_TENANT_CONCURRENCY: "3", RELOAD_TRIAL_BUDGET_CENTS: "2000" },
+      readFile: () => undefined,
+    });
+    expect(cfg.scale).toEqual({ tenantConcurrency: 3, budgetCents: 2000 });
+  });
+
+  it("RELOAD_TRIAL_ENABLED=false turns the free tier off (back to today's unlimited default)", () => {
+    const cfg = loadConfig(undefined, {
+      env: { RELOAD_TRIAL_ENABLED: "false" },
+      readFile: () => undefined,
+    });
+    expect(cfg.scale).toEqual({}); // no trial block → resolveScaleCaps yields 0 = unlimited
+    expect(resolveScaleCaps(cfg.scale).tenantConcurrency).toBe(0);
+  });
+
+  it("a managed per-tenant [scale] fully REPLACES the trial caps (a paid plan wins, like every block)", () => {
+    // When checkout→caps is wired it writes a per-tenant managed [workspace.<id>.scale]; the replace
+    // semantics mean the paying tenant escapes the trial cap automatically (the same mechanism used to
+    // unblock the owner workspace on prod today).
+    const managed = `[workspace.ws_paid.scale]\ntenantConcurrency = 10\nbudgetCents = 100000`;
+    const paid = loadConfig("ws_paid", sources({ managed }));
+    expect(paid.scale).toEqual({ tenantConcurrency: 10, budgetCents: 100000 });
+
+    // A different tenant with no managed override keeps the trial free tier.
+    const free = loadConfig("ws_free", sources({ managed }));
+    expect(free.scale).toEqual({ tenantConcurrency: 1, budgetCents: 500 });
   });
 });
 

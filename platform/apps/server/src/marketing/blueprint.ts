@@ -190,3 +190,58 @@ export function departmentForHandle(handle: string): MarketingDepartment | undef
 export function isExternalSendDepartment(key: string): boolean {
   return EXTERNAL_SEND_DEPARTMENTS.includes(key);
 }
+
+/**
+ * Article IV — Do Things That Don't Scale (#146, ADR-0146). Manual-first, founder-led user-acquisition
+ * task templates: the Collison install (personally set the product up for each of your first users),
+ * hand-written one-to-one outreach, and concierge onboarding. The fleet **drafts** these — every agent
+ * carries only {@link DRAFT_TOOLS}, so anything that leaves the building still routes through the #13
+ * `external.send` approval gate (`marketing/external-send.ts`). These are templates an operator (or an
+ * @mention) assigns; they deliberately do NOT auto-seed a new channel (default-safe), and every brief
+ * reiterates the draft-only, approval-gated contract.
+ */
+export interface UnscalableOpsTemplate {
+  key: string;
+  title: string;
+  /** The agent department best suited to draft it. */
+  department: string;
+  /** The task brief handed to a draft-only agent. */
+  brief: string;
+}
+
+const APPROVAL_FOOTER =
+  "Produce personalised DRAFTS only — one per person, in-channel — and STOP. Nothing is sent, posted, " +
+  "or spent until a human approves it through the #13 queue; never claim an outreach went out.";
+
+export const UNSCALABLE_OPS_TEMPLATES: readonly UnscalableOpsTemplate[] = [
+  {
+    key: "manual_recruit",
+    title: "Recruit the first users by hand",
+    department: "social",
+    brief:
+      "List 10 ideal first users by name with the specific reason each is a fit, then draft a warm, " +
+      `individually-tailored one-to-one outreach message for every one of them (no template blast). ${APPROVAL_FOOTER}`,
+  },
+  {
+    key: "collison_install",
+    title: "Collison install — set the product up for them",
+    department: "content",
+    brief:
+      "For each of the first 5 sign-ups, draft a personal offer to set the product up FOR them — a " +
+      "concierge onboarding plan (what we'll configure, the data we'd import, the 15-minute call) plus " +
+      `the exact message proposing it. Manual, high-touch, one user at a time. ${APPROVAL_FOOTER}`,
+  },
+  {
+    key: "concierge_followup",
+    title: "Hand-written follow-ups to early users",
+    department: "email",
+    brief:
+      "For each active early user, draft a short, specific, hand-written-feeling follow-up referencing " +
+      `what they actually did in the product, asking the one question that uncovers whether they love it. ${APPROVAL_FOOTER}`,
+  },
+];
+
+/** The Article IV unscalable-ops task templates (manual-first user acquisition). */
+export function unscalableOpsTemplates(): readonly UnscalableOpsTemplate[] {
+  return UNSCALABLE_OPS_TEMPLATES;
+}

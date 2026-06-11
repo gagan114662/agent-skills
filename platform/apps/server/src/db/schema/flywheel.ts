@@ -25,6 +25,8 @@ export const FAILURE_CLASSES = [
   "watchdog_revival",
   "slo_breach",
   "venture_error",
+  // #146: constitution violations are fingerprinted like any other failure (no DB CHECK on the column).
+  "constitution_violation",
 ] as const;
 
 export const failureFingerprints = pgTable(

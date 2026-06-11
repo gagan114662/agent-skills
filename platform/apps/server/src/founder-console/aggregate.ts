@@ -284,6 +284,8 @@ export interface FounderConsoleInput {
   moatEnabled?: boolean;
   /** The moat stagnation window in days (#103), for the attention message. Default 30. */
   moatWindowDays?: number;
+  /** Open constitution violations (#146). Optional ⇒ none (enforcement off / unwired). */
+  constitution?: ConstitutionSnapshot;
   /** Customer Voice roll-up (#114) — optional so the console works before the voice loop is wired. */
   voice?: VoiceSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
@@ -443,6 +445,18 @@ export interface MoatView {
   flagged: MoatVentureView[];
 }
 
+/** Open constitution violations (#146) the owner should review. */
+export interface ConstitutionSnapshot {
+  openViolations: number;
+  /** The distinct violation codes present, for the attention message. */
+  topCodes: string[];
+}
+
+export interface ConstitutionView {
+  openViolations: number;
+  topCodes: string[];
+}
+
 /** The Customer Voice roll-up (#114): the support inbox + churn/NPS pulse. Zeroed when voice is unwired. */
 export interface VoiceView {
   ticketsNeedingHuman: number;
@@ -512,6 +526,8 @@ export interface FounderConsole {
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
   moat: MoatView;
+  /** Open constitution violations (#146). Zero-valued when enforcement is off / unwired. */
+  constitution: ConstitutionView;
   /** The Customer Voice roll-up (#114). Zero-valued when the voice loop is unwired. */
   voice: VoiceView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
@@ -671,6 +687,13 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     })),
   };
 
+  // #146 constitution: surface the count of open (un-acknowledged) violations. Flag-only — these are
+  // heuristics, not physics; the owner reviews and decides. Always reported; zero when unwired/off.
+  const constitution: ConstitutionView = {
+    openViolations: input.constitution?.openViolations ?? 0,
+    topCodes: input.constitution?.topCodes ?? [],
+  };
+
   // #114 customer voice: the post-launch support inbox + churn/NPS pulse. Zeroed when unwired so the
   // console renders before the voice loop is configured. Tickets needing a human are an attention reason
   // (talking to users is the irreducible human work the premortem is about).
@@ -727,6 +750,9 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
       `${pluralize(moat.flaggedStagnant, "venture")} with stagnant moat (no accrual in ${moatWindowDays}d)`,
     );
   }
+  if (constitution.openViolations > 0) {
+    reasons.push(`${pluralize(constitution.openViolations, "constitution violation")} flagged`);
+  }
   if (voice.ticketsNeedingHuman > 0) {
     reasons.push(`${pluralize(voice.ticketsNeedingHuman, "support ticket")} need a human`);
   }
@@ -757,6 +783,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     growth,
     planning,
     moat,
+    constitution,
     voice,
     portfolio,
     attention: { required: reasons.length > 0, reasons },

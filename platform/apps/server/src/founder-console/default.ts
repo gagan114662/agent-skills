@@ -27,6 +27,7 @@ import { funnelFromEvents, scoreGrowth } from "../growth/score.js";
 import { listBacklogItems } from "../db/repositories/planning.js";
 import { resolvePlanningCaps } from "../planning/caps.js";
 import { rankBacklog } from "../planning/rice.js";
+import { listOpenViolations } from "../db/repositories/constitution.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -234,6 +235,14 @@ export function createDefaultFounderConsoleService(deps: {
           windowDays: (workspaceId) => resolveMoatCaps(loadConfig(workspaceId).moat).stagnationWindowDays,
         }
       : undefined,
+    // #146 constitution: surface the count of open (un-acknowledged) violations for the attention list.
+    // Read-only over the durable feed the venture-loop sink writes; the top codes drive the message.
+    constitution: {
+      openViolations: async (workspaceId) => {
+        const open = await listOpenViolations(workspaceId);
+        return { openViolations: open.length, topCodes: [...new Set(open.map((v) => v.code))] };
+      },
+    },
     // #114 customer voice: the support inbox + churn/NPS pulse, computed off the SAME pure digest the
     // route uses (so the console + API never disagree). Read-only.
     voice: voice

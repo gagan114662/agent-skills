@@ -464,6 +464,24 @@ export const rbacSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+/**
+ * YC Startup Constitution policy (#146, ADR-0146). All **non-secret** knobs for the enforced
+ * constitution. Every field is optional and defaults to **off** (`enabled: false`) so a deployment
+ * that sets nothing keeps today's behavior — no venture decision is scored or gated.
+ */
+export const constitutionSchema = z.object({
+  /** Master flag for constitution scoring + the Article I love-gate — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Article I: minimum distinct unaffiliated paying-intent signals a B2B venture needs to FUND. */
+  loveMinSignals: z.number().int().nonnegative().optional(),
+  /** Article VIII pricing ladder: coarse increment (%) when deal-loss is low. */
+  pricingCoarseStepPct: z.number().min(0).max(100).optional(),
+  /** Article VIII pricing ladder: fine increment (%) as deal-loss approaches the ceiling. */
+  pricingFineStepPct: z.number().min(0).max(100).optional(),
+  /** Article VIII pricing ladder: deal-loss (%) at/above which the ladder holds and flags. */
+  pricingDealLossCeilingPct: z.number().min(0).max(100).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -519,6 +537,8 @@ export const settingsSchema = z.object({
   egress: egressSchema.optional(),
   /** Teams/RBAC policy (#151): enforce workspace roles on approval clearing (default OFF). */
   rbac: rbacSchema.optional(),
+  /** YC Startup Constitution policy (#146): decision scoring + Article I love-gate (default OFF). */
+  constitution: constitutionSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -551,6 +571,19 @@ export type PlanningConfig = z.infer<typeof planningSchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
 export type EgressConfig = z.infer<typeof egressSchema>;
 export type RbacConfig = z.infer<typeof rbacSchema>;
+export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
+
+/**
+ * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
+ * its own `[scale]` (#147, ADR-0147). **Deliberately ON by default** — the one config block that is
+ * not opt-in — because checkout→caps is not wired yet and a workspace with NO usable tier cannot run
+ * agents at all (a fresh/owner workspace would be dead on arrival). `tenantConcurrency: 1` is a real,
+ * usable ceiling (one live session at a time); `budgetCents: 500` is a $5/window soft cap that only
+ * bites once a `computeRateCentsPerMinute` is configured (rate defaults to 0 → cost 0 → never bites),
+ * so it is a forward-looking guardrail, not a blocker. Tunable via `RELOAD_TRIAL_*` (the env base
+ * layer); any higher layer that sets `[scale]` (a paid plan's managed override) fully replaces it.
+ */
+export const TRIAL_SCALE_DEFAULTS = { tenantConcurrency: 1, budgetCents: 500 } as const;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
 export interface ResolvedConfig {
@@ -602,9 +635,15 @@ export interface ResolvedConfig {
   egress: EgressConfig;
   /** Teams/RBAC policy (#151). A partial whose defaults `resolveRbacConfig` fills. */
   rbac: RbacConfig;
+  /** YC Startup Constitution policy (#146). A partial whose hard defaults `resolveConstitutionCaps` fills. */
+  constitution: ConstitutionConfig;
 }
 
-/** Lowest layer: the built-in defaults (today's behavior — privacy off, no files, local ws root). */
+/**
+ * Lowest layer: the built-in defaults (privacy off, no files, local ws root). One intentional
+ * exception to "every block defaults off": `scale` carries the trial free tier ({@link TRIAL_SCALE_DEFAULTS},
+ * #147) so a fresh workspace can run agents before checkout is wired.
+ */
 export const CONFIG_DEFAULTS: ResolvedConfig = {
   dataPrivacyMode: false,
   filesToCopy: [],
@@ -613,7 +652,8 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   mcpServers: {},
   skills: [],
   models: {},
-  scale: {},
+  // #147: the trial free tier is the built-in baseline (default-ON), not an empty/unlimited block.
+  scale: { ...TRIAL_SCALE_DEFAULTS },
   venture: {},
   watchdog: {},
   sre: {},
@@ -630,4 +670,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   credentialScopes: {},
   egress: {},
   rbac: {},
+  constitution: {},
 };

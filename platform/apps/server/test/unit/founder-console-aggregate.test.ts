@@ -313,6 +313,21 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(out.postmortems.map((p) => p.incidentId)).toEqual(["i2", "i1"]);
   });
 
+  it("zeroes the constitution view and stays quiet when none are supplied (#146)", () => {
+    const out = aggregateFounderConsole(input());
+    expect(out.constitution).toEqual({ openViolations: 0, topCodes: [] });
+    expect(out.attention.reasons).not.toContain("1 constitution violation flagged");
+  });
+
+  it("flags open constitution violations on the attention list (#146)", () => {
+    const out = aggregateFounderConsole(
+      input({ constitution: { openViolations: 2, topCodes: ["love_paradigm_unmet", "funded_on_synthetic_demand"] } }),
+    );
+    expect(out.constitution.openViolations).toBe(2);
+    expect(out.attention.required).toBe(true);
+    expect(out.attention.reasons).toContain("2 constitution violations flagged");
+  });
+
   it("zeroes the portfolio pane when no reviews are supplied (#107)", () => {
     const out = aggregateFounderConsole(input());
     expect(out.portfolio).toMatchObject({ enabled: false, reviewed: 0, sunset: 0, ventures: [] });

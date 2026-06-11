@@ -76,6 +76,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #151 rbac policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // role enforcement cannot be turned off by a lower layer.
     if (layer.rbac !== undefined) out.rbac = { ...layer.rbac };
+    // #146 constitution policy: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's constitution flag / thresholds cannot be loosened (e.g. enforcement turned off) by a
+    // lower layer.
+    if (layer.constitution !== undefined) out.constitution = { ...layer.constitution };
   }
   return out;
 }
@@ -114,5 +118,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     credentialScopes: merged.credentialScopes ?? { ...CONFIG_DEFAULTS.credentialScopes },
     egress: merged.egress ?? { ...CONFIG_DEFAULTS.egress },
     rbac: merged.rbac ?? { ...CONFIG_DEFAULTS.rbac },
+    constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
   };
 }
