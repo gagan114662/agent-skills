@@ -285,6 +285,20 @@ export const marketingSchema = z.object({
 });
 
 /**
+ * Growth-loop policy (#102, ADR-0102). All **non-secret** knobs for the distribution-instrumentation
+ * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
+ * nothing surfaces a zeroed growth pane and proposes nothing proactively — event ingest via the API is
+ * always available regardless (recording is harmless). `minTrafficForScore` is the acquisition floor
+ * below which a funnel score is forced to 0 (a high rate off a handful of visitors is noise).
+ */
+export const growthSchema = z.object({
+  /** The growth-loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Acquisition count below which the growth score is forced to 0 (not enough signal). */
+  minTrafficForScore: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -363,6 +377,8 @@ export const settingsSchema = z.object({
   flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
+  /** Growth-loop policy (#102): distribution instrumentation + funnel scoring (default OFF). */
+  growth: growthSchema.optional(),
   /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
   insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
@@ -389,6 +405,7 @@ export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
+export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 
@@ -422,6 +439,8 @@ export interface ResolvedConfig {
   flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
+  /** Growth-loop policy (#102). A partial whose hard defaults `resolveGrowthCaps` fills. */
+  growth: GrowthConfig;
   /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
   insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
@@ -444,6 +463,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   gatePricing: {},
   flywheel: {},
   marketing: {},
+  growth: {},
   insight: {},
   moat: {},
 };
