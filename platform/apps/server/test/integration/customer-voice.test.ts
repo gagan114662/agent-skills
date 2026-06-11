@@ -171,6 +171,23 @@ describe("Customer Voice Loop (#114 — real Postgres + Redis, inbound-only, no 
     expect(scored.json().reasoning).toContain("customer-voice signal");
   });
 
+  it("webhook validates input: malformed ventureIdeaId and bad npsScore are 400 (not a 500 from the DB)", async () => {
+    const app = await startApp();
+    const w = await seed(app);
+
+    const badIdea = JSON.stringify({ kind: "support", channel: "email", sourceRef: `m-${newId()}`, body: "hi", ventureIdeaId: "not-a-uuid" });
+    const r1 = await app.inject({ method: "POST", url: `/voice/webhook/${w.workspaceId}`, headers: signed(badIdea), payload: badIdea });
+    expect(r1.statusCode).toBe(400);
+
+    const badNps = JSON.stringify({ kind: "nps", sourceRef: `n-${newId()}`, text: "x", npsScore: 42 });
+    const r2 = await app.inject({ method: "POST", url: `/voice/webhook/${w.workspaceId}`, headers: signed(badNps), payload: badNps });
+    expect(r2.statusCode).toBe(400);
+
+    const missingNps = JSON.stringify({ kind: "nps", sourceRef: `n2-${newId()}`, text: "x" });
+    const r3 = await app.inject({ method: "POST", url: `/voice/webhook/${w.workspaceId}`, headers: signed(missingNps), payload: missingNps });
+    expect(r3.statusCode).toBe(400);
+  });
+
   it("webhook is disabled (503) when no voice secret is configured", async () => {
     const app = buildApp({ voice: createDefaultCustomerVoiceService(new StaticSecretsResolver({})) });
     apps.push(app);

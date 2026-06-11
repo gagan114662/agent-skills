@@ -25,6 +25,8 @@ const FEEDBACK_KINDS: readonly Exclude<VoiceSourceKind, "support_ticket">[] = [
   "nps",
 ];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions): Promise<void> {
   const { service } = opts;
 
@@ -59,7 +61,15 @@ export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions
       const kind = String(payload.kind ?? "");
       const sourceRef = typeof payload.sourceRef === "string" ? payload.sourceRef.trim() : "";
       if (!sourceRef) return reply.code(400).send({ error: "sourceRef is required" });
-      const ventureIdeaId = typeof payload.ventureIdeaId === "string" ? payload.ventureIdeaId : null;
+      // Validate ventureIdeaId as a UUID before it reaches the DB (a malformed value would otherwise be a
+      // 500 on the uuid column / FK lookup). Absent/null is fine (the signal is workspace-level).
+      let ventureIdeaId: string | null = null;
+      if (payload.ventureIdeaId !== undefined && payload.ventureIdeaId !== null) {
+        if (typeof payload.ventureIdeaId !== "string" || !UUID_RE.test(payload.ventureIdeaId)) {
+          return reply.code(400).send({ error: "ventureIdeaId must be a UUID" });
+        }
+        ventureIdeaId = payload.ventureIdeaId;
+      }
 
       try {
         if (kind === "support") {
@@ -77,7 +87,17 @@ export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions
             .send({ ticketId: result.ticket.id, insightId: result.insight.id, deduped: result.deduped });
         }
         if ((FEEDBACK_KINDS as readonly string[]).includes(kind)) {
-          const npsScore = typeof payload.npsScore === "number" ? payload.npsScore : null;
+          // An NPS signal must carry a valid 0–10 integer score (it drives the classifier band and the
+          // nps_score CHECK). Validate here so a bad value is a 400, not a 500 from the DB constraint.
+          let npsScore: number | null = null;
+          if (kind === "nps") {
+            if (typeof payload.npsScore !== "number" || !Number.isInteger(payload.npsScore) || payload.npsScore < 0 || payload.npsScore > 10) {
+              return reply.code(400).send({ error: "npsScore must be an integer between 0 and 10 for an nps signal" });
+            }
+            npsScore = payload.npsScore;
+          } else if (typeof payload.npsScore === "number" && Number.isInteger(payload.npsScore) && payload.npsScore >= 0 && payload.npsScore <= 10) {
+            npsScore = payload.npsScore;
+          }
           const result = await service.ingestFeedback({
             workspaceId: wid,
             sourceKind: kind as Exclude<VoiceSourceKind, "support_ticket">,

@@ -104,7 +104,8 @@ export interface CreateInsightInput {
 /** Persistence seam for `voice_insight` evidence rows. `create` dedupes on `(workspace, sourceKind, sourceRef)`. */
 export interface InsightStore {
   create(input: CreateInsightInput): Promise<{ insight: VoiceInsight; deduped: boolean }>;
-  list(workspaceId: string, ventureIdeaId?: string): Promise<VoiceInsight[]>;
+  /** List insights, optionally scoped to one idea and/or to those created at/after `createdAfter`. */
+  list(workspaceId: string, opts?: { ventureIdeaId?: string; createdAfter?: Date }): Promise<VoiceInsight[]>;
   listForIdea(workspaceId: string, ventureIdeaId: string): Promise<VoiceInsight[]>;
 }
 
@@ -312,7 +313,10 @@ export class CustomerVoiceService {
   ): Promise<{ approvalRequestId: string; status: TicketStatus }> {
     const ticket = await this.deps.tickets.get(workspaceId, ticketId);
     if (!ticket) throw new VoiceNotFoundError();
-    if (ticket.status === "replied" || ticket.status === "closed") {
+    // A ticket already awaiting approval has a PENDING #13 request; submitting again would overwrite
+    // `replyApprovalRequestId` and orphan that request forever (approvals never expire). Block it — the
+    // human must resolve (approve/reject) the outstanding request before another reply is drafted.
+    if (ticket.status === "awaiting_approval" || ticket.status === "replied" || ticket.status === "closed") {
       throw new VoiceStateError(`ticket is ${ticket.status} — cannot submit a new reply`);
     }
     const descriptor = buildVoiceReply({ summary: summarize(replyBody, 120), target: ticket.contact ?? undefined });
@@ -349,17 +353,17 @@ export class CustomerVoiceService {
 
   /** The churn/NPS roll-up over the workspace's insights (optionally scoped to one venture idea). */
   async metrics(workspaceId: string, ventureIdeaId?: string): Promise<VoiceMetrics> {
-    const insights = await this.deps.insights.list(workspaceId, ventureIdeaId);
+    const insights = await this.deps.insights.list(workspaceId, { ventureIdeaId });
     return aggregateVoiceMetrics(insights);
   }
 
-  /** The weekly voice-of-customer digest: metrics over the configured window + the human-attention count. */
+  /** The weekly voice-of-customer digest: metrics over the configured window + the human-attention count.
+   * The window is filtered in the store (createdAfter) so the digest never loads the full history. */
   async digest(workspaceId: string): Promise<VoiceDigest> {
     const caps = this.deps.caps(workspaceId);
     const windowDays = caps.digestWindowDays;
-    const cutoff = this.now().getTime() - windowDays * 24 * 60 * 60 * 1000;
-    const all = await this.deps.insights.list(workspaceId);
-    const windowed = all.filter((i) => i.createdAt.getTime() >= cutoff);
+    const createdAfter = new Date(this.now().getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const windowed = await this.deps.insights.list(workspaceId, { createdAfter });
     const metrics = aggregateVoiceMetrics(windowed);
     const needingHuman = await this.needingHuman(workspaceId);
     return buildVoiceDigest({ windowDays, metrics, ticketsNeedingHuman: needingHuman.length });

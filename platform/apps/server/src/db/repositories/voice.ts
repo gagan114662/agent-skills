@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "../index.js";
 import { newId } from "../id.js";
 import { supportTickets, voiceInsights } from "../schema/index.js";
@@ -164,11 +164,15 @@ export const dbInsightStore: InsightStore = {
     return { insight: existing as VoiceInsight, deduped: true };
   },
 
-  async list(workspaceId, ventureIdeaId) {
-    const where = ventureIdeaId
-      ? and(eq(voiceInsights.workspaceId, workspaceId), eq(voiceInsights.ventureIdeaId, ventureIdeaId))
-      : eq(voiceInsights.workspaceId, workspaceId);
-    const rows = await db.select(INSIGHT_COLS).from(voiceInsights).where(where).orderBy(desc(voiceInsights.createdAt));
+  async list(workspaceId, opts) {
+    const filters = [eq(voiceInsights.workspaceId, workspaceId)];
+    if (opts?.ventureIdeaId) filters.push(eq(voiceInsights.ventureIdeaId, opts.ventureIdeaId));
+    if (opts?.createdAfter) filters.push(gte(voiceInsights.createdAt, opts.createdAfter));
+    const rows = await db
+      .select(INSIGHT_COLS)
+      .from(voiceInsights)
+      .where(and(...filters))
+      .orderBy(desc(voiceInsights.createdAt));
     return rows as VoiceInsight[];
   },
 

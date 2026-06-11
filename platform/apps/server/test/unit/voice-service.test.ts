@@ -99,8 +99,13 @@ function makeInsightStore(): InsightStore & { rows: VoiceInsight[] } {
       rows.push(insight);
       return { insight, deduped: false };
     },
-    async list(ws, ideaId) {
-      return rows.filter((r) => r.workspaceId === ws && (ideaId === undefined || r.ventureIdeaId === ideaId));
+    async list(ws, opts) {
+      return rows.filter(
+        (r) =>
+          r.workspaceId === ws &&
+          (opts?.ventureIdeaId === undefined || r.ventureIdeaId === opts.ventureIdeaId) &&
+          (opts?.createdAfter === undefined || r.createdAt.getTime() >= opts.createdAfter.getTime()),
+      );
     },
     async listForIdea(ws, ideaId) {
       return rows.filter((r) => r.workspaceId === ws && r.ventureIdeaId === ideaId);
@@ -206,6 +211,17 @@ describe("CustomerVoiceService (#114) — IO orchestrator over fakes", () => {
     const updated = tickets.rows.get(t.ticket.id)!;
     expect(updated.status).toBe("awaiting_approval");
     expect(updated.replyApprovalRequestId).toBe("req-1");
+  });
+
+  it("submitReply twice is blocked: a ticket awaiting_approval cannot orphan its pending request", async () => {
+    const { service, gate, tickets } = build();
+    const t = await service.ingestTicket({ workspaceId: "ws-1", channel: "email", sourceRef: "m1", body: "help", contact: "u@e.com" });
+    const first = await service.submitReply("ws-1", t.ticket.id, "member-1", "first reply");
+    // A second submit while awaiting_approval must throw — NOT create a second request.
+    await expect(service.submitReply("ws-1", t.ticket.id, "member-1", "second reply")).rejects.toBeInstanceOf(VoiceStateError);
+    expect(gate.calls).toHaveLength(1); // only the first reply reached the gate
+    const ticket = tickets.rows.get(t.ticket.id)!;
+    expect(ticket.replyApprovalRequestId).toBe(first.approvalRequestId); // unchanged — not orphaned
   });
 
   it("submitReply on a missing ticket → VoiceNotFoundError; on a closed ticket → VoiceStateError", async () => {
