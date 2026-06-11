@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { authorLabel } from "../store/store.js";
-import { BRAND } from "../brand.js";
+import { VOICE } from "../brand.js";
+import { Wordmark } from "./Wordmark.js";
 import { ChannelSidebar } from "./ChannelSidebar.js";
 import { MessagePane } from "./MessagePane.js";
 import { ThreadPanel } from "./ThreadPanel.js";
@@ -63,7 +64,7 @@ function TopBar({
   return (
     <header className="topbar">
       <div className="topbar__brand">
-        <span className="auth__mark">{BRAND.mark}</span> {BRAND.name}
+        <Wordmark />
       </div>
       <nav className="topbar__nav" aria-label="Workspace views">
         <button
@@ -118,7 +119,7 @@ function TopBar({
           <div className="mention-inbox" role="dialog" aria-label="Mention inbox">
             <h4>Mentions</h4>
             {mentions.length === 0 ? (
-              <p className="mention-inbox__empty">No mentions yet.</p>
+              <p className="mention-inbox__empty">{VOICE.noMentions}</p>
             ) : (
               <ul>
                 {mentions.map((m) => (

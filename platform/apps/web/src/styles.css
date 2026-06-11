@@ -1,23 +1,97 @@
-/* Reload web client — Slack-style, agent-first dark theme. */
+/* Internal codebase name: Reload web client. Product brand: the ipop "pop" identity (#138) — a warm,
+   playful LIGHT theme. Paper background, Ink text, Pop Vermilion accent. Tokens mirror the committed
+   brand book at docs/brand/ipop-brand-identity.html. */
 :root {
-  --bg: #0e1014;
-  --bg-1: #15181f;
-  --bg-2: #1b1f28;
-  --bg-3: #232834;
-  --line: #2b313d;
-  --text: #e6e8ec;
-  --text-dim: #9aa3b2;
-  --text-faint: #6b7484;
-  --accent: #5b8cff;
-  --accent-dim: #2a3a63;
+  /* Paper / Ink / Pop Vermilion — the three colours that define the brand. The legacy --bg/--text/
+     --accent names are kept (the whole app keys off them) but now resolve to the pop palette. */
+  --paper: #f6f1e7;
+  --ink: #171310;
+  --vermilion: #ff4524;
+  --bg: #f6f1e7; /* paper */
+  --bg-1: #efe7d8; /* raised paper (cards) */
+  --bg-2: #e9e0d0; /* hover paper */
+  --bg-3: #e2d7c4; /* pressed / chips */
+  --line: #e0d4bf; /* hairlines */
+  --border: #e0d4bf; /* alias (some panels reference --border; previously undefined) */
+  --text: #171310; /* ink */
+  --text-dim: #6b6258;
+  --text-faint: #9b9286;
+  --accent: #ff4524; /* Pop Vermilion */
+  --accent-press: #e23a1c;
+  --accent-dim: #ffd9cf; /* vermilion wash (selected rows, badges) */
   --agent: #b07bff;
-  --agent-dim: #3a2a63;
-  --online: #3fd07a;
+  --agent-dim: #ece1ff;
+  --online: #2fb170;
   --away: #f0b429;
-  --offline: #555c6b;
-  --danger: #ff6b6b;
-  --radius: 8px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --offline: #b8ad9c;
+  --danger: #d23a1c;
+  --radius: 12px;
+
+  /* Department spectrum (#123 fleet × pop identity): one hue per marketing function. */
+  --dept-seo: #ff4524;
+  --dept-social: #ff7a00;
+  --dept-content: #f0b429;
+  --dept-email: #2fb170;
+  --dept-ads: #1fa2c4;
+  --dept-analytics: #5b6cff;
+  --dept-brand: #b07bff;
+
+  /* Motion — the pop. Swell → overshoot → settle. */
+  --pop-ease: cubic-bezier(0.2, 1.4, 0.3, 1);
+
+  font-family: "Nunito", ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+}
+
+/* ===== #138 pop identity: motion vocabulary + wordmark ===== */
+@keyframes swell-pop {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes squash-stretch {
+  0% { transform: scale(1, 1); }
+  40% { transform: scale(1.06, 0.94); }
+  70% { transform: scale(0.97, 1.03); }
+  100% { transform: scale(1, 1); }
+}
+@keyframes happy-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-9deg); }
+  75% { transform: rotate(9deg); }
+}
+@keyframes pop-dot {
+  0%, 60%, 100% { transform: translateX(-50%) translateY(0) scale(1, 1); }
+  70% { transform: translateX(-50%) translateY(-0.18em) scale(0.82, 1.2); }
+  82% { transform: translateX(-50%) translateY(0.02em) scale(1.18, 0.82); }
+  92% { transform: translateX(-50%) translateY(0) scale(0.96, 1.04); }
+}
+
+/* The ipop wordmark — heavy rounded, with a popped i-dot (the brand heartbeat). */
+.wordmark {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: flex-end;
+  line-height: 1;
+  color: var(--ink);
+  user-select: none;
+}
+.wordmark__i {
+  position: relative;
+  display: inline-block;
+}
+.wordmark__dot {
+  position: absolute;
+  top: -0.18em;
+  left: 50%;
+  width: 0.22em;
+  height: 0.22em;
+  background: var(--vermilion);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  animation: pop-dot 2.6s var(--pop-ease) infinite;
 }
 
 * {
@@ -59,7 +133,10 @@ button {
   font-weight: 600;
 }
 .btn--primary:hover {
-  background: #4a7bf0;
+  background: var(--accent-press);
+}
+.btn:active {
+  animation: squash-stretch 0.32s var(--pop-ease);
 }
 .btn--primary:disabled {
   opacity: 0.5;
@@ -110,7 +187,8 @@ button {
   height: 100%;
   display: grid;
   place-content: center;
-  background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 50% -10%, #fffdf8 0%, var(--bg) 55%),
+    radial-gradient(700px 380px at 50% 0%, rgba(255, 69, 36, 0.07), transparent 60%);
 }
 .auth__card {
   width: 360px;
@@ -331,11 +409,21 @@ button {
 }
 .channelrow--active {
   background: var(--accent-dim);
-  color: #fff;
-  font-weight: 600;
+  color: var(--accent-press);
+  font-weight: 700;
+  animation: squash-stretch 0.34s var(--pop-ease);
 }
 .channelrow__hash {
   color: var(--text-faint);
+  font-weight: 800;
+}
+/* Department channels (#123 fleet) wear their spectrum hue on the hash glyph (#138 pop identity). */
+.channelrow--dept .channelrow__hash {
+  color: var(--dept, var(--accent));
+}
+.channelrow--dept.channelrow--active {
+  background: color-mix(in srgb, var(--dept, var(--accent)) 16%, var(--paper));
+  color: color-mix(in srgb, var(--dept, var(--accent)) 72%, var(--ink));
 }
 
 /* --- message pane --- */
@@ -449,11 +537,11 @@ button {
 }
 .avatar--human {
   background: var(--accent-dim);
-  color: #cdd9ff;
+  color: var(--accent-press);
 }
 .avatar--agent {
   background: var(--agent-dim);
-  color: #e3d2ff;
+  color: #6d4bb5;
 }
 .kind {
   font-size: 10px;
@@ -464,7 +552,7 @@ button {
 }
 .kind--agent {
   background: var(--agent-dim);
-  color: #d9c2ff;
+  color: #6d4bb5;
 }
 .kind--human {
   background: var(--bg-3);
@@ -1966,5 +2054,87 @@ button {
   }
   .pricing-card:hover {
     transform: none;
+  }
+}
+
+/* ===== #138 pop identity — chrome styling + Pop Mark ===== */
+/* The wordmark sizes to its container; bump it on the login card where it's the hero. */
+.auth__brand .wordmark {
+  font-size: 34px;
+}
+.topbar__brand .wordmark,
+.sidebar__brand .wordmark {
+  font-size: 19px;
+}
+
+/* The Pop Mark: a vermilion dot leaping out of an ink ring (splash + empty states). */
+.splash__mark--pop {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  font-size: 0; /* hide the BRAND.mark glyph; the ring+dot is drawn in CSS */
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+}
+.splash__mark--pop::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vermilion);
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  animation: happy-wiggle 3s ease-in-out infinite;
+}
+.splash__signoff {
+  margin-top: 18px;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Empty channel state gets a friendly Pop Mark above the line of voice copy. */
+.pane--empty {
+  flex-direction: column;
+  gap: 14px;
+}
+.pane--empty p {
+  max-width: 34ch;
+  text-align: center;
+}
+.pane--empty__mark {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--paper-3, var(--line));
+  border-radius: 50%;
+  animation: swell-pop 0.5s var(--pop-ease);
+}
+.pane--empty__mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vermilion);
+  transform: translateX(-50%);
+  animation: happy-wiggle 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark__dot,
+  .splash__mark--pop::after,
+  .pane--empty__mark,
+  .pane--empty__mark::after,
+  .channelrow--active {
+    animation: none;
+  }
+  .btn:active {
+    animation: none;
   }
 }

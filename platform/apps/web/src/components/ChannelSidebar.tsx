@@ -1,7 +1,8 @@
 /** Left rail: workspace identity, channel list (public + DMs), and a create-channel control. */
 import { useState, type FormEvent } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND } from "../brand.js";
+import { departmentColor } from "../brand.js";
+import { Wordmark } from "./Wordmark.js";
 import type { Channel } from "../api/types.js";
 
 export function ChannelSidebar(): React.JSX.Element {
@@ -26,7 +27,7 @@ export function ChannelSidebar(): React.JSX.Element {
     <nav className="sidebar" aria-label="Channels">
       <header className="sidebar__head">
         <div className="sidebar__brand">
-          <span className="auth__mark">{BRAND.mark}</span> {BRAND.name}
+          <Wordmark />
         </div>
         {identity && <div className="sidebar__ws">workspace · {identity.workspaceId.slice(0, 8)}</div>}
       </header>
@@ -96,12 +97,15 @@ function ChannelRow({
   onSelect: (id: string) => void;
 }): React.JSX.Element {
   const label = channel.kind === "dm" ? "direct message" : (channel.name ?? "channel");
+  // Department channels (#123 fleet) wear their spectrum hue on the hash glyph (#138 pop identity).
+  const dept = channel.kind === "dm" ? undefined : departmentColor(channel.name);
   return (
     <li>
       <button
-        className={`channelrow${active ? " channelrow--active" : ""}`}
+        className={`channelrow${active ? " channelrow--active" : ""}${dept ? " channelrow--dept" : ""}`}
         onClick={() => onSelect(channel.id)}
         aria-current={active ? "true" : undefined}
+        style={dept ? ({ "--dept": dept } as React.CSSProperties) : undefined}
       >
         <span className="channelrow__hash">{channel.kind === "dm" ? "@" : "#"}</span>
         {label}

@@ -89,10 +89,11 @@ async function ensureChannel(
   deps: MarketingSeedDeps,
   workspaceId: string,
   name: string,
-): Promise<{ id: string; name: string }> {
+): Promise<{ id: string; name: string; created: boolean }> {
   const existing = await deps.getChannelByName(workspaceId, name);
-  if (existing) return { id: existing.id, name };
-  return deps.createChannel({ workspaceId, name });
+  if (existing) return { id: existing.id, name, created: false };
+  const ch = await deps.createChannel({ workspaceId, name });
+  return { ...ch, created: true };
 }
 
 async function ensurePersona(
@@ -100,10 +101,10 @@ async function ensurePersona(
   workspaceId: string,
   createdByMemberId: string,
   dept: MarketingDepartment,
-): Promise<{ id: string; agentMemberId: string }> {
+): Promise<{ id: string; agentMemberId: string; created: boolean }> {
   const existing = await deps.getPersonaByHandle(workspaceId, dept.agent.handle);
-  if (existing) return existing;
-  return deps.createPersona({
+  if (existing) return { ...existing, created: false };
+  const persona = await deps.createPersona({
     workspaceId,
     name: dept.agent.handle,
     systemPrompt: dept.agent.systemPrompt,
@@ -111,6 +112,7 @@ async function ensurePersona(
     model: dept.agent.model,
     createdByMemberId,
   });
+  return { ...persona, created: true };
 }
 
 export async function seedMarketingDepartment(
@@ -120,31 +122,37 @@ export async function seedMarketingDepartment(
   const { workspaceId, createdByMemberId } = input;
 
   // 1. Ensure every channel (department + shared), then put the human in each with `propagate` so they
-  //    may post and @mention-invoke.
+  //    may post and @mention-invoke. `grantPropagate` is an idempotent upsert, so re-seeding is safe.
   const channelByName = new Map<string, { id: string; name: string }>();
+  const channelCreated = new Set<string>();
   for (const name of [...MARKETING_DEPARTMENTS.map((d) => d.channel), ...SHARED_CHANNELS]) {
     const ch = await ensureChannel(deps, workspaceId, name);
-    channelByName.set(name, ch);
+    channelByName.set(name, { id: ch.id, name: ch.name });
+    if (ch.created) channelCreated.add(name);
     await deps.addChannelMember(ch.id, createdByMemberId);
     await deps.grantPropagate({ workspaceId, memberId: createdByMemberId, channelId: ch.id, grantedByMemberId: createdByMemberId });
   }
   const sharedChannelIds = SHARED_CHANNELS.map((n) => channelByName.get(n)!.id);
 
-  // 2. Ensure each agent persona, place it in its department channel + the shared rooms, and post its
-  //    brand-voice intro.
+  // 2. Ensure each agent persona, place it in its department channel + the shared rooms. The intro is
+  //    posted **only when the persona is first created** — so the #138 boot backfill can re-run on every
+  //    restart for existing workspaces without ever re-spamming the rooms (membership adds are idempotent).
   const agents: SeededAgent[] = [];
   for (const dept of MARKETING_DEPARTMENTS) {
     const persona = await ensurePersona(deps, workspaceId, createdByMemberId, dept);
     const channel = channelByName.get(dept.channel)!;
     await deps.addChannelMember(channel.id, persona.agentMemberId);
     for (const sharedId of sharedChannelIds) await deps.addChannelMember(sharedId, persona.agentMemberId);
-    await deps.post({ workspaceId, channelId: channel.id, agentMemberId: persona.agentMemberId, body: dept.agent.intro });
+    if (persona.created) {
+      await deps.post({ workspaceId, channelId: channel.id, agentMemberId: persona.agentMemberId, body: dept.agent.intro });
+    }
     agents.push({ id: persona.id, agentMemberId: persona.agentMemberId, handle: dept.agent.handle, department: dept.key });
   }
 
-  // 3. The collective welcome in #general, posted as the first agent.
-  const general = channelByName.get("general")!;
-  if (agents.length > 0) {
+  // 3. The collective welcome in #general, posted as the first agent — only when #general is first
+  //    created (same once-only rule as the intros above).
+  if (agents.length > 0 && channelCreated.has("general")) {
+    const general = channelByName.get("general")!;
     await deps.post({ workspaceId, channelId: general.id, agentMemberId: agents[0]!.agentMemberId, body: BRAND_VOICE.welcome });
   }
 

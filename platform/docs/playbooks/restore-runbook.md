@@ -6,6 +6,14 @@
 > scheduled VALIDATION drill (`.github/workflows/dr-drill.yml`). The destructive DISASTER path is a
 > lever a **human** pulls — it is **never agent-initiated**.
 
+> **What "the live DB" means in production (#108).** Production runs on **Fly managed Postgres** (app
+> `reload-api`); its connection string is the `DATABASE_URL` Fly secret. The off-site backup
+> (`.github/workflows/dr-backup.yml`) dumps **that** database — its `DR_DATABASE_URL` repo secret MUST
+> be set to the same connection string as the Fly `DATABASE_URL` (read it with `fly secrets list --app
+> reload-api`, or `fly postgres connect`). In DISASTER mode, `$DATABASE_URL` below is the Fly production
+> database, so the restore overwrites the live company. Flip the [maintenance flag](#3--maintenance-on)
+> first.
+
 There are two modes. **Default to VALIDATION.** Only escalate to DISASTER for a real data-loss event,
 and only with an approved `dr.restore` human approval (#13).
 

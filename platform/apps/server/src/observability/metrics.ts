@@ -233,6 +233,23 @@ export function recordFlywheelAction(action: string): void {
   flywheelActions.set(action, (flywheelActions.get(action) ?? 0) + 1);
 }
 
+// --- outcome verifiers (#106) -----------------------------------------------
+// Measured-gate runner: ticks executed + actions by kind (`<kind>:passed` | `<kind>:failed` |
+// `<kind>:errored` | escalate | noop:kill_switch). Cardinality discipline (as everywhere): the only
+// label is the bounded action kind — tenant ids are NEVER labels (they live in logs/traces).
+let verifierTicks = 0;
+const verifierActions = new Map<string, number>();
+
+/** One verifier tick ran (a single pass over a workspace's due claims). */
+export function recordVerifierTick(): void {
+  verifierTicks += 1;
+}
+
+/** One verifier action was applied/decided. */
+export function recordVerifierAction(action: string): void {
+  verifierActions.set(action, (verifierActions.get(action) ?? 0) + 1);
+}
+
 // --- cloud scale (#71) ------------------------------------------------------
 // Warm-pool hit/miss, admission denials by reason, and session placement by region. Cardinality
 // discipline (as everywhere): the only labels are the bounded denial reason + the region — tenant
@@ -322,6 +339,8 @@ export function resetMetrics(): void {
   sreActions.clear();
   flywheelTicks = 0;
   flywheelActions.clear();
+  verifierTicks = 0;
+  verifierActions.clear();
   warmHits = 0;
   warmMisses = 0;
   admissionDenials.clear();
@@ -486,6 +505,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE flywheel_actions_total counter");
   for (const [action, count] of flywheelActions) {
     lines.push(`flywheel_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- outcome verifiers (#106) ---
+  lines.push("# HELP verifier_ticks_total Outcome-verifier ticks executed.");
+  lines.push("# TYPE verifier_ticks_total counter");
+  lines.push(`verifier_ticks_total ${verifierTicks}`);
+
+  lines.push("# HELP verifier_actions_total Outcome-verifier actions by kind.");
+  lines.push("# TYPE verifier_actions_total counter");
+  for (const [action, count] of verifierActions) {
+    lines.push(`verifier_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- cloud scale (#71) ---
