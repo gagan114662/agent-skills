@@ -22,4 +22,5 @@ export * from "./revenue.js";
 export * from "./plans.js";
 export * from "./venture.js";
 export * from "./watchdog.js";
+export * from "./flywheel.js";
 export * from "./marketing-tasks.js";

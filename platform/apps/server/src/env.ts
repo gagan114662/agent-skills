@@ -22,6 +22,8 @@ export interface Env {
   venture: VentureEnv;
   /** Fleet-watchdog scheduled tick (#105). */
   watchdog: WatchdogEnv;
+  /** Self-healing flywheel scheduled tick (#117). */
+  flywheel: FlywheelEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -129,6 +131,11 @@ export interface WatchdogEnv {
   intervalMs: number;
 }
 
+export interface FlywheelEnv {
+  /** Flywheel-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #117). */
+  intervalMs: number;
+}
+
 export interface NotifyEnv {
   /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
   webhookUrl?: string;
@@ -225,6 +232,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     watchdog: {
       // Default 0 (off): the supervisor timer is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.WATCHDOG_INTERVAL_MS ?? 0) || 0,
+    },
+    flywheel: {
+      // Default 0 (off): the flywheel loop is opt-in so tests/CI drive `tickAll()` deterministically.
+      intervalMs: Number(source.FLYWHEEL_INTERVAL_MS ?? 0) || 0,
     },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.

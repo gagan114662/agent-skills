@@ -204,6 +204,26 @@ export const watchdogSchema = z.object({
 });
 
 /**
+ * Self-Healing Flywheel policy (#117, ADR-0117). All **non-secret** knobs for the failure→issue→fix
+ * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
+ * nothing files no issues and dispatches no fixes. `issueThreshold` is the occurrence count that earns
+ * an issue; `maxIssuesPerTick` rate-limits GitHub writes; `maxConcurrentFixes` is the hard cap on
+ * in-flight fix sessions; `maxDispatchesPerTick` bounds fixes proposed per pass.
+ */
+export const flywheelSchema = z.object({
+  /** The flywheel flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Occurrence count at/above which a never-issued fingerprint earns a drafted issue. */
+  issueThreshold: z.number().int().positive().optional(),
+  /** Hard cap on NEW issues drafted in a single tick (the GitHub-write rate limit). */
+  maxIssuesPerTick: z.number().int().nonnegative().optional(),
+  /** Hard cap on concurrent in-flight fix sessions per workspace (0 = never auto-dispatch). */
+  maxConcurrentFixes: z.number().int().nonnegative().optional(),
+  /** Hard cap on fix dispatches proposed in a single tick (top-ranked first). */
+  maxDispatchesPerTick: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Marketing department fleet policy (#123, ADR-0123). All **non-secret**. Every field is optional and
  * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's signup
  * behavior (no auto-seed). ipop.ai opts in via the managed layer; `enabled` gates only seed-on-signup
@@ -244,6 +264,8 @@ export const settingsSchema = z.object({
   venture: ventureSchema.optional(),
   /** Fleet-watchdog policy (#105): the stalled-session supervisor + bounded restart policy. */
   watchdog: watchdogSchema.optional(),
+  /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
+  flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
 });
@@ -263,6 +285,7 @@ export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
+export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
 
 /** The resolved, defaults-applied config consumed by the rest of the server. */
@@ -287,6 +310,8 @@ export interface ResolvedConfig {
   venture: VentureConfig;
   /** Fleet-watchdog policy (#105). A partial whose hard defaults `resolveWatchdogCaps` fills. */
   watchdog: WatchdogConfig;
+  /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
+  flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
 }
@@ -303,5 +328,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   scale: {},
   venture: {},
   watchdog: {},
+  flywheel: {},
   marketing: {},
 };

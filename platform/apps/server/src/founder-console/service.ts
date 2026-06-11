@@ -4,6 +4,7 @@ import {
   type MaintenanceSnapshot,
   type PendingApprovalSnapshot,
   type RevenueSnapshot,
+  type SelfHealingSnapshot,
   type VentureEvalSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
@@ -53,6 +54,11 @@ export interface SwitchesReader {
   maintenance(): Promise<MaintenanceSnapshot>;
 }
 
+/** The self-healing flywheel pane (#117). Optional — absent ⇒ the console renders zeroed self-healing. */
+export interface FlywheelReader {
+  state(workspaceId: string): Promise<SelfHealingSnapshot>;
+}
+
 /** Cost-forecast inputs (#113): the usage trend + the resolved caps the projection/right-sizing read. */
 export interface ForecastReader {
   /** Recent per-window usage (#71 `tenant_usage`), oldest→newest, for the forecast lookback. */
@@ -72,6 +78,8 @@ export interface FounderConsoleDeps {
   budget: BudgetReader;
   approvals: ApprovalsReader;
   switches: SwitchesReader;
+  /** Self-healing flywheel (#117) — optional, read-only. */
+  flywheel?: FlywheelReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
   forecast: ForecastReader;
   /** Injectable clock (tests pin it). */
@@ -92,7 +100,7 @@ export class FounderConsoleService {
     const now = this.now();
     const window = this.deps.budget.window(now);
 
-    const [ventures, revenue, usage, approvals, killSwitch, maintenance, usageTrend] =
+    const [ventures, revenue, usage, approvals, killSwitch, maintenance, usageTrend, selfHealing] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
         this.deps.revenue.summary(workspaceId),
@@ -101,6 +109,7 @@ export class FounderConsoleService {
         this.deps.switches.killSwitch(workspaceId),
         this.deps.switches.maintenance(),
         this.deps.forecast.trend(workspaceId, now),
+        this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -122,6 +131,7 @@ export class FounderConsoleService {
       },
       approvals,
       switches: { killSwitch, maintenance },
+      selfHealing,
       usageTrend,
       forecastWindow: this.deps.forecast.forecastWindow(now),
       infraBudgetCeilingCents: this.deps.forecast.infraBudgetCeilingCents(workspaceId),
