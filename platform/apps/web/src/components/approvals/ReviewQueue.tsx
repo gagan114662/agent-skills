@@ -2,6 +2,9 @@
  * human (see ReviewRow). Reads the approvals slice; tab clicks re-query the server by status. */
 import type { ApprovalStatus } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
+import { VOICE } from "../../brand.js";
+import { EmptyState } from "../EmptyState.js";
+import { PopLoader } from "../PopLoader.js";
 import { ReviewRow } from "./ReviewRow.js";
 
 const TABS: { key: ApprovalStatus; label: string }[] = [
@@ -40,9 +43,9 @@ export function ReviewQueue(): React.JSX.Element {
       )}
 
       {approvals.loading ? (
-        <p className="review-queue__empty">Loading…</p>
+        <PopLoader label={`Loading ${approvals.status} requests…`} />
       ) : approvals.requests.length === 0 ? (
-        <p className="review-queue__empty">No {approvals.status} requests.</p>
+        <EmptyState>{VOICE.emptyApprovals}</EmptyState>
       ) : (
         <ul className="review-queue__list">
           {approvals.requests.map((r) => (

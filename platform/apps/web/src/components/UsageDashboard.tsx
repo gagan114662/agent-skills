@@ -6,6 +6,7 @@
  * is unit-tested without a store or network.
  */
 import type { UsageReport } from "../api/types.js";
+import { PopLoader } from "./PopLoader.js";
 
 /** Cents → a `$x.xx` string. */
 function dollars(cents: number): string {
@@ -17,7 +18,7 @@ export function UsageDashboard({ usage }: { usage: UsageReport | null }): React.
     return (
       <section className="usage" aria-label="Usage">
         <header className="usage__head">Usage</header>
-        <p className="usage__loading">Loading usage…</p>
+        <PopLoader label="Loading usage…" />
       </section>
     );
   }
