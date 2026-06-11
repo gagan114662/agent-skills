@@ -140,4 +140,48 @@ export class GitHubIssueProvider implements IssueProvider {
     const data = (await res.json()) as { state?: string };
     return { state: data.state ?? "open" };
   }
+
+  /**
+   * List open issues carrying a label (#108) — `GET /repos/{owner}/{repo}/issues?state=open&labels=…`.
+   * The uptime monitor uses this to find its own currently-open alert (the dedupe state). Returns the
+   * minimal `{number, body}` the {@link parseMarker} dedupe needs; a non-2xx throws content-free.
+   */
+  async listOpenIssuesByLabel(
+    target: { owner: string; repo: string },
+    token: string | undefined,
+    label: string,
+  ): Promise<Array<{ number: number; body: string }>> {
+    const query = new URLSearchParams({ state: "open", labels: label, per_page: "100" });
+    const path = `/repos/${target.owner}/${target.repo}/issues?${query.toString()}`;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, { headers: this.headers(token) });
+    } catch {
+      throw new IssueProviderError("github", "list issues request failed");
+    }
+    if (!res.ok) throw new IssueProviderError("github", `failed to list issues (status ${res.status})`);
+    const data = (await res.json()) as GitHubIssue[];
+    return data.map((i) => ({ number: i.number, body: i.body ?? "" }));
+  }
+
+  /**
+   * Close an issue (#108) — `PATCH /repos/{owner}/{repo}/issues/{n}` with `state: "closed"`. Used by the
+   * uptime monitor to auto-resolve an alert once the target recovers. Returns the resulting state.
+   */
+  async closeIssue(ref: IssueRef, token?: string): Promise<{ state: string }> {
+    const path = `/repos/${ref.owner}/${ref.repo}/issues/${ref.number}`;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method: "PATCH",
+        headers: { ...this.headers(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ state: "closed" }),
+      });
+    } catch {
+      throw new IssueProviderError("github", "close request failed");
+    }
+    if (!res.ok) throw new IssueProviderError("github", `failed to close issue (status ${res.status})`);
+    const data = (await res.json()) as { state?: string };
+    return { state: data.state ?? "closed" };
+  }
 }
