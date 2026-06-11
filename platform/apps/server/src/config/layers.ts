@@ -49,6 +49,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #106 verifiers policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // verifier flag / "no silent pass" escalation rail cannot be loosened by a lower layer.
     if (layer.verifiers !== undefined) out.verifiers = { ...layer.verifiers };
+    // #103 moat policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // stagnation flagging / weights cannot be loosened (e.g. flagging turned off) by a lower layer.
+    if (layer.moat !== undefined) out.moat = { ...layer.moat };
   }
   return out;
 }
@@ -78,5 +81,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
     verifiers: merged.verifiers ?? { ...CONFIG_DEFAULTS.verifiers },
+    moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
   };
 }
