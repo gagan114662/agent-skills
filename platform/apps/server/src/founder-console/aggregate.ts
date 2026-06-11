@@ -154,6 +154,25 @@ export interface SelfHealingSnapshot {
   dispatches: FlywheelDispatchSnapshot[];
 }
 
+/** One channel experiment (#102/#123) reduced to what the console pane counts. */
+export interface GrowthExperimentStatusSnapshot {
+  status: string;
+  /** True once an `external.send` post has been submitted to the #13 gate for this experiment. */
+  hasExternalPost: boolean;
+}
+
+/** The Growth Loop read-struct (#102): the funnel + score + experiment lifecycle, already computed. */
+export interface GrowthSnapshot {
+  /** Total growth events recorded for the workspace. */
+  totalEvents: number;
+  funnel: { acquisition: number; activation: number; conversion: number; retention: number };
+  /** The 0–100 growth score (computed by the reader off the same pure scorer the routes use). */
+  score: number;
+  /** The top acquisition source by weight, or null when there is no traffic. */
+  topSource: string | null;
+  experiments: GrowthExperimentStatusSnapshot[];
+}
+
 /** The two safety switches surfaced read-only. */
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
@@ -179,6 +198,8 @@ export interface FounderConsoleInput {
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
   selfHealing?: SelfHealingSnapshot;
+  /** Growth Loop state (#102) — optional so the console works before the growth loop is wired. */
+  growth?: GrowthSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
   usageTrend: UsageTrendPoint[];
   /** The window the forecast projects (the next calendar month). */
@@ -255,6 +276,24 @@ export interface SelfHealingView {
   queuedForApproval: number;
 }
 
+/** The Growth Loop roll-up (#102): the funnel score + stage counts + the experiment pipeline. */
+export interface GrowthView {
+  /** The 0–100 growth score. */
+  score: number;
+  totalEvents: number;
+  acquisition: number;
+  activation: number;
+  conversion: number;
+  retention: number;
+  /** The top acquisition source by weight, or null when there is no traffic. */
+  topSource: string | null;
+  experimentsProposed: number;
+  experimentsRunning: number;
+  experimentsTotal: number;
+  /** Experiments whose external post has been submitted to the #13 gate (a human posts). */
+  externalPostsSubmitted: number;
+}
+
 /** Next-window compute-cost projection + right-sizing + infra-ceiling status (#113). */
 export interface CostForecastView {
   /** The window being forecast (next calendar month). */
@@ -297,6 +336,8 @@ export interface FounderConsole {
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
   selfHealing: SelfHealingView;
+  /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
+  growth: GrowthView;
   attention: AttentionView;
 }
 
@@ -390,6 +431,24 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     queuedForApproval,
   };
 
+  // #102 growth loop: reshape the already-computed funnel + experiment lifecycle into the pane. The
+  // score is computed by the reader (off the same pure scorer the routes use), so this stays pure +
+  // deterministic — counting only.
+  const growthExperiments = input.growth?.experiments ?? [];
+  const growth: GrowthView = {
+    score: input.growth?.score ?? 0,
+    totalEvents: input.growth?.totalEvents ?? 0,
+    acquisition: input.growth?.funnel.acquisition ?? 0,
+    activation: input.growth?.funnel.activation ?? 0,
+    conversion: input.growth?.funnel.conversion ?? 0,
+    retention: input.growth?.funnel.retention ?? 0,
+    topSource: input.growth?.topSource ?? null,
+    experimentsProposed: growthExperiments.filter((e) => e.status === "proposed").length,
+    experimentsRunning: growthExperiments.filter((e) => e.status === "running").length,
+    experimentsTotal: growthExperiments.length,
+    externalPostsSubmitted: growthExperiments.filter((e) => e.hasExternalPost).length,
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -418,6 +477,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     postmortems,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
+    growth,
     attention: { required: reasons.length > 0, reasons },
   };
 }

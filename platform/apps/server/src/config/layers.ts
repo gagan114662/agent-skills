@@ -46,6 +46,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #123 marketing policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // seed-on-signup flag cannot be flipped on/off by a lower layer.
     if (layer.marketing !== undefined) out.marketing = { ...layer.marketing };
+    // #102 growth policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // growth flag / traffic floor cannot be loosened by a lower layer.
+    if (layer.growth !== undefined) out.growth = { ...layer.growth };
   }
   return out;
 }
@@ -74,5 +77,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     gatePricing: merged.gatePricing ?? { ...CONFIG_DEFAULTS.gatePricing },
     flywheel: merged.flywheel ?? { ...CONFIG_DEFAULTS.flywheel },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
+    growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
   };
 }

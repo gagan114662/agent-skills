@@ -15,6 +15,10 @@ import {
   flywheelFingerprintStore,
   flywheelDispatchStore,
 } from "../db/repositories/flywheel.js";
+import { listEvents, listExperiments } from "../db/repositories/growth.js";
+import { resolveGrowthCaps } from "../growth/caps.js";
+import { funnelFromEvents, scoreGrowth } from "../growth/score.js";
+import { loadConfig } from "../config/loader.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -139,6 +143,37 @@ export function createDefaultFounderConsoleService(deps: {
             mode: d.mode,
             status: d.status,
             reason: d.reason,
+          })),
+        };
+      },
+    },
+    // #102 growth loop pane: read the events + experiments, score the funnel off the SAME pure scorer
+    // the routes use (so the console score matches the API), and reshape to the read-struct. Read-only.
+    growth: {
+      state: async (workspaceId) => {
+        const [events, experiments] = await Promise.all([
+          listEvents(workspaceId),
+          listExperiments(workspaceId),
+        ]);
+        const caps = resolveGrowthCaps(loadConfig(workspaceId).growth);
+        const funnel = funnelFromEvents(events);
+        const { score } = scoreGrowth(funnel, caps);
+        const acquisitionBySource = new Map<string, number>();
+        for (const e of events) {
+          if (e.kind !== "acquisition" || e.value <= 0) continue;
+          const s = e.source || "(unattributed)";
+          acquisitionBySource.set(s, (acquisitionBySource.get(s) ?? 0) + e.value);
+        }
+        const topSource =
+          [...acquisitionBySource.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+        return {
+          totalEvents: events.length,
+          funnel,
+          score,
+          topSource,
+          experiments: experiments.map((x) => ({
+            status: x.status,
+            hasExternalPost: x.approvalRequestId !== null,
           })),
         };
       },
