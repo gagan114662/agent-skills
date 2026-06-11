@@ -26,24 +26,27 @@ export function Workspace(): React.JSX.Element {
   return (
     <div className="workspace">
       <TopBar view={view} onSelectView={setView} />
-      {view === "founder" ? (
-        <FounderPanel />
-      ) : view === "settings" ? (
-        <ConnectClaudePanel />
-      ) : view === "pricing" ? (
-        <PricingPanel />
-      ) : view === "approvals" ? (
-        <ApprovalsPanel />
-      ) : view === "deploy" ? (
-        <DeployPanel />
-      ) : (
-        <div className="workspace__body">
-          <ChannelSidebar />
-          <MessagePane />
-          <ThreadPanel />
-          <MembersRail />
-        </div>
-      )}
+      {/* Keyed on `view` so switching tabs swell-fades the new content in — no hard cut (#145 #7). */}
+      <div className="workspace__view view-fade" key={view}>
+        {view === "founder" ? (
+          <FounderPanel />
+        ) : view === "settings" ? (
+          <ConnectClaudePanel />
+        ) : view === "pricing" ? (
+          <PricingPanel />
+        ) : view === "approvals" ? (
+          <ApprovalsPanel />
+        ) : view === "deploy" ? (
+          <DeployPanel />
+        ) : (
+          <div className="workspace__body">
+            <ChannelSidebar />
+            <MessagePane />
+            <ThreadPanel />
+            <MembersRail />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
