@@ -104,6 +104,8 @@ async function seedSeo(owner: { cookie: string; workspaceId: string }): Promise<
   return res.json().channels.find((c: { name: string }) => c.name === "seo");
 }
 
+// Post a plain message that @mentions the agent — exactly what the web client does. The #123 post-time
+// trigger (wired into the shared fan-out) launches the session; there is NO explicit `/marketing` call.
 async function mention(owner: { cookie: string }, channelId: string, body: string) {
   const msg = (
     await app.inject({
@@ -113,13 +115,25 @@ async function mention(owner: { cookie: string }, channelId: string, body: strin
       payload: { body },
     })
   ).json();
-  const launch = await app.inject({
-    method: "POST",
-    url: `/channels/${channelId}/messages/${msg.id}/marketing`,
-    cookies: { rid: owner.cookie },
-    payload: {},
-  });
-  return { msg, launch };
+  return { msg };
+}
+
+// Poll the department task feed for the mention launch's session id (recorded asynchronously by the
+// post-time trigger). Returns undefined if no launch happened (e.g. the connect-prompt path).
+async function pollMentionSessionId(owner: { cookie: string; workspaceId: string }): Promise<string | undefined> {
+  for (let i = 0; i < 80; i++) {
+    const tasks = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${owner.workspaceId}/department/tasks`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json() as Array<{ kind: string; sessionId: string | null }>;
+    const t = tasks.find((t) => t.kind === "mention" && t.sessionId);
+    if (t) return t.sessionId!;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return undefined;
 }
 
 async function waitForSession(owner: { cookie: string }, channelId: string, sessionId: string): Promise<string> {
@@ -163,21 +177,19 @@ describe("#68 cloud agent @mention (real harness posture)", () => {
     const owner = await newOwner();
     const seo = await seedSeo(owner);
 
-    const { msg, launch } = await mention(owner, seo.id, "@scout audit the homepage");
-    expect(launch.statusCode).toBe(202);
-    const body = launch.json() as {
-      launched: unknown[];
-      connectPrompted: Array<{ handle: string }>;
-    };
-    expect(body.launched).toEqual([]); // no session launched
-    expect(body.connectPrompted.map((p) => p.handle)).toEqual(["scout"]);
+    const { msg } = await mention(owner, seo.id, "@scout audit the homepage");
 
-    // The persona posted the brand-voice connect prompt in-thread.
-    const text = await threadText(owner, seo.id, msg.id);
+    // The persona posted the brand-voice connect prompt in-thread instead of launching.
+    let text = "";
+    for (let i = 0; i < 80 && !/Connect Claude/i.test(text); i++) {
+      text = await threadText(owner, seo.id, msg.id);
+      if (!/Connect Claude/i.test(text)) await new Promise((r) => setTimeout(r, 100));
+    }
     expect(text).toMatch(/Connect Claude/i);
     expect(text).toMatch(/setup-token/i);
 
-    // No session ⇒ no metering: the connect prompt never touched the admission/usage path.
+    // No launch ⇒ no metering: the connect prompt never touched the admission/usage path. (The
+    // connect-prompt path records no mention task either — only a real launch does.)
     expect(await sessionsStarted(owner)).toBe(0);
   });
 
@@ -188,13 +200,11 @@ describe("#68 cloud agent @mention (real harness posture)", () => {
     // The owner connects THEIR OWN Claude subscription (claude setup-token).
     await setWorkspaceClaudeToken({ workspaceId: owner.workspaceId, token: "oauth-tok-headline" });
 
-    const { msg, launch } = await mention(owner, seo.id, "@scout audit the homepage");
-    expect(launch.statusCode).toBe(202);
-    const launched = launch.json().launched as Array<{ handle: string; sessionId: string }>;
-    expect(launched).toHaveLength(1);
-    expect(launched[0].handle).toBe("scout");
+    const { msg } = await mention(owner, seo.id, "@scout audit the homepage");
+    const sessionId = await pollMentionSessionId(owner);
+    expect(sessionId, "post-time trigger should have launched a session").toBeDefined();
 
-    expect(await waitForSession(owner, seo.id, launched[0].sessionId)).toBe("completed");
+    expect(await waitForSession(owner, seo.id, sessionId!)).toBe("completed");
 
     // The agent actually ran on the brief AND was authed by the owner's subscription token (injected
     // into the runtime env per tenant) — not a pooled platform key.

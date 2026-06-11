@@ -155,37 +155,57 @@ describe("#123 marketing department fleet (real Postgres)", () => {
     expect(again.json().channels).toHaveLength(9);
   });
 
-  it("@mentions an agent → spawns a real session, threads the result, and records a task", async () => {
+  it("@mentions an agent from a plain message post → spawns a real session, threads the result, records a task", async () => {
+    // The real prod path (regression for the @scout incident): a department agent @mentioned in its
+    // channel must spawn a session purely from `POST /channels/:cid/messages` — what the web client does.
+    // Before the fix the launch only ran via the standalone `/marketing` endpoint that nothing called, so
+    // sessionsStarted stayed 0 and the owner saw no response. NOTE: no explicit `/marketing` call here.
     const owner = await newOwner();
     const seo = (await seed(owner)).json().channels.find((c: { name: string }) => c.name === "seo");
 
-    const msg = await postMessage(owner, seo.id, "@scout audit our landing page");
-    const launch = await app.inject({
-      method: "POST",
-      url: `/channels/${seo.id}/messages/${msg.id}/marketing`,
-      cookies: { rid: owner.cookie },
-      payload: {},
-    });
-    expect(launch.statusCode).toBe(202);
-    const launched = launch.json().launched as Array<{ handle: string; sessionId: string; taskId: string }>;
-    expect(launched).toHaveLength(1);
-    expect(launched[0].handle).toBe("scout");
+    const msg = await postMessage(owner, seo.id, "@scout audit https://ipop.ai and tell me where it trips");
 
-    expect(await waitForSession(owner, seo.id, launched[0].sessionId)).toBe("completed");
+    // The post-time trigger records the mention task asynchronously; poll for it + its session id.
+    let sessionId: string | undefined;
+    for (let i = 0; i < 80 && !sessionId; i++) {
+      const tasks = (
+        await app.inject({
+          method: "GET",
+          url: `/workspaces/${owner.workspaceId}/department/tasks`,
+          cookies: { rid: owner.cookie },
+        })
+      ).json() as Array<{ kind: string; department: string; sessionId: string | null }>;
+      const t = tasks.find((t) => t.kind === "mention" && t.department === "seo" && t.sessionId);
+      if (t) sessionId = t.sessionId!;
+      else await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(sessionId, "post-time trigger should have launched a session").toBeDefined();
 
+    expect(await waitForSession(owner, seo.id, sessionId!)).toBe("completed");
+
+    // The agent actually ran on the brief and threaded its result back under the @mention.
     const replies = await threadReplies(owner, seo.id, msg.id);
-    const text = replies.map((r) => r.body).join("\n");
-    expect(text).toContain("agent: task=@scout audit our landing page");
+    expect(replies.map((r) => r.body).join("\n")).toContain(
+      "agent: task=@scout audit https://ipop.ai and tell me where it trips",
+    );
+  });
 
-    // A durable task record exists for the mention.
+  it("does not auto-launch on a plain post that mentions no department agent", async () => {
+    // The trigger fires only when a department persona is actually @mentioned — an ordinary message in a
+    // department channel must not spawn a session. (Agent-authored posts can't trigger it either: they go
+    // through channelPoster, which never runs the fan-out, and the trigger is human-only regardless.)
+    const owner = await newOwner();
+    const seo = (await seed(owner)).json().channels.find((c: { name: string }) => c.name === "seo");
+    await postMessage(owner, seo.id, "just a note, nobody mentioned");
+    await new Promise((r) => setTimeout(r, 400));
     const tasks = (
       await app.inject({
         method: "GET",
         url: `/workspaces/${owner.workspaceId}/department/tasks`,
         cookies: { rid: owner.cookie },
       })
-    ).json() as Array<{ kind: string; department: string; sessionId: string | null }>;
-    expect(tasks.some((t) => t.kind === "mention" && t.department === "seo")).toBe(true);
+    ).json() as Array<{ kind: string }>;
+    expect(tasks.some((t) => t.kind === "mention")).toBe(false);
   });
 
   it("keeps anything leaving the building #13-gated (a social post is pending, never auto-sent)", async () => {

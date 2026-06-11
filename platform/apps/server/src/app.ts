@@ -27,7 +27,8 @@ import {
 } from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
 import { marketingRoutes } from "./routes/marketing.js";
-import { maybeAutoSeedOnSignup } from "./marketing/default.js";
+import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
+import { setMarketingMentionTrigger } from "./messaging/delivery.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
@@ -374,6 +375,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
   });
   app.register(marketingRoutes, { sessionManager });
+  // #123 prod-incident fix: wire the @mention → real-session trigger into the SHARED message fan-out
+  // (`messaging/delivery.ts`), so a plain `@scout …` post in a department channel launches a session
+  // over REST or MCP — without this, the launch only ran via the unused `/marketing` endpoint and a
+  // real @mention silently did nothing (sessionsStarted stayed 0). The trigger gates itself (human
+  // author, marketing channel, mentioned persona) and runs best-effort over the SAME SessionManager.
+  setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager));
   // #56 Run tab: run a session's app for in-app preview + detect its localhost port, and route UI
   // annotations back to the agent (the #51 round trip). The RunProcessManager is SEPARATE from the
   // SessionManager (a dev server is long-lived; it must never finalize the session row). Killed on
@@ -381,6 +388,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const runManager = opts.runManager ?? createDefaultRunProcessManager(app.log);
   app.register(runRoutes, { runManager, sessionManager });
   app.addHook("onClose", async () => {
+    setMarketingMentionTrigger(undefined);
     runManager.shutdown();
     await sessionManager.shutdown();
   });

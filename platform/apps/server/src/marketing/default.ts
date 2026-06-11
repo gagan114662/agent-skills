@@ -23,6 +23,7 @@ import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
 import { createAgentAuthResolver } from "../runtime/auth-default.js";
 import { buildConnectPrompt } from "./connect-prompt.js";
+import type { MarketingMentionTrigger } from "../messaging/delivery.js";
 import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
@@ -221,4 +222,28 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
       }),
     departmentForHandle: (handle) => departmentForHandle(handle)?.key,
   });
+}
+
+/**
+ * The #123 post-time @mention trigger (the prod-incident fix): build the marketing mention service once
+ * and return a {@link MarketingMentionTrigger} the shared message fan-out (`messaging/delivery.ts`) runs
+ * for every freshly-posted message. Gating (cheap, before any DB work):
+ *   - **human authors only** — agent posts must not auto-trigger launches (no @mention loops); MCP
+ *     agent posts share the same fan-out, so this guard matters there too.
+ *   - **marketing channels only** — `channel.name` is already on the message; non-marketing channels
+ *     return immediately with zero extra queries.
+ * For a qualifying post, `mention.launch` runs the SAME audited path as the explicit `/marketing` route
+ * (#68 auth gate → #59 SubagentService → #96 venture gate → #71 admission → session). No mentioned
+ * persona → `{ok:false}`, a harmless no-op. The fan-out invokes this best-effort and swallows denials.
+ */
+export function buildMarketingMentionTrigger(sessionManager: SessionManager): MarketingMentionTrigger {
+  const mention = createMarketingMentionService(sessionManager);
+  return async (identity, channel, message) => {
+    if (identity.kind !== "human") return;
+    if (channel.name === null || !MARKETING_CHANNELS.includes(channel.name)) return;
+    await mention.launch(
+      { workspaceId: identity.workspaceId, memberId: identity.memberId },
+      { channelId: channel.id, messageId: message.id, task: message.body },
+    );
+  };
 }
