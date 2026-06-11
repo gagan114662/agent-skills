@@ -3,6 +3,7 @@ import {
   type FounderConsole,
   type GateBoundariesSnapshot,
   type MaintenanceSnapshot,
+  type MoatVentureSnapshot,
   type PendingApprovalSnapshot,
   type PostmortemLinkView,
   type RevenueSnapshot,
@@ -83,6 +84,14 @@ export interface ForecastReader {
   tenantConcurrency(workspaceId: string): number;
 }
 
+/** Per-venture moat roll-ups (#103) + whether stagnation flagging is on. Optional — absent ⇒ the
+ * console renders a zeroed moat view (works before the subsystem is wired). */
+export interface MoatReader {
+  portfolio(workspaceId: string): Promise<MoatVentureSnapshot[]>;
+  enabled(workspaceId: string): boolean;
+  windowDays(workspaceId: string): number;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -97,6 +106,8 @@ export interface FounderConsoleDeps {
   flywheel?: FlywheelReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
   forecast: ForecastReader;
+  /** Per-venture moat roll-ups (#103) — optional, read-only. */
+  moat?: MoatReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -126,6 +137,7 @@ export class FounderConsoleService {
       gateBoundaries,
       usageTrend,
       selfHealing,
+      moat,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -138,6 +150,7 @@ export class FounderConsoleService {
         this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
       ]);
 
     return aggregateFounderConsole({
@@ -166,6 +179,9 @@ export class FounderConsoleService {
       forecastWindow: this.deps.forecast.forecastWindow(now),
       infraBudgetCeilingCents: this.deps.forecast.infraBudgetCeilingCents(workspaceId),
       tenantConcurrency: this.deps.forecast.tenantConcurrency(workspaceId),
+      moat,
+      moatEnabled: this.deps.moat?.enabled(workspaceId) ?? false,
+      moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
     });
   }
 }

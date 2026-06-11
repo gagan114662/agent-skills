@@ -2,6 +2,9 @@ import { FounderConsoleService } from "./service.js";
 import type { Verdict } from "./aggregate.js";
 import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
+import type { MoatService } from "../moat/service.js";
+import { resolveMoatCaps } from "../moat/caps.js";
+import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
 import { listEvaluations } from "../db/repositories/venture.js";
@@ -25,9 +28,11 @@ import {
 export function createDefaultFounderConsoleService(deps: {
   scale: Scale;
   billing: BillingManager;
+  /** The #103 moat service — surfaces per-venture moat + flags the stagnant ones (read-only). */
+  moat?: MoatService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing } = deps;
+  const { scale, billing, moat } = deps;
   return new FounderConsoleService({
     fleet: {
       tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
@@ -143,6 +148,26 @@ export function createDefaultFounderConsoleService(deps: {
         };
       },
     },
+    // #103 moat accrual: per-venture moat roll-ups + the stagnation flag. The portfolio reuses the SAME
+    // venture evaluation list the pipeline view reads, so a zero-accrual venture (no ledger rows) is
+    // still scored + flagged. enabled/windowDays come from the resolved moat caps (default OFF).
+    moat: moat
+      ? {
+          portfolio: async (workspaceId) => {
+            const ideaIds = (await listEvaluations(workspaceId)).map((e) => e.ideaId);
+            const rollups = await moat.portfolioMoat(workspaceId, ideaIds);
+            return rollups.map((m) => ({
+              ventureIdeaId: m.ventureIdeaId,
+              score: m.score,
+              stagnant: m.stagnant,
+              accrualsInWindow: m.accrualsInWindow,
+              lastAccrualAtMs: m.lastAccrualAtMs,
+            }));
+          },
+          enabled: (workspaceId) => resolveMoatCaps(loadConfig(workspaceId).moat).enabled,
+          windowDays: (workspaceId) => resolveMoatCaps(loadConfig(workspaceId).moat).stagnationWindowDays,
+        }
+      : undefined,
     now: deps.now,
   });
 }
