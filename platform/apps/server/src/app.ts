@@ -81,6 +81,8 @@ import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
 import type { FounderConsoleService } from "./founder-console/service.js";
+import { createDefaultGatePricingService } from "./gate-pricing/default.js";
+import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
 import type { SaturationCollectorDeps } from "./observability/saturation.js";
@@ -98,6 +100,8 @@ declare module "fastify" {
     watchdogEngine: WatchdogEngine;
     /** The #112 SRE on-call loop; `index.ts` starts its opt-in tick (SRE_INTERVAL_MS). */
     sreEngine: SreEngine;
+    /** The #119 evidence pricer; config default-OFF, driven per-workspace via `tick(workspaceId)`. */
+    gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
     flywheelEngine: FlywheelEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
@@ -169,6 +173,8 @@ export interface BuildAppOptions {
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
    */
   founderConsole?: FounderConsoleService;
+  /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
+  gatePricing?: GatePricingService;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -414,6 +420,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.decorate("sreEngine", sreEngine);
   app.register(sreRoutes);
+  // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action
+  // experiment. It reads the trailing window of #13 decision outcomes per action class (recorded into
+  // gate_evidence on every approve/reject) and, with structural hysteresis, RELAXes a clean reversible
+  // class (creates a #95 auto-approve rule) or RE-TIGHTENs a regressed one (revokes it) — every change
+  // audited (gate_boundary_changes) and surfaced in the #104 console. Invariant classes (outbound money,
+  // external sends, secrets, the #13 hard list) can NEVER auto-relax (enforced in the type system). It is
+  // config default-OFF (`gatePricing.enabled`), so wiring it changes nothing until a deployment opts in.
+  // It is driven per-workspace via `tick(workspaceId)` (a fleet scheduler can drive it on infrastructure
+  // time, like the venture/watchdog ticks); tests drive `tick()` directly. Decorated for that access.
+  const gatePricingService = opts.gatePricing ?? createDefaultGatePricingService(app.log);
+  app.decorate("gatePricingService", gatePricingService);
   // #117 self-healing flywheel: the second infrastructure-time supervisor. It fingerprints + dedups
   // every agent failure (redacted via #25), synthesizes ONE GitHub issue per fingerprint via the #57
   // path on a kill-switch-gated tick, and dispatches budget-/concurrency-capped fix sessions through

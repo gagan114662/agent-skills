@@ -231,6 +231,26 @@ export const sreSchema = z.object({
 });
 
 /**
+ * Evidence-Priced Autonomy policy (#119, ADR-0119). All **non-secret** knobs for the gate pricer that
+ * auto-relaxes / re-tightens #95 approval rules on measured decision error. Every field is optional and
+ * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's static gates —
+ * only evidence *recording* is always-on. `windowSize`/`minSamples` size the trailing window;
+ * `relaxBelowRate` < `retightenAboveRate` are the hysteresis rails (the dead band that prevents flapping).
+ */
+export const gatePricingSchema = z.object({
+  /** The auto-relax/re-tighten pricer flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Trailing-window size: recent decisions per action class the pricer measures. */
+  windowSize: z.number().int().positive().optional(),
+  /** Minimum decisions before a strict boundary may relax (the insufficient-evidence guard). */
+  minSamples: z.number().int().positive().optional(),
+  /** Error rate strictly below which a strict boundary RELAXes (0–1). */
+  relaxBelowRate: z.number().min(0).max(1).optional(),
+  /** Error rate strictly above which a relaxed boundary RE-TIGHTENs (0–1; must exceed `relaxBelowRate`). */
+  retightenAboveRate: z.number().min(0).max(1).optional(),
+});
+
+/**
  * Self-Healing Flywheel policy (#117, ADR-0117). All **non-secret** knobs for the failure→issue→fix
  * loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets
  * nothing files no issues and dispatches no fixes. `issueThreshold` is the occurrence count that earns
@@ -293,6 +313,8 @@ export const settingsSchema = z.object({
   watchdog: watchdogSchema.optional(),
   /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
   sre: sreSchema.optional(),
+  /** Evidence-Priced Autonomy policy (#119): the gate pricer that auto-relaxes/re-tightens #95 rules. */
+  gatePricing: gatePricingSchema.optional(),
   /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
   flywheel: flywheelSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
@@ -316,6 +338,7 @@ export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
 export type SreConfig = z.infer<typeof sreSchema>;
 export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
+export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
 
@@ -343,6 +366,8 @@ export interface ResolvedConfig {
   watchdog: WatchdogConfig;
   /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
   sre: SreConfig;
+  /** Evidence-Priced Autonomy policy (#119). A partial whose hard defaults `resolveGatePricingCaps` fills. */
+  gatePricing: GatePricingConfig;
   /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
   flywheel: FlywheelConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
@@ -362,6 +387,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   venture: {},
   watchdog: {},
   sre: {},
+  gatePricing: {},
   flywheel: {},
   marketing: {},
 };
