@@ -110,6 +110,17 @@ export async function hasAnyOwner(workspaceId: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/** How many owners the workspace has right now — the last-owner guard (#151 review fix). */
+export async function countOwners(workspaceId: string): Promise<number> {
+  const rows = await db
+    .select({ memberId: workspaceMemberRoles.memberId })
+    .from(workspaceMemberRoles)
+    .where(
+      and(eq(workspaceMemberRoles.workspaceId, workspaceId), eq(workspaceMemberRoles.role, "owner")),
+    );
+  return rows.length;
+}
+
 /** Create a pending email invite. The raw token is the caller's to share; only its hash is stored. */
 export async function createInvite(input: {
   workspaceId: string;

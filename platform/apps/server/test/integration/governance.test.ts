@@ -183,6 +183,82 @@ describe("#151 governance — email invites", () => {
   });
 });
 
+describe("#151 governance — owner-role protection (review fix)", () => {
+  it("a non-owner (approver) cannot demote the owner → 403", async () => {
+    const owner = await newOwner();
+    const agent = await newAgent(owner, "Deputy");
+    // Owner establishes themselves (bootstrap) and makes the agent an approver.
+    await app.inject({
+      method: "PUT",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${owner.memberId}`,
+      cookies: { rid: owner.cookie },
+      payload: { role: "owner" },
+    });
+    await app.inject({
+      method: "PUT",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${agent.memberId}`,
+      cookies: { rid: owner.cookie },
+      payload: { role: "approver" },
+    });
+
+    // The approver tries to demote the owner → denied.
+    const attempt = await app.inject({
+      method: "PUT",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${owner.memberId}`,
+      headers: bearer(agent.token),
+      payload: { role: "viewer" },
+    });
+    expect(attempt.statusCode).toBe(403);
+
+    // The owner is untouched.
+    const roles = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${owner.workspaceId}/governance/roles`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json();
+    const byMember = Object.fromEntries(
+      roles.roles.map((r: { memberId: string; role: string }) => [r.memberId, r.role]),
+    );
+    expect(byMember[owner.memberId]).toBe("owner");
+  });
+
+  it("the sole owner cannot demote themselves → 409", async () => {
+    const owner = await newOwner();
+    await app.inject({
+      method: "PUT",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${owner.memberId}`,
+      cookies: { rid: owner.cookie },
+      payload: { role: "owner" },
+    });
+
+    const selfDemote = await app.inject({
+      method: "PUT",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${owner.memberId}`,
+      cookies: { rid: owner.cookie },
+      payload: { role: "viewer" },
+    });
+    expect(selfDemote.statusCode).toBe(409);
+    expect(selfDemote.json().error).toMatch(/at least one owner/);
+
+    // And the sole owner cannot be removed either.
+    const selfRemove = await app.inject({
+      method: "DELETE",
+      url: `/workspaces/${owner.workspaceId}/governance/roles/${owner.memberId}`,
+      cookies: { rid: owner.cookie },
+    });
+    expect(selfRemove.statusCode).toBe(409);
+
+    // Still owner.
+    expect(await app.inject({
+      method: "GET",
+      url: `/workspaces/${owner.workspaceId}/governance/roles`,
+      cookies: { rid: owner.cookie },
+    }).then((r) => r.json().hasOwner)).toBe(true);
+  });
+});
+
 describe("#151 governance — RBAC gate on clearing approvals (no weakening when default-OFF)", () => {
   it("a viewer cannot clear an approval; an approver can", async () => {
     const owner = await newOwner();

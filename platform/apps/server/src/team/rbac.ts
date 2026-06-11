@@ -104,3 +104,60 @@ export function decideApprovalClear(input: {
     ? { decision: "allow" }
     : { decision: "deny", reason: "your role is read-only; an approver or owner must clear approvals" };
 }
+
+export interface RoleChangeContext {
+  /** The caller's own role in the workspace (null = no role row). */
+  callerRole: WorkspaceRole | null;
+  /** The caller's member kind — only a human may bootstrap the first owner. */
+  callerKind: "human" | "agent";
+  /** Whether the workspace already has at least one owner. */
+  ownerExists: boolean;
+  /** The target member's CURRENT role (null = no role row). */
+  targetCurrentRole: WorkspaceRole | null;
+  /** The role being granted/changed; null for a removal (DELETE). */
+  newRole: WorkspaceRole | null;
+  /** How many owners the workspace has right now (the last-owner guard). */
+  ownerCount: number;
+}
+
+export type RoleChangeDecision = { ok: true } | { ok: false; status: 403 | 409; reason: string };
+
+/**
+ * Pure authority decision for granting/changing/revoking a workspace role (#151 review fix). Two
+ * invariants on top of the general manager gate, so the owner role can never be captured or orphaned:
+ *
+ *  1. **Only an owner may grant, change, or revoke the OWNER role.** The single exception is the
+ *     bootstrap case — a human may establish the FIRST owner when none exists yet (there is no owner to
+ *     protect). A non-owner (viewer/approver, or even a human once an owner exists) is denied (403).
+ *  2. **The last remaining owner can never be downgraded or removed** — doing so would leave the
+ *     workspace ownerless and unmanageable (409).
+ *
+ * Non-owner-role changes (assigning/removing viewer/approver) require the general manager gate only.
+ */
+export function decideRoleChange(ctx: RoleChangeContext): RoleChangeDecision {
+  const isOwner = ctx.callerRole === "owner";
+  const bootstrap = ctx.callerKind === "human" && !ctx.ownerExists;
+
+  // General manager gate: an owner, or a human bootstrapping a workspace that has no owner yet.
+  if (!isOwner && !bootstrap) {
+    return { ok: false, status: 403, reason: "only an owner can manage governance" };
+  }
+
+  // (1) Granting/changing/revoking the owner role is owner-only — except the bootstrap first-owner grant.
+  const touchesOwner = ctx.newRole === "owner" || ctx.targetCurrentRole === "owner";
+  if (touchesOwner && !isOwner && !bootstrap) {
+    return { ok: false, status: 403, reason: "only an owner can change the owner role" };
+  }
+
+  // (2) Never strand the workspace: the last owner can't be downgraded (change) or removed (delete).
+  const losingAnOwner = ctx.targetCurrentRole === "owner" && ctx.newRole !== "owner";
+  if (losingAnOwner && ctx.ownerCount <= 1) {
+    return {
+      ok: false,
+      status: 409,
+      reason: "the workspace must keep at least one owner; assign another owner first",
+    };
+  }
+
+  return { ok: true };
+}

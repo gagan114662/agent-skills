@@ -8,6 +8,7 @@ import {
   removeMemberRole,
   listMemberRoles,
   hasAnyOwner,
+  countOwners,
   createInvite,
   listInvites,
   revokeInvite,
@@ -18,7 +19,7 @@ import { listViolations } from "../db/repositories/egress.js";
 import { generateSessionToken, hashToken } from "../auth/secrets.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveEgressPolicy } from "../runtime/egress-allowlist.js";
-import { canManageGovernance, decideInvite, isWorkspaceRole } from "../team/rbac.js";
+import { canManageGovernance, decideInvite, decideRoleChange, isWorkspaceRole } from "../team/rbac.js";
 
 /**
  * Governance & trust routes (#151, ADR-0151). Workspace role management + email invites + the
@@ -59,11 +60,29 @@ export async function governanceRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return;
     const { wid, mid } = req.params as { wid: string; mid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    if (!(await requireGovernanceManager(id, wid, reply))) return;
     const role = (req.body as { role?: unknown })?.role;
     if (!isWorkspaceRole(role)) return reply.code(400).send({ error: "invalid role" });
     const target = await getWorkspaceMember(mid, wid);
     if (!target) return reply.code(404).send({ error: "member not found in this workspace" });
+
+    // #151 review fix: only an owner may grant/change/revoke the OWNER role (bootstrap may set the first
+    // owner), and the last owner can never be downgraded — decided purely so the rule is one source.
+    const [callerRole, ownerExists, targetCurrentRole, ownerCount] = await Promise.all([
+      getMemberRole(wid, id.memberId),
+      hasAnyOwner(wid),
+      getMemberRole(wid, mid),
+      countOwners(wid),
+    ]);
+    const decision = decideRoleChange({
+      callerRole,
+      callerKind: id.kind,
+      ownerExists,
+      targetCurrentRole,
+      newRole: role,
+      ownerCount,
+    });
+    if (!decision.ok) return reply.code(decision.status).send({ error: decision.reason });
+
     await setMemberRole({ workspaceId: wid, memberId: mid, role, grantedByMemberId: id.memberId });
     return reply.code(200).send({ memberId: mid, role });
   });
@@ -73,7 +92,25 @@ export async function governanceRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return;
     const { wid, mid } = req.params as { wid: string; mid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    if (!(await requireGovernanceManager(id, wid, reply))) return;
+
+    // Same owner-protection as PUT: a removal is a role change to "no role" (newRole = null), so a
+    // non-owner can't strip the owner role and the last owner can't be removed.
+    const [callerRole, ownerExists, targetCurrentRole, ownerCount] = await Promise.all([
+      getMemberRole(wid, id.memberId),
+      hasAnyOwner(wid),
+      getMemberRole(wid, mid),
+      countOwners(wid),
+    ]);
+    const decision = decideRoleChange({
+      callerRole,
+      callerKind: id.kind,
+      ownerExists,
+      targetCurrentRole,
+      newRole: null,
+      ownerCount,
+    });
+    if (!decision.ok) return reply.code(decision.status).send({ error: decision.reason });
+
     await removeMemberRole(wid, mid);
     return reply.code(200).send({ memberId: mid, role: null });
   });
