@@ -85,6 +85,8 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
     }
     const result = await mention.launch(id, { channelId: cid, messageId: mid, task: b.task ?? message.body });
     if (!result.ok) return reply.code(result.code).send({ error: result.error });
-    return reply.code(202).send({ launched: result.launched });
+    // #68: `connectPrompted` lists any mentioned agent that couldn't run because the workspace hasn't
+    // connected a Claude account — the persona posted a friendly connect prompt instead of launching.
+    return reply.code(202).send({ launched: result.launched, connectPrompted: result.connectPrompted });
   });
 }

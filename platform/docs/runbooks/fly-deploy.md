@@ -51,6 +51,43 @@ flyctl secrets list -a reload-api   # names + digests only — never prints valu
 Non-secret config (PORT, profile, CORS origins, `RELOAD_MARKETING_*`, model) lives in `fly.toml [env]`
 and ships with the deploy.
 
+## Real agents — connect Claude (#68, ADR-0068)
+
+The app runs the **real** `claude-code` harness in production (`fly.toml [env] AGENT_HARNESS=claude-code`,
+`claude` CLI baked into the image). Auth is **subscription-first and strictly per-tenant** — a workspace
+runs agents on **its own** Claude subscription, never a pooled key.
+
+### The one owner step (per workspace) — connect your Claude
+
+1. On your machine, generate a long-lived token:
+   ```bash
+   claude setup-token
+   ```
+2. In the console: **Settings → Connect Claude**, paste the token, Connect. (The field is masked; the
+   token is stored **encrypted** in the per-tenant vault and never shown again — only a fingerprint is.)
+
+That's it. @mention a fleet agent (`@scout`, `@quill`, …) in its channel and it runs a real
+`claude-fable-5` session billed to your subscription, replying in-thread. A workspace that hasn't
+connected gets a friendly in-channel "connect your Claude account" reply instead — it never crashes.
+
+### Optional operator / platform secrets (set on the app, never committed)
+
+```bash
+# Encrypt the per-tenant token vault at rest (32-byte key as hex or base64). Strongly recommended in prod.
+flyctl secrets set AGENT_CREDENTIALS_ENC_KEY="$(openssl rand -hex 32)" -a reload-api
+
+# Fallback platform key — used ONLY for tenants who have connected nothing (an operator org key, not a
+# user subscription). Omit it to require every workspace to connect its own.
+flyctl secrets set ANTHROPIC_API_KEY='sk-ant-…' -a reload-api
+
+# Observability: trace every agent session to Braintrust (no-op unless set).
+flyctl secrets set BRAINTRUST_API_KEY='…' -a reload-api
+```
+
+> Compliance: one subscription is **never** pooled across workspaces. The vault is keyed by workspace;
+> a session only ever sees its own workspace's token. Rotating `AGENT_CREDENTIALS_ENC_KEY` invalidates
+> stored tokens (owners re-paste). Set it **before** the first connect so nothing is stored plaintext.
+
 ## Manual deploy (from a machine logged into flyctl)
 
 ```bash

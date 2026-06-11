@@ -24,6 +24,7 @@ import type {
   AgentProfile,
   AgentSessionSummary,
   Channel,
+  CredentialStatus,
   EffortLevel,
   FounderConsoleDto,
   Identity,
@@ -205,6 +206,20 @@ export const api = {
   },
   me(): Promise<Identity> {
     return request<Identity>("/me");
+  },
+
+  // --- Connect Claude credentials (#68) ---
+  getAgentCredentials(): Promise<CredentialStatus> {
+    return request<CredentialStatus>("/me/agent-credentials");
+  },
+  connectAgentCredentials(token: string): Promise<CredentialStatus> {
+    return request<CredentialStatus>("/me/agent-credentials", {
+      method: "PUT",
+      body: JSON.stringify({ token }),
+    });
+  },
+  disconnectAgentCredentials(): Promise<CredentialStatus> {
+    return del("/me/agent-credentials") as Promise<CredentialStatus>;
   },
 
   // --- channels ---
