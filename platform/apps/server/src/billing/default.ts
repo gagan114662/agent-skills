@@ -1,5 +1,5 @@
 import { loadEnv } from "../env.js";
-import { EnvSecretsResolver } from "../runtime/secrets-resolver.js";
+import { BillingSecretsResolver } from "../runtime/secrets-resolver.js";
 import { channelPoster } from "../runtime/default.js";
 import { dbBillingStore } from "../db/repositories/billing.js";
 import { dbDeploymentStore } from "../db/repositories/deployments.js";
@@ -25,7 +25,10 @@ export function createDefaultBilling(
 } {
   const env = loadEnv();
   const provider = createBillingProvider(env.billing);
-  const secrets = new EnvSecretsResolver();
+  // #98: billing reads STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET straight from env via a billing-only
+  // resolver — NOT the agent-facing AGENT_SECRET_KEYS passthrough, which would inject the live key into
+  // every agent session's runtime (the session manager uses EnvSecretsResolver as its inner resolver).
+  const secrets = new BillingSecretsResolver();
   const deployments: DeploymentLookup = {
     latestForSession: (sessionId, channelId) =>
       dbDeploymentStore.latestForSession(sessionId, channelId),
