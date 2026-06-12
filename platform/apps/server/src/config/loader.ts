@@ -193,6 +193,16 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (briefingsEnabled !== undefined) {
     raw.briefings = { enabled: briefingsEnabled === "true" || briefingsEnabled === "1" };
   }
+  // #98 billing opt-in: present the `[billing]` config section (the per-tenant checkout gate) from the
+  // deployment env — mirroring marketing/rbac/catalog — so live billing can be switched on without
+  // baking a managed.toml. The provider VALUE mirrors the env-level `BILLING_PROVIDER` (the actual
+  // backend selection); this only flips the opt-in gate that routes checkout to 409 when absent. Hard
+  // default stays OFF (var unset → no billing block → 409). A managed layer still wins as the lock and
+  // can scope billing to specific `[workspace.<id>]` tenants.
+  const billingEnabled = env.RELOAD_BILLING_ENABLED;
+  if (billingEnabled === "true" || billingEnabled === "1") {
+    raw.billing = { provider: env.BILLING_PROVIDER === "stripe" ? "stripe" : "none" };
+  }
   return parseLayer(raw, "env");
 }
 

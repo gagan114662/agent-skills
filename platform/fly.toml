@@ -43,6 +43,17 @@ primary_region = "yyz"
   RELOAD_TRIAL_ENABLED = "true"
   RELOAD_TRIAL_TENANT_CONCURRENCY = "1"
   RELOAD_TRIAL_BUDGET_CENTS = "500"
+  # #98 billing opt-in: present the [billing] config section so the per-tenant checkout gate is open
+  # (otherwise /pricing → "Checkout isn't switched on for this workspace yet" → 409). The PROVIDER is
+  # selected by BILLING_PROVIDER (a fly secret) + the per-tenant STRIPE_* secrets on the #25 resolver;
+  # this flag only flips the config opt-in. Durable replacement for the per-tenant /etc/reload/managed.toml.
+  RELOAD_BILLING_ENABLED = "true"
+
+# Post-deploy smoke (#166 follow-up): boot the NEW image on a one-off machine and run ONE real
+# demo-harness session end-to-end BEFORE traffic shifts. A non-zero exit aborts the rollout, so an
+# image that cannot spawn a session (e.g. missing `bash`) can never reach production. No DB / no spend.
+[deploy]
+  release_command = "node /app/apps/server/dist/runtime/smoke-cli.js"
 
 [http_service]
   internal_port = 8080

@@ -203,6 +203,35 @@ describe("env layer parsing (#58)", () => {
     });
     expect(cfg.marketing.enabled).toBe(false);
   });
+
+  it("#98 RELOAD_BILLING_ENABLED presents the [billing] section so the checkout gate opens (provider mirrors BILLING_PROVIDER)", () => {
+    const cfg = loadConfig(undefined, {
+      env: { RELOAD_BILLING_ENABLED: "true", BILLING_PROVIDER: "stripe" },
+      readFile: () => undefined,
+    });
+    expect(cfg.billing).toEqual({ provider: "stripe" });
+  });
+
+  it("billing stays absent (default OFF → checkout 409s) when RELOAD_BILLING_ENABLED is unset", () => {
+    const cfg = loadConfig(undefined, { env: { BILLING_PROVIDER: "stripe" }, readFile: () => undefined });
+    expect(cfg.billing).toBeUndefined();
+  });
+
+  it("billing-enabled with no/none BILLING_PROVIDER still opens the gate but provider falls back to none", () => {
+    const cfg = loadConfig(undefined, { env: { RELOAD_BILLING_ENABLED: "1" }, readFile: () => undefined });
+    expect(cfg.billing).toEqual({ provider: "none" });
+  });
+
+  it("a managed per-tenant [workspace.<id>].billing still wins over the env flag (managed is the lock)", () => {
+    const wid = "019eb395-f4a4-796e-9ef0-3a538533566a";
+    const cfg = loadConfig(wid, {
+      env: { RELOAD_BILLING_ENABLED: "true", BILLING_PROVIDER: "stripe" },
+      readFile: (p) =>
+        p.includes("managed") ? `[workspace."${wid}".billing]\nprovider = "stripe"\ncurrency = "usd"` : undefined,
+      managedPath: "/etc/reload/managed.toml",
+    });
+    expect(cfg.billing).toEqual({ provider: "stripe", currency: "usd" });
+  });
 });
 
 describe("trial free-tier caps (default-ON — the product's free tier)", () => {

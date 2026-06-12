@@ -21,15 +21,37 @@ const input = (over: Partial<PreflightInput>): PreflightInput => ({
 });
 
 describe("preflight (#69 — validate posture before any run; never throws; secret-free)", () => {
-  it("the default dev posture (local/demo) passes with no deps, network, or binaries", () => {
+  it("the default dev posture (local/demo) passes with no cloud creds, network, or SDK (bash present)", () => {
     const report = preflight(
+      // bash is the one host binary the local runtime genuinely needs (it spawns the demo via bash);
+      // every real dev host / CI image has it, so the default posture is still trivially green.
       input({ profile: "dev", runtime: "local", harness: "demo", env: {} }),
-      { binaryAvailable: () => false, moduleResolvable: () => false },
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => false },
     );
     expect(report.ok).toBe(true);
     expect(report.runtime).toBe("local");
     expect(report.harness).toBe("demo");
     expect(report.checks.every((c) => c.status === "pass")).toBe(true);
+  });
+
+  it("local runtime with bash MISSING fails — the #166 gap (sessions spawn 'bash -lc' and die at exec)", () => {
+    const report = preflight(
+      input({ profile: "dev", runtime: "local", harness: "demo", env: {} }),
+      { binaryAvailable: () => false, moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "bash-binary");
+    expect(check?.status).toBe("fail");
+    expect(check?.message.toLowerCase()).toContain("bash");
+    expect(check?.remedy).toContain("apk add");
+    expect(report.ok).toBe(false);
+  });
+
+  it("the bash check is NOT applied to the sandbox runtime (bash is a microVM concern there, not the host)", () => {
+    const report = preflight(
+      input({ runtime: "sandbox", harness: "demo", env: { VERCEL_OIDC_TOKEN: "tok" } }),
+      okDeps,
+    );
+    expect(report.checks.find((c) => c.name === "bash-binary")).toBeUndefined();
   });
 
   it("sandbox + OIDC token passes the Vercel auth check", () => {

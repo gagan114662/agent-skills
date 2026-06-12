@@ -127,6 +127,26 @@ function checkVercelSdk(deps: PreflightDeps): CheckResult {
   };
 }
 
+/**
+ * `bash` is the spawn target for EVERY local-runtime harness — the `demo` script runs as
+ * `bash scripts/agent-harness-demo.sh` and the real harnesses as `bash -lc …` (see `harness.ts`). A
+ * host that lacks it (a stock Alpine image ships only `ash`) fails every session at exec with no exit
+ * code → "session failed exit n/a" (#166). The existing checks cover `claude` but not the shell that
+ * launches it, so this is the gap that let a bash-less image ship.
+ */
+function checkBashBinary(deps: PreflightDeps): CheckResult {
+  const name = "bash-binary";
+  if (deps.binaryAvailable("bash")) {
+    return { name, status: "pass", message: "bash shell found (the local-runtime spawn target)" };
+  }
+  return {
+    name,
+    status: "fail",
+    message: "bash not found — every local-runtime session spawns 'bash' and dies at exec without it",
+    remedy: "Install bash in the image (Alpine ships only 'ash'): apk add --no-cache bash.",
+  };
+}
+
 /** The `claude` binary (or `CLAUDE_BIN`) must be runnable for the `claude-code` harness. */
 function checkClaudeBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckResult {
   const name = "claude-binary";
@@ -180,6 +200,9 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
     checks.push(checkVercelSdk(deps));
   } else {
     checks.push({ name: "runtime", status: "pass", message: "runtime 'local' needs no cloud credentials" });
+    // The local runtime spawns every harness via `bash` (the demo script / `bash -lc …`), so a host
+    // without it fails EVERY session at exec → "exit n/a" (#166). Gate on it for the local runtime.
+    checks.push(checkBashBinary(deps));
   }
 
   if (input.harness === "claude-code") {
