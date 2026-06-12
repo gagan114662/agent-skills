@@ -367,6 +367,60 @@ export interface AutomationRunDto {
   createdAt: string;
 }
 
+/** A workspace catalog entry (#152): a registered marketing asset. */
+export interface CatalogEntryDto {
+  id: string;
+  workspaceId: string;
+  kind: string;
+  name: string;
+  identifier: string;
+  status: "active" | "inactive" | "pending" | "archived";
+  provenance: "manual" | "synced" | "agent";
+  ownerMemberId: string | null;
+  metadata: Record<string, string>;
+  createdByMemberId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A workflow definition (#152): a trigger → conditions → actions chain. */
+export interface WorkflowDto {
+  id: string;
+  workspaceId: string;
+  name: string;
+  triggerKind: "schedule" | "webhook" | "catalog_change" | "channel_event";
+  trigger: Record<string, unknown>;
+  conditions: { fact: string; op: string; value?: string | number | boolean }[];
+  actions: Record<string, unknown>[];
+  enabled: boolean;
+  lastFiredAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Returned ONCE on create for a webhook trigger (the bearer token). */
+  webhookToken?: string;
+}
+
+/** A workflow run-ledger row (#152), from `POST .../run` and the ledger feed. */
+export interface WorkflowRunDto {
+  id: string;
+  workflowId: string;
+  trigger: "schedule" | "webhook" | "catalog_change" | "channel_event" | "manual";
+  status: "fired" | "skipped" | "blocked" | "failed";
+  reason: string;
+  results: { kind: string; status: string; reason: string; ref?: string }[];
+  createdAt: string;
+}
+
+/** The run-history insights (#152): the console success/failure trend. */
+export interface WorkflowInsightsDto {
+  total: number;
+  byStatus: { fired: number; skipped: number; blocked: number; failed: number };
+  successRate: number;
+  recentFailureReasons: string[];
+  daily: { date: string; fired: number; failed: number; blocked: number }[];
+}
+
 /** A task-template gallery entry; `agentHandle` is attached when fetched for a channel. */
 export interface TaskTemplateDto {
   key: string;

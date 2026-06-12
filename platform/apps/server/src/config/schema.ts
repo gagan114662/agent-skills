@@ -548,6 +548,39 @@ export const fleetSchema = z.object({
   evalRegressionTolerance: z.number().min(0).max(1).optional(),
 });
 
+/**
+ * Workspace catalog policy (#152, ADR-0152). The structured registry of marketing assets agents read
+ * for context. Every field is optional and defaults **off** (`enabled: false`) so a deployment that
+ * sets nothing exposes no catalog (reads + writes are gated until an owner opts in). `maxEntries` caps
+ * how many assets a workspace may register.
+ */
+export const catalogSchema = z.object({
+  /** The catalog feature flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on catalog entries a workspace may register. */
+  maxEntries: z.number().int().positive().optional(),
+});
+
+/**
+ * Visual workflow builder policy (#152, ADR-0152). All **non-secret** knobs for the trigger → condition
+ * → action loop (the generalization of #147 automations). Every field is optional and defaults **off**
+ * (`enabled: false`) so a deployment that sets nothing fires no workflow (creating one is still allowed
+ * — it simply never ticks). `maxRunsPerWindow`/`windowMinutes` are the per-tenant firings-per-day cap;
+ * `maxPerWorkspace` caps definitions; `maxActionsPerRun` bounds a single firing's fan-out.
+ */
+export const workflowsSchema = z.object({
+  /** The workflows-tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on firings per workspace inside `windowMinutes` (the firings-per-day rate limit). */
+  maxRunsPerWindow: z.number().int().nonnegative().optional(),
+  /** The rate-limit window, in minutes (default 1440 = one day). */
+  windowMinutes: z.number().int().positive().optional(),
+  /** Hard cap on workflow definitions a workspace may create. */
+  maxPerWorkspace: z.number().int().positive().optional(),
+  /** Hard cap on actions executed in a single firing. */
+  maxActionsPerRun: z.number().int().positive().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -611,6 +644,10 @@ export const settingsSchema = z.object({
   constitution: constitutionSchema.optional(),
   /** Fleet skills + semantic layer + eval policy (#155): freshness ceiling + eval regression tolerance (default OFF). */
   fleet: fleetSchema.optional(),
+  /** Workspace catalog policy (#152): the marketing-asset registry feature flag + entry cap (default OFF). */
+  catalog: catalogSchema.optional(),
+  /** Visual workflow builder policy (#152): trigger→condition→action firings + per-day caps (default OFF). */
+  workflows: workflowsSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -647,6 +684,8 @@ export type RbacConfig = z.infer<typeof rbacSchema>;
 export type AutomationsConfig = z.infer<typeof automationsSchema>;
 export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
 export type FleetConfig = z.infer<typeof fleetSchema>;
+export type CatalogConfig = z.infer<typeof catalogSchema>;
+export type WorkflowsConfig = z.infer<typeof workflowsSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -718,6 +757,10 @@ export interface ResolvedConfig {
   constitution: ConstitutionConfig;
   /** Fleet skills + semantic + eval policy (#155). A partial whose hard defaults `resolveFleetCaps` fills. */
   fleet: FleetConfig;
+  /** Workspace catalog policy (#152). A partial whose hard defaults `resolveCatalogCaps` fills. */
+  catalog: CatalogConfig;
+  /** Visual workflow builder policy (#152). A partial whose hard defaults `resolveWorkflowCaps` fills. */
+  workflows: WorkflowsConfig;
 }
 
 /**
@@ -755,4 +798,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   automations: {},
   constitution: {},
   fleet: {},
+  catalog: {},
+  workflows: {},
 };

@@ -166,6 +166,15 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     }
     raw.egress = egress;
   }
+  // #152 catalog + workflows: let the deployment env turn the marketing-asset registry + the workflow
+  // builder on without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed
+  // layer still wins as the lock. The firing timer is separate (WORKFLOWS_INTERVAL_MS).
+  const catalogEnabled = env.RELOAD_CATALOG_ENABLED;
+  if (catalogEnabled !== undefined) raw.catalog = { enabled: catalogEnabled === "true" || catalogEnabled === "1" };
+  const workflowsEnabled = env.RELOAD_WORKFLOWS_ENABLED;
+  if (workflowsEnabled !== undefined) {
+    raw.workflows = { enabled: workflowsEnabled === "true" || workflowsEnabled === "1" };
+  }
   return parseLayer(raw, "env");
 }
 

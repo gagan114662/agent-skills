@@ -89,6 +89,12 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #155 fleet policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // eval-maintenance flag / freshness ceiling / regression tolerance cannot be loosened by a lower layer.
     if (layer.fleet !== undefined) out.fleet = { ...layer.fleet };
+    // #152 catalog policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // catalog flag / entry cap cannot be loosened by a lower layer.
+    if (layer.catalog !== undefined) out.catalog = { ...layer.catalog };
+    // #152 workflows policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // workflows flag / firing caps cannot be loosened by a lower layer.
+    if (layer.workflows !== undefined) out.workflows = { ...layer.workflows };
   }
   return out;
 }
@@ -131,5 +137,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     automations: merged.automations ?? { ...CONFIG_DEFAULTS.automations },
     constitution: merged.constitution ?? { ...CONFIG_DEFAULTS.constitution },
     fleet: merged.fleet ?? { ...CONFIG_DEFAULTS.fleet },
+    catalog: merged.catalog ?? { ...CONFIG_DEFAULTS.catalog },
+    workflows: merged.workflows ?? { ...CONFIG_DEFAULTS.workflows },
   };
 }
