@@ -304,6 +304,23 @@ export const flywheelSchema = z.object({
 });
 
 /**
+ * Self-QA Loop policy (#171, ADR-0171). All **non-secret** knobs for the synthetic-user E2E QA pass that
+ * drives the live product and files its own deduped bug issues. Every field is optional and defaults to
+ * **off** (`enabled: false`), so a deployment that sets nothing runs no synthetic QA. `workspaceSlug` is
+ * the reserved, tenant-isolated synthetic workspace the runner is allowed to touch — never a real tenant.
+ */
+export const selfqaSchema = z.object({
+  /** The self-QA flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Reserved slug of the dedicated synthetic QA workspace (the only one the runner will drive). */
+  workspaceSlug: z.string().optional(),
+  /** Hard cap on findings turned into issues in a single run (a runaway-page bound). */
+  maxFindingsPerRun: z.number().int().nonnegative().optional(),
+  /** Whether a critical finding pages the workspace owner via the #148 reliability seam. */
+  pageCriticalOwner: z.boolean().optional(),
+});
+
+/**
  * Outcome Verifiers policy (#106, ADR-0106). All **non-secret** knobs for the measured-gate runner that
  * turns non-code claims (deploy live? revenue real? growth moved? fix held?) into durable evidence rows.
  * Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
@@ -641,6 +658,8 @@ export const settingsSchema = z.object({
   gatePricing: gatePricingSchema.optional(),
   /** Self-healing flywheel policy (#117): the failure→issue→fix loop + its bounds. */
   flywheel: flywheelSchema.optional(),
+  /** Self-QA loop policy (#171): the synthetic-user E2E QA pass that files its own bug issues (default OFF). */
+  selfqa: selfqaSchema.optional(),
   /** Marketing department fleet policy (#123): seed-on-signup + welcome tasks (default OFF). */
   marketing: marketingSchema.optional(),
   /** Outcome Verifiers policy (#106): the measured-gate runner + escalation (default OFF). */
@@ -697,6 +716,7 @@ export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
 export type ReliabilityConfig = z.infer<typeof reliabilitySchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
+export type SelfqaConfig = z.infer<typeof selfqaSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
 export type VerifierConfig = z.infer<typeof verifiersSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
@@ -757,6 +777,8 @@ export interface ResolvedConfig {
   gatePricing: GatePricingConfig;
   /** Self-healing flywheel policy (#117). A partial whose hard defaults `resolveFlywheelCaps` fills. */
   flywheel: FlywheelConfig;
+  /** Self-QA loop policy (#171). A partial whose hard defaults `resolveSelfqaCaps` fills. */
+  selfqa: SelfqaConfig;
   /** Marketing department fleet policy (#123). A partial whose hard defaults `resolveMarketingCaps` fills. */
   marketing: MarketingConfig;
   /** Outcome Verifiers policy (#106). A partial whose hard defaults `resolveVerifierCaps` fills. */
@@ -814,6 +836,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   reliability: {},
   gatePricing: {},
   flywheel: {},
+  selfqa: {},
   marketing: {},
   verifiers: {},
   growth: {},

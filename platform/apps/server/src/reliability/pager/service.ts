@@ -13,7 +13,7 @@ import type { ReliabilityCaps } from "../caps.js";
 import type { OwnerContact } from "../../db/repositories/reliability.js";
 import type { PagerTransport } from "./transport.js";
 
-export type PageSource = "sre" | "uptime";
+export type PageSource = "sre" | "uptime" | "selfqa";
 
 export interface PagerDeps {
   ownerContact(workspaceId: string): Promise<OwnerContact | null>;

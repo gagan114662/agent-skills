@@ -26,6 +26,8 @@ export interface Env {
   sre: SreEnv;
   /** Self-healing flywheel scheduled tick (#117). */
   flywheel: FlywheelEnv;
+  /** Self-QA loop scheduled tick (#171). */
+  selfqa: SelfqaEnv;
   /** Outcome-verifier scheduled tick (#106). */
   verifiers: VerifiersEnv;
   /** Insight Miner scheduled tick (#100). */
@@ -153,6 +155,15 @@ export interface SreEnv {
 export interface FlywheelEnv {
   /** Flywheel-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #117). */
   intervalMs: number;
+}
+
+export interface SelfqaEnv {
+  /** Self-QA tick interval in ms. Default `0` = the background loop is OFF (opt-in, #171). */
+  intervalMs: number;
+  /** The live product URL the synthetic user drives. Default the public web console. */
+  target: string;
+  /** The headless driver: `none` (default no-op), `http` (smoke), or `playwright` (lazy, opt-in). */
+  driver: string;
 }
 
 export interface VerifiersEnv {
@@ -289,6 +300,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     flywheel: {
       // Default 0 (off): the flywheel loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.FLYWHEEL_INTERVAL_MS ?? 0) || 0,
+    },
+    selfqa: {
+      // Default 0 (off): the self-QA loop is opt-in. The always-on entry is the CI CLI (#171), not the timer.
+      intervalMs: Number(source.SELFQA_INTERVAL_MS ?? 0) || 0,
+      target: source.SELFQA_TARGET ?? "https://ipop.ai",
+      driver: source.SELFQA_DRIVER ?? "none",
     },
     verifiers: {
       // Default 0 (off): the verifier runner is opt-in so tests/CI drive `tickWorkspace()` deterministically.

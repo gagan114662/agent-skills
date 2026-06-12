@@ -1,0 +1,61 @@
+name: selfqa-nightly
+
+# Nightly self-QA pass (#171, ADR-0171): a synthetic user E2E-tests the LIVE product and files its own
+# deduped bug issues — so the owner stops hand-testing and writing the report (the #166–#169 directive).
+# Runs the FULL catalog against the public URL from GitHub's infrastructure (not ours). Each failed check
+# becomes an owner-quality GitHub issue (labelled `selfqa`, grouped by surface, with repro + severity);
+# while one is already open for a finding the run only comments (the `<!-- selfqa:<sig> -->` body marker is
+# the dedup key) — never 5-minutes-of-spam. The judgment is the unit-tested pure core in
+# apps/server/src/selfqa/*; this workflow is just the scheduler + the IO env.
+#
+# Disable per-fork by setting the repo variable SELFQA_DISABLED=true. The default HTTP smoke driver needs
+# no browser binary; set the SELFQA_DRIVER var to `playwright` only on a runner image that installed it.
+# Critical findings page the owner when RELIABILITY_PAGE_WORKSPACE_SLUG names a workspace (opt-in, #148).
+
+on:
+  schedule:
+    - cron: "17 7 * * *" # 07:17 UTC nightly — off the top of the hour to dodge scheduler contention
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Suite to run (smoke|full)"
+        required: false
+        default: "full"
+
+concurrency:
+  group: selfqa-nightly
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform
+
+permissions:
+  issues: write # open / comment the selfqa bug issues — nothing else
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    if: ${{ vars.SELFQA_DISABLED != 'true' }}
+    env:
+      # GITHUB_TOKEN (auto) + GITHUB_REPOSITORY (auto) let the CLI open/dedupe issues. With the token
+      # absent the CLI is report-only and just exits non-zero on a critical finding — see run-cli.ts.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SELFQA_DRIVER: ${{ vars.SELFQA_DRIVER || 'http' }}
+      SELFQA_TARGET: ${{ vars.SELFQA_TARGET || 'https://ipop.ai' }}
+      # Opt-in owner paging at critical (reuses the #148 PagerService). Empty = report-only, no DB touch.
+      RELIABILITY_PAGE_WORKSPACE_SLUG: ${{ vars.RELIABILITY_PAGE_WORKSPACE_SLUG }}
+      SELFQA_WORKSPACE_SLUG: ${{ vars.SELFQA_WORKSPACE_SLUG }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Synthetic-user QA pass → open/dedupe selfqa bug issues
+        run: pnpm --filter @reload/server selfqa:run -- --suite "${{ github.event.inputs.suite || 'full' }}"

@@ -91,6 +91,8 @@ import { statusRoutes } from "./routes/status.js";
 import { reliabilityRoutes } from "./routes/reliability.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
 import { createDefaultFlywheelEngine } from "./flywheel/default.js";
+import type { SelfQaEngine } from "./selfqa/engine.js";
+import { createDefaultSelfQaEngine } from "./selfqa/default.js";
 import type { VerifierRunner } from "./verifiers/engine.js";
 import { createDefaultVerifierRunner } from "./verifiers/default.js";
 import { verifierRoutes } from "./routes/verifiers.js";
@@ -161,6 +163,8 @@ declare module "fastify" {
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
     flywheelEngine: FlywheelEngine;
+    /** The #171 self-QA loop; `index.ts` starts its opt-in tick (SELFQA_INTERVAL_MS). */
+    selfqaEngine: SelfQaEngine;
     /** The #106 outcome-verifier runner; `index.ts` starts its opt-in tick (VERIFIERS_INTERVAL_MS). */
     verifierRunner: VerifierRunner;
     /** The #100 insight miner; `index.ts` starts its opt-in mining tick (INSIGHT_INTERVAL_MS). */
@@ -243,6 +247,8 @@ export interface BuildAppOptions {
   sre?: SreEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
+  /** #171 self-QA loop: tests inject an engine and drive `runOnce()`. */
+  selfqa?: SelfQaEngine;
   /** #106 outcome verifiers: tests inject a runner and drive `verify`/`tickWorkspace()`; default builds the real one. */
   verifiers?: VerifierRunner;
   /** #100 insight miner: tests inject a miner over a deterministic stub; default builds the real one. */
@@ -652,6 +658,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     flywheelEngine.stop();
   });
   app.decorate("flywheelEngine", flywheelEngine);
+  // #171 self-QA loop: a synthetic user E2E-tests the LIVE product on a schedule and files its own
+  // deduped bug issues. Findings flow through the #117 flywheel above (recorded as `qa_failure`) and,
+  // on the CI path, into GitHub via the #57 provider; criticals page the owner through the #148 seam.
+  // Tenant-locked to the reserved synthetic workspace, budget-capped, config default-OFF + opt-in timer
+  // (SELFQA_INTERVAL_MS, started in index.ts) — the always-on entry is the `selfqa:run` CLI. Stopped on close.
+  const selfqaEngine = opts.selfqa ?? createDefaultSelfQaEngine(app.log, (event) => app.flywheelEngine.record(event));
+  app.addHook("onClose", async () => {
+    selfqaEngine.stop();
+  });
+  app.decorate("selfqaEngine", selfqaEngine);
   // #147 automations: owner-defined scheduled/webhook agent tasks. A default-OFF, kill-switch-gated
   // tick launches each due automation through the SAME #123 venture-gated launcher a human @mention
   // uses (so #96/#71 gating + #13-gated sends are inherited), recording a durable run. Run-now + the

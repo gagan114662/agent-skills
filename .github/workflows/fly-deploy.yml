@@ -25,6 +25,10 @@ defaults:
   run:
     working-directory: platform # fly.toml + the relative Dockerfile build context live here
 
+permissions:
+  contents: read
+  issues: write # #171 post-deploy self-QA smoke opens/dedupes selfqa bug issues — nothing else
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -72,3 +76,31 @@ jobs:
           done
           echo "::error title=Fly deploy unverified::/readyz did not report ready after rollout"
           exit 1
+
+      # #171 post-deploy self-QA: a synthetic user runs the SMOKE subset (critical/high checks) against the
+      # just-deployed live product, so a regression that a human would catch by clicking around is found
+      # within minutes — and filed as a deduped `selfqa` issue. Exits non-zero on a critical finding, so a
+      # broken deploy turns this job red. The nightly `selfqa-nightly.yml` runs the full pass.
+      - name: Set up pnpm (for the self-QA smoke)
+        if: env.FLY_CONFIGURED == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Set up Node (for the self-QA smoke)
+        if: env.FLY_CONFIGURED == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - name: Install deps (for the self-QA smoke)
+        if: env.FLY_CONFIGURED == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Post-deploy self-QA smoke → open/dedupe selfqa bug issues
+        if: env.FLY_CONFIGURED == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SELFQA_DRIVER: ${{ vars.SELFQA_DRIVER || 'http' }}
+          SELFQA_TARGET: ${{ vars.SELFQA_TARGET || 'https://ipop.ai' }}
+          RELIABILITY_PAGE_WORKSPACE_SLUG: ${{ vars.RELIABILITY_PAGE_WORKSPACE_SLUG }}
+        run: pnpm --filter @reload/server selfqa:run -- --suite smoke
