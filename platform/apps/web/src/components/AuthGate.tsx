@@ -12,6 +12,7 @@ import { BRAND, VOICE } from "../brand.js";
 import { Link, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
+import { isMarketingPath } from "./site/paths.js";
 
 type Mode = "login" | "signup";
 
@@ -19,6 +20,8 @@ type Mode = "login" | "signup";
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
+// The marketing-site machine (#153): compare / stories / guides / changelog / brand. Its own lazy chunk.
+const MarketingSite = lazy(() => import("./site/MarketingSite.js"));
 
 export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
   const store = useStore();
@@ -35,6 +38,17 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <Security />
+      </Suspense>
+    );
+  }
+
+  // #153 The public marketing site renders for everyone (anon AND signed-in), matched before the phase
+  // checks — it fetches its own published content and degrades gracefully, so it works even while the
+  // session is still bootstrapping or the API is offline.
+  if (isMarketingPath(path)) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <MarketingSite />
       </Suspense>
     );
   }

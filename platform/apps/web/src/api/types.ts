@@ -386,3 +386,38 @@ export interface MissionControlDto {
   rateCentsPerMinute: number;
   costIsEstimate: true;
 }
+
+// --- marketing site (CMS-lite, #153) ---
+
+/** An inline run inside a rendered markdown block. */
+export type SiteInline =
+  | { type: "text"; text: string }
+  | { type: "strong"; text: string }
+  | { type: "link"; text: string; href: string };
+
+/** A rendered markdown block (the server renders to typed blocks — no HTML, so no XSS). */
+export type SiteBlock =
+  | { type: "heading"; level: 1 | 2 | 3; inline: SiteInline[] }
+  | { type: "paragraph"; inline: SiteInline[] }
+  | { type: "list"; ordered: boolean; items: SiteInline[][] }
+  | { type: "quote"; inline: SiteInline[] }
+  | { type: "code"; text: string }
+  | { type: "table"; header: SiteInline[][]; rows: SiteInline[][][] };
+
+/** A content document's metadata (list view). */
+export interface SiteDocMeta {
+  section: string;
+  slug: string;
+  title: string;
+  description: string;
+  kind: string;
+  agent: string;
+  date: string;
+  status: "draft" | "published";
+  meta: Record<string, string | string[]>;
+}
+
+/** A full content document: metadata plus the rendered body blocks. */
+export interface SiteDocDetail extends SiteDocMeta {
+  blocks: SiteBlock[];
+}

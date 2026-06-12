@@ -20,6 +20,11 @@ import {
   agentColor,
   LANDING,
   SECURITY,
+  SITE,
+  ASK_AI,
+  askAiLinks,
+  PAYWALL,
+  BRAND_ASSETS,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -167,6 +172,43 @@ describe("security trust page copy (#151) — honest by construction", () => {
   });
 });
 
+describe("marketing-site machine copy (#153)", () => {
+  it("carries the five marketing-site nav sections and the dogfood credit", () => {
+    expect(SITE.nav.map((n) => n.href)).toEqual(["/compare", "/stories", "/guides", "/changelog", "/brand"]);
+    // The twist: every content page is footed "maintained by Quill".
+    expect(SITE.maintainedBy).toMatch(/quill/i);
+  });
+
+  it("builds Ask-AI deep links for the three assistants with the prompt URL-encoded", () => {
+    const links = askAiLinks();
+    expect(links.map((l) => l.key)).toEqual(["chatgpt", "claude", "perplexity"]);
+    const encoded = encodeURIComponent(ASK_AI.prompt);
+    for (const link of links) {
+      expect(link.href).toContain(encoded);
+      expect(link.href).not.toContain(" "); // a raw space would be a broken deep link
+    }
+    // ChatGPT/Claude/Perplexity each get their own provider origin.
+    expect(links[0]!.href).toContain("chatgpt.com");
+    expect(links[1]!.href).toContain("claude.ai");
+    expect(links[2]!.href).toContain("perplexity.ai");
+  });
+
+  it("lets a caller override the Ask-AI prompt", () => {
+    expect(askAiLinks("custom question")[0]!.href).toContain(encodeURIComponent("custom question"));
+  });
+
+  it("the soft paywall names the plan and points at pricing", () => {
+    expect(PAYWALL.cta).toBeTruthy();
+    expect(PAYWALL.onPlan("Pro")).toContain("Pro");
+  });
+
+  it("the brand kit exposes the Paper/Ink/Vermilion palette", () => {
+    const hexes = BRAND_ASSETS.palette.map((s) => s.hex.toLowerCase());
+    expect(hexes).toContain("#ff4524"); // Pop Vermilion
+    expect(BRAND_ASSETS.palette).toHaveLength(3);
+  });
+});
+
 describe("no hardcoded brand strings in product chrome", () => {
   // Components that render the product shell. Every brand string here must come from BRAND.*.
   const CHROME_COMPONENTS = [
@@ -178,6 +220,12 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/landing/HeroVignette.tsx",
     // The public trust page (#151).
     "components/landing/Security.tsx",
+    // The marketing-site machine (#153): every page reads its copy from brand.ts.
+    "components/site/SiteShell.tsx",
+    "components/site/SectionPage.tsx",
+    "components/site/Brand.tsx",
+    "components/site/SoftPaywall.tsx",
+    "components/site/MarketingSite.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.

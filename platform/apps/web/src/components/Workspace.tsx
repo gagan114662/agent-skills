@@ -17,6 +17,7 @@ import { ConnectClaudePanel } from "./ConnectClaudePanel.js";
 import { AutomationsPanel } from "./automations/AutomationsPanel.js";
 import { MissionControlPanel } from "./MissionControlPanel.js";
 import { AuditPanel } from "./AuditPanel.js";
+import { SoftPaywall } from "./site/SoftPaywall.js";
 
 // Product chrome surfaces only. Review/Run/Usage stay reachable for operators via the existing
 // API/routes (and their panel components remain), but are no longer part of the product nav (#122).
@@ -35,9 +36,22 @@ type View =
 
 export function Workspace(): React.JSX.Element {
   const [view, setView] = useState<View>("chat");
+  const { identity, paywall } = useAppState();
+  const store = useStore();
   return (
     <div className="workspace">
       <TopBar view={view} onSelectView={setView} />
+      {/* #153 trial funnel: a hit cap surfaces the soft paywall nudge → the pricing surface. */}
+      {paywall && identity && (
+        <SoftPaywall
+          workspaceId={identity.workspaceId}
+          onSeePlans={() => {
+            store.dismissPaywall();
+            setView("pricing");
+          }}
+          onDismiss={() => store.dismissPaywall()}
+        />
+      )}
       {/* Keyed on `view` so switching tabs swell-fades the new content in — no hard cut (#145 #7). */}
       <div className="workspace__view view-fade" key={view}>
         {view === "founder" ? (

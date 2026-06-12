@@ -6,6 +6,8 @@ import { registerCors } from "./http/cors.js";
 import { registerMaintenance } from "./maintenance/gate.js";
 import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
+import { siteRoutes } from "./routes/site.js";
+import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentInterfaceRoutes } from "./routes/agent-interface.js";
@@ -257,6 +259,8 @@ export interface BuildAppOptions {
   semantic?: SemanticLayerService;
   /** #155 eval-gated maintenance: tests inject a service over fakes; default wires the flywheel feed. */
   evals?: EvalService;
+  /** #153 marketing-site CMS-lite: tests inject an in-memory ContentSource; default reads repo markdown. */
+  contentSource?: ContentSource;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -319,6 +323,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     return reply.send(err);
   });
   app.register(healthRoutes);
+  // #153 public marketing-site content API (CMS-lite over repo markdown) — unauthenticated, published-only.
+  app.register(siteRoutes, { contentSource: opts.contentSource });
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
   // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered

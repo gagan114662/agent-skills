@@ -40,6 +40,8 @@ import type {
   SessionMode,
   StatusPageDto,
   TaskTemplateDto,
+  SiteDocDetail,
+  SiteDocMeta,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -139,6 +141,15 @@ export const API_UNAVAILABLE_STATUS = 0;
  */
 export function isApiUnavailable(err: unknown): boolean {
   return err instanceof ApiError && err.status === API_UNAVAILABLE_STATUS;
+}
+
+/**
+ * True when an error is an admission denial — a tenant cap was hit (#71): a budget ceiling (402) or a
+ * concurrency/capacity limit (429). The trial funnel (#153) uses this to surface the soft paywall nudge
+ * (→ pricing) instead of a raw error, so a hit cap reads as "time for more runway", not "something broke".
+ */
+export function isCapHit(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 402 || err.status === 429);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -512,6 +523,27 @@ export const api = {
       return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/steer`, {
         guidance,
       }) as Promise<{ delivered: boolean }>;
+    },
+  },
+
+  // --- public marketing site (CMS-lite, #153) ---
+  site: {
+    /** List the published documents in a section (metadata only). */
+    section(section: string): Promise<SiteDocMeta[]> {
+      return request<{ docs: SiteDocMeta[] }>(`/site/content/${section}`).then((r) => r.docs);
+    },
+    /** One published document with its body rendered to typed blocks, or null when missing/draft. */
+    async doc(section: string, slug: string): Promise<SiteDocDetail | null> {
+      try {
+        return (await request<{ doc: SiteDocDetail }>(`/site/content/${section}/${slug}`)).doc;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    /** The changelog entries, newest-first. */
+    changelog(): Promise<SiteDocMeta[]> {
+      return request<{ entries: SiteDocMeta[] }>("/site/changelog").then((r) => r.entries);
     },
   },
 };
