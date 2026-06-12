@@ -271,6 +271,10 @@ export interface Store {
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   createChannel(name: string): Promise<void>;
+  /** Read the saved composer draft for a channel (#168), or "" if none. Client-only, per-channel. */
+  getDraft(channelId: string): string;
+  /** Save (or clear, when empty) a channel's composer draft so switching channels preserves text (#168). */
+  setDraft(channelId: string, text: string): void;
   sendMessage(body: string): Promise<void>;
   openThread(messageId: string): Promise<void>;
   closeThread(): void;
@@ -358,6 +362,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
   // drain serializes every send for a channel — re-entrant calls and edits never start a 2nd send.
   let queueSeq = 0;
   const draining = new Set<string>();
+
+  // Per-channel composer drafts (#168). Kept OUT of reactive `state` so a keystroke doesn't notify
+  // the whole app; the composer reads its channel's draft when it (re)mounts on a channel switch.
+  const drafts = new Map<string, string>();
 
   function getQueue(channelId: string): SessionQueue {
     return state.queues[channelId] ?? emptyQueue();
@@ -605,6 +613,7 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     async logout() {
       realtime.close();
       await api.logout().catch(() => undefined);
+      drafts.clear(); // never carry one tenant's unsent drafts into the next session (#168)
       state = { ...INITIAL, phase: "anon" };
       for (const l of listeners) l();
     },
@@ -622,6 +631,15 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       const channel = await api.createChannel(workspaceId, name);
       set({ channels: [...state.channels, channel] });
       await store.selectChannel(channel.id);
+    },
+
+    getDraft(channelId) {
+      return drafts.get(channelId) ?? "";
+    },
+
+    setDraft(channelId, text) {
+      if (text) drafts.set(channelId, text);
+      else drafts.delete(channelId);
     },
 
     async sendMessage(body) {

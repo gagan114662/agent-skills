@@ -28,6 +28,36 @@ describe("Composer", () => {
     expect(option).toHaveTextContent(/agent/i);
   });
 
+  // #168 — bug 3: the typeahead is keyboard-drivable (arrow to move, Enter to pick).
+  it("selects a mention with arrow keys and Enter", async () => {
+    const { store } = renderWithStore(<Composer />);
+    await store.bootstrap();
+
+    const textarea = screen.getByRole("textbox");
+    await userEvent.type(textarea, "@"); // bare @ → lists everyone (Ada, then Atlas)
+    await screen.findByRole("option", { name: /Ada/ });
+
+    await userEvent.keyboard("{ArrowDown}{Enter}"); // move to Atlas, pick it
+    expect(textarea).toHaveValue("@Atlas ");
+  });
+
+  // #168 — bug 3: agent options wear their department spectrum hue (dept colors).
+  it("tints an agent option with its department colour", async () => {
+    const { store } = renderWithStore(<Composer />, {
+      members: [
+        { id: "me1", kind: "human", displayName: "Ada" },
+        { id: "sc1", kind: "agent", displayName: "Scout" }, // SEO lead → #ff4524
+      ],
+    });
+    await store.bootstrap();
+    await userEvent.type(screen.getByRole("textbox"), "@Sc");
+
+    const option = await screen.findByRole("option", { name: /Scout/ });
+    const tinted = option.querySelector("[style*='--pop-color']");
+    expect(tinted).not.toBeNull();
+    expect(tinted?.getAttribute("style")).toContain("#ff4524");
+  });
+
   it("posts the message to the active channel and clears the input", async () => {
     const { store } = renderWithStore(<Composer />);
     await store.bootstrap();
