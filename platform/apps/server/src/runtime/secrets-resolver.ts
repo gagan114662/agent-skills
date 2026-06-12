@@ -56,6 +56,45 @@ export class EnvSecretsResolver implements SecretsResolver {
   }
 }
 
+/**
+ * Billing-only secrets (#98). Resolves the Stripe credentials directly from `process.env` so the live
+ * key reaches the billing surface WITHOUT being added to the agent-facing `AGENT_SECRET_KEYS`
+ * passthrough — which {@link EnvSecretsResolver} also serves as the inner resolver for every agent
+ * session (see `runtime/default.ts`), so listing `STRIPE_SECRET_KEY` there would inject the live key
+ * into every agent runtime. This resolver is consumed only by the billing surface, never the session
+ * manager. Per-tenant `AGENT_SECRETS` overrides are still honored (so a custom-named or
+ * workspace-scoped key keeps working); the named env passthrough is fixed to the Stripe key names.
+ */
+export class BillingSecretsResolver implements SecretsResolver {
+  constructor(
+    private readonly source: NodeJS.ProcessEnv = process.env,
+    private readonly keys: readonly string[] = ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+  ) {}
+
+  resolve(workspaceId: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+
+    // Per-tenant overrides (same JSON shape as EnvSecretsResolver) take precedence when present.
+    const raw = this.source.AGENT_SECRETS;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, Record<string, string>>;
+        Object.assign(out, parsed["*"] ?? {}, parsed[workspaceId] ?? {});
+      } catch {
+        /* malformed AGENT_SECRETS is ignored rather than leaking a parse error with values */
+      }
+    }
+
+    // Direct env passthrough — fixed to the Stripe key names, so this never widens agent exposure.
+    for (const key of this.keys) {
+      const value = this.source[key];
+      if (value !== undefined && out[key] === undefined) out[key] = value;
+    }
+
+    return Promise.resolve(out);
+  }
+}
+
 /** A resolver that always returns the same fixed secrets — used by tests and the demo. */
 export class StaticSecretsResolver implements SecretsResolver {
   constructor(private readonly secrets: Record<string, string>) {}
