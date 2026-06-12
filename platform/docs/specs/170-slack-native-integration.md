@@ -82,4 +82,11 @@ Bring three surfaces into the customer's own Slack workspace, **reusing** the ex
   copy via a `SLACK` voice block (no hardcoded strings in the web panel). Component + integration tests
   with a fake Slack transport.
 
+## Config flags (all default-OFF)
+- `slack.enabled` / `RELOAD_SLACK_ENABLED` — the proactive Slack surface (the digest tick).
+- `slack.digestEnabled` / `RELOAD_SLACK_DIGEST_ENABLED` — the daily owner-DM digest.
+- `SLACK_DIGEST_INTERVAL_MS` — the digest engine tick interval (default `0` = off; started in `index.ts`).
+- The bot token + signing secret are **never** config/env — they live in the #68 sealed vault, set via
+  `PUT /me/slack`.
+
 See ADR-0170 for the decision record.
