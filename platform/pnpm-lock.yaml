@@ -65,6 +65,9 @@ importers:
       smol-toml:
         specifier: ^1.6.1
         version: 1.6.1
+      stripe:
+        specifier: ^22.2.0
+        version: 22.2.0(@types/node@22.19.20)
       uuidv7:
         specifier: ^1.0.2
         version: 1.2.1
@@ -2979,6 +2982,15 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
+
+  stripe@22.2.0:
+    resolution: {integrity: sha512-WFGpMOom9QZqso1kcnSwJsCdC1QHDlMoCOxBZRf3JraMzhkfw7dgSdD2a1CFZrqC+mzAfqeEtYILrZhWKIDruA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
@@ -5916,6 +5928,10 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  stripe@22.2.0(@types/node@22.19.20):
+    optionalDependencies:
+      '@types/node': 22.19.20
 
   supports-color@7.2.0:
     dependencies:
