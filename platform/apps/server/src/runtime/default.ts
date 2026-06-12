@@ -26,6 +26,7 @@ import { harnessLineDecoder } from "./stream-json.js";
 import { harnessSpec, type HarnessKind } from "./harness.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
 import { resolveScaleCaps } from "../scale/caps.js";
+import { resolveBrowserCaps } from "./browser/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
@@ -103,11 +104,14 @@ export const channelPoster: ChannelPoster = {
  */
 export function defaultPreflight(): PreflightReport {
   const env = loadEnv().agent;
+  // #174: gate the Playwright/Chromium checks on the deployment-wide browser flag (server-level config).
+  const browserEnabled = resolveBrowserCaps(loadConfig().browser).enabled;
   return preflight({
     profile: env.profile,
     runtime: env.runtime,
     harness: env.harness,
     env: process.env,
+    browserEnabled,
   });
 }
 

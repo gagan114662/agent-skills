@@ -7,7 +7,11 @@
 # Build from the platform/ root:  docker build -f apps/server/Dockerfile -t reload-server .
 
 # ---- build stage ----
-FROM node:22-alpine AS build
+# #174: build on debian-slim, NOT alpine. The runtime stage is debian (glibc) for Playwright, and native
+# deps (e.g. @node-rs/argon2) compile against the builder's libc — building on Alpine/musl then running on
+# debian/glibc would fail to load the prebuilt binary at boot. Matching both stages to glibc keeps the
+# copied node_modules runnable. (debian-slim ships bash too, so the #166 spawn target is present here.)
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 RUN corepack enable
 
@@ -23,31 +27,50 @@ COPY . .
 RUN pnpm --filter @reload/shared build && pnpm --filter @reload/server build
 
 # ---- runtime stage ----
-FROM node:22-alpine AS runtime
+# #174 BASE CHANGE Alpine → Debian (bookworm-slim). Playwright/Chromium need **glibc**; Alpine ships musl,
+# which Chromium cannot run, so the official Playwright images don't support Alpine (ADR-0174). The agent
+# browser runtime launches Chromium IN this server process (LocalRuntime), so the image itself must be
+# glibc. debian-slim is the cleaner path than a separate Chromium sidecar machine for a single-image
+# deploy (one process group, no IPC/network boundary; the trade-off — a larger base + an optional ~280MB
+# Chromium layer — is documented in ADR-0174). Bonus: debian ships `bash`, so the #166 harness-spawn fix
+# (`bash -lc "claude …"`) no longer needs a separate package install.
+FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 # Working HOME for the non-root runtime user (#166). Docker's `USER` directive does NOT set $HOME, and
 # the `claude` CLI needs a writable home for its config/credentials dir. Pin it to the reload user's
 # home so the harness child inherits a valid, writable HOME (verified: /home/reload, owned by reload).
 ENV HOME=/home/reload
 WORKDIR /app
-# #166 ROOT CAUSE FIX: the agent harness spawns `bash -lc "claude -p …"` (runtime/harness.ts), but this
-# base image is Alpine, which ships only busybox `ash` as /bin/sh and has NO `bash`. So `spawn("bash")`
-# failed with ENOENT before any agent ran — the child never returned an exit code, the session landed as
-# `failed` with a null exit, and the channel showed "session failed (exit n/a)". Installing bash makes the
-# harness command spawnable. bash is left unpinned (any Alpine 5.x is fine) so an apk patch-version
-# rotation can't break the build that ships this fix; the agent-affecting pin is on the claude CLI below.
-#
+
+# #174: bake the agent browser (Playwright + Chromium) into the image only when a deployment opts in.
+# DEFAULT OFF so the standard deploy stays lean (the feature is default-OFF, owner-workspace-first).
+# A deployment that flips RELOAD_AGENT_BROWSER_ENABLED on MUST build with
+# `--build-arg INSTALL_AGENT_BROWSER=true` — we never ship an image whose browser can't spawn (the #166
+# lesson; the post-deploy `pnpm --filter @reload/server agent:browser-smoke` proves it end-to-end).
+ARG INSTALL_AGENT_BROWSER=false
+# A world-readable browser cache so Chromium (installed as root below) is runnable by the `reload` user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Install the Claude Code CLI globally (PINNED, #166) so the `claude-code` harness can run a REAL agent
 # under AGENT_RUNTIME=local (#68). Auth is per-tenant at runtime — the workspace's own subscription token
 # (CLAUDE_CODE_OAUTH_TOKEN), resolved per session and injected as env — so NO credential is baked into
-# the image. The binary is on PATH as `claude`, which the #69 preflight checks for.
+# the image. The binary is on PATH as `claude`, which the #69 preflight checks for. The reload user is
+# created with debian's useradd (not busybox adduser).
 RUN corepack enable \
-  && apk add --no-cache bash \
   && npm install -g @anthropic-ai/claude-code@2.1.173 \
-  && addgroup -S reload \
-  && adduser -S reload -G reload
+  && groupadd --system reload \
+  && useradd --system --gid reload --home-dir /home/reload --create-home reload
 # Same /app path as the build stage keeps pnpm's symlinked node_modules valid.
 COPY --from=build /app /app
+# Optionally install the `playwright` package + Chromium and its system libraries (#174). The `pnpm add`
+# mutates only this throwaway image layer's lockfile (never the repo's), keeping playwright OUT of the
+# default build graph / CI install (consistent with ADR-0171). Skipped entirely when the ARG is false.
+RUN if [ "$INSTALL_AGENT_BROWSER" = "true" ]; then \
+      mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" \
+      && pnpm --filter @reload/server add playwright \
+      && pnpm --filter @reload/server exec playwright install --with-deps chromium \
+      && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"; \
+    fi
 USER reload
 EXPOSE 3000
 

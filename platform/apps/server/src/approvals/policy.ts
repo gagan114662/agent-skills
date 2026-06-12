@@ -6,7 +6,7 @@
  */
 
 /** Action types the executor registry can run (#13). Submitting any other type is a 400. */
-export const ACTION_TYPES = ["chat.post_message", "external.send", "billing.refund"] as const;
+export const ACTION_TYPES = ["chat.post_message", "external.send", "billing.refund", "browser.action"] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
 export function isActionType(value: unknown): value is ActionType {
@@ -59,6 +59,10 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   "billing.refund",
   "billing.payout",
   "billing.transfer",
+  // #174 a side-effectful agent-browser action (a click that submits/posts/purchases, typing into a
+  // form) is sensitive by default — read-only browsing is free, but mutating remote state always
+  // pauses for a human. ADR-0174.
+  "browser.action",
 ];
 
 /** Lifecycle of an approval request. `approved` is the transient state between the decision and the

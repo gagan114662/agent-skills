@@ -16,6 +16,7 @@ import { decideEgress, resolveEgressPolicy } from "../runtime/egress-allowlist.j
 import {
   buildRegistry,
   validateBillingRefund,
+  validateBrowserAction,
   validateChatPostMessage,
   validateExternalSend,
   type ActionExecutor,
@@ -155,9 +156,31 @@ const billingRefund: ActionExecutor = {
   },
 };
 
+/**
+ * Approve a side-effectful agent-browser action (#174, ADR-0174). **Recorded-only**: approving it does
+ * NOT drive the browser (the live page lives in the agent's session process, not here at approval time).
+ * It records the human's decision on the #13 audit trail; the agent's session re-checks for this
+ * approval and re-runs the step in-session (the same re-check-at-execution model as ADR-0013 §3). This
+ * keeps a browser mutation from ever being autonomous while keeping the live action in the session.
+ */
+const browserAction: ActionExecutor = {
+  actionType: "browser.action",
+  validate: validateBrowserAction,
+  summarize: (p) => `browser ${String(p.tool)}${p.target ? ` on ${String(p.target)}` : ""}: ${String(p.summary).slice(0, 80)}`,
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // the step re-runs in the agent's session once this approval exists.
+      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : null,
+      tool: typeof payload.tool === "string" ? payload.tool : null,
+      target: typeof payload.target === "string" ? payload.target : null,
+    });
+  },
+};
+
 /** Build the executor registry with an injectable egress enforcer (tests pass a fake; #151). */
 export function buildDefaultRegistry(egress: EgressEnforcer = defaultEgressEnforcer): ExecutorRegistry {
-  return buildRegistry([chatPostMessage, makeExternalSend(egress), billingRefund]);
+  return buildRegistry([chatPostMessage, makeExternalSend(egress), billingRefund, browserAction]);
 }
 
 /** The executors wired for this deployment (ADR-0013 §2, #98, #151). */
