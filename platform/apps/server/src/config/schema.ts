@@ -128,6 +128,27 @@ export const modelsSchema = z.object({
 });
 
 /**
+ * Auto model-selection policy (convene-llm-gateway integration). When `enabled`, a session that pins
+ * **no** explicit model (#52) asks the routing layer for the best model for its task — Claude is the
+ * orchestrator + line of control (it validates worker output and escalates up to claude-opus-4-8).
+ * All **non-secret**: a per-tenant on switch + an optional per-call cost ceiling. The gateway URL +
+ * key are deployment env (never config), and the chosen model is still validated against the #52
+ * `models` allow-list, so this widens nothing a tenant has not already permitted.
+ *
+ * Default OFF: with `enabled` unset (or the deployment-wide `RELOAD_AUTO_MODEL` flag / `LLM_GATEWAY_URL`
+ * absent) every launch keeps today's behavior exactly — the deployment-default `ANTHROPIC_MODEL`.
+ */
+export const autoModelSchema = z.object({
+  /** Per-tenant on switch. Default off — flip on in the managed layer for the owner workspace first. */
+  enabled: z.boolean().optional(),
+  /**
+   * Per-call cost ceiling (cents) routed through to the gateway's policy. `0`/unset ⇒ derive from the
+   * tenant's remaining #71 window budget (`scale.budgetCents` − accrued); a positive value pins it.
+   */
+  maxCallCostCents: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Cloud-scale policy (#71, ADR-0040). All **non-secret** knobs an operator sets in the managed
  * (optionally per-tenant) layer to make a 24/7 fleet economical + elastic. Every field is optional
  * and defaults to **off** (no warm pool, unlimited concurrency, no budget, cost rate 0) so a
@@ -689,6 +710,8 @@ export const settingsSchema = z.object({
   deploy: deploySchema.optional(),
   /** Model/provider selection policy (#52): which providers/models a tenant allows + defaults. */
   models: modelsSchema.optional(),
+  /** Auto model-selection policy (convene-llm-gateway): per-tenant on switch + per-call cost ceiling. */
+  autoModel: autoModelSchema.optional(),
   /** Cloud-scale policy (#71): warm pool, concurrency caps, regions, cost/budget caps. */
   scale: scaleSchema.optional(),
   /** Stripe revenue-rails settings (#98): backend, currency, secret-var names (no values). */
@@ -758,6 +781,7 @@ export type EffortLevel = z.infer<typeof effortLevelSchema>;
 export type SessionMode = z.infer<typeof sessionModeSchema>;
 export type ProviderConnection = z.infer<typeof providerConnectionSchema>;
 export type ModelsConfig = z.infer<typeof modelsSchema>;
+export type AutoModelConfig = z.infer<typeof autoModelSchema>;
 export type ScaleConfig = z.infer<typeof scaleSchema>;
 export type BillingConfig = z.infer<typeof billingSchema>;
 export type VentureConfig = z.infer<typeof ventureSchema>;
@@ -814,6 +838,8 @@ export interface ResolvedConfig {
   deploy?: DeployConfig;
   /** Model/provider selection policy (#52). A partial whose hard defaults `modelPolicyFromConfig` fills. */
   models: ModelsConfig;
+  /** Auto model-selection policy (convene-llm-gateway). Default-off; `{}` ⇒ disabled (today's behavior). */
+  autoModel: AutoModelConfig;
   /** Cloud-scale policy (#71). A partial whose hard defaults `resolveScaleCaps` fills. */
   scale: ScaleConfig;
   /** Stripe revenue-rails settings (#98), or undefined when the deployment hasn't enabled billing (→ 409). */
@@ -885,6 +911,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   mcpServers: {},
   skills: [],
   models: {},
+  autoModel: {},
   // #147: the trial free tier is the built-in baseline (default-ON), not an empty/unlimited block.
   scale: { ...TRIAL_SCALE_DEFAULTS },
   venture: {},

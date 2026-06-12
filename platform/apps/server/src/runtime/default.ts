@@ -22,6 +22,9 @@ import { resolveCredentialMatrix } from "./credential-scope.js";
 import { getPersonaByAgentMember } from "../db/repositories/personas.js";
 import { createAgentAuthResolver } from "./auth-default.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
+import { AutoModelResolver } from "./auto-model.js";
+import { HttpGatewayRoutingClient } from "./gateway-client.js";
+import { usageStore } from "../db/repositories/tenant-usage.js";
 import { harnessLineDecoder } from "./stream-json.js";
 import { harnessSpec, type HarnessKind } from "./harness.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
@@ -112,7 +115,26 @@ export function defaultPreflight(): PreflightReport {
 }
 
 export function createDefaultSessionManager(logger: SessionLogger, scale: Scale = createScale(0)): SessionManager {
-  const env = loadEnv().agent;
+  const fullEnv = loadEnv();
+  const env = fullEnv.agent;
+  // Auto model-selection (convene-llm-gateway): wired only when a gateway URL is configured. The
+  // resolver's own gates (the `RELOAD_AUTO_MODEL` master switch + per-tenant `autoModel.enabled` config)
+  // keep it OFF by default — so with no gateway URL, or the flag off, every launch keeps today's
+  // behavior. `usageStore` is the #71 usage READER, so the cost ceiling routed to the gateway is the
+  // tenant's REMAINING window budget. The gateway KEY is read from `process.env.LLM_GATEWAY_KEY` inside
+  // the HTTP client at call time — never baked here, never logged.
+  const autoModel = fullEnv.autoModel.gatewayUrl
+    ? new AutoModelResolver({
+        client: new HttpGatewayRoutingClient({
+          baseUrl: fullEnv.autoModel.gatewayUrl,
+          timeoutMs: fullEnv.autoModel.timeoutMs,
+        }),
+        loadConfig: (workspaceId: string) => loadConfig(workspaceId),
+        enabled: fullEnv.autoModel.enabled,
+        gatewayConfigured: true,
+        usage: usageStore,
+      })
+    : undefined;
   // #58: server-level config (managed-global) gates deployment-wide egress; per-tenant managed
   // overrides apply per session inside the workspace provisioner.
   const serverConfig = loadConfig();
@@ -181,5 +203,8 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // #69: fail fast on a misconfigured cloud/real-agent posture before any launch persists or makes
     // a cloud call. local/demo (the default) always passes, so this is a no-op for that posture.
     preflight: defaultPreflight,
+    // Auto model-selection (convene-llm-gateway): undefined unless LLM_GATEWAY_URL is set. The resolver
+    // gates itself further on the master switch + per-tenant config, so this is OFF by default.
+    autoModel,
   });
 }
