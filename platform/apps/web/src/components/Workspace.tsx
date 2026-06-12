@@ -14,6 +14,7 @@ import { DeployPanel } from "./deploy/DeployPanel.js";
 import { FounderPanel } from "./FounderPanel.js";
 import { PricingPanel } from "./PricingPanel.js";
 import { ConnectClaudePanel } from "./ConnectClaudePanel.js";
+import { SlackConnectPanel } from "./SlackConnectPanel.js";
 import { AutomationsPanel } from "./automations/AutomationsPanel.js";
 import { CatalogPanel } from "./catalog/CatalogPanel.js";
 import { WorkflowsPanel } from "./workflows/WorkflowsPanel.js";
@@ -71,7 +72,10 @@ export function Workspace(): React.JSX.Element {
         ) : view === "audit" ? (
           <AuditPanel />
         ) : view === "settings" ? (
-          <ConnectClaudePanel />
+          <>
+            <ConnectClaudePanel />
+            <SlackConnectPanel />
+          </>
         ) : view === "pricing" ? (
           <PricingPanel />
         ) : view === "approvals" ? (

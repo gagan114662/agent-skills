@@ -93,6 +93,28 @@ export const VOICE = {
 } as const;
 
 /**
+ * Connect-Slack settings copy (#170). The whole panel reads from here so there are no hardcoded
+ * strings in the component (house rule: brand copy via VOICE). Warm, receipts-over-adjectives.
+ */
+export const SLACK_CONNECT = {
+  title: "Connect Slack",
+  hint:
+    "Bring the fleet into your Slack. Paste your Slack app's bot token and signing secret below — " +
+    "they're stored encrypted and never shown again. The agents reply in-thread, approvals come as " +
+    "buttons, and your daily digest lands as a DM.",
+  botTokenLabel: "Bot token",
+  botTokenPlaceholder: "xoxb-…",
+  signingSecretLabel: "Signing secret",
+  signingSecretPlaceholder: "Slack signing secret",
+  connect: "Connect",
+  disconnect: "Disconnect",
+  connected: "Connected",
+  notConnected: "Not connected",
+  loading: "Loading…",
+  error: "Couldn't update your Slack connection. Please try again.",
+} as const;
+
+/**
  * The department spectrum (#123 fleet × #138 pop identity): one hue per marketing function, a
  * warm→cool arc anchored on Pop Vermilion. Keyed by the preloaded channel name so each department
  * channel and its named agent can wear its colour. See docs/brand/ipop-brand-identity.html.

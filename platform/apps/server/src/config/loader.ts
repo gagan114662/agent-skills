@@ -175,6 +175,17 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (workflowsEnabled !== undefined) {
     raw.workflows = { enabled: workflowsEnabled === "true" || workflowsEnabled === "1" };
   }
+  // #170 slack-native: let the deployment env turn the proactive digest tick on without baking a
+  // managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still wins as the
+  // lock. The bot token + signing secret are NEVER env/config — they live in the #68 sealed vault.
+  const slackEnabled = env.RELOAD_SLACK_ENABLED;
+  const slackDigest = env.RELOAD_SLACK_DIGEST_ENABLED;
+  if (slackEnabled !== undefined || slackDigest !== undefined) {
+    const slack: Record<string, unknown> = {};
+    if (slackEnabled !== undefined) slack.enabled = slackEnabled === "true" || slackEnabled === "1";
+    if (slackDigest !== undefined) slack.digestEnabled = slackDigest === "true" || slackDigest === "1";
+    raw.slack = slack;
+  }
   return parseLayer(raw, "env");
 }
 

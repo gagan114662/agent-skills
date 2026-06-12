@@ -59,6 +59,10 @@ app.automationEngine.start(env.automations.intervalMs);
 // scheduled workflows (trigger → conditions → actions) through the same gated paths. Stopped on close.
 app.workflowEngine.start(env.workflows.intervalMs);
 
+// #170 Slack-native: start the opt-in daily-digest tick (SLACK_DIGEST_INTERVAL_MS; default 0 = off)
+// that DMs each opted-in workspace's owner the fleet digest. Stopped on server close via buildApp.
+app.slackDigestEngine.start(env.slack.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

@@ -40,6 +40,8 @@ export interface Env {
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
   workflows: WorkflowsEnv;
+  /** Slack-native digest tick (#170). */
+  slack: SlackEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
   /** Approval gates (#13). */
@@ -196,6 +198,11 @@ export interface WorkflowsEnv {
   intervalMs: number;
 }
 
+export interface SlackEnv {
+  /** Slack-digest-tick interval in ms. Default `0` = the background DM loop is OFF (opt-in, #170). */
+  intervalMs: number;
+}
+
 export interface NotifyEnv {
   /** External transport: when set, notifications are POSTed here; unset → no-op transport. */
   webhookUrl?: string;
@@ -330,6 +337,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     workflows: {
       // Default 0 (off): the workflows loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.WORKFLOWS_INTERVAL_MS ?? 0) || 0,
+    },
+    slack: {
+      // Default 0 (off): the Slack digest loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
+      intervalMs: Number(source.SLACK_DIGEST_INTERVAL_MS ?? 0) || 0,
     },
     autonomy: {
       // Default 0 (off): the background loop is opt-in so tests/CI drive `tick()` deterministically.

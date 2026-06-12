@@ -32,6 +32,13 @@ import { subagentRoutes } from "./routes/subagents.js";
 import { marketingRoutes } from "./routes/marketing.js";
 import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
+import { slackRoutes } from "./routes/slack.js";
+import { createDefaultSlackService, createDefaultSlackDigestEngine } from "./slack/default.js";
+import type { SlackEventService } from "./slack/service.js";
+import type { SlackDigestEngine } from "./slack/engine.js";
+import type { SlackClient } from "./slack/client.js";
+import { setChannelPostHook } from "./runtime/default.js";
+import { setApprovalPendingHook } from "./approvals/pending-hook.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
@@ -177,6 +184,8 @@ declare module "fastify" {
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
     workflowEngine: WorkflowEngine;
+    /** The #170 Slack digest engine; `index.ts` starts its opt-in tick (SLACK_DIGEST_INTERVAL_MS). */
+    slackDigestEngine: SlackDigestEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -283,6 +292,10 @@ export interface BuildAppOptions {
   evals?: EvalService;
   /** #153 marketing-site CMS-lite: tests inject an in-memory ContentSource; default reads repo markdown. */
   contentSource?: ContentSource;
+  /** #170 Slack-native: tests inject a fully-built service over fakes; default wires the real bridge. */
+  slack?: SlackEventService;
+  /** #170 Slack-native: tests inject a recording SlackClient so no real Slack call leaves the box. */
+  slackClient?: SlackClient;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -412,6 +425,18 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // real @mention silently did nothing (sessionsStarted stayed 0). The trigger gates itself (human
   // author, marketing channel, mentioned persona) and runs best-effort over the SAME SessionManager.
   setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager));
+  // #170 Slack-native: bridge the fleet into the customer's Slack. The service translates inbound Slack
+  // events/interactions into the EXISTING audited paths (the same #123 trigger above, the #13 decision
+  // path) and mirrors outputs back — no new authority. Two hooks register the outbound side: the
+  // agent-reply mirror (`setChannelPostHook`) and the pending-approval DM (`setApprovalPendingHook`).
+  // Both are no-ops unless a workspace has connected Slack. The digest tick is opt-in (started in
+  // index.ts) and default-OFF.
+  const slackService = opts.slack ?? createDefaultSlackService(app.log, { client: opts.slackClient });
+  app.register(slackRoutes, { service: slackService });
+  setChannelPostHook((post) => slackService.handleAgentPost(post));
+  setApprovalPendingHook((request) => slackService.notifyApprovalPending(request));
+  const slackDigestEngine = createDefaultSlackDigestEngine(app.log, slackService);
+  app.decorate("slackDigestEngine", slackDigestEngine);
   // #56 Run tab: run a session's app for in-app preview + detect its localhost port, and route UI
   // annotations back to the agent (the #51 round trip). The RunProcessManager is SEPARATE from the
   // SessionManager (a dev server is long-lived; it must never finalize the session row). Killed on
@@ -420,6 +445,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(runRoutes, { runManager, sessionManager });
   app.addHook("onClose", async () => {
     setMarketingMentionTrigger(undefined);
+    setChannelPostHook(undefined);
+    setApprovalPendingHook(undefined);
+    slackDigestEngine.stop();
     runManager.shutdown();
     await sessionManager.shutdown();
   });
