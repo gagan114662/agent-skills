@@ -15,6 +15,8 @@ import { StoreProvider } from "../src/store/StoreContext.js";
 import { Workspace } from "../src/components/Workspace.js";
 import { ApprovalsPanel } from "../src/components/approvals/ApprovalsPanel.js";
 import { PricingTable } from "../src/components/PricingTable.js";
+import { AutomationsPanel } from "../src/components/automations/AutomationsPanel.js";
+import { Composer } from "../src/components/Composer.js";
 import { applyBrand } from "../src/brand.js";
 import "../src/styles.css";
 
@@ -74,6 +76,36 @@ const realtime: StoreDeps["realtime"] = {
   connect() {}, close() {}, subscribe() {}, unsubscribe() {}, presence() {}, on() { return () => {}; },
 };
 
+// The #167 panels (AutomationsPanel, TemplatePicker) call the `api` singleton, which hits the real
+// fetch — there's no backend here, so stub it with canned data so the flows render for screenshots.
+const TASK_TEMPLATES = [
+  {
+    key: "seo_audit", department: "seo", title: "SEO audit",
+    description: "Crawl the site and report the highest-impact SEO fixes.",
+    body: "Run an SEO audit of {{site}}. Draft the top 10 fixes — post as a draft, do not send.",
+    params: [{ key: "site", label: "Site URL", placeholder: "our website" }], agentHandle: "scout",
+  },
+  {
+    key: "content_calendar", department: "seo", title: "Content calendar",
+    description: "Draft a content calendar for the next stretch.",
+    body: "Draft a content calendar covering the next {{weeks}} weeks on \"{{topic}}\". Post as a draft.",
+    params: [{ key: "topic", label: "Theme", placeholder: "our product" }, { key: "weeks", label: "Weeks", placeholder: "4" }],
+    agentHandle: "scout",
+  },
+];
+window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  const method = init?.method ?? "GET";
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  if (method === "GET" && url.includes("/task-templates")) return json(200, TASK_TEMPLATES);
+  if (method === "GET" && url.includes("/automations")) return json(200, []);
+  if (method === "POST" && url.includes("/automations")) {
+    return json(201, { id: "a1", name: "Monday SEO audit", triggerKind: "schedule", templateKey: "seo_audit", agentHandle: "scout", enabled: true, nextRunAt: new Date(Date.now() + 86_400_000).toISOString() });
+  }
+  return json(200, []);
+}) as typeof fetch;
+
 const anon = window.location.hash === "#login";
 
 const api = {
@@ -121,6 +153,20 @@ function Surface(): React.JSX.Element {
     );
   }
   if (hash === "#login") return <App />;
+  if (hash === "#bug167") {
+    // #167 repro surface: the Automations form (Create validation) + a channel composer (template
+    // variable prompt + Steer confirmation). Backed by the canned fetch stub above.
+    return (
+      <div className="workspace" style={{ display: "grid", gap: 16, padding: 16 }}>
+        <AutomationsPanel />
+        <div className="workspace__panel">
+          <h2>Channel composer</h2>
+          <p className="muted">Open Templates ▾ to fill a brief's variables; use Steer for a confirmation.</p>
+          <Composer queue />
+        </div>
+      </div>
+    );
+  }
   return <Workspace />;
 }
 

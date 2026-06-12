@@ -6,7 +6,8 @@
  */
 import { useEffect, useState } from "react";
 import { useAppState } from "../../store/StoreContext.js";
-import { api } from "../../api/client.js";
+import { api, ApiError } from "../../api/client.js";
+import { VOICE } from "../../brand.js";
 import type { AutomationDto, TaskTemplateDto } from "../../api/types.js";
 
 type Cadence = "interval" | "hourly" | "daily" | "weekly";
@@ -19,6 +20,8 @@ export function AutomationsPanel(): React.JSX.Element {
   const [templates, setTemplates] = useState<TaskTemplateDto[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Brand-voice validation/server error shown under the form (#167). null = no error.
+  const [error, setError] = useState<string | null>(null);
 
   // form state
   const [name, setName] = useState("");
@@ -50,7 +53,12 @@ export function AutomationsPanel(): React.JSX.Element {
   }, [workspaceId, channelId]);
 
   async function create(): Promise<void> {
-    if (!workspaceId || !name || !channelId || !templateKey) return;
+    if (!workspaceId) return;
+    // Validate up front in brand voice — the old guard returned silently, so Create looked dead (#167).
+    if (!name.trim()) return setError(VOICE.automationNeedsName);
+    if (!channelId) return setError(VOICE.automationNeedsChannel);
+    if (!templateKey) return setError(VOICE.automationNeedsTemplate);
+    setError(null);
     setBusy(true);
     setToken(null);
     try {
@@ -65,7 +73,7 @@ export function AutomationsPanel(): React.JSX.Element {
                 : { cadence, dayOfWeek, hour, minute }
           : undefined;
       const created = await api.automations.create(workspaceId, {
-        name,
+        name: name.trim(),
         channelId,
         templateKey,
         triggerKind,
@@ -75,6 +83,10 @@ export function AutomationsPanel(): React.JSX.Element {
       if (created.webhookToken) setToken(created.webhookToken);
       setName("");
       await refresh();
+    } catch (e) {
+      // Surface the failure instead of swallowing it (the route 400s were invisible before #167).
+      const reason = e instanceof ApiError ? e.message : "please try again.";
+      setError(`${VOICE.automationCreateFailed} ${reason}`);
     } finally {
       setBusy(false);
     }
@@ -182,6 +194,12 @@ export function AutomationsPanel(): React.JSX.Element {
           Create
         </button>
       </div>
+
+      {error && (
+        <div className="automations__error" role="alert">
+          {error}
+        </div>
+      )}
 
       {token && (
         <div className="automations__token" role="status">

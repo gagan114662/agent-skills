@@ -68,6 +68,28 @@ export const VOICE = {
   pickSessionToDeploy: "Pick a session on the left and we'll ship its app to a live URL.",
   /** Founder console: nothing waiting. */
   noPendingApprovals: "Nothing waiting on you. Go get a coffee — we've got this.",
+
+  // --- Composer + automations interactions (#167) -------------------------------------------------
+  /** Automations form: no name yet. */
+  automationNeedsName: "Give it a name first — something like “Monday SEO audit”.",
+  /** Automations form: no channel picked. */
+  automationNeedsChannel: "Pick a channel so we know which department runs it.",
+  /** Automations form: no template picked. */
+  automationNeedsTemplate: "Choose a task template — that's the brief the agent runs.",
+  /** Automations create failed server-side; the server's reason is appended after this. */
+  automationCreateFailed: "That didn't pop —",
+  /** Automations created OK (brand-voice confirmation). */
+  automationCreated: "Done. It's on the books and ready to run.",
+  /** Composer: send blocked because the message still has unfilled {{placeholders}}. */
+  unresolvedPlaceholders: "Fill in the blanks first — there's still a {{…}} waiting on you.",
+  /** Template picker: prompt above the per-variable fields. */
+  templateFillPrompt: "Fill these in and we'll drop the brief in for you.",
+  /** Template picker: the insert button. */
+  templateInsert: "Insert brief",
+  /** Composer: a message was steered (#54 jump-ahead). */
+  steerSent: "Steer sent — we pushed that to the front of the line.",
+  /** Composer: a message was queued (sends in turn). */
+  queued: "Queued — it'll send in turn.",
 } as const;
 
 /**
