@@ -190,6 +190,71 @@ export const LANDING = {
 } as const;
 
 /**
+ * Trust page copy (#151). DELIBERATELY HONEST: `guarantees` lists only mechanisms that are actually
+ * built and enforced in code today; `roadmap` lists things that are NOT yet built or certified, each
+ * flagged with a status so the page can never read as a claim. `notClaimed` states plainly that we hold
+ * no third-party certifications. A test (`brand.test.ts`) enforces that every roadmap item is
+ * status-flagged and that no certification is asserted as current.
+ */
+export const SECURITY = {
+  eyebrow: "Trust, stated plainly",
+  title: "What actually protects your work",
+  sub:
+    "No badges we didn't earn. Here is exactly what the platform enforces today — and, just as plainly, " +
+    "what we haven't built yet.",
+  /** Real, shipped, code-enforced guarantees. Each maps to a mechanism that exists in the product. */
+  guarantees: [
+    {
+      title: "Human approval gates",
+      body: "Anything that leaves the building — an outbound send, a refund — pauses for a human to approve or reject. Agents draft; people decide.",
+    },
+    {
+      title: "Tenant isolation",
+      body: "Every request is scoped to your workspace. One tenant can never read or touch another's data, sessions, or secrets.",
+    },
+    {
+      title: "Kill switch",
+      body: "One switch halts all autonomous launches for a workspace immediately — no in-flight work can start once it's flipped.",
+    },
+    {
+      title: "Budget caps",
+      body: "Per-tenant spend and concurrency ceilings stop a runaway fleet before it bills you, not after.",
+    },
+    {
+      title: "Append-only audit trail",
+      body: "Every approval and every blocked egress is written once and never edited, so the record can't drift from what happened.",
+    },
+    {
+      title: "Per-agent scoped credentials",
+      body: "Each agent only ever receives the secrets its job needs. The research agent reads its crawl token and never your payment keys.",
+    },
+    {
+      title: "Egress allowlists",
+      body: "When you enable it, agent sessions can only reach the domains you list; anything else is denied and flagged to the audit trail.",
+    },
+    {
+      title: "Roles for your team",
+      body: "Owners, approvers, and viewers. Only approvers clear approvals; viewers look but can't touch.",
+    },
+  ],
+  guaranteesTitle: "Built and enforced today",
+  /** NOT built / NOT certified. Each carries an explicit status so it can never be read as a claim. */
+  roadmapTitle: "On the roadmap — not yet",
+  roadmap: [
+    { title: "SOC 2 Type II", status: "Planned — not yet certified", body: "We're building toward an audit. We are not certified today and don't claim to be." },
+    { title: "GDPR data-processing agreement", status: "Planned — not yet offered", body: "A formal DPA and the tooling behind it are on the roadmap, not shipped." },
+    { title: "SSO / SAML", status: "Designed seam — not yet built", body: "The wiring point exists in the code; no identity provider is connected yet." },
+    { title: "Kernel-level network policy", status: "Partial — application-enforced today", body: "Egress is enforced at the application layer now; in-sandbox kernel enforcement is the next step." },
+  ],
+  notClaimedTitle: "What we don't claim",
+  notClaimed:
+    "We hold no third-party security certifications today. This page describes mechanisms we built, not audits we passed. When that changes, this page will say so — with a date.",
+  backCta: "Back to home",
+  /** The footer/nav link label that points visitors at this page. */
+  navLabel: "Security & trust",
+} as const;
+
+/**
  * The seven named department agents (#123 fleet) → their department key. Each agent wears its
  * department's spectrum hue on its avatar pop-mark and name chip (#145). Keyed by the lowercased
  * display name so a directory entry ("Scout", "Echo", …) resolves straight to a colour.

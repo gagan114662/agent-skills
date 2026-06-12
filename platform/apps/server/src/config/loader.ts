@@ -148,6 +148,24 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (mktWelcome !== undefined) marketing.seedWelcomeTasks = mktWelcome === "true" || mktWelcome === "1";
     raw.marketing = marketing;
   }
+  // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
+  // without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still
+  // wins as the lock. The per-agent credential matrix is config-file only (it is a nested map).
+  const rbacEnabled = env.RELOAD_RBAC_ENABLED;
+  if (rbacEnabled !== undefined) raw.rbac = { enabled: rbacEnabled === "true" || rbacEnabled === "1" };
+  const egressEnabled = env.RELOAD_EGRESS_ENABLED;
+  const egressAllowlist = env.RELOAD_EGRESS_ALLOWLIST;
+  if (egressEnabled !== undefined || egressAllowlist !== undefined) {
+    const egress: Record<string, unknown> = {};
+    if (egressEnabled !== undefined) egress.enabled = egressEnabled === "true" || egressEnabled === "1";
+    if (egressAllowlist !== undefined) {
+      egress.allowlist = egressAllowlist
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    raw.egress = egress;
+  }
   return parseLayer(raw, "env");
 }
 

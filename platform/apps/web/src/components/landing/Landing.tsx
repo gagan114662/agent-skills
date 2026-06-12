@@ -8,7 +8,7 @@
  * comes from `brand.ts` (BRAND/LANDING/FLEET/VOICE) so there are no hardcoded brand strings — brand.test
  * scans this directory for the rule.
  */
-import { BRAND, FLEET, LANDING, VOICE, agentColor } from "../../brand.js";
+import { BRAND, FLEET, LANDING, SECURITY, VOICE, agentColor } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
@@ -174,6 +174,11 @@ function LandingFooter(): React.JSX.Element {
   return (
     <footer className="landing__footer">
       <Wordmark className="landing__footer-mark" />
+      <nav className="landing__footer-links">
+        <Link href="/security" className="linklike landing__footer-link">
+          {SECURITY.navLabel}
+        </Link>
+      </nav>
       <p className="landing__signoff">{VOICE.signOff}</p>
     </footer>
   );

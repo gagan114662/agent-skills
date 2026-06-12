@@ -13,7 +13,13 @@ import { postMessage } from "../db/repositories/messages.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
-import { EnvSecretsResolver, SubscriptionSecretsResolver } from "./secrets-resolver.js";
+import {
+  EnvSecretsResolver,
+  ScopedSecretsResolver,
+  SubscriptionSecretsResolver,
+} from "./secrets-resolver.js";
+import { resolveCredentialMatrix } from "./credential-scope.js";
+import { getPersonaByAgentMember } from "../db/repositories/personas.js";
 import { createAgentAuthResolver } from "./auth-default.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { harnessLineDecoder } from "./stream-json.js";
@@ -98,7 +104,18 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // workspace has none. Other secrets (e.g. `OPENAI_API_KEY` for codex) still flow via the inner
     // env resolver. The auth layer owns the credential keys so a platform key never ships alongside a
     // subscription token.
-    secrets: new SubscriptionSecretsResolver(createAgentAuthResolver(), new EnvSecretsResolver()),
+    // #151: per-agent scoping decorator wraps the #68 subscription resolver. With the credential matrix
+    // OFF (the default) it passes the resolved secrets through byte-for-byte; when enabled it filters a
+    // launching agent's secrets to its allowlisted purposes (scout↛Stripe). The matrix loads per-tenant
+    // from the #58 config; the agentId→persona-name lookup is the personas repo.
+    secrets: new ScopedSecretsResolver(
+      new SubscriptionSecretsResolver(createAgentAuthResolver(), new EnvSecretsResolver()),
+      {
+        loadMatrix: (workspaceId) => resolveCredentialMatrix(loadConfig(workspaceId).credentialScopes),
+        lookupAgentName: async (workspaceId, agentMemberId) =>
+          (await getPersonaByAgentMember(workspaceId, agentMemberId))?.name ?? null,
+      },
+    ),
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     // #50: the env default harness kind (persisted when a launch makes no per-session override).
     harnessKind: env.harness,

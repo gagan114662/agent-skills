@@ -3,6 +3,9 @@ import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { requireApprovalInWorkspace } from "../auth/access.js";
 import type { Identity } from "../auth/identity.js";
 import { loadEnv } from "../env.js";
+import { loadConfig } from "../config/loader.js";
+import { getMemberRole } from "../db/repositories/governance.js";
+import { decideApprovalClear, resolveRbacConfig, type WorkspaceRole } from "../team/rbac.js";
 import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
@@ -32,6 +35,9 @@ import {
  */
 export interface ApprovalRoutesOptions {
   registry?: ExecutorRegistry;
+  /** #151 RBAC seams (injected in tests). Default: per-tenant config + the governance repo. */
+  rbacEnabled?: (workspaceId: string) => boolean;
+  loadMemberRole?: (workspaceId: string, memberId: string) => Promise<WorkspaceRole | null>;
 }
 
 /** A decision (approve/reject) is restricted to human members — "humans only on critical decisions". */
@@ -48,6 +54,24 @@ export async function approvalRoutes(
   opts: ApprovalRoutesOptions = {},
 ): Promise<void> {
   const registry = opts.registry ?? defaultRegistry;
+  const rbacEnabled = opts.rbacEnabled ?? ((wid: string) => resolveRbacConfig(loadConfig(wid).rbac).enabled);
+  const loadMemberRole = opts.loadMemberRole ?? getMemberRole;
+
+  /**
+   * #151: gate clearing an approval on the caller's workspace role when RBAC is enabled. Additive on top
+   * of `requireHuman` — with RBAC OFF (default) or a member with no role row, this allows (today's
+   * behavior). A `viewer` is 403. Sends the response + returns false on deny.
+   */
+  async function requireCanClear(id: Identity, reply: FastifyReply): Promise<boolean> {
+    const enabled = rbacEnabled(id.workspaceId);
+    const role = enabled ? await loadMemberRole(id.workspaceId, id.memberId) : null;
+    const decision = decideApprovalClear({ rbacEnabled: enabled, role });
+    if (decision.decision === "deny") {
+      await reply.code(403).send({ error: decision.reason ?? "your role cannot clear approvals" });
+      return false;
+    }
+    return true;
+  }
 
   /** Run an approved request's executor as the requester; map failures onto the `failed` outcome. */
   async function execute(
@@ -260,6 +284,7 @@ export async function approvalRoutes(
     const request = await requireApprovalInWorkspace(id, rid, reply);
     if (!request) return;
     if (!requireHuman(id, reply)) return;
+    if (!(await requireCanClear(id, reply))) return;
     if (request.requesterMemberId === id.memberId) {
       return reply.code(403).send({ error: "cannot approve your own request" });
     }
@@ -300,6 +325,7 @@ export async function approvalRoutes(
     const request = await requireApprovalInWorkspace(id, rid, reply);
     if (!request) return;
     if (!requireHuman(id, reply)) return;
+    if (!(await requireCanClear(id, reply))) return;
     const reason = typeof (req.body as { reason?: unknown })?.reason === "string"
       ? (req.body as { reason: string }).reason
       : null;
