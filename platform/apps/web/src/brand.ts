@@ -209,6 +209,355 @@ export const LANDING = {
     { name: "Pro", price: "$199", tagline: "A team that never sleeps.", featured: true },
     { name: "Agency", price: "$499", tagline: "A whole building of agents.", featured: false },
   ] as readonly PlanTeaser[],
+  /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
+  anchors: [
+    { href: "#how", label: "How it works" },
+    { href: "#agents", label: "Agents" },
+    { href: "#pricing", label: "Pricing" },
+    { href: "#faq", label: "FAQ" },
+  ],
+  /** Footer columns (#165): real product links where they exist, honest placeholders where they don't. */
+  footer: {
+    productTitle: "Product",
+    product: [
+      { href: "#how", label: "How it works" },
+      { href: "#agents", label: "The department" },
+      { href: "#pricing", label: "Pricing" },
+      { href: "/security", label: "Security & trust" },
+    ],
+    resourcesTitle: "Resources",
+    resources: [
+      { href: "/guides", label: "Guides" },
+      { href: "/stories", label: "Stories" },
+      { href: "/changelog", label: "Changelog" },
+      { href: "/compare", label: "Compare" },
+    ],
+    socialTitle: "Find us",
+    /** Placeholder handles — wired when the accounts exist (honest, never a dead promise). */
+    social: [
+      { key: "x", label: "X / Twitter", href: "/social/x" },
+      { key: "linkedin", label: "LinkedIn", href: "/social/linkedin" },
+      { key: "github", label: "GitHub", href: "/social/github" },
+    ],
+  },
+} as const;
+
+/**
+ * The landing's full workspace simulation (#165) — the hero is no longer a card, it IS the product.
+ * A faithful, static-data render of the ipop console: the complete sidebar (pinned + every department
+ * channel + DMs, with the ⌘K search), and a whole day's agent timeline in #seo that auto-plays and
+ * loops. The arc tells one true story: a brief goes in, Scout audits with receipts, Quill drafts, QA
+ * runs, an approval card pops, the human says yes, Postmark queues the send, and Lens reports the lift
+ * with real numbers. Every word lives here so the simulation components carry no hardcoded copy
+ * (brand.test scans them). The colours come from {@link DEPARTMENT_SPECTRUM}.
+ */
+export type Dept = keyof typeof DEPARTMENT_SPECTRUM;
+
+/** One sidebar row: a channel or a DM. `dept` keys its spectrum dot; `unread` shows the count badge. */
+export interface SimChannel {
+  readonly name: string;
+  readonly dept?: Dept;
+  readonly unread?: number;
+  readonly active?: boolean;
+  /** For DMs: whether the correspondent is an agent (coloured dot) or a human (initials chip). */
+  readonly kind?: "human" | "agent";
+}
+
+/** A grouped section of the sidebar (Pinned / Departments / Direct messages). */
+export interface SimSidebarSection {
+  readonly title: string;
+  readonly items: readonly SimChannel[];
+}
+
+/**
+ * One entry in the day-arc timeline. A discriminated union so each kind renders as its true in-app
+ * surface: a chat message, an inline task card, a QA result block, or an approval card with the human's
+ * reply. `time` is a wall-clock label ("9:02") so the day visibly progresses.
+ */
+export type SimEntry =
+  | {
+      readonly kind: "message";
+      readonly time: string;
+      readonly from: "you" | string;
+      readonly dept?: Dept;
+      readonly text: string;
+      /** Optional thread affordance ("3 replies") — the console threads replies under a message. */
+      readonly thread?: string;
+      /** Marks the closing line that fires the confetti pop. */
+      readonly done?: boolean;
+    }
+  | {
+      readonly kind: "task";
+      readonly time: string;
+      readonly id: string;
+      readonly title: string;
+      readonly status: string;
+      readonly dept: Dept;
+      readonly assignee: string;
+    }
+  | {
+      readonly kind: "qa";
+      readonly time: string;
+      readonly from: string;
+      readonly dept: Dept;
+      readonly passed: number;
+      readonly total: number;
+      readonly note: string;
+    }
+  | {
+      readonly kind: "approval";
+      readonly time: string;
+      readonly dept: Dept;
+      readonly title: string;
+      readonly detail: string;
+      readonly requestedBy: string;
+      readonly pendingLabel: string;
+      readonly approveLabel: string;
+      readonly rejectLabel: string;
+      readonly decidedLabel: string;
+      readonly reply: string;
+    };
+
+export const WORKSPACE = {
+  /** The console window's title bar / active channel. */
+  activeChannel: "#seo",
+  activeChannelTopic: "On-page SEO, crawl health, and the pre-launch audit.",
+  /** The ⌘K omni-search affordance at the top of the sidebar. */
+  searchPlaceholder: "Search or jump to…",
+  searchHint: "⌘K",
+  workspaceName: "Acme — workspace",
+  sidebar: [
+    {
+      title: "Pinned",
+      items: [
+        { name: "#launch", unread: 2 },
+        { name: "#general" },
+      ],
+    },
+    {
+      title: "Departments",
+      items: [
+        { name: "#seo", dept: "seo", active: true, unread: 4 },
+        { name: "#social", dept: "social" },
+        { name: "#content", dept: "content", unread: 1 },
+        { name: "#email", dept: "email" },
+        { name: "#ads", dept: "ads" },
+        { name: "#analytics", dept: "analytics" },
+        { name: "#brand", dept: "brand" },
+      ],
+    },
+    {
+      title: "Direct messages",
+      items: [
+        { name: "Scout", dept: "seo", kind: "agent" },
+        { name: "Quill", dept: "content", kind: "agent" },
+        { name: "Priya (you)", kind: "human" },
+      ],
+    },
+  ] as readonly SimSidebarSection[],
+  /** The whole day, in order. Auto-plays one entry at a time; reduced-motion shows it all at once. */
+  timeline: [
+    { kind: "message", time: "9:02", from: "you", text: "Morning @scout — can you do a full SEO pass on the site before Thursday's launch?" },
+    { kind: "message", time: "9:03", from: "scout", dept: "seo", text: "On it. Crawling all 24 pages the way Google does — give me ten minutes." },
+    { kind: "task", time: "9:05", id: "T-12", title: "Pre-launch SEO audit — homepage + /pricing", status: "IN PROGRESS", dept: "seo", assignee: "Scout" },
+    { kind: "message", time: "9:14", from: "scout", dept: "seo", text: "Found 5 issues. Biggest: meta description missing on /pricing, and two images on /home have no alt text. Drafting fixes.", thread: "3 replies" },
+    { kind: "message", time: "9:15", from: "quill", dept: "content", text: "I'll write a 58-character description for /pricing that sounds like us, not a robot." },
+    { kind: "qa", time: "9:21", from: "Scout", dept: "seo", passed: 14, total: 14, note: "Re-crawled after the fix — caught a 2px layout shift on iOS Safari and corrected it." },
+    {
+      kind: "approval",
+      time: "9:22",
+      dept: "content",
+      title: "Publish meta description on /pricing",
+      detail: "“Hire a whole marketing team of AI agents — you approve every send.” · 58 chars · Quill",
+      requestedBy: "Quill",
+      pendingLabel: "Waiting on you",
+      approveLabel: "Approve",
+      rejectLabel: "Send back",
+      decidedLabel: "Approved by you",
+      reply: "ship it ✅",
+    },
+    { kind: "message", time: "9:25", from: "postmark", dept: "email", text: "Queued the launch note to 3 lists (4,210 people). Held as drafts — nothing sends without your yes." },
+    { kind: "message", time: "16:30", from: "lens", dept: "analytics", text: "End of day: /pricing impressions +18%, newsletter open rate +4.2%. Tidy work, team. 🎉", done: true },
+  ] as readonly SimEntry[],
+} as const;
+
+/**
+ * The two staged vignettes used as section visuals (#165): a live approvals drawer that flips from
+ * pending to approved (with the confetti micro-burst), and the #147 mission-control strip showing live
+ * sessions and a running spend estimate against the cap. Pure data; the components animate the reveal.
+ */
+export const APPROVALS_VIGNETTE = {
+  title: "Approvals",
+  subtitle: "Nothing leaves the building without a human yes.",
+  pendingTag: "Pending",
+  approvedTag: "Approved",
+  approveLabel: "Approve",
+  rejectLabel: "Send back",
+  items: [
+    { id: "AP-118", dept: "email" as Dept, who: "Postmark", what: "Send launch announcement to 3 lists (4,210 recipients)" },
+    { id: "AP-117", dept: "social" as Dept, who: "Echo", what: "Publish 5 launch-week posts to LinkedIn" },
+    { id: "AP-116", dept: "ads" as Dept, who: "Bid", what: "Raise the /pricing campaign budget to $40/day" },
+  ],
+} as const;
+
+export const MISSION_CONTROL = {
+  title: "Mission control",
+  subtitle: "Every agent, what it's doing, and what it's spending — live.",
+  liveLabel: "Live now",
+  spendLabel: "Spend today",
+  spend: "$2.40",
+  spendCap: "of $50 cap",
+  decisionsLabel: "Decisions logged",
+  decisions: "247",
+  sessions: [
+    { dept: "seo" as Dept, who: "Scout", task: "Crawling /blog for broken links", elapsed: "4m" },
+    { dept: "content" as Dept, who: "Quill", task: "Drafting 3 product-page rewrites", elapsed: "11m" },
+    { dept: "analytics" as Dept, who: "Lens", task: "Building the weekly numbers digest", elapsed: "2m" },
+  ],
+} as const;
+
+/**
+ * The four numbered story sections (#165), Innocent-school voice. Each pairs a claim with a product-true
+ * visual: the department roster, the overnight mission-control strip, the approvals drawer, and the
+ * remembered-decisions ledger. `visual` names which component the section renders beside its copy.
+ */
+export interface StorySection {
+  readonly n: string;
+  readonly title: string;
+  readonly body: string;
+  readonly visual: "department" | "mission" | "approvals" | "memory";
+}
+
+export const STORY: readonly StorySection[] = [
+  {
+    n: "01",
+    title: "A whole department, not a chatbot",
+    body:
+      "Most AI tools give you one assistant and a blinking cursor. ipop gives you seven specialists — SEO, " +
+      "content, social, email, ads, analytics, brand — each in its own channel, each genuinely good at one job.",
+    visual: "department",
+  },
+  {
+    n: "02",
+    title: "They work while you sleep",
+    body:
+      "Brief them before bed and wake up to drafts, audits, and a tidy summary. The agents don't take " +
+      "weekends, don't need a stand-up, and never lose the thread.",
+    visual: "mission",
+  },
+  {
+    n: "03",
+    title: "Nothing leaves without your yes",
+    body:
+      "Every outbound send, every spend, every public change pauses for a human. Agents draft and queue; " +
+      "you approve the good ones with a tap. The brakes are on by default.",
+    visual: "approvals",
+  },
+  {
+    n: "04",
+    title: "Every decision, remembered",
+    body:
+      "Approvals, rejections, and the reasons behind them are written down once and kept. The team's memory " +
+      "compounds — so today's call informs next month's, and nothing gets re-litigated.",
+    visual: "memory",
+  },
+];
+
+/** The remembered-decisions ledger (story 04 visual): an append-only audit row sample. */
+export const MEMORY_LEDGER = {
+  title: "Decision log",
+  subtitle: "Append-only. Written once, never edited.",
+  rows: [
+    { time: "9:24", who: "You", text: "Approved /pricing meta description", tag: "Approved" },
+    { time: "9:31", who: "You", text: "Sent back the LinkedIn carousel — too salesy", tag: "Returned" },
+    { time: "10:02", who: "You", text: "Approved $40/day on the /pricing campaign", tag: "Approved" },
+  ],
+} as const;
+
+/**
+ * Pricing framed as the product's own Settings → Billing screen (#165). The plans mirror `LANDING.plans`
+ * (which mirror `billing/plans.ts`, #125); this just dresses them in the app's settings chrome so the
+ * visitor sees exactly where they'll land. `currentPlan` is the one shown as the active subscription.
+ */
+export const BILLING = {
+  settingsLabel: "Settings",
+  billingLabel: "Billing",
+  navItems: ["General", "Members", "Billing", "Security"],
+  heading: "Plan & billing",
+  subheading: "Pick your pop. Change or cancel any time — no calls, no contracts.",
+  currentLabel: "Current plan",
+  selectLabel: "Choose",
+  perMonth: "/mo",
+  /** Which plan renders as the currently-active subscription in the chrome. */
+  currentPlan: "Pro",
+  /** A couple of true-to-product line items under the plan cards. */
+  footnote: "Usage-based agent compute is billed against your cap. You set the ceiling; we never cross it.",
+} as const;
+
+/**
+ * The FAQ (#165): SEO-grade, substantive answers in the house voice. Centralised here so the FAQ
+ * component stays copy-free (brand.test). Ordered most-asked first.
+ */
+export interface FaqItem {
+  readonly q: string;
+  readonly a: string;
+}
+
+export const FAQ = {
+  title: "Questions, answered straight",
+  subtitle: "No fine print, no dodging. If we haven't covered it, the contact form is right below.",
+  items: [
+    {
+      q: "Are these real AI agents, or canned responses?",
+      a: "Real agents. Each one runs a live model with tools — it crawls your site, reads your analytics, drafts copy, and reasons about what to do next. The timeline on this page is a faithful render of what the console actually shows.",
+    },
+    {
+      q: "Will an agent ever send something without my approval?",
+      a: "No. Anything that leaves the building — an email, a social post, an ad-spend change, a refund — pauses for a human. Agents draft and queue; you approve or send back. The approval gate is enforced in code, not a setting you can forget.",
+    },
+    {
+      q: "What can the agents actually do?",
+      a: "SEO audits, content drafts, social calendars, email campaigns, ad planning, analytics digests, and brand-voice checks. They research, write, and plan. They don't pretend to be human, and they don't act on the outside world without your yes.",
+    },
+    {
+      q: "How is this different from ChatGPT or a single AI assistant?",
+      a: "One assistant gives you a blank box and waits. ipop gives you a standing department — seven specialists in their own channels, working in parallel, with a shared memory and a human approval layer. It's a team, not a tab.",
+    },
+    {
+      q: "Is my data safe? Can one customer see another's work?",
+      a: "Every request is scoped to your workspace; tenants are fully isolated. Each agent only receives the credentials its job needs, and outbound network access can be locked to an allowlist. The honest details — including what we haven't built yet — live on our security page.",
+    },
+    {
+      q: "What does it cost, and can I try it first?",
+      a: "Start free, no card. Paid plans run from $49 to $499 a month, and agent compute is billed against a cap you set — we never cross it. You can change or cancel any time from the billing screen.",
+    },
+    {
+      q: "What happens if an agent gets something wrong?",
+      a: "It surfaces as a draft, not a live change, so a mistake costs you a glance, not a cleanup. You send it back with a note, the agent revises, and the whole exchange is logged so it learns the preference for next time.",
+    },
+    {
+      q: "Do I need to be technical to use it?",
+      a: "No. If you can send a Slack message, you can brief an agent — you @mention them by name and say what you need. There's no setup call, no Gantt chart, and no prompt-engineering homework.",
+    },
+    {
+      q: "Can I keep my own tools and just add the agents?",
+      a: "Yes. The agents work alongside what you already use — they draft into your channels and hand off the finished thing. You stay in control of where it goes.",
+    },
+  ] as readonly FaqItem[],
+} as const;
+
+/** Closing contact block (#165): a short reply, not a deck. */
+export const CONTACT = {
+  eyebrow: "Talk to a human",
+  title: "Still chewing it over?",
+  body: "Tell us what you're trying to do. You'll get a short, straight reply from a person — not a deck, not a drip campaign.",
+  nameLabel: "Your name",
+  emailLabel: "Email",
+  messageLabel: "What are you hoping the fleet can do?",
+  messagePlaceholder: "We publish twice a week and our SEO is a mess…",
+  submitLabel: "Send it over",
+  /** Shown after a (client-only) submit — honest that this demo form doesn't wire to a backend yet. */
+  sentNote: "Got it — well, we would have. This demo form doesn't send yet; email us and we'll actually reply.",
 } as const;
 
 /**

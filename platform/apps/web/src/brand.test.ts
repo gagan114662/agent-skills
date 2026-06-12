@@ -25,6 +25,10 @@ import {
   askAiLinks,
   PAYWALL,
   BRAND_ASSETS,
+  WORKSPACE,
+  STORY,
+  FAQ,
+  BILLING,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -130,6 +134,89 @@ describe("landing fleet + copy (#149)", () => {
   });
 });
 
+describe("landing workspace simulation copy (#165)", () => {
+  it("models a complete sidebar: pinned rooms + every department channel + DMs", () => {
+    const titles = WORKSPACE.sidebar.map((s) => s.title);
+    expect(titles).toContain("Pinned");
+    expect(titles).toContain("Departments");
+    expect(titles).toContain("Direct messages");
+    // The Departments group carries one channel per spectrum hue, each tied to a real department.
+    const depts = WORKSPACE.sidebar.find((s) => s.title === "Departments")!;
+    expect(depts.items).toHaveLength(Object.keys(DEPARTMENT_SPECTRUM).length);
+    for (const ch of depts.items) {
+      expect(ch.dept, ch.name).toBeTruthy();
+      expect(DEPARTMENT_SPECTRUM[ch.dept!], ch.name).toBeTruthy();
+    }
+    // The pinned shared rooms the issue calls out are present.
+    const pinned = WORKSPACE.sidebar.find((s) => s.title === "Pinned")!.items.map((i) => i.name);
+    expect(pinned).toContain("#launch");
+    expect(pinned).toContain("#general");
+    // ⌘K search affordance.
+    expect(WORKSPACE.searchHint).toMatch(/⌘K/);
+  });
+
+  it("scripts a whole day-arc with task cards, a QA result, and an approval the human answers", () => {
+    const kinds = new Set(WORKSPACE.timeline.map((e) => e.kind));
+    for (const k of ["message", "task", "qa", "approval"] as const) {
+      expect(kinds.has(k), k).toBe(true);
+    }
+    // A task card carries an id + status ("T-12 IN PROGRESS").
+    const task = WORKSPACE.timeline.find((e) => e.kind === "task");
+    expect(task && "id" in task && task.id).toBeTruthy();
+    expect(task && "status" in task && task.status).toBeTruthy();
+    // The QA result reads like real QA (passing count + a specific caught regression).
+    const qa = WORKSPACE.timeline.find((e) => e.kind === "qa");
+    expect(qa && "total" in qa && qa.total).toBeGreaterThan(0);
+    expect(qa && "note" in qa && qa.note).toBeTruthy();
+    // The approval card has the human's reply ("ship it").
+    const approval = WORKSPACE.timeline.find((e) => e.kind === "approval");
+    expect(approval && "reply" in approval && approval.reply).toBeTruthy();
+    // The day ends on a completed beat (the confetti line).
+    expect(WORKSPACE.timeline.some((e) => e.kind === "message" && e.done)).toBe(true);
+    // Every agent message references a real fleet handle so the bubble can wear its colour.
+    const handles = new Set(FLEET.map((a) => a.handle));
+    for (const e of WORKSPACE.timeline) {
+      if (e.kind === "message" && e.from !== "you") expect(handles.has(e.from), e.from).toBe(true);
+    }
+  });
+
+  it("has four numbered story sections, each with a known product-true visual", () => {
+    expect(STORY).toHaveLength(4);
+    expect(STORY.map((s) => s.n)).toEqual(["01", "02", "03", "04"]);
+    const visuals = new Set(["department", "mission", "approvals", "memory"]);
+    for (const s of STORY) {
+      expect(s.title, s.n).toBeTruthy();
+      expect(s.body, s.n).toBeTruthy();
+      expect(visuals.has(s.visual), s.visual).toBe(true);
+    }
+    // The four visuals are distinct — each story shows a different slice of the app.
+    expect(new Set(STORY.map((s) => s.visual)).size).toBe(4);
+  });
+
+  it("carries a substantive FAQ (8–10 answered questions)", () => {
+    expect(FAQ.items.length).toBeGreaterThanOrEqual(8);
+    expect(FAQ.items.length).toBeLessThanOrEqual(10);
+    for (const item of FAQ.items) {
+      expect(item.q, item.q).toBeTruthy();
+      expect(item.a.length, item.q).toBeGreaterThan(40); // real answers, not one-liners
+    }
+  });
+
+  it("frames pricing as the in-app billing screen, with a current plan drawn from the catalog", () => {
+    const planNames = LANDING.plans.map((p) => p.name);
+    expect(planNames).toContain(BILLING.currentPlan);
+    expect(BILLING.navItems).toContain(BILLING.billingLabel);
+  });
+
+  it("exposes sticky anchor nav and a multi-column footer", () => {
+    expect(LANDING.anchors.length).toBeGreaterThanOrEqual(3);
+    for (const a of LANDING.anchors) expect(a.href.startsWith("#"), a.href).toBe(true);
+    expect(LANDING.footer.product.length).toBeGreaterThan(0);
+    expect(LANDING.footer.resources.length).toBeGreaterThan(0);
+    expect(LANDING.footer.social.length).toBeGreaterThan(0);
+  });
+});
+
 describe("security trust page copy (#151) — honest by construction", () => {
   it("lists several real, shipped guarantees", () => {
     expect(SECURITY.guarantees.length).toBeGreaterThanOrEqual(5);
@@ -215,9 +302,14 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/Workspace.tsx",
     "components/AuthGate.tsx",
     "components/ChannelSidebar.tsx",
-    // The public landing (#149) is the most brand-heavy surface — every word must come from brand.ts.
+    // The public landing (#149 → #165) is the most brand-heavy surface — every word must come from
+    // brand.ts. The #165 full-workspace simulation splits across several components; scan them all.
     "components/landing/Landing.tsx",
-    "components/landing/HeroVignette.tsx",
+    "components/landing/WorkspaceSim.tsx",
+    "components/landing/Vignettes.tsx",
+    "components/landing/BillingScreen.tsx",
+    "components/landing/Faq.tsx",
+    "components/landing/ContactForm.tsx",
     // The public trust page (#151).
     "components/landing/Security.tsx",
     // The marketing-site machine (#153): every page reads its copy from brand.ts.
