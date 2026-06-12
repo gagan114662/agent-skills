@@ -28,6 +28,7 @@ export const FAILURE_CLASSES = [
   // #146: constitution violations are fingerprinted like any other failure (no DB CHECK on the column).
   "constitution_violation",
   "eval_regression", // #155: an offline agent-skill eval suite dropped below its baseline pass-rate
+  "workflow_fail", // #152: a workflow firing's action failed (no DB CHECK on the column)
 ] as const;
 
 export const failureFingerprints = pgTable(

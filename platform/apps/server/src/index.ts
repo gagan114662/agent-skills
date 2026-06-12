@@ -46,6 +46,10 @@ app.planningEngine.start(env.planning.intervalMs);
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);
 
+// #152 workflows: start the opt-in tick (WORKFLOWS_INTERVAL_MS; default 0 = off) that fires due
+// scheduled workflows (trigger → conditions → actions) through the same gated paths. Stopped on close.
+app.workflowEngine.start(env.workflows.intervalMs);
+
 // #55 cloud workspaces: opt-in idle sweep (CLOUD_SWEEP_INTERVAL_MS; default 0 = off) that sleeps
 // workspaces idle longer than CLOUD_IDLE_MS to save resources. Tests drive sweepIdle() directly.
 let sweepTimer: NodeJS.Timeout | undefined;

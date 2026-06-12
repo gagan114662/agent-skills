@@ -15,6 +15,8 @@ import { FounderPanel } from "./FounderPanel.js";
 import { PricingPanel } from "./PricingPanel.js";
 import { ConnectClaudePanel } from "./ConnectClaudePanel.js";
 import { AutomationsPanel } from "./automations/AutomationsPanel.js";
+import { CatalogPanel } from "./catalog/CatalogPanel.js";
+import { WorkflowsPanel } from "./workflows/WorkflowsPanel.js";
 import { MissionControlPanel } from "./MissionControlPanel.js";
 import { AuditPanel } from "./AuditPanel.js";
 import { SoftPaywall } from "./site/SoftPaywall.js";
@@ -29,6 +31,8 @@ type View =
   | "deploy"
   | "founder"
   | "automations"
+  | "catalog"
+  | "workflows"
   | "mission"
   | "audit"
   | "pricing"
@@ -58,6 +62,10 @@ export function Workspace(): React.JSX.Element {
           <FounderPanel />
         ) : view === "automations" ? (
           <AutomationsPanel />
+        ) : view === "catalog" ? (
+          <CatalogPanel />
+        ) : view === "workflows" ? (
+          <WorkflowsPanel />
         ) : view === "mission" ? (
           <MissionControlPanel />
         ) : view === "audit" ? (
@@ -126,6 +134,20 @@ function TopBar({
           onClick={() => onSelectView("automations")}
         >
           Automations
+        </button>
+        <button
+          className={`topbar__navbtn${view === "catalog" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "catalog"}
+          onClick={() => onSelectView("catalog")}
+        >
+          Catalog
+        </button>
+        <button
+          className={`topbar__navbtn${view === "workflows" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "workflows"}
+          onClick={() => onSelectView("workflows")}
+        >
+          Workflows
         </button>
         <button
           className={`topbar__navbtn${view === "mission" ? " topbar__navbtn--active" : ""}`}

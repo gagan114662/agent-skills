@@ -26,6 +26,10 @@ import type {
   AuditEventDto,
   AutomationDto,
   AutomationRunDto,
+  CatalogEntryDto,
+  WorkflowDto,
+  WorkflowRunDto,
+  WorkflowInsightsDto,
   Channel,
   CredentialStatus,
   EffortLevel,
@@ -203,6 +207,10 @@ function post(path: string, body?: unknown): Promise<unknown> {
 
 function del(path: string): Promise<unknown> {
   return request(path, { method: "DELETE" });
+}
+
+function patch(path: string, body?: unknown): Promise<unknown> {
+  return request(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
 export const api = {
@@ -504,6 +512,46 @@ export const api = {
     },
     remove(workspaceId: string, id: string): Promise<unknown> {
       return del(`/workspaces/${workspaceId}/automations/${id}`);
+    },
+  },
+  /** Workspace catalog (#152): the marketing-asset registry (default-OFF server-side → 403 when dark). */
+  catalog: {
+    list(workspaceId: string, kind?: string): Promise<CatalogEntryDto[]> {
+      const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+      return request<CatalogEntryDto[]>(`/workspaces/${workspaceId}/catalog${qs}`);
+    },
+    create(workspaceId: string, input: Record<string, unknown> & { kind: string; name: string }): Promise<CatalogEntryDto> {
+      return post(`/workspaces/${workspaceId}/catalog`, input) as Promise<CatalogEntryDto>;
+    },
+    update(workspaceId: string, id: string, patchBody: Record<string, unknown>): Promise<CatalogEntryDto> {
+      return patch(`/workspaces/${workspaceId}/catalog/${id}`, patchBody) as Promise<CatalogEntryDto>;
+    },
+    remove(workspaceId: string, id: string): Promise<unknown> {
+      return del(`/workspaces/${workspaceId}/catalog/${id}`);
+    },
+  },
+  /** Visual workflow builder (#152): trigger → condition → action chains (firing is default-OFF server-side). */
+  workflows: {
+    list(workspaceId: string): Promise<WorkflowDto[]> {
+      return request<WorkflowDto[]>(`/workspaces/${workspaceId}/workflows`);
+    },
+    create(workspaceId: string, input: Record<string, unknown> & { name: string }): Promise<WorkflowDto> {
+      return post(`/workspaces/${workspaceId}/workflows`, input) as Promise<WorkflowDto>;
+    },
+    setEnabled(workspaceId: string, id: string, enabled: boolean): Promise<WorkflowDto> {
+      return post(`/workspaces/${workspaceId}/workflows/${id}/enable`, { enabled }) as Promise<WorkflowDto>;
+    },
+    run(workspaceId: string, id: string): Promise<WorkflowRunDto> {
+      return post(`/workspaces/${workspaceId}/workflows/${id}/run`) as Promise<WorkflowRunDto>;
+    },
+    runs(workspaceId: string, id: string): Promise<WorkflowRunDto[]> {
+      return request<WorkflowRunDto[]>(`/workspaces/${workspaceId}/workflows/${id}/runs`);
+    },
+    insights(workspaceId: string): Promise<WorkflowInsightsDto> {
+      return request<WorkflowInsightsDto>(`/workspaces/${workspaceId}/workflows-insights`);
+    },
+    remove(workspaceId: string, id: string): Promise<unknown> {
+      return del(`/workspaces/${workspaceId}/workflows/${id}`);
     },
   },
   /** The append-only audit trail (who/what/when/gated-by), newest first. */

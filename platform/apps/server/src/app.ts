@@ -124,6 +124,11 @@ import { automationRoutes } from "./routes/automations.js";
 import { createDefaultAutomationEngine } from "./automations/default.js";
 import { automationStore } from "./db/repositories/automations.js";
 import type { AutomationEngine } from "./automations/engine.js";
+import { catalogRoutes } from "./routes/catalog.js";
+import { workflowRoutes } from "./routes/workflows.js";
+import { createDefaultWorkflowEngine } from "./workflows/default.js";
+import { workflowStore } from "./db/repositories/workflows.js";
+import type { WorkflowEngine } from "./workflows/engine.js";
 import { missionControlRoutes } from "./routes/mission-control.js";
 import { createDefaultMissionControlService } from "./mission-control/default.js";
 import type { MissionControlService } from "./mission-control/service.js";
@@ -161,6 +166,8 @@ declare module "fastify" {
     planningEngine: PlanningService;
     /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
     automationEngine: AutomationEngine;
+    /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
+    workflowEngine: WorkflowEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -251,6 +258,8 @@ export interface BuildAppOptions {
   planning?: PlanningService;
   /** #147 automations: tests inject an engine over a fake launcher; default builds the real repo-backed one. */
   automations?: AutomationEngine;
+  /** #152 workflows: tests inject an engine over fake action seams; default builds the real repo-backed one. */
+  workflows?: WorkflowEngine;
   /** #147 mission control: tests inject a read-only service over fakes; default reads the live #25 sessions. */
   missionControl?: MissionControlService;
   /** #147 audit trail: tests inject a read-only service over fakes; default reads existing append-only rows. */
@@ -635,6 +644,21 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     automationEngine.stop();
   });
   app.decorate("automationEngine", automationEngine);
+  // #152 workspace catalog + visual workflow builder: the generalization of #147 automations into
+  // trigger → condition → action chains, plus a structured registry of marketing assets agents read for
+  // context. The engine reuses the SAME #123 venture-gated launcher (agent_task), the #13 gate
+  // (draft_send → a PENDING approval, never an egress), and the #8 notifier (notify_owner); a FAILED
+  // firing feeds the #117 flywheel. Both surfaces are config default-OFF (`catalog.enabled` /
+  // `workflows.enabled`); the timer is opt-in (WORKFLOWS_INTERVAL_MS, started in index.ts). A catalog
+  // mutation fires the workflow's `catalog_change` triggers (best-effort, never awaited). Stopped on close.
+  const workflowEngine =
+    opts.workflows ?? createDefaultWorkflowEngine(app.log, sessionManager, (event) => flywheelEngine.record(event));
+  app.register(catalogRoutes, { workflowEngine });
+  app.register(workflowRoutes, { engine: workflowEngine, store: workflowStore });
+  app.addHook("onClose", async () => {
+    workflowEngine.stop();
+  });
+  app.decorate("workflowEngine", workflowEngine);
   const missionControl = opts.missionControl ?? createDefaultMissionControlService();
   app.register(missionControlRoutes, { service: missionControl, sessionManager });
   const auditService = opts.audit ?? createDefaultAuditService();
