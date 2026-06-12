@@ -37,6 +37,29 @@ export const dbStore: SessionStore = {
 };
 
 /**
+ * A post-time hook fired for every AGENT channel post (#170). Registered once at boot by the Slack
+ * bridge so an agent's reply can be mirrored back into the Slack thread the human started — keyed on
+ * the reply's `parentMessageId`. Module-level + best-effort, mirroring the #123
+ * `setMarketingMentionTrigger` seam. Only agent posts run through `channelPoster`, so this never sees a
+ * human's message — which is what keeps the Slack mirror from echoing.
+ */
+export interface ChannelPostHookInput {
+  workspaceId: string;
+  channelId: string;
+  messageId: string;
+  parentMessageId?: string;
+  body: string;
+}
+export type ChannelPostHook = (post: ChannelPostHookInput) => Promise<void>;
+
+let channelPostHook: ChannelPostHook | undefined;
+
+/** Register (or clear, with `undefined`) the agent-post hook. Called from `buildApp`. */
+export function setChannelPostHook(fn: ChannelPostHook | undefined): void {
+  channelPostHook = fn;
+}
+
+/**
  * Channel poster: persists the message (REST source of truth) and best-effort publishes it to
  * the #5 realtime fan-out so connected clients see streamed output live. A Redis hiccup never
  * fails the session — the message is already persisted.
@@ -53,6 +76,18 @@ export const channelPoster: ChannelPoster = {
     publishMessageEvent(input.channelId, message).catch(() => {
       /* best-effort realtime; message is already persisted */
     });
+    // #170: mirror the agent's reply back into Slack (best-effort; a hook failure never fails the post).
+    if (channelPostHook) {
+      void channelPostHook({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        messageId: message.id,
+        parentMessageId: input.parentMessageId,
+        body: input.body,
+      }).catch(() => {
+        /* best-effort Slack mirror; the message is already persisted */
+      });
+    }
     return { id: message.id };
   },
 };

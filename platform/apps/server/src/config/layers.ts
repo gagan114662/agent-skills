@@ -99,6 +99,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // self-shipping flag / guardrail bounds (concurrency, size cap, protected paths) cannot be loosened
     // by a lower layer.
     if (layer.buildLoop !== undefined) out.buildLoop = { ...layer.buildLoop };
+    // #170 slack policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // Slack surface / digest flag cannot be flipped on/off by a lower layer.
+    if (layer.slack !== undefined) out.slack = { ...layer.slack };
   }
   return out;
 }
@@ -144,5 +147,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     catalog: merged.catalog ?? { ...CONFIG_DEFAULTS.catalog },
     workflows: merged.workflows ?? { ...CONFIG_DEFAULTS.workflows },
     buildLoop: merged.buildLoop ?? { ...CONFIG_DEFAULTS.buildLoop },
+    slack: merged.slack ?? { ...CONFIG_DEFAULTS.slack },
   };
 }

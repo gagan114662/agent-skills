@@ -44,6 +44,8 @@ import type {
   ProviderKind,
   SearchEnvelope,
   SessionMode,
+  SlackStatus,
+  SlackConnectInput,
   StatusPageDto,
   TaskTemplateDto,
   SiteDocDetail,
@@ -250,6 +252,20 @@ export const api = {
   },
   disconnectAgentCredentials(): Promise<CredentialStatus> {
     return del("/me/agent-credentials") as Promise<CredentialStatus>;
+  },
+
+  // --- Connect Slack (#170): the per-tenant Slack app vault (token write-only) ---
+  getSlack(): Promise<SlackStatus> {
+    return request<SlackStatus>("/me/slack");
+  },
+  connectSlack(input: SlackConnectInput): Promise<SlackStatus> {
+    return request<SlackStatus>("/me/slack", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  disconnectSlack(): Promise<SlackStatus> {
+    return del("/me/slack") as Promise<SlackStatus>;
   },
 
   // --- channels ---

@@ -23,6 +23,23 @@ export interface CredentialStatus {
   connectedAt?: string | null;
 }
 
+/** Slack connection state (#170), from `GET /me/slack`. Never carries the bot token or signing secret. */
+export interface SlackStatus {
+  connected: boolean;
+  fingerprint: string | null;
+  teamId?: string | null;
+  connectedAt?: string | null;
+}
+
+/** Body for `PUT /me/slack` (#170): the bot token + signing secret are write-only. */
+export interface SlackConnectInput {
+  botToken: string;
+  signingSecret: string;
+  teamId?: string;
+  botUserId?: string;
+  slackUserId?: string;
+}
+
 /** Current caller, from `GET /me`. */
 export interface Identity {
   workspaceId: string;

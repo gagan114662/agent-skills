@@ -8,7 +8,9 @@ import { getMemberRole } from "../db/repositories/governance.js";
 import { decideApprovalClear, resolveRbacConfig, type WorkspaceRole } from "../team/rbac.js";
 import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
+import { fireApprovalPending } from "../approvals/pending-hook.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
+import { executeApprovedRequest } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
 import {
   upsertPolicy,
@@ -20,7 +22,6 @@ import {
   listRequestEvents,
   listHumanReviewers,
   approveAndLock,
-  recordExecution,
   rejectRequest,
   sweepExpired,
   type ApprovalRequest,
@@ -78,25 +79,7 @@ export async function approvalRoutes(
     req: FastifyRequest,
     request: ApprovalRequest,
   ): Promise<ApprovalRequest> {
-    const executor = registry.get(request.actionType);
-    if (!executor) {
-      return recordExecution(request.id, request.workspaceId, {
-        ok: false,
-        error: `no executor for ${request.actionType}`,
-      });
-    }
-    try {
-      const result = await executor.execute(request.payload, {
-        workspaceId: request.workspaceId,
-        requesterMemberId: request.requesterMemberId,
-        log: req.log,
-      });
-      return recordExecution(request.id, request.workspaceId, { ok: true, result });
-    } catch (err) {
-      const error = err instanceof ActionExecutionError ? err.message : "execution failed";
-      if (!(err instanceof ActionExecutionError)) req.log.error({ err }, "approval execution failed");
-      return recordExecution(request.id, request.workspaceId, { ok: false, error });
-    }
+    return executeApprovedRequest(registry, request, req.log);
   }
 
   // --- policy rules (human admins manage what pauses) ---
@@ -240,6 +223,9 @@ export async function approvalRoutes(
         excerpt: `Approval needed: ${summary}`,
       });
     }
+    // #170: also DM the owner the Approve/Reject buttons in Slack, if connected (best-effort; the hook
+    // is a no-op when no Slack bridge is registered, so the #13 gate is unchanged).
+    await fireApprovalPending(req.log, request);
     return reply.code(202).send({ status: "pending", reason: decision.reason, request });
   });
 

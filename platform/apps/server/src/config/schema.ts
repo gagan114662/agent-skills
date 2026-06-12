@@ -606,6 +606,21 @@ export const buildLoopSchema = z.object({
   protectedPaths: z.array(z.string()).optional(),
 });
 
+/**
+ * Slack-native integration policy (#170, ADR-0170). All **non-secret** knobs for the Slack surface
+ * (the bot token + signing secret live in the #68 sealed vault, never in config). Every field is
+ * optional and defaults to **off**: a deployment that sets nothing keeps today's behavior — inbound
+ * Slack webhooks still 503 until a workspace connects, and no proactive digest DM is sent. `enabled`
+ * gates the proactive digest tick; the mention bridge + approval buttons work whenever a workspace is
+ * connected (they are inbound-triggered, not proactive). `digestEnabled` is the daily-DM switch.
+ */
+export const slackSchema = z.object({
+  /** Master flag for the proactive Slack surface (the digest tick) — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Send the daily fleet digest as an owner DM — default OFF. */
+  digestEnabled: z.boolean().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -675,6 +690,8 @@ export const settingsSchema = z.object({
   workflows: workflowsSchema.optional(),
   /** Self-Shipping Loop policy (#172): the build→review→auto-merge-within-guardrails loop (default OFF). */
   buildLoop: buildLoopSchema.optional(),
+  /** Slack-native integration policy (#170): the digest tick switch (the surface is default OFF). */
+  slack: slackSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -714,6 +731,7 @@ export type FleetConfig = z.infer<typeof fleetSchema>;
 export type CatalogConfig = z.infer<typeof catalogSchema>;
 export type WorkflowsConfig = z.infer<typeof workflowsSchema>;
 export type BuildLoopConfig = z.infer<typeof buildLoopSchema>;
+export type SlackConfig = z.infer<typeof slackSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -791,6 +809,8 @@ export interface ResolvedConfig {
   workflows: WorkflowsConfig;
   /** Self-Shipping Loop policy (#172). A partial whose hard defaults `resolveBuildLoopCaps` fills. */
   buildLoop: BuildLoopConfig;
+  /** Slack-native integration policy (#170). A partial whose hard defaults `resolveSlackCaps` fills. */
+  slack: SlackConfig;
 }
 
 /**
@@ -831,4 +851,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   catalog: {},
   workflows: {},
   buildLoop: {},
+  slack: {},
 };

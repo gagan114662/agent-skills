@@ -43,3 +43,4 @@ export * from "./eval-runs.js";
 export * from "./catalog.js";
 export * from "./workflows.js";
 export * from "./build-loop.js";
+export * from "./slack.js";
