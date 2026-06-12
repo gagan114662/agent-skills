@@ -33,4 +33,21 @@ describe("#123 marketing roster", () => {
     expect(roster.agents.find((a) => a.handle === "echo")?.present).toBe(true);
     expect(roster.agents.find((a) => a.handle === "scout")?.present).toBe(false);
   });
+
+  it("shows ALL fleet agents present when the fleet is enabled, even with no live session (#166)", () => {
+    // QA bug 13: agents always showed grey/offline. When the fleet is enabled they're available to be
+    // @mentioned, so the roster must report them present even when nothing is running right now.
+    const roster = buildMarketingRoster({
+      members,
+      personas,
+      liveSessionMemberIds: [],
+      fleetEnabled: true,
+    });
+    expect(roster.agents.every((a) => a.present)).toBe(true);
+  });
+
+  it("defaults fleetEnabled to false (no behavior change when omitted)", () => {
+    const roster = buildMarketingRoster({ members, personas, liveSessionMemberIds: [] });
+    expect(roster.agents.every((a) => !a.present)).toBe(true);
+  });
 });

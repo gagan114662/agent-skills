@@ -5,6 +5,23 @@
 import { useAppState } from "../store/StoreContext.js";
 import { Avatar, KindBadge, PresenceDot } from "./Primitives.js";
 import type { DirectoryEntry } from "../store/store.js";
+import type { PresenceStatus } from "../api/types.js";
+
+/**
+ * Presence for a member's dot (#166, QA bug 13). Self is always online. An explicit gateway presence
+ * event wins. Otherwise agents default to "online" — they're standing department personas (in the
+ * directory because the fleet is enabled), so they should read available rather than the grey/offline
+ * they always showed before (they never emit WS presence events). Humans keep offline-by-default.
+ */
+function presenceFor(
+  m: DirectoryEntry,
+  selfId: string | undefined,
+  presence: Record<string, PresenceStatus>,
+): PresenceStatus | undefined {
+  if (m.id === selfId) return "online";
+  if (presence[m.id]) return presence[m.id];
+  return m.kind === "agent" ? "online" : undefined;
+}
 
 export function MembersRail(): React.JSX.Element {
   const { directory, presence, identity } = useAppState();
@@ -48,7 +65,7 @@ function Group({
                 {m.id === selfId && <span className="memberrow__you"> (you)</span>}
               </span>
               {m.kind === "agent" && <KindBadge kind="agent" />}
-              <PresenceDot status={m.id === selfId ? "online" : presence[m.id]} />
+              <PresenceDot status={presenceFor(m, selfId, presence)} />
             </li>
           ))}
       </ul>

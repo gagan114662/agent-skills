@@ -21,6 +21,7 @@ import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
+import { renderSessionOutcome } from "./outcome.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
 /**
@@ -552,7 +553,15 @@ export class SessionManager {
     await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
-    await this.safePost(session, `✅ session ${result.status} (exit ${result.exitCode ?? "n/a"})`, log);
+    // #166: a green check ONLY on a clean completion. A failed/timed-out/canceled session renders a
+    // failure mark + brand-voice reason (spawn/auth/timeout/budget/…) instead of the old lying
+    // "✅ session failed (exit n/a)". `resultText` is already redacted; it's passed only to refine the
+    // reason class (auth markers) and is never echoed back into the message.
+    await this.safePost(
+      session,
+      renderSessionOutcome({ status: result.status, exitCode: result.exitCode, outputTail: resultText }),
+      log,
+    );
     await this.deps.store.finalize(session.id, {
       status: result.status,
       exitCode: result.exitCode,

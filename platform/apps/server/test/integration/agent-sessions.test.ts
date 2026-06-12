@@ -45,7 +45,11 @@ afterAll(async () => {
 });
 
 /** Build + listen an app whose SessionManager uses LocalRuntime with the given harness/caps. */
-async function startApp(harnessArgs: string[], caps: ResourceCaps): Promise<{
+async function startApp(
+  harnessArgs: string[],
+  caps: ResourceCaps,
+  command: string = process.execPath, // process.execPath = node
+): Promise<{
   app: FastifyInstance;
   http: string;
   ws: string;
@@ -55,7 +59,7 @@ async function startApp(harnessArgs: string[], caps: ResourceCaps): Promise<{
     store: dbStore,
     poster: channelPoster,
     secrets: new StaticSecretsResolver({ MY_SECRET: SECRET }),
-    harness: { command: process.execPath, args: harnessArgs }, // process.execPath = node
+    harness: { command, args: harnessArgs },
     caps,
     logger: silentLogger,
   });
@@ -174,6 +178,42 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     const all = bodies.join("\n") + String(session.result);
     expect(all).not.toContain(SECRET);
     expect(bodies.some((b) => b.includes("agent: secret=‹redacted›"))).toBe(true);
+  });
+
+  it("renders a failure mark (not a green check) when the harness binary can't be spawned (#166)", async () => {
+    // The exact prod incident: the harness command is missing from the image (Alpine had no `bash`),
+    // so `spawn` fails with ENOENT, the child never returns an exit code, and the session lands as
+    // `failed` with `exitCode: null`. The terminal channel message must NOT lie with a green check.
+    const { app } = await startApp([], { wallClockMs: 20_000, idleMs: 8_000 }, "definitely-not-a-real-binary-xyz");
+    const w = await seed(app);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "do the thing" },
+    });
+    expect(launch.statusCode).toBe(202);
+
+    const session = await pollStatus(app, w, launch.json().id, (s) => s === "failed");
+    expect(session.status).toBe("failed");
+
+    const bodies = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/messages`,
+        cookies: { rid: w.cookie },
+      })
+    ).json().map((m: { body: string }) => m.body) as string[];
+
+    const terminal = bodies.find((b) => b.includes("session failed"));
+    expect(terminal).toBeTruthy();
+    // The lying checkmark is gone: a spawn failure shows a failure mark + the reason class, never "✅".
+    expect(terminal).not.toContain("✅");
+    expect(terminal).toContain("❌");
+    expect(terminal!.toLowerCase()).toContain("spawn");
+    // No green check anywhere in the thread for this run.
+    expect(bodies.some((b) => b.includes("✅"))).toBe(false);
   });
 
   it("reaps an idle session to idle_reaped and enforces the cap", async () => {
