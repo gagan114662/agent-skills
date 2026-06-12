@@ -6,6 +6,7 @@
  * (fetched via `api.getFounderConsole`) so it renders deterministically and is unit-tested without a
  * store or network. It NEVER mutates — approve/kill/maintenance happen on their own surfaces.
  */
+import { useState } from "react";
 import type { FounderConsoleDto } from "../api/types.js";
 import { VOICE } from "../brand.js";
 import { EmptyState } from "./EmptyState.js";
@@ -31,11 +32,28 @@ function mttr(ms: number | null): string {
   return `${min} min`;
 }
 
+export interface FounderDashboardProps {
+  console: FounderConsoleDto | null;
+  /**
+   * When provided, the kill switch / maintenance toggles become interactive (a confirm step → the
+   * parent applies an optimistic flip and calls the real gated endpoint). Omit them and the switches
+   * render read-only — the pure-component contract the dashboard has always had (#169 bug 12).
+   */
+  onToggleKillSwitch?: (next: boolean) => void;
+  onToggleMaintenance?: (next: boolean) => void;
+  /** Which switch (if any) has an in-flight request — disables that control and shows a working state. */
+  switchBusy?: { kill?: boolean; maintenance?: boolean };
+  /** A friendly, already-humanized error from the last toggle attempt. */
+  switchError?: string | null;
+}
+
 export function FounderDashboard({
   console: data,
-}: {
-  console: FounderConsoleDto | null;
-}): React.JSX.Element {
+  onToggleKillSwitch,
+  onToggleMaintenance,
+  switchBusy,
+  switchError,
+}: FounderDashboardProps): React.JSX.Element {
   if (!data) {
     return (
       <section className="founder" aria-label="Founder console">
@@ -78,7 +96,9 @@ export function FounderDashboard({
                 <li key={a.id} className="founder__queueitem">
                   <span className="founder__action">{a.actionType}</span>
                   <span className="founder__summary">{a.summary}</span>
-                  {a.amount !== null && <span className="founder__amount">{dollars(a.amount)}</span>}
+                  {a.amount !== null && (
+                    <span className="founder__amount">{dollars(a.amount)}</span>
+                  )}
                   <span className="founder__age" title="time in queue">
                     {age(a.ageSeconds)}
                   </span>
@@ -161,7 +181,13 @@ export function FounderDashboard({
               <dt>Spent</dt>
               <dd>
                 {dollars(budget.estimatedCostCents)}
-                {budget.budgetCents > 0 && <> {" / "}{dollars(budget.budgetCents)}</>}
+                {budget.budgetCents > 0 && (
+                  <>
+                    {" "}
+                    {" / "}
+                    {dollars(budget.budgetCents)}
+                  </>
+                )}
               </dd>
             </div>
             {budget.utilization !== null && (
@@ -175,19 +201,38 @@ export function FounderDashboard({
 
         <article className="founder__card">
           <h3>Switches</h3>
-          <dl className="founder__stats">
-            <div>
-              <dt>Kill switch</dt>
-              <dd>{switches.killSwitch ? "🔴 engaged" : "🟢 off"}</dd>
-            </div>
-            <div>
-              <dt>Maintenance</dt>
-              <dd>
-                {switches.maintenance.enabled ? "🔴 active" : "🟢 off"}
-                {switches.maintenance.unavailable ? " (unknown)" : ""}
-              </dd>
-            </div>
+          <dl className="founder__stats founder__switches">
+            <SwitchControl
+              label="Kill switch"
+              on={switches.killSwitch}
+              onLabel="🔴 engaged"
+              offLabel="🟢 off"
+              engageText="Engage"
+              disengageText="Resume"
+              confirmEngage="Engage the kill switch? This halts every autonomous session."
+              confirmDisengage="Resume autonomy? Agents can act again."
+              busy={switchBusy?.kill}
+              onToggle={onToggleKillSwitch}
+            />
+            <SwitchControl
+              label="Maintenance"
+              on={switches.maintenance.enabled}
+              onLabel="🔴 active"
+              offLabel="🟢 off"
+              engageText="Enable"
+              disengageText="Disable"
+              confirmEngage="Turn on maintenance? The platform goes read-only."
+              confirmDisengage="Turn off maintenance? The platform accepts writes again."
+              busy={switchBusy?.maintenance}
+              unavailable={switches.maintenance.unavailable}
+              onToggle={onToggleMaintenance}
+            />
           </dl>
+          {switchError && (
+            <p className="founder__switch-error" role="alert">
+              {switchError}
+            </p>
+          )}
         </article>
 
         <article className="founder__card">
@@ -221,5 +266,101 @@ export function FounderDashboard({
         </article>
       </div>
     </section>
+  );
+}
+
+/**
+ * One safety switch (kill switch or maintenance). Read-only when no `onToggle` is wired (the dashboard's
+ * pure default) or when the backing state is `unavailable` — no fake toggle. When interactive, a click
+ * opens a confirm step; confirming calls `onToggle(next)` and the parent applies the optimistic flip and
+ * the real, human-gated request (#169 bug 12).
+ */
+function SwitchControl({
+  label,
+  on,
+  onLabel,
+  offLabel,
+  engageText,
+  disengageText,
+  confirmEngage,
+  confirmDisengage,
+  busy,
+  unavailable,
+  onToggle,
+}: {
+  label: string;
+  on: boolean;
+  onLabel: string;
+  offLabel: string;
+  engageText: string;
+  disengageText: string;
+  confirmEngage: string;
+  confirmDisengage: string;
+  busy?: boolean;
+  unavailable?: boolean;
+  onToggle?: (next: boolean) => void;
+}): React.JSX.Element {
+  const [confirming, setConfirming] = useState(false);
+  const stateText = `${on ? onLabel : offLabel}${unavailable ? " (unknown)" : ""}`;
+
+  // No control wired, or the state is unknown (store unreachable) → show the state, nothing to click.
+  if (!onToggle || unavailable) {
+    return (
+      <div className="founder__switch">
+        <dt>{label}</dt>
+        <dd>
+          {stateText}
+          {unavailable && <span className="founder__switch-note"> · managed via config</span>}
+        </dd>
+      </div>
+    );
+  }
+
+  const next = !on;
+  return (
+    <div className="founder__switch">
+      <dt>{label}</dt>
+      <dd>
+        <span className="founder__switch-state">{stateText}</span>
+        {confirming ? (
+          <span
+            className="founder__switch-confirm"
+            role="group"
+            aria-label={`Confirm ${label} change`}
+          >
+            <span className="founder__switch-prompt">
+              {next ? confirmEngage : confirmDisengage}
+            </span>
+            <button
+              type="button"
+              className="btn btn--danger founder__switch-btn"
+              onClick={() => {
+                setConfirming(false);
+                onToggle(next);
+              }}
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost founder__switch-btn"
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn founder__switch-btn"
+            aria-pressed={on}
+            disabled={busy}
+            onClick={() => setConfirming(true)}
+          >
+            {busy ? "Working…" : on ? disengageText : engageText}
+          </button>
+        )}
+      </dd>
+    </div>
   );
 }

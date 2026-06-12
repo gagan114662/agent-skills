@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { FounderDashboard } from "./FounderDashboard.js";
 import type { FounderConsoleDto } from "../api/types.js";
 
@@ -8,8 +9,20 @@ const console_ = (over: Partial<FounderConsoleDto> = {}): FounderConsoleDto => (
   generatedAtMs: 1_700_000_000_000,
   fleet: { activeSessions: 2, sessionsThisWindow: 9, globalInFlight: 5 },
   venturePipeline: { total: 4, active: 1, funded: 2, killed: 1, escalated: 0 },
-  revenue: { currency: "usd", totalCents: 12500, paymentCount: 3, willingnessToPayCount: 3, hasWillingnessToPay: true },
-  budget: { window: "2026-06", estimatedCostCents: 4200, budgetCents: 10000, overBudget: false, utilization: 0.42 },
+  revenue: {
+    currency: "usd",
+    totalCents: 12500,
+    paymentCount: 3,
+    willingnessToPayCount: 3,
+    hasWillingnessToPay: true,
+  },
+  budget: {
+    window: "2026-06",
+    estimatedCostCents: 4200,
+    budgetCents: 10000,
+    overBudget: false,
+    utilization: 0.42,
+  },
   pendingApprovals: [],
   switches: { killSwitch: false, maintenance: { enabled: false } },
   attention: { required: false, reasons: [] },
@@ -107,14 +120,20 @@ describe("FounderDashboard (#104)", () => {
     rerender(
       <FounderDashboard
         console={console_({
-          budget: { window: "2026-06", estimatedCostCents: 10000, budgetCents: 10000, overBudget: true, utilization: 1 },
+          budget: {
+            window: "2026-06",
+            estimatedCostCents: 10000,
+            budgetCents: 10000,
+            overBudget: true,
+            utilization: 1,
+          },
         })}
       />,
     );
     expect(screen.getByText(/over budget/i)).toBeInTheDocument();
   });
 
-  it("renders the safety switches read-only", () => {
+  it("renders the safety switches read-only when no control callbacks are wired", () => {
     render(
       <FounderDashboard
         console={console_({ switches: { killSwitch: true, maintenance: { enabled: true } } })}
@@ -122,5 +141,75 @@ describe("FounderDashboard (#104)", () => {
     );
     expect(screen.getByText(/🔴 engaged/)).toBeInTheDocument(); // kill switch
     expect(screen.getByText(/🔴 active/)).toBeInTheDocument(); // maintenance
+    // No fake toggles: with no callback there is nothing to click.
+    expect(screen.queryByRole("button", { name: /engage|resume/i })).toBeNull();
+  });
+
+  it("makes the kill switch interactive when a callback is wired, behind a confirm step (#169 bug 12)", async () => {
+    const onToggleKillSwitch = vi.fn();
+    render(
+      <FounderDashboard
+        console={console_({ switches: { killSwitch: false, maintenance: { enabled: false } } })}
+        onToggleKillSwitch={onToggleKillSwitch}
+      />,
+    );
+
+    // A click opens a confirm step; it does NOT fire the toggle yet.
+    await userEvent.click(screen.getByRole("button", { name: /engage/i }));
+    expect(onToggleKillSwitch).not.toHaveBeenCalled();
+    expect(screen.getByText(/halts every autonomous session/i)).toBeInTheDocument();
+
+    // Confirming fires the toggle with the next value (off → on).
+    await userEvent.click(screen.getByRole("button", { name: /^confirm$/i }));
+    expect(onToggleKillSwitch).toHaveBeenCalledWith(true);
+  });
+
+  it("cancelling the confirm does not fire the toggle", async () => {
+    const onToggleMaintenance = vi.fn();
+    render(
+      <FounderDashboard
+        console={console_({ switches: { killSwitch: false, maintenance: { enabled: false } } })}
+        onToggleMaintenance={onToggleMaintenance}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /enable/i }));
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onToggleMaintenance).not.toHaveBeenCalled();
+  });
+
+  it("shows a working state and disables the control while a toggle is in flight", () => {
+    render(
+      <FounderDashboard
+        console={console_({ switches: { killSwitch: false, maintenance: { enabled: false } } })}
+        onToggleKillSwitch={vi.fn()}
+        switchBusy={{ kill: true }}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /working/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it("keeps maintenance read-only (no fake toggle) when the flag store is unavailable", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          switches: { killSwitch: false, maintenance: { enabled: false, unavailable: true } },
+        })}
+        onToggleMaintenance={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/managed via config/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /enable|disable/i })).toBeNull();
+  });
+
+  it("surfaces a switch error when a toggle fails", () => {
+    render(
+      <FounderDashboard
+        console={console_()}
+        onToggleKillSwitch={vi.fn()}
+        switchError="Couldn't update the kill switch. Please try again."
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/couldn't update the kill switch/i);
   });
 });
