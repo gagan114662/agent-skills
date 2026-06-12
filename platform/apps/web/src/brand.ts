@@ -497,6 +497,115 @@ export const MEMORY_LEDGER = {
 } as const;
 
 /**
+ * Console redesign copy (board + standup, per the approved brand-book mockup). The new primary surface
+ * is a Conductor-style standup (left: Board/Reports/History + projects→sessions) beside a kanban board
+ * (In motion / Waiting on you / Shipped), with a slide-over peek drawer and a per-project settings sheet.
+ * Every string lives here so the console components carry no hardcoded brand copy (house rule; the chrome
+ * scan in brand.test.ts is the backstop). Voice: warm, first-person plural, receipts over adjectives —
+ * the moments (empty states, the brief, the banner) carry the personality; the chrome stays quiet.
+ * One status grammar everywhere: braille = running · vermilion dot = waiting on you · green = shipped.
+ */
+export const CONSOLE = {
+  /** Left-panel primary nav. */
+  nav: { board: "Board", reports: "Reports", history: "History" },
+  /** Projects group header + its two hover actions. A project = one repo = one company. */
+  projects: {
+    label: "Projects",
+    filterTitle: "Only what needs you",
+    newTitle: "New project",
+    newSession: "New session",
+    settings: "Project settings",
+  },
+  /** The three board lanes. "In motion" runs left→right toward "Shipped". */
+  columns: { running: "In motion", waiting: "Waiting on you", shipped: "Shipped" },
+  /** The one quiet legend line under the header: department = the 3px card edge. */
+  legend: { caption: "edge colour = department" },
+  /** Fleet-health dot copy (header). */
+  health: { healthy: "fleet healthy", attention: "needs a human" },
+  /** Spend-gauge forecast labels. */
+  gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set" },
+  /** Status-grammar words used on rows + cards. */
+  status: { yourYes: "your yes", running: "working", shipped: "shipped", idle: "idle", sending: "sending" },
+  /** Card chrome. */
+  card: { why: "why?", approve: "Approve", sendBack: "Send back", waiting: "waiting", est: "est." },
+  /** Peek drawer (slide-over). */
+  peek: {
+    steerPlaceholder: "Steer this session",
+    send: "Send",
+    auditStatus: "audit trail",
+    whyPrefix: "why",
+    emptyTranscript: "Nothing said yet. Brief them and the receipts start landing here.",
+    held: "Ready when you are — nothing leaves without your yes.",
+  },
+  /** Reports view sections. */
+  reports: {
+    overnightTitle: "While you were out",
+    briefTitle: "Daily brief",
+    handoversTitle: "Needs your call",
+    handoverDispatch: "Approve",
+    handoverEmpty: "No calls waiting. The fleet's running clean.",
+    plTitle: "Weekly numbers",
+    plOneNumber: "the one number that matters",
+  },
+  /** Per-project settings sheet: tab labels + field copy. */
+  settings: {
+    tabs: { general: "General", models: "Models", agents: "Agents", budget: "Budget", approvals: "Approvals" },
+    general: {
+      repoLabel: "REPOSITORY",
+      repoHint: "one project = one repo = one company",
+      voiceLabel: "BRAND VOICE",
+      voiceHint: "every agent here inherits this",
+      voiceDefault: "Warm, a little silly, never smug. Receipts over adjectives.",
+    },
+    models: {
+      localLabel: "LOCAL · GEMMA",
+      localHint: "voice + drafts on-device — nothing leaves this Mac",
+      localConnected: "connected",
+      keysHint: "keys are sealed per project, write-only — we use them, we can't read them back",
+      noKey: "not connected",
+      fingerprintPrefix: "saved ·",
+    },
+    agents: { hint: "the named department leads — toggle who's on the roster" },
+    budget: {
+      monthlyLabel: "MONTHLY BUDGET",
+      monthlyHint: "hard stop — we queue politely when it's spent",
+      capLabel: "PER-SESSION CAP",
+      windowPrefix: "Spent this window",
+    },
+    approvals: {
+      gateTitle: "Nothing leaves without your yes",
+      gateSub: "enforced in code, not a setting",
+      approverLabel: "APPROVERS",
+      approverHint: "every yes is on the record",
+    },
+    close: "Done",
+  },
+  /** "While you were out" overnight banner (dismissible). */
+  wyo: { title: "While you were out", read: "Read the brief", dismiss: "Dismiss" },
+  /** Approval-empty state: the room is quiet because the fleet is trusted to run on its own. */
+  approvalsClear: {
+    headline: "All clear — we're running on our own.",
+    nextDefault: "the next draft, when it's ready",
+  },
+} as const;
+
+/** Overnight banner summary: shipped · needs-you · spend, in the house voice. */
+export function consoleOvernightSummary(shipped: number, waiting: number, spend: string): string {
+  const yes = waiting === 1 ? "needs your yes" : "need your yes";
+  return `${shipped} shipped · ${waiting} ${yes} · ${spend} overnight`;
+}
+
+/** "N waiting on you" header chip — caller hides it at zero. */
+export function consoleWaitingChip(n: number): string {
+  return `${n} waiting on you`;
+}
+
+/** Approval-empty "next likely ask" line. */
+export function consoleNextAsk(hint: string = CONSOLE.approvalsClear.nextDefault): string {
+  return `Next likely ask: ${hint}.`;
+}
+
+/**
  * Pricing framed as the product's own Settings → Billing screen (#165). The plans mirror `LANDING.plans`
  * (which mirror `billing/plans.ts`, #125); this just dresses them in the app's settings chrome so the
  * visitor sees exactly where they'll land. `currentPlan` is the one shown as the active subscription.

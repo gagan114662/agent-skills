@@ -29,6 +29,10 @@ import {
   STORY,
   FAQ,
   BILLING,
+  CONSOLE,
+  consoleWaitingChip,
+  consoleNextAsk,
+  consoleOvernightSummary,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -293,6 +297,34 @@ describe("marketing-site machine copy (#153)", () => {
     const hexes = BRAND_ASSETS.palette.map((s) => s.hex.toLowerCase());
     expect(hexes).toContain("#ff4524"); // Pop Vermilion
     expect(BRAND_ASSETS.palette).toHaveLength(3);
+  });
+});
+
+describe("console redesign copy (board + standup)", () => {
+  it("names the three board lanes and the standup nav, in the status grammar", () => {
+    expect(CONSOLE.columns.running).toBeTruthy();
+    expect(CONSOLE.columns.waiting).toBeTruthy();
+    expect(CONSOLE.columns.shipped).toBeTruthy();
+    for (const k of ["board", "reports", "history"] as const) expect(CONSOLE.nav[k]).toBeTruthy();
+    // The five per-project settings tabs the mockup defines.
+    for (const k of ["general", "models", "agents", "budget", "approvals"] as const) {
+      expect(CONSOLE.settings.tabs[k]).toBeTruthy();
+    }
+  });
+
+  it("carries the approvals-clear moment and the local-model connected label", () => {
+    expect(CONSOLE.approvalsClear.headline).toMatch(/All clear/);
+    expect(consoleNextAsk()).toMatch(/^Next likely ask: .+\.$/);
+    expect(consoleNextAsk("echo's Friday posts")).toContain("echo's Friday posts");
+    expect(CONSOLE.settings.models.localConnected).toBe("connected");
+    // Keys are presented as write-only/sealed — never read back.
+    expect(CONSOLE.settings.models.keysHint).toMatch(/write-only|sealed/);
+  });
+
+  it("builds the header chip + overnight summary in the house voice (pluralized)", () => {
+    expect(consoleWaitingChip(1)).toBe("1 waiting on you");
+    expect(consoleOvernightSummary(3, 1, "$4.10")).toBe("3 shipped · 1 needs your yes · $4.10 overnight");
+    expect(consoleOvernightSummary(0, 2, "$0.00")).toContain("2 need your yes");
   });
 });
 

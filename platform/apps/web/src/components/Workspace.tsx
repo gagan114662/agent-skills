@@ -21,12 +21,14 @@ import { WorkflowsPanel } from "./workflows/WorkflowsPanel.js";
 import { MissionControlPanel } from "./MissionControlPanel.js";
 import { AuditPanel } from "./AuditPanel.js";
 import { SoftPaywall } from "./site/SoftPaywall.js";
+import { ConsoleView } from "./console/ConsoleView.js";
 
 // Product chrome surfaces only. Review/Run/Usage stay reachable for operators via the existing
 // API/routes (and their panel components remain), but are no longer part of the product nav (#122).
 // Pricing (#125) is the customer-facing plan + checkout surface. Settings (#68) is where the owner
 // connects their own Claude subscription so the fleet agents actually run.
 type View =
+  | "console"
   | "chat"
   | "approvals"
   | "deploy"
@@ -40,7 +42,9 @@ type View =
   | "settings";
 
 export function Workspace(): React.JSX.Element {
-  const [view, setView] = useState<View>("chat");
+  // The board+standup console (brand-book redesign) is the primary surface; chat and the operator panels
+  // stay reachable from the top nav.
+  const [view, setView] = useState<View>("console");
   const { identity, paywall } = useAppState();
   const store = useStore();
   return (
@@ -59,7 +63,9 @@ export function Workspace(): React.JSX.Element {
       )}
       {/* Keyed on `view` so switching tabs swell-fades the new content in — no hard cut (#145 #7). */}
       <div className="workspace__view view-fade" key={view}>
-        {view === "founder" ? (
+        {view === "console" ? (
+          <ConsoleView />
+        ) : view === "founder" ? (
           <FounderPanel />
         ) : view === "automations" ? (
           <AutomationsPanel />
@@ -142,6 +148,13 @@ function TopBar({
         <Wordmark />
       </div>
       <nav className="topbar__nav" aria-label="Workspace views">
+        <button
+          className={`topbar__navbtn${view === "console" ? " topbar__navbtn--active" : ""}`}
+          aria-pressed={view === "console"}
+          onClick={() => onSelectView("console")}
+        >
+          Board
+        </button>
         <button
           className={`topbar__navbtn${view === "chat" ? " topbar__navbtn--active" : ""}`}
           aria-pressed={view === "chat"}
