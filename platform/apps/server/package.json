@@ -19,6 +19,7 @@
     "dr:drill": "tsx src/dr/drill-cli.ts",
     "sre:drill": "tsx src/sre/drill-cli.ts",
     "uptime:check": "tsx src/uptime/check-cli.ts",
+    "selfqa:run": "tsx src/selfqa/run-cli.ts",
     "changelog:draft": "tsx src/site/changelog-cli.ts",
     "preflight": "tsx scripts/preflight.ts",
     "openapi:dump": "tsx scripts/dump-openapi.ts",

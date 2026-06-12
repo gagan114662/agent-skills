@@ -29,6 +29,7 @@ export const FAILURE_CLASSES = [
   "constitution_violation",
   "eval_regression", // #155: an offline agent-skill eval suite dropped below its baseline pass-rate
   "workflow_fail", // #152: a workflow firing's action failed (no DB CHECK on the column)
+  "qa_failure", // #171: the self-QA synthetic user found a product-surface bug on the live deployment
 ] as const;
 
 export const failureFingerprints = pgTable(

@@ -15,7 +15,13 @@
  *   6. opened/down         — a fresh breach pages
  */
 
-export type PageKind = "opened" | "repaged" | "resolved" | "uptime_down" | "uptime_recover";
+export type PageKind =
+  | "opened"
+  | "repaged"
+  | "resolved"
+  | "uptime_down"
+  | "uptime_recover"
+  | "selfqa_critical"; // #171: a critical self-QA finding — a fresh breach (falls through to "opened")
 export type PageSeverity = "warning" | "critical";
 
 /** A quiet-hours window in whole UTC hours. Wraps midnight when `start > end`; `start === end` ⇒ none. */

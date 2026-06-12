@@ -26,6 +26,7 @@ export * from "./sre.js";
 export * from "./reliability.js";
 export * from "./gate-evidence.js";
 export * from "./flywheel.js";
+export * from "./selfqa.js";
 export * from "./marketing-tasks.js";
 export * from "./verifier-results.js";
 export * from "./demand.js";

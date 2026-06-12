@@ -27,6 +27,10 @@ app.sreEngine.start(env.sre.intervalMs);
 // #117 self-healing flywheel: start the opt-in tick (FLYWHEEL_INTERVAL_MS; default 0 = off) that turns
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
 app.flywheelEngine.start(env.flywheel.intervalMs);
+// #171 self-QA loop: start the opt-in tick (SELFQA_INTERVAL_MS; default 0 = off) that drives the
+// synthetic-user E2E QA pass against the live product and files its own deduped bug issues. The always-on
+// entry is the `selfqa:run` CLI in CI; the timer is for an in-process nightly. Stopped on close via buildApp.
+app.selfqaEngine.start(env.selfqa.intervalMs);
 
 // #106 outcome verifiers: start the opt-in tick (VERIFIERS_INTERVAL_MS; default 0 = off) that turns
 // non-code claims into durable measured verdicts and escalates failures. Self-gates on the #99
