@@ -6,13 +6,22 @@
 import { useEffect, useState } from "react";
 import { useAppState } from "../store/StoreContext.js";
 import { api } from "../api/client.js";
-import type { FounderConsoleDto } from "../api/types.js";
+import type {
+  DailyBriefDto,
+  DecisionQueueDto,
+  FounderConsoleDto,
+  WeeklyReportDto,
+} from "../api/types.js";
 import { FounderDashboard } from "./FounderDashboard.js";
+import { BriefingsPanel } from "./BriefingsPanel.js";
 
 export function FounderPanel(): React.JSX.Element {
   const { identity } = useAppState();
   const workspaceId = identity?.workspaceId;
   const [console, setConsole] = useState<FounderConsoleDto | null>(null);
+  const [daily, setDaily] = useState<DailyBriefDto | null>(null);
+  const [weekly, setWeekly] = useState<WeeklyReportDto | null>(null);
+  const [decisionQueue, setDecisionQueue] = useState<DecisionQueueDto | null>(null);
   const [switchBusy, setSwitchBusy] = useState<{ kill?: boolean; maintenance?: boolean }>({});
   const [switchError, setSwitchError] = useState<string | null>(null);
 
@@ -27,6 +36,13 @@ export function FounderPanel(): React.JSX.Element {
       .catch(() => {
         /* leave the loading state; a transient error self-heals on the next mount */
       });
+    // #173 founder briefings: the same data the company pushes to the owner, rendered in the console.
+    void api.getFounderBriefingDaily(workspaceId).then((d) => live && setDaily(d)).catch(() => {});
+    void api.getFounderBriefingWeekly(workspaceId).then((w) => live && setWeekly(w)).catch(() => {});
+    void api
+      .getFounderDecisionQueue(workspaceId)
+      .then((q) => live && setDecisionQueue(q))
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -89,6 +105,7 @@ export function FounderPanel(): React.JSX.Element {
         switchBusy={switchBusy}
         switchError={switchError}
       />
+      <BriefingsPanel daily={daily} decisionQueue={decisionQueue} weekly={weekly} />
     </div>
   );
 }

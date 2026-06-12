@@ -284,6 +284,78 @@ export interface FounderConsoleDto {
   attention: { required: boolean; reasons: string[] };
 }
 
+/** One owner-decision in the unified queue (#173): approval / guardrail escalation / constitution. */
+export interface DecisionQueueItemDto {
+  kind: "approval" | "guardrail_escalation" | "constitution";
+  id: string;
+  title: string;
+  impact: "critical" | "high" | "normal";
+  ageSeconds: number;
+  escalationLevel: number;
+  createdAtMs: number;
+  link: string | null;
+}
+
+/** The unified decision queue (#173): one ordered list with age + impact + escalation. */
+export interface DecisionQueueDto {
+  workspaceId: string;
+  generatedAtMs: number;
+  items: DecisionQueueItemDto[];
+  total: number;
+  byImpact: { critical: number; high: number; normal: number };
+  stale: number;
+  critical: number;
+}
+
+/** The daily brief (#173): what shipped, what's blocked, decisions waiting, spend, constitution. */
+export interface DailyBriefDto {
+  workspaceId: string;
+  generatedAtMs: number;
+  shipped: { title: string; ref: string | null }[];
+  blocked: { title: string; reason: string; ref: string | null }[];
+  decisionsWaiting: DecisionQueueItemDto[];
+  spend: {
+    estimatedCostCents: number;
+    budgetCents: number;
+    currency: string;
+    overBudget: boolean;
+    utilization: number | null;
+  };
+  constitution: { open: number; topCodes: string[] };
+  /** The brand-voice brief (< 200 words). */
+  text: string;
+  wordCount: number;
+}
+
+/** One per-venture P&L row in the weekly founder report (#173). */
+export interface VenturePnLDto {
+  ideaId: string;
+  status: string;
+  decision: string | null;
+  currentScore: number | null;
+  previousScore: number | null;
+  scoreDelta: number | null;
+  revenueCents: number | null;
+  costCents: number | null;
+  netCents: number | null;
+  marginPct: number | null;
+  hasPnl: boolean;
+}
+
+/** The weekly founder report (#173): per-venture P&L + recommendations + voice + backlog. */
+export interface WeeklyReportDto {
+  workspaceId: string;
+  generatedAtMs: number;
+  currency: string;
+  revenueTotalCents: number;
+  ventures: VenturePnLDto[];
+  recommendations: { doubleDown: number; maintain: number; pivot: number; sunset: number };
+  voiceSignals: { summary: string; sentiment: string; churnRisk: string }[];
+  backlog: { title: string; score: number; position: number }[];
+  text: string;
+  wordCount: number;
+}
+
 /** The public status page payload (#148): component health + a redacted incident history. */
 export type StatusLevel = "operational" | "degraded" | "major_outage";
 export interface StatusPageDto {

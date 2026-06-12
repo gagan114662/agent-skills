@@ -51,6 +51,11 @@ app.planningEngine.start(env.planning.intervalMs);
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.
 app.buildLoopEngine.start(env.buildLoop.intervalMs);
 
+// #173 founder briefings: start the opt-in reporting tick (BRIEFINGS_INTERVAL_MS; default 0 = off) that
+// delivers each workspace's daily brief + weekly P&L report to the owner (the idempotency watermark
+// dedups repeats within a period). Stopped on server close via buildApp.
+app.founderBriefingsEngine.start(env.briefings.intervalMs);
+
 // #147 automations: start the opt-in tick (AUTOMATIONS_INTERVAL_MS; default 0 = off) that launches
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);

@@ -36,6 +36,8 @@ export interface Env {
   planning: PlanningEnv;
   /** Self-Shipping Loop scheduled tick (#172). */
   buildLoop: BuildLoopEnv;
+  /** Founder Briefings scheduled tick (#173). */
+  briefings: BriefingsEnv;
   /** Automations scheduled tick (#147). */
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
@@ -188,6 +190,11 @@ export interface BuildLoopEnv {
   intervalMs: number;
 }
 
+export interface BriefingsEnv {
+  /** Briefings-tick interval in ms. Default `0` = the background reporting loop is OFF (opt-in, #173). */
+  intervalMs: number;
+}
+
 export interface AutomationsEnv {
   /** Automations-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #147). */
   intervalMs: number;
@@ -329,6 +336,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     buildLoop: {
       // Default 0 (off): the self-shipping loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
       intervalMs: Number(source.BUILDLOOP_INTERVAL_MS ?? 0) || 0,
+    },
+    briefings: {
+      // Default 0 (off): the briefings loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
+      intervalMs: Number(source.BRIEFINGS_INTERVAL_MS ?? 0) || 0,
     },
     automations: {
       // Default 0 (off): the automations loop is opt-in so tests/CI drive `tickAll()` deterministically.

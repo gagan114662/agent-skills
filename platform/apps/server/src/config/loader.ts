@@ -186,6 +186,13 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (slackDigest !== undefined) slack.digestEnabled = slackDigest === "true" || slackDigest === "1";
     raw.slack = slack;
   }
+  // #173 founder briefings: let the deployment env opt the reporting layer in without a managed.toml.
+  // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The delivery
+  // timer is separate (BRIEFINGS_INTERVAL_MS).
+  const briefingsEnabled = env.RELOAD_BRIEFINGS_ENABLED;
+  if (briefingsEnabled !== undefined) {
+    raw.briefings = { enabled: briefingsEnabled === "true" || briefingsEnabled === "1" };
+  }
   return parseLayer(raw, "env");
 }
 

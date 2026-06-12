@@ -4,7 +4,7 @@ import type { ChannelPostHookInput } from "../runtime/default.js";
 import type { SlackClient } from "./client.js";
 import type { SlackSecrets } from "../db/repositories/slack.js";
 import { slackMentionToPlatformMessage } from "./mention-parse.js";
-import { parseApprovalActionValue, buildApprovalBlocks } from "./blocks.js";
+import { parseApprovalActionValue, buildApprovalBlocks, type SlackBlock } from "./blocks.js";
 import { buildSlackDigest, type SlackDigestInput } from "./digest.js";
 import { SLACK_VOICE } from "./voice.js";
 
@@ -255,6 +255,32 @@ export class SlackEventService {
       channel: dm.channel,
       text: digest.text,
       blocks: digest.blocks,
+    });
+    return { sent: res !== null };
+  }
+
+  /**
+   * DM an arbitrary message to the workspace owner (#170). The reusable owner-DM primitive behind
+   * {@link sendDigest} / {@link notifyApprovalPending}: resolve the owner's Slack user, open a DM, post.
+   * Returns `{ sent: false }` (never throws) when the workspace isn't connected or has no resolvable
+   * owner — the #173 Founder Briefings Slack channel reuses this so the brief rides the SAME authority.
+   */
+  async sendOwnerDm(
+    workspaceId: string,
+    message: { text: string; blocks?: SlackBlock[] },
+  ): Promise<{ sent: boolean }> {
+    const secrets = await this.deps.getSecrets(workspaceId);
+    if (!secrets) return { sent: false };
+    const ownerMemberId = await this.deps.resolveOwner(workspaceId);
+    if (!ownerMemberId) return { sent: false };
+    const ownerSlackUser = await this.deps.resolveSlackUser(workspaceId, ownerMemberId);
+    if (!ownerSlackUser) return { sent: false };
+    const dm = await this.deps.client.openDm(secrets.botToken, ownerSlackUser);
+    if (!dm) return { sent: false };
+    const res = await this.deps.client.postMessage(secrets.botToken, {
+      channel: dm.channel,
+      text: message.text,
+      blocks: message.blocks,
     });
     return { sent: res !== null };
   }

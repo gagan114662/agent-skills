@@ -34,6 +34,9 @@ import type {
   CredentialStatus,
   EffortLevel,
   FounderConsoleDto,
+  DailyBriefDto,
+  WeeklyReportDto,
+  DecisionQueueDto,
   Identity,
   KillSwitchState,
   MaintenanceState,
@@ -284,6 +287,17 @@ export const api = {
   // --- founder console (#104) ---
   getFounderConsole(workspaceId: string): Promise<FounderConsoleDto> {
     return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
+  },
+
+  // --- founder briefings (#173): the daily brief, weekly P&L report, and decision queue ---
+  getFounderBriefingDaily(workspaceId: string): Promise<DailyBriefDto> {
+    return request<DailyBriefDto>(`/workspaces/${workspaceId}/founder-briefings/daily`);
+  },
+  getFounderBriefingWeekly(workspaceId: string): Promise<WeeklyReportDto> {
+    return request<WeeklyReportDto>(`/workspaces/${workspaceId}/founder-briefings/weekly`);
+  },
+  getFounderDecisionQueue(workspaceId: string): Promise<DecisionQueueDto> {
+    return request<DecisionQueueDto>(`/workspaces/${workspaceId}/founder-briefings/decision-queue`);
   },
 
   // --- safety switches: the Founder Console wires these to the real, human-gated controls (#169 bug 12) ---

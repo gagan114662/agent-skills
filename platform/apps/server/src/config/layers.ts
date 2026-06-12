@@ -105,6 +105,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #170 slack policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // Slack surface / digest flag cannot be flipped on/off by a lower layer.
     if (layer.slack !== undefined) out.slack = { ...layer.slack };
+    // #173 briefings policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // briefing flag / cadence cannot be loosened (e.g. delivery turned off) by a lower layer.
+    if (layer.briefings !== undefined) out.briefings = { ...layer.briefings };
   }
   return out;
 }
@@ -152,5 +155,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     workflows: merged.workflows ?? { ...CONFIG_DEFAULTS.workflows },
     buildLoop: merged.buildLoop ?? { ...CONFIG_DEFAULTS.buildLoop },
     slack: merged.slack ?? { ...CONFIG_DEFAULTS.slack },
+    briefings: merged.briefings ?? { ...CONFIG_DEFAULTS.briefings },
   };
 }
