@@ -58,4 +58,49 @@ describe("Workspace shell", () => {
     await userEvent.click(bell);
     await waitFor(() => expect(store.getState().unreadMentions).toBe(0));
   });
+
+  // #168 — bug 1: the mentions inbox popover must be dismissable, not stuck open until reload.
+  it("dismisses the mentions inbox on an outside click", async () => {
+    const { store } = renderWithStore(<Workspace />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
+    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
+
+    // Clicking anywhere outside the popover (here, a message in the pane) closes it.
+    await userEvent.click(screen.getByText("first post"));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("dismisses the mentions inbox when Escape is pressed", async () => {
+    const { store } = renderWithStore(<Workspace />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
+    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("dismisses the mentions inbox when the view changes", async () => {
+    const { store } = renderWithStore(<Workspace />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
+    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
+
+    // Switching to another product view (route change) closes the inbox so it never hangs over it.
+    await userEvent.click(screen.getByRole("button", { name: /^Founder/ }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
+    );
+  });
 });

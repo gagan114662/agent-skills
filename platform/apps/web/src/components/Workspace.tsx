@@ -1,6 +1,6 @@
 /** The Slack-style workspace shell: top bar, channel sidebar, message pane, thread + members rails.
  * The top bar switches between the chat workspace and the Approvals Panel (#13 governance surface). */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { authorLabel } from "../store/store.js";
 import { VOICE } from "../brand.js";
@@ -94,11 +94,35 @@ function TopBar({
   const deployLive = deploy.latest?.status === "ready" || deploy.latest?.status === "rolled_back";
   const store = useStore();
   const [showMentions, setShowMentions] = useState(false);
+  const mentionsRef = useRef<HTMLDivElement>(null);
 
   function toggleMentions(): void {
     setShowMentions((v) => !v);
     store.markMentionsRead();
   }
+
+  // #168 bug 1: the mentions inbox is a real popover — an outside click or Escape closes it, and it
+  // never survives a view switch. Listeners attach only while it's open, and detach on close/unmount.
+  useEffect(() => {
+    if (!showMentions) return;
+    function onPointerDown(e: MouseEvent): void {
+      if (mentionsRef.current && !mentionsRef.current.contains(e.target as Node)) setShowMentions(false);
+    }
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === "Escape") setShowMentions(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showMentions]);
+
+  // A route/view change always closes the inbox so it can't hang over another surface (#168 bug 1).
+  useEffect(() => {
+    setShowMentions(false);
+  }, [view]);
 
   return (
     <header className="topbar">
@@ -178,7 +202,7 @@ function TopBar({
           {identity.displayName} · <span className="topbar__kind">{identity.kind}</span>
         </div>
       )}
-      <div className="topbar__mentions">
+      <div className="topbar__mentions" ref={mentionsRef}>
         <button className="iconbtn iconbtn--bell" aria-label="Mentions" onClick={toggleMentions}>
           🔔{unreadMentions > 0 && <span className="badge">{unreadMentions}</span>}
         </button>

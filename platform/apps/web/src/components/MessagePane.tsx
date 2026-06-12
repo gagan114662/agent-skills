@@ -44,7 +44,7 @@ export function MessagePane(): React.JSX.Element {
         )}
       </div>
 
-      <Composer queue />
+      <Composer queue draftKey={activeChannelId ?? undefined} />
     </section>
   );
 }

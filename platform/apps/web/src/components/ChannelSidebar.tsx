@@ -1,5 +1,5 @@
 /** Left rail: workspace identity, channel list (public + DMs), and a create-channel control. */
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { departmentColor } from "../brand.js";
 import { Wordmark } from "./Wordmark.js";
@@ -14,12 +14,23 @@ export function ChannelSidebar(): React.JSX.Element {
   const publicChannels = channels.filter((c) => c.kind === "public");
   const dms = channels.filter((c) => c.kind === "dm");
 
+  // Navigating to another channel dismisses an open add-channel field (#168) so a half-typed name
+  // never lingers across conversations. (Opening the field doesn't change the active channel.)
+  useEffect(() => {
+    setAdding(false);
+    setName("");
+  }, [activeChannelId]);
+
+  function closeAdd(): void {
+    setAdding(false);
+    setName("");
+  }
+
   async function onCreate(e: FormEvent): Promise<void> {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    setName("");
-    setAdding(false);
+    closeAdd();
     await store.createChannel(trimmed);
   }
 
@@ -46,7 +57,15 @@ export function ChannelSidebar(): React.JSX.Element {
         </div>
 
         {adding && (
-          <form className="sidebar__addform" onSubmit={onCreate}>
+          <form
+            className="sidebar__addform"
+            onSubmit={onCreate}
+            onBlur={(e) => {
+              // Focus moving to the Create button stays inside the form (so Enter/click can submit);
+              // focus leaving the form entirely (blur/navigation) dismisses the field (#168).
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) closeAdd();
+            }}
+          >
             <input
               autoFocus
               value={name}

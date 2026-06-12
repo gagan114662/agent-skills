@@ -1,10 +1,10 @@
 /** Message composer with @mention autocomplete. Used for channel posts and (compact) thread replies. */
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useStore } from "../store/StoreContext.js";
 import { activeMentionQuery, applyMentionSelection } from "../store/mentions.js";
 import { popConfetti } from "../lib/confetti.js";
 import { hasUnresolvedPlaceholders } from "../lib/templates.js";
-import { VOICE } from "../brand.js";
+import { VOICE, agentColor } from "../brand.js";
 import { KindBadge } from "./Primitives.js";
 import { MessageQueue } from "./MessageQueue.js";
 import { TemplatePicker } from "./TemplatePicker.js";
@@ -21,12 +21,16 @@ export interface ComposerProps {
   /** Enable the per-session message/steering queue (#54): a Queue/Steer control + the pending list.
    * Only the channel composer opts in; thread replies stay a plain send box. */
   queue?: boolean;
+  /** Bind the input to a per-channel draft (#168): when this key changes (channel switch) the visible
+   * text swaps to that key's saved draft, and edits persist back to it. Omit for ephemeral composers
+   * (e.g. thread replies) that shouldn't retain text across switches. */
+  draftKey?: string;
 }
 
-export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProps): React.JSX.Element {
+export function Composer({ placeholder, onSubmit, compact, queue, draftKey }: ComposerProps): React.JSX.Element {
   const store = useStore();
   const ref = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => (draftKey === undefined ? "" : store.getDraft(draftKey)));
   const [options, setOptions] = useState<MemberHit[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -34,6 +38,16 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
   const [notice, setNotice] = useState<Notice | null>(null);
   // Monotonic token so a slow earlier search can't overwrite a newer query's results.
   const querySeq = useRef(0);
+
+  // Per-channel draft restore (#168): when the bound channel changes, swap the visible text to that
+  // channel's saved draft and reset the transient menu/notice so nothing leaks across the switch.
+  useEffect(() => {
+    if (draftKey === undefined) return;
+    setText(store.getDraft(draftKey));
+    setOpen(false);
+    setOptions([]);
+    setNotice(null);
+  }, [draftKey, store]);
 
   async function refreshMentions(value: string, caret: number): Promise<void> {
     const seq = ++querySeq.current;
@@ -53,6 +67,7 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
   function onChange(value: string, caret: number): void {
     setText(value);
     if (notice) setNotice(null); // typing dismisses a prior hint/confirmation
+    if (draftKey !== undefined) store.setDraft(draftKey, value); // persist this channel's draft (#168)
     void refreshMentions(value, caret);
   }
 
@@ -60,6 +75,7 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
     const caret = ref.current?.selectionStart ?? text.length;
     const next = applyMentionSelection(text, caret, member.displayName);
     setText(next.text);
+    if (draftKey !== undefined) store.setDraft(draftKey, next.text); // keep the draft in sync (#168)
     setOpen(false);
     setOptions([]);
     requestAnimationFrame(() => {
@@ -81,6 +97,7 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
       return false;
     }
     setText("");
+    if (draftKey !== undefined) store.setDraft(draftKey, ""); // a sent message clears its draft (#168)
     setOpen(false);
     setNotice(null);
     if (onSubmit) await onSubmit(value);
@@ -105,6 +122,7 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
       return;
     }
     setText("");
+    if (draftKey !== undefined) store.setDraft(draftKey, ""); // queued/steered text leaves the draft too (#168)
     setOpen(false);
     if (kind === "steer") store.steerMessage(value);
     else store.queueMessage(value);
@@ -164,23 +182,32 @@ export function Composer({ placeholder, onSubmit, compact, queue }: ComposerProp
       )}
       {open && options.length > 0 && (
         <ul className="mention-menu" role="listbox" aria-label="Mention a member">
-          {options.map((m, i) => (
-            <li key={m.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === active}
-                className={`mention-option${i === active ? " mention-option--active" : ""}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  choose(m);
-                }}
-              >
-                <span className="mention-option__name">{m.displayName}</span>
-                <KindBadge kind={m.kind} />
-              </button>
-            </li>
-          ))}
+          {options.map((m, i) => {
+            // Agents wear their department spectrum hue (#168 #3, #145 criterion #4); humans don't tint.
+            const deptColor = m.kind === "agent" ? agentColor(m.displayName) : undefined;
+            return (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === active}
+                  className={`mention-option${i === active ? " mention-option--active" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(m);
+                  }}
+                >
+                  <span
+                    className="mention-option__name"
+                    style={deptColor ? ({ "--pop-color": deptColor } as React.CSSProperties) : undefined}
+                  >
+                    {m.displayName}
+                  </span>
+                  <KindBadge kind={m.kind} color={deptColor} />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       <div className="composer__row">
