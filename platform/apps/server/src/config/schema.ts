@@ -638,6 +638,38 @@ export const slackSchema = z.object({
   digestEnabled: z.boolean().optional(),
 });
 
+/**
+ * Founder Briefings policy (#173, ADR-0173). All **non-secret** knobs for the reporting layer that pushes
+ * the daily brief + weekly founder report to the owner and orders the decision queue. Every field is
+ * optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing delivers nothing
+ * and runs no tick — the read routes still render a brief on demand (harmless, tenant-scoped). `enabled`
+ * is the master switch for delivery + the tick; `daily`/`weekly` independently toggle each digest. The
+ * `staleLevel*Hours` thresholds parameterize the pure escalation ladder (a stale owner-decision re-notifies
+ * on a rising schedule); `maxBriefWords` is the daily brief's "< 200 words" budget.
+ */
+export const briefingsSchema = z.object({
+  /** The delivery + tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Deliver the daily brief (when enabled) — default true. */
+  daily: z.boolean().optional(),
+  /** Deliver the weekly founder report (when enabled) — default true. */
+  weekly: z.boolean().optional(),
+  /** Decision age (hours) at/above which it is level-1 stale. */
+  staleLevel1Hours: z.number().int().positive().optional(),
+  /** Decision age (hours) at/above which it is level-2 stale. */
+  staleLevel2Hours: z.number().int().positive().optional(),
+  /** Decision age (hours) at/above which it is level-3 stale (critical — the owner is the blocker). */
+  staleLevel3Hours: z.number().int().positive().optional(),
+  /** Hard word budget for the daily brief (default 200). */
+  maxBriefWords: z.number().int().positive().optional(),
+  /** Hard word budget for the weekly digest (default 400). */
+  maxReportWords: z.number().int().positive().optional(),
+  /** Top customer-voice signals surfaced in the weekly report. */
+  digestVoiceLimit: z.number().int().nonnegative().optional(),
+  /** Backlog items surfaced in the weekly report. */
+  backlogLimit: z.number().int().nonnegative().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -711,6 +743,8 @@ export const settingsSchema = z.object({
   buildLoop: buildLoopSchema.optional(),
   /** Slack-native integration policy (#170): the digest tick switch (the surface is default OFF). */
   slack: slackSchema.optional(),
+  /** Founder Briefings policy (#173): daily brief + weekly P&L report + decision queue delivery (default OFF). */
+  briefings: briefingsSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -752,6 +786,7 @@ export type CatalogConfig = z.infer<typeof catalogSchema>;
 export type WorkflowsConfig = z.infer<typeof workflowsSchema>;
 export type BuildLoopConfig = z.infer<typeof buildLoopSchema>;
 export type SlackConfig = z.infer<typeof slackSchema>;
+export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -833,6 +868,8 @@ export interface ResolvedConfig {
   buildLoop: BuildLoopConfig;
   /** Slack-native integration policy (#170). A partial whose hard defaults `resolveSlackCaps` fills. */
   slack: SlackConfig;
+  /** Founder Briefings policy (#173). A partial whose hard defaults `resolveBriefingsCaps` fills. */
+  briefings: BriefingsConfig;
 }
 
 /**
@@ -875,4 +912,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   workflows: {},
   buildLoop: {},
   slack: {},
+  briefings: {},
 };

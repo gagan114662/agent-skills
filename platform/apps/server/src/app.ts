@@ -114,6 +114,13 @@ import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
 import type { FounderConsoleService } from "./founder-console/service.js";
+import { founderBriefingsRoutes } from "./routes/founder-briefings.js";
+import {
+  createDefaultFounderBriefingsService,
+  createDefaultFounderBriefingsEngine,
+} from "./founder-briefings/default.js";
+import type { FounderBriefingsService } from "./founder-briefings/service.js";
+import type { FounderBriefingsEngine } from "./founder-briefings/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -180,6 +187,8 @@ declare module "fastify" {
     planningEngine: PlanningService;
     /** The #172 self-shipping loop; `index.ts` starts its opt-in tick (BUILDLOOP_INTERVAL_MS). */
     buildLoopEngine: BuildLoopEngine;
+    /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
+    founderBriefingsEngine: FounderBriefingsEngine;
     /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
@@ -267,6 +276,13 @@ export interface BuildAppOptions {
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
    */
   founderConsole?: FounderConsoleService;
+  /**
+   * #173 founder briefings: tests inject a service over reader fakes; default builds one over the SAME
+   * live `scale`/`billing`/`portfolio` so the brief/report/decision-queue match what they enforce.
+   */
+  founderBriefings?: FounderBriefingsService;
+  /** #173 founder briefings engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  founderBriefingsEngine?: FounderBriefingsEngine;
   /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -526,6 +542,29 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       voice: voiceService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
+  // #173 founder briefings: the company reports UP — a daily brief + weekly P&L report pushed to the
+  // owner via the #148 email seam (+ optional #170 Slack DM), and ONE ordered decision queue (#13 +
+  // #172 + #146). The read routes render the views into the console; the opt-in tick (BRIEFINGS_INTERVAL_MS,
+  // default off, started in index.ts) delivers the digests. Read-only over the business domain — the only
+  // write is the briefing's own delivery audit. Config default-OFF (`briefings.enabled`). Stopped on close.
+  const founderBriefings =
+    opts.founderBriefings ??
+    createDefaultFounderBriefingsService({
+      logger: app.log,
+      scale,
+      billing: billingManager,
+      portfolio: portfolioService,
+      // #170: when a workspace has connected Slack, the brief is DM'd to the owner over the same
+      // owner-DM authority the Slack digest uses (a no-op for un-connected workspaces).
+      slack: slackService,
+    });
+  app.register(founderBriefingsRoutes, { service: founderBriefings });
+  const founderBriefingsEngine =
+    opts.founderBriefingsEngine ?? createDefaultFounderBriefingsEngine(app.log, founderBriefings);
+  app.addHook("onClose", async () => {
+    founderBriefingsEngine.stop();
+  });
+  app.decorate("founderBriefingsEngine", founderBriefingsEngine);
   app.register(growthRoutes, { service: growthService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
