@@ -189,6 +189,25 @@ export interface UsageReport {
 }
 
 /**
+ * The maintenance-mode flag (#99), as returned by `GET/POST /maintenance` and embedded in the Founder
+ * Console switches. `enabled` is the live state; `unavailable` means the backing store (Redis) couldn't
+ * be reached, so the state is unknown and the control is non-interactive.
+ */
+export interface MaintenanceState {
+  enabled: boolean;
+  since?: string;
+  reason?: string;
+  by?: string;
+  unavailable?: boolean;
+}
+
+/** Result of `POST /workspaces/:wid/autonomy/kill | /resume` (#17): the resolved kill-switch state. */
+export interface KillSwitchState {
+  ok: boolean;
+  killSwitch: boolean;
+}
+
+/**
  * The Founder Console roll-up (#104), from `GET /workspaces/:wid/founder-console`. A read-only
  * aggregation: fleet status, the venture pipeline (#96), revenue/willingness-to-pay (#98), budget
  * burn (#71), the pending #13 approval queue (with decision-SLA ages), and the safety switches.
@@ -233,7 +252,7 @@ export interface FounderConsoleDto {
   }[];
   switches: {
     killSwitch: boolean;
-    maintenance: { enabled: boolean; since?: string; reason?: string; unavailable?: boolean };
+    maintenance: MaintenanceState;
   };
   /** Reliability insights (#148): MTTR, frequency, open count, noisiest components. */
   reliability?: {
@@ -295,7 +314,13 @@ export type ServerEvent =
       url?: string | null;
       error?: string | null;
     }
-  | { type: "deploy_log"; sessionId: string; channelId: string; deploymentId: string; chunk: string }
+  | {
+      type: "deploy_log";
+      sessionId: string;
+      channelId: string;
+      deploymentId: string;
+      chunk: string;
+    }
   | { type: "error"; code: "forbidden" | "bad_request" | "not_found"; detail?: string }
   | { type: "pong" };
 

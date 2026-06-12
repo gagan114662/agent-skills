@@ -31,6 +31,8 @@ import type {
   EffortLevel,
   FounderConsoleDto,
   Identity,
+  KillSwitchState,
+  MaintenanceState,
   MemberHit,
   MentionItem,
   Message,
@@ -198,7 +200,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function post(path: string, body?: unknown): Promise<unknown> {
-  return request(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+  return request(path, {
+    method: "POST",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 function del(path: string): Promise<unknown> {
@@ -257,6 +262,24 @@ export const api = {
     return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
   },
 
+  // --- safety switches: the Founder Console wires these to the real, human-gated controls (#169 bug 12) ---
+  /**
+   * Engage / resume the autonomy kill switch (#17). Human-only + workspace-scoped server-side; the kill
+   * switch HALTS autonomous sessions but does not touch the #13 approval gates. Throws ApiError on 403.
+   */
+  setKillSwitch(workspaceId: string, on: boolean): Promise<KillSwitchState> {
+    return post(
+      `/workspaces/${workspaceId}/autonomy/${on ? "kill" : "resume"}`,
+    ) as Promise<KillSwitchState>;
+  },
+  /**
+   * Flip maintenance mode (#99) — takes the platform read-only in seconds (allow-listed so it can always
+   * be turned back off). Requires an authenticated identity; the flip is recorded with the member id.
+   */
+  setMaintenance(on: boolean, reason?: string): Promise<MaintenanceState> {
+    return post("/maintenance", reason ? { on, reason } : { on }) as Promise<MaintenanceState>;
+  },
+
   // --- public status page (#148) — UNauthenticated; needs no session cookie ---
   getStatusPage(slug: string): Promise<StatusPageDto> {
     return request<StatusPageDto>(`/status/${encodeURIComponent(slug)}`);
@@ -270,7 +293,9 @@ export const api = {
     },
     /** Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on 409/400/502. */
     startCheckout(workspaceId: string, planKey: string): Promise<CheckoutResponseDto> {
-      return post(`/workspaces/${workspaceId}/billing/checkout`, { planKey }) as Promise<CheckoutResponseDto>;
+      return post(`/workspaces/${workspaceId}/billing/checkout`, {
+        planKey,
+      }) as Promise<CheckoutResponseDto>;
     },
   },
 
@@ -329,7 +354,10 @@ export const api = {
     },
     /** Approve → execute (human-only). Throws ApiError on 403/409/502; callers reconcile. */
     approve(requestId: string, reason?: string): Promise<ApproveResult> {
-      return post(`/approvals/${requestId}/approve`, reason ? { reason } : undefined) as Promise<ApproveResult>;
+      return post(
+        `/approvals/${requestId}/approve`,
+        reason ? { reason } : undefined,
+      ) as Promise<ApproveResult>;
     },
     /** Reject with a reason (human-only). */
     reject(requestId: string, reason: string): Promise<RejectResult> {
@@ -339,7 +367,10 @@ export const api = {
       return request<ApprovalPolicyDto[]>(`/workspaces/${workspaceId}/approval-policies`);
     },
     upsertPolicy(workspaceId: string, input: UpsertPolicyInput): Promise<ApprovalPolicyDto> {
-      return post(`/workspaces/${workspaceId}/approval-policies`, input) as Promise<ApprovalPolicyDto>;
+      return post(
+        `/workspaces/${workspaceId}/approval-policies`,
+        input,
+      ) as Promise<ApprovalPolicyDto>;
     },
     deletePolicy(workspaceId: string, ruleId: string): Promise<{ ok: true }> {
       return del(`/workspaces/${workspaceId}/approval-policies/${ruleId}`) as Promise<{ ok: true }>;
@@ -461,7 +492,9 @@ export const api = {
     /** Latest deployment state (status + url + redacted log tail); null when none yet. */
     async status(channelId: string, sessionId: string): Promise<DeploymentDto | null> {
       try {
-        return await request<DeploymentDto>(`/channels/${channelId}/agent-sessions/${sessionId}/deploy`);
+        return await request<DeploymentDto>(
+          `/channels/${channelId}/agent-sessions/${sessionId}/deploy`,
+        );
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) return null;
         throw e;
@@ -469,11 +502,15 @@ export const api = {
     },
     /** Deployment history for the session, newest first (the backup set). */
     history(channelId: string, sessionId: string): Promise<DeploymentDto[]> {
-      return request<DeploymentDto[]>(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/history`);
+      return request<DeploymentDto[]>(
+        `/channels/${channelId}/agent-sessions/${sessionId}/deploy/history`,
+      );
     },
     /** Roll back to the prior good deployment. */
     rollback(channelId: string, sessionId: string): Promise<DeploymentDto> {
-      return post(`/channels/${channelId}/agent-sessions/${sessionId}/deploy/rollback`) as Promise<DeploymentDto>;
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/deploy/rollback`,
+      ) as Promise<DeploymentDto>;
     },
     /** One-click scaling (bounded server-side to the configured maxInstances). */
     scale(channelId: string, sessionId: string, instances: number): Promise<{ ok: boolean }> {
@@ -493,11 +530,16 @@ export const api = {
     list(workspaceId: string): Promise<AutomationDto[]> {
       return request<AutomationDto[]>(`/workspaces/${workspaceId}/automations`);
     },
-    create(workspaceId: string, input: Record<string, unknown> & { name: string }): Promise<AutomationDto> {
+    create(
+      workspaceId: string,
+      input: Record<string, unknown> & { name: string },
+    ): Promise<AutomationDto> {
       return post(`/workspaces/${workspaceId}/automations`, input) as Promise<AutomationDto>;
     },
     setEnabled(workspaceId: string, id: string, enabled: boolean): Promise<AutomationDto> {
-      return post(`/workspaces/${workspaceId}/automations/${id}/enable`, { enabled }) as Promise<AutomationDto>;
+      return post(`/workspaces/${workspaceId}/automations/${id}/enable`, {
+        enabled,
+      }) as Promise<AutomationDto>;
     },
     run(workspaceId: string, id: string): Promise<AutomationRunDto> {
       return post(`/workspaces/${workspaceId}/automations/${id}/run`) as Promise<AutomationRunDto>;
@@ -515,11 +557,17 @@ export const api = {
       return request<MissionControlDto>(`/workspaces/${workspaceId}/mission-control`);
     },
     stop(workspaceId: string, sessionId: string): Promise<{ canceled: boolean }> {
-      return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/stop`) as Promise<{
+      return post(
+        `/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/stop`,
+      ) as Promise<{
         canceled: boolean;
       }>;
     },
-    steer(workspaceId: string, sessionId: string, guidance: string): Promise<{ delivered: boolean }> {
+    steer(
+      workspaceId: string,
+      sessionId: string,
+      guidance: string,
+    ): Promise<{ delivered: boolean }> {
       return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/steer`, {
         guidance,
       }) as Promise<{ delivered: boolean }>;
