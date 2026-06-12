@@ -3014,6 +3014,37 @@ select:focus-visible {
 .template-option:hover { background: var(--paper-2, #f6f6f4); }
 .template-option__title { font-weight: 600; }
 .template-option__desc { color: var(--ink-muted, #6b6b72); font-size: 0.8rem; }
+.template-option__vars {
+  align-self: flex-start; margin-top: 2px; font-size: 0.7rem; font-weight: 600;
+  color: var(--accent, #ff4524); text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* ── Template variable prompt (#167): fill {{vars}} before the brief drops in ── */
+.template-fill {
+  margin: 4px 0 0; padding: 10px; position: absolute; z-index: 20; bottom: 100%;
+  background: var(--paper, #fff); border: 1px solid var(--line, #e6e6ea); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); min-width: 280px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.template-fill__field { display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; }
+.template-fill__field span { color: var(--ink-muted, #6b6b72); font-weight: 600; }
+.template-fill__field input {
+  padding: 6px 8px; border: 1px solid var(--line, #e6e6ea); border-radius: 8px; font: inherit;
+}
+
+/* ── Composer notice (#167): blocked-send hint or steer/queue confirmation ──── */
+.composer__notice {
+  margin-top: 6px; padding: 6px 10px; border-radius: 8px; font-size: 0.82rem;
+  border: 1px solid var(--line, #e6e6ea);
+}
+.composer__notice--warn { color: var(--accent, #ff4524); border-color: var(--accent, #ff4524); background: rgba(255, 69, 36, 0.06); }
+.composer__notice--info { color: var(--ink-muted, #6b6b72); background: var(--paper-2, #f6f6f4); }
+
+/* ── Automations create error (#167) ─────────────────────────────────────────── */
+.automations__error {
+  margin: 4px 0 8px; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem;
+  color: var(--accent, #ff4524); border: 1px solid var(--accent, #ff4524); background: rgba(255, 69, 36, 0.06);
+}
 
 /* ── Public status page (#148) ────────────────────────────────────────────── */
 .status {
