@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { Landing } from "./Landing.js";
-import { BRAND, FLEET, LANDING } from "../../brand.js";
+import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING } from "../../brand.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -28,13 +28,11 @@ describe("Landing", () => {
   it("leads with the brand promise and the sign-off voice", () => {
     render(<Landing />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(BRAND.tagline);
-    // The sign-off appears in the footer.
     expect(screen.getByText(/made by robots, steered by humans/i)).toBeInTheDocument();
   });
 
   it("routes the two hero calls-to-action to /signup and /login", () => {
     render(<Landing />);
-    // Scope to the hero — the nav repeats the same affordances elsewhere on the page.
     const hero = screen.getByRole("region", { name: BRAND.tagline });
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaPrimary, "i") }),
@@ -42,6 +40,56 @@ describe("Landing", () => {
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaSecondary, "i") }),
     ).toHaveAttribute("href", "/login");
+  });
+
+  it("renders the full workspace simulation: the complete sidebar and the active channel", () => {
+    render(<Landing />);
+    const sim = screen.getByRole("img", { name: /inside the .* workspace/i });
+    // Every department channel from the sidebar data is present in the rendered sidebar (scoped to the
+    // sidebar — the active channel name also appears in the channel header).
+    const sidebar = within(sim).getByRole("complementary", { name: /workspace channels/i });
+    const depts = WORKSPACE.sidebar.find((s) => s.title === "Departments")!;
+    for (const ch of depts.items) {
+      expect(within(sidebar).getByText(ch.name)).toBeInTheDocument();
+    }
+    // The pinned rooms and the ⌘K search affordance show too.
+    expect(within(sidebar).getByText("#launch")).toBeInTheDocument();
+    expect(within(sidebar).getByText(WORKSPACE.searchHint)).toBeInTheDocument();
+  });
+
+  it("plays the whole day-arc: every timeline entry is present in the DOM", () => {
+    render(<Landing />);
+    const sim = screen.getByRole("img", { name: /inside the .* workspace/i });
+    for (const entry of WORKSPACE.timeline) {
+      if (entry.kind === "message") {
+        expect(within(sim).getByText(entry.text)).toBeInTheDocument();
+      } else if (entry.kind === "task") {
+        expect(within(sim).getByText(entry.id)).toBeInTheDocument();
+        expect(within(sim).getByText(entry.title)).toBeInTheDocument();
+      } else if (entry.kind === "approval") {
+        expect(within(sim).getByText(entry.title)).toBeInTheDocument();
+        expect(within(sim).getByText(entry.reply)).toBeInTheDocument(); // the human's "ship it"
+      }
+    }
+  });
+
+  it("reveals every timeline entry immediately when reduced motion is preferred", () => {
+    stubReducedMotion(true);
+    render(<Landing />);
+    const sim = screen.getByRole("img", { name: /inside the .* workspace/i });
+    const shown = sim.querySelectorAll(".sim-entry.is-shown");
+    expect(shown.length).toBe(WORKSPACE.timeline.length);
+  });
+
+  it("tells the four numbered story sections, each with its product-true visual", () => {
+    render(<Landing />);
+    for (const story of STORY) {
+      expect(screen.getByText(story.title)).toBeInTheDocument();
+    }
+    // Story visuals render real app slices: mission control, the approvals drawer, the decision log.
+    expect(screen.getByLabelText(/mission control/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^approvals$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/decision log/i)).toBeInTheDocument();
   });
 
   it("introduces every member of the department with its personality", () => {
@@ -53,32 +101,31 @@ describe("Landing", () => {
     }
   });
 
-  it("explains the flow in three steps and teases the three plans", () => {
+  it("renders pricing as the in-app billing screen with the current plan marked", () => {
     render(<Landing />);
-    for (const step of LANDING.steps) {
-      expect(screen.getByText(step.title)).toBeInTheDocument();
-    }
     const pricing = screen.getByRole("region", { name: /pick your pop/i });
     for (const plan of LANDING.plans) {
       expect(within(pricing).getByText(plan.name)).toBeInTheDocument();
-      expect(within(pricing).getByText(plan.price)).toBeInTheDocument();
+    }
+    // The billing chrome marks one plan as the current subscription.
+    expect(within(pricing).getAllByText(BILLING.currentLabel).length).toBeGreaterThan(0);
+  });
+
+  it("answers the FAQ with every question present", () => {
+    render(<Landing />);
+    const faq = screen.getByRole("region", { name: new RegExp(FAQ.title, "i") });
+    for (const item of FAQ.items) {
+      expect(within(faq).getByText(item.q)).toBeInTheDocument();
     }
   });
 
-  it("renders the staged hero vignette with all of its scripted lines present", () => {
+  it("exposes sticky in-page anchor nav linking to the page's sections", () => {
     render(<Landing />);
-    const vignette = screen.getByRole("region", { name: /fleet at work/i });
-    for (const line of LANDING.vignette) {
-      expect(within(vignette).getByText(line.text)).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: /on this page/i });
+    for (const anchor of LANDING.anchors) {
+      expect(
+        within(nav).getByRole("link", { name: anchor.label }),
+      ).toHaveAttribute("href", anchor.href);
     }
-  });
-
-  it("shows every vignette line immediately when reduced motion is preferred", () => {
-    stubReducedMotion(true);
-    render(<Landing />);
-    const vignette = screen.getByRole("region", { name: /fleet at work/i });
-    // Reduced-motion: the whole script is shown at once (the `is-shown` reveal class on each line).
-    const shown = vignette.querySelectorAll(".vignette__line.is-shown");
-    expect(shown.length).toBe(LANDING.vignette.length);
   });
 });

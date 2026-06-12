@@ -17,6 +17,7 @@ import { ApprovalsPanel } from "../src/components/approvals/ApprovalsPanel.js";
 import { PricingTable } from "../src/components/PricingTable.js";
 import { AutomationsPanel } from "../src/components/automations/AutomationsPanel.js";
 import { Composer } from "../src/components/Composer.js";
+import { Landing } from "../src/components/landing/Landing.js";
 import { applyBrand } from "../src/brand.js";
 import "../src/styles.css";
 
@@ -142,6 +143,8 @@ const store = createStore({ api, realtime });
 
 function Surface(): React.JSX.Element {
   const hash = window.location.hash;
+  // #165: the public landing renders standalone (no store needed) — the full workspace simulation.
+  if (hash === "#landing") return <Landing />;
   if (hash === "#approvals") return <div className="workspace"><ApprovalsPanel /></div>;
   if (hash === "#pricing") {
     return (

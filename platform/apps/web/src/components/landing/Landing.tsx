@@ -1,18 +1,39 @@
 /**
- * The public marketing homepage (#149) — what a logged-out visitor sees at `/`. The product console
- * lives behind auth; this is the storefront: an animated hero with the Pop Mark and a looping staged
- * chat vignette, then how-it-works, the department roster, a pricing teaser, and a closing call-to-action.
+ * The public marketing homepage (#149 → #165) — and the website *is* the product. A logged-out visitor
+ * at `/` doesn't get a brochure with a screenshot; they get a faithful, auto-playing simulation of the
+ * ipop console itself: the full sidebar, a whole day's agent timeline with task cards, QA results, and a
+ * human approval, then numbered story sections each paired with a true slice of the app (mission control,
+ * the approvals drawer, the decision log), pricing rendered as the in-app billing screen, a substantive
+ * FAQ, and a short human contact form.
  *
  * Strictly per the committed brand book (docs/brand/ipop-brand-identity.html): Paper/Ink/Vermilion, the
- * popped-i wordmark, the pop easing on every move, all gated behind prefers-reduced-motion. Every word
- * comes from `brand.ts` (BRAND/LANDING/FLEET/VOICE) so there are no hardcoded brand strings — brand.test
- * scans this directory for the rule.
+ * popped-i wordmark, department-spectrum colours, the pop easing on every move — all gated behind
+ * prefers-reduced-motion. Every word comes from `brand.ts` so there are no hardcoded brand strings
+ * (brand.test scans this directory). The console lives behind auth; this is the storefront.
  */
-import { BRAND, FLEET, LANDING, SECURITY, SITE, VOICE, agentColor } from "../../brand.js";
+import {
+  BRAND,
+  FLEET,
+  LANDING,
+  SECURITY,
+  STORY,
+  VOICE,
+  agentColor,
+  type StorySection,
+} from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
-import { HeroVignette } from "./HeroVignette.js";
+import { WorkspaceSim } from "./WorkspaceSim.js";
+import { BillingScreen } from "./BillingScreen.js";
+import { Faq } from "./Faq.js";
+import { ContactForm } from "./ContactForm.js";
+import {
+  ApprovalsDrawer,
+  DepartmentChips,
+  MemoryLedger,
+  MissionControl,
+} from "./Vignettes.js";
 
 export function Landing(): React.JSX.Element {
   return (
@@ -21,8 +42,11 @@ export function Landing(): React.JSX.Element {
       <main>
         <Hero />
         <HowItWorks />
+        <StorySections />
         <Department />
-        <PricingTeaser />
+        <Pricing />
+        <Faq />
+        <ContactForm />
         <ClosingCta />
       </main>
       <LandingFooter />
@@ -36,11 +60,11 @@ function LandingNav(): React.JSX.Element {
       <Link href="/" className="landing__brand" aria-label={BRAND.name}>
         <Wordmark />
       </Link>
-      <nav className="landing__nav-links" aria-label="Marketing site">
-        {SITE.nav.map((item) => (
-          <Link key={item.href} href={item.href} className="linklike landing__nav-link">
+      <nav className="landing__nav-links" aria-label="On this page">
+        {LANDING.anchors.map((item) => (
+          <a key={item.href} href={item.href} className="linklike landing__nav-link">
             {item.label}
-          </Link>
+          </a>
         ))}
       </nav>
       <nav className="landing__nav-actions">
@@ -75,7 +99,7 @@ function Hero(): React.JSX.Element {
       </div>
       <div className="landing__hero-stage">
         <PopMark burst className="landing__popmark" />
-        <HeroVignette />
+        <WorkspaceSim />
       </div>
     </section>
   );
@@ -83,7 +107,7 @@ function Hero(): React.JSX.Element {
 
 function HowItWorks(): React.JSX.Element {
   return (
-    <section className="landing__section landing__how" aria-labelledby="how-title">
+    <section id="how" className="landing__section landing__how" aria-labelledby="how-title">
       <h2 id="how-title" className="landing__section-title">
         {LANDING.sections.howTitle}
       </h2>
@@ -103,9 +127,47 @@ function HowItWorks(): React.JSX.Element {
   );
 }
 
+/** The four numbered story sections (01–04), each paired with a product-true visual, alternating sides. */
+function StorySections(): React.JSX.Element {
+  return (
+    <section className="landing__section landing__stories">
+      {STORY.map((story, i) => (
+        <article
+          key={story.n}
+          className={`landing__story${i % 2 === 1 ? " landing__story--flip" : ""}`}
+        >
+          <div className="landing__story-copy">
+            <span className="landing__story-n" aria-hidden="true">
+              {story.n}
+            </span>
+            <h3 className="landing__story-title">{story.title}</h3>
+            <p className="landing__story-body">{story.body}</p>
+          </div>
+          <div className="landing__story-visual">
+            <StoryVisual visual={story.visual} />
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function StoryVisual({ visual }: { visual: StorySection["visual"] }): React.JSX.Element {
+  switch (visual) {
+    case "department":
+      return <DepartmentChips />;
+    case "mission":
+      return <MissionControl />;
+    case "approvals":
+      return <ApprovalsDrawer />;
+    case "memory":
+      return <MemoryLedger />;
+  }
+}
+
 function Department(): React.JSX.Element {
   return (
-    <section className="landing__section landing__dept" aria-labelledby="dept-title">
+    <section id="agents" className="landing__section landing__dept" aria-labelledby="dept-title">
       <h2 id="dept-title" className="landing__section-title">
         {LANDING.sections.fleetTitle}
       </h2>
@@ -133,29 +195,14 @@ function Department(): React.JSX.Element {
   );
 }
 
-function PricingTeaser(): React.JSX.Element {
+function Pricing(): React.JSX.Element {
   return (
-    <section className="landing__section landing__pricing" aria-labelledby="pricing-title">
+    <section id="pricing" className="landing__section landing__pricing" aria-labelledby="pricing-title">
       <h2 id="pricing-title" className="landing__section-title">
         {LANDING.sections.pricingTitle}
       </h2>
       <p className="landing__section-sub">{LANDING.sections.pricingSub}</p>
-      <ul className="landing__plans">
-        {LANDING.plans.map((plan) => (
-          <li
-            key={plan.name}
-            className={`landing__plan${plan.featured ? " landing__plan--featured" : ""}`}
-          >
-            {plan.featured && <span className="landing__plan-ribbon">Most popular</span>}
-            <h3 className="landing__plan-name">{plan.name}</h3>
-            <p className="landing__plan-price">
-              <span className="landing__plan-amount">{plan.price}</span>
-              <span className="landing__plan-period">/mo</span>
-            </p>
-            <p className="landing__plan-tagline">{plan.tagline}</p>
-          </li>
-        ))}
-      </ul>
+      <BillingScreen />
       <Link href="/signup" className="linklike landing__pricing-link">
         {LANDING.sections.pricingCta} →
       </Link>
@@ -178,15 +225,51 @@ function ClosingCta(): React.JSX.Element {
 }
 
 function LandingFooter(): React.JSX.Element {
+  const { footer } = LANDING;
   return (
     <footer className="landing__footer">
-      <Wordmark className="landing__footer-mark" />
-      <nav className="landing__footer-links">
+      <div className="landing__footer-top">
+        <div className="landing__footer-brand">
+          <Wordmark className="landing__footer-mark" />
+          <p className="landing__signoff">{VOICE.signOff}</p>
+        </div>
+        <div className="landing__footer-cols">
+          <FooterCol title={footer.productTitle} links={footer.product} />
+          <FooterCol title={footer.resourcesTitle} links={footer.resources} />
+          <nav className="landing__footer-col" aria-label={footer.socialTitle}>
+            <p className="landing__footer-col-title">{footer.socialTitle}</p>
+            {footer.social.map((s) => (
+              <Link key={s.key} href={s.href} className="linklike landing__footer-link">
+                {s.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+      <div className="landing__footer-bottom">
         <Link href="/security" className="linklike landing__footer-link">
           {SECURITY.navLabel}
         </Link>
-      </nav>
-      <p className="landing__signoff">{VOICE.signOff}</p>
+      </div>
     </footer>
+  );
+}
+
+function FooterCol({
+  title,
+  links,
+}: {
+  title: string;
+  links: readonly { href: string; label: string }[];
+}): React.JSX.Element {
+  return (
+    <nav className="landing__footer-col" aria-label={title}>
+      <p className="landing__footer-col-title">{title}</p>
+      {links.map((l) => (
+        <Link key={l.href} href={l.href} className="linklike landing__footer-link">
+          {l.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
