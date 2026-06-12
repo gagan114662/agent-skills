@@ -42,6 +42,11 @@ app.insightEngine.start(env.insight.intervalMs);
 // budget + kill-switch aware). Stopped on server close via buildApp.
 app.planningEngine.start(env.planning.intervalMs);
 
+// #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
+// the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
+// rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.
+app.buildLoopEngine.start(env.buildLoop.intervalMs);
+
 // #147 automations: start the opt-in tick (AUTOMATIONS_INTERVAL_MS; default 0 = off) that launches
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);

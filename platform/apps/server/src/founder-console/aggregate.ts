@@ -167,6 +167,23 @@ export interface SelfHealingSnapshot {
   dispatches: FlywheelDispatchSnapshot[];
 }
 
+/** One self-shipping run (#172) reduced to what the console queue / merge-history pane needs. */
+export interface BuildLoopRunSnapshot {
+  id: string;
+  issueRef: string;
+  issueTitle: string;
+  status: string;
+  reviewRounds: number;
+  prRef: string | null;
+  mergeRef: string | null;
+  escalationReason: string | null;
+}
+
+/** The self-shipping loop read-struct (#172) — the runs feeding the console pane. */
+export interface BuildLoopSnapshot {
+  runs: BuildLoopRunSnapshot[];
+}
+
 /** One channel experiment (#102/#123) reduced to what the console pane counts. */
 export interface GrowthExperimentStatusSnapshot {
   status: string;
@@ -281,6 +298,8 @@ export interface FounderConsoleInput {
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
   selfHealing?: SelfHealingSnapshot;
+  /** Self-shipping loop state (#172) — optional so the console works before the loop is wired. */
+  buildLoop?: BuildLoopSnapshot;
   /** Growth Loop state (#102) — optional so the console works before the growth loop is wired. */
   growth?: GrowthSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
@@ -373,6 +392,19 @@ export interface SelfHealingView {
   autoDispatched: number;
   /** Fixes queued for human approval (mode queued). */
   queuedForApproval: number;
+}
+
+/** The self-shipping loop roll-up (#172): lifecycle counts + the queue / in-flight / merge surfaces. */
+export interface BuildLoopView {
+  totalRuns: number;
+  /** Agent-ok issues waiting for a build seat. */
+  queued: number;
+  /** Runs with a live build/review/revise session or an in-progress merge. */
+  inFlight: number;
+  /** Runs auto-merged within guardrails (the merge history). */
+  merged: number;
+  /** Runs handed to the owner (outside guardrails / max review rounds) — needs a human. */
+  escalated: number;
 }
 
 /** The Growth Loop roll-up (#102): the funnel score + stage counts + the experiment pipeline. */
@@ -537,6 +569,8 @@ export interface FounderConsole {
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
   selfHealing: SelfHealingView;
+  /** The self-shipping loop roll-up (#172). Zero-valued when the loop is unwired. */
+  buildLoop: BuildLoopView;
   /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
   growth: GrowthView;
   /** The Product Planning Loop roadmap (#115). Empty when the planning loop is unwired. */
@@ -650,6 +684,18 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     escalatedAwaitingReview,
     autoDispatched: dispatches.filter((d) => d.mode === "auto" && d.status === "dispatched").length,
     queuedForApproval,
+  };
+
+  // #172 self-shipping loop: lifecycle counts off the runs (queue / in-flight / merged / escalated).
+  const buildRuns = input.buildLoop?.runs ?? [];
+  const inFlightStatuses = new Set(["building", "reviewing", "revising", "merging"]);
+  const buildLoopEscalated = buildRuns.filter((r) => r.status === "escalated").length;
+  const buildLoop: BuildLoopView = {
+    totalRuns: buildRuns.length,
+    queued: buildRuns.filter((r) => r.status === "queued").length,
+    inFlight: buildRuns.filter((r) => inFlightStatuses.has(r.status)).length,
+    merged: buildRuns.filter((r) => r.status === "merged").length,
+    escalated: buildLoopEscalated,
   };
 
   // #102 growth loop: reshape the already-computed funnel + experiment lifecycle into the pane. The
@@ -772,6 +818,9 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     reasons.push(`${pluralize(escalatedAwaitingReview, "failure")} recurred after fix (review required)`);
   }
   if (queuedForApproval > 0) reasons.push(pluralize(queuedForApproval, "flywheel fix awaiting approval"));
+  if (buildLoopEscalated > 0) {
+    reasons.push(`${pluralize(buildLoopEscalated, "self-shipping run")} escalated (owner review)`);
+  }
   if (moat.enabled && moat.flaggedStagnant > 0) {
     reasons.push(
       `${pluralize(moat.flaggedStagnant, "venture")} with stagnant moat (no accrual in ${moatWindowDays}d)`,
@@ -808,6 +857,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     reliability,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
+    buildLoop,
     growth,
     planning,
     moat,

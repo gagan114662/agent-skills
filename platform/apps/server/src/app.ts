@@ -120,6 +120,9 @@ import type { PortfolioService } from "./portfolio/service.js";
 import { planningRoutes } from "./routes/planning.js";
 import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
+import { buildLoopRoutes } from "./routes/build-loop.js";
+import { createDefaultBuildLoopEngine } from "./build-loop/default.js";
+import type { BuildLoopEngine } from "./build-loop/engine.js";
 import { automationRoutes } from "./routes/automations.js";
 import { createDefaultAutomationEngine } from "./automations/default.js";
 import { automationStore } from "./db/repositories/automations.js";
@@ -164,6 +167,8 @@ declare module "fastify" {
     insightEngine: InsightEngine;
     /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
     planningEngine: PlanningService;
+    /** The #172 self-shipping loop; `index.ts` starts its opt-in tick (BUILDLOOP_INTERVAL_MS). */
+    buildLoopEngine: BuildLoopEngine;
     /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
@@ -256,6 +261,8 @@ export interface BuildAppOptions {
   portfolio?: PortfolioService;
   /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
   planning?: PlanningService;
+  /** #172 self-shipping loop: tests inject an engine over a fake repo host; default builds the real one. */
+  buildLoop?: BuildLoopEngine;
   /** #147 automations: tests inject an engine over a fake launcher; default builds the real repo-backed one. */
   automations?: AutomationEngine;
   /** #152 workflows: tests inject an engine over fake action seams; default builds the real repo-backed one. */
@@ -498,6 +505,18 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     planningService.stop();
   });
   app.decorate("planningEngine", planningService);
+  // #172 self-shipping loop: agent-ok issues → cloud build sessions → auto-review against the house
+  // rubric → auto-merge ONLY within guardrails (reviewer PASS, CI green, no protected-path touched,
+  // diff under cap, agent-ok) → rebase-train → post-merge verify (proposing, never executing, a revert).
+  // Record issues + read runs are always available; every auto action is gated by the config flag +
+  // the #17 kill switch, and out-of-guardrail steps escalate via the #13 queue. Default-OFF; the repo
+  // host defaults to a no-op (no GitHub) so CI never ships. The timer is started in index.ts.
+  const buildLoopEngine = opts.buildLoop ?? createDefaultBuildLoopEngine(app.log, sessionManager);
+  app.register(buildLoopRoutes, { engine: buildLoopEngine });
+  app.addHook("onClose", async () => {
+    buildLoopEngine.stop();
+  });
+  app.decorate("buildLoopEngine", buildLoopEngine);
   // #51 git/PR/diff/review: each session's worktree becomes a reviewable diff + optional GitHub PR,
   // with review comments routed back to the agent as a new session. The git workspace is opt-in
   // (GIT_WORKSPACE_REPO) — absent, the diff/PR routes return 501; the GitHub provider defaults to
