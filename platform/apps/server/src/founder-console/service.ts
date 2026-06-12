@@ -10,6 +10,7 @@ import {
   type ReliabilityInsightsView,
   type RevenueSnapshot,
   type SelfHealingSnapshot,
+  type BuildLoopSnapshot,
   type GrowthSnapshot,
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
@@ -83,6 +84,11 @@ export interface FlywheelReader {
   state(workspaceId: string): Promise<SelfHealingSnapshot>;
 }
 
+/** The self-shipping loop pane (#172). Optional — absent ⇒ the console renders a zeroed build-loop pane. */
+export interface BuildLoopReader {
+  state(workspaceId: string): Promise<BuildLoopSnapshot>;
+}
+
 /** The growth loop pane (#102). Optional — absent ⇒ the console renders a zeroed growth view. */
 export interface GrowthReader {
   state(workspaceId: string): Promise<GrowthSnapshot>;
@@ -144,6 +150,8 @@ export interface FounderConsoleDeps {
   gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
+  /** Self-shipping loop (#172) — optional, read-only. */
+  buildLoop?: BuildLoopReader;
   /** Growth loop (#102) — optional, read-only. */
   growth?: GrowthReader;
   /** Product Planning Loop roadmap (#115) — optional, read-only. */
@@ -188,6 +196,7 @@ export class FounderConsoleService {
       gateBoundaries,
       usageTrend,
       selfHealing,
+      buildLoop,
       growth,
       planning,
       moat,
@@ -207,6 +216,7 @@ export class FounderConsoleService {
         this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.buildLoop?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
@@ -239,6 +249,7 @@ export class FounderConsoleService {
       reliability,
       gateBoundaries,
       selfHealing,
+      buildLoop,
       growth,
       planning,
       usageTrend,

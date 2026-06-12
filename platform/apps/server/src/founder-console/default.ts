@@ -22,6 +22,7 @@ import {
   flywheelFingerprintStore,
   flywheelDispatchStore,
 } from "../db/repositories/flywheel.js";
+import { buildLoopRunStore } from "../db/repositories/build-loop.js";
 import { listEvents, listExperiments } from "../db/repositories/growth.js";
 import { resolveGrowthCaps } from "../growth/caps.js";
 import { funnelFromEvents, scoreGrowth } from "../growth/score.js";
@@ -165,6 +166,25 @@ export function createDefaultFounderConsoleService(deps: {
             mode: d.mode,
             status: d.status,
             reason: d.reason,
+          })),
+        };
+      },
+    },
+    // #172 self-shipping loop pane: read-only run state for the daily review (queue / in-flight / merged
+    // / escalated). Reads the recent runs through the same store the route + engine use.
+    buildLoop: {
+      state: async (workspaceId) => {
+        const runs = await buildLoopRunStore.listForConsole(workspaceId);
+        return {
+          runs: runs.map((r) => ({
+            id: r.id,
+            issueRef: r.issueRef,
+            issueTitle: r.issueTitle,
+            status: r.status,
+            reviewRounds: r.reviewRounds,
+            prRef: r.prRef,
+            mergeRef: r.mergeRef,
+            escalationReason: r.escalationReason,
           })),
         };
       },

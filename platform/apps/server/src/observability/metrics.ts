@@ -233,6 +233,25 @@ export function recordFlywheelAction(action: string): void {
   flywheelActions.set(action, (flywheelActions.get(action) ?? 0) + 1);
 }
 
+// --- self-shipping loop (#172) ----------------------------------------------
+// Build→review→merge loop: ticks executed + actions by kind (ingest:new | dispatch:build |
+// dispatch:skip:* | advance:reviewing | advance:revising | review:pass | review:fail | merge:auto |
+// escalate:* | rebase:continue | rebase:route_back | post_merge:clean | post_merge:propose_revert |
+// noop:kill_switch). Cardinality discipline: the only label is the bounded action kind — tenant ids
+// are NEVER labels (they live in logs/traces).
+let buildLoopTicks = 0;
+const buildLoopActions = new Map<string, number>();
+
+/** One self-shipping-loop tick ran (a single pass over a workspace's runs). */
+export function recordBuildLoopTick(): void {
+  buildLoopTicks += 1;
+}
+
+/** One self-shipping-loop action was applied/decided. */
+export function recordBuildLoopAction(action: string): void {
+  buildLoopActions.set(action, (buildLoopActions.get(action) ?? 0) + 1);
+}
+
 // --- outcome verifiers (#106) -----------------------------------------------
 // Measured-gate runner: ticks executed + actions by kind (`<kind>:passed` | `<kind>:failed` |
 // `<kind>:errored` | escalate | noop:kill_switch). Cardinality discipline (as everywhere): the only
@@ -339,6 +358,8 @@ export function resetMetrics(): void {
   sreActions.clear();
   flywheelTicks = 0;
   flywheelActions.clear();
+  buildLoopTicks = 0;
+  buildLoopActions.clear();
   verifierTicks = 0;
   verifierActions.clear();
   warmHits = 0;
@@ -505,6 +526,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE flywheel_actions_total counter");
   for (const [action, count] of flywheelActions) {
     lines.push(`flywheel_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- self-shipping loop (#172) ---
+  lines.push("# HELP build_loop_ticks_total Self-shipping loop ticks executed.");
+  lines.push("# TYPE build_loop_ticks_total counter");
+  lines.push(`build_loop_ticks_total ${buildLoopTicks}`);
+
+  lines.push("# HELP build_loop_actions_total Self-shipping loop actions by kind.");
+  lines.push("# TYPE build_loop_actions_total counter");
+  for (const [action, count] of buildLoopActions) {
+    lines.push(`build_loop_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- outcome verifiers (#106) ---

@@ -95,6 +95,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #152 workflows policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // workflows flag / firing caps cannot be loosened by a lower layer.
     if (layer.workflows !== undefined) out.workflows = { ...layer.workflows };
+    // #172 build-loop policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // self-shipping flag / guardrail bounds (concurrency, size cap, protected paths) cannot be loosened
+    // by a lower layer.
+    if (layer.buildLoop !== undefined) out.buildLoop = { ...layer.buildLoop };
   }
   return out;
 }
@@ -139,5 +143,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     fleet: merged.fleet ?? { ...CONFIG_DEFAULTS.fleet },
     catalog: merged.catalog ?? { ...CONFIG_DEFAULTS.catalog },
     workflows: merged.workflows ?? { ...CONFIG_DEFAULTS.workflows },
+    buildLoop: merged.buildLoop ?? { ...CONFIG_DEFAULTS.buildLoop },
   };
 }

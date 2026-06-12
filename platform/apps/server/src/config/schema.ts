@@ -581,6 +581,31 @@ export const workflowsSchema = z.object({
   maxActionsPerRun: z.number().int().positive().optional(),
 });
 
+/**
+ * Self-Shipping Loop policy (#172, ADR-0172). All **non-secret** knobs for the build→review→merge loop.
+ * Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
+ * dispatches no builds, reviews nothing, and auto-merges nothing — recording an agent-ok issue + reading
+ * the loop's runs stay available (harmless, tenant-scoped). `enabled` gates the proactive tick AND every
+ * auto action. `maxConcurrentBuilds` is the hard in-flight build cap; `maxReviewRounds` bounds reviewer
+ * FAIL→revise rounds before escalation; `maxDiffFiles`/`maxDiffLines` are the auto-merge size cap (0 = no
+ * cap on that axis); `protectedPaths` REPLACES the built-in gate/policy/billing/secrets list that forces
+ * human review (omit to keep the safe defaults; never auto-merge a PR touching one).
+ */
+export const buildLoopSchema = z.object({
+  /** The self-shipping-loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on concurrent in-flight build sessions per workspace (0 = never dispatch). */
+  maxConcurrentBuilds: z.number().int().nonnegative().optional(),
+  /** Max reviewer FAIL→revise rounds before a run escalates to the owner. */
+  maxReviewRounds: z.number().int().nonnegative().optional(),
+  /** Auto-merge size cap: max files changed (0 = no file cap). */
+  maxDiffFiles: z.number().int().nonnegative().optional(),
+  /** Auto-merge size cap: max total changed lines (0 = no line cap). */
+  maxDiffLines: z.number().int().nonnegative().optional(),
+  /** Protected paths that force human review (replaces the built-in gate/policy/billing/secrets list). */
+  protectedPaths: z.array(z.string()).optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -648,6 +673,8 @@ export const settingsSchema = z.object({
   catalog: catalogSchema.optional(),
   /** Visual workflow builder policy (#152): trigger→condition→action firings + per-day caps (default OFF). */
   workflows: workflowsSchema.optional(),
+  /** Self-Shipping Loop policy (#172): the build→review→auto-merge-within-guardrails loop (default OFF). */
+  buildLoop: buildLoopSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -686,6 +713,7 @@ export type ConstitutionConfig = z.infer<typeof constitutionSchema>;
 export type FleetConfig = z.infer<typeof fleetSchema>;
 export type CatalogConfig = z.infer<typeof catalogSchema>;
 export type WorkflowsConfig = z.infer<typeof workflowsSchema>;
+export type BuildLoopConfig = z.infer<typeof buildLoopSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -761,6 +789,8 @@ export interface ResolvedConfig {
   catalog: CatalogConfig;
   /** Visual workflow builder policy (#152). A partial whose hard defaults `resolveWorkflowCaps` fills. */
   workflows: WorkflowsConfig;
+  /** Self-Shipping Loop policy (#172). A partial whose hard defaults `resolveBuildLoopCaps` fills. */
+  buildLoop: BuildLoopConfig;
 }
 
 /**
@@ -800,4 +830,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   fleet: {},
   catalog: {},
   workflows: {},
+  buildLoop: {},
 };
