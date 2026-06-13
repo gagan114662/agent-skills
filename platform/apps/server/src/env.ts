@@ -24,6 +24,8 @@ export interface Env {
   watchdog: WatchdogEnv;
   /** SRE Loop scheduled tick (#112). */
   sre: SreEnv;
+  /** Self-Healing Ops scheduled tick (#193). */
+  selfHealing: SelfHealingEnv;
   /** Self-healing flywheel scheduled tick (#117). */
   flywheel: FlywheelEnv;
   /** Self-QA loop scheduled tick (#171). */
@@ -175,6 +177,11 @@ export interface WatchdogEnv {
 
 export interface SreEnv {
   /** SRE-tick interval in ms. Default `0` = the background on-call loop is OFF (opt-in, #112). */
+  intervalMs: number;
+}
+
+export interface SelfHealingEnv {
+  /** Self-healing tick interval in ms. Default `0` = the loop is OFF (opt-in, #193). */
   intervalMs: number;
 }
 
@@ -337,6 +344,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     sre: {
       // Default 0 (off): the on-call loop timer is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.SRE_INTERVAL_MS ?? 0) || 0,
+    },
+    selfHealing: {
+      // Default 0 (off): the self-healing loop timer is opt-in so tests/CI drive `tickAll()` deterministically.
+      intervalMs: Number(source.SELF_HEALING_INTERVAL_MS ?? 0) || 0,
     },
     flywheel: {
       // Default 0 (off): the flywheel loop is opt-in so tests/CI drive `tickAll()` deterministically.

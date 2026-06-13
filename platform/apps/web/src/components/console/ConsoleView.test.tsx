@@ -112,6 +112,21 @@ describe("ConsoleView", () => {
     expect(screen.getByRole("button", { name: /1 waiting on you/ })).toBeInTheDocument();
   });
 
+  it("turns the fleet-health signal red WITH the reason when self-healing escalates (#193 AC3)", async () => {
+    await mount({
+      fc: fcDto({
+        attention: {
+          required: true,
+          reasons: ["2 self-healing incidents escalated (auto-remediation could not close)"],
+        },
+      }),
+    });
+    expect(await screen.findByText(CONSOLE.health.attention)).toBeInTheDocument();
+    expect(
+      screen.getByText(/self-healing incidents escalated/, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   it("shows the approvals-clear moment when nothing is waiting", async () => {
     await mount({ pending: [] });
     expect(await screen.findByText(CONSOLE.approvalsClear.headline)).toBeInTheDocument();

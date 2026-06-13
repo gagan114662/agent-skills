@@ -167,6 +167,23 @@ export function recordSreAction(action: string): void {
   sreActions.set(action, (sreActions.get(action) ?? 0) + 1);
 }
 
+// --- Self-Healing Ops (#193) ------------------------------------------------
+// Per-venture monitoring + bounded auto-remediation: ticks executed + actions applied by kind
+// (restart | rollback | scale_up | escalate | resolve | open | none | noop:*). Same cardinality
+// discipline — the only label is the bounded action kind; tenant ids are never labels.
+let selfHealingTicks = 0;
+const selfHealingActions = new Map<string, number>();
+
+/** One self-healing tick ran (a single pass over a workspace's venture surfaces). */
+export function recordSelfHealingTick(): void {
+  selfHealingTicks += 1;
+}
+
+/** One self-healing action was applied/decided (restart | rollback | scale_up | escalate | resolve | …). */
+export function recordSelfHealingAction(action: string): void {
+  selfHealingActions.set(action, (selfHealingActions.get(action) ?? 0) + 1);
+}
+
 /**
  * Read-only snapshot of the HTTP series the SRE signal source derives SLOs from (#112). Aggregated
  * across all route templates: total requests, server-error (5xx) count, and an approximate p95 latency
@@ -356,6 +373,8 @@ export function resetMetrics(): void {
   watchdogActions.clear();
   sreTicks = 0;
   sreActions.clear();
+  selfHealingTicks = 0;
+  selfHealingActions.clear();
   flywheelTicks = 0;
   flywheelActions.clear();
   buildLoopTicks = 0;
@@ -515,6 +534,17 @@ export function renderMetrics(): string {
   lines.push("# TYPE sre_actions_total counter");
   for (const [action, count] of sreActions) {
     lines.push(`sre_actions_total{action="${esc(action)}"} ${count}`);
+  }
+
+  // --- Self-Healing Ops (#193) ---
+  lines.push("# HELP self_healing_ticks_total Self-healing ops loop ticks executed.");
+  lines.push("# TYPE self_healing_ticks_total counter");
+  lines.push(`self_healing_ticks_total ${selfHealingTicks}`);
+
+  lines.push("# HELP self_healing_actions_total Self-healing ops actions by kind.");
+  lines.push("# TYPE self_healing_actions_total counter");
+  for (const [action, count] of selfHealingActions) {
+    lines.push(`self_healing_actions_total{action="${esc(action)}"} ${count}`);
   }
 
   // --- self-healing flywheel (#117) ---

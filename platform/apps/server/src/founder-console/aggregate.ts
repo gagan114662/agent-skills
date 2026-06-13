@@ -167,6 +167,19 @@ export interface SelfHealingSnapshot {
   dispatches: FlywheelDispatchSnapshot[];
 }
 
+/**
+ * Self-healing OPS roll-up (#193): the per-venture incident counts + the watchdog stuck-agent count.
+ * Drives the console fleet-health signal — any escalated incident or stuck agent turns the dot red.
+ */
+export interface SelfHealingOpsSnapshot {
+  /** Incidents firing/remediating (auto-remediation in flight). */
+  openIncidents: number;
+  /** Incidents escalated to a human (auto-remediation could not close them). */
+  escalatedIncidents: number;
+  /** Agents the #105 watchdog escalated as stuck (the fleet-health red signal). */
+  stuckAgents: number;
+}
+
 /** One self-shipping run (#172) reduced to what the console queue / merge-history pane needs. */
 export interface BuildLoopRunSnapshot {
   id: string;
@@ -310,6 +323,8 @@ export interface FounderConsoleInput {
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
   selfHealing?: SelfHealingSnapshot;
+  /** Self-healing OPS state (#193) — open per-venture incidents + stuck agents. Optional ⇒ zeroed. */
+  selfHealingOps?: SelfHealingOpsSnapshot;
   /** Self-shipping loop state (#172) — optional so the console works before the loop is wired. */
   buildLoop?: BuildLoopSnapshot;
   /** Growth Loop state (#102) — optional so the console works before the growth loop is wired. */
@@ -613,6 +628,8 @@ export interface FounderConsole {
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
   selfHealing: SelfHealingView;
+  /** The self-healing OPS roll-up (#193): per-venture incidents + stuck agents. Zeroed when unwired. */
+  selfHealingOps: SelfHealingOpsSnapshot;
   /** The self-shipping loop roll-up (#172). Zero-valued when the loop is unwired. */
   buildLoop: BuildLoopView;
   /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
@@ -878,6 +895,13 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     offlineCapabilities: input.setup?.offlineCapabilities ?? 0,
   };
 
+  // #193 self-healing ops: per-venture incidents + watchdog stuck agents. Zeroed when unwired.
+  const selfHealingOps: SelfHealingOpsSnapshot = input.selfHealingOps ?? {
+    openIncidents: 0,
+    escalatedIncidents: 0,
+    stuckAgents: 0,
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -920,6 +944,15 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   if (setup.offlineCapabilities > 0) {
     reasons.push(`${pluralize(setup.offlineCapabilities, "capability")} offline (credential revoked)`);
   }
+  // #193: an escalated ops incident or a stuck agent turns the fleet-health dot red with the reason.
+  if (selfHealingOps.escalatedIncidents > 0) {
+    reasons.push(
+      `${pluralize(selfHealingOps.escalatedIncidents, "self-healing incident")} escalated (auto-remediation could not close)`,
+    );
+  }
+  if (selfHealingOps.stuckAgents > 0) {
+    reasons.push(`${pluralize(selfHealingOps.stuckAgents, "stuck agent")} escalated by the watchdog`);
+  }
 
   return {
     workspaceId: input.workspaceId,
@@ -939,6 +972,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     reliability,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
+    selfHealingOps,
     buildLoop,
     growth,
     planning,

@@ -23,6 +23,7 @@ export * from "./plans.js";
 export * from "./venture.js";
 export * from "./watchdog.js";
 export * from "./sre.js";
+export * from "./self-healing.js";
 export * from "./reliability.js";
 export * from "./gate-evidence.js";
 export * from "./flywheel.js";

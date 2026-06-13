@@ -98,6 +98,20 @@ export async function markEscalated(id: string): Promise<void> {
     .where(eq(watchdogRevivals.id, id));
 }
 
+/**
+ * Count the stuck-agent lineages the watchdog escalated for a workspace (#193): a revival lineage that
+ * hit its retry cap and was handed to a human is the "fleet-health red" signal the #104 console reads.
+ */
+export async function countEscalatedRevivals(workspaceId: string): Promise<number> {
+  const rows = await db
+    .select({ id: watchdogRevivals.id })
+    .from(watchdogRevivals)
+    .where(
+      and(eq(watchdogRevivals.workspaceId, workspaceId), eq(watchdogRevivals.status, "escalated")),
+    );
+  return rows.length;
+}
+
 /** The full store, satisfying the engine's {@link WatchdogRevivalStore} seam. */
 export const watchdogRevivalStore: WatchdogRevivalStore = {
   getByCurrentSession,

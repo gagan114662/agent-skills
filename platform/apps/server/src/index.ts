@@ -24,6 +24,11 @@ app.watchdogEngine.start(env.watchdog.intervalMs);
 // off /metrics + health, opens incidents, launches triage, and drafts postmortems. Self-gates on the
 // #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
 app.sreEngine.start(env.sre.intervalMs);
+// #193 self-healing ops: start the opt-in tick (SELF_HEALING_INTERVAL_MS; default 0 = off) that probes
+// every live venture surface, evaluates per-venture uptime/error/queue thresholds, and dispatches
+// bounded remediation (restart auto, rollback/scale #13-gated), self-filing postmortems on escalation.
+// Self-gates on the #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp.
+app.selfHealingEngine.start(env.selfHealing.intervalMs);
 // #117 self-healing flywheel: start the opt-in tick (FLYWHEEL_INTERVAL_MS; default 0 = off) that turns
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
 app.flywheelEngine.start(env.flywheel.intervalMs);

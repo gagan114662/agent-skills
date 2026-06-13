@@ -104,6 +104,7 @@ describe("composeDailyBrief", () => {
       decisionQueue: composeDecisionQueue({ workspaceId: "ws", nowMs: NOW, items: [], thresholds: THRESHOLDS }),
       spend: { window: "2026-06", estimatedCostCents: 0, budgetCents: 0, currency: "usd" },
       constitution: { open: 0, topCodes: [] },
+      incidents: { open: 0, escalated: 0, resolved: 0, topVenture: null },
       maxWords: 200,
       ...over,
     };
@@ -147,6 +148,22 @@ describe("composeDailyBrief", () => {
     expect(out.text).toContain("decision waiting on you");
     expect(out.text).toContain("1 critical"); // 200h old → level 3
     expect(out.text).toContain("constitution flag");
+  });
+
+  it("includes a self-healing ops incident summary when the fleet had incidents (#193 AC5)", () => {
+    const out = composeDailyBrief(
+      input({ incidents: { open: 1, escalated: 2, resolved: 3, topVenture: "shop.acme.com" } }),
+    );
+    expect(out.incidents.escalated).toBe(2);
+    expect(out.text).toContain("6 ops incidents");
+    expect(out.text).toContain("shop.acme.com");
+    expect(out.text).toContain("3 auto-fixed");
+    expect(out.text).toContain("2 escalated");
+  });
+
+  it("omits the incident line on a clean night", () => {
+    const out = composeDailyBrief(input());
+    expect(out.text).not.toContain("ops incident");
   });
 
   it("never exceeds the word budget even on a maxed-out input", () => {

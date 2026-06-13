@@ -10,6 +10,7 @@ import {
   type ReliabilityInsightsView,
   type RevenueSnapshot,
   type SelfHealingSnapshot,
+  type SelfHealingOpsSnapshot,
   type BuildLoopSnapshot,
   type GrowthSnapshot,
   type PortfolioReviewSnapshot,
@@ -84,6 +85,11 @@ export interface GateBoundaryReader {
 /** The self-healing flywheel pane (#117). Optional — absent ⇒ the console renders zeroed self-healing. */
 export interface FlywheelReader {
   state(workspaceId: string): Promise<SelfHealingSnapshot>;
+}
+
+/** The self-healing OPS signal (#193). Optional — absent ⇒ a zeroed ops snapshot (no fleet-health red). */
+export interface SelfHealingOpsReader {
+  snapshot(workspaceId: string): Promise<SelfHealingOpsSnapshot>;
 }
 
 /** The self-shipping loop pane (#172). Optional — absent ⇒ the console renders a zeroed build-loop pane. */
@@ -162,6 +168,8 @@ export interface FounderConsoleDeps {
   gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
+  /** Self-healing OPS signal (#193) — optional, read-only (open incidents + stuck agents). */
+  selfHealingOps?: SelfHealingOpsReader;
   /** Self-shipping loop (#172) — optional, read-only. */
   buildLoop?: BuildLoopReader;
   /** Growth loop (#102) — optional, read-only. */
@@ -221,6 +229,7 @@ export class FounderConsoleService {
       supportSla,
       portfolioReviews,
       setup,
+      selfHealingOps,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -244,6 +253,7 @@ export class FounderConsoleService {
         this.deps.supportSla?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
         this.deps.setup?.snapshot(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.selfHealingOps?.snapshot(workspaceId) ?? Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -269,6 +279,7 @@ export class FounderConsoleService {
       reliability,
       gateBoundaries,
       selfHealing,
+      selfHealingOps,
       buildLoop,
       growth,
       planning,
