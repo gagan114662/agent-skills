@@ -18,7 +18,7 @@ import { parseIssueRef } from "../integrations/issues/types.js";
 import { checksForSuite } from "./catalog.js";
 import { classifyResults } from "./classify.js";
 import { summarize } from "./render.js";
-import { resolveDriver } from "./driver.js";
+import { resolveDriverAsync } from "./driver.js";
 import { githubReporter, reportFindings, type IssueClient } from "./bridge.js";
 import { parseSelfqaMarker } from "./render.js";
 import type { QaFinding, QaSuite, RawCheckResult } from "./types.js";
@@ -75,7 +75,7 @@ async function pageOwner(finding: QaFinding): Promise<void> {
 async function main(): Promise<void> {
   const { suite, target } = parseArgs(process.argv.slice(2));
   // The CLI defaults to the HTTP smoke driver (a real probe with no browser binary); `playwright` opts in.
-  const driver = resolveDriver(process.env.SELFQA_DRIVER ?? "http");
+  const driver = await resolveDriverAsync(process.env.SELFQA_DRIVER ?? "http");
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const repo = parseRepo(process.env.GITHUB_REPOSITORY);
   const canFile = Boolean(token && repo);

@@ -152,3 +152,65 @@ export function resolveDriver(name: string | undefined, fetchImpl: typeof fetch 
       return noopDriver;
   }
 }
+
+/**
+ * Close the ADR-0171 trade-off (#174): `resolveDriver` is sync and so could never wire the async
+ * Playwright driver — `SELFQA_DRIVER=playwright` was documented but dead. This async resolver wires it,
+ * preferring the #174 agent browser runtime (a REAL rendered-page check with screenshot evidence — the
+ * "full click-through" the self-QA ADR deferred) and falling back to the launch-only probe if the
+ * shared runtime can't start. Every other name delegates to the sync {@link resolveDriver} (http/none),
+ * so the CI default is unchanged and no browser is ever launched implicitly.
+ */
+export async function resolveDriverAsync(
+  name: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<QaBrowserDriver> {
+  if (name === "playwright") {
+    try {
+      return await createRenderedQaDriver();
+    } catch {
+      // The shared runtime couldn't start (no playwright in the image): fall back to the launch probe,
+      // which throws its own friendly error — never silently downgrade to a browser-less pass.
+      return createPlaywrightDriver();
+    }
+  }
+  return resolveDriver(name, fetchImpl);
+}
+
+/**
+ * A QA driver backed by the #174 agent browser runtime: it renders each check's page in a real,
+ * isolated Chromium and captures a screenshot as evidence — a true rendered-page check (CWV/visual
+ * regressions become possible), strictly better than an HTTP probe. Read-only (navigate + screenshot
+ * are free, never gated), so it needs no approval. Lazily constructed so `playwright` stays optional.
+ */
+export async function createRenderedQaDriver(): Promise<QaBrowserDriver> {
+  const [{ createPlaywrightDriver: createBrowserDriver }, { BrowserSessionManager }, { resolveBrowserCaps }, { pendingApprovalGate }] =
+    await Promise.all([
+      import("../runtime/browser/driver.js"),
+      import("../runtime/browser/manager.js"),
+      import("../runtime/browser/caps.js"),
+      import("../runtime/browser/approval.js"),
+    ]);
+  const driver = await createBrowserDriver();
+  const manager = new BrowserSessionManager({
+    driver,
+    loadCaps: () => resolveBrowserCaps({ enabled: true }),
+    approvalGate: pendingApprovalGate(),
+  });
+  let n = 0;
+  return {
+    run: async (check, ctx): Promise<RawCheckResult> => {
+      const sessionId = `selfqa-${(n += 1)}`;
+      const session = await manager.open({ sessionId, workspaceId: "selfqa-synthetic" });
+      try {
+        const nav = await session.navigate(probeUrlFor(check, ctx.target));
+        if (!nav.ok || (nav.status ?? 0) < 200 || (nav.status ?? 0) >= 400) {
+          return { checkId: check.id, ok: false, actual: `status ${nav.status ?? "unreachable"}`, evidencePath: nav.screenshotPath ?? undefined };
+        }
+        return { checkId: check.id, ok: true, evidencePath: nav.screenshotPath ?? undefined };
+      } finally {
+        await manager.close(sessionId);
+      }
+    },
+  };
+}

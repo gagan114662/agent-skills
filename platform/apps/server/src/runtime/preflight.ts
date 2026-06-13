@@ -57,6 +57,8 @@ export interface PreflightInput {
   harness: HarnessKind;
   /** The process env to inspect for *presence* of credentials (values are never read out). */
   env: NodeJS.ProcessEnv;
+  /** Whether the agent browser runtime (#174) is enabled — gates the Playwright/Chromium checks. */
+  browserEnabled?: boolean;
 }
 
 /** Thrown by the launch gate when preflight fails. Carries the report; the message is content-free. */
@@ -188,6 +190,44 @@ function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
 }
 
 /**
+ * The agent browser runtime (#174) needs the `playwright` package installed in the runtime image. A
+ * missing package is a hard FAIL when the browser is enabled — we never ship an image whose browser
+ * can't spawn (the #166 lesson). Mirrors {@link checkVercelSdk}.
+ */
+function checkPlaywrightModule(deps: PreflightDeps): CheckResult {
+  const name = "browser-playwright";
+  if (deps.moduleResolvable("playwright")) {
+    return { name, status: "pass", message: "the 'playwright' package is installed" };
+  }
+  return {
+    name,
+    status: "fail",
+    message: "the agent browser is enabled but 'playwright' is not installed",
+    remedy: "Install it in the runtime image: pnpm --filter @reload/server add playwright && npx playwright install --with-deps chromium",
+  };
+}
+
+/**
+ * The Chromium binary check. Playwright manages its OWN Chromium under its cache (not on PATH), so an
+ * explicit `BROWSER_BIN` (or a `chromium` on PATH) is a clear PASS, and its absence is a WARN — the
+ * authoritative "can it actually spawn?" gate is the post-deploy smoke (`agent:browser-smoke`), which
+ * launches a real page through the harness path.
+ */
+function checkBrowserBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckResult {
+  const name = "browser-binary";
+  const bin = env.BROWSER_BIN || "chromium";
+  if (deps.binaryAvailable(bin)) {
+    return { name, status: "pass", message: `Chromium binary found (${bin})` };
+  }
+  return {
+    name,
+    status: "warn",
+    message: `no '${bin}' on PATH — Playwright manages its own Chromium (verified by the smoke)`,
+    remedy: "Run `npx playwright install --with-deps chromium`, or set BROWSER_BIN to an absolute path.",
+  };
+}
+
+/**
  * Run the configured posture's preflight checks. Pure, total, secret-free. `ok` is true unless a
  * check *fails* (a `warn` is informational). The default `local`/`demo` posture has no external
  * checks and is trivially `ok`.
@@ -210,6 +250,12 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
     checks.push(checkClaudeAuth(input.env));
   } else {
     checks.push({ name: "harness", status: "pass", message: "harness 'demo' needs no model credentials" });
+  }
+
+  // #174 agent browser runtime: only checked when enabled (default OFF → no checks, posture unchanged).
+  if (input.browserEnabled) {
+    checks.push(checkPlaywrightModule(deps));
+    checks.push(checkBrowserBinary(input.env, deps));
   }
 
   const ok = checks.every((c) => c.status !== "fail");

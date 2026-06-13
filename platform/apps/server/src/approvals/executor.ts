@@ -70,6 +70,26 @@ export function validateExternalSend(payload: unknown): ValidationResult {
 }
 
 /**
+ * `browser.action` payload: `{ sessionId, tool, summary, target? }` (#174). A side-effectful agent
+ * browser step awaiting a human (a click that mutates, typing into a form). `sessionId`/`tool`/`summary`
+ * are required non-empty strings; `target` (the URL) is optional. Recorded-only on approval — the actual
+ * browser step re-runs in-session once approved (ADR-0174 §2, same re-check-at-execution model as #13 §3).
+ */
+export function validateBrowserAction(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.sessionId)) return { ok: false, error: "sessionId required" };
+  if (!nonEmptyString(p.tool)) return { ok: false, error: "tool required" };
+  if (!nonEmptyString(p.summary)) return { ok: false, error: "summary required" };
+  // `target` is optional and may be explicitly null (a session-level action with no URL) — only a
+  // present, non-null, non-string value is invalid.
+  if (p.target !== undefined && p.target !== null && typeof p.target !== "string") {
+    return { ok: false, error: "target must be a string" };
+  }
+  return { ok: true };
+}
+
+/**
  * `billing.refund` payload: `{ paymentIntentId, amountCents?, reason? }` (#98). Outbound money — always
  * gated, recorded-only in v1. `paymentIntentId` is required; `amountCents` (when present) must be a
  * positive integer; `reason` (when present) a string.

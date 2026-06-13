@@ -525,6 +525,31 @@ export const egressSchema = z.object({
 });
 
 /**
+ * Agent browser runtime policy (#174, ADR-0174). All **non-secret** knobs for the Playwright-driven
+ * Chromium each session can drive. Every field is optional and defaults to **off** (`enabled: false`)
+ * so a deployment that sets nothing exposes no browser to any agent — owner workspace opts in first.
+ * `maxPages` / `maxWallClockSeconds` / `maxBandwidthBytes` are the per-session hard caps (`0` =
+ * unlimited, the project-wide convention). `allowlist` / `denylist` reuse the #151 domain matcher
+ * (exact or leading-`*.` wildcard): a denylisted domain is blocked for reads AND writes; an enabled
+ * allowlist restricts navigation to the listed domains. Side-effectful actions are always #13-gated
+ * regardless of these lists — the lists scope *where* the browser may go, not *whether* it may mutate.
+ */
+export const browserSchema = z.object({
+  /** The agent-browser flag — default OFF (no session gets a browser). */
+  enabled: z.boolean().optional(),
+  /** Hard cap on page navigations per session (`0` = unlimited). */
+  maxPages: z.number().int().nonnegative().optional(),
+  /** Hard cap on browser wall-clock per session, in seconds (`0` = unlimited). */
+  maxWallClockSeconds: z.number().int().nonnegative().optional(),
+  /** Hard cap on bytes transferred per session (`0` = unlimited). */
+  maxBandwidthBytes: z.number().int().nonnegative().optional(),
+  /** When non-empty, navigation is restricted to these domains (exact or `*.` wildcard). */
+  allowlist: z.array(z.string()).optional(),
+  /** Domains the browser may never reach (exact or `*.` wildcard) — checked first, for reads and writes. */
+  denylist: z.array(z.string()).optional(),
+});
+
+/**
  * Teams / RBAC policy (#151, ADR-0151). Non-secret. `enabled` gates whether workspace roles are
  * enforced on #13 approval clearing. Default **off** (`enabled: false`) so a deployment that sets
  * nothing keeps today's "any human member clears" behavior — enabling can only tighten, never weaken
@@ -768,6 +793,8 @@ export const settingsSchema = z.object({
   slack: slackSchema.optional(),
   /** Founder Briefings policy (#173): daily brief + weekly P&L report + decision queue delivery (default OFF). */
   briefings: briefingsSchema.optional(),
+  /** Agent browser runtime policy (#174): Playwright sessions + per-session caps + domain lists (default OFF). */
+  browser: browserSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -811,6 +838,7 @@ export type WorkflowsConfig = z.infer<typeof workflowsSchema>;
 export type BuildLoopConfig = z.infer<typeof buildLoopSchema>;
 export type SlackConfig = z.infer<typeof slackSchema>;
 export type BriefingsConfig = z.infer<typeof briefingsSchema>;
+export type BrowserConfig = z.infer<typeof browserSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -896,6 +924,8 @@ export interface ResolvedConfig {
   slack: SlackConfig;
   /** Founder Briefings policy (#173). A partial whose hard defaults `resolveBriefingsCaps` fills. */
   briefings: BriefingsConfig;
+  /** Agent browser runtime policy (#174). A partial whose hard defaults `resolveBrowserCaps` fills. */
+  browser: BrowserConfig;
 }
 
 /**
@@ -940,4 +970,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   buildLoop: {},
   slack: {},
   briefings: {},
+  browser: {},
 };

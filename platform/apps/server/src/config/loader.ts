@@ -203,6 +203,33 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (billingEnabled === "true" || billingEnabled === "1") {
     raw.billing = { provider: env.BILLING_PROVIDER === "stripe" ? "stripe" : "none" };
   }
+  // #174 agent browser runtime: let the deployment env give agents a real browser without baking a
+  // managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no block);
+  // a managed layer still wins as the lock. The per-session caps + domain allow/denylist are tunable
+  // via env too. Chromium/Playwright is NEVER a secret — the binary lives in the runtime image.
+  const browserEnabled = env.RELOAD_AGENT_BROWSER_ENABLED;
+  const browserAllowlist = env.RELOAD_AGENT_BROWSER_ALLOWLIST;
+  const browserDenylist = env.RELOAD_AGENT_BROWSER_DENYLIST;
+  const browserMaxPages = env.RELOAD_AGENT_BROWSER_MAX_PAGES;
+  const browserMaxSeconds = env.RELOAD_AGENT_BROWSER_MAX_WALLCLOCK_SECONDS;
+  const browserMaxBytes = env.RELOAD_AGENT_BROWSER_MAX_BANDWIDTH_BYTES;
+  if (
+    browserEnabled !== undefined ||
+    browserAllowlist !== undefined ||
+    browserDenylist !== undefined ||
+    browserMaxPages !== undefined ||
+    browserMaxSeconds !== undefined ||
+    browserMaxBytes !== undefined
+  ) {
+    const browser: Record<string, unknown> = {};
+    if (browserEnabled !== undefined) browser.enabled = browserEnabled === "true" || browserEnabled === "1";
+    if (browserAllowlist !== undefined) browser.allowlist = parseFileList(browserAllowlist);
+    if (browserDenylist !== undefined) browser.denylist = parseFileList(browserDenylist);
+    if (browserMaxPages !== undefined) browser.maxPages = envInt(browserMaxPages, 0);
+    if (browserMaxSeconds !== undefined) browser.maxWallClockSeconds = envInt(browserMaxSeconds, 0);
+    if (browserMaxBytes !== undefined) browser.maxBandwidthBytes = envInt(browserMaxBytes, 0);
+    raw.browser = browser;
+  }
   return parseLayer(raw, "env");
 }
 
