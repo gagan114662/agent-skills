@@ -136,6 +136,25 @@ describe("buildConsole — standup projects", () => {
     });
     expect(model.projects.map((p) => p.name)).toEqual(["seo"]);
   });
+
+  it("never drops an item on a non-public/unknown channel — it lands in the trailing 'other' lane", () => {
+    const model = buildConsole({
+      liveSessions: [
+        session({ id: "dm", channelId: "c-dm" }), // a DM channel (kind: dm)
+        session({ id: "gone", channelId: "c-archived-or-unknown" }), // not in the channel list at all
+      ],
+      pending: [],
+      shipped: [],
+      channels,
+      directory,
+    });
+    // Both still appear on the board…
+    expect(model.columns.running).toHaveLength(2);
+    // …and both are grouped into the single trailing "other" lane (nothing silently disappears).
+    const other = model.projects.find((p) => p.name === "other")!;
+    expect(other.items).toHaveLength(2);
+    expect(model.projects.filter((p) => p.name === "other")).toHaveLength(1);
+  });
 });
 
 describe("spinner + forecast", () => {

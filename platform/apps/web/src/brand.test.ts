@@ -350,6 +350,15 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/site/Brand.tsx",
     "components/site/SoftPaywall.tsx",
     "components/site/MarketingSite.tsx",
+    // The console redesign (board + standup) — the primary product surface. Every word comes from the
+    // CONSOLE block in brand.ts; even the copy-free StatusGlyph reads its braille grammar from brand.
+    "components/console/ConsoleView.tsx",
+    "components/console/StandupPanel.tsx",
+    "components/console/Board.tsx",
+    "components/console/PeekDrawer.tsx",
+    "components/console/ReportsView.tsx",
+    "components/console/ProjectSettingsSheet.tsx",
+    "components/console/StatusGlyph.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.

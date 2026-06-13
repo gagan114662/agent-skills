@@ -17,6 +17,10 @@ import type { ApprovalRequestDto } from "@reload/shared";
 import type { Channel, LiveSessionDto } from "../../api/types.js";
 import { agentColor, departmentColor, AGENT_DEPARTMENT } from "../../brand.js";
 
+// The braille status glyph is a brand-defined grammar; re-export it from brand so the one source of
+// truth is `brand.ts` while callers (and tests) can keep importing the model.
+export { BRAILLE_FRAMES, brailleFrame } from "../../brand.js";
+
 /** The subset of a directory entry the model needs (matches the store's `DirectoryEntry`). */
 export interface DirectoryEntry {
   readonly id: string;
@@ -117,15 +121,6 @@ export function fmtElapsed(ms: number): string {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m ${s % 60}s`;
 }
 
-/** The braille spinner frames (the one running-tell in the whole console). */
-export const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-
-/** The frame for a given tick (wraps). Pure so the spinner stays testable. */
-export function brailleFrame(tick: number): string {
-  const n = BRAILLE_FRAMES.length;
-  return BRAILLE_FRAMES[((tick % n) + n) % n]!;
-}
-
 export interface SpendForecast {
   /** 0–1 gauge fill. */
   readonly fraction: number;
@@ -207,16 +202,20 @@ export function buildConsole(input: BuildConsoleInput): ConsoleModel {
   const columns: Record<ItemKind, ConsoleItem[]> = { running: [], waiting: [], shipped: [] };
   for (const it of items) columns[it.kind].push(it);
 
-  // Group into projects, preserving channel order; unassigned items fall into a trailing lane.
+  const publicChannels = channels.filter((c) => c.kind === "public" && !c.isArchived);
+  const publicIds = new Set(publicChannels.map((c) => c.id));
+
+  // Group into projects, preserving channel order. An item on no channel — or on a channel that isn't a
+  // public department lane (a DM, an archived room, or one we don't know) — falls into the trailing
+  // "other" lane rather than being silently dropped, so nothing is ever lost from the board's totals.
   const byProject = new Map<string, ConsoleItem[]>();
   for (const it of items) {
-    const id = it.channelId ?? UNASSIGNED;
+    const id = it.channelId && publicIds.has(it.channelId) ? it.channelId : UNASSIGNED;
     const list = byProject.get(id) ?? [];
     list.push(it);
     byProject.set(id, list);
   }
 
-  const publicChannels = channels.filter((c) => c.kind === "public" && !c.isArchived);
   const order = [...publicChannels.map((c) => c.id), UNASSIGNED];
 
   const projects: ConsoleProject[] = order

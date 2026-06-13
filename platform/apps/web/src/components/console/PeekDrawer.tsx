@@ -4,7 +4,7 @@
  * container resolves the transcript from the store's messages and the audit lines from the item's real
  * fields, so nothing here is invented. The veil + drawer transitions are CSS, gated by reduced motion.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CONSOLE } from "../../brand.js";
 
 export interface PeekTranscriptLine {
@@ -37,6 +37,12 @@ export interface PeekDrawerProps {
 export function PeekDrawer(props: PeekDrawerProps): React.JSX.Element {
   const { open, title, status, mode, transcript, audit, canCompose, onClose, onSend } = props;
   const [draft, setDraft] = useState("");
+
+  // A draft belongs to one session. Reset it whenever the drawer opens or switches sessions, so steering
+  // text never leaks from one peek into the next.
+  useEffect(() => {
+    setDraft("");
+  }, [title, open]);
 
   function send(): void {
     const text = draft.trim();
@@ -101,7 +107,8 @@ export function PeekDrawer(props: PeekDrawerProps): React.JSX.Element {
                 aria-label={CONSOLE.peek.steerPlaceholder}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // Don't send mid-IME-composition (an Enter that commits a kanji/pinyin candidate).
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     send();
                   }

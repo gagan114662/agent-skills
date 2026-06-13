@@ -48,7 +48,15 @@ export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JS
 
   return (
     <div className={`sheet${open ? " sheet--show" : ""}`} aria-hidden={!open}>
-      <div className="sheet__panel" role="dialog" aria-label={`${CONSOLE.projects.settings} — ${name}`}>
+      {/* Remount per project so the uncontrolled defaultValue inputs reset to the new project's values
+          (they don't update on prop change otherwise). */}
+      <div
+        key={project?.id ?? "none"}
+        className="sheet__panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${CONSOLE.projects.settings} — ${name}`}
+      >
         <header className="sheet__head">
           <h2>{name}</h2>
           <button className="iconbtn" aria-label="Close" onClick={onClose}>
@@ -95,9 +103,9 @@ export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JS
                   <span className="field__connected">{CONSOLE.settings.models.localConnected}</span>
                 </div>
               </div>
-              <KeyRow label="ANTHROPIC" />
-              <KeyRow label="OPENAI" />
-              <KeyRow label="GOOGLE AI" />
+              {CONSOLE.settings.models.providers.map((label) => (
+                <KeyRow key={label} label={label} />
+              ))}
             </>
           )}
 

@@ -9,7 +9,8 @@
  */
 import { useEffect, useState } from "react";
 import { usePrefersReducedMotion } from "../landing/useReducedMotion.js";
-import { brailleFrame, type ItemKind } from "./model.js";
+import { brailleFrame } from "../../brand.js";
+import type { ItemKind } from "./model.js";
 
 /** The braille spinner — cycles ⠋⠙⠹… at 80ms, freezes to one frame under reduced motion. */
 export function BrailleSpinner({ className }: { className?: string }): React.JSX.Element {

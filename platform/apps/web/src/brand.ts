@@ -564,6 +564,8 @@ export const CONSOLE = {
       keysHint: "keys are sealed per project, write-only — we use them, we can't read them back",
       noKey: "not connected",
       fingerprintPrefix: "saved ·",
+      /** Cloud model providers shown as write-only key rows (brand-facing names live here, not inline). */
+      providers: ["Anthropic", "OpenAI", "Google AI"],
     },
     agents: { hint: "the named department leads — toggle who's on the roster" },
     budget: {
@@ -603,6 +605,19 @@ export function consoleWaitingChip(n: number): string {
 /** Approval-empty "next likely ask" line. */
 export function consoleNextAsk(hint: string = CONSOLE.approvalsClear.nextDefault): string {
   return `Next likely ask: ${hint}.`;
+}
+
+/**
+ * The status-grammar running glyph (brand-defined): a braille spinner whose frames belong to the brand's
+ * visual language ("braille = running"), so they live here beside the rest of the identity rather than in
+ * a component. The spinner component cycles {@link brailleFrame}; under reduced motion it freezes to one.
+ */
+export const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
+
+/** The braille frame for a tick (wraps both directions). Pure, so the spinner stays testable. */
+export function brailleFrame(tick: number): string {
+  const n = BRAILLE_FRAMES.length;
+  return BRAILLE_FRAMES[((tick % n) + n) % n]!;
 }
 
 /**

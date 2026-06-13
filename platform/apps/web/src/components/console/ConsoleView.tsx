@@ -13,7 +13,7 @@
  * #173 brief endpoint) reuse the honest closest one rather than fabricate. All motion is reduced-motion
  * gated in the leaf components.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
@@ -79,6 +79,15 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [wyoDismissed, setWyoDismissed] = useState(false);
 
+  // Guards every async setState so a poll that resolves after unmount is a no-op (no leak / no warning).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   // --- live seams (view-local, the #104/#147 polled pattern) ---------------------------------------
   async function refreshApprovals(): Promise<void> {
     if (!workspaceId) return;
@@ -87,6 +96,7 @@ export function ConsoleView(): React.JSX.Element {
         api.approvals.list(workspaceId, "pending"),
         api.approvals.list(workspaceId, "executed"),
       ]);
+      if (!mounted.current) return;
       setPending(p);
       setShipped(s);
     } catch {
@@ -97,37 +107,39 @@ export function ConsoleView(): React.JSX.Element {
   async function refreshFounder(): Promise<void> {
     if (!workspaceId) return;
     try {
-      setFc(await api.getFounderConsole(workspaceId));
+      const next = await api.getFounderConsole(workspaceId);
+      if (mounted.current) setFc(next);
     } catch {
       /* leave prior snapshot */
     }
   }
 
+  // Both the brief/spend snapshot AND the approvals queue refresh on the same 15s beat, so the board's
+  // "waiting on you" lane never goes stale while the page sits open.
   useEffect(() => {
     if (!workspaceId) return;
     void refreshApprovals();
     void refreshFounder();
-    const fcTimer = window.setInterval(() => void refreshFounder(), 15000);
-    return () => window.clearInterval(fcTimer);
+    const timer = window.setInterval(() => {
+      void refreshApprovals();
+      void refreshFounder();
+    }, 15000);
+    return () => window.clearInterval(timer);
   }, [workspaceId]);
 
   useEffect(() => {
     if (!workspaceId) return;
-    let live = true;
     const tick = async (): Promise<void> => {
       try {
         const next = await api.missionControl.get(workspaceId);
-        if (live) setMc(next);
+        if (mounted.current) setMc(next);
       } catch {
         /* transient; next poll retries */
       }
     };
     void tick();
     const timer = window.setInterval(() => void tick(), 4000);
-    return () => {
-      live = false;
-      window.clearInterval(timer);
-    };
+    return () => window.clearInterval(timer);
   }, [workspaceId]);
 
   const model = useMemo(
