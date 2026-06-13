@@ -116,3 +116,21 @@ export function validateBillingRefund(payload: unknown): ValidationResult {
   }
   return { ok: true };
 }
+
+/**
+ * Validate a finance disbursement (#194) — a recorded-only outbound spend the money queue gates. Needs a
+ * positive integer `amountCents` and a non-empty `purpose`; `currency`/`ventureIdeaId` optional. The
+ * executor never moves money, so this only guards the recorded intent's shape.
+ */
+export function validateFinanceDisbursement(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (typeof p.amountCents !== "number" || !Number.isInteger(p.amountCents) || p.amountCents <= 0) {
+    return { ok: false, error: "amountCents must be a positive integer" };
+  }
+  if (!nonEmptyString(p.purpose)) return { ok: false, error: "purpose required" };
+  if (p.currency !== undefined && typeof p.currency !== "string") {
+    return { ok: false, error: "currency must be a string" };
+  }
+  return { ok: true };
+}

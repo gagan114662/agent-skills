@@ -132,6 +132,10 @@ import { onboardingRoutes } from "./routes/onboarding.js";
 import { acquisitionRoutes } from "./routes/acquisition.js";
 import { createDefaultOnboardingService } from "./onboarding/default.js";
 import type { OnboardingService } from "./onboarding/service.js";
+import { financeRoutes } from "./routes/finance.js";
+import { createDefaultFinanceService, createDefaultFinanceEngine } from "./finance/default.js";
+import type { FinanceService } from "./finance/service.js";
+import type { FinanceLedgerEngine } from "./finance/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -207,6 +211,8 @@ declare module "fastify" {
     buildLoopEngine: BuildLoopEngine;
     /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
     founderBriefingsEngine: FounderBriefingsEngine;
+    /** The #194 finance ledger engine; `index.ts` starts its opt-in tick (FINANCE_INTERVAL_MS). */
+    financeEngine: FinanceLedgerEngine;
     /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
@@ -307,6 +313,10 @@ export interface BuildAppOptions {
   founderBriefingsEngine?: FounderBriefingsEngine;
   /** #192 external account onboarding: tests inject a service over fakes (incl. a fake DNS provider); default wires the real repos. */
   onboarding?: OnboardingService;
+  /** #194 finance ledger: tests inject a service over store/reader fakes; default wires the real repos. */
+  finance?: FinanceService;
+  /** #194 finance ledger engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  financeEngine?: FinanceLedgerEngine;
   /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -579,6 +589,18 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       supportDesk: supportDeskService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
+  // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
+  // (Stripe events + the #71 usage estimate) into a per-venture ledger, closes the monthly books, and
+  // forecasts runway. Read routes are caps-gated (409 when off); the opt-in tick (FINANCE_INTERVAL_MS,
+  // default off, started in index.ts) posts + closes. NO outbound money provider is wired — money
+  // movements stay human-gated + recorded-only in the #13 queue. Config default-OFF (`finance.enabled`).
+  const finance = opts.finance ?? createDefaultFinanceService();
+  app.register(financeRoutes, { service: finance });
+  const financeEngine = opts.financeEngine ?? createDefaultFinanceEngine(app.log, finance);
+  app.addHook("onClose", async () => {
+    financeEngine.stop();
+  });
+  app.decorate("financeEngine", financeEngine);
   // #173 founder briefings: the company reports UP — a daily brief + weekly P&L report pushed to the
   // owner via the #148 email seam (+ optional #170 Slack DM), and ONE ordered decision queue (#13 +
   // #172 + #146). The read routes render the views into the console; the opt-in tick (BRIEFINGS_INTERVAL_MS,
@@ -594,6 +616,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       // #170: when a workspace has connected Slack, the brief is DM'd to the owner over the same
       // owner-DM authority the Slack digest uses (a no-op for un-connected workspaces).
       slack: slackService,
+      // #194: attach the finance close-pack section to the weekly report (caps-gated; off ⇒ unchanged).
+      finance,
     });
   app.register(founderBriefingsRoutes, { service: founderBriefings });
   const founderBriefingsEngine =

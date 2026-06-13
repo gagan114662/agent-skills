@@ -226,6 +226,13 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (acqChannels.autoSend !== undefined) acquisition.autoSend = flag(acqChannels.autoSend);
     raw.acquisition = acquisition;
   }
+  // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
+  // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
+  // close timer is separate (FINANCE_INTERVAL_MS).
+  const financeEnabled = env.RELOAD_FINANCE_ENABLED;
+  if (financeEnabled !== undefined) {
+    raw.finance = { enabled: financeEnabled === "true" || financeEnabled === "1" };
+  }
   // #98 billing opt-in: present the `[billing]` config section (the per-tenant checkout gate) from the
   // deployment env — mirroring marketing/rbac/catalog — so live billing can be switched on without
   // baking a managed.toml. The provider VALUE mirrors the env-level `BILLING_PROVIDER` (the actual

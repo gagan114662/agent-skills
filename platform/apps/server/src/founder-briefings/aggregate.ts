@@ -384,6 +384,26 @@ export interface BacklogEntry {
   position: number;
 }
 
+/**
+ * The Finance Ledger close-pack section attached to the weekly report (#194, ADR-0194). Optional and
+ * default-absent: when the finance layer is OFF (or unwired) `financeSection` is `undefined` and the
+ * report renders byte-for-byte as before (the #114 composable-overlay discipline). When present it
+ * carries the workspace-level monthly close + runway header, with `verifiedShareBps` so the owner sees
+ * how much of the books rests on external receipts vs. UNVERIFIED estimates (the premortem #200).
+ */
+export interface FinanceBriefingSection {
+  currency: string;
+  periodKey: string;
+  revenueCents: number;
+  costCents: number;
+  netCents: number;
+  /** Basis points (0–10000) of the period's money magnitude that is externally verified. */
+  verifiedShareBps: number;
+  runwayHealth: "healthy" | "at_risk" | "breached";
+  runwayDays: number | null;
+  breachPeriodKey: string | null;
+}
+
 export interface WeeklyReportInput {
   workspaceId: string;
   nowMs: number;
@@ -396,6 +416,8 @@ export interface WeeklyReportInput {
   backlog: BacklogEntry[];
   /** Hard word budget for the rendered digest. */
   maxWords: number;
+  /** Optional #194 finance close-pack section; absent ⇒ the report is unchanged. */
+  financeSection?: FinanceBriefingSection;
 }
 
 export interface WeeklyReport {
@@ -408,6 +430,8 @@ export interface WeeklyReport {
   recommendations: { doubleDown: number; maintain: number; pivot: number; sunset: number };
   voiceSignals: VoiceSignal[];
   backlog: BacklogEntry[];
+  /** The #194 finance close-pack section, or `null` when the finance layer is off/unwired. */
+  financeSection: FinanceBriefingSection | null;
   /** The brand-voice weekly digest, guaranteed `wordCount <= maxWords`. */
   text: string;
   wordCount: number;
@@ -457,6 +481,20 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     parts.push(`${profitable} profitable, ${burning} burning.`);
   }
 
+  const fin = input.financeSection;
+  if (fin) {
+    const verifiedPct = (fin.verifiedShareBps / 100).toFixed(0);
+    const runway =
+      fin.runwayHealth === "breached"
+        ? "runway breached"
+        : fin.runwayDays !== null
+          ? `~${fin.runwayDays}d runway${fin.runwayHealth === "at_risk" ? ` (at risk, breach ${fin.breachPeriodKey})` : ""}`
+          : "no active burn";
+    parts.push(
+      `Books ${fin.periodKey}: net ${formatMoney(fin.netCents, fin.currency)} (${verifiedPct}% verified), ${runway}.`,
+    );
+  }
+
   if (recommendations.sunset > 0 || recommendations.pivot > 0 || recommendations.doubleDown > 0) {
     parts.push(
       `Recommendations: ${recommendations.doubleDown} double-down, ${recommendations.pivot} pivot, ${recommendations.sunset} sunset.`,
@@ -483,6 +521,7 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     recommendations,
     voiceSignals: input.voiceSignals,
     backlog: input.backlog,
+    financeSection: input.financeSection ?? null,
     text,
     wordCount: wc,
   };

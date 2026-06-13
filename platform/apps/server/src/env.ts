@@ -40,6 +40,8 @@ export interface Env {
   buildLoop: BuildLoopEnv;
   /** Founder Briefings scheduled tick (#173). */
   briefings: BriefingsEnv;
+  /** Finance Ledger posting/close tick (#194). */
+  finance: FinanceEnv;
   /** Automations scheduled tick (#147). */
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
@@ -222,6 +224,11 @@ export interface BriefingsEnv {
   intervalMs: number;
 }
 
+export interface FinanceEnv {
+  /** Finance posting/close-tick interval in ms. Default `0` = the accounting loop is OFF (opt-in, #194). */
+  intervalMs: number;
+}
+
 export interface AutomationsEnv {
   /** Automations-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #147). */
   intervalMs: number;
@@ -371,6 +378,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     briefings: {
       // Default 0 (off): the briefings loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
       intervalMs: Number(source.BRIEFINGS_INTERVAL_MS ?? 0) || 0,
+    },
+    finance: {
+      // Default 0 (off): the finance ledger loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
+      intervalMs: Number(source.FINANCE_INTERVAL_MS ?? 0) || 0,
     },
     automations: {
       // Default 0 (off): the automations loop is opt-in so tests/CI drive `tickAll()` deterministically.

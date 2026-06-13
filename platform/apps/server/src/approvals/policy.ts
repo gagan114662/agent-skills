@@ -51,6 +51,16 @@ export const PORTFOLIO_SUNSET_ACTION = "portfolio.sunset" as const;
 export const SETUP_EXTERNAL_ACCOUNT_ACTION = "setup.external_account" as const;
 
 /**
+ * The action kind a finance disbursement (a budget envelope release / outbound spend the Finance
+ * Ledger surfaces) is gated under (#194, ADR-0194). Like `billing.refund` it is **sensitive by
+ * default** so it ALWAYS pauses for a human, and the executor is **recorded-only** (no money moves) —
+ * money is irreversible, so a disbursement is human-gated + pre-committed, never agent-initiated or
+ * post-hoc. It is not submitted through the #13 action route; the money queue evaluates it against the
+ * same workspace `approval_policies`.
+ */
+export const FINANCE_DISBURSEMENT_ACTION = "finance.disbursement" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
@@ -66,6 +76,8 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   PORTFOLIO_SUNSET_ACTION,
   // #192 external account setup ALWAYS needs the owner (create account, accept ToS, paste keys). ADR-0192.
   SETUP_EXTERNAL_ACCOUNT_ACTION,
+  // #194 a finance disbursement (outbound spend) is irreversible — always a human gate, recorded-only. ADR-0194.
+  FINANCE_DISBURSEMENT_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",

@@ -11,6 +11,8 @@ import type { DecisionItem, VentureKpiSnapshot } from "./aggregate.js";
 import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
 import type { PortfolioService } from "../portfolio/service.js";
+import type { FinanceService } from "../finance/service.js";
+import { resolveFinanceCaps } from "../finance/caps.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { loadConfig } from "../config/loader.js";
 import { windowKey } from "../scale/usage.js";
@@ -69,6 +71,12 @@ export function createDefaultFounderBriefingsService(deps: {
   slack?: SlackEventService;
   /** Optional SMTP sender for the #148 email transport. Absent ⇒ the log transport (CI-safe). */
   sendMail?: Parameters<typeof selectPagerTransport>[0]["sendMail"];
+  /**
+   * The live #194 Finance service. When present AND the workspace has opted into the finance layer
+   * (`finance.enabled`), the weekly report gains a close-pack section (net + verified share + runway);
+   * absent or finance-off ⇒ the report renders unchanged (the composable-overlay discipline).
+   */
+  finance?: FinanceService;
   now?: () => Date;
 }): FounderBriefingsService {
   const { scale, billing, portfolio, logger } = deps;
@@ -217,6 +225,29 @@ export function createDefaultFounderBriefingsService(deps: {
           .map((r) => ({ title: r.item.title, score: r.score, position: r.position }));
       },
     },
+    // #194 finance: when the workspace has opted into the finance layer, attach the close-pack section
+    // (net + verified share + runway header). Caps-gated so a finance-off workspace renders unchanged.
+    ...(deps.finance
+      ? {
+          finance: {
+            section: async (workspaceId: string) => {
+              if (!resolveFinanceCaps(loadConfig(workspaceId).finance).enabled) return null;
+              const s = await deps.finance!.weeklyFinanceSection(workspaceId);
+              return {
+                currency: s.currency,
+                periodKey: s.periodKey,
+                revenueCents: s.workspace.revenueCents,
+                costCents: s.workspace.costCents,
+                netCents: s.workspace.netCents,
+                verifiedShareBps: s.workspace.verifiedShareBps,
+                runwayHealth: s.runway.health,
+                runwayDays: s.runway.runwayDays,
+                breachPeriodKey: s.runway.breachPeriodKey,
+              };
+            },
+          },
+        }
+      : {}),
     // #148 delivery: email-first to the resolved owner (log transport in CI/privacy mode) + optional Slack.
     notifier: new MultiChannelBriefingNotifier({
       ownerContact: { resolve: (workspaceId) => getWorkspaceOwnerContact(workspaceId) },

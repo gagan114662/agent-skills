@@ -131,6 +131,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // real-send flags / auto-send switch / send caps cannot be loosened (e.g. real ads turned on, or a
     // window cap raised) by a lower layer.
     if (layer.acquisition !== undefined) out.acquisition = { ...layer.acquisition };
+    // #194 finance policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // ledger/close tick + the read surface cannot be flipped on by a lower layer — owner-workspace-first.
+    if (layer.finance !== undefined) out.finance = { ...layer.finance };
   }
   return out;
 }
@@ -186,5 +189,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     browser: merged.browser ?? { ...CONFIG_DEFAULTS.browser },
     onboarding: merged.onboarding ?? { ...CONFIG_DEFAULTS.onboarding },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
+    finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
   };
 }
