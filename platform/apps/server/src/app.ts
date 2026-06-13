@@ -88,6 +88,9 @@ import { createDefaultCustomerVoiceService } from "./voice/default.js";
 import { supportRoutes } from "./routes/support.js";
 import { SupportDeskService } from "./support/service.js";
 import { createDefaultSupportDeskService } from "./support/default.js";
+import { legalRoutes } from "./routes/legal.js";
+import { createDefaultLegalService } from "./legal/default.js";
+import { LegalService } from "./legal/service.js";
 import { CustomerVoiceService } from "./voice/service.js";
 import { moatRoutes } from "./routes/moat.js";
 import { MoatService } from "./moat/service.js";
@@ -288,6 +291,8 @@ export interface BuildAppOptions {
   voice?: CustomerVoiceService;
   /** #190 support desk: tests inject one service (shared by routes + #104 SLA pane). Default-OFF autonomy. */
   supportDesk?: SupportDeskService;
+  /** #196 legal & compliance pack: tests inject one service over fakes; default builds the real one. */
+  legal?: LegalService;
   /** #103 moat accrual: tests inject a service over a fake ledger; default builds the real one. */
   moat?: MoatService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -563,6 +568,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // the voice service so intake reuses #114 classification. Built before the console so it surfaces the SLA pane.
   const supportDeskService = opts.supportDesk ?? createDefaultSupportDeskService(undefined, voiceService);
   app.register(supportRoutes, { service: supportDeskService });
+  // #196 legal & compliance pack: per-venture ToS/privacy generation (published via a pending #13 owner
+  // approval), the name/trademark+domain pre-check the (#187) factory calls, the suppression/consent
+  // rails enforced in code at the send chokepoint, and data export/deletion honored end-to-end. The
+  // send-layer enforcement is wired into the executor registry; these routes manage the pack. Default OFF.
+  const legalService = opts.legal ?? createDefaultLegalService();
+  app.register(legalRoutes, { service: legalService });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
