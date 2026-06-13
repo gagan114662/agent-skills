@@ -542,6 +542,29 @@ export const planningSchema = z.object({
 });
 
 /**
+ * Venture Memory & Planning policy (#197, ADR-0197). All **non-secret** knobs for the per-venture memory
+ * + weekly planning loop. Every field is optional and defaults to **off** (`enabled: false`) so a
+ * deployment that sets nothing drafts no weekly plans and distills no playbooks — recording venture
+ * memory/OKRs and reading beliefs/OKRs/plans/playbooks stay available regardless (harmless). `enabled`
+ * gates only the proactive weekly tick. `staleAfterDays` is the memory-hygiene review window;
+ * `dispatchOnApprove` flows an APPROVED plan's items into the #115 backlog (which auto-dispatches).
+ */
+export const ventureMemorySchema = z.object({
+  /** The weekly planning-tick flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Hard cap on items a single weekly plan drafts. */
+  maxPlanItems: z.number().int().nonnegative().optional(),
+  /** Memories older than this (and not superseded) are surfaced for owner review. 0 ⇒ never. */
+  staleAfterDays: z.number().int().nonnegative().optional(),
+  /** Max memories rendered per kind in a session brief (bounds the injected text). */
+  maxBriefPerKind: z.number().int().nonnegative().optional(),
+  /** Max candidate playbooks offered into a plan draft. */
+  maxPlaybookCandidates: z.number().int().nonnegative().optional(),
+  /** When true, an APPROVED plan's items flow into the #115 backlog (which auto-dispatches). */
+  dispatchOnApprove: z.boolean().optional(),
+});
+
+/**
  * Per-agent scoped credentials policy (#151, ADR-0151). All **non-secret** — only secret KEY NAMES
  * grouped by purpose; the secret VALUES stay on the #25 `SecretsResolver`/`AGENT_SECRETS` path. Every
  * field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
@@ -840,6 +863,8 @@ export const settingsSchema = z.object({
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
   planning: planningSchema.optional(),
+  /** Venture Memory & Planning policy (#197): per-venture memory + weekly planning loop (default OFF). */
+  ventureMemory: ventureMemorySchema.optional(),
   /** Per-agent scoped credentials policy (#151): the allowlist matrix (key NAMES only, default OFF). */
   credentialScopes: credentialScopesSchema.optional(),
   /** Egress domain allowlist policy (#151) for cloud agent sessions (default OFF). */
@@ -900,6 +925,7 @@ export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type SupportDeskConfig = z.infer<typeof supportDeskSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
+export type VentureMemoryConfig = z.infer<typeof ventureMemorySchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
 export type EgressConfig = z.infer<typeof egressSchema>;
 export type RbacConfig = z.infer<typeof rbacSchema>;
@@ -980,6 +1006,8 @@ export interface ResolvedConfig {
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
   planning: PlanningConfig;
+  /** Venture Memory & Planning policy (#197). A partial whose defaults `resolveVentureMemoryCaps` fills. */
+  ventureMemory: VentureMemoryConfig;
   /** Per-agent scoped credentials policy (#151). A partial whose defaults `resolveCredentialMatrix` fills. */
   credentialScopes: CredentialScopesConfig;
   /** Egress domain allowlist policy (#151). A partial whose defaults `resolveEgressPolicy` fills. */
@@ -1041,6 +1069,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   supportDesk: {},
   portfolio: {},
   planning: {},
+  ventureMemory: {},
   credentialScopes: {},
   egress: {},
   rbac: {},

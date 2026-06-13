@@ -46,6 +46,11 @@ app.insightEngine.start(env.insight.intervalMs);
 // budget + kill-switch aware). Stopped on server close via buildApp.
 app.planningEngine.start(env.planning.intervalMs);
 
+// #197 venture memory & planning: start the opt-in weekly tick (VENTURE_PLANNING_INTERVAL_MS; default
+// 0 = off) that drafts each venture's next-week plan from memory + scorecard + OKR drift, cites the #200
+// premortem, and #13-gates it to the owner. Stopped on server close via buildApp.
+app.ventureMemoryEngine.start(env.ventureMemory.intervalMs);
+
 // #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
 // the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.

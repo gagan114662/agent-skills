@@ -34,6 +34,8 @@ export interface Env {
   insight: InsightEnv;
   /** Product Planning Loop scheduled tick (#115). */
   planning: PlanningEnv;
+  /** Venture Memory & Planning scheduled weekly tick (#197). */
+  ventureMemory: VentureMemoryEnv;
   /** Self-Shipping Loop scheduled tick (#172). */
   buildLoop: BuildLoopEnv;
   /** Founder Briefings scheduled tick (#173). */
@@ -205,6 +207,11 @@ export interface PlanningEnv {
   intervalMs: number;
 }
 
+export interface VentureMemoryEnv {
+  /** Weekly-planning-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #197). */
+  intervalMs: number;
+}
+
 export interface BuildLoopEnv {
   /** Self-shipping-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #172). */
   intervalMs: number;
@@ -352,6 +359,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     planning: {
       // Default 0 (off): the planning loop is opt-in so tests/CI drive `tick()` deterministically.
       intervalMs: Number(source.PLANNING_INTERVAL_MS ?? 0) || 0,
+    },
+    ventureMemory: {
+      // Default 0 (off): the weekly planning loop is opt-in so tests/CI drive `tick()` deterministically.
+      intervalMs: Number(source.VENTURE_PLANNING_INTERVAL_MS ?? 0) || 0,
     },
     buildLoop: {
       // Default 0 (off): the self-shipping loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

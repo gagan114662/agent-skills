@@ -145,6 +145,9 @@ import type { PortfolioService } from "./portfolio/service.js";
 import { planningRoutes } from "./routes/planning.js";
 import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
+import { createDefaultVentureMemoryService } from "./venture-memory/default.js";
+import type { VentureMemoryService } from "./venture-memory/service.js";
+import { ventureMemoryRoutes } from "./routes/venture-memory.js";
 import { buildLoopRoutes } from "./routes/build-loop.js";
 import { createDefaultBuildLoopEngine } from "./build-loop/default.js";
 import type { BuildLoopEngine } from "./build-loop/engine.js";
@@ -196,6 +199,8 @@ declare module "fastify" {
     insightEngine: InsightEngine;
     /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
     planningEngine: PlanningService;
+    /** The #197 venture memory & planning loop; `index.ts` starts its weekly tick (VENTURE_PLANNING_INTERVAL_MS). */
+    ventureMemoryEngine: VentureMemoryService;
     /** The #172 self-shipping loop; `index.ts` starts its opt-in tick (BUILDLOOP_INTERVAL_MS). */
     buildLoopEngine: BuildLoopEngine;
     /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
@@ -309,6 +314,8 @@ export interface BuildAppOptions {
   portfolio?: PortfolioService;
   /** #115 product planning loop: tests inject a service over a fake launcher; default builds the real one. */
   planning?: PlanningService;
+  /** #197 venture memory & planning: tests inject a service over fakes; default builds the real repo-backed one. */
+  ventureMemory?: VentureMemoryService;
   /** #172 self-shipping loop: tests inject an engine over a fake repo host; default builds the real one. */
   buildLoop?: BuildLoopEngine;
   /** #147 automations: tests inject an engine over a fake launcher; default builds the real repo-backed one. */
@@ -610,6 +617,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     planningService.stop();
   });
   app.decorate("planningEngine", planningService);
+  // #197 venture memory & planning loop: per-venture durable memory (reusing the #15 graph) retrieved
+  // into every new session's brief, plus a weekly tick that drafts next week's backlog per venture from
+  // scorecard + memory + OKR drift, cites the #200 premortem in its go/no-go (verified metrics only,
+  // estimates UNVERIFIED), lands the plan as a #13 owner gate, and on approval flows items into the #115
+  // backlog (which auto-dispatches). Recording/reading is always available; the weekly tick is default-OFF.
+  const ventureMemoryService = opts.ventureMemory ?? createDefaultVentureMemoryService();
+  app.register(ventureMemoryRoutes, { service: ventureMemoryService });
+  app.addHook("onClose", async () => {
+    ventureMemoryService.stop();
+  });
+  app.decorate("ventureMemoryEngine", ventureMemoryService);
   // #172 self-shipping loop: agent-ok issues → cloud build sessions → auto-review against the house
   // rubric → auto-merge ONLY within guardrails (reviewer PASS, CI green, no protected-path touched,
   // diff under cap, agent-ok) → rebase-train → post-merge verify (proposing, never executing, a revert).
