@@ -103,6 +103,9 @@ import { createDefaultSelfQaEngine } from "./selfqa/default.js";
 import type { VerifierRunner } from "./verifiers/engine.js";
 import { createDefaultVerifierRunner } from "./verifiers/default.js";
 import { verifierRoutes } from "./routes/verifiers.js";
+import type { VerificationEngine } from "./verification/engine.js";
+import { createDefaultVerificationEngine } from "./verification/default.js";
+import { verificationRoutes } from "./routes/verification.js";
 import { insightRoutes } from "./routes/insights.js";
 import { createDefaultInsightMiner, createDefaultInsightEngine } from "./insight/default.js";
 import { InsightMiner } from "./insight/service.js";
@@ -181,6 +184,8 @@ declare module "fastify" {
     selfqaEngine: SelfQaEngine;
     /** The #106 outcome-verifier runner; `index.ts` starts its opt-in tick (VERIFIERS_INTERVAL_MS). */
     verifierRunner: VerifierRunner;
+    /** The #191 deliverable verification layer; invoked at deliverable chokepoints (default-OFF). */
+    verificationEngine: VerificationEngine;
     /** The #100 insight miner; `index.ts` starts its opt-in mining tick (INSIGHT_INTERVAL_MS). */
     insightEngine: InsightEngine;
     /** The #115 product planning loop; `index.ts` starts its opt-in tick (PLANNING_INTERVAL_MS). */
@@ -269,6 +274,8 @@ export interface BuildAppOptions {
   selfqa?: SelfQaEngine;
   /** #106 outcome verifiers: tests inject a runner and drive `verify`/`tickWorkspace()`; default builds the real one. */
   verifiers?: VerifierRunner;
+  /** #191 verification layer: tests inject an engine and drive `defineDone`/`verify`; default builds the real one. */
+  verification?: VerificationEngine;
   /** #100 insight miner: tests inject a miner over a deterministic stub; default builds the real one. */
   insight?: InsightMiner;
   /**
@@ -703,6 +710,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(reliabilityRoutes);
   // #106 outcome verifiers: read-only surface for a workspace's durable verification verdicts.
   app.register(verifierRoutes);
+  // #191 deliverable verification layer: read-only proof surface (verdicts + the definition of done).
+  app.register(verificationRoutes);
   // #119 evidence-priced autonomy: the pricer that turns the static human/AI split into a per-action
   // experiment. It reads the trailing window of #13 decision outcomes per action class (recorded into
   // gate_evidence on every approve/reject) and, with structural hysteresis, RELAXes a clean reversible
@@ -780,6 +789,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     verifierRunner.stop();
   });
   app.decorate("verifierRunner", verifierRunner);
+  // #191 deliverable verification layer: "nothing ships unverified". Before a deliverable (outbound
+  // content / support reply / campaign change / venture deploy) can request approval or auto-send, a
+  // SEPARATE verifier grades it against a definition-of-done derived BEFORE the work ran; the verdict +
+  // per-check proof attach to the #13 card, a failure returns to the worker (fail→fix) then escalates,
+  // and only a verified + reversible + opted-in deliverable may auto-proceed. Config default-OFF
+  // (`verification.enabled`), so decorating it changes nothing until a deployment opts in (owner first).
+  const verificationEngine = opts.verification ?? createDefaultVerificationEngine(app.log);
+  app.decorate("verificationEngine", verificationEngine);
   // #100 insight miner: the SOURCE-stage upgrade for the venture loop. It ranks evidence sources
   // ("the list is the strategy"), mines them into structured insights (the agent-session path,
   // kill-switch + #71-budget gated), captures owner secrets as first-class artifacts, dedupes killed
