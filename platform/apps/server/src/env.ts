@@ -60,6 +60,26 @@ export interface Env {
   dr: DrEnv;
   /** Stripe revenue rails (#98). */
   billing: BillingEnv;
+  /** Auto model-selection via convene-llm-gateway (Claude-orchestrated). */
+  autoModel: AutoModelEnv;
+}
+
+/**
+ * Auto model-selection deployment env (convene-llm-gateway). The **deployment master switch** + the
+ * gateway endpoint. Per-tenant on/off lives in the layered config (`autoModel.enabled`), so the owner
+ * workspace can be enabled first while everyone else stays on today's behavior.
+ *
+ * The gateway API KEY is intentionally NOT on this interface: it is read from `process.env.LLM_GATEWAY_KEY`
+ * at the HTTP call site and attached as a bearer header only — never persisted, returned, or logged
+ * (the same secrets-out-of-logs line the #52 selection + #98 billing rails hold).
+ */
+export interface AutoModelEnv {
+  /** Master switch (`RELOAD_AUTO_MODEL`). Default off ⇒ every launch keeps today's behavior exactly. */
+  enabled: boolean;
+  /** Gateway base URL (`LLM_GATEWAY_URL`). Absent ⇒ feature off regardless of `enabled` (no network). */
+  gatewayUrl?: string;
+  /** Request timeout (ms) for the routing call. A slow/unreachable gateway falls back, never blocks. */
+  timeoutMs: number;
 }
 
 export interface DrEnv {
@@ -391,6 +411,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       provider: source.BILLING_PROVIDER === "stripe" ? "stripe" : "none",
       // Stripe's recommended webhook replay window (seconds).
       webhookToleranceSeconds: num(source.BILLING_WEBHOOK_TOLERANCE_SECONDS, 300),
+    },
+    autoModel: {
+      // Default off (master switch). Even when on, an absent LLM_GATEWAY_URL keeps the feature off
+      // (no network) and per-tenant `autoModel.enabled` config gates which workspaces actually route.
+      enabled: source.RELOAD_AUTO_MODEL === "true" || source.RELOAD_AUTO_MODEL === "1",
+      gatewayUrl: source.LLM_GATEWAY_URL || undefined,
+      timeoutMs: num(source.LLM_GATEWAY_TIMEOUT_MS, 4_000),
     },
   };
 }

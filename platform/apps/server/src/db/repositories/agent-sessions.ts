@@ -3,9 +3,13 @@ import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
 import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
 import type { HarnessKind } from "../../runtime/harness.js";
+import type { AutoModelDecision } from "../../runtime/auto-model.js";
 
 export type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
 export type { HarnessKind } from "../../runtime/harness.js";
+
+/** The persisted auto model-selection "why?" record (convene-llm-gateway routing decision). */
+export type SessionSelectionMeta = AutoModelDecision;
 
 /** Lifecycle states of an agent session. Terminal states end with a set `endedAt`. */
 export type SessionStatus =
@@ -50,6 +54,11 @@ export interface AgentSession {
   model: string | null;
   effort: EffortLevel | null;
   mode: SessionMode | null;
+  /**
+   * Auto model-selection "why?" (convene-llm-gateway): the routing decision when the model was
+   * auto-chosen — which model, why, validation verdict, escalations, cost. Null when not auto-selected.
+   */
+  selectionMeta: SessionSelectionMeta | null;
   /** Multi-region placement (#71): the region the session ran in. Null = unplaced / local. */
   region: string | null;
   caps: ResourceCaps;
@@ -93,6 +102,7 @@ const COLUMNS = {
   model: agentSessions.model,
   effort: agentSessions.effort,
   mode: agentSessions.mode,
+  selectionMeta: agentSessions.selectionMeta,
   region: agentSessions.region,
   caps: agentSessions.caps,
   lastHeartbeatAt: agentSessions.lastHeartbeatAt,
@@ -116,6 +126,8 @@ export async function createAgentSession(input: {
   model?: string | null;
   effort?: EffortLevel | null;
   mode?: SessionMode | null;
+  /** Auto model-selection "why?" record (convene-llm-gateway); omitted when not auto-selected. */
+  selectionMeta?: SessionSelectionMeta | null;
   /** Multi-region placement (#71): the region the session was placed in. */
   region?: string | null;
 }): Promise<AgentSession> {
@@ -134,6 +146,7 @@ export async function createAgentSession(input: {
       model: input.model ?? null,
       effort: input.effort ?? null,
       mode: input.mode ?? null,
+      selectionMeta: input.selectionMeta ?? null,
       region: input.region ?? null,
       status: "provisioning",
     })

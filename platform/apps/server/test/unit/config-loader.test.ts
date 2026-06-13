@@ -130,6 +130,31 @@ describe("model policy layer (#52)", () => {
   });
 });
 
+describe("auto model-selection config (convene-llm-gateway)", () => {
+  it("defaults OFF — an unset autoModel block resolves to {} (today's behavior)", () => {
+    expect(loadConfig(undefined, sources({})).autoModel).toEqual({});
+  });
+
+  it("survives the layer merge — the block is NOT silently dropped (mergeSettings/mergeLayers gotcha)", () => {
+    const cfg = loadConfig(undefined, sources({ repo: `[autoModel]\nenabled = true\nmaxCallCostCents = 7` }));
+    expect(cfg.autoModel).toEqual({ enabled: true, maxCallCostCents: 7 });
+  });
+
+  it("can be enabled for the OWNER workspace only via a managed per-tenant override", () => {
+    // The rollout shape: master switch (RELOAD_AUTO_MODEL) + LLM_GATEWAY_URL in env, and the owner
+    // workspace flipped on in the managed layer; every other tenant stays off.
+    const managed = `[workspace.ws_owner.autoModel]\nenabled = true`;
+    expect(loadConfig("ws_owner", sources({ managed })).autoModel).toEqual({ enabled: true });
+    expect(loadConfig("ws_other", sources({ managed })).autoModel).toEqual({}); // off for everyone else
+  });
+
+  it("managed is the lock — a lower layer cannot turn auto on when managed pins it off", () => {
+    const managed = `[settings.autoModel]\nenabled = false`;
+    const repo = `[autoModel]\nenabled = true`;
+    expect(loadConfig(undefined, sources({ managed, repo })).autoModel).toEqual({ enabled: false });
+  });
+});
+
 describe("validation & resilience (#58)", () => {
   it("rejects a type-invalid value with a clear, content-free error", () => {
     expect(() => loadConfig(undefined, sources({ repo: `dataPrivacyMode = "yes"` }))).toThrowError(

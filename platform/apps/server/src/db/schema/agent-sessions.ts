@@ -64,6 +64,10 @@ export const agentSessions = pgTable(
     model: text("model"),
     effort: text("effort", { enum: ["off", "low", "medium", "high"] }),
     mode: text("mode", { enum: ["single", "auto"] }),
+    // Auto model-selection "why?" (convene-llm-gateway): when the model was auto-chosen, the routing
+    // decision — chosen model, stage, rationale, validation verdict, escalations, cost. The owner's
+    // line-of-control audit surface. Null when no auto selection ran. Secret-free + prompt-free.
+    selectionMeta: jsonb("selection_meta"),
     // Multi-region placement (#71): the region the session was placed in. Nullable — local/unplaced
     // sessions (#25 default) leave it unset.
     region: text("region"),

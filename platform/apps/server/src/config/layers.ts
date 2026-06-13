@@ -23,6 +23,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #52 model policy: a higher layer fully owns the block (replace, consistent with records above)
     // so a managed-layer tenant's allow-list cannot be widened by a lower layer.
     if (layer.models !== undefined) out.models = { ...layer.models };
+    // auto model-selection policy (convene-llm-gateway): a higher layer fully owns the block (replace)
+    // so a managed-layer tenant's auto on/off + cost ceiling cannot be flipped by a lower layer.
+    if (layer.autoModel !== undefined) out.autoModel = { ...layer.autoModel };
     // #71 scale policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // caps/budget cannot be loosened by a lower layer.
     if (layer.scale !== undefined) out.scale = { ...layer.scale };
@@ -127,6 +130,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     // #73: no default deploy settings — absent means deploy is not enabled (Deploy tab → 409).
     deploy: merged.deploy,
     models: merged.models ?? { ...CONFIG_DEFAULTS.models },
+    autoModel: merged.autoModel ?? { ...CONFIG_DEFAULTS.autoModel },
     scale: merged.scale ?? { ...CONFIG_DEFAULTS.scale },
     // #98: no default billing settings — absent means billing is not enabled (inbound routes → 409).
     billing: merged.billing,

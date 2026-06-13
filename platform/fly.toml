@@ -48,6 +48,16 @@ primary_region = "yyz"
   # selected by BILLING_PROVIDER (a fly secret) + the per-tenant STRIPE_* secrets on the #25 resolver;
   # this flag only flips the config opt-in. Durable replacement for the per-tenant /etc/reload/managed.toml.
   RELOAD_BILLING_ENABLED = "true"
+  # Auto model-selection via convene-llm-gateway (Claude-orchestrated). DEFAULT OFF: a session that
+  # pins no explicit model keeps using ANTHROPIC_MODEL above. To roll out to the OWNER workspace only:
+  #   1) point at the gateway:  fly secrets set -a reload-api \
+  #        LLM_GATEWAY_URL=https://<gateway-host> LLM_GATEWAY_KEY=<gateway shared-secret>
+  #   2) flip the master switch here:  RELOAD_AUTO_MODEL = "true"
+  #   3) enable JUST the owner in the managed layer:  [workspace.<owner-id>.autoModel] enabled = true
+  # The chosen model is still validated against the tenant's #52 models allow-list, and the per-tenant
+  # #71 budget cap is routed to the gateway as the per-call cost ceiling. A gateway outage degrades to
+  # ANTHROPIC_MODEL — a session is never blocked. The gateway KEY is a SECRET (never set in [env]).
+  # RELOAD_AUTO_MODEL = "true"
 
 # Post-deploy smoke (#166 follow-up): boot the NEW image on a one-off machine and run ONE real
 # demo-harness session end-to-end BEFORE traffic shifts. A non-zero exit aborts the rollout, so an

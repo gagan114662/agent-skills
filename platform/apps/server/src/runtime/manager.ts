@@ -23,6 +23,7 @@ import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
+import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
 import { renderSessionOutcome } from "./outcome.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
@@ -54,6 +55,8 @@ export interface SessionStore {
     model?: string | null;
     effort?: EffortLevel | null;
     mode?: SessionMode | null;
+    /** Auto model-selection "why?" record (convene-llm-gateway); omitted when not auto-selected. */
+    selectionMeta?: AutoModelDecision | null;
     /** Multi-region placement (#71): the region the session was placed in (null when unplaced). */
     region?: string | null;
   }): Promise<AgentSession>;
@@ -152,6 +155,15 @@ export interface SessionManagerDeps {
    * (and for the `demo` harness) → a verbatim pass-through, so default output is unchanged.
    */
   decodeOutput?: LineDecoder;
+  /**
+   * Auto model-selection (convene-llm-gateway). When wired AND enabled for the tenant, a launch that
+   * pins **no** explicit model asks the routing layer for the best model — Claude orchestrates +
+   * validates + escalates to the chosen tier; the decision lands on the session row as the owner's
+   * "why?" audit. Absent (the default) ⇒ no auto-selection: every launch keeps today's behavior. The
+   * resolver never throws — a gateway failure degrades to the deployment default, never blocks a launch.
+   * Wired centrally HERE (not at the REST route) so @mention/autonomy/marketing launches are covered too.
+   */
+  autoModel?: AutoModelResolver;
 }
 
 export interface LaunchInput {
@@ -257,6 +269,13 @@ export class SessionManager {
     // invalid kind is rejected without leaking a slot or leaving a half-started session behind.
     const harness = this.resolveHarness(input.harness);
 
+    // Auto model-selection (convene-llm-gateway): when no explicit model is pinned, ask the routing
+    // layer for the best model for this task. Done BEFORE admission so the (cheap, bounded, fail-open)
+    // routing call doesn't hold a concurrency slot; it never throws (a failure degrades to the default).
+    const auto = await this.maybeAutoSelectModel(input);
+    const selectionRow = auto?.selectionRow ?? input.selection;
+    const harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
+
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
     // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
     // no admission is wired this is a no-op and the session is unplaced (today's #25 behavior).
@@ -276,10 +295,12 @@ export class SessionManager {
         command: harness.spec.command,
         harness: harness.kind,
         caps: this.deps.caps,
-        provider: input.selection?.provider ?? null,
-        model: input.selection?.model ?? null,
-        effort: input.selection?.effort ?? null,
-        mode: input.selection?.mode ?? null,
+        provider: selectionRow?.provider ?? null,
+        model: selectionRow?.model ?? null,
+        effort: selectionRow?.effort ?? null,
+        mode: selectionRow?.mode ?? null,
+        // Auto-selection "why?" audit (convene-llm-gateway): the routing decision when auto-chosen.
+        selectionMeta: auto?.decision ?? null,
         region: ticket?.region ?? null,
       });
     } catch (err) {
@@ -292,7 +313,7 @@ export class SessionManager {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
       parentMessageId: input.parentMessageId,
-      harnessEnv: input.harnessEnv,
+      harnessEnv,
       spec: harness.spec,
       decode: harness.decode,
       ticket,
@@ -329,6 +350,47 @@ export class SessionManager {
       kind: override,
       spec: { command: resolved.command, args: resolved.args },
       decode: resolved.decode,
+    };
+  }
+
+  /**
+   * Auto model-selection (convene-llm-gateway): pick the best model for a launch that pins NO explicit
+   * model. Returns the selection-row fields, the merged harness env (chosen `ANTHROPIC_MODEL` + provider
+   * flags, with the caller's env winning on any other key), and the "why?" decision — or `undefined` to
+   * keep the deployment default. Precedence: an explicit per-session selection (#52) or a model already
+   * in `harnessEnv` ALWAYS wins, so auto only fills the gap. Never throws (the resolver is fail-open).
+   */
+  private async maybeAutoSelectModel(input: LaunchInput): Promise<
+    | {
+        selectionRow: { provider: ProviderKind; model: string; effort: EffortLevel; mode: SessionMode };
+        harnessEnv: Record<string, string>;
+        decision: AutoModelDecision;
+      }
+    | undefined
+  > {
+    if (!this.deps.autoModel) return undefined;
+    // Explicit per-session selection (#52) always wins over auto.
+    if (input.selection) return undefined;
+    // A model already pinned in the caller's env (e.g. a persona's ANTHROPIC_MODEL) also wins.
+    if (input.harnessEnv?.ANTHROPIC_MODEL) return undefined;
+
+    const auto = await this.deps.autoModel.resolve({
+      workspaceId: input.workspaceId,
+      task: input.task,
+    });
+    if (!auto) return undefined;
+
+    return {
+      selectionRow: {
+        provider: auto.selection.provider,
+        model: auto.selection.model,
+        effort: auto.selection.effort,
+        mode: auto.selection.mode,
+      },
+      // Auto env first (provides ANTHROPIC_MODEL + provider flags); caller env wins on any other key.
+      // ANTHROPIC_MODEL can't collide — we only reach here when the caller pinned none.
+      harnessEnv: { ...auto.selection.env, ...input.harnessEnv },
+      decision: auto.decision,
     };
   }
 
