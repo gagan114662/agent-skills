@@ -764,6 +764,23 @@ export const briefingsSchema = z.object({
   backlogLimit: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * External account onboarding policy (#192, ADR-0192). All **non-secret** knobs for the human-once setup
+ * flow (the per-service keys live in the #192 sealed vault, never in config). Every field is optional and
+ * defaults to **off** (`enabled: false`): a deployment that sets nothing keeps today's behavior — the
+ * `ExternalSecretsResolver` injects nothing and the connect / DNS-configure writes 409. `enabled` is the
+ * master switch (the owner workspace opts in first); `dnsProvider` selects the DNS backend (`dryrun`
+ * default — no network); `defaultRotationDays` is the rotation reminder applied when a connect omits one.
+ */
+export const onboardingSchema = z.object({
+  /** Master flag for credential injection + the connect/DNS writes — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Default rotation-reminder age (days) when a connect doesn't specify one. 0 = no reminder. */
+  defaultRotationDays: z.number().int().nonnegative().optional(),
+  /** DNS provider kind (`dryrun` default — no network). */
+  dnsProvider: z.string().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -847,6 +864,8 @@ export const settingsSchema = z.object({
   briefings: briefingsSchema.optional(),
   /** Agent browser runtime policy (#174): Playwright sessions + per-session caps + domain lists (default OFF). */
   browser: browserSchema.optional(),
+  /** External account onboarding policy (#192): human-once setup + agent credential injection (default OFF). */
+  onboarding: onboardingSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -893,6 +912,7 @@ export type BuildLoopConfig = z.infer<typeof buildLoopSchema>;
 export type SlackConfig = z.infer<typeof slackSchema>;
 export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 export type BrowserConfig = z.infer<typeof browserSchema>;
+export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -984,6 +1004,8 @@ export interface ResolvedConfig {
   briefings: BriefingsConfig;
   /** Agent browser runtime policy (#174). A partial whose hard defaults `resolveBrowserCaps` fills. */
   browser: BrowserConfig;
+  /** External account onboarding policy (#192). A partial whose hard defaults `resolveOnboardingCaps` fills. */
+  onboarding: OnboardingConfig;
 }
 
 /**
@@ -1031,4 +1053,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   slack: {},
   briefings: {},
   browser: {},
+  onboarding: {},
 };

@@ -127,6 +127,9 @@ import {
 } from "./founder-briefings/default.js";
 import type { FounderBriefingsService } from "./founder-briefings/service.js";
 import type { FounderBriefingsEngine } from "./founder-briefings/engine.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
+import { createDefaultOnboardingService } from "./onboarding/default.js";
+import type { OnboardingService } from "./onboarding/service.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -295,6 +298,8 @@ export interface BuildAppOptions {
   founderBriefings?: FounderBriefingsService;
   /** #173 founder briefings engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   founderBriefingsEngine?: FounderBriefingsEngine;
+  /** #192 external account onboarding: tests inject a service over fakes (incl. a fake DNS provider); default wires the real repos. */
+  onboarding?: OnboardingService;
   /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -585,6 +590,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     founderBriefingsEngine.stop();
   });
   app.decorate("founderBriefingsEngine", founderBriefingsEngine);
+  // #192 external account onboarding: the human-once setup handoff. The fleet files a SETUP request when a
+  // venture needs an external service (ESP/ad/analytics/registrar/hosting) — it parks as a #13 approval in
+  // the decision queue. The owner pastes keys ONCE (sealed write-only into the #192 vault); agents then use
+  // them via the resolver (never read back). Domains: owner buys, agent configures + verifies DNS with
+  // receipts. Read routes always render the checklist; the risky writes 409 unless `onboarding.enabled`.
+  const onboarding = opts.onboarding ?? createDefaultOnboardingService(app.log);
+  app.register(onboardingRoutes, { service: onboarding });
   app.register(growthRoutes, { service: growthService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });

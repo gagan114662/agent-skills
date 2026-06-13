@@ -15,11 +15,14 @@ import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
 import {
   EnvSecretsResolver,
+  ExternalSecretsResolver,
   ScopedSecretsResolver,
   SubscriptionSecretsResolver,
 } from "./secrets-resolver.js";
 import { resolveCredentialMatrix } from "./credential-scope.js";
 import { getPersonaByAgentMember } from "../db/repositories/personas.js";
+import { resolveOnboardingCaps } from "../onboarding/caps.js";
+import { resolveAllServiceSecrets } from "../db/repositories/external-credentials.js";
 import { createAgentAuthResolver } from "./auth-default.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
 import { AutoModelResolver } from "./auto-model.js";
@@ -169,8 +172,20 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // OFF (the default) it passes the resolved secrets through byte-for-byte; when enabled it filters a
     // launching agent's secrets to its allowlisted purposes (scout↛Stripe). The matrix loads per-tenant
     // from the #58 config; the agentId→persona-name lookup is the personas repo.
+    // #192: the external-account vault resolver wraps the inner env resolver and (only when a workspace
+    // has opted into onboarding) merges in every connected external service's secrets — so the fleet
+    // operates ESP/ad/analytics accounts without ever reading the key back (it flows only as injected,
+    // redacted env). Default-OFF ⇒ byte-for-byte the prior chain. It sits INSIDE the #68 subscription
+    // resolver so the model-auth keys stay authoritative, and INSIDE the #151 scoping decorator so a
+    // scoped agent's external keys are still filtered to its allowlisted purposes.
     secrets: new ScopedSecretsResolver(
-      new SubscriptionSecretsResolver(createAgentAuthResolver(), new EnvSecretsResolver()),
+      new SubscriptionSecretsResolver(
+        createAgentAuthResolver(),
+        new ExternalSecretsResolver(new EnvSecretsResolver(), {
+          isEnabled: (workspaceId) => resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled,
+          loadServiceSecrets: (workspaceId) => resolveAllServiceSecrets(workspaceId),
+        }),
+      ),
       {
         loadMatrix: (workspaceId) => resolveCredentialMatrix(loadConfig(workspaceId).credentialScopes),
         lookupAgentName: async (workspaceId, agentMemberId) =>

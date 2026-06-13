@@ -31,6 +31,9 @@ import { listBacklogItems } from "../db/repositories/planning.js";
 import { resolvePlanningCaps } from "../planning/caps.js";
 import { rankBacklog } from "../planning/rice.js";
 import { listOpenViolations } from "../db/repositories/constitution.js";
+import { listSetupRequests } from "../db/repositories/setup-requests.js";
+import { listServiceStatuses } from "../db/repositories/external-credentials.js";
+import { decideRotationReminders } from "../onboarding/decide.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -324,6 +327,37 @@ export function createDefaultFounderConsoleService(deps: {
           enabled: (workspaceId) => resolvePortfolioCaps(loadConfig(workspaceId).portfolio).enabled,
         }
       : undefined,
+    // #192 external account onboarding: how many services still need the owner + the credential-hygiene
+    // pulse (connected count, rotations due). Read-only over the onboarding repos; blocked setup also
+    // shows in the pending-approval queue (it parks a #13 approval). offlineCapabilities stays 0 until a
+    // capability registry is persisted (capability state is derived per-request by the pure core).
+    setup: {
+      snapshot: async (workspaceId) => {
+        const [requests, creds] = await Promise.all([
+          listSetupRequests(workspaceId),
+          listServiceStatuses(workspaceId),
+        ]);
+        const connectedSet = new Set(creds.filter((c) => c.connected).map((c) => c.serviceKey));
+        const rotationDue = decideRotationReminders(
+          creds
+            .filter((c) => c.connected)
+            .map((c) => ({
+              serviceKey: c.serviceKey,
+              connectedAtMs: c.connectedAtMs,
+              rotationReminderDays: c.rotationReminderDays,
+            })),
+          (deps.now ?? (() => new Date()))().getTime(),
+        ).length;
+        return {
+          pendingSetup: requests.filter(
+            (r) => !connectedSet.has(r.serviceKey) && r.status !== "dismissed",
+          ).length,
+          connected: connectedSet.size,
+          rotationDue,
+          offlineCapabilities: 0,
+        };
+      },
+    },
     now: deps.now,
   });
 }

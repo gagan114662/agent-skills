@@ -54,6 +54,41 @@ export function buildApprovalBlocks(input: ApprovalMessageInput): SlackBlock[] {
   ];
 }
 
+/** One service awaiting the owner, for the #192 setup checklist DM. */
+export interface SetupChecklistItem {
+  displayName: string;
+  /** A one-line "what + why + cost" summary (from the pure `buildSetupSummary`). */
+  summary: string;
+  /** `reversible` | `cheap` | `irreversible` — irreversible (domain/payment) is flagged for the owner. */
+  reversibility: string;
+}
+
+/**
+ * The Block Kit message DMed to the owner listing the external accounts the fleet needs them to set up
+ * (#192, acceptance 2). Each item is "create account → paste keys → done"; an irreversible (money) item
+ * is flagged so the owner knows it's a real spend. Pure — no IO, unit-tested offline. A connect link is
+ * not a button (pasting keys happens in the console/Settings, never in Slack) — this is a nudge + list.
+ */
+export function buildSetupChecklistBlocks(input: {
+  items: SetupChecklistItem[];
+}): SlackBlock[] {
+  const header = `*Setup needed* — ${input.items.length} external ${
+    input.items.length === 1 ? "account" : "accounts"
+  } need you. Create the account and paste the keys in Settings → Connections; the fleet takes it from there.`;
+  const blocks: SlackBlock[] = [
+    { type: "section", text: { type: "mrkdwn", text: header } },
+    { type: "divider" },
+  ];
+  for (const item of input.items) {
+    const flag = item.reversibility === "irreversible" ? " :warning: *money*" : "";
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `• *${item.displayName}*${flag}\n  ${item.summary}` },
+    });
+  }
+  return blocks;
+}
+
 /** Parse a button's `value` payload back into the (rid, wid) the interactivity route acts on. */
 export function parseApprovalActionValue(
   value: unknown,

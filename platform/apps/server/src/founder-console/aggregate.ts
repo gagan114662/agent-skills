@@ -340,6 +340,20 @@ export interface FounderConsoleInput {
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
   portfolioEnabled?: boolean;
+  /** External account onboarding roll-up (#192). Optional ⇒ zeroed pane (onboarding off / unwired). */
+  setup?: SetupSnapshot;
+}
+
+/** External account onboarding roll-up (#192) — the setup checklist + credential-hygiene pulse. */
+export interface SetupSnapshot {
+  /** Services still awaiting the owner (filed but not connected, not dismissed). */
+  pendingSetup: number;
+  /** Connected (operational) services. */
+  connected: number;
+  /** Connected credentials currently past their rotation age. */
+  rotationDue: number;
+  /** Dependent capabilities currently offline because a required credential is missing/revoked. */
+  offlineCapabilities: number;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -564,6 +578,14 @@ export interface PortfolioView {
   ventures: PortfolioVentureView[];
 }
 
+/** The external account onboarding roll-up (#192): the setup checklist + credential-hygiene pulse. */
+export interface SetupView {
+  pendingSetup: number;
+  connected: number;
+  rotationDue: number;
+  offlineCapabilities: number;
+}
+
 export interface AttentionView {
   /** True when the platform needs a human right now. */
   required: boolean;
@@ -607,6 +629,8 @@ export interface FounderConsole {
   supportSla: SupportSlaView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
   portfolio: PortfolioView;
+  /** The external account onboarding roll-up (#192). Zero-valued when onboarding is off / unwired. */
+  setup: SetupView;
   attention: AttentionView;
 }
 
@@ -843,6 +867,17 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     })),
   };
 
+  // #192 external account onboarding: surface how many services still need the owner + the hygiene pulse
+  // (rotation due, capabilities offline). Zeroed when onboarding is off/unwired so the console renders
+  // before the feature is configured. Blocked setup also shows in `pendingApprovals` (it parks a #13
+  // approval) — this pane is the at-a-glance count + the credential-hygiene signal.
+  const setup: SetupView = {
+    pendingSetup: input.setup?.pendingSetup ?? 0,
+    connected: input.setup?.connected ?? 0,
+    rotationDue: input.setup?.rotationDue ?? 0,
+    offlineCapabilities: input.setup?.offlineCapabilities ?? 0,
+  };
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -876,6 +911,15 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   if (portfolio.enabled && portfolio.sunsetsRecommended > 0) {
     reasons.push(`${pluralize(portfolio.sunsetsRecommended, "venture")} recommended for sunset`);
   }
+  if (setup.pendingSetup > 0) {
+    reasons.push(`${pluralize(setup.pendingSetup, "external account")} need setup`);
+  }
+  if (setup.rotationDue > 0) {
+    reasons.push(`${pluralize(setup.rotationDue, "credential")} due for rotation`);
+  }
+  if (setup.offlineCapabilities > 0) {
+    reasons.push(`${pluralize(setup.offlineCapabilities, "capability")} offline (credential revoked)`);
+  }
 
   return {
     workspaceId: input.workspaceId,
@@ -903,6 +947,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     voice,
     supportSla,
     portfolio,
+    setup,
     attention: { required: reasons.length > 0, reasons },
   };
 }
