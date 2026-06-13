@@ -17,6 +17,7 @@ import {
   type ConstitutionSnapshot,
   type VoiceSnapshot,
   type SupportSlaSnapshot,
+  type SetupSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -142,6 +143,11 @@ export interface PortfolioReader {
   enabled(workspaceId: string): boolean;
 }
 
+/** The external account onboarding roll-up (#192). Optional — absent ⇒ a zeroed setup pane. */
+export interface SetupReader {
+  snapshot(workspaceId: string): Promise<SetupSnapshot>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -174,6 +180,8 @@ export interface FounderConsoleDeps {
   supportSla?: SupportSlaReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
   portfolio?: PortfolioReader;
+  /** External account onboarding roll-up (#192) — optional, read-only. */
+  setup?: SetupReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -212,6 +220,7 @@ export class FounderConsoleService {
       voice,
       supportSla,
       portfolioReviews,
+      setup,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -234,6 +243,7 @@ export class FounderConsoleService {
         this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.supportSla?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
+        this.deps.setup?.snapshot(workspaceId) ?? Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -274,6 +284,7 @@ export class FounderConsoleService {
       supportSla,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
+      setup,
     });
   }
 }

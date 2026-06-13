@@ -121,6 +121,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // browser flag / caps / domain lists cannot be loosened (e.g. the browser turned on, or the
     // denylist dropped) by a lower layer.
     if (layer.browser !== undefined) out.browser = { ...layer.browser };
+    // #192 onboarding policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // onboarding flag / DNS provider cannot be flipped (e.g. credential injection turned on) by a lower layer.
+    if (layer.onboarding !== undefined) out.onboarding = { ...layer.onboarding };
   }
   return out;
 }
@@ -173,5 +176,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     slack: merged.slack ?? { ...CONFIG_DEFAULTS.slack },
     briefings: merged.briefings ?? { ...CONFIG_DEFAULTS.briefings },
     browser: merged.browser ?? { ...CONFIG_DEFAULTS.browser },
+    onboarding: merged.onboarding ?? { ...CONFIG_DEFAULTS.onboarding },
   };
 }

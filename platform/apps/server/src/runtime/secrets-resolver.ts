@@ -129,6 +129,36 @@ export class SubscriptionSecretsResolver implements SecretsResolver {
 }
 
 /**
+ * External-account secrets decorator (#192, ADR-0192). Wraps any inner resolver and, **iff** the
+ * workspace has opted into onboarding (`onboarding.enabled`), merges in every connected external
+ * service's secrets (ESP/ad/analytics/etc. keys the owner pasted once into the #192 write-only vault) so
+ * the fleet operates the service without ever reading the key back — the values flow only as injected,
+ * redacted env. Connected-service values win for their own keys (the owner connected them deliberately);
+ * everything else passes through from the inner resolver unchanged.
+ *
+ * **Default-OFF by contract:** when `isEnabled(workspaceId)` is false (the default) the inner result is
+ * returned byte-for-byte — no DB read, no behavior change. The enabled check + the per-workspace secret
+ * load are injected seams so the decorator stays unit-testable; production wires them to `loadConfig` +
+ * the `external_credentials` repo.
+ */
+export class ExternalSecretsResolver implements SecretsResolver {
+  constructor(
+    private readonly inner: SecretsResolver,
+    private readonly deps: {
+      isEnabled: (workspaceId: string) => boolean;
+      loadServiceSecrets: (workspaceId: string) => Promise<Record<string, string>>;
+    },
+  ) {}
+
+  async resolve(workspaceId: string, scope?: CredentialScope): Promise<Record<string, string>> {
+    const base = await this.inner.resolve(workspaceId, scope);
+    if (!this.deps.isEnabled(workspaceId)) return base;
+    const external = await this.deps.loadServiceSecrets(workspaceId);
+    return { ...base, ...external };
+  }
+}
+
+/**
  * Per-agent scoping decorator (#151, ADR-0151). Wraps any inner resolver and, **iff** the workspace's
  * credential matrix is enabled and the launching agent resolves to a persona name, filters the resolved
  * secrets down to that agent's allowlisted keys (scout↛Stripe, postmark→email-only). The #68 model-auth

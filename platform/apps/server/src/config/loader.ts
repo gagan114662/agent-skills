@@ -193,6 +193,14 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (briefingsEnabled !== undefined) {
     raw.briefings = { enabled: briefingsEnabled === "true" || briefingsEnabled === "1" };
   }
+  // #192 external account onboarding: let the deployment env opt a workspace in without a managed.toml —
+  // the owner workspace flips this first. Hard default stays OFF (var unset → no block ⇒ no credential
+  // injection + the connect/DNS writes 409). A managed layer still wins as the lock. Per-service keys are
+  // NEVER env/config — they live in the #192 sealed vault.
+  const onboardingEnabled = env.RELOAD_ONBOARDING_ENABLED;
+  if (onboardingEnabled !== undefined) {
+    raw.onboarding = { enabled: onboardingEnabled === "true" || onboardingEnabled === "1" };
+  }
   // #98 billing opt-in: present the `[billing]` config section (the per-tenant checkout gate) from the
   // deployment env — mirroring marketing/rbac/catalog — so live billing can be switched on without
   // baking a managed.toml. The provider VALUE mirrors the env-level `BILLING_PROVIDER` (the actual

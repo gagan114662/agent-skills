@@ -41,6 +41,16 @@ export const DR_RESTORE_ACTION = "dr.restore" as const;
 export const PORTFOLIO_SUNSET_ACTION = "portfolio.sunset" as const;
 
 /**
+ * The action kind a blocked-on-setup external account is gated under (#192, ADR-0192). Like
+ * `autonomy.complete` it is never submitted through the #13 action route; the onboarding service evaluates
+ * it against the same workspace `approval_policies` and creates a PENDING request so the work parks
+ * visibly in the decision queue (and ages there) instead of failing silently — and because creating an
+ * external account / pasting keys is ALWAYS a human action (the #192 directive), it ships sensitive by
+ * default. A workspace can still tune the policy, but the human step is intrinsic to the action.
+ */
+export const SETUP_EXTERNAL_ACCOUNT_ACTION = "setup.external_account" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
@@ -54,6 +64,8 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   DR_RESTORE_ACTION,
   // #107 a portfolio SUNSET (kill of a launched venture) is irreversible — always a human gate. ADR-0107.
   PORTFOLIO_SUNSET_ACTION,
+  // #192 external account setup ALWAYS needs the owner (create account, accept ToS, paste keys). ADR-0192.
+  SETUP_EXTERNAL_ACCOUNT_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",
