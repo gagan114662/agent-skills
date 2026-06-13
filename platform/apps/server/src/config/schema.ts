@@ -337,6 +337,28 @@ export const verifiersSchema = z.object({
 });
 
 /**
+ * Deliverable Verification Layer policy (#191, ADR-0191). All **non-secret** knobs for the layer that
+ * gates a deliverable (outbound content, support reply, campaign change, venture deploy) on an INDEPENDENT
+ * verifier pass against a definition of done. Every field is optional and defaults to **off**
+ * (`enabled: false`) so a deployment that sets nothing gates nothing and behaves exactly as today. The
+ * rails are conservative by design (premortem #200): `autoSendReversible` defaults **false** (a verified
+ * deliverable still waits for a human) and `requireProductionGrounding` defaults **true** (the final
+ * real-world tier is required for venture deploys / irreversible deliverables / production criteria).
+ */
+export const verificationSchema = z.object({
+  /** The verification layer flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Confidence a passing verdict needs to clear without a human second look (0..1; default 0.8). */
+  minConfidence: z.number().min(0).max(1).optional(),
+  /** Bounded fail→fix retries before a repeated failure escalates to the decision queue (default 2). */
+  maxRetries: z.number().int().nonnegative().optional(),
+  /** Whether a verified REVERSIBLE deliverable may auto-proceed without a human (default false). */
+  autoSendReversible: z.boolean().optional(),
+  /** Whether the production-grounded final tier is required where it applies (default true). */
+  requireProductionGrounding: z.boolean().optional(),
+});
+
+/**
  * Marketing department fleet policy (#123, ADR-0123). All **non-secret**. Every field is optional and
  * defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps today's signup
  * behavior (no auto-seed). ipop.ai opts in via the managed layer; `enabled` gates only seed-on-signup
@@ -711,6 +733,8 @@ export const settingsSchema = z.object({
   marketing: marketingSchema.optional(),
   /** Outcome Verifiers policy (#106): the measured-gate runner + escalation (default OFF). */
   verifiers: verifiersSchema.optional(),
+  /** Deliverable Verification Layer policy (#191): independent verifier gate on deliverables (default OFF). */
+  verification: verificationSchema.optional(),
   /** Growth-loop policy (#102): distribution instrumentation + funnel scoring (default OFF). */
   growth: growthSchema.optional(),
   /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
@@ -770,6 +794,7 @@ export type FlywheelConfig = z.infer<typeof flywheelSchema>;
 export type SelfqaConfig = z.infer<typeof selfqaSchema>;
 export type MarketingConfig = z.infer<typeof marketingSchema>;
 export type VerifierConfig = z.infer<typeof verifiersSchema>;
+export type VerificationConfig = z.infer<typeof verificationSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
@@ -836,6 +861,8 @@ export interface ResolvedConfig {
   marketing: MarketingConfig;
   /** Outcome Verifiers policy (#106). A partial whose hard defaults `resolveVerifierCaps` fills. */
   verifiers: VerifierConfig;
+  /** Deliverable Verification Layer policy (#191). A partial whose hard defaults `resolveVerificationCaps` fills. */
+  verification: VerificationConfig;
   /** Growth-loop policy (#102). A partial whose hard defaults `resolveGrowthCaps` fills. */
   growth: GrowthConfig;
   /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
@@ -896,6 +923,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   selfqa: {},
   marketing: {},
   verifiers: {},
+  verification: {},
   growth: {},
   insight: {},
   moat: {},

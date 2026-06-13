@@ -55,6 +55,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #106 verifiers policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // verifier flag / "no silent pass" escalation rail cannot be loosened by a lower layer.
     if (layer.verifiers !== undefined) out.verifiers = { ...layer.verifiers };
+    // #191 verification policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // verification flag / auto-send + production-grounding rails cannot be loosened by a lower layer.
+    if (layer.verification !== undefined) out.verification = { ...layer.verification };
     // #102 growth policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // growth flag / traffic floor cannot be loosened by a lower layer.
     if (layer.growth !== undefined) out.growth = { ...layer.growth };
@@ -139,6 +142,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     selfqa: merged.selfqa ?? { ...CONFIG_DEFAULTS.selfqa },
     marketing: merged.marketing ?? { ...CONFIG_DEFAULTS.marketing },
     verifiers: merged.verifiers ?? { ...CONFIG_DEFAULTS.verifiers },
+    verification: merged.verification ?? { ...CONFIG_DEFAULTS.verification },
     growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
