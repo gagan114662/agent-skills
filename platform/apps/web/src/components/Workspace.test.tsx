@@ -5,12 +5,18 @@ import { Workspace } from "./Workspace.js";
 import { renderWithStore } from "../test/utils.js";
 
 describe("Workspace shell", () => {
-  it("composes the sidebar, message pane, and members rail", async () => {
+  it("opens on the console board by default, with chat one click away", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
 
+    // The redesigned console (board + standup) is the primary surface.
+    expect(await screen.findByLabelText("Standup")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: new RegExp("^Board") }).length).toBeGreaterThan(0);
+
+    // Chat stays reachable from the top nav and still composes the sidebar, pane, and members rail.
+    await userEvent.click(screen.getByRole("button", { name: new RegExp("^Chat") }));
     expect(await screen.findByText("first post")).toBeInTheDocument(); // message pane
-    expect(screen.getByText("general")).toBeInTheDocument(); // sidebar
+    expect(screen.getByText("random")).toBeInTheDocument(); // sidebar
     expect(await screen.findByText("Atlas")).toBeInTheDocument(); // members rail
   });
 
@@ -63,13 +69,13 @@ describe("Workspace shell", () => {
   it("dismisses the mentions inbox on an outside click", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
-    await screen.findByText("first post");
+    await screen.findByLabelText("Standup");
 
     await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
     expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
 
-    // Clicking anywhere outside the popover (here, a message in the pane) closes it.
-    await userEvent.click(screen.getByText("first post"));
+    // Clicking anywhere outside the popover (here, the standup panel) closes it.
+    await userEvent.click(screen.getByLabelText("Standup"));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
     );
@@ -78,7 +84,7 @@ describe("Workspace shell", () => {
   it("dismisses the mentions inbox when Escape is pressed", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
-    await screen.findByText("first post");
+    await screen.findByLabelText("Standup");
 
     await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
     expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
@@ -92,7 +98,7 @@ describe("Workspace shell", () => {
   it("dismisses the mentions inbox when the view changes", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
-    await screen.findByText("first post");
+    await screen.findByLabelText("Standup");
 
     await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
     expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
