@@ -16,6 +16,7 @@ import {
   type VentureEvalSnapshot,
   type ConstitutionSnapshot,
   type VoiceSnapshot,
+  type SupportSlaSnapshot,
 } from "./aggregate.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
@@ -129,6 +130,11 @@ export interface VoiceReader {
   snapshot(workspaceId: string): Promise<VoiceSnapshot>;
 }
 
+/** The Support Desk SLA pane (#190). Optional — absent ⇒ the console renders a zeroed SLA view. */
+export interface SupportSlaReader {
+  snapshot(workspaceId: string): Promise<SupportSlaSnapshot>;
+}
+
 /** Portfolio reviews (#107) + whether the loop is enabled. Optional — absent ⇒ a zeroed portfolio view
  * (works before the subsystem is wired, like the moat reader). */
 export interface PortfolioReader {
@@ -164,6 +170,8 @@ export interface FounderConsoleDeps {
   constitution?: ConstitutionReader;
   /** Customer Voice roll-up (#114) — optional, read-only. */
   voice?: VoiceReader;
+  /** Support Desk SLA roll-up (#190) — optional, read-only. */
+  supportSla?: SupportSlaReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
   portfolio?: PortfolioReader;
   /** Injectable clock (tests pin it). */
@@ -202,6 +210,7 @@ export class FounderConsoleService {
       moat,
       constitution,
       voice,
+      supportSla,
       portfolioReviews,
     ] =
       await Promise.all([
@@ -223,6 +232,7 @@ export class FounderConsoleService {
         this.deps.constitution?.openViolations(workspaceId) ??
           Promise.resolve(undefined),
         this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.supportSla?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
       ]);
 
@@ -261,6 +271,7 @@ export class FounderConsoleService {
       moatWindowDays: this.deps.moat?.windowDays(workspaceId) ?? 30,
       constitution,
       voice,
+      supportSla,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
     });

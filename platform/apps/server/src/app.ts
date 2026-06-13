@@ -84,6 +84,9 @@ import { createDefaultDemandService } from "./demand/default.js";
 import { DemandValidationService } from "./demand/service.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { createDefaultCustomerVoiceService } from "./voice/default.js";
+import { supportRoutes } from "./routes/support.js";
+import { SupportDeskService } from "./support/service.js";
+import { createDefaultSupportDeskService } from "./support/default.js";
 import { CustomerVoiceService } from "./voice/service.js";
 import { moatRoutes } from "./routes/moat.js";
 import { MoatService } from "./moat/service.js";
@@ -262,6 +265,8 @@ export interface BuildAppOptions {
   demand?: DemandValidationService;
   /** #114 customer voice loop: tests inject one service (shared by routes + #104 console + venture overlay). */
   voice?: CustomerVoiceService;
+  /** #190 support desk: tests inject one service (shared by routes + #104 SLA pane). Default-OFF autonomy. */
+  supportDesk?: SupportDeskService;
   /** #103 moat accrual: tests inject a service over a fake ledger; default builds the real one. */
   moat?: MoatService;
   /** #105 fleet watchdog: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
@@ -517,6 +522,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Built before the console so it can surface the voice pane.
   const voiceService = opts.voice ?? createDefaultCustomerVoiceService();
   app.register(voiceRoutes, { service: voiceService });
+  // #190 support desk: bounded-autonomy answering layered on the #114 voice inbox — a venture KB (the
+  // source of every answer's receipts), the routing gate (auto_send only when every fence passes AND an
+  // AutoApprover is wired — the default has none, so every reply is still a #13 human gate), escalation
+  // (anger/legal/refund→MONEY queue/unknown), SLA timers, and reality-grounded resolution metrics. Shares
+  // the voice service so intake reuses #114 classification. Built before the console so it surfaces the SLA pane.
+  const supportDeskService = opts.supportDesk ?? createDefaultSupportDeskService(undefined, voiceService);
+  app.register(supportRoutes, { service: supportDeskService });
   // #102 growth loop: distribution instrumentation. Record per-venture growth events (acquisition/
   // activation/conversion/retention), score the funnel, surface the score to the #96 scorecard + #107
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
@@ -547,6 +559,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       moat: moatService,
       portfolio: portfolioService,
       voice: voiceService,
+      supportDesk: supportDeskService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   // #173 founder briefings: the company reports UP — a daily brief + weekly P&L report pushed to the

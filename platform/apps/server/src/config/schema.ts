@@ -469,6 +469,32 @@ export const voiceSchema = z.object({
 });
 
 /**
+ * Support Desk policy (#190, ADR-0190). The **bounded-autonomy** knobs layered on the #114 voice loop.
+ * Every field defaults OFF / conservative (see `resolveSupportDeskCaps`). `autoSend` is the master switch
+ * for autonomous replies — and even when ON, an autonomous send only happens for a category in
+ * `autoSendCategories`, under `autoSendMaxPerDay`, in the owner workspace when `ownerWorkspaceOnly`, and
+ * only if an `AutoApprover` is wired (the default wiring leaves it unset). A poisoned inbound message can
+ * never flip these — the routing decision reads the classification, never instructions in the body
+ * (premortem #200 §4/§6). Refunds are NEVER autonomous regardless of this block.
+ */
+export const supportDeskSchema = z.object({
+  /** The support-desk feature flag (KB reads, SLA, receipts, recurring-issue filing) — default OFF. */
+  enabled: z.boolean().optional(),
+  /** The autonomous-reply master switch — default OFF. OFF ⇒ every reply is a #13 human gate. */
+  autoSend: z.boolean().optional(),
+  /** The narrow allowlist of categories an autonomous reply may answer (e.g. `support`). */
+  autoSendCategories: z.array(z.string()).optional(),
+  /** Restrict autonomous sends to the owner workspace first — default ON (owner workspace first). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** Bounded blast radius: the max autonomous sends per workspace per rolling day. */
+  autoSendMaxPerDay: z.number().int().positive().optional(),
+  /** The first-response SLA window (minutes); breaches surface read-only in the founder brief. */
+  firstResponseSlaMinutes: z.number().int().positive().optional(),
+  /** How many same-fingerprint complaints before one deduped backlog issue is filed (the #117 way). */
+  recurringComplaintThreshold: z.number().int().positive().optional(),
+});
+
+/**
  * Portfolio Lifecycle Loop policy (#107, ADR-0107). All **non-secret** knobs for the launched-venture
  * review loop. Every field is optional and defaults to **off** (`enabled: false`) so a deployment that
  * sets nothing keeps today's behavior — reviews still compute/persist on demand (harmless, tenant-scoped)
@@ -791,6 +817,8 @@ export const settingsSchema = z.object({
   moat: moatSchema.optional(),
   /** Customer Voice Loop policy (#114): post-launch support/feedback/churn loop (default OFF). */
   voice: voiceSchema.optional(),
+  /** Support Desk policy (#190): bounded autonomous answering + KB + SLA + escalation (default OFF). */
+  supportDesk: supportDeskSchema.optional(),
   /** Portfolio Lifecycle Loop policy (#107): launched-venture review thresholds + weights (default OFF). */
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
@@ -850,6 +878,7 @@ export type GrowthConfig = z.infer<typeof growthSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 export type VoiceConfig = z.infer<typeof voiceSchema>;
+export type SupportDeskConfig = z.infer<typeof supportDeskSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
@@ -925,6 +954,8 @@ export interface ResolvedConfig {
   moat: MoatConfig;
   /** Customer Voice Loop policy (#114). A partial whose hard defaults `resolveVoiceCaps` fills. */
   voice: VoiceConfig;
+  /** Support Desk policy (#190). A partial whose hard defaults `resolveSupportDeskCaps` fills. */
+  supportDesk: SupportDeskConfig;
   /** Portfolio Lifecycle Loop policy (#107). A partial whose hard defaults `resolvePortfolioCaps` fills. */
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
@@ -985,6 +1016,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   insight: {},
   moat: {},
   voice: {},
+  supportDesk: {},
   portfolio: {},
   planning: {},
   credentialScopes: {},
