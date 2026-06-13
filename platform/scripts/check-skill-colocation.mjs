@@ -33,8 +33,20 @@ const METRIC_SOURCE_FILES = [
   'apps/server/src/semantic/catalog.ts',
 ];
 
-/** A migration touches a metric surface when it creates/alters a governed table. */
+/** The governed metric-surface table prefixes/names. */
 const GOVERNED_TABLE_RE = /\b(growth_|demand_|venture_|moat_|eval_runs|tenant_usage)\w*/i;
+
+/**
+ * A migration touches a metric surface only when it **creates or alters** a governed table — the rule's
+ * documented intent (line 8): "if you move what a number means, you move the skills." A migration that
+ * merely **references** a governed table by foreign key (e.g. `... REFERENCES venture_ideas(id)` while
+ * creating its own unrelated table) does NOT change that number's meaning and must not trip the gate —
+ * that earlier substring match was a false positive (it fired on every PR with a `venture_ideas` FK,
+ * e.g. #190 support-desk, #194 finance). Anchoring to the CREATE/ALTER TABLE DDL keeps the real gate
+ * (a migration that defines/changes a governed table still trips) while clearing FK references.
+ */
+const GOVERNED_DDL_RE =
+  /\b(?:CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(?:growth_|demand_|venture_|moat_|eval_runs|tenant_usage)\w*/i;
 
 /** A change colocated with skills/evals satisfies the rule. */
 const SKILL_PATH_RE = /^platform\/agents\/(skills|evals)\//;
@@ -64,7 +76,8 @@ function isMetricSurface(file) {
   // or still-uncommitted migration, exactly the case we most need to catch.
   if (/^apps\/server\/drizzle\/.*\.sql$/.test(rel) && !rel.endsWith('.down.sql')) {
     const onDisk = path.join(REPO_ROOT, file);
-    if (existsSync(onDisk)) return GOVERNED_TABLE_RE.test(readFileSync(onDisk, 'utf8'));
+    // Match a CREATE/ALTER of a governed table (the intent), NOT a mere FK reference to one.
+    if (existsSync(onDisk)) return GOVERNED_DDL_RE.test(readFileSync(onDisk, 'utf8'));
     return GOVERNED_TABLE_RE.test(rel); // file was deleted in this PR — fall back to the filename
   }
   return false;
