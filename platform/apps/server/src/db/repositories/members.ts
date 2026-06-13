@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../index.js";
 import { users, agents, members } from "../schema/index.js";
 
@@ -41,6 +41,22 @@ export async function listWorkspaceMembers(workspaceId: string): Promise<Member[
     .from(members)
     .where(eq(members.workspaceId, workspaceId));
   return rows as Member[];
+}
+
+/**
+ * The workspace owner's member id — the earliest human member (there is no first-class owner column, so
+ * "earliest human" is the owner heuristic, the same one the reliability surface uses). Null when the
+ * workspace has no human member (e.g. an all-agent fixture). Used as the accountable `requester_member_id`
+ * for an inbound-webhook-triggered support triage (#190).
+ */
+export async function getWorkspaceOwnerMemberId(workspaceId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.workspaceId, workspaceId), eq(members.kind, "human")))
+    .orderBy(asc(members.createdAt))
+    .limit(1);
+  return (row as { id: string } | undefined)?.id ?? null;
 }
 
 /** Create a human user (global) and their member row in a workspace. */

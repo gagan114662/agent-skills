@@ -4,6 +4,7 @@ import type { Scale } from "../scale/default.js";
 import type { BillingManager } from "../billing/manager.js";
 import type { MoatService } from "../moat/service.js";
 import type { CustomerVoiceService } from "../voice/service.js";
+import type { SupportDeskService } from "../support/service.js";
 import { resolveMoatCaps } from "../moat/caps.js";
 import type { PortfolioService } from "../portfolio/service.js";
 import { resolvePortfolioCaps } from "../portfolio/caps.js";
@@ -44,11 +45,13 @@ export function createDefaultFounderConsoleService(deps: {
   moat?: MoatService;
   /** The #114 customer-voice service — surfaces the support inbox + churn/NPS pulse (read-only). */
   voice?: CustomerVoiceService;
+  /** The #190 support-desk service — surfaces first-response SLA breaches + verified resolution (read-only). */
+  supportDesk?: SupportDeskService;
   /** The #107 portfolio service — surfaces the launched-venture review decisions + sunset queue (read-only). */
   portfolio?: PortfolioService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing, moat, voice, portfolio } = deps;
+  const { scale, billing, moat, voice, supportDesk, portfolio } = deps;
   return new FounderConsoleService({
     fleet: {
       tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
@@ -283,6 +286,24 @@ export function createDefaultFounderConsoleService(deps: {
               negativeSentiment: digest.sentiment.negative,
               totalSignals: digest.totalSignals,
               digestHeadline: digest.headline,
+            };
+          },
+        }
+      : undefined,
+    // #190 support desk: first-response SLA breaches + reality-grounded resolution (verified via external
+    // receipts vs UNVERIFIED status-only). Computed off the SAME pure sla/metrics the route uses. Read-only.
+    supportSla: supportDesk
+      ? {
+          snapshot: async (workspaceId) => {
+            const [breaches, metrics] = await Promise.all([
+              supportDesk.slaBreaches(workspaceId),
+              supportDesk.resolutionMetrics(workspaceId),
+            ]);
+            return {
+              breaches: breaches.length,
+              worstOverdueMinutes: breaches[0]?.overdueMinutes ?? 0,
+              resolvedVerified: metrics.resolvedVerified,
+              resolvedUnverified: metrics.resolvedUnverified,
             };
           },
         }

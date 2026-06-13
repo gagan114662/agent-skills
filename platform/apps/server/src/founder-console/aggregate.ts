@@ -272,6 +272,18 @@ export interface VoiceSnapshot {
   digestHeadline: string;
 }
 
+/** The Support Desk SLA read-struct (#190): first-response SLA breaches + reality-grounded resolution. */
+export interface SupportSlaSnapshot {
+  /** Tickets past the first-response SLA window still awaiting a reply (the breach count). */
+  breaches: number;
+  /** Whole minutes the worst breach is overdue (0 when none). */
+  worstOverdueMinutes: number;
+  /** Tickets resolved per an EXTERNAL receipt — the only trustworthy resolution figure (premortem §2). */
+  resolvedVerified: number;
+  /** Tickets marked replied/closed with NO external receipt — reported UNVERIFIED, never acted on alone. */
+  resolvedUnverified: number;
+}
+
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
   killSwitch: boolean;
@@ -322,6 +334,8 @@ export interface FounderConsoleInput {
   constitution?: ConstitutionSnapshot;
   /** Customer Voice roll-up (#114) — optional so the console works before the voice loop is wired. */
   voice?: VoiceSnapshot;
+  /** Support Desk SLA roll-up (#190) — optional so the console works before the support desk is wired. */
+  supportSla?: SupportSlaSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
@@ -514,6 +528,14 @@ export interface VoiceView {
   digestHeadline: string;
 }
 
+/** The Support Desk SLA roll-up (#190): first-response breaches + verified-vs-UNVERIFIED resolution. */
+export interface SupportSlaView {
+  breaches: number;
+  worstOverdueMinutes: number;
+  resolvedVerified: number;
+  resolvedUnverified: number;
+}
+
 /** One launched venture's latest portfolio decision (#107), surfaced on the console pane. */
 export interface PortfolioVentureView {
   ventureIdeaId: string;
@@ -581,6 +603,8 @@ export interface FounderConsole {
   constitution: ConstitutionView;
   /** The Customer Voice roll-up (#114). Zero-valued when the voice loop is unwired. */
   voice: VoiceView;
+  /** The Support Desk SLA roll-up (#190). Zero-valued when the support desk is unwired. */
+  supportSla: SupportSlaView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
   portfolio: PortfolioView;
   attention: AttentionView;
@@ -779,6 +803,17 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     digestHeadline: input.voice?.digestHeadline ?? "",
   };
 
+  // #190 support desk: first-response SLA breaches + reality-grounded resolution. Zeroed when the desk is
+  // unwired. A breach is an attention reason (a venture must answer its customers); the resolution split
+  // surfaces the verified figure next to the UNVERIFIED one so a self-reported "closed" never masquerades
+  // as a real resolution (premortem §2).
+  const supportSla: SupportSlaView = {
+    breaches: input.supportSla?.breaches ?? 0,
+    worstOverdueMinutes: input.supportSla?.worstOverdueMinutes ?? 0,
+    resolvedVerified: input.supportSla?.resolvedVerified ?? 0,
+    resolvedUnverified: input.supportSla?.resolvedUnverified ?? 0,
+  };
+
   // #107 portfolio lifecycle: reduce the reviews to the LATEST per venture (newest-first input), count
   // by decision, and surface the sunset (kill) gate queue. Counts always report; the attention reason is
   // gated on `portfolioEnabled` (mirrors moat) so a deployment that hasn't opted in is never nagged.
@@ -832,6 +867,9 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   if (voice.ticketsNeedingHuman > 0) {
     reasons.push(`${pluralize(voice.ticketsNeedingHuman, "support ticket")} need a human`);
   }
+  if (supportSla.breaches > 0) {
+    reasons.push(`${pluralize(supportSla.breaches, "support ticket")} past first-response SLA`);
+  }
   if (portfolio.enabled && portfolio.sunsetsPendingApproval > 0) {
     reasons.push(`${pluralize(portfolio.sunsetsPendingApproval, "venture sunset")} awaiting approval`);
   }
@@ -863,6 +901,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     moat,
     constitution,
     voice,
+    supportSla,
     portfolio,
     attention: { required: reasons.length > 0, reasons },
   };
