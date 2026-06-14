@@ -746,7 +746,48 @@ export const CONSOLE = {
     headline: "All clear — we're running on our own.",
     nextDefault: "the next draft, when it's ready",
   },
+  /**
+   * The owner BRIEF composer (#235): a real input that turns the passive "@mention a lead to kick off the
+   * next piece of work" into a working control. Pick a department lead, hand them a goal, and they clock in
+   * on a real, approval-gated task — the board fills as they go. Generic by design (it serves every
+   * workspace); the concrete venture #1 brief is seeded server-side. The `leads` are the five acquisition
+   * leads (their @handles are the named department agents, not brand strings).
+   */
+  brief: {
+    eyebrow: "Brief the fleet",
+    title: "Hand a lead a goal",
+    sub: "Pick a department lead and tell them what to chase. They open a real task and the board fills up — nothing leaves the building without your yes.",
+    leadLabel: "Who's it for?",
+    leads: [
+      { handle: "scout", name: "Scout", dept: "SEO", blurb: "keywords + articles to rank" },
+      { handle: "echo", name: "Echo", dept: "Social", blurb: "posts + threads" },
+      { handle: "quill", name: "Quill", dept: "Content", blurb: "drafts + long-form" },
+      { handle: "postmark", name: "Postmark", dept: "Email", blurb: "sequences" },
+      { handle: "bid", name: "Bid", dept: "Ads", blurb: "campaigns + budget" },
+    ],
+    placeholder: "What should they go do? e.g. get us our first paying customers",
+    submit: "Send the brief",
+    submitting: "Briefing…",
+    goalRequired: "Tell them what to chase first.",
+    /** Outcome suffixes — the lead's name is prefixed by the helpers below. */
+    launchedSuffix: "is on it — watch Work in progress.",
+    connectSuffix: "is ready, but the team can't run yet — connect Claude in Settings.",
+    error: "That didn't take — give it another go.",
+  },
 } as const;
+
+/** A department lead the owner can brief (#235). */
+export type ConsoleBriefLead = (typeof CONSOLE.brief.leads)[number];
+
+/** "Scout is on it — watch Work in progress." — the brief-launched confirmation line. */
+export function consoleBriefLaunched(name: string): string {
+  return `${name} ${CONSOLE.brief.launchedSuffix}`;
+}
+
+/** "Scout is ready, but the team can't run yet…" — shown when no Claude is connected. */
+export function consoleBriefConnect(name: string): string {
+  return `${name} ${CONSOLE.brief.connectSuffix}`;
+}
 
 /** Overnight banner summary: shipped · needs-you · spend, in the house voice. */
 export function consoleOvernightSummary(shipped: number, waiting: number, spend: string): string {

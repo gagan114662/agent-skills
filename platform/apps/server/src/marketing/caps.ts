@@ -11,6 +11,12 @@ export interface MarketingCaps {
   enabled: boolean;
   /** Launch one welcome session per department on seed (the "prove each agent alive" brief). */
   seedWelcomeTasks: boolean;
+  /**
+   * The owner's own workspace id (#235). When set and equal to the workspace being activated, its founding
+   * venture is the ipop dogfood venture ("acquire paying founders for ipop.ai"). Undefined by default ⇒ every
+   * workspace gets the brand-neutral founding stub.
+   */
+  ownerWorkspaceId?: string;
 }
 
 export const MARKETING_DEFAULTS: MarketingCaps = {
@@ -22,5 +28,6 @@ export function resolveMarketingCaps(cfg: MarketingConfig | undefined): Marketin
   return {
     enabled: cfg?.enabled ?? MARKETING_DEFAULTS.enabled,
     seedWelcomeTasks: cfg?.seedWelcomeTasks ?? MARKETING_DEFAULTS.seedWelcomeTasks,
+    ownerWorkspaceId: cfg?.ownerWorkspaceId ?? MARKETING_DEFAULTS.ownerWorkspaceId,
   };
 }

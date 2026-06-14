@@ -16,7 +16,7 @@ import { listMentionsOnMessage } from "../db/repositories/mentions.js";
 import { getPersona, getPersonaByHandle, definePersona } from "../db/repositories/personas.js";
 import { createMarketingTask, listMarketingTasks } from "../db/repositories/marketing-tasks.js";
 import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/repositories/venture.js";
-import { FOUNDING_VENTURE } from "./blueprint.js";
+import { foundingVentureFor } from "./blueprint.js";
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { SubagentService, type SubagentLauncher } from "../subagents/service.js";
 import { createVentureAdmission, kickoffFoundingVenture } from "../venture/default.js";
@@ -31,6 +31,9 @@ import { resolveMarketingCaps } from "./caps.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
+import { MarketingBriefService } from "./brief.js";
+import { postMessage } from "../db/repositories/messages.js";
+import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 
 /**
  * Production wiring for the Marketing Department Fleet (#123, ADR-0123). Binds the pure orchestrators
@@ -114,7 +117,14 @@ async function ensureFoundingVenture(
 ): Promise<{ ideaId: string; created: boolean }> {
   const existing = await listEvaluations(workspaceId);
   if (existing.length > 0) return { ideaId: existing[0]!.ideaId, created: false };
-  const idea = await createIdea({ ...FOUNDING_VENTURE, workspaceId, createdByMemberId });
+  // #235: in the owner's own workspace ipop runs ITS OWN marketing as venture #1 — the concrete
+  // "acquire paying founders for ipop.ai" dogfood brief, whose wedge folds into every lead's welcome
+  // session + the funded epic. Any other workspace keeps the brand-neutral founding stub (a customer
+  // never inherits ipop's growth brief). The owner workspace is the `marketing.ownerWorkspaceId` marker
+  // (default unset → the generic stub for everyone).
+  const caps = resolveMarketingCaps(loadConfig(workspaceId).marketing);
+  const seed = foundingVentureFor(workspaceId, caps.ownerWorkspaceId);
+  const idea = await createIdea({ ...seed, workspaceId, createdByMemberId });
   await getOrCreateEvaluation(workspaceId, idea.id);
   return { ideaId: idea.id, created: true };
 }
@@ -269,6 +279,42 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         createdByMemberId: input.createdByMemberId,
       }),
     departmentForHandle: (handle) => departmentForHandle(handle)?.key,
+  });
+}
+
+/**
+ * The owner BRIEF → real session service (#235): post the owner's brief into a department lead's channel
+ * and launch the lead through the SAME audited @mention path as {@link createMarketingMentionService}. We
+ * post via the repo directly (so the post-time fan-out trigger does NOT also fire — no double launch) and
+ * persist the @mention ourselves, then delegate the launch. No new launch authority.
+ */
+export function createMarketingBriefService(sessionManager: SessionManager): MarketingBriefService {
+  const mention = createMarketingMentionService(sessionManager);
+  return new MarketingBriefService({
+    resolveLead: (handle) => {
+      const d = departmentForHandle(handle);
+      return d ? { handle: d.agent.handle, department: d.key, channel: d.channel } : undefined;
+    },
+    getChannelByName: async (workspaceId, name) => {
+      const ch = (await listChannels(workspaceId)).find((c) => c.name === name);
+      return ch ? { id: ch.id } : undefined;
+    },
+    post: async (input) =>
+      postMessage({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        authorMemberId: input.authorMemberId,
+        body: input.body,
+      }),
+    recordMentions: async (input) => {
+      await resolveAndPersistMentions(input);
+    },
+    launch: (identity, input) =>
+      mention.launch(identity, {
+        channelId: input.channelId,
+        messageId: input.messageId,
+        task: input.task,
+      }),
   });
 }
 

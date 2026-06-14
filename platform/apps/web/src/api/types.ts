@@ -688,3 +688,17 @@ export interface DepartmentSeedResult {
   /** The workspace's first venture (#221), present once activation has run; `created` only on first stand-up. */
   venture?: { ideaId: string; created: boolean };
 }
+
+/**
+ * The result of an owner BRIEF (#235): the lead the goal went to and the REAL sessions it launched down the
+ * audited @mention path. `launched` is non-empty when sessions spawned; `connectPrompted` is non-empty when
+ * the lead is ready but the workspace has no Claude connected (so it posted a connect prompt instead).
+ */
+export interface DepartmentBriefResult {
+  lead: string;
+  department: string;
+  channelId: string;
+  messageId: string;
+  launched: Array<{ personaId: string; handle: string; department: string; sessionId: string; taskId: string }>;
+  connectPrompted: Array<{ personaId: string; handle: string; department: string; messageId: string }>;
+}

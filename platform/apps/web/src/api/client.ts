@@ -32,6 +32,7 @@ import type {
   WorkflowInsightsDto,
   Channel,
   CredentialStatus,
+  DepartmentBriefResult,
   DepartmentSeedResult,
   EffortLevel,
   FounderConsoleDto,
@@ -707,6 +708,14 @@ export const api = {
       return post(`/workspaces/${workspaceId}/department/seed`, {
         welcomeTasks: opts.welcomeTasks ?? false,
       }) as Promise<DepartmentSeedResult>;
+    },
+    /**
+     * Brief a department lead (#235): hand them a goal and launch a REAL session down the audited @mention
+     * path. Returns the launched sessions (or a connect-prompt when no Claude is connected). Throws ApiError
+     * on a 4xx/5xx (e.g. 409 fleet-not-seeded, 402/429 budget/kill-switch) — callers reconcile.
+     */
+    brief(workspaceId: string, input: { lead: string; goal: string }): Promise<DepartmentBriefResult> {
+      return post(`/workspaces/${workspaceId}/department/brief`, input) as Promise<DepartmentBriefResult>;
     },
   },
   missionControl: {

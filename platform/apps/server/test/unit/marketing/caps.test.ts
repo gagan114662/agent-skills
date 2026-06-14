@@ -20,4 +20,10 @@ describe("#123 marketing caps", () => {
       seedWelcomeTasks: false,
     });
   });
+
+  // #235: the owner-workspace marker that flips venture #1 to ipop's own dogfood marketing brief.
+  it("carries the owner-workspace id when set, undefined by default", () => {
+    expect(resolveMarketingCaps(undefined).ownerWorkspaceId).toBeUndefined();
+    expect(resolveMarketingCaps({ ownerWorkspaceId: "ws-owner" }).ownerWorkspaceId).toBe("ws-owner");
+  });
 });
