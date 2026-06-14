@@ -232,6 +232,21 @@ export interface DiscoveryPipelineSnapshot {
   pqlCount: number;
 }
 
+/**
+ * The outreach engine roll-up (#225): experiments running + the EXTERNAL receipt counts (replies/meetings/
+ * signups) and the gated send queue. Every count is real (external receipts / parked messages) — never a
+ * placeholder. Identical shape on input + output so the console + API never disagree.
+ */
+export interface OutreachSnapshot {
+  experimentsRunning: number;
+  experimentsConcluded: number;
+  messagesPendingApproval: number;
+  messagesSent: number;
+  replies: number;
+  meetings: number;
+  signups: number;
+}
+
 /** One ranked backlog item (#115) reduced to what the roadmap pane shows. */
 export interface PlanningItemSnapshot {
   id: string;
@@ -347,6 +362,8 @@ export interface FounderConsoleInput {
   growth?: GrowthSnapshot;
   /** Customer Discovery GTM pipeline (#222) — optional so the console works before discovery is wired. */
   discoveryPipeline?: DiscoveryPipelineSnapshot;
+  /** Outreach engine roll-up (#225) — optional so the console works before outreach is wired. */
+  outreach?: OutreachSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
   usageTrend: UsageTrendPoint[];
   /** The window the forecast projects (the next calendar month). */
@@ -504,6 +521,19 @@ export interface DiscoveryPipelineView {
   totalProspects: number;
   /** The five canonical GTM stages with their distinct-prospect counts (verified + total). */
   stages: DiscoveryPipelineStageSnapshot[];
+}
+
+/** The outreach engine roll-up (#225): experiments running + EXTERNAL receipts + the gated send queue.
+ * Zeroed when outreach is unwired. Every count is event-driven off real receipts/messages — never a
+ * placeholder. */
+export interface OutreachView {
+  experimentsRunning: number;
+  experimentsConcluded: number;
+  messagesPendingApproval: number;
+  messagesSent: number;
+  replies: number;
+  meetings: number;
+  signups: number;
 }
 
 /** One roadmap row (#115): a ranked backlog item with its why-ranked-here evidence link. */
@@ -676,6 +706,8 @@ export interface FounderConsole {
   growth: GrowthView;
   /** The Customer Discovery GTM pipeline (#222). Zero-valued when discovery is unwired. */
   discoveryPipeline: DiscoveryPipelineView;
+  /** The outreach engine roll-up (#225). Zero-valued when outreach is unwired. */
+  outreach: OutreachView;
   /** The Product Planning Loop roadmap (#115). Empty when the planning loop is unwired. */
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
@@ -831,6 +863,19 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     pqlCount: input.discoveryPipeline?.pqlCount ?? 0,
     totalProspects: input.discoveryPipeline?.totalProspects ?? 0,
     stages: input.discoveryPipeline?.stages ?? [],
+  };
+
+  // #225 outreach engine: experiments running + EXTERNAL receipt counts + the gated send queue. Counting
+  // only — every number is a real receipt/message count from the reader (external receipts are the only
+  // verified outreach metric, premortem #200 §2). Zeroed when outreach is unwired.
+  const outreach: OutreachView = {
+    experimentsRunning: input.outreach?.experimentsRunning ?? 0,
+    experimentsConcluded: input.outreach?.experimentsConcluded ?? 0,
+    messagesPendingApproval: input.outreach?.messagesPendingApproval ?? 0,
+    messagesSent: input.outreach?.messagesSent ?? 0,
+    replies: input.outreach?.replies ?? 0,
+    meetings: input.outreach?.meetings ?? 0,
+    signups: input.outreach?.signups ?? 0,
   };
 
   // #115 product planning loop: reshape the ranked backlog into the roadmap pane — each row carries its
@@ -1034,7 +1079,8 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     buildLoop,
     growth,
     discoveryPipeline,
-    planning,
+    outreach,
+  planning,
     moat,
     constitution,
     voice,

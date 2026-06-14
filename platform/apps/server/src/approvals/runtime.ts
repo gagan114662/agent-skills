@@ -24,16 +24,19 @@ import {
   validateFinanceDisbursement,
   validateMonetizationActivatePrice,
   validateMonetizationPayoutSettings,
+  validateOutreachSend,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
+import { markMessageSent } from "../db/repositories/outreach.js";
 import {
   FINANCE_DISBURSEMENT_ACTION,
   MONETIZATION_ACTIVATE_PRICE_ACTION,
   MONETIZATION_PAYOUT_SETTINGS_ACTION,
+  OUTREACH_SEND_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -327,6 +330,38 @@ const monetizationPayoutSettings: ActionExecutor = {
 };
 
 /**
+ * The outreach SEND (#225, ADR-0225). **Sensitive by default + IRREVERSIBLE** (deliverability/brand): it
+ * ALWAYS pauses for the owner, who sees the exact recipient + content on the card. On approval it is
+ * **recorded-only** — it flips the parked `outreach_messages` row to `sent` (recording the owner's go) and
+ * makes NO network call. A real ESP/social adapter behind this gate is a deliberate future ADR; outreach
+ * is never an autonomous send. Runs AS the requester (re-checks tenant ownership of the message at
+ * execution, ADR-0013 §3).
+ */
+const outreachSend: ActionExecutor = {
+  actionType: OUTREACH_SEND_ACTION,
+  validate: validateOutreachSend,
+  summarize: (p) =>
+    (
+      `outreach ${String(p.channel ?? "")} to ${String(p.recipientLabel ?? p.recipientRef ?? "")}: ` +
+      `${String(p.subject || p.body || "").slice(0, 80)}`
+    ).slice(0, 160),
+  async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : "";
+    if (!messageId) throw new ActionExecutionError("messageId required");
+    const updated = await markMessageSent(ctx.workspaceId, messageId, "dryrun");
+    if (!updated) throw new ActionExecutionError("outreach message not found in this workspace");
+    return {
+      recorded: true,
+      executed: false, // recorded-only: a real channel adapter behind this gate is a future ADR.
+      sent: true,
+      messageId,
+      channel: updated.channel,
+      provider: "dryrun",
+    };
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), and an optional acquisition dispatcher (#189). The compliance default is a no-op and the
  * dispatcher is absent by default, so the `external.send` executor stays recorded-only exactly as before —
@@ -346,6 +381,7 @@ export function buildDefaultRegistry(
     financeDisbursement,
     monetizationActivatePrice,
     monetizationPayoutSettings,
+    outreachSend,
   ]);
 }
 

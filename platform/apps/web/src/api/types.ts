@@ -328,6 +328,16 @@ export interface FounderConsoleDto {
     totalProspects: number;
     stages: { stage: string; prospects: number; verifiedProspects: number }[];
   };
+  /** The outreach engine (#225): experiments running + EXTERNAL receipts + the gated send queue. */
+  outreach?: {
+    experimentsRunning: number;
+    experimentsConcluded: number;
+    messagesPendingApproval: number;
+    messagesSent: number;
+    replies: number;
+    meetings: number;
+    signups: number;
+  };
   /** Whether the platform needs a human right now, and why. */
   attention: { required: boolean; reasons: string[] };
 }

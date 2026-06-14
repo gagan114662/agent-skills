@@ -9,6 +9,7 @@ import { resolveMoatCaps } from "../moat/caps.js";
 import type { PortfolioService } from "../portfolio/service.js";
 import { resolvePortfolioCaps } from "../portfolio/caps.js";
 import type { DiscoveryService } from "../discovery/service.js";
+import type { OutreachService } from "../outreach/service.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
@@ -62,9 +63,11 @@ export function createDefaultFounderConsoleService(deps: {
   portfolio?: PortfolioService;
   /** The #222 discovery service — surfaces the 5-stage GTM pipeline + PQL count (read-only). */
   discovery?: DiscoveryService;
+  /** The #225 outreach service — surfaces experiments running + external receipt counts (read-only). */
+  outreach?: OutreachService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing, moat, voice, supportDesk, portfolio, discovery } = deps;
+  const { scale, billing, moat, voice, supportDesk, portfolio, discovery, outreach } = deps;
   return new FounderConsoleService({
     fleet: {
       // #230: the durable count of the workspace's live sessions (DB), not the in-memory admission
@@ -269,6 +272,25 @@ export function createDefaultFounderConsoleService(deps: {
               })),
               totalProspects: s.metrics.totalProspects,
               pqlCount: s.pqlCount,
+            };
+          },
+        }
+      : undefined,
+    // #225 outreach engine pane: experiments running + EXTERNAL receipt counts (replies/meetings/signups)
+    // + the gated send queue, straight from the service summary (real receipts/messages, no fabrication).
+    // Read-only. Absent ⇒ a zeroed outreach roll-up.
+    outreach: outreach
+      ? {
+          summary: async (workspaceId) => {
+            const s = await outreach.summary(workspaceId);
+            return {
+              experimentsRunning: s.experimentsRunning,
+              experimentsConcluded: s.experimentsConcluded,
+              messagesPendingApproval: s.messagesPendingApproval,
+              messagesSent: s.messagesSent,
+              replies: s.replies,
+              meetings: s.meetings,
+              signups: s.signups,
             };
           },
         }

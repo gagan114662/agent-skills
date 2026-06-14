@@ -215,6 +215,22 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(realworldProvider !== undefined ? { publishProvider: realworldProvider } : {}),
     };
   }
+  // #225 outreach engine: let the deployment env turn the proactive posture on + pick a sender without a
+  // managed.toml — the owner workspace opts in first. Hard default stays OFF (vars unset → no block ⇒ the
+  // sender stays `dryrun`, recorded-only, no network egress). A managed layer still wins as the lock.
+  const outreachEnabled = env.RELOAD_OUTREACH_ENABLED;
+  const outreachProvider = env.RELOAD_OUTREACH_SEND_PROVIDER;
+  const outreachCap = env.RELOAD_OUTREACH_PER_CHANNEL_DAILY_CAP;
+  if (outreachEnabled !== undefined || outreachProvider !== undefined || outreachCap !== undefined) {
+    const cap = outreachCap !== undefined ? Number.parseInt(outreachCap, 10) : undefined;
+    raw.outreach = {
+      ...(outreachEnabled !== undefined
+        ? { enabled: outreachEnabled === "true" || outreachEnabled === "1" }
+        : {}),
+      ...(outreachProvider !== undefined ? { sendProvider: outreachProvider } : {}),
+      ...(cap !== undefined && Number.isFinite(cap) && cap > 0 ? { perChannelDailyCap: cap } : {}),
+    };
+  }
   // #189 acquisition execution: let the deployment env turn the real-send dispatcher + per-channel
   // execution on without a managed.toml — the owner workspace opts in first. Hard default stays OFF
   // (vars unset → no block ⇒ the `external.send` executor stays recorded-only, no network egress). A

@@ -970,6 +970,21 @@ export const realworldSchema = z.object({
 });
 
 /**
+ * Outreach engine policy (#225, ADR-0225). The flags behind the signal-triggered, owner-gated outreach
+ * engine: composing + parking messages is always available, but `enabled` gates the proactive posture and
+ * `sendProvider` selects the (recorded-only by default) sender. `perChannelDailyCap` is the per-channel
+ * rate ceiling (premortem #200: deliverability/brand). Default OFF: nothing is sent without the owner.
+ */
+export const outreachSchema = z.object({
+  /** Master flag for the outreach engine's proactive posture — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Send provider kind (`dryrun` default — recorded-only, no network). */
+  sendProvider: z.string().optional(),
+  /** Per-channel daily send cap (deliverability/brand protection). */
+  perChannelDailyCap: z.number().int().positive().optional(),
+});
+
+/**
  * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
  * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
  * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
@@ -1156,6 +1171,8 @@ export const settingsSchema = z.object({
   onboarding: onboardingSchema.optional(),
   /** Real-world tool surface policy (#231): gated publish/send/post + publish provider (default OFF). */
   realworld: realworldSchema.optional(),
+  /** Outreach engine policy (#225): signal-triggered, owner-gated, externally-measured sends (default OFF). */
+  outreach: outreachSchema.optional(),
   /** Acquisition execution policy (#189): real ads/email/social/SEO sends + auto-send caps (default OFF). */
   acquisition: acquisitionSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
@@ -1218,6 +1235,7 @@ export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 export type BrowserConfig = z.infer<typeof browserSchema>;
 export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 export type RealworldConfig = z.infer<typeof realworldSchema>;
+export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
@@ -1329,6 +1347,8 @@ export interface ResolvedConfig {
   onboarding: OnboardingConfig;
   /** Real-world tool surface policy (#231). A partial whose hard defaults `resolveRealworldCaps` fills. */
   realworld: RealworldConfig;
+  /** Outreach engine policy (#225). A partial whose hard defaults `resolveOutreachCaps` fills. */
+  outreach: OutreachConfig;
   acquisition: AcquisitionConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
@@ -1391,6 +1411,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   browser: {},
   onboarding: {},
   realworld: {},
+  outreach: {},
   acquisition: {},
   finance: {},
   monetization: {},
