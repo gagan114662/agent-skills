@@ -13,6 +13,7 @@ import { recordViolation } from "../db/repositories/egress.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { loadConfig } from "../config/loader.js";
 import { decideEgress, resolveEgressPolicy } from "../runtime/egress-allowlist.js";
+import { defaultComplianceEnforcer } from "../legal/enforcer.js";
 import {
   ActionExecutionError,
   buildRegistry,
@@ -45,6 +46,30 @@ export interface EgressEnforcer {
     actorMemberId: string;
   }): Promise<string | null>;
 }
+
+/**
+ * Send-layer compliance enforcement seam (#196, ADR-0196). Where {@link EgressEnforcer} decides *where* a
+ * send may go, this decides *whether it is lawful to send to this recipient* — CAN-SPAM unsubscribe +
+ * postal footer, CASL/GDPR consent, and the suppression list — enforced **in code at the one chokepoint**,
+ * not by agent goodwill. `enforce` returns null when the send is allowed, or a reason string when it is
+ * blocked (having recorded the decision to the audit trail). Injected so the registry stays testable; the
+ * production default (`legal/enforcer.ts`) is a no-op unless the tenant turned the pack on (default OFF),
+ * so existing behavior + every approval test is byte-for-byte unchanged.
+ */
+export interface ComplianceEnforcer {
+  enforce(input: {
+    workspaceId: string;
+    kind: string;
+    target: string | null;
+    actorMemberId: string;
+    envelope?: Record<string, unknown>;
+  }): Promise<string | null>;
+}
+
+/** The no-op default: allows everything. Replaced in production wiring by `legal/enforcer.ts`. */
+export const noopComplianceEnforcer: ComplianceEnforcer = {
+  enforce: () => Promise.resolve(null),
+};
 
 /** Production enforcer: per-tenant allowlist from #58 config; denied/flagged targets recorded + blocked. */
 export const defaultEgressEnforcer: EgressEnforcer = {
@@ -124,6 +149,7 @@ const chatPostMessage: ActionExecutor = {
  */
 function makeExternalSend(
   egress: EgressEnforcer,
+  compliance: ComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
 ): ActionExecutor {
   return {
@@ -141,9 +167,26 @@ function makeExternalSend(
         });
         if (blocked) throw new ActionExecutionError(blocked);
       }
-      // #189: hand the approved send to the acquisition dispatcher. A non-null result means a real
-      // (or dry-run) campaign action ran; null means this is not an acquisition send, or the channel is
-      // not cleared to execute → fall back to recorded-only (the default, no-egress behavior).
+      // #196: send-layer CAN-SPAM/CASL/GDPR. Runs for every external.send (the no-op default allows all,
+      // so behavior is unchanged until a tenant turns the legal pack on). The `kind` discriminates email
+      // vs social vs publish; the `compliance` envelope on the payload carries the footer/consent basis.
+      // Enforced BEFORE the acquisition dispatcher so a non-compliant send can never reach a real channel.
+      const kind = typeof payload.kind === "string" ? payload.kind : "";
+      const envelope =
+        payload.compliance && typeof payload.compliance === "object"
+          ? (payload.compliance as Record<string, unknown>)
+          : undefined;
+      const unlawful = await compliance.enforce({
+        workspaceId: ctx.workspaceId,
+        kind,
+        target,
+        actorMemberId: ctx.requesterMemberId,
+        envelope,
+      });
+      if (unlawful) throw new ActionExecutionError(unlawful);
+      // #189: hand the approved (and now compliance-cleared) send to the acquisition dispatcher. A non-null
+      // result means a real (or dry-run) campaign action ran; null means this is not an acquisition send, or
+      // the channel is not cleared to execute → fall back to recorded-only (the default, no-egress behavior).
       if (dispatcher) {
         const dispatched = await dispatcher.dispatch(payload, {
           workspaceId: ctx.workspaceId,
@@ -228,17 +271,19 @@ const financeDisbursement: ActionExecutor = {
 };
 
 /**
- * Build the executor registry with an injectable egress enforcer (#151) and an optional acquisition
- * dispatcher (#189). With no dispatcher (the default) the `external.send` executor is recorded-only,
- * exactly as before — every existing approval test is untouched.
+ * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
+ * (#196), and an optional acquisition dispatcher (#189). The compliance default is a no-op and the
+ * dispatcher is absent by default, so the `external.send` executor stays recorded-only exactly as before —
+ * every existing approval test is untouched.
  */
 export function buildDefaultRegistry(
   egress: EgressEnforcer = defaultEgressEnforcer,
+  compliance: ComplianceEnforcer = noopComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
-    makeExternalSend(egress, dispatcher),
+    makeExternalSend(egress, compliance, dispatcher),
     billingRefund,
     browserAction,
     ventureWeeklyPlanExecutor,
@@ -246,5 +291,9 @@ export function buildDefaultRegistry(
   ]);
 }
 
-/** The executors wired for this deployment (ADR-0013 §2, #98, #151). */
-export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry();
+/** The executors wired for this deployment (ADR-0013 §2, #98, #151, #196). The compliance enforcer is the
+ * default-OFF legal pack: a no-op until a tenant turns `legal.enabled` on, so behavior is unchanged. */
+export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry(
+  defaultEgressEnforcer,
+  defaultComplianceEnforcer,
+);

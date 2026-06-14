@@ -16,6 +16,7 @@
 
 import { loadConfig } from "../config/loader.js";
 import { defaultEgressEnforcer, buildDefaultRegistry } from "../approvals/runtime.js";
+import { defaultComplianceEnforcer } from "../legal/enforcer.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
 import { resolveAcquisitionCaps, type AcquisitionCaps } from "./caps.js";
 import { createAcquisitionProviders } from "./providers.js";
@@ -68,7 +69,7 @@ export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
  * everywhere the default registry was used — default-OFF keeps it recorded-only.
  */
 export function buildAcquisitionRegistry(): ExecutorRegistry {
-  return buildDefaultRegistry(defaultEgressEnforcer, buildAcquisitionDispatcher());
+  return buildDefaultRegistry(defaultEgressEnforcer, defaultComplianceEnforcer, buildAcquisitionDispatcher());
 }
 
 /**

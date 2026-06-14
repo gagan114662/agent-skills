@@ -79,6 +79,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #190 support-desk policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // autonomous-send posture (autoSend / categories / per-day cap) cannot be loosened by a lower layer.
     if (layer.supportDesk !== undefined) out.supportDesk = { ...layer.supportDesk };
+    // #196 legal policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // pack flag / consent posture cannot be loosened (e.g. enforcement turned off) by a lower layer.
+    if (layer.legal !== undefined) out.legal = { ...layer.legal };
     // #107 portfolio policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // review flag / thresholds cannot be loosened (e.g. the loop turned off) by a lower layer.
     if (layer.portfolio !== undefined) out.portfolio = { ...layer.portfolio };
@@ -179,6 +182,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
     voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
     supportDesk: merged.supportDesk ?? { ...CONFIG_DEFAULTS.supportDesk },
+    legal: merged.legal ?? { ...CONFIG_DEFAULTS.legal },
     portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
     ventureMemory: merged.ventureMemory ?? { ...CONFIG_DEFAULTS.ventureMemory },

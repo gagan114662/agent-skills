@@ -537,6 +537,22 @@ export const supportDeskSchema = z.object({
  * stays #13-gated regardless. The threshold/weight fields parameterize the pure `decidePortfolio` ladder
  * and ARE the per-venture targets the review judges against (the tenant's layered, lockable policy).
  */
+/**
+ * Legal & Compliance pack policy (#196, ADR-0196). All non-secret knobs for the per-venture legal pack.
+ * Every field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing
+ * keeps today's behavior: documents can still be generated/read on demand (harmless), but the send-layer
+ * `ComplianceEnforcer` is a no-op (no real send is blocked) and nothing auto-regenerates. The owner
+ * workspace opts in first.
+ */
+export const legalSchema = z.object({
+  /** Master switch for the pack — gates send-layer enforcement + auto-regeneration. Default OFF. */
+  enabled: z.boolean().optional(),
+  /** Regenerate ToS/privacy + open an owner-review approval when venture facts materially change. Default OFF. */
+  autoRegenerate: z.boolean().optional(),
+  /** Require a recorded consent basis for a commercial email send (CASL/GDPR). Default ON (bites only when enabled). */
+  requireConsentForEmail: z.boolean().optional(),
+});
+
 export const portfolioSchema = z.object({
   /** The portfolio-loop flag — default OFF. */
   enabled: z.boolean().optional(),
@@ -1001,6 +1017,8 @@ export const settingsSchema = z.object({
   voice: voiceSchema.optional(),
   /** Support Desk policy (#190): bounded autonomous answering + KB + SLA + escalation (default OFF). */
   supportDesk: supportDeskSchema.optional(),
+  /** Legal & Compliance pack policy (#196): per-venture legal docs + send-layer CAN-SPAM/CASL/GDPR (default OFF). */
+  legal: legalSchema.optional(),
   /** Portfolio Lifecycle Loop policy (#107): launched-venture review thresholds + weights (default OFF). */
   portfolio: portfolioSchema.optional(),
   /** Product Planning Loop policy (#115): RICE backlog → specs → proposed sessions (default OFF). */
@@ -1072,6 +1090,7 @@ export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 export type VoiceConfig = z.infer<typeof voiceSchema>;
 export type SupportDeskConfig = z.infer<typeof supportDeskSchema>;
+export type LegalConfig = z.infer<typeof legalSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type VentureMemoryConfig = z.infer<typeof ventureMemorySchema>;
@@ -1156,6 +1175,8 @@ export interface ResolvedConfig {
   voice: VoiceConfig;
   /** Support Desk policy (#190). A partial whose hard defaults `resolveSupportDeskCaps` fills. */
   supportDesk: SupportDeskConfig;
+  /** Legal & Compliance pack policy (#196). A partial whose hard defaults `resolveLegalCaps` fills. */
+  legal: LegalConfig;
   /** Portfolio Lifecycle Loop policy (#107). A partial whose hard defaults `resolvePortfolioCaps` fills. */
   portfolio: PortfolioConfig;
   /** Product Planning Loop policy (#115). A partial whose hard defaults `resolvePlanningCaps` fills. */
@@ -1227,6 +1248,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   moat: {},
   voice: {},
   supportDesk: {},
+  legal: {},
   portfolio: {},
   planning: {},
   ventureMemory: {},
