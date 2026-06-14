@@ -280,6 +280,24 @@ export interface FounderConsoleDto {
     total: number;
     noisiestComponents: { service: string; count: number }[];
   };
+  /** The Growth Loop roll-up (#102/#222): event-driven funnel counts (no longer placeholders). */
+  growth?: {
+    score: number;
+    totalEvents: number;
+    acquisition: number;
+    activation: number;
+    conversion: number;
+    retention: number;
+    topSource: string | null;
+    experimentsTotal: number;
+    externalPostsSubmitted: number;
+  };
+  /** The Customer Discovery GTM pipeline (#222): per-stage prospect counts + the PQL count. */
+  discoveryPipeline?: {
+    pqlCount: number;
+    totalProspects: number;
+    stages: { stage: string; prospects: number; verifiedProspects: number }[];
+  };
   /** Whether the platform needs a human right now, and why. */
   attention: { required: boolean; reasons: string[] };
 }

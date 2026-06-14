@@ -216,6 +216,22 @@ export interface GrowthSnapshot {
   experiments: GrowthExperimentStatusSnapshot[];
 }
 
+/** One GTM stage in the Customer Discovery pipeline (#222) reduced to what the console pane counts. */
+export interface DiscoveryPipelineStageSnapshot {
+  stage: string;
+  prospects: number;
+  /** Of those, the count whose stage entry was externally grounded (a real receipt). */
+  verifiedProspects: number;
+}
+
+/** The Customer Discovery GTM pipeline read-struct (#222): the 5 stages + the PQL count at the top. */
+export interface DiscoveryPipelineSnapshot {
+  stages: DiscoveryPipelineStageSnapshot[];
+  totalProspects: number;
+  /** PQL (product-qualified-lead) events emitted — the top of the pipeline. */
+  pqlCount: number;
+}
+
 /** One ranked backlog item (#115) reduced to what the roadmap pane shows. */
 export interface PlanningItemSnapshot {
   id: string;
@@ -329,6 +345,8 @@ export interface FounderConsoleInput {
   buildLoop?: BuildLoopSnapshot;
   /** Growth Loop state (#102) — optional so the console works before the growth loop is wired. */
   growth?: GrowthSnapshot;
+  /** Customer Discovery GTM pipeline (#222) — optional so the console works before discovery is wired. */
+  discoveryPipeline?: DiscoveryPipelineSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
   usageTrend: UsageTrendPoint[];
   /** The window the forecast projects (the next calendar month). */
@@ -466,6 +484,17 @@ export interface GrowthView {
   experimentsTotal: number;
   /** Experiments whose external post has been submitted to the #13 gate (a human posts). */
   externalPostsSubmitted: number;
+}
+
+/** The Customer Discovery GTM pipeline roll-up (#222): per-stage counts + the PQL count. Zeroed when
+ * discovery is unwired. Every count is event-driven off real signals — never a placeholder. */
+export interface DiscoveryPipelineView {
+  /** PQL (product-qualified-lead) events emitted — the top of the pipeline. */
+  pqlCount: number;
+  /** Distinct prospects across all stages. */
+  totalProspects: number;
+  /** The five canonical GTM stages with their distinct-prospect counts (verified + total). */
+  stages: DiscoveryPipelineStageSnapshot[];
 }
 
 /** One roadmap row (#115): a ranked backlog item with its why-ranked-here evidence link. */
@@ -634,6 +663,8 @@ export interface FounderConsole {
   buildLoop: BuildLoopView;
   /** The Growth Loop roll-up (#102). Zero-valued when the growth loop is unwired. */
   growth: GrowthView;
+  /** The Customer Discovery GTM pipeline (#222). Zero-valued when discovery is unwired. */
+  discoveryPipeline: DiscoveryPipelineView;
   /** The Product Planning Loop roadmap (#115). Empty when the planning loop is unwired. */
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
@@ -779,6 +810,16 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     experimentsRunning: growthExperiments.filter((e) => e.status === "running").length,
     experimentsTotal: growthExperiments.length,
     externalPostsSubmitted: growthExperiments.filter((e) => e.hasExternalPost).length,
+  };
+
+  // #222 customer discovery engine: the 5-stage GTM pipeline (outreach → discovery → conversion →
+  // onboarding → post_sales). Counting only — the per-stage distinct-prospect counts come from the reader
+  // off the SAME pure pipelineMetrics the discovery routes use, so the console matches the API. Zeroed
+  // (all five stages at 0) when discovery is unwired.
+  const discoveryPipeline: DiscoveryPipelineView = {
+    pqlCount: input.discoveryPipeline?.pqlCount ?? 0,
+    totalProspects: input.discoveryPipeline?.totalProspects ?? 0,
+    stages: input.discoveryPipeline?.stages ?? [],
   };
 
   // #115 product planning loop: reshape the ranked backlog into the roadmap pane — each row carries its
@@ -975,6 +1016,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     selfHealingOps,
     buildLoop,
     growth,
+    discoveryPipeline,
     planning,
     moat,
     constitution,

@@ -226,6 +226,14 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (acqChannels.autoSend !== undefined) acquisition.autoSend = flag(acqChannels.autoSend);
     raw.acquisition = acquisition;
   }
+  // #222 customer discovery engine: let the deployment env turn the proactive posture on without a
+  // managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no block);
+  // ingest/queue/PQL/growth-emission are always live regardless — a workspace that ingests no signals
+  // stays byte-for-byte unchanged. This issue is READ-ONLY (never sends).
+  const discoveryEnabled = env.RELOAD_DISCOVERY_ENABLED;
+  if (discoveryEnabled !== undefined) {
+    raw.discovery = { enabled: discoveryEnabled === "true" || discoveryEnabled === "1" };
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).

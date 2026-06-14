@@ -153,6 +153,9 @@ import { createDefaultGrowthService } from "./growth/default.js";
 import { decisionMakerRoutes } from "./routes/decision-maker.js";
 import { createDefaultDecisionMakerService } from "./decision-maker/default.js";
 import type { DecisionMakerService } from "./decision-maker/service.js";
+import { discoveryRoutes } from "./routes/discovery.js";
+import { createDefaultDiscoveryService } from "./discovery/default.js";
+import type { DiscoveryService } from "./discovery/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
 import { createDefaultSemanticLayerService } from "./semantic/default.js";
 import type { SemanticLayerService } from "./semantic/service.js";
@@ -343,6 +346,11 @@ export interface BuildAppOptions {
    * over the SAME live `scale` + `billingManager` so its fleet/budget/revenue match what they enforce.
    */
   founderConsole?: FounderConsoleService;
+  /**
+   * #222 customer discovery engine: tests inject a service over fakes; default builds one over the real
+   * `discovery_*` repos + the live growth bridge. Read-only — ranks/surfaces, never sends.
+   */
+  discovery?: DiscoveryService;
   /**
    * #173 founder briefings: tests inject a service over reader fakes; default builds one over the SAME
    * live `scale`/`billing`/`portfolio` so the brief/report/decision-queue match what they enforce.
@@ -617,6 +625,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   // Built before the console + portfolio loop so both can read per-venture growth.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  // #222 customer discovery engine: per-venture signal layer → ranked "who to reach out to now" queue +
+  // PQL events + the 5-stage GTM pipeline. READ-ONLY (it never sends — outreach is #225). Shares the live
+  // `growthService` so an ingested signal lights up the founder-console growth panel (#104) with real,
+  // event-driven counts. Built before the console so the console can read the pipeline pane.
+  const discoveryService =
+    opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -642,6 +656,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       portfolio: portfolioService,
       voice: voiceService,
       supportDesk: supportDeskService,
+      discovery: discoveryService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
@@ -712,6 +727,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // harmless and always available, mirroring #102's always-on event ingest).
   const decisionMakerService = opts.decisionMaker ?? createDefaultDecisionMakerService();
   app.register(decisionMakerRoutes, { service: decisionMakerService });
+  // #222 customer discovery engine: define owner signals, ingest real product/channel receipts, and read
+  // the ranked prospect queue / PQL events / GTM pipeline. Always-live ingest + reads (READ-ONLY surface).
+  app.register(discoveryRoutes, { service: discoveryService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build

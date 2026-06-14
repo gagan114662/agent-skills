@@ -13,6 +13,7 @@ import {
   type SelfHealingOpsSnapshot,
   type BuildLoopSnapshot,
   type GrowthSnapshot,
+  type DiscoveryPipelineSnapshot,
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
   type ConstitutionSnapshot,
@@ -102,6 +103,11 @@ export interface GrowthReader {
   state(workspaceId: string): Promise<GrowthSnapshot>;
 }
 
+/** The Customer Discovery GTM pipeline pane (#222). Optional — absent ⇒ a zeroed pipeline (all stages 0). */
+export interface DiscoveryReader {
+  pipeline(workspaceId: string): Promise<DiscoveryPipelineSnapshot>;
+}
+
 /** The planning roadmap pane (#115). Optional — absent ⇒ the console renders an empty roadmap. */
 export interface PlanningReader {
   state(workspaceId: string): Promise<PlanningSnapshot>;
@@ -174,6 +180,8 @@ export interface FounderConsoleDeps {
   buildLoop?: BuildLoopReader;
   /** Growth loop (#102) — optional, read-only. */
   growth?: GrowthReader;
+  /** Customer Discovery GTM pipeline (#222) — optional, read-only. */
+  discovery?: DiscoveryReader;
   /** Product Planning Loop roadmap (#115) — optional, read-only. */
   planning?: PlanningReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
@@ -222,6 +230,7 @@ export class FounderConsoleService {
       selfHealing,
       buildLoop,
       growth,
+      discoveryPipeline,
       planning,
       moat,
       constitution,
@@ -245,6 +254,7 @@ export class FounderConsoleService {
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.buildLoop?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.discovery?.pipeline(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
         this.deps.constitution?.openViolations(workspaceId) ??
@@ -282,6 +292,7 @@ export class FounderConsoleService {
       selfHealingOps,
       buildLoop,
       growth,
+      discoveryPipeline,
       planning,
       usageTrend,
       forecastWindow: this.deps.forecast.forecastWindow(now),
