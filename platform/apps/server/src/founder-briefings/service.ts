@@ -15,6 +15,7 @@ import {
 } from "./aggregate.js";
 import { escalationThresholds, type BriefingsCaps } from "./caps.js";
 import type { BriefingNotifier, DeliveryResult, DigestKind } from "./notifier.js";
+import type { AcquisitionBriefView } from "../acquisition/cac.js";
 
 /**
  * Founder Briefings IO orchestrator (#173, ADR-0173). Declares ONE read seam per data source, gathers
@@ -74,6 +75,15 @@ export interface BacklogReader {
 }
 
 /**
+ * Acquisition execution receipts for the daily brief (#189, AC5). OPTIONAL on the deps — when absent (the
+ * default) the brief omits the acquisition section entirely, unchanged from today. `section` returns null
+ * when there is nothing to report (no spend / conversions / failures in the window).
+ */
+export interface AcquisitionReader {
+  section(workspaceId: string): Promise<AcquisitionBriefView | null>;
+}
+
+/**
  * The delivery audit / idempotency watermark store. `wasDelivered` short-circuits a duplicate send in
  * the same period; `record` always persists the attempt (delivered or skipped). The unique
  * `(workspace_id, kind, period_key)` makes `record` idempotent under a concurrent tick.
@@ -105,6 +115,8 @@ export interface FounderBriefingsDeps {
   backlog: BacklogReader;
   notifier: BriefingNotifier;
   deliveries: DeliveryStore;
+  /** Acquisition execution receipts (#189, AC5). Optional — absent → no acquisition section. */
+  acquisition?: AcquisitionReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -159,12 +171,13 @@ export class FounderBriefingsService {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
     const window = this.deps.spend.window(now);
-    const [shipped, blocked, decisionItems, usage, constitution] = await Promise.all([
+    const [shipped, blocked, decisionItems, usage, constitution, acquisition] = await Promise.all([
       this.deps.ships.shipped(workspaceId),
       this.deps.blocks.blocked(workspaceId),
       this.deps.decisions.items(workspaceId),
       this.deps.spend.usage(workspaceId, window),
       this.deps.constitution.summary(workspaceId),
+      this.deps.acquisition ? this.deps.acquisition.section(workspaceId) : Promise.resolve(null),
     ]);
     const decisionQueue = composeDecisionQueue({
       workspaceId,
@@ -186,6 +199,7 @@ export class FounderBriefingsService {
         currency: this.deps.spend.currency(workspaceId),
       },
       constitution,
+      acquisition: acquisition ?? undefined,
       maxWords: caps.maxBriefWords,
     });
   }

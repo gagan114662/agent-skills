@@ -19,6 +19,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
+import { buildAcquisitionRegistry } from "./acquisition/default.js";
 import { governanceRoutes } from "./routes/governance.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { preflightRoutes } from "./routes/preflight.js";
@@ -128,6 +129,7 @@ import {
 import type { FounderBriefingsService } from "./founder-briefings/service.js";
 import type { FounderBriefingsEngine } from "./founder-briefings/engine.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
+import { acquisitionRoutes } from "./routes/acquisition.js";
 import { createDefaultOnboardingService } from "./onboarding/default.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { growthRoutes } from "./routes/growth.js";
@@ -418,7 +420,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(memoryRoutes);
   app.register(taskRoutes);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
-  app.register(approvalRoutes);
+  // #189: the executor registry routes approved `external.send` actions through the acquisition
+  // dispatcher so an approved ads/email/social/SEO campaign actually runs. Default-OFF: with the
+  // acquisition flag off (the default) the dispatcher returns null and the executor stays recorded-only.
+  app.register(approvalRoutes, { registry: buildAcquisitionRegistry() });
   // #151 governance & trust: workspace roles (owner/approver/viewer), email invites, egress report.
   app.register(governanceRoutes);
   app.register(searchRoutes);
@@ -604,6 +609,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // receipts. Read routes always render the checklist; the risky writes 409 unless `onboarding.enabled`.
   const onboarding = opts.onboarding ?? createDefaultOnboardingService(app.log);
   app.register(onboardingRoutes, { service: onboarding });
+  // #189 acquisition execution: the email suppression list (read + manual add) + the signature-verified
+  // ESP bounce/complaint webhook that keeps deliverability enforced in code. Default-OFF (the writes 409
+  // until the workspace opts into acquisition email; the webhook secret lives in the #192 vault).
+  app.register(acquisitionRoutes);
   app.register(growthRoutes, { service: growthService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });

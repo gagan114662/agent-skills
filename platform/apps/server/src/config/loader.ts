@@ -201,6 +201,31 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (onboardingEnabled !== undefined) {
     raw.onboarding = { enabled: onboardingEnabled === "true" || onboardingEnabled === "1" };
   }
+  // #189 acquisition execution: let the deployment env turn the real-send dispatcher + per-channel
+  // execution on without a managed.toml — the owner workspace opts in first. Hard default stays OFF
+  // (vars unset → no block ⇒ the `external.send` executor stays recorded-only, no network egress). A
+  // managed layer still wins as the lock. Per-channel real sends ALSO require the owner to connect the
+  // provider in the #192 vault — the flag alone never sends. `autoSend` (no-human send) stays its own
+  // stricter switch, separately OFF.
+  const acqEnabled = env.RELOAD_ACQUISITION_ENABLED;
+  const acqChannels = {
+    ads: env.RELOAD_ACQUISITION_ADS,
+    email: env.RELOAD_ACQUISITION_EMAIL,
+    social: env.RELOAD_ACQUISITION_SOCIAL,
+    seo: env.RELOAD_ACQUISITION_SEO,
+    autoSend: env.RELOAD_ACQUISITION_AUTO_SEND,
+  };
+  if (acqEnabled !== undefined || Object.values(acqChannels).some((v) => v !== undefined)) {
+    const acquisition: Record<string, unknown> = {};
+    const flag = (v: string | undefined) => v === "true" || v === "1";
+    if (acqEnabled !== undefined) acquisition.enabled = flag(acqEnabled);
+    if (acqChannels.ads !== undefined) acquisition.ads = flag(acqChannels.ads);
+    if (acqChannels.email !== undefined) acquisition.email = flag(acqChannels.email);
+    if (acqChannels.social !== undefined) acquisition.social = flag(acqChannels.social);
+    if (acqChannels.seo !== undefined) acquisition.seo = flag(acqChannels.seo);
+    if (acqChannels.autoSend !== undefined) acquisition.autoSend = flag(acqChannels.autoSend);
+    raw.acquisition = acquisition;
+  }
   // #98 billing opt-in: present the `[billing]` config section (the per-tenant checkout gate) from the
   // deployment env — mirroring marketing/rbac/catalog — so live billing can be switched on without
   // baking a managed.toml. The provider VALUE mirrors the env-level `BILLING_PROVIDER` (the actual

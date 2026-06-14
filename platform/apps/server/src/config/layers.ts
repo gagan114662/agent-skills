@@ -127,6 +127,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #192 onboarding policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // onboarding flag / DNS provider cannot be flipped (e.g. credential injection turned on) by a lower layer.
     if (layer.onboarding !== undefined) out.onboarding = { ...layer.onboarding };
+    // #189 acquisition policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // real-send flags / auto-send switch / send caps cannot be loosened (e.g. real ads turned on, or a
+    // window cap raised) by a lower layer.
+    if (layer.acquisition !== undefined) out.acquisition = { ...layer.acquisition };
   }
   return out;
 }
@@ -181,5 +185,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     briefings: merged.briefings ?? { ...CONFIG_DEFAULTS.briefings },
     browser: merged.browser ?? { ...CONFIG_DEFAULTS.browser },
     onboarding: merged.onboarding ?? { ...CONFIG_DEFAULTS.onboarding },
+    acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
   };
 }
