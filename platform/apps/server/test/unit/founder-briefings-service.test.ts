@@ -147,6 +147,42 @@ describe("FounderBriefingsService delivery gating", () => {
   });
 });
 
+describe("FounderBriefingsService weekly premortem panel (#200 AC2)", () => {
+  it("omits the panel (null) when no premortem reader is wired", async () => {
+    const svc = new FounderBriefingsService(buildDeps());
+    const report = await svc.weeklyReport("ws");
+    expect(report.premortem).toBeNull();
+    expect(report.text).not.toContain("Premortem");
+  });
+
+  it("composes the panel and injects attentionBudget from caps", async () => {
+    const svc = new FounderBriefingsService(
+      buildDeps({
+        caps: () => ({ ...BRIEFINGS_DEFAULTS, enabled: true, attentionBudget: 3 }),
+        premortem: {
+          counters: async () => ({
+            venturesWithEdge: 1,
+            totalVentures: 2,
+            externallyVerifiedMetrics: 1,
+            totalMetrics: 4,
+            irreversibleActionCount: 2,
+            decisionsPresented: 7, // > the caps budget of 3 → over-budget flag
+            approvalsDecided: 5,
+            approvalsRubberStamped: 5,
+            ownerOverrides: 1,
+          }),
+        },
+      }),
+    );
+    const report = await svc.weeklyReport("ws");
+    expect(report.premortem).not.toBeNull();
+    expect(report.premortem!.attentionSpend).toEqual({ presented: 7, budget: 3, overBudget: true });
+    expect(report.premortem!.edgeCoveragePct).toBe(50);
+    expect(report.premortem!.flags.some((f) => f.includes("attention over budget"))).toBe(true);
+    expect(report.text).toContain("Premortem (#200)");
+  });
+});
+
 describe("FounderBriefingsEngine tick", () => {
   it("delivers both digests for every workspace and dedups a second tick in the same period", async () => {
     const store = memoryStore();

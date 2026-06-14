@@ -19,7 +19,10 @@ import { windowKey } from "../scale/usage.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { buildLoopRunStore } from "../db/repositories/build-loop.js";
 import { listRequests } from "../db/repositories/approvals.js";
+import { isIrreversibleAction } from "../approvals/policy.js";
 import { listOpenViolations } from "../db/repositories/constitution.js";
+import { listVentures, getCandidate } from "../db/repositories/venture-factory.js";
+import { listVerifierResults } from "../db/repositories/verifier-results.js";
 import { listIncidents as listRemediations } from "../db/repositories/self-healing.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
 import { listEvaluations, listIterations } from "../db/repositories/venture.js";
@@ -278,6 +281,77 @@ export function createDefaultFounderBriefingsService(deps: {
     // there is nothing to report (no spend/conversions/failures), so the brief is unchanged when idle.
     acquisition: {
       section: (workspaceId) => buildAcquisitionBriefSection(workspaceId),
+    },
+    // #200 AC2 premortem panel: the five standing failure-mode gauges, sourced read-only from the loops
+    // that already exist — no new query authority. `attentionBudget` is supplied by the service (a caps
+    // concern); this returns the raw counts.
+    premortem: {
+      counters: async (workspaceId) => {
+        const nowMs = (deps.now?.() ?? new Date()).getTime();
+        const weekStartMs = nowMs - 7 * 24 * 3_600 * 1_000; // the weekly window
+        const caps = resolveBriefingsCaps(loadConfig(workspaceId).briefings);
+
+        // FM#1 edge: live (non-archived) #187 factory ventures and whether each carries a QUALIFIED edge
+        // (its candidate cleared the falsifiable-edge gate). No factory activity ⇒ 0/0 (vacuously healthy).
+        const liveVentures = (await listVentures(workspaceId)).filter((v) => v.status !== "archived");
+        let venturesWithEdge = 0;
+        for (const v of liveVentures) {
+          const cand = await getCandidate(workspaceId, v.candidateId);
+          if (cand?.edgeStatus === "qualified") venturesWithEdge += 1;
+        }
+
+        // FM#2 metrics: externally-verified = #106 outcome verifications that touched reality
+        // (passed|failed; an `errored` attempt could not measure, so it is not a metric); self-reported =
+        // #96 scorecard scores the report still surfaces. The ratio is "how much of what we steer on is
+        // grounded in external receipts vs estimates" (#200 mode 2).
+        const verifierResults = await listVerifierResults(workspaceId, { limit: 200 });
+        const externallyVerifiedMetrics = verifierResults.filter((r) => r.status !== "errored").length;
+        const selfReportedMetrics = (await listEvaluations(workspaceId)).filter(
+          (e) => e.lastScore !== null,
+        ).length;
+
+        // The #13 approvals queue powers FM#4 (irreversible) + FM#5 (rubber-stamp) + FM#7 (override).
+        const requests = await listRequests(workspaceId);
+        const irreversibleActionCount = requests.filter(
+          (r) => isIrreversibleAction(r.actionType) && r.createdAt.getTime() >= weekStartMs,
+        ).length;
+        const decidedInWindow = requests.filter(
+          (r) =>
+            r.decidedAt !== null &&
+            r.decidedAt.getTime() >= weekStartMs &&
+            (r.status === "approved" || r.status === "executed" || r.status === "rejected"),
+        );
+        const approvalsRubberStamped = decidedInWindow.filter(
+          (r) =>
+            (r.status === "approved" || r.status === "executed") &&
+            r.decidedAt!.getTime() - r.createdAt.getTime() < caps.rubberStampSeconds * 1_000,
+        ).length;
+        // FM#7 the taste gap: a REJECTED request is the owner overriding the agent's proposed action.
+        const ownerOverrides = decidedInWindow.filter((r) => r.status === "rejected").length;
+
+        // FM#5 attention spend: the size of the ONE decision queue the owner is presented — the same three
+        // sources the decision reader composes (pending #13 approvals + #172 escalated runs + #146 flags).
+        const [runs, violations] = await Promise.all([
+          buildLoopRunStore.listForConsole(workspaceId),
+          listOpenViolations(workspaceId),
+        ]);
+        const decisionsPresented =
+          requests.filter((r) => r.status === "pending").length +
+          runs.filter((r) => r.status === "escalated").length +
+          violations.length;
+
+        return {
+          venturesWithEdge,
+          totalVentures: liveVentures.length,
+          externallyVerifiedMetrics,
+          totalMetrics: externallyVerifiedMetrics + selfReportedMetrics,
+          irreversibleActionCount,
+          decisionsPresented,
+          approvalsDecided: decidedInWindow.length,
+          approvalsRubberStamped,
+          ownerOverrides,
+        };
+      },
     },
     now: deps.now,
   });

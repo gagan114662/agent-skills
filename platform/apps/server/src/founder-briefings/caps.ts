@@ -32,6 +32,18 @@ export interface BriefingsCaps {
   digestVoiceLimit: number;
   /** Backlog items surfaced in the weekly report. */
   backlogLimit: number;
+  /**
+   * The owner's daily attention budget — the top-N decisions they can actually attend to (#200 §5,
+   * "daily top-3"). The premortem panel flags the queue as over-budget when more than this many
+   * decisions are presented (FM#5: budgeted attention is the scarce resource).
+   */
+  attentionBudget: number;
+  /**
+   * Latency (seconds) under which an approval counts as **rubber-stamped** (#200 §5). A YES decided
+   * faster than this is near-zero-latency — the premortem panel surfaces the rate so a gate that is
+   * theater (everything waved through instantly) cannot hide behind a green dashboard.
+   */
+  rubberStampSeconds: number;
 }
 
 export const BRIEFINGS_DEFAULTS: BriefingsCaps = {
@@ -45,6 +57,8 @@ export const BRIEFINGS_DEFAULTS: BriefingsCaps = {
   maxReportWords: 400,
   digestVoiceLimit: 5,
   backlogLimit: 5,
+  attentionBudget: 3,
+  rubberStampSeconds: 60,
 };
 
 export function resolveBriefingsCaps(cfg: BriefingsConfig | undefined): BriefingsCaps {
@@ -59,6 +73,8 @@ export function resolveBriefingsCaps(cfg: BriefingsConfig | undefined): Briefing
     maxReportWords: cfg?.maxReportWords ?? BRIEFINGS_DEFAULTS.maxReportWords,
     digestVoiceLimit: cfg?.digestVoiceLimit ?? BRIEFINGS_DEFAULTS.digestVoiceLimit,
     backlogLimit: cfg?.backlogLimit ?? BRIEFINGS_DEFAULTS.backlogLimit,
+    attentionBudget: cfg?.attentionBudget ?? BRIEFINGS_DEFAULTS.attentionBudget,
+    rubberStampSeconds: cfg?.rubberStampSeconds ?? BRIEFINGS_DEFAULTS.rubberStampSeconds,
   };
 }
 

@@ -872,6 +872,10 @@ export const briefingsSchema = z.object({
   digestVoiceLimit: z.number().int().nonnegative().optional(),
   /** Backlog items surfaced in the weekly report. */
   backlogLimit: z.number().int().nonnegative().optional(),
+  /** Owner daily attention budget — the premortem top-N (#200 §5, default 3). */
+  attentionBudget: z.number().int().positive().optional(),
+  /** Latency (seconds) under which an approval counts as rubber-stamped (#200 §5, default 60). */
+  rubberStampSeconds: z.number().int().nonnegative().optional(),
 });
 
 /**

@@ -108,6 +108,36 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   "browser.action",
 ];
 
+/**
+ * The IRREVERSIBLE action types (premortem #200 FM#4): an action whose blast radius cannot be cheaply
+ * reversed — money out the door, a domain registered, an email sent (deliverability/brand), a venture
+ * killed, a destructive restore. The premortem mandates these be **pre-committed or human-gated, never
+ * post-hoc review**, which they already are (every one is in {@link DEFAULT_SENSITIVE_ACTIONS}); this set
+ * is the read side — the founder report counts how many irreversible actions a window carried so the
+ * owner sees the company's exposure to the one class of mistake that is not cheaply undoable.
+ *
+ * Pure data, colocated with the action constants so the taxonomy has one home. Deliberately EXCLUDES
+ * `venture.bootstrap` (a launch is reversible — a venture can be archived/sunset) and `browser.action`
+ * (read-or-write ambiguous), to avoid over-counting; both still gate for a human via the sensitive list.
+ */
+export const IRREVERSIBLE_ACTIONS: readonly string[] = [
+  "external.send", // deliverability/brand — a sent message cannot be unsent
+  "billing.refund",
+  "billing.payout",
+  "billing.transfer",
+  FINANCE_DISBURSEMENT_ACTION, // money out the door (#194)
+  VENTURE_DOMAIN_PURCHASE_ACTION, // a registered domain (money + brand) (#187)
+  VENTURE_AD_SPEND_ACTION, // paid acquisition spend (#187)
+  VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
+  PORTFOLIO_SUNSET_ACTION, // killing a launched venture cannot be undone (#107)
+  DR_RESTORE_ACTION, // a destructive restore (#99)
+];
+
+/** True iff `actionType` is in the irreversible class (premortem #200 FM#4). Pure + total. */
+export function isIrreversibleAction(actionType: string): boolean {
+  return IRREVERSIBLE_ACTIONS.includes(actionType);
+}
+
 /** Lifecycle of an approval request. `approved` is the transient state between the decision and the
  * executor finishing; the rest are terminal. */
 export const APPROVAL_STATUSES = [

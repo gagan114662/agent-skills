@@ -246,4 +246,88 @@ describe("composeWeeklyReport", () => {
     expect(out.ventures).toEqual([]);
     expect(out.text).toContain("Revenue $0.00 across 0 ventures");
   });
+
+  it("omits the premortem panel (null, text unchanged) when no counters are supplied", () => {
+    const base = {
+      workspaceId: "ws",
+      nowMs: NOW,
+      brandName: "ipop",
+      currency: "usd",
+      revenueTotalCents: 0,
+      ventures: [],
+      voiceSignals: [],
+      backlog: [],
+      maxWords: 400,
+    } as const;
+    const out = composeWeeklyReport(base);
+    expect(out.premortem).toBeNull();
+    expect(out.text).not.toContain("Premortem");
+  });
+
+  it("includes the premortem panel + a flagged-line when counters are supplied (#200 AC2)", () => {
+    const out = composeWeeklyReport({
+      workspaceId: "ws",
+      nowMs: NOW,
+      brandName: "ipop",
+      currency: "usd",
+      revenueTotalCents: 0,
+      ventures: [],
+      voiceSignals: [],
+      backlog: [],
+      maxWords: 400,
+      premortem: {
+        venturesWithEdge: 1,
+        totalVentures: 2,
+        externallyVerifiedMetrics: 1,
+        totalMetrics: 4,
+        irreversibleActionCount: 2,
+        decisionsPresented: 5,
+        attentionBudget: 3,
+        approvalsDecided: 5,
+        approvalsRubberStamped: 5,
+        ownerOverrides: 1,
+      },
+    });
+    expect(out.premortem).not.toBeNull();
+    expect(out.premortem!.edgeCoveragePct).toBe(50);
+    expect(out.premortem!.externallyVerifiedPct).toBe(25);
+    expect(out.premortem!.overrideRatePct).toBe(20);
+    // The rendered line carries every gauge and surfaces the first warning flag.
+    expect(out.text).toContain("Premortem (#200)");
+    expect(out.text).toContain("50% ventures with an edge");
+    expect(out.text).toContain("25% metrics externally verified");
+    expect(out.text).toContain("2 irreversible actions");
+    expect(out.text).toContain("attention 5/3");
+    expect(out.text).toContain("Premortem flag:");
+    expect(out.wordCount).toBeLessThanOrEqual(400);
+  });
+
+  it("renders the panel with no flag-line when every gauge is healthy", () => {
+    const out = composeWeeklyReport({
+      workspaceId: "ws",
+      nowMs: NOW,
+      brandName: "ipop",
+      currency: "usd",
+      revenueTotalCents: 0,
+      ventures: [],
+      voiceSignals: [],
+      backlog: [],
+      maxWords: 400,
+      premortem: {
+        venturesWithEdge: 2,
+        totalVentures: 2,
+        externallyVerifiedMetrics: 4,
+        totalMetrics: 4,
+        irreversibleActionCount: 0,
+        decisionsPresented: 2,
+        attentionBudget: 3,
+        approvalsDecided: 5,
+        approvalsRubberStamped: 0,
+        ownerOverrides: 0,
+      },
+    });
+    expect(out.premortem!.flags).toEqual([]);
+    expect(out.text).toContain("Premortem (#200)");
+    expect(out.text).not.toContain("Premortem flag:");
+  });
 });

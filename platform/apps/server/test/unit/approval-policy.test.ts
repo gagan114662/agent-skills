@@ -4,9 +4,12 @@ import {
   isExpired,
   isActionType,
   isApprovalStatus,
+  isIrreversibleAction,
   DEFAULT_SENSITIVE_ACTIONS,
+  IRREVERSIBLE_ACTIONS,
   AUTONOMY_COMPLETE_ACTION,
   DR_RESTORE_ACTION,
+  VENTURE_BOOTSTRAP_ACTION,
   type PolicyRule,
 } from "../../src/approvals/policy.js";
 import {
@@ -143,5 +146,30 @@ describe("executor registry", () => {
     const other: ActionExecutor = { ...fake, summarize: () => "y" };
     const reg = buildRegistry([fake, other]);
     expect(reg.get("chat.post_message")).toBe(other);
+  });
+});
+
+describe("isIrreversibleAction (premortem #200 FM#4)", () => {
+  it("classifies money / deliverability / kill / restore actions as irreversible", () => {
+    expect(isIrreversibleAction("external.send")).toBe(true);
+    expect(isIrreversibleAction("billing.refund")).toBe(true);
+    expect(isIrreversibleAction("finance.disbursement")).toBe(true);
+    expect(isIrreversibleAction("venture.domain_purchase")).toBe(true);
+    expect(isIrreversibleAction("portfolio.sunset")).toBe(true);
+    expect(isIrreversibleAction(DR_RESTORE_ACTION)).toBe(true);
+  });
+
+  it("does NOT mark a reversible launch or an unknown/read action as irreversible", () => {
+    // A launch can be archived/sunset, so bootstrap itself is reversible (it still gates for a human).
+    expect(isIrreversibleAction(VENTURE_BOOTSTRAP_ACTION)).toBe(false);
+    expect(isIrreversibleAction("browser.action")).toBe(false);
+    expect(isIrreversibleAction("chat.post_message")).toBe(false);
+    expect(isIrreversibleAction("unknown.thing")).toBe(false);
+  });
+
+  it("every irreversible action is also sensitive-by-default (human-gated, never post-hoc)", () => {
+    for (const a of IRREVERSIBLE_ACTIONS) {
+      expect(DEFAULT_SENSITIVE_ACTIONS).toContain(a);
+    }
   });
 });
