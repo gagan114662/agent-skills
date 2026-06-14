@@ -8,6 +8,7 @@ import type { SupportDeskService } from "../support/service.js";
 import { resolveMoatCaps } from "../moat/caps.js";
 import type { PortfolioService } from "../portfolio/service.js";
 import { resolvePortfolioCaps } from "../portfolio/caps.js";
+import type { DiscoveryService } from "../discovery/service.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
@@ -54,9 +55,11 @@ export function createDefaultFounderConsoleService(deps: {
   supportDesk?: SupportDeskService;
   /** The #107 portfolio service — surfaces the launched-venture review decisions + sunset queue (read-only). */
   portfolio?: PortfolioService;
+  /** The #222 discovery service — surfaces the 5-stage GTM pipeline + PQL count (read-only). */
+  discovery?: DiscoveryService;
   now?: () => Date;
 }): FounderConsoleService {
-  const { scale, billing, moat, voice, supportDesk, portfolio } = deps;
+  const { scale, billing, moat, voice, supportDesk, portfolio, discovery } = deps;
   return new FounderConsoleService({
     fleet: {
       tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
@@ -243,6 +246,25 @@ export function createDefaultFounderConsoleService(deps: {
         };
       },
     },
+    // #222 customer discovery pipeline pane: the 5-stage GTM pipeline (outreach → … → post_sales) +
+    // PQL count, computed off the SAME pure pipelineMetrics the discovery routes use (so the console +
+    // API never disagree). Read-only. Absent ⇒ a zeroed pipeline (all stages 0).
+    discovery: discovery
+      ? {
+          pipeline: async (workspaceId) => {
+            const s = await discovery.pipelineSummary(workspaceId);
+            return {
+              stages: s.metrics.stages.map((st) => ({
+                stage: st.stage,
+                prospects: st.prospects,
+                verifiedProspects: st.verifiedProspects,
+              })),
+              totalProspects: s.metrics.totalProspects,
+              pqlCount: s.pqlCount,
+            };
+          },
+        }
+      : undefined,
     // #115 planning roadmap pane: read the backlog, rank it off the SAME pure RICE scorer the routes use
     // (so the console roadmap matches the API), and reshape to the read-struct with the why-ranked-here
     // evidence link per item. Read-only; `enabled` comes from the resolved planning caps (default OFF).

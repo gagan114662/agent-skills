@@ -457,6 +457,28 @@ export const decisionMakerSchema = z.object({
 });
 
 /**
+ * Customer Discovery Engine policy (#222, ADR-0222). Knobs for the per-venture signal layer that turns
+ * real product-usage + channel receipts into a ranked "who to reach out to now" queue + PQL events.
+ * Every field is optional and the master `enabled` defaults OFF — but note: signal ingest, the ranked
+ * queue read, the PQL detection and the (downstream) growth-funnel emission are ALWAYS live when the
+ * engine is exercised (a workspace that ingests no signals stays byte-for-byte unchanged). `enabled`
+ * gates only the proactive posture (reserved for the outreach-prep tick that #225 will own). This issue
+ * is READ-ONLY: it never sends. `queueLimit` caps the daily queue; `defaultWindowDays` is the lookback
+ * a signal definition uses when it sets none; `ownerWorkspaceId` marks the owner's own workspace for the
+ * owner-first rollout.
+ */
+export const discoverySchema = z.object({
+  /** The proactive-posture flag — default OFF (ingest/queue/PQL/emission are always live regardless). */
+  enabled: z.boolean().optional(),
+  /** Max rows the daily ranked discovery queue returns (top-N). */
+  queueLimit: z.number().int().positive().optional(),
+  /** Default lookback window (days) a signal definition uses when it specifies none. */
+  defaultWindowDays: z.number().int().positive().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1126,6 +1148,8 @@ export const settingsSchema = z.object({
   finance: financeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
   monetization: monetizationSchema.optional(),
+  /** Customer Discovery Engine policy (#222): per-venture signal layer + ranked prospect queue (default OFF). */
+  discovery: discoverySchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1182,6 +1206,7 @@ export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
+export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1292,6 +1317,8 @@ export interface ResolvedConfig {
   finance: FinanceConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
   monetization: MonetizationConfig;
+  /** Customer Discovery Engine policy (#222). A partial whose hard defaults `resolveDiscoveryCaps` fills. */
+  discovery: DiscoveryConfig;
 }
 
 /**
@@ -1349,4 +1376,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   acquisition: {},
   finance: {},
   monetization: {},
+  discovery: {},
 };

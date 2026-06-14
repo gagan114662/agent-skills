@@ -152,6 +152,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #188 monetization policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // money-gated activation + per-venture revenue ingestion cannot be flipped on by a lower layer.
     if (layer.monetization !== undefined) out.monetization = { ...layer.monetization };
+    // #222 discovery policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // proactive posture + queue limits cannot be loosened by a lower layer — owner-workspace-first.
+    if (layer.discovery !== undefined) out.discovery = { ...layer.discovery };
   }
   return out;
 }
@@ -214,5 +217,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
+    discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
   };
 }

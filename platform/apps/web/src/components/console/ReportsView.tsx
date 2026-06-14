@@ -25,7 +25,9 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
     );
   }
 
-  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention } = data;
+  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline } = data;
+  const stageLabel = (stage: string): string =>
+    stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const brief = attention.required
     ? attention.reasons.join(" · ")
     : `${fleet.activeSessions} in motion · ${pendingApprovals.length} waiting · ${fmtCents(budget.estimatedCostCents)} spent this window`;
@@ -98,6 +100,53 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
             </div>
           </div>
         </article>
+
+        {growth && (
+          <>
+            <header className="board__colh">
+              <span className="board__colt">Growth</span>
+            </header>
+            <article className="card" style={{ ["--hue" as string]: "var(--dept-analytics)" } as React.CSSProperties}>
+              <div className="reports__pl">
+                <div>
+                  <dt>Acquisition</dt>
+                  <dd>{growth.acquisition}</dd>
+                </div>
+                <div>
+                  <dt>Activation</dt>
+                  <dd>{growth.activation}</dd>
+                </div>
+                <div>
+                  <dt>Conversion</dt>
+                  <dd>{growth.conversion}</dd>
+                </div>
+                <div>
+                  <dt>Score</dt>
+                  <dd>{growth.score}</dd>
+                </div>
+              </div>
+            </article>
+          </>
+        )}
+
+        {discoveryPipeline && (
+          <>
+            <header className="board__colh">
+              <span className="board__colt">Discovery pipeline</span>
+              <span className="board__coln">{discoveryPipeline.pqlCount} PQL</span>
+            </header>
+            <article className="card" style={{ ["--hue" as string]: "var(--dept-brand)" } as React.CSSProperties}>
+              <div className="reports__pl">
+                {discoveryPipeline.stages.map((s) => (
+                  <div key={s.stage}>
+                    <dt>{stageLabel(s.stage)}</dt>
+                    <dd>{s.prospects}</dd>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </>
+        )}
       </section>
     </div>
   );
