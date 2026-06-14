@@ -36,6 +36,23 @@ export interface BillingRoutesOptions {
 
 const MAX_NAME_LEN = 200;
 const VALID_INTERVALS: readonly PriceInterval[] = ["day", "week", "month", "year"];
+const MAX_RETURN_URL_LEN = 2048;
+
+/**
+ * Validate a caller-supplied post-checkout redirect. Only well-formed `http(s)` URLs are honoured — this
+ * keeps `javascript:`/`data:` and other schemes out of the hosted-link `after_completion` redirect. Returns
+ * the normalised URL string, or `undefined` if absent/invalid (checkout then falls back to the provider's
+ * own confirmation page). It is the customer's own app origin, so we don't allow-list hosts here.
+ */
+function safeReturnUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_RETURN_URL_LEN) return undefined;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Stripe revenue-rails routes (#98, ADR-0043). INBOUND money only:
@@ -223,14 +240,17 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const body = (req.body ?? {}) as { planKey?: unknown };
+    const body = (req.body ?? {}) as { planKey?: unknown; returnUrl?: unknown };
     const planKey = typeof body.planKey === "string" ? body.planKey : "";
     if (!planKey) return reply.code(400).send({ error: "planKey required" });
+    // Optional post-payment redirect back into the app. Only http/https is honoured (no javascript:/data: etc).
+    const returnUrl = safeReturnUrl(body.returnUrl);
     try {
       const out = await planService.createCheckout({
         workspaceId: wid,
         planKey,
         createdByMemberId: id.memberId,
+        ...(returnUrl ? { returnUrl } : {}),
       });
       const dto: CheckoutResponseDto = { url: out.url, planKey: out.planKey };
       return reply.code(201).send(dto);

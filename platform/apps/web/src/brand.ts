@@ -547,8 +547,13 @@ export const CONSOLE = {
   legend: { caption: "edge colour = department" },
   /** Fleet-health dot copy (header). */
   health: { healthy: "fleet healthy", attention: "needs a human" },
-  /** Spend-gauge forecast labels. */
-  gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set" },
+  /** Spend-gauge forecast labels + the inline upgrade CTA (the in-header path to a paid plan). */
+  gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set", upgrade: "Upgrade" },
+  /** Confirmation banner shown when a customer lands back in the app from a completed checkout. */
+  checkoutReturn: {
+    success: "You're upgraded — your new plan and cap are live. Thanks for backing the fleet. 🎉",
+    dismiss: "Dismiss",
+  },
   /** Status-grammar words used on rows + cards. */
   status: { yourYes: "your yes", running: "working", shipped: "shipped", idle: "idle", sending: "sending" },
   /** Card chrome. The ▲ marks an approval-needed card (its ask line); the card opens the drawer. */
@@ -686,6 +691,24 @@ export const BILLING = {
   currentPlan: "Pro",
   /** A couple of true-to-product line items under the plan cards. */
   footnote: "Usage-based agent compute is billed against your cap. You set the ceiling; we never cross it.",
+  /**
+   * The real, in-app Settings → Billing panel (not the landing mockup): current plan, this-window usage vs
+   * cap, and a clearly-marked test-mode note. Reused by {@link BillingSettings}.
+   */
+  panel: {
+    eyebrow: "Plan & billing",
+    blurb: "See your plan and what you've used this window — upgrade any time, no calls, no contracts.",
+    currentPlanLabel: "Current plan",
+    trialPlan: "Free trial",
+    usageLabel: "Usage this window",
+    capSuffix: "cap",
+    noCap: "no cap set",
+    seatsSuffix: "seats",
+    /** Clearly-marked safety note: live charges stay off until the owner connects Stripe. */
+    testModeTitle: "Test mode — no live charges yet",
+    testModeBody:
+      "Checkout is wired end-to-end but runs in test mode. Going live (connecting Stripe and taking the first real payment) is the owner's call — until then nothing is charged.",
+  },
 } as const;
 
 /**

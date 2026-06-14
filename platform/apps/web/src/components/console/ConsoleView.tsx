@@ -19,12 +19,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
-import { api } from "../../api/client.js";
+import { api, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
 import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
 import { SlackConnectPanel } from "../SlackConnectPanel.js";
+import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
@@ -81,6 +82,8 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  // Set when the customer lands back from a completed hosted checkout (`?checkout=success`).
+  const [checkoutReturned, setCheckoutReturned] = useState(false);
 
   // First-run activation: the seed that hires the founding team (the #123/#138 department seam).
   const [seeding, setSeeding] = useState(false);
@@ -94,6 +97,21 @@ export function ConsoleView(): React.JSX.Element {
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  // Hosted checkout returns the customer to `…/?checkout=success` (#215). Confirm the upgrade, clear any
+  // paywall that triggered it, refresh the spend snapshot so the new cap shows, and strip the query flag so
+  // a reload doesn't re-fire the banner. routing.tsx exposes only the pathname, so read search directly.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(CHECKOUT_RETURN_PARAM) !== "success") return;
+    setCheckoutReturned(true);
+    store.dismissPaywall();
+    void refreshFounder();
+    params.delete(CHECKOUT_RETURN_PARAM);
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
   }, []);
 
   // --- live seams (view-local, the #104/#147 polled pattern) ---------------------------------------
@@ -296,6 +314,14 @@ export function ConsoleView(): React.JSX.Element {
       />
 
       <main className="console__main">
+        {checkoutReturned && (
+          <div className="checkout-banner" role="status">
+            <span>{CONSOLE.checkoutReturn.success}</span>
+            <button className="checkout-banner__dismiss" onClick={() => setCheckoutReturned(false)}>
+              {CONSOLE.checkoutReturn.dismiss}
+            </button>
+          </div>
+        )}
         <header className="console__head">
           <h1 className="console__title">{headerTitle}</h1>
           {forecast && fc && (
@@ -319,6 +345,15 @@ export function ConsoleView(): React.JSX.Element {
                 {!forecast.hasCap ? CONSOLE.gauge.noCap : forecast.atRisk ? CONSOLE.gauge.atRisk : CONSOLE.gauge.onTrack}
               </span>
             </span>
+          )}
+          {/* The in-app conversion path (#215): a trial user approaching the cap upgrades in one click. */}
+          {fc && (
+            <button
+              className={`gauge-upgrade${forecast?.atRisk ? " gauge-upgrade--risk" : ""}`}
+              onClick={() => setPricingOpen(true)}
+            >
+              {CONSOLE.gauge.upgrade}
+            </button>
           )}
           {fc && (
             <span
@@ -404,6 +439,7 @@ export function ConsoleView(): React.JSX.Element {
         <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setShellSettingsOpen(false)}>
           <ConnectClaudePanel />
           <SlackConnectPanel />
+          <BillingSettingsPanel />
         </ShellOverlay>
       )}
 

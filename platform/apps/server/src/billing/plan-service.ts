@@ -71,6 +71,8 @@ export interface PlanCheckoutRequest {
   workspaceId: string;
   planKey: string;
   createdByMemberId?: string;
+  /** In-app URL to return the customer to after a successful payment (validated http/https by the route). */
+  returnUrl?: string;
 }
 
 export interface PlanCheckoutResult {
@@ -155,6 +157,7 @@ export class PlanBillingService implements PlanActivator {
           // Round-tripped on the webhook so the merged ingest path knows to activate the plan.
           kind: "plan_checkout",
         },
+        ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}),
         secrets,
       });
       return { url: link.url, planKey: plan.key, priceId };

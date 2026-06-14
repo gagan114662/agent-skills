@@ -4585,6 +4585,37 @@ select:focus-visible {
 .waitchip:hover { background: #ffcdc0; }
 .waitchip .glyph-dot { width: 6px; height: 6px; }
 
+/* In-header upgrade CTA (#215): the one-click conversion path from the spend gauge. */
+.gauge-upgrade { border: 1px solid var(--accent); background: transparent; color: var(--accent-press);
+  font: inherit; font-weight: 700; font-size: 11px; border-radius: 99px; padding: 4px 11px; cursor: pointer;
+  transition: background 0.15s var(--pop-ease), color 0.15s var(--pop-ease); }
+.gauge-upgrade:hover { background: var(--accent); color: #fff; }
+.gauge-upgrade--risk { background: var(--accent); color: #fff; animation: console-pulse 1.4s infinite; }
+
+/* Post-checkout confirmation banner (#215). */
+.checkout-banner { display: flex; align-items: center; gap: 12px; margin: 14px 24px -4px; padding: 10px 14px;
+  background: var(--bg-1); border: 1px solid var(--online); border-left: 3px solid var(--online);
+  border-radius: var(--radius); animation: swell-pop 0.45s var(--pop-ease) both; }
+.checkout-banner span { flex: 1; font-weight: 600; }
+.checkout-banner__dismiss { border: none; background: transparent; color: var(--text-dim); font: inherit;
+  cursor: pointer; text-decoration: underline; }
+
+/* Settings → Billing summary (#215): current plan + usage vs cap + test-mode note. */
+.billing-settings__head { margin-bottom: 12px; }
+.billing-settings__eyebrow { font-weight: 700; font-size: 14px; }
+.billing-settings__blurb { color: var(--text-dim); margin: 4px 0 0; }
+.billing-settings__facts { display: flex; flex-wrap: wrap; gap: 24px; margin: 0 0 14px; }
+.billing-settings__facts dt { font-family: var(--console-mono); font-size: 10px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.billing-settings__facts dd { margin: 3px 0 0; font-size: 16px; }
+.billing-settings__plan { font-weight: 700; }
+.billing-settings__seats, .billing-settings__cap { color: var(--text-dim); font-size: 13px; }
+.billing-settings__spent { font-weight: 700; font-family: var(--console-mono); }
+.billing-settings__testmode { display: flex; flex-direction: column; gap: 3px; padding: 10px 13px;
+  background: var(--bg-1); border: 1px solid var(--line); border-left: 3px solid var(--away);
+  border-radius: var(--radius); color: var(--text-dim); }
+.billing-settings__testmode strong { color: var(--text); }
+
 .wyo { display: flex; align-items: center; gap: 10px; margin: 14px 24px -4px; padding: 9px 13px; background: var(--bg-1);
   border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius); animation: swell-pop 0.45s var(--pop-ease) both; }
 .wyo__t { font-weight: 700; }

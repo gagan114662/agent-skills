@@ -38,6 +38,7 @@ interface StripeClient {
     create(args: {
       line_items: { price: string; quantity: number }[];
       metadata?: Record<string, string>;
+      after_completion?: { type: "redirect"; redirect: { url: string } };
     }): Promise<{ id: string; url: string }>;
   };
 }
@@ -90,6 +91,10 @@ export class StripeBillingProvider implements BillingProvider {
     const link = await client.paymentLinks.create({
       line_items: [{ price: input.priceId, quantity: 1 }],
       metadata: input.metadata,
+      // Send the payer back into the app (so the SPA reflects the new plan) when a return URL is supplied.
+      ...(input.returnUrl
+        ? { after_completion: { type: "redirect" as const, redirect: { url: input.returnUrl } } }
+        : {}),
     });
     return { providerLinkId: link.id, url: link.url };
   }
