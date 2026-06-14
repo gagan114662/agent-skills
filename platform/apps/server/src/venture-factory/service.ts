@@ -77,6 +77,21 @@ export interface FleetSeeder {
   seed(input: { workspaceId: string; createdByMemberId: string }): Promise<void>;
 }
 
+/**
+ * Provisions a venture's deploy target at bootstrap (#195) — the Fly/Vercel project + envs + SSL +
+ * preview & prod URLs. Optional and idempotent: default-OFF / unwired ⇒ the reversible `repo_deploy_target`
+ * step stays the no-op it was, and a re-run never provisions twice (the provisioner short-circuits on an
+ * existing target). Infra spend is checked against the venture's budget cap inside the provisioner.
+ */
+export interface DeployTargetProvisioner {
+  provision(input: {
+    workspaceId: string;
+    ventureId: string;
+    ventureName: string;
+    createdByMemberId: string;
+  }): Promise<void>;
+}
+
 /** Ships the smoke-test landing + waitlist via the #153 marketing-site patterns (an external.send, #13). */
 export interface SmokeTestPublisher {
   publish(input: {
@@ -167,6 +182,8 @@ export interface VentureFactoryDeps {
   killSwitch: FactoryKillSwitch;
   budget: FactoryBudget;
   fleet: FleetSeeder;
+  /** Provisions the per-venture deploy target on the `repo_deploy_target` step (#195). Optional ⇒ no-op. */
+  deploy?: DeployTargetProvisioner;
   smokeTest: SmokeTestPublisher;
   profitability: ProfitabilityReader;
   archiver: VentureArchiver;
@@ -507,12 +524,22 @@ export class VentureFactoryService {
       includeAdSpend: opts.includeAdSpend ?? false,
     });
 
-    // Reversible, autonomous steps run now. The fleet seed is the only one with a real side effect here;
-    // the rest (workspace/brand/landing/repo/budget caps) are wired in default.ts as the seam matures.
+    // Reversible, autonomous steps run now. The fleet seed and (#195) the deploy-target provision are the
+    // only ones with a real side effect here; the rest (workspace/brand/landing/budget caps) are wired in
+    // default.ts as the seam matures.
     const ranSteps: BootstrapStepKind[] = [];
     for (const step of autonomousSteps(plan)) {
       if (step.kind === "seed_fleet") {
         await this.deps.fleet.seed({ workspaceId, createdByMemberId: opts.requesterMemberId });
+      } else if (step.kind === "repo_deploy_target") {
+        // #195: provision the per-venture deploy target (Fly/Vercel project + envs + SSL + preview/prod).
+        // Optional + idempotent + budget-capped; default-OFF / unwired ⇒ this stays a reversible no-op.
+        await this.deps.deploy?.provision({
+          workspaceId,
+          ventureId: venture.id,
+          ventureName: candidate.proposedName,
+          createdByMemberId: opts.requesterMemberId,
+        });
       }
       ranSteps.push(step.kind);
     }

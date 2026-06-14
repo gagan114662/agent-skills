@@ -233,6 +233,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (financeEnabled !== undefined) {
     raw.finance = { enabled: financeEnabled === "true" || financeEnabled === "1" };
   }
+  // #195 venture deploys: let the deployment env opt the per-venture provisioning + release pipeline in
+  // without a managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no
+  // block); a managed layer still wins as the lock. The infra backend is selectable via env too.
+  const ventureDeploysEnabled = env.RELOAD_VENTURE_DEPLOYS_ENABLED;
+  if (ventureDeploysEnabled !== undefined) {
+    const ventureDeploys: Record<string, unknown> = {
+      enabled: ventureDeploysEnabled === "true" || ventureDeploysEnabled === "1",
+    };
+    const provider = env.VENTURE_DEPLOY_PROVIDER;
+    if (provider === "dryrun" || provider === "fly" || provider === "vercel") {
+      ventureDeploys.provider = provider;
+    }
+    raw.ventureDeploys = ventureDeploys;
+  }
   // #98 billing opt-in: present the `[billing]` config section (the per-tenant checkout gate) from the
   // deployment env — mirroring marketing/rbac/catalog — so live billing can be switched on without
   // baking a managed.toml. The provider VALUE mirrors the env-level `BILLING_PROVIDER` (the actual

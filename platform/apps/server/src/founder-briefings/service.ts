@@ -19,6 +19,7 @@ import {
 import { escalationThresholds, type BriefingsCaps } from "./caps.js";
 import type { BriefingNotifier, DeliveryResult, DigestKind } from "./notifier.js";
 import type { AcquisitionBriefView } from "../acquisition/cac.js";
+import type { VentureDeployBriefView } from "../venture-deploy/brief.js";
 
 /**
  * Founder Briefings IO orchestrator (#173, ADR-0173). Declares ONE read seam per data source, gathers
@@ -131,8 +132,19 @@ export interface FounderBriefingsDeps {
   deliveries: DeliveryStore;
   /** Acquisition execution receipts (#189, AC5). Optional — absent → no acquisition section. */
   acquisition?: AcquisitionReader;
+  /** Venture deploy receipts (#195, AC4). Optional — absent → no venture-deploy section. */
+  ventureDeploys?: VentureDeployReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
+}
+
+/**
+ * Venture deploy receipts for the daily brief (#195, AC4). OPTIONAL on the deps — when absent (the
+ * default) the brief omits the section entirely, unchanged from today. `section` returns null when there
+ * is nothing to report (no release in the window / the feature is off).
+ */
+export interface VentureDeployReader {
+  section(workspaceId: string): Promise<VentureDeployBriefView | null>;
 }
 
 /** The #194 finance close-pack section (or null when the finance layer is off for the workspace). */
@@ -204,7 +216,7 @@ export class FounderBriefingsService {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
     const window = this.deps.spend.window(now);
-    const [shipped, blocked, decisionItems, usage, constitution, acquisition, incidents] =
+    const [shipped, blocked, decisionItems, usage, constitution, acquisition, ventureDeploys, incidents] =
       await Promise.all([
         this.deps.ships.shipped(workspaceId),
         this.deps.blocks.blocked(workspaceId),
@@ -212,6 +224,7 @@ export class FounderBriefingsService {
         this.deps.spend.usage(workspaceId, window),
         this.deps.constitution.summary(workspaceId),
         this.deps.acquisition ? this.deps.acquisition.section(workspaceId) : Promise.resolve(null),
+        this.deps.ventureDeploys ? this.deps.ventureDeploys.section(workspaceId) : Promise.resolve(null),
         this.deps.incidents?.summary(workspaceId) ??
           Promise.resolve<IncidentSummary>({ open: 0, escalated: 0, resolved: 0, topVenture: null }),
       ]);
@@ -236,6 +249,7 @@ export class FounderBriefingsService {
       },
       constitution,
       acquisition: acquisition ?? undefined,
+      ventureDeploys: ventureDeploys ?? undefined,
       incidents,
       maxWords: caps.maxBriefWords,
     });

@@ -72,6 +72,8 @@ export const VENTURE_BOOTSTRAP_ACTION = "venture.bootstrap" as const;
 export const VENTURE_DOMAIN_PURCHASE_ACTION = "venture.domain_purchase" as const;
 export const VENTURE_AD_SPEND_ACTION = "venture.ad_spend" as const;
 export const VENTURE_PAYMENT_METHOD_ACTION = "venture.payment_method" as const;
+/** #195 a venture prod cutover / failed-release escalation — gated for the owner, recorded-only. */
+export const VENTURE_DEPLOY_ACTION = "venture.deploy" as const;
 
 /**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
@@ -113,6 +115,8 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   // irreversible money decisions — always human, never agent-initiated, recorded-only. ADR-0188.
   MONETIZATION_ACTIVATE_PRICE_ACTION,
   MONETIZATION_PAYOUT_SETTINGS_ACTION,
+  // #195 a venture prod cutover (customer-facing) / failed-release escalation is gated by default. ADR-0195.
+  VENTURE_DEPLOY_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",

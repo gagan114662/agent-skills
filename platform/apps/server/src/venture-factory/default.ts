@@ -4,6 +4,7 @@ import { resolveScaleCaps } from "../scale/caps.js";
 import { resolveVentureFactoryCaps } from "./caps.js";
 import {
   VentureFactoryService,
+  type DeployTargetProvisioner,
   type FactoryStore,
   type FleetSeeder,
   type ProfitabilityReader,
@@ -148,6 +149,8 @@ export interface DefaultVentureFactoryDeps {
   profitability?: ProfitabilityReader;
   /** The real #107 venture archiver. */
   archiver?: VentureArchiver;
+  /** The #195 deploy-target provisioner (app.ts passes the venture-deploy provisioner); default ⇒ no-op. */
+  deploy?: DeployTargetProvisioner;
   /** The owner workspace resolver for `ownerWorkspaceOnly`. */
   ownerWorkspaceId?: (workspaceId: string) => Promise<string | null>;
   now?: () => Date;
@@ -162,6 +165,7 @@ export function createDefaultVentureFactoryService(
     killSwitch,
     budget,
     fleet: deps.fleet ?? noopFleetSeeder,
+    deploy: deps.deploy,
     smokeTest: smokeTestPublisher(),
     profitability: deps.profitability ?? noopProfitabilityReader,
     archiver: deps.archiver ?? noopArchiver,
