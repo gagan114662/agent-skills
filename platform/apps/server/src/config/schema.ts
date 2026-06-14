@@ -958,6 +958,18 @@ export const onboardingSchema = z.object({
 });
 
 /**
+ * Real-world tool surface policy (#231, ADR-0231). The flags that turn the fleet's gated, recorded-only
+ * real-world tools (publish/send/post/...) into actions that touch the world. Default OFF: the publish
+ * provider stays `dryrun` (a non-reachable URL, no network) until an owner opts in.
+ */
+export const realworldSchema = z.object({
+  /** Master flag for the real-world tool surface — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Publish provider kind (`dryrun` default — no network; `github_pages` publishes a live URL). */
+  publishProvider: z.string().optional(),
+});
+
+/**
  * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
  * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
  * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
@@ -1142,6 +1154,8 @@ export const settingsSchema = z.object({
   browser: browserSchema.optional(),
   /** External account onboarding policy (#192): human-once setup + agent credential injection (default OFF). */
   onboarding: onboardingSchema.optional(),
+  /** Real-world tool surface policy (#231): gated publish/send/post + publish provider (default OFF). */
+  realworld: realworldSchema.optional(),
   /** Acquisition execution policy (#189): real ads/email/social/SEO sends + auto-send caps (default OFF). */
   acquisition: acquisitionSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
@@ -1203,6 +1217,7 @@ export type SlackConfig = z.infer<typeof slackSchema>;
 export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 export type BrowserConfig = z.infer<typeof browserSchema>;
 export type OnboardingConfig = z.infer<typeof onboardingSchema>;
+export type RealworldConfig = z.infer<typeof realworldSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
@@ -1312,6 +1327,8 @@ export interface ResolvedConfig {
   browser: BrowserConfig;
   /** External account onboarding policy (#192). A partial whose hard defaults `resolveOnboardingCaps` fills. */
   onboarding: OnboardingConfig;
+  /** Real-world tool surface policy (#231). A partial whose hard defaults `resolveRealworldCaps` fills. */
+  realworld: RealworldConfig;
   acquisition: AcquisitionConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
@@ -1373,6 +1390,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   briefings: {},
   browser: {},
   onboarding: {},
+  realworld: {},
   acquisition: {},
   finance: {},
   monetization: {},

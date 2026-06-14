@@ -405,6 +405,9 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/console/ReportsView.tsx",
     "components/console/ProjectSettingsSheet.tsx",
     "components/console/StatusGlyph.tsx",
+    // Settings → Connect external accounts (#192/#231): every word comes from EXTERNAL_ACCOUNTS.
+    "components/ExternalAccounts.tsx",
+    "components/ExternalAccountsPanel.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.

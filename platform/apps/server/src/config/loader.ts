@@ -201,6 +201,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (onboardingEnabled !== undefined) {
     raw.onboarding = { enabled: onboardingEnabled === "true" || onboardingEnabled === "1" };
   }
+  // #231 real-world tool surface: let the deployment env turn the surface on + pick a live publish
+  // provider without a managed.toml — the owner workspace opts in first. Hard default stays OFF (vars
+  // unset → no block ⇒ publish stays `dryrun`, a non-reachable URL, no network). A managed layer still
+  // wins as the lock. The GitHub token is NEVER config — it's read from the secret env at publish time.
+  const realworldEnabled = env.RELOAD_REALWORLD_ENABLED;
+  const realworldProvider = env.RELOAD_REALWORLD_PUBLISH_PROVIDER;
+  if (realworldEnabled !== undefined || realworldProvider !== undefined) {
+    raw.realworld = {
+      ...(realworldEnabled !== undefined
+        ? { enabled: realworldEnabled === "true" || realworldEnabled === "1" }
+        : {}),
+      ...(realworldProvider !== undefined ? { publishProvider: realworldProvider } : {}),
+    };
+  }
   // #189 acquisition execution: let the deployment env turn the real-send dispatcher + per-channel
   // execution on without a managed.toml — the owner workspace opts in first. Hard default stays OFF
   // (vars unset → no block ⇒ the `external.send` executor stays recorded-only, no network egress). A

@@ -155,6 +155,31 @@ describe("auto model-selection config (convene-llm-gateway)", () => {
   });
 });
 
+describe("real-world tool surface config (#231)", () => {
+  it("defaults OFF — an unset realworld block resolves to {} (publish stays dryrun)", () => {
+    expect(loadConfig(undefined, sources({})).realworld).toEqual({});
+  });
+
+  it("survives the layer merge — the block is NOT silently dropped (mergeSettings/mergeLayers gotcha)", () => {
+    const cfg = loadConfig(undefined, sources({ repo: `[realworld]\nenabled = true\npublishProvider = "github_pages"` }));
+    expect(cfg.realworld).toEqual({ enabled: true, publishProvider: "github_pages" });
+  });
+
+  it("env opts a workspace in without a managed.toml (RELOAD_REALWORLD_* → block)", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources({}, { RELOAD_REALWORLD_ENABLED: "true", RELOAD_REALWORLD_PUBLISH_PROVIDER: "github_pages" }),
+    );
+    expect(cfg.realworld).toEqual({ enabled: true, publishProvider: "github_pages" });
+  });
+
+  it("managed is the lock — a lower layer cannot turn the surface on when managed pins it off", () => {
+    const managed = `[settings.realworld]\nenabled = false`;
+    const repo = `[realworld]\nenabled = true`;
+    expect(loadConfig(undefined, sources({ managed, repo })).realworld).toEqual({ enabled: false });
+  });
+});
+
 describe("validation & resilience (#58)", () => {
   it("rejects a type-invalid value with a clear, content-free error", () => {
     expect(() => loadConfig(undefined, sources({ repo: `dataPrivacyMode = "yes"` }))).toThrowError(

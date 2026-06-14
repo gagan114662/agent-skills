@@ -25,6 +25,7 @@ import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
 import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
 import { SlackConnectPanel } from "../SlackConnectPanel.js";
+import { ExternalAccountsPanel } from "../ExternalAccountsPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
@@ -491,6 +492,7 @@ export function ConsoleView(): React.JSX.Element {
         <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setShellSettingsOpen(false)}>
           <ConnectClaudePanel />
           <SlackConnectPanel />
+          <ExternalAccountsPanel />
           <BillingSettingsPanel />
         </ShellOverlay>
       )}
