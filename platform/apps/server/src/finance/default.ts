@@ -2,6 +2,7 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { revenueEvents } from "../db/schema/index.js";
 import { dbFinanceStore } from "../db/repositories/finance.js";
+import { listVentureRevenueReceipts } from "../db/repositories/monetization.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
 import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { windowKey } from "../scale/usage.js";
@@ -21,7 +22,13 @@ import { FinanceLedgerEngine } from "./engine.js";
  * estimate (posted UNVERIFIED). NO outbound money provider is wired anywhere here.
  */
 
-/** Read verified inbound payment receipts from `revenue_events` (positive-amount events only). */
+/**
+ * Read verified inbound payment receipts (positive-amount events only). Two externally-receipted sources,
+ * UNIONed: the workspace-level #98 `revenue_events` (ipop's own billing → unattributed), and the #188
+ * per-venture `monetization_revenue` (each row carries its `ventureIdeaId`, so it lands on that venture's
+ * P&L). The two are disjoint — a venture charges through its OWN Stripe account, never ipop's — so there
+ * is no double count. With monetization OFF the venture source is simply empty (unchanged behavior).
+ */
 const dbRevenueReader: RevenueEventReader = {
   async listReceipts(workspaceId: string, sinceMs?: number): Promise<RevenueReceipt[]> {
     const conds = [eq(revenueEvents.workspaceId, workspaceId), gt(revenueEvents.amountCents, 0)];
@@ -37,14 +44,17 @@ const dbRevenueReader: RevenueEventReader = {
       .where(and(...conds))
       .orderBy(desc(revenueEvents.createdAt))
       .limit(1000);
-    return rows.map((r) => ({
+    const workspaceReceipts: RevenueReceipt[] = rows.map((r) => ({
       providerEventId: r.providerEventId,
       amountCents: r.amountCents,
       currency: r.currency,
       createdAtMs: r.createdAt.getTime(),
-      // No per-venture attribution today (ADR-0107) → workspace-level entry.
+      // ipop's own billing is workspace-level (unattributed).
       ventureIdeaId: null,
     }));
+    // #188 per-venture revenue, attributed to its venture (so it shows on the per-venture weekly P&L).
+    const ventureReceipts = await listVentureRevenueReceipts(workspaceId, sinceMs);
+    return [...workspaceReceipts, ...ventureReceipts];
   },
 };
 

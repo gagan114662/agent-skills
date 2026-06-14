@@ -76,6 +76,11 @@ app.founderBriefingsEngine.start(env.briefings.intervalMs);
 // period's close pack (the idempotent upsert makes a repeat tick a no-op). Stopped on server close via buildApp.
 app.financeEngine.start(env.finance.intervalMs);
 
+// #188 venture monetization: start the opt-in activation tick (MONETIZATION_INTERVAL_MS; default 0 = off)
+// that mints a venture's REAL payment link (inbound-only, with the venture's OWN Stripe key) ONCE the
+// owner has approved its activation in the #13 money queue. Stopped on server close via buildApp.
+app.monetizationEngine.start(env.monetization.intervalMs);
+
 // #147 automations: start the opt-in tick (AUTOMATIONS_INTERVAL_MS; default 0 = off) that launches
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);

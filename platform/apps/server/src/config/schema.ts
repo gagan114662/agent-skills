@@ -964,6 +964,25 @@ export const financeSchema = z.object({
   ledgerLimit: z.number().int().positive().optional(),
 });
 
+/**
+ * Venture monetization rails (#188, ADR-0188). Default OFF per workspace AND per venture: even when
+ * `enabled`, a venture can only charge once the owner connects its OWN Stripe account (the #192 vault,
+ * keyed `stripe:<ventureIdeaId>`) — never ipop's key. Drafting plans is free; activating/re-pricing/payout
+ * changes always queue as #13 MONEY decisions; revenue is counted only from signature-verified receipts.
+ */
+export const monetizationSchema = z.object({
+  /** Master switch for drafting/activation/webhook ingestion — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict monetization to the owner workspace (default true), like the #187 factory. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** Default ISO 4217 currency for drafts when one is not specified (default "usd"). */
+  defaultCurrency: z.string().length(3).optional(),
+  /** Webhook signature replay tolerance in seconds (default 300). */
+  webhookToleranceSec: z.number().int().positive().optional(),
+  /** Max plans/experiments a single read returns (default 200). */
+  listLimit: z.number().int().positive().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -1061,6 +1080,8 @@ export const settingsSchema = z.object({
   acquisition: acquisitionSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
+  /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
+  monetization: monetizationSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1114,6 +1135,7 @@ export type BrowserConfig = z.infer<typeof browserSchema>;
 export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
+export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1218,6 +1240,8 @@ export interface ResolvedConfig {
   acquisition: AcquisitionConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
+  /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
+  monetization: MonetizationConfig;
 }
 
 /**
@@ -1272,4 +1296,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   onboarding: {},
   acquisition: {},
   finance: {},
+  monetization: {},
 };

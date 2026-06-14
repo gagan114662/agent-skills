@@ -143,6 +143,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #194 finance policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // ledger/close tick + the read surface cannot be flipped on by a lower layer — owner-workspace-first.
     if (layer.finance !== undefined) out.finance = { ...layer.finance };
+    // #188 monetization policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // money-gated activation + per-venture revenue ingestion cannot be flipped on by a lower layer.
+    if (layer.monetization !== undefined) out.monetization = { ...layer.monetization };
   }
   return out;
 }
@@ -202,5 +205,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     onboarding: merged.onboarding ?? { ...CONFIG_DEFAULTS.onboarding },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
+    monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
   };
 }

@@ -74,6 +74,18 @@ export const VENTURE_AD_SPEND_ACTION = "venture.ad_spend" as const;
 export const VENTURE_PAYMENT_METHOD_ACTION = "venture.payment_method" as const;
 
 /**
+ * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
+ * never submitted through the #13 action route; the monetization service evaluates them against the same
+ * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
+ * be charged, and changing payout settings re-routes money — both are irreversible money decisions
+ * (premortem FM#4), so they ship sensitive by default and ALWAYS queue for the owner with the exact amount
+ * shown. The executors are recorded-only (like `billing.refund`/`finance.disbursement`): approving records
+ * the owner's go, and a live payment link is minted (inbound-only collection) only after that go.
+ */
+export const MONETIZATION_ACTIVATE_PRICE_ACTION = "monetization.activate_price" as const;
+export const MONETIZATION_PAYOUT_SETTINGS_ACTION = "monetization.payout_settings" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
@@ -97,6 +109,10 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   VENTURE_DOMAIN_PURCHASE_ACTION,
   VENTURE_AD_SPEND_ACTION,
   VENTURE_PAYMENT_METHOD_ACTION,
+  // #188 activating a venture's pricing (so customers can be charged) and changing payout settings are
+  // irreversible money decisions — always human, never agent-initiated, recorded-only. ADR-0188.
+  MONETIZATION_ACTIVATE_PRICE_ACTION,
+  MONETIZATION_PAYOUT_SETTINGS_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",
