@@ -74,6 +74,20 @@ export interface MarketingSeedDeps {
     createdByMemberId: string;
   }): Promise<{ ideaId: string; created: boolean }>;
   /**
+   * Drive the freshly-created venture through the #96 loop so activation produces REAL work (#230): a
+   * funded venture with an epic + first tasks, never an inert `intake` row the console sits on forever
+   * ("clocking in… hang tight"). Idempotent (a venture that already has an epic is returned unchanged),
+   * so it is safe on a re-seed and on the boot backfill. Returns the epic id, iteration count, verdict,
+   * and a short `brief` the welcome sessions fold into each lead's first task so the launched sessions
+   * are pointed at the real venture. Optional — omitted ⇒ the venture is created but not driven (the
+   * no-DB unit job / a deployment without the venture service wired).
+   */
+  activateVenture?(input: {
+    workspaceId: string;
+    ideaId: string;
+    createdByMemberId: string;
+  }): Promise<{ epicTaskId: string | null; iterations: number; verdict: string; brief: string }>;
+  /**
    * How many welcome tasks the workspace already has (#221) — a FALLBACK idempotency key for activation,
    * used only when {@link ensureFirstVenture} is not wired (e.g. the no-DB unit job). When the venture
    * seam is present, "the workspace already has a venture" is the authoritative key instead (#226/#227),
@@ -97,8 +111,17 @@ export interface MarketingSeedResult {
   /**
    * The workspace's first venture (#221), present once activation has run (`postWelcomeTasks`). `created`
    * is true only on the seed that first stood it up; a re-seed echoes the same venture with `created: false`.
+   * Once driven through the #96 loop (#230), `epicTaskId`/`iterations`/`verdict` describe the funded venture
+   * the team is working — `epicTaskId` null means the kickoff seam wasn't wired or it failed (the latter is
+   * surfaced via the activation diagnostic, never as an infinite "clocking in").
    */
-  venture?: { ideaId: string; created: boolean };
+  venture?: {
+    ideaId: string;
+    created: boolean;
+    epicTaskId?: string | null;
+    iterations?: number;
+    verdict?: string;
+  };
 }
 
 export interface MarketingSeedInput {
@@ -198,10 +221,31 @@ export async function seedMarketingDepartment(
   //        created-but-paused rather than throwing the founder a 429 dead-end. The denial is honest (no
   //        work is faked) — the venture itself is the activation proof, not the welcome sessions.
   const welcomeTasks: Array<{ id: string }> = [];
-  let venture: { ideaId: string; created: boolean } | undefined;
+  let venture: MarketingSeedResult["venture"];
+  let ventureBrief: string | undefined;
   if (input.postWelcomeTasks && deps.launchWelcome && deps.recordTask) {
     if (deps.ensureFirstVenture) {
       venture = await deps.ensureFirstVenture({ workspaceId, createdByMemberId });
+      // #230: drive the venture through the #96 loop NOW so activation produces real work — a funded
+      // venture with an epic + first tasks — instead of an inert intake row the console hangs on. This
+      // runs whether or not the venture is brand new (kickoff is idempotent), so a re-seed of an
+      // already-created-but-undriven venture (the live bug: epicTaskId null / iterations 0) gets fixed
+      // too. Best-effort: a kickoff failure must NOT discard the venture or block the welcome launches —
+      // the activation diagnostic surfaces the reason instead of throwing the founder a dead end.
+      if (deps.activateVenture && venture) {
+        try {
+          const kicked = await deps.activateVenture({ workspaceId, ideaId: venture.ideaId, createdByMemberId });
+          venture = {
+            ...venture,
+            epicTaskId: kicked.epicTaskId,
+            iterations: kicked.iterations,
+            verdict: kicked.verdict,
+          };
+          ventureBrief = kicked.brief;
+        } catch {
+          // Keep the venture; the console's "why nothing running" diagnostic explains it (no infinite hang).
+        }
+      }
     }
     const alreadyActivated = venture
       ? !venture.created
@@ -220,7 +264,10 @@ export async function seedMarketingDepartment(
             channelId: channel.id,
             agentMemberId: agent.agentMemberId,
             createdByMemberId,
-            task: dept.welcomeTask,
+            // #230: fold the venture brief into the lead's first task so the launched session works the
+            // real founding venture (not a generic hello). Falls back to the plain welcome task if the
+            // kickoff didn't run (e.g. the no-DB unit job).
+            task: ventureBrief ? `${dept.welcomeTask}\n\n${ventureBrief}` : dept.welcomeTask,
           });
         } catch {
           // Keep the venture (+ any sessions already opened) and stop — never re-throw. A blocked launch

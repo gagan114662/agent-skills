@@ -30,10 +30,15 @@ import type { UsageTrendPoint } from "../scale/forecast.js";
  * real repos in `default.ts`. **Read-only**: every seam is a query; the console never mutates.
  */
 
-/** Live in-flight concurrency (the #71 admission snapshot). */
+/**
+ * Live in-flight concurrency. `tenantInFlight` is the durable count of the workspace's live (running /
+ * provisioning) sessions from the DB (#230) — NOT the in-memory #71 admission counter, which both
+ * resets to 0 on every deploy and (the #230 bug) reads 0 the instant a spawn-and-die session releases
+ * its slot, lying that nothing ran. `globalInFlight` stays the admission snapshot (fleet capacity).
+ */
 export interface FleetReader {
-  tenantInFlight(workspaceId: string): number;
-  globalInFlight(): number;
+  tenantInFlight(workspaceId: string): Promise<number> | number;
+  globalInFlight(): Promise<number> | number;
 }
 
 /** The venture pipeline (#96) — all evaluations for the workspace, any status. */
@@ -270,8 +275,8 @@ export class FounderConsoleService {
       workspaceId,
       nowMs: now.getTime(),
       fleet: {
-        tenantInFlight: this.deps.fleet.tenantInFlight(workspaceId),
-        globalInFlight: this.deps.fleet.globalInFlight(),
+        tenantInFlight: await this.deps.fleet.tenantInFlight(workspaceId),
+        globalInFlight: await this.deps.fleet.globalInFlight(),
         sessionsThisWindow: usage.sessionsStarted,
       },
       ventures,

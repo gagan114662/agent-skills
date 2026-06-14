@@ -423,6 +423,28 @@ export function ConsoleView(): React.JSX.Element {
           )}
         </header>
 
+        {/* #230: the "why is nothing running?" diagnostic — server-classified (spawn-and-die / no work /
+            idle) so the console NEVER sits silently on "clocking in". Shows on the clocking-in panel AND the
+            board (it sits above both), with the classified exit reason of recent failures so a dead fleet is
+            visible, not swallowed. "running" (board is filling) and "no_venture" (the first-run pitch already
+            speaks for itself) render nothing here. Copy is server-sourced data, not chrome literals. */}
+        {mc?.diagnostic && mc.diagnostic.state !== "running" && mc.diagnostic.state !== "no_venture" && (
+          <div className={`consolediag consolediag--${mc.diagnostic.state}`} role="status">
+            <p className="consolediag__headline">{mc.diagnostic.headline}</p>
+            <p className="consolediag__detail">{mc.diagnostic.detail}</p>
+            {mc.recentFailures && mc.recentFailures.length > 0 && (
+              <ul className="consolediag__failures">
+                {mc.recentFailures.slice(0, 3).map((f) => (
+                  <li key={f.id} className="consolediag__failure">
+                    {f.headline}{" "}
+                    <code className="consolediag__exit">{`${f.failureClass} · exit ${f.exitCode ?? "n/a"}`}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {/* #226: the empty desk is driven strictly off "the workspace has a venture", never the session
             count or a seed flag. A workspace with a venture always renders its board/PROJECTS — even with
             zero live sessions (created-but-paused) and across a reload. The desk shows only for a genuine

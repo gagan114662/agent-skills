@@ -296,6 +296,50 @@ export async function listWorkspaceLiveSessions(workspaceId: string): Promise<Wo
   return rows.map((r) => ({ ...r, progressAt: new Date(r.progressAt) })) as WorkspaceLiveSession[];
 }
 
+/**
+ * A recently-finished or live session as the #230 mission-control diagnostic reads it: enough to
+ * classify WHY a session ended (status + exit code + a short result tail) so the console can show the
+ * exit reason instead of an indefinite "clocking in". `result` is the already-redacted terminal tail
+ * the runtime persisted (never the raw output stream).
+ */
+export interface RecentWorkspaceSession {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: SessionStatus;
+  exitCode: number | null;
+  result: string | null;
+  endedAt: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * The workspace's most recent sessions (incl. terminal rows), newest first — the #230 diagnostic source.
+ * Unlike {@link listWorkspaceLiveSessions} this DELIBERATELY includes finished/failed rows so a
+ * spawn-and-die fleet (which leaves zero live rows) is still visible as "21 sessions, all failed (spawn)".
+ */
+export async function listRecentWorkspaceSessions(
+  workspaceId: string,
+  limit = 20,
+): Promise<RecentWorkspaceSession[]> {
+  const rows = await db
+    .select({
+      id: agentSessions.id,
+      channelId: agentSessions.channelId,
+      agentMemberId: agentSessions.agentMemberId,
+      status: agentSessions.status,
+      exitCode: agentSessions.exitCode,
+      result: agentSessions.result,
+      endedAt: agentSessions.endedAt,
+      createdAt: agentSessions.createdAt,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.workspaceId, workspaceId))
+    .orderBy(desc(agentSessions.createdAt))
+    .limit(limit);
+  return rows as RecentWorkspaceSession[];
+}
+
 /** A single session by id (no channel scope) — mission-control resolves its workspace + channel here. */
 export async function getAgentSessionById(id: string): Promise<AgentSession | undefined> {
   const [row] = await db.select(COLUMNS).from(agentSessions).where(eq(agentSessions.id, id)).limit(1);

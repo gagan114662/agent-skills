@@ -250,6 +250,46 @@ describe("ConsoleView", () => {
     expect(screen.getByText("seo")).toBeInTheDocument();
   });
 
+  it("surfaces the 'why is nothing running?' diagnostic + exit reason instead of an infinite hang (#230)", async () => {
+    // The #230 dogfood: activation produced a venture but every session spawn-and-died, and the console
+    // just sat there. The server now classifies WHY; the console shows it (headline + classified exit
+    // reason) so the owner is never stranded on "clocking in".
+    await mount({
+      mc: mcDto({
+        sessions: [],
+        count: 0,
+        totalEstimatedCostCents: 0,
+        diagnostic: {
+          state: "sessions_failing",
+          headline: "I couldn't start up — my runtime is missing a tool I need",
+          detail: "This one's on us — the team's been pinged to patch the agent image.",
+          dominantFailureClass: "spawn",
+          liveCount: 0,
+          recentFailureCount: 3,
+        },
+        recentFailures: [
+          {
+            id: "s1",
+            channelId: "c1",
+            agentMemberId: "ag1",
+            status: "failed",
+            exitCode: null,
+            failureClass: "spawn",
+            headline: "I couldn't start up — my runtime is missing a tool I need",
+            detail: "patching",
+            endedAtMs: 1_700_000_000_000,
+          },
+        ],
+      }),
+      pending: [],
+      fc: fcDto({ venturePipeline: { total: 1, active: 1, funded: 1, killed: 0, escalated: 0 } }),
+    });
+
+    expect((await screen.findAllByText(/couldn't start up/i)).length).toBeGreaterThanOrEqual(1);
+    // The classified exit reason is shown (spawn · exit n/a) — the swallowed failure is now visible.
+    expect(screen.getByText(/spawn · exit n\/a/i)).toBeInTheDocument();
+  });
+
   it("hard-holds EVERY seed control during the rate-limit cool-off — a blocked click can't re-fire (#227)", async () => {
     // The dogfooded trap: a held click still re-fired into the limit (often via the always-present left-rail
     // control) and reset the window, locking the user out for minutes. Now the one authoritative hold

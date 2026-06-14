@@ -499,6 +499,75 @@ export class VentureService {
     };
   }
 
+  /**
+   * Activation kickoff (#230). An owner who activates their workspace has *chosen* to build their
+   * founding venture — that human choice IS the funding decision, and it is deliberately distinct from
+   * the #96 autonomous scoring gate (which exists to stop the fleet from auto-funding unvalidated
+   * AI-generated ideas, and is left completely unchanged here). So activation: scores the venture once
+   * for the honest record (a real, possibly-low scorecard + one logged iteration), then funds it by
+   * owner activation — emitting the build epic and setting `epicTaskId` — so an activated workspace
+   * always has a funded venture with real work to pick up, never an inert `intake` row that the console
+   * sits on forever ("clocking in"). Crucially it does NOT mark the scorecard `funded`, so
+   * `hasPassingUnexpiredScorecard` stays false and the autonomy admission gate is NOT weakened: an
+   * unvalidated idea still cannot auto-launch fleet sessions. Idempotent: a venture that already has an
+   * epic is returned unchanged (no re-score, no duplicate epic), so a re-seed / boot backfill is safe.
+   */
+  async kickoffFounding(
+    workspaceId: string,
+    ideaId: string,
+    _createdByMemberId?: string,
+  ): Promise<{ epicTaskId: string | null; score: number | null; iterations: number; verdict: Verdict }> {
+    const idea = await this.deps.repo.getIdea(workspaceId, ideaId);
+    if (!idea) throw new VentureNotFoundError();
+
+    // Idempotent: an activated founding venture already has its epic — never re-score or re-emit.
+    if (idea.epicTaskId) {
+      const sc = await this.deps.repo.latestScorecard(workspaceId, ideaId);
+      const its = await this.deps.repo.listIterations(workspaceId, ideaId);
+      return { epicTaskId: idea.epicTaskId, score: sc?.score ?? null, iterations: its.length, verdict: "FUND" };
+    }
+
+    // Score once for the honest record (a real scorecard; it may be low — that's fine, scoring is not
+    // a gate at activation, it is provenance the founder can see).
+    const scorecard = await this.score(workspaceId, ideaId);
+    const evaluation = await this.deps.repo.getOrCreateEvaluation(workspaceId, ideaId);
+    const reasoning =
+      `Funded by owner activation (#230): the owner chose to build this founding venture. ` +
+      `Scored ${scorecard.score} for the record; the #96 autonomous scoring gate is unchanged and ` +
+      `still governs fleet auto-launches.`;
+
+    // Log the activation decision as an iteration so the founder sees it (guarantees iterations ≥ 1).
+    await this.deps.repo.insertIteration({
+      workspaceId,
+      ideaId,
+      iteration: scorecard.iteration,
+      score: scorecard.score,
+      verdict: "FUND",
+      gapList: { gaps: [] },
+      angles: [],
+      evidence: await this.deps.evidence.gather(idea),
+      workingMemorySummary: reasoning,
+    });
+    await this.deps.repo.updateEvaluation(workspaceId, evaluation.id, {
+      status: "terminal",
+      terminalVerdict: "FUND",
+      currentIteration: scorecard.iteration,
+      lastScore: scorecard.score,
+    });
+    // Apply the FUND side effects: status funded + emit the build epic (+ first tasks) + setIdeaEpic.
+    // We intentionally do NOT call setScorecardVerdict(…, funded=true) — the admission gate stays closed.
+    await this.applyVerdict(workspaceId, idea, scorecard.score, "FUND", reasoning);
+
+    const updated = await this.deps.repo.getIdea(workspaceId, ideaId);
+    const its = await this.deps.repo.listIterations(workspaceId, ideaId);
+    return {
+      epicTaskId: updated?.epicTaskId ?? null,
+      score: scorecard.score,
+      iterations: its.length,
+      verdict: "FUND",
+    };
+  }
+
   /** Read a full venture view: the idea, its latest scorecard, and the iteration log. */
   async get(workspaceId: string, ideaId: string): Promise<VentureView> {
     const idea = await this.deps.repo.getIdea(workspaceId, ideaId);

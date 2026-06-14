@@ -95,6 +95,11 @@ const FAILURE_COPY: Record<FailureReasonClass, { headline: string; detail: strin
   },
 };
 
+/** The brand-voice copy (headline + what-to-do-next) for a failure class — reused by the #230 diagnostic. */
+export function failureCopy(cls: FailureReasonClass): { headline: string; detail: string } {
+  return FAILURE_COPY[cls];
+}
+
 /**
  * Render the single terminal channel message for a finished session. Green check ONLY on completion;
  * any other status renders a failure mark, the brand-voice reason, and a small honest footer with the

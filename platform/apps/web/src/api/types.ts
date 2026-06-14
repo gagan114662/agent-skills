@@ -564,6 +564,34 @@ export interface LiveSessionDto {
   progressAt: string;
 }
 
+/** Why nothing is running, classified server-side (#230) so the console never sits on "hang tight". */
+export type DiagnosticState = "running" | "sessions_failing" | "no_venture" | "no_work" | "idle";
+
+export interface MissionDiagnosticDto {
+  state: DiagnosticState;
+  /** Human, brand-voice headline the console shows in place of "hang tight". */
+  headline: string;
+  /** One line on what to do next. */
+  detail: string;
+  /** The failure class behind a `sessions_failing` state (else null). */
+  dominantFailureClass: string | null;
+  liveCount: number;
+  recentFailureCount: number;
+}
+
+/** A recently-failed session surfaced with its classified exit reason (#230). */
+export interface RecentFailureDto {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: string;
+  exitCode: number | null;
+  failureClass: string;
+  headline: string;
+  detail: string;
+  endedAtMs: number | null;
+}
+
 /** The live mission-control roll-up. */
 export interface MissionControlDto {
   sessions: LiveSessionDto[];
@@ -571,6 +599,10 @@ export interface MissionControlDto {
   totalEstimatedCostCents: number;
   rateCentsPerMinute: number;
   costIsEstimate: true;
+  /** #230 "why is nothing running?" diagnostic — present on current servers, optional for back-compat. */
+  diagnostic?: MissionDiagnosticDto;
+  /** #230 recently-failed sessions with exit reasons — so a spawn-and-die fleet is visible, not silent. */
+  recentFailures?: RecentFailureDto[];
 }
 
 // --- marketing site (CMS-lite, #153) ---

@@ -13,6 +13,7 @@ import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
 import { listEvaluations } from "../db/repositories/venture.js";
+import { listWorkspaceLiveSessions } from "../db/repositories/agent-sessions.js";
 import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
@@ -62,7 +63,10 @@ export function createDefaultFounderConsoleService(deps: {
   const { scale, billing, moat, voice, supportDesk, portfolio, discovery } = deps;
   return new FounderConsoleService({
     fleet: {
-      tenantInFlight: (workspaceId) => scale.admission.snapshot(workspaceId).tenant,
+      // #230: the durable count of the workspace's live sessions (DB), not the in-memory admission
+      // counter — which read 0 the instant 21 spawn-and-die sessions released their slots, hiding that
+      // anything ever ran. This now matches what mission-control shows the owner.
+      tenantInFlight: async (workspaceId) => (await listWorkspaceLiveSessions(workspaceId)).length,
       globalInFlight: () => scale.admission.snapshot("").global,
     },
     venture: {

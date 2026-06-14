@@ -157,6 +157,53 @@ describe("#123 seedMarketingDepartment", () => {
     expect(result.welcomeTasks).toHaveLength(0);
   });
 
+  it("drives the venture through the loop on activation and folds its brief into the welcome tasks (#230)", async () => {
+    // Activation must produce REAL work: the venture is driven to a funded epic, and each lead's welcome
+    // session is pointed at that venture (not a generic hello) so the launched sessions work the venture.
+    const f = makeFakes();
+    const activateCalls: Array<{ ideaId: string }> = [];
+    const deps: MarketingSeedDeps = {
+      ...f.deps,
+      ensureFirstVenture: async () => ({ ideaId: "idea-1", created: true }),
+      activateVenture: async ({ ideaId }) => {
+        activateCalls.push({ ideaId });
+        return { epicTaskId: "epic-1", iterations: 1, verdict: "FUND", brief: "VENTURE_BRIEF_MARKER" };
+      },
+    };
+
+    const result = await seedMarketingDepartment(
+      { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
+      deps,
+    );
+
+    expect(activateCalls).toEqual([{ ideaId: "idea-1" }]);
+    expect(result.venture).toMatchObject({ ideaId: "idea-1", created: true, epicTaskId: "epic-1", iterations: 1, verdict: "FUND" });
+    // Every welcome session's task carries the venture brief so the launched session works the venture.
+    expect(f.launches).toHaveLength(7);
+    expect(f.launches.every((l) => l.task.includes("VENTURE_BRIEF_MARKER"))).toBe(true);
+  });
+
+  it("keeps the venture and still launches when the kickoff fails — no infinite hang (#230)", async () => {
+    // A kickoff failure must not discard the venture or block the welcome launches; the diagnostic
+    // surfaces the reason. The welcome task falls back to the plain copy (no brief).
+    const f = makeFakes();
+    const deps: MarketingSeedDeps = {
+      ...f.deps,
+      ensureFirstVenture: async () => ({ ideaId: "idea-1", created: true }),
+      activateVenture: async () => {
+        throw new Error("kickoff failed: scorer unavailable");
+      },
+    };
+
+    const result = await seedMarketingDepartment(
+      { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
+      deps,
+    );
+
+    expect(result.venture).toMatchObject({ ideaId: "idea-1", created: true });
+    expect(f.launches).toHaveLength(7); // launches still fired
+  });
+
   it("posts intros only on creation — re-seeding an existing agency posts no new messages (#138)", async () => {
     // The boot backfill (#138) re-runs the seeder on every restart for existing workspaces. Intros and
     // the #general welcome must be posted once (when an agent/channel is first created), never again,
