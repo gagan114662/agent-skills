@@ -224,6 +224,19 @@ function patch(path: string, body?: unknown): Promise<unknown> {
   return request(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
+/** Query flag the hosted checkout appends when sending a paid customer back into the app. */
+export const CHECKOUT_RETURN_PARAM = "checkout";
+
+/**
+ * Where the hosted checkout returns the customer after a successful payment: the current app origin tagged
+ * `?checkout=success`, so the SPA can refetch the plan and confirm the upgrade on return. Falls back to a
+ * relative path when there's no `window` (tests/SSR).
+ */
+export function checkoutReturnUrl(): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/?${CHECKOUT_RETURN_PARAM}=success`;
+}
+
 export const api = {
   // --- auth ---
   signup(input: {
@@ -330,10 +343,19 @@ export const api = {
     listPlans(workspaceId: string): Promise<PlansResponseDto> {
       return request<PlansResponseDto>(`/workspaces/${workspaceId}/billing/plans`);
     },
-    /** Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on 409/400/502. */
-    startCheckout(workspaceId: string, planKey: string): Promise<CheckoutResponseDto> {
+    /**
+     * Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on
+     * 409/400/502. `returnUrl` (defaults to the app origin tagged `?checkout=success`) is where the hosted
+     * link sends the payer back so the SPA can reflect the new plan on return.
+     */
+    startCheckout(
+      workspaceId: string,
+      planKey: string,
+      returnUrl: string = checkoutReturnUrl(),
+    ): Promise<CheckoutResponseDto> {
       return post(`/workspaces/${workspaceId}/billing/checkout`, {
         planKey,
+        returnUrl,
       }) as Promise<CheckoutResponseDto>;
     },
   },

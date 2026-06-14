@@ -78,4 +78,17 @@ describe("api client", () => {
       message: "invalid credentials",
     } satisfies Partial<ApiError>);
   });
+
+  it("startCheckout posts the plan + a return URL so the hosted link comes back into the app (#215)", async () => {
+    const fetchMock = stubFetch(201, { url: "https://pay.example/abc", planKey: "pro" });
+    await api.billing.startCheckout("w1", "pro");
+
+    const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(url).toBe("/workspaces/w1/billing/checkout");
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(init.body);
+    expect(body.planKey).toBe("pro");
+    // The default return URL carries the success flag the SPA reads on return.
+    expect(body.returnUrl).toMatch(/checkout=success/);
+  });
 });

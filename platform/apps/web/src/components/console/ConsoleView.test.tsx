@@ -192,6 +192,25 @@ describe("ConsoleView", () => {
     expect(await screen.findByText(CONSOLE.firstRun.ctaError)).toBeInTheDocument();
   });
 
+  it("carries the in-header Upgrade CTA that opens the pricing overlay (#215)", async () => {
+    vi.spyOn(api.billing, "listPlans").mockResolvedValue({ current: null, plans: [] });
+    await mount();
+    const upgrade = await screen.findByRole("button", { name: CONSOLE.gauge.upgrade });
+    await userEvent.click(upgrade);
+    // The pricing overlay (a shell dialog) opens so a trial user can convert without hitting a cap first.
+    expect(
+      await screen.findByRole("dialog", { name: CONSOLE.shell.settingsTitle }),
+    ).toBeInTheDocument();
+  });
+
+  it("confirms the upgrade and strips the flag when returning from checkout (#215)", async () => {
+    window.history.replaceState(null, "", "/?checkout=success");
+    await mount();
+    // The success banner shows on return, and the query flag is removed so a reload won't re-fire it.
+    expect(await screen.findByText(CONSOLE.checkoutReturn.success)).toBeInTheDocument();
+    expect(window.location.search).not.toContain("checkout");
+  });
+
   it("opens the per-project settings sheet from the standup gear", async () => {
     await mount();
     const gears = await screen.findAllByRole("button", { name: new RegExp(`^${CONSOLE.projects.settings}`) });
