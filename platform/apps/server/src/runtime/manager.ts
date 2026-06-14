@@ -24,7 +24,7 @@ import type { AdmissionController, AdmissionTicket } from "../scale/admission.js
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
-import { renderSessionOutcome } from "./outcome.js";
+import { renderSessionOutcome, classifyFailure, failureCopy, isSuccess, type FailureReasonClass } from "./outcome.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
 /**
@@ -164,6 +164,24 @@ export interface SessionManagerDeps {
    * Wired centrally HERE (not at the REST route) so @mention/autonomy/marketing launches are covered too.
    */
   autoModel?: AutoModelResolver;
+  /**
+   * Optional failure sink (#230): called best-effort when a session ends in a genuine failure
+   * (spawn-and-die / harness crash / timeout) so the failure is ROUTED to self-healing/escalation
+   * (#117 flywheel) instead of silently dying — the #166/#230 gap where 21 sessions failed and nothing
+   * surfaced. Never called for a clean completion, an auth/budget stop (the owner must act, a fix agent
+   * can't), or a cancel. Absent → no routing (today's behavior); a sink error never affects the session.
+   */
+  onSessionFailure?(event: {
+    workspaceId: string;
+    sessionId: string;
+    channelId: string;
+    agentMemberId: string;
+    status: SessionStatus;
+    exitCode: number | null;
+    failureClass: FailureReasonClass;
+    /** Brand-voice headline (no raw output) — the fingerprint message. */
+    message: string;
+  }): Promise<void>;
 }
 
 export interface LaunchInput {
@@ -643,6 +661,31 @@ export class SessionManager {
       snapshotId: result.snapshotId ?? null,
     });
     recordSessionEnded(this.deps.runtime.kind, result.status);
+    // #230: route a genuine failure to self-healing/escalation (#117) instead of letting it die in
+    // silence. Only runtime/harness failures (spawn-and-die, crash, timeout) are routed — an auth/budget
+    // stop needs the OWNER to act (a fix agent can't), and a cancel is intentional. Best-effort: a sink
+    // error must never affect an already-finalized session.
+    if (this.deps.onSessionFailure && !isSuccess(result.status)) {
+      const failureClass = classifyFailure({
+        status: result.status,
+        exitCode: result.exitCode,
+        outputTail: resultText,
+      });
+      if (failureClass === "spawn" || failureClass === "error" || failureClass === "timeout") {
+        await this.deps
+          .onSessionFailure({
+            workspaceId: session.workspaceId,
+            sessionId: session.id,
+            channelId: session.channelId,
+            agentMemberId: session.agentMemberId,
+            status: result.status,
+            exitCode: result.exitCode,
+            failureClass,
+            message: failureCopy(failureClass).headline,
+          })
+          .catch((err: unknown) => log.error({ err }, "session failure routing failed"));
+      }
+    }
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.
     if (this.deps.usage) {

@@ -156,7 +156,13 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
   // unconditionally: with all caps 0 they admit everything (unchanged), but the #17 kill switch now
   // halts launches and per-tenant usage accrues so a configured budget can bite.
   const serverScale = resolveScaleCaps(serverConfig.scale);
-  return new SessionManager({
+  // #230: route a genuine session failure (spawn-and-die / harness crash / timeout) to the #117
+  // self-healing flywheel so it fingerprints into a deduped issue instead of dying in silence — the
+  // #166 gap where 21 sessions failed and nothing surfaced. Built lazily over THIS manager (the flywheel
+  // needs it for fix-dispatch) and memoized; a dynamic import avoids a static import cycle. Record-only
+  // here (the app's engine owns the dispatch tick); both share the module-singleton fingerprint store.
+  let failureFlywheel: import("../flywheel/engine.js").FlywheelEngine | undefined;
+  const manager: SessionManager = new SessionManager({
     runtime: createRuntime(env, undefined, {
       size: serverScale.warmPoolSize,
       regions: serverScale.regions,
@@ -225,5 +231,23 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // Auto model-selection (convene-llm-gateway): undefined unless LLM_GATEWAY_URL is set. The resolver
     // gates itself further on the master switch + per-tenant config, so this is OFF by default.
     autoModel,
+    // #230: route genuine session failures into the self-healing flywheel (see note above).
+    onSessionFailure: async (e) => {
+      if (!failureFlywheel) {
+        const { createDefaultFlywheelEngine } = await import("../flywheel/default.js");
+        failureFlywheel = createDefaultFlywheelEngine(logger, manager);
+      }
+      await failureFlywheel.record({
+        workspaceId: e.workspaceId,
+        failureClass: "harness_crash",
+        message: `${e.message} (${e.failureClass})`,
+        source: "harness",
+        detail: `session ${e.status} · exit ${e.exitCode ?? "n/a"}`,
+        sessionId: e.sessionId,
+        channelId: e.channelId,
+        agentMemberId: e.agentMemberId,
+      });
+    },
   });
+  return manager;
 }

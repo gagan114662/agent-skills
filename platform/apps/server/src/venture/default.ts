@@ -37,7 +37,7 @@ import {
 } from "../db/repositories/venture.js";
 import { createRequest } from "../db/repositories/approvals.js";
 import { upsertMemory } from "../db/repositories/memories.js";
-import { createTask } from "../db/repositories/tasks.js";
+import { createTask, addTaskLink } from "../db/repositories/tasks.js";
 import { getUsage, recordSessionCompute } from "../db/repositories/tenant-usage.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import type { SessionLogger } from "../runtime/manager.js";
@@ -150,10 +150,37 @@ const memoryRecorder: MemoryRecorder = {
   },
 };
 
+/**
+ * The first concrete tasks a funded venture's team picks up (#230). Deliberately small, real, and
+ * reviewable — the narrowest-wedge motion the venture loop refines from here. Each becomes a board row
+ * (status `todo`) linked to the epic, so an activated workspace has actual work to do, not just an epic
+ * label. Kept generic (no product claim) so they read true for any founder's founding venture.
+ */
+const FOUNDING_FIRST_TASKS: ReadonlyArray<{ title: string; description: string }> = [
+  {
+    title: "Validate demand for the founding venture",
+    description:
+      "Find evidence a real, unaffiliated user has this problem and would pay. Draft a fake-door or " +
+      "outreach test and the exact signal we'd count as demand. Receipts over adjectives.",
+  },
+  {
+    title: "Sharpen the narrowest-wedge go-to-market",
+    description:
+      "Turn the venture's wedge into one concrete first audience and the single channel to reach them. " +
+      "Draft the first message in-channel for human review.",
+  },
+  {
+    title: "Set up the first customer-discovery conversations",
+    description:
+      "Draft outreach to line up 3–5 discovery conversations with the target user. Sending is a " +
+      "sensitive action — produce the draft and stop for human approval.",
+  },
+];
+
 /** #14: emit the build epic when an idea is FUNDed (unlocks autonomy budget). */
 const epicEmitter: EpicEmitter = {
   emit: async ({ workspaceId, idea, createdByMemberId }) => {
-    const task = await createTask({
+    const epic = await createTask({
       workspaceId,
       title: `Build funded venture: ${idea.problem}`,
       description:
@@ -163,7 +190,30 @@ const epicEmitter: EpicEmitter = {
       labels: ["venture", "epic"],
       createdByMemberId,
     });
-    return { id: task.id };
+    // #230: stand up the venture's first tasks under the epic so the team has concrete, reviewable work
+    // to pick up the moment it's funded — not just an epic label. Best-effort per task: a first-task
+    // failure must never lose the epic (which is the venture's `epicTaskId`).
+    for (const t of FOUNDING_FIRST_TASKS) {
+      try {
+        const child = await createTask({
+          workspaceId,
+          title: t.title,
+          description: `${t.description}\n\nPart of venture epic: ${epic.title}`,
+          labels: ["venture", "venture-task"],
+          createdByMemberId,
+        });
+        await addTaskLink({
+          workspaceId,
+          taskId: child.id,
+          targetType: "task",
+          targetId: epic.id,
+          createdByMemberId,
+        });
+      } catch {
+        // Keep going — a missing first task is recoverable; a missing epic is not.
+      }
+    }
+    return { id: epic.id };
   },
 };
 
@@ -198,6 +248,28 @@ export function createDefaultVentureService(
     voice,
     now,
   });
+}
+
+/**
+ * Activation kickoff over the production service (#230). Drives the founding venture through the #96
+ * loop so an activated workspace gets a funded venture with an epic + first tasks (never an inert
+ * `intake` row the console sits on forever). Idempotent + safe to call from the seeder and the boot
+ * backfill. Returns the epic id, iteration count, verdict, and a short brief the welcome sessions use
+ * so each lead's first session is pointed at the real venture, not a generic hello.
+ */
+export async function kickoffFoundingVenture(
+  workspaceId: string,
+  ideaId: string,
+  createdByMemberId: string,
+): Promise<{ epicTaskId: string | null; iterations: number; verdict: string; brief: string }> {
+  const svc = createDefaultVentureService();
+  const result = await svc.kickoffFounding(workspaceId, ideaId, createdByMemberId);
+  const idea = await getIdea(workspaceId, ideaId);
+  const brief = idea
+    ? `Our founding venture is in flight — ${idea.wedge} Pick up your first task from the venture board ` +
+      `and produce real, reviewable work toward it.`
+    : "Our founding venture is in flight — pick up your first task and produce real, reviewable work.";
+  return { epicTaskId: result.epicTaskId, iterations: result.iterations, verdict: result.verdict, brief };
 }
 
 /** Build the production VentureEngine (#96 scheduled tick). The timer is started in `index.ts`. */

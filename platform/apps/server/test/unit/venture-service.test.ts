@@ -234,3 +234,51 @@ describe("VentureService.runLoop", () => {
     expect(view.iterations[1].verdict).toBe("ESCALATE");
   });
 });
+
+describe("VentureService.kickoffFounding (#230 — activation funds the founding venture)", () => {
+  it("FUNDs the founding venture by owner activation even when its score would otherwise KILL it", async () => {
+    // Score 30 ≤ kill(35): the autonomous gate would KILL this. Activation is the owner's funding
+    // decision, so it must still emit the epic + set epicTaskId + log an iteration.
+    const { svc, spies } = build(fixedScorer(3));
+    const idea = await svc.submit("ws", IDEA, "m1");
+
+    const result = await svc.kickoffFounding("ws", idea.id, "m1");
+
+    expect(result.verdict).toBe("FUND");
+    expect(result.epicTaskId).toBe("task-1");
+    expect(result.iterations).toBeGreaterThanOrEqual(1);
+    expect(spies.epics.calls).toBe(1);
+    expect(spies.memory.calls).toBe(0); // not a KILL — nothing recorded to the memory graph
+
+    const view = await svc.get("ws", idea.id);
+    expect(view.idea.status).toBe("funded");
+    expect(view.idea.epicTaskId).toBe("task-1");
+    expect(view.latestScorecard).not.toBeNull();
+    expect(view.iterations.length).toBeGreaterThanOrEqual(1);
+    expect(view.iterations[0].verdict).toBe("FUND");
+  });
+
+  it("does NOT mark the scorecard funded — the #96 admission gate's passing-scorecard rule is untouched", async () => {
+    const { svc } = build(fixedScorer(3));
+    const idea = await svc.submit("ws", IDEA, "m1");
+    await svc.kickoffFounding("ws", idea.id, "m1");
+
+    const view = await svc.get("ws", idea.id);
+    // The scorecard keeps its honest (low) score and is NOT flipped to funded — so
+    // hasPassingUnexpiredScorecard stays false and the autonomy gate is not weakened.
+    expect(view.latestScorecard?.funded).toBe(false);
+  });
+
+  it("is idempotent: a re-kickoff returns the same epic without re-scoring or emitting a second epic", async () => {
+    const { svc, spies } = build(fixedScorer(3));
+    const idea = await svc.submit("ws", IDEA, "m1");
+
+    const first = await svc.kickoffFounding("ws", idea.id, "m1");
+    const second = await svc.kickoffFounding("ws", idea.id, "m1");
+
+    expect(second.epicTaskId).toBe(first.epicTaskId);
+    expect(spies.epics.calls).toBe(1); // not emitted twice
+    const view = await svc.get("ws", idea.id);
+    expect(view.iterations).toHaveLength(1); // not re-scored
+  });
+});

@@ -19,7 +19,7 @@ import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/reposi
 import { FOUNDING_VENTURE } from "./blueprint.js";
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { SubagentService, type SubagentLauncher } from "../subagents/service.js";
-import { createVentureAdmission } from "../venture/default.js";
+import { createVentureAdmission, kickoffFoundingVenture } from "../venture/default.js";
 import { loadConfig } from "../config/loader.js";
 import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
@@ -128,6 +128,10 @@ function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
     recordTask: async (input) => createMarketingTask(input),
     ensureFirstVenture: ({ workspaceId, createdByMemberId }) =>
       ensureFoundingVenture(workspaceId, createdByMemberId),
+    // #230: drive the venture through the #96 loop on activation so it produces a funded venture with an
+    // epic + first tasks the leads pick up (idempotent — safe on a re-seed).
+    activateVenture: ({ workspaceId, ideaId, createdByMemberId }) =>
+      kickoffFoundingVenture(workspaceId, ideaId, createdByMemberId),
     // #221: fallback activation idempotency key (the venture row above is the authoritative one, #226/#227).
     countWelcomeTasks: async (workspaceId) =>
       (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome").length,
@@ -194,7 +198,16 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
     backfillVenture: async ({ workspaceId, createdByMemberId }) => {
       const welcomeTasks = (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome");
       if (welcomeTasks.length === 0) return { created: false };
-      const { created } = await ensureFoundingVenture(workspaceId, createdByMemberId);
+      const { ideaId, created } = await ensureFoundingVenture(workspaceId, createdByMemberId);
+      // #230: an account activated before this fix has a venture row that was never driven through the
+      // #96 loop (epicTaskId null, iterations 0 — the exact live symptom). Drive it on boot so it gets a
+      // funded venture with an epic + first tasks. Idempotent (a venture that already has an epic no-ops)
+      // and best-effort (a kickoff failure must not abort the backfill of other workspaces).
+      try {
+        await kickoffFoundingVenture(workspaceId, ideaId, createdByMemberId);
+      } catch {
+        // The next activation / boot retries; the console diagnostic surfaces the inert venture meanwhile.
+      }
       return { created };
     },
     log,
