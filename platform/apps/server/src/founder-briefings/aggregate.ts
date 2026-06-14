@@ -445,6 +445,13 @@ export interface WeeklyReportInput {
   maxWords: number;
   /** Optional #194 finance close-pack section; absent ⇒ the report is unchanged. */
   financeSection?: FinanceBriefingSection;
+  /**
+   * Optional premortem-panel counters (#200 AC2). Absent (default) ⇒ the report renders byte-for-byte as
+   * before and `premortem` is `null` — the same composable-overlay discipline finance/acquisition follow,
+   * so existing tests + a briefings deployment without the panel wired are unchanged. When present the
+   * weekly report gains the five standing failure-mode gauges + their warning flags.
+   */
+  premortem?: PremortemPanelInput;
 }
 
 export interface WeeklyReport {
@@ -459,6 +466,8 @@ export interface WeeklyReport {
   backlog: BacklogEntry[];
   /** The #194 finance close-pack section, or `null` when the finance layer is off/unwired. */
   financeSection: FinanceBriefingSection | null;
+  /** The premortem panel (#200 AC2), or `null` when the counters were not supplied (panel unwired). */
+  premortem: PremortemPanel | null;
   /** The brand-voice weekly digest, guaranteed `wordCount <= maxWords`. */
   text: string;
   wordCount: number;
@@ -537,6 +546,15 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     parts.push(`Next week: ${titles}.`);
   }
 
+  // #200 AC2 premortem panel: the standing answer to "we shipped the roadmap and still failed". Rendered
+  // high (right after the headline economics, ahead of voice/backlog) so the failure-mode flags survive
+  // the word clamp — the brief must never quietly read "all green" while an edge is missing or the
+  // metrics are self-reported. When the counters are absent the report is byte-for-byte unchanged.
+  const premortem = input.premortem ? composePremortemPanel(input.premortem) : null;
+  if (premortem) {
+    parts.push(renderPremortemLine(premortem));
+  }
+
   const { text, wordCount: wc } = clampWords(parts, input.maxWords);
 
   return {
@@ -549,9 +567,25 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     voiceSignals: input.voiceSignals,
     backlog: input.backlog,
     financeSection: input.financeSection ?? null,
+    premortem,
     text,
     wordCount: wc,
   };
+}
+
+/**
+ * Render the premortem panel into ONE terse brand-voice sentence for the weekly digest. Leads with the
+ * gauges, then appends the first warning flag (if any) so the highest-signal danger survives the word
+ * clamp. The full structured panel is on the `WeeklyReport.premortem` object for the console/API.
+ */
+function renderPremortemLine(p: PremortemPanel): string {
+  const gauges =
+    `Premortem (#200): ${p.edgeCoveragePct}% ventures with an edge, ` +
+    `${p.externallyVerifiedPct}% metrics externally verified, ` +
+    `${pluralize(p.irreversibleActionCount, "irreversible action")}, ` +
+    `attention ${p.attentionSpend.presented}/${p.attentionSpend.budget}, ` +
+    `${p.rubberStampRatePct}% rubber-stamped, ${p.overrideRatePct}% overridden.`;
+  return p.flags.length > 0 ? `${gauges} Premortem flag: ${p.flags[0]}.` : gauges;
 }
 
 // ───────────────────────────── Premortem panel (#187 / #200 AC2) ─────────────────────────────

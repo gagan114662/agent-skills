@@ -10,6 +10,7 @@ import {
   type DecisionItem,
   type DecisionQueue,
   type FinanceBriefingSection,
+  type PremortemPanelInput,
   type ShippedItem,
   type VentureKpiSnapshot,
   type VoiceSignal,
@@ -124,6 +125,8 @@ export interface FounderBriefingsDeps {
   backlog: BacklogReader;
   /** Optional #194 finance close-pack section for the weekly report; absent ⇒ report unchanged. */
   finance?: FinanceSectionReader;
+  /** Optional premortem-panel counters (#200 AC2); absent ⇒ the weekly report omits the panel. */
+  premortem?: PremortemReader;
   notifier: BriefingNotifier;
   deliveries: DeliveryStore;
   /** Acquisition execution receipts (#189, AC5). Optional — absent → no acquisition section. */
@@ -135,6 +138,20 @@ export interface FounderBriefingsDeps {
 /** The #194 finance close-pack section (or null when the finance layer is off for the workspace). */
 export interface FinanceSectionReader {
   section(workspaceId: string): Promise<FinanceBriefingSection | null>;
+}
+
+/**
+ * The premortem-panel raw counters (#200 AC2) — every field of {@link PremortemPanelInput} EXCEPT
+ * `attentionBudget`, which is a caps concern the service injects so there is one source of truth for the
+ * owner's daily top-N. Sourced read-only from the existing loops in `default.ts`: the #187 edge gate, the
+ * #106 verifier results vs #96 self-reported scores, the #13 approvals queue (irreversible/rubber-stamp/
+ * override), and the decision-queue size.
+ */
+export type PremortemCounters = Omit<PremortemPanelInput, "attentionBudget">;
+
+/** The premortem counters seam (#200 AC2). Optional on the deps — absent ⇒ the report omits the panel. */
+export interface PremortemReader {
+  counters(workspaceId: string): Promise<PremortemCounters>;
 }
 
 /** A delivery attempt's outcome (returned to the engine/tests). */
@@ -228,13 +245,19 @@ export class FounderBriefingsService {
   async weeklyReport(workspaceId: string): Promise<WeeklyReport> {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
-    const [ventures, revenue, voice, backlog, financeSection] = await Promise.all([
+    const [ventures, revenue, voice, backlog, financeSection, premortemCounters] = await Promise.all([
       this.deps.ventures.ventures(workspaceId),
       this.deps.revenue.total(workspaceId),
       this.deps.voice.signals(workspaceId, caps.digestVoiceLimit),
       this.deps.backlog.upcoming(workspaceId, caps.backlogLimit),
       this.deps.finance ? this.deps.finance.section(workspaceId) : Promise.resolve(null),
+      this.deps.premortem ? this.deps.premortem.counters(workspaceId) : Promise.resolve(null),
     ]);
+    // The service owns `attentionBudget` (the caps top-N) so the panel + the rest of the brief read one
+    // source of truth; the reader supplies the raw counts (#200 AC2).
+    const premortem: PremortemPanelInput | undefined = premortemCounters
+      ? { ...premortemCounters, attentionBudget: caps.attentionBudget }
+      : undefined;
     return composeWeeklyReport({
       workspaceId,
       nowMs: now.getTime(),
@@ -246,6 +269,7 @@ export class FounderBriefingsService {
       backlog,
       maxWords: caps.maxReportWords,
       ...(financeSection ? { financeSection } : {}),
+      ...(premortem ? { premortem } : {}),
     });
   }
 
