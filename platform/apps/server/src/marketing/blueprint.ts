@@ -56,6 +56,21 @@ export const SHARED_CHANNELS = ["general", "launch"] as const;
 /** Functions whose work leaves the building — always #13-gated, sensitive-by-default. */
 export const EXTERNAL_SEND_DEPARTMENTS: readonly string[] = ["social", "email", "ads"];
 
+/**
+ * The founding venture (#221) the first-run activation seeds into the pipeline so an activated console is
+ * never a dead `0/0/0` desk — the freshly-hired team has something to clock into. It is a real {@link
+ * IdeaInput} (#96), deliberately framed as the workspace owner's own go-to-market motion (validate demand,
+ * then grow it) rather than a faked product claim — the venture loop refines it from here. Brand-neutral on
+ * purpose: it names no product, so it reads true for any founder who just signed up.
+ */
+export const FOUNDING_VENTURE = {
+  problem: "A new founder has just hired their agent team but has no venture in flight to point them at.",
+  targetUser: "The workspace owner — a solo founder activating their first venture.",
+  insight: "Activation only sticks when the very first click produces a running venture, not an empty desk.",
+  wedge: "Stand up one venture the founding team can begin validating immediately, then iterate from evidence.",
+  marketPath: "Direct: the founder steers the team toward their own audience and refines the wedge from real demand.",
+} as const;
+
 function prompt(title: string, channel: string, role: string, external: boolean): string {
   const externalLine = external
     ? "Anything that leaves the building — posting, sending, or spending — is a sensitive action: " +

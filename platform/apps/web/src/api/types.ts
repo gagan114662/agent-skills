@@ -595,4 +595,6 @@ export interface DepartmentSeedResult {
   channels: Array<{ id: string; name: string }>;
   agents: Array<{ id: string; agentMemberId: string; handle: string; department: string }>;
   welcomeTasks: Array<{ id: string }>;
+  /** The workspace's first venture (#221), present once activation has run; `created` only on first stand-up. */
+  venture?: { ideaId: string; created: boolean };
 }

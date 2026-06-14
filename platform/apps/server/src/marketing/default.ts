@@ -14,7 +14,9 @@ import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { listMentionsOnMessage } from "../db/repositories/mentions.js";
 import { getPersona, getPersonaByHandle, definePersona } from "../db/repositories/personas.js";
-import { createMarketingTask } from "../db/repositories/marketing-tasks.js";
+import { createMarketingTask, listMarketingTasks } from "../db/repositories/marketing-tasks.js";
+import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/repositories/venture.js";
+import { FOUNDING_VENTURE } from "./blueprint.js";
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { SubagentService, type SubagentLauncher } from "../subagents/service.js";
 import { createVentureAdmission } from "../venture/default.js";
@@ -106,6 +108,21 @@ function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
     ...baseSeedDeps(),
     launchWelcome: async (input) => launcher.launch(input),
     recordTask: async (input) => createMarketingTask(input),
+    // #221: stand up the workspace's first venture so the activated console has a live pipeline. Idempotent
+    // — if the workspace already has any evaluation we return it untouched (re-seed never multiplies the
+    // pipeline). A fresh workspace gets the founding idea + its durable #96 evaluation (status `active`),
+    // which is exactly what `venturePipeline.total` counts on the Founder Console.
+    ensureFirstVenture: async ({ workspaceId, createdByMemberId }) => {
+      const existing = await listEvaluations(workspaceId);
+      if (existing.length > 0) return { ideaId: existing[0]!.ideaId, created: false };
+      const idea = await createIdea({ ...FOUNDING_VENTURE, workspaceId, createdByMemberId });
+      await getOrCreateEvaluation(workspaceId, idea.id);
+      return { ideaId: idea.id, created: true };
+    },
+    // #221: the activation idempotency key — once any welcome task exists the founding sessions have already
+    // been opened, so a re-seed must not relaunch them (that was the 429 dead-end on a second click).
+    countWelcomeTasks: async (workspaceId) =>
+      (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome").length,
   };
 }
 
