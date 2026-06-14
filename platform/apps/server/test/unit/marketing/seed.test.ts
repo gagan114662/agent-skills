@@ -111,6 +111,52 @@ describe("#123 seedMarketingDepartment", () => {
     expect(f.tasks).toHaveLength(0);
   });
 
+  it("a denied welcome launch keeps the venture created-but-paused and never throws (#226/#227)", async () => {
+    // The dogfooded dead-end: the first founding launch is denied (kill switch / admission cap), and the old
+    // seeder threw it as a 429 — discarding a venture it had just created. Now the venture stands up and the
+    // seed succeeds with zero welcome tasks (created-but-paused), so the console renders it, never an empty desk.
+    const f = makeFakes();
+    let created = false;
+    const deps: MarketingSeedDeps = {
+      ...f.deps,
+      ensureFirstVenture: async () => {
+        const wasCreated = !created;
+        created = true;
+        return { ideaId: "idea-1", created: wasCreated };
+      },
+      launchWelcome: async () => {
+        throw new Error("launch denied: tenant_capacity");
+      },
+    };
+
+    const result = await seedMarketingDepartment(
+      { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
+      deps,
+    );
+    expect(result.venture).toEqual({ ideaId: "idea-1", created: true });
+    expect(result.welcomeTasks).toHaveLength(0);
+    expect(f.tasks).toHaveLength(0);
+  });
+
+  it("re-seeding a workspace that already has a venture launches NOTHING — no admission hit (#227)", async () => {
+    // The activation idempotency key is "the workspace already has a venture", not "has welcome tasks": even
+    // when the first activation's launches were all denied (so there are zero welcome tasks), a re-seed must
+    // not relaunch — that was the 429 trap. `ensureFirstVenture` reporting `created:false` means activated.
+    const f = makeFakes();
+    const deps: MarketingSeedDeps = {
+      ...f.deps,
+      ensureFirstVenture: async () => ({ ideaId: "idea-1", created: false }),
+    };
+
+    const result = await seedMarketingDepartment(
+      { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
+      deps,
+    );
+    expect(result.venture).toEqual({ ideaId: "idea-1", created: false });
+    expect(f.launches).toHaveLength(0);
+    expect(result.welcomeTasks).toHaveLength(0);
+  });
+
   it("posts intros only on creation — re-seeding an existing agency posts no new messages (#138)", async () => {
     // The boot backfill (#138) re-runs the seeder on every restart for existing workspaces. Intros and
     // the #general welcome must be posted once (when an agent/channel is first created), never again,

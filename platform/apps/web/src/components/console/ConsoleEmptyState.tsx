@@ -12,7 +12,6 @@
  * retry: a 429 rate-limit shows a countdown and holds the CTA until the server's `Retry-After` elapses; a
  * missing runtime routes to Settings → Connect Claude; anything else falls back to a plain retry line.
  */
-import { useEffect, useState } from "react";
 import { CONSOLE, consoleSeedRetryNote } from "../../brand.js";
 import { PopMark } from "../PopMark.js";
 
@@ -34,6 +33,11 @@ export interface ConsoleEmptyStateProps {
   seeded: boolean;
   /** The seed call failed — surface the matching actionable message by the CTA (null = no error). */
   error: SeedError | null;
+  /**
+   * Seconds left on the authoritative rate-limit hold (#227), owned by the parent so the same countdown
+   * governs every seed affordance. While > 0 (with a `rate` error) the CTA is hard-held — it cannot re-fire.
+   */
+  coolOff: number;
   /** Open workspace settings (where Claude/Slack connect lives). */
   onConnect: () => void;
 }
@@ -43,24 +47,10 @@ export function ConsoleEmptyState({
   busy,
   seeded,
   error,
+  coolOff,
   onConnect,
 }: ConsoleEmptyStateProps): React.JSX.Element {
   const copy = CONSOLE.firstRun;
-
-  // Rate-limit cool-off (#221): seed the countdown from the server's Retry-After, then tick it down so the
-  // CTA stays held — and shows how long — instead of re-firing the founder straight back into the limit.
-  const [coolOff, setCoolOff] = useState(0);
-  useEffect(() => {
-    if (error?.kind !== "rate") {
-      setCoolOff(0);
-      return;
-    }
-    setCoolOff(error.retryAfterSeconds);
-    const timer = window.setInterval(() => {
-      setCoolOff((s) => (s <= 1 ? 0 : s - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [error]);
 
   if (seeded) {
     return (

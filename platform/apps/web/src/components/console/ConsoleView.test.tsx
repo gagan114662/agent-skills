@@ -12,9 +12,9 @@ import userEvent from "@testing-library/user-event";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { ConsoleView } from "./ConsoleView.js";
 import { api, ApiError } from "../../api/client.js";
-import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import type { Channel, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { CONSOLE } from "../../brand.js";
-import { renderWithStore } from "../../test/utils.js";
+import { renderWithStore, type FakeBackendOverrides } from "../../test/utils.js";
 
 const mcDto = (over: Partial<MissionControlDto> = {}): MissionControlDto => ({
   sessions: [
@@ -49,6 +49,14 @@ const fcDto = (over: Partial<FounderConsoleDto> = {}): FounderConsoleDto => ({
   ...over,
 });
 
+/**
+ * A genuine first-run founder console: no venture in the pipeline (#226). The empty desk is now driven
+ * strictly off `venturePipeline.total === 0`, so the first-run tests must say so explicitly rather than
+ * lean on an incidental empty board.
+ */
+const firstRunFc = (over: Partial<FounderConsoleDto> = {}): FounderConsoleDto =>
+  fcDto({ venturePipeline: { total: 0, active: 0, funded: 0, killed: 0, escalated: 0 }, ...over });
+
 const req = (over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto => ({
   id: "r1",
   workspaceId: "w1",
@@ -79,9 +87,9 @@ function mockSeams(opts: { pending?: ApprovalRequestDto[]; fc?: FounderConsoleDt
 
 afterEach(() => vi.restoreAllMocks());
 
-async function mount(opts?: Parameters<typeof mockSeams>[0]) {
+async function mount(opts?: Parameters<typeof mockSeams>[0], over?: FakeBackendOverrides) {
   mockSeams(opts);
-  const utils = renderWithStore(<ConsoleView />);
+  const utils = renderWithStore(<ConsoleView />, over);
   await act(async () => {
     await utils.store.bootstrap();
   });
@@ -156,9 +164,9 @@ describe("ConsoleView", () => {
   });
 
   it("walks a dead first-run workspace to a guided empty-state with a start CTA (#213)", async () => {
-    // A fresh workspace: no live sessions, nothing pending → buildConsole yields zero project lanes, so
-    // instead of a 0/0/0 dead board the console shows the first-run activation panel.
-    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    // A fresh workspace: no venture, no live sessions, nothing pending → instead of a 0/0/0 dead board
+    // the console shows the first-run activation panel.
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
     expect(await screen.findByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: CONSOLE.firstRun.cta })).toBeInTheDocument();
     // The board lanes are NOT rendered while empty (the empty-state replaces them).
@@ -173,7 +181,7 @@ describe("ConsoleView", () => {
     const seedSpy = vi
       .spyOn(api.department, "seed")
       .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
-    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
 
     await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
 
@@ -187,7 +195,7 @@ describe("ConsoleView", () => {
 
   it("surfaces a quiet retry line when the seed seam fails (#213)", async () => {
     vi.spyOn(api.department, "seed").mockRejectedValue(new Error("boom"));
-    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
     await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
     expect(await screen.findByText(CONSOLE.firstRun.ctaError)).toBeInTheDocument();
   });
@@ -198,7 +206,7 @@ describe("ConsoleView", () => {
     vi.spyOn(api.department, "seed").mockRejectedValue(
       new ApiError("launch denied: tenant_capacity", 429, 7),
     );
-    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
     await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
 
     // The countdown line is shown (seeded from Retry-After), and the CTA is held — it cannot re-hit the cap.
@@ -213,11 +221,55 @@ describe("ConsoleView", () => {
     // When the team can't run for lack of a connected runtime, the real next step is to connect one —
     // a settings route, not a retry. (API_UNAVAILABLE / non-429 ApiError classifies as the connect path.)
     vi.spyOn(api.department, "seed").mockRejectedValue(new ApiError("API not connected", 0));
-    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
     await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
 
     expect(await screen.findByText(CONSOLE.firstRun.connectError)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectErrorCta })).toBeInTheDocument();
+  });
+
+  it("renders the venture's departments — NOT the empty desk — when activated with zero live sessions (#226)", async () => {
+    // The dogfooded prod bug: `venturePipeline.total ≥ 1` but no welcome session ever spawned (mission
+    // control empty), and the console STILL rendered the empty desk across a full reload. The empty desk is
+    // now driven strictly off "the workspace has a venture", so an activated workspace always renders its
+    // departments — created-but-paused — instead of "Start your first venture".
+    const seo: Channel = { id: "c-seo", workspaceId: "w1", kind: "public", name: "seo", isArchived: false };
+    await mount(
+      {
+        mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }),
+        pending: [],
+        fc: fcDto({ venturePipeline: { total: 1, active: 1, funded: 0, killed: 0, escalated: 0 } }),
+      },
+      { channels: [seo] },
+    );
+    // NOT on the empty desk…
+    expect(await screen.findByRole("listitem", { name: CONSOLE.columns.running })).toBeInTheDocument();
+    expect(screen.queryByText(CONSOLE.firstRun.headline)).toBeNull();
+    expect(screen.queryByRole("button", { name: CONSOLE.firstRun.cta })).toBeNull();
+    // …and the seo department renders as a project lane despite zero live work (the venture, paused).
+    expect(screen.getByText("seo")).toBeInTheDocument();
+  });
+
+  it("hard-holds EVERY seed control during the rate-limit cool-off — a blocked click can't re-fire (#227)", async () => {
+    // The dogfooded trap: a held click still re-fired into the limit (often via the always-present left-rail
+    // control) and reset the window, locking the user out for minutes. Now the one authoritative hold
+    // disables every seed entry point, and a guard means a blocked click never even sends a request.
+    const seedSpy = vi
+      .spyOn(api.department, "seed")
+      .mockRejectedValue(new ApiError("launch denied: tenant_capacity", 429, 30));
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
+
+    // One click fires once and trips the limit.
+    await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+    await screen.findByText(/You can try again in/);
+    expect(seedSpy).toHaveBeenCalledTimes(1);
+
+    // The always-present left-rail "Start a venture" control is disabled too (not just the empty-state CTA),
+    // so a second click anywhere cannot re-fire and reset the window.
+    const railStart = screen.getByRole("button", { name: CONSOLE.projects.start });
+    expect(railStart).toBeDisabled();
+    await userEvent.click(railStart);
+    expect(seedSpy).toHaveBeenCalledTimes(1); // still once — the hold blocked the re-fire
   });
 
   it("carries the in-header Upgrade CTA that opens the pricing overlay (#215)", async () => {

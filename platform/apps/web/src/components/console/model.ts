@@ -79,6 +79,14 @@ export interface BuildConsoleInput {
   readonly shipped: readonly ApprovalRequestDto[];
   readonly channels: readonly Channel[];
   readonly directory: Readonly<Record<string, DirectoryEntry>>;
+  /**
+   * Whether the workspace is activated — it has ≥1 venture (#226). When true, every department channel
+   * renders as a project lane even with no live work yet, so an activated console always shows its
+   * departments (created-but-paused) rather than an empty board. When false (the genuine first run, no
+   * venture), only channels that actually have work surface — so a fresh workspace stays quiet and the
+   * console shows its first-run empty desk instead. Defaults to the prior "work-only" behaviour.
+   */
+  readonly activated?: boolean;
 }
 
 const UNASSIGNED = "__unassigned";
@@ -191,7 +199,7 @@ function approvalItem(
 
 /** Build the full console model (board columns + standup projects) from the live seams. */
 export function buildConsole(input: BuildConsoleInput): ConsoleModel {
-  const { liveSessions, pending, shipped, channels, directory } = input;
+  const { liveSessions, pending, shipped, channels, directory, activated = false } = input;
 
   const items: ConsoleItem[] = [
     ...liveSessions.map((s) => runningItem(s, channels, directory)),
@@ -209,6 +217,15 @@ export function buildConsole(input: BuildConsoleInput): ConsoleModel {
   // public department lane (a DM, an archived room, or one we don't know) — falls into the trailing
   // "other" lane rather than being silently dropped, so nothing is ever lost from the board's totals.
   const byProject = new Map<string, ConsoleItem[]>();
+  // When activated (#226), every department channel renders as a lane even with no work yet — so an
+  // activated console shows its departments (the venture, created-but-paused) instead of an empty board.
+  // Department channels are the spectrum-coloured ones; shared rooms (#general/#launch) stay quiet until
+  // they have work, exactly as before.
+  if (activated) {
+    for (const c of publicChannels) {
+      if (departmentColor(c.name)) byProject.set(c.id, []);
+    }
+  }
   for (const it of items) {
     const id = it.channelId && publicIds.has(it.channelId) ? it.channelId : UNASSIGNED;
     const list = byProject.get(id) ?? [];

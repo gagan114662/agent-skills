@@ -23,8 +23,9 @@ import { createScale } from "../../src/scale/default.js";
  *      session (`count ≥ 1`): the on-screen "watch the board fill up" promise, kept.
  *   2. Re-seeding an already-activated workspace resumes the existing org — no duplicate venture, no
  *      relaunch — so it can never re-hit the admission cap (the idempotency that kills the 429 dead-end).
- *   3. A genuinely blocked activation (kill switch) returns 429 WITH a `Retry-After`, so the console can
- *      hold its retry honestly instead of re-firing into the wall.
+ *   3. A blocked activation (kill switch) still stands up the venture and returns 201 created-but-paused
+ *      (#226/#227) — never a 429 dead-end — so the console renders the venture instead of an empty desk;
+ *      a follow-up re-seed is then a no-op that launches nothing and likewise never 429s.
  *
  * The welcome harness sleeps briefly (no output) so the founding sessions stay live long enough to assert
  * mission-control sees them; caps stay generous so the seven launches never trip a concurrency limit.
@@ -166,7 +167,7 @@ describe("#221 activation produces a running venture (real Postgres)", () => {
     expect(fc.venturePipeline.total).toBe(1);
   });
 
-  it("a kill-switched activation returns 429 with a Retry-After the client can honour", async () => {
+  it("a kill-switched activation stands up the venture created-but-paused (201), never a 429 dead-end", async () => {
     const owner = await newOwner();
     await app.inject({
       method: "POST",
@@ -174,11 +175,31 @@ describe("#221 activation produces a running venture (real Postgres)", () => {
       cookies: { rid: owner.cookie },
     });
 
+    // Every founding launch is denied by the kill switch — but the venture is a DB row, not a launch, so it
+    // still stands up. The seed returns 201 with the venture created-but-paused (#226/#227), NOT a 429 the
+    // founder can only re-fire into the wall.
     const res = await activate(owner);
-    // The very first founding launch is denied → the seed surfaces it as a real 429, not a silent empty board.
-    expect(res.statusCode).toBe(429);
-    // The client reads this header to show "retry in Ns" and hold the retry, instead of re-firing the limit.
-    expect(res.headers["retry-after"]).toBeDefined();
-    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      venture?: { ideaId: string; created: boolean };
+      welcomeTasks: unknown[];
+    };
+    expect(body.venture?.created).toBe(true);
+    expect(body.welcomeTasks).toHaveLength(0); // launches were all denied — paused, not dead
+
+    // The pipeline is non-empty (the console leaves the empty desk), and mission-control is honestly empty.
+    const fc = await founderConsole(owner);
+    expect(fc.venturePipeline.total).toBeGreaterThanOrEqual(1);
+    const mc = await missionControl(owner);
+    expect(mc.count).toBe(0);
+
+    // #227: a follow-up re-seed of this already-activated (but paused) workspace launches nothing and
+    // likewise returns 201 — it never re-hits the admission cap even with the kill switch still on.
+    const again = await activate(owner);
+    expect(again.statusCode).toBe(201);
+    const second = again.json() as { venture?: { created: boolean }; welcomeTasks: unknown[] };
+    expect(second.venture?.created).toBe(false);
+    expect(second.welcomeTasks).toHaveLength(0);
+    expect((await founderConsole(owner)).venturePipeline.total).toBe(1);
   });
 });

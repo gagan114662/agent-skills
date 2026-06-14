@@ -108,6 +108,24 @@ export function ConsoleView(): React.JSX.Element {
   const [seeding, setSeeding] = useState(false);
   const [seeded, setSeeded] = useState(false);
   const [seedError, setSeedError] = useState<SeedError | null>(null);
+  // Rate-limit cool-off (#221/#227), lifted here so it is the ONE authoritative hold shared by both seed
+  // affordances (the empty-state CTA and the always-present left-rail control). Seeded from the server's
+  // Retry-After and ticked down; while it is > 0 every seed entry point is blocked, so a held click can
+  // never re-fire into the limit or reset the window. A new rate error only ever arrives from a click that
+  // actually fired (i.e. after the hold elapsed), so re-seeding the countdown from it is always honest.
+  const [seedCoolOff, setSeedCoolOff] = useState(0);
+  useEffect(() => {
+    if (seedError?.kind !== "rate") {
+      setSeedCoolOff(0);
+      return;
+    }
+    setSeedCoolOff(seedError.retryAfterSeconds);
+    const timer = window.setInterval(() => {
+      setSeedCoolOff((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [seedError]);
+  const seedHeld = seedCoolOff > 0;
 
   // Guards every async setState so a poll that resolves after unmount is a no-op (no leak / no warning).
   const mounted = useRef(true);
@@ -187,6 +205,12 @@ export function ConsoleView(): React.JSX.Element {
     return () => window.clearInterval(timer);
   }, [workspaceId]);
 
+  // The console is "activated" once the workspace has ≥1 venture (#226), read from the #104 pipeline
+  // roll-up. This — NOT the live-session count or a seed flag — is what drives the first-run empty desk and
+  // the rendered PROJECTS: a workspace with a venture is never an empty desk, with or without a reload, and
+  // its departments render even before the first welcome session spawns (created-but-paused).
+  const hasVenture = (fc?.venturePipeline.total ?? 0) >= 1;
+
   const model = useMemo(
     () =>
       buildConsole({
@@ -195,8 +219,9 @@ export function ConsoleView(): React.JSX.Element {
         shipped,
         channels,
         directory,
+        activated: hasVenture,
       }),
-    [mc, pending, shipped, channels, directory],
+    [mc, pending, shipped, channels, directory, hasVenture],
   );
 
   // Default: open every lane and select the first project as the header context.
@@ -272,7 +297,10 @@ export function ConsoleView(): React.JSX.Element {
    * Idempotent at the seam, so a re-click never duplicates the fleet; failures surface a quiet retry line.
    */
   async function startVenture(): Promise<void> {
-    if (!workspaceId || seeding) return;
+    // Block while a seed is in flight OR a rate-limit hold is live (#227): a held click must not fire a
+    // request at all — that is what kept re-hitting the limit and resetting the window. The hold elapses on
+    // its own (seedCoolOff ticks to 0), after which a click can fire again.
+    if (!workspaceId || seeding || seedHeld) return;
     setSeeding(true);
     setSeedError(null);
     try {
@@ -329,7 +357,7 @@ export function ConsoleView(): React.JSX.Element {
         onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
         onSignOut={() => void store.logout()}
         onNewProject={() => void startVenture()}
-        newProjectBusy={seeding}
+        newProjectBusy={seeding || seedHeld}
       />
 
       <main className="console__main">
@@ -395,12 +423,17 @@ export function ConsoleView(): React.JSX.Element {
           )}
         </header>
 
-        {model.projects.length === 0 ? (
+        {/* #226: the empty desk is driven strictly off "the workspace has a venture", never the session
+            count or a seed flag. A workspace with a venture always renders its board/PROJECTS — even with
+            zero live sessions (created-but-paused) and across a reload. The desk shows only for a genuine
+            first run: no venture and nothing in flight. */}
+        {!hasVenture && model.projects.length === 0 ? (
           <ConsoleEmptyState
             onStart={() => void startVenture()}
             busy={seeding}
             seeded={seeded}
             error={seedError}
+            coolOff={seedCoolOff}
             onConnect={() => setShellSettingsOpen(true)}
           />
         ) : (
