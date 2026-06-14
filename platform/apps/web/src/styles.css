@@ -374,6 +374,25 @@ select:focus-visible {
   color: var(--text-dim);
   font-size: 13px;
 }
+/* #214: the free-trial reassurance shown on the signup card (frames the plan chosen on /pricing). */
+.auth__trial {
+  margin: -2px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-1));
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.auth__trial-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
 .auth__error {
   color: var(--danger);
   font-size: 13px;
@@ -2249,6 +2268,33 @@ select:focus-visible {
   max-width: 1040px;
   margin: 0 auto;
   padding: 28px 20px 48px;
+}
+/* #214: the dedicated public /pricing page wrapper. Reuses the landing nav/footer + pricing grid. */
+.pricing-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+}
+.pricing-page > main {
+  flex: 1;
+}
+.pricing-page__hero {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 20px 8px;
+}
+.pricing-page__faq {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.pricing-page .landing__footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 /* First-open loading state (#169 bug 11): centre the three-dot pop loader where the grid will land. */
 .pricing--loading {

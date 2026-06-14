@@ -1,0 +1,53 @@
+import { describe, expect, it } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import { PricingPage } from "./PricingPage.js";
+import { FAQ, LANDING, PRICING } from "../../brand.js";
+
+describe("PricingPage (#214)", () => {
+  it("leads with the focused pricing hero", () => {
+    render(<PricingPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PRICING.title);
+    expect(screen.getByText(PRICING.sub)).toBeInTheDocument();
+  });
+
+  it("renders all three plans with price, tagline, and 'what you get' highlights", () => {
+    render(<PricingPage />);
+    const grid = screen.getByRole("region", { name: PRICING.plansLabel });
+    for (const plan of LANDING.plans) {
+      expect(within(grid).getByText(plan.name)).toBeInTheDocument();
+      expect(within(grid).getByText(plan.price)).toBeInTheDocument();
+      expect(within(grid).getByText(plan.tagline)).toBeInTheDocument();
+      for (const h of plan.highlights) {
+        expect(within(grid).getByText(h)).toBeInTheDocument();
+      }
+    }
+  });
+
+  it("carries one CTA per plan that hands the chosen plan into signup (/signup?plan=<key>)", () => {
+    render(<PricingPage />);
+    const grid = screen.getByRole("region", { name: PRICING.plansLabel });
+    for (const plan of LANDING.plans) {
+      const cta = within(grid).getByRole("link", { name: new RegExp(`${PRICING.planCta}.*${plan.name}`, "i") });
+      expect(cta).toHaveAttribute("href", `/signup?plan=${plan.key}`);
+    }
+  });
+
+  it("marks exactly one plan as most popular", () => {
+    render(<PricingPage />);
+    expect(screen.getAllByText(PRICING.popularBadge)).toHaveLength(1);
+  });
+
+  it("answers pricing-specific FAQ questions surfaced from the shared FAQ", () => {
+    render(<PricingPage />);
+    const matched = FAQ.items.filter((item) => PRICING.faqMatch.some((re) => re.test(item.q)));
+    expect(matched.length).toBeGreaterThan(0);
+    for (const item of matched) {
+      expect(screen.getByText(item.q)).toBeInTheDocument();
+    }
+  });
+
+  it("offers a way back to the homepage", () => {
+    render(<PricingPage />);
+    expect(screen.getByRole("link", { name: PRICING.backLabel })).toHaveAttribute("href", "/");
+  });
+});

@@ -54,7 +54,7 @@ export function BillingScreen(): React.JSX.Element {
                   </p>
                   <p className="billing-plan__tagline">{plan.tagline}</p>
                   <Link
-                    href="/signup"
+                    href={`/signup?plan=${plan.key}`}
                     className={`btn billing-plan__cta${
                       plan.featured ? " btn--primary" : ""
                     }`}

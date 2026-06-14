@@ -177,10 +177,14 @@ export interface VignetteLine {
 
 /** The three plans, teaser-sized, mirroring the server catalog (`billing/plans.ts`, #125). */
 export interface PlanTeaser {
+  /** Stable plan key — mirrors `billing/plans.ts` `PlanKey`; carried into `/signup?plan=<key>`. */
+  readonly key: string;
   readonly name: string;
   readonly price: string;
   readonly tagline: string;
   readonly featured: boolean;
+  /** What you get — feature bullets, mirroring the server catalog so pricing reads from one truth. */
+  readonly highlights: readonly string[];
 }
 
 /**
@@ -225,11 +229,33 @@ export const LANDING = {
     ctaSub: "We don't drink coffee, we don't take weekends, and we've already had three ideas.",
     ctaButton: "Hire the fleet",
   },
-  /** Mirrors `billing/plans.ts` (#125): Starter → Pro → Agency, ascending price. */
+  /** Mirrors `billing/plans.ts` (#125): Starter → Pro → Agency, ascending price. Keys + highlights
+   *  mirror the server catalog so the marketing page, the signup hand-off, and checkout agree. */
   plans: [
-    { name: "Starter", price: "$49", tagline: "Your first three agents.", featured: false },
-    { name: "Pro", price: "$199", tagline: "A team that never sleeps.", featured: true },
-    { name: "Agency", price: "$499", tagline: "A whole building of agents.", featured: false },
+    {
+      key: "starter",
+      name: "Starter",
+      price: "$49",
+      tagline: "Your first three agents.",
+      featured: false,
+      highlights: ["3 agent seats", "$200/mo session budget", "1 department fleet", "Approvals + audit trail included"],
+    },
+    {
+      key: "pro",
+      name: "Pro",
+      price: "$199",
+      tagline: "A team that never sleeps.",
+      featured: true,
+      highlights: ["10 agent seats", "$1,000/mo session budget", "3 department fleets", "Priority autonomy + deploy-to-live"],
+    },
+    {
+      key: "agency",
+      name: "Agency",
+      price: "$499",
+      tagline: "A whole building of agents.",
+      featured: false,
+      highlights: ["30 agent seats", "$5,000/mo session budget", "10 department fleets", "Everything in Pro, at scale"],
+    },
   ] as readonly PlanTeaser[],
   /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
   anchors: [
@@ -261,6 +287,40 @@ export const LANDING = {
       { key: "linkedin", label: "LinkedIn", href: "/social/linkedin" },
       { key: "github", label: "GitHub", href: "/social/github" },
     ],
+  },
+} as const;
+
+/**
+ * The dedicated public pricing page (#214). The landing teases pricing in-page (`BillingScreen`); this
+ * is the focused, shareable, link-out destination an ad or a price-shopping visitor lands on — a clean
+ * three-plan comparison with "what you get" bullets and one CTA per plan that carries the chosen plan
+ * into signup (`/signup?plan=<key>`). The plans come from {@link LANDING.plans} (one pricing truth), so
+ * this page adds no second copy of prices. The signup form then frames the chosen plan as a free trial
+ * with no card — the friction-light hand-off into the activated trial.
+ */
+export const PRICING = {
+  eyebrow: "Plans & pricing",
+  title: "Pick your pop.",
+  sub: "Start free — no card. Pick a plan when the work pays for itself. Change or cancel any time.",
+  /** Accessible label for the plans grid region (distinct from the hero heading). */
+  plansLabel: "Plans",
+  perMonth: "/mo",
+  /** The one recommended-tier ribbon. */
+  popularBadge: "Most popular",
+  /** Per-plan CTA — starts a free trial of that tier. */
+  planCta: "Start free",
+  /** Reassurance under the grid (honest: free trial, no card, you set the ceiling). */
+  footnote: "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it.",
+  /** A couple of pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
+  faqMatch: [/cost/i, /free/i] as readonly RegExp[],
+  faqTitle: "Pricing questions",
+  /** Back to the full story. */
+  backLabel: "← Back to the homepage",
+  /** Signup trial framing (#214). `plan` is the chosen plan's display name. */
+  trial: {
+    eyebrow: "Free trial",
+    onPlan: (plan: string): string => `You're starting the ${plan} plan — free to try, no card up front.`,
+    generic: "Start free — no card up front. Pick a plan whenever the work pays for itself.",
   },
 } as const;
 

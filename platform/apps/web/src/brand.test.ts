@@ -19,6 +19,7 @@ import {
   FLEET,
   agentColor,
   LANDING,
+  PRICING,
   SECURITY,
   SITE,
   ASK_AI,
@@ -127,6 +128,16 @@ describe("landing fleet + copy (#149)", () => {
     expect(LANDING.plans.filter((p) => p.featured)).toHaveLength(1); // one recommended tier
   });
 
+  it("every plan carries a stable key (for /signup?plan=) and 'what you get' highlights (#214)", () => {
+    const keys = LANDING.plans.map((p) => p.key);
+    expect(keys).toEqual(["starter", "pro", "agency"]); // mirror billing/plans.ts, ascending
+    expect(new Set(keys).size).toBe(3); // unique — the signup hand-off needs one key per plan
+    for (const plan of LANDING.plans) {
+      expect(plan.key, plan.name).toBeTruthy();
+      expect(plan.highlights.length, plan.name).toBeGreaterThan(0);
+    }
+  });
+
   it("scripts a vignette that ends on a completed task (the confetti beat)", () => {
     expect(LANDING.vignette.length).toBeGreaterThan(2);
     expect(LANDING.vignette.some((line) => line.done)).toBe(true);
@@ -218,6 +229,28 @@ describe("landing workspace simulation copy (#165)", () => {
     expect(LANDING.footer.product.length).toBeGreaterThan(0);
     expect(LANDING.footer.resources.length).toBeGreaterThan(0);
     expect(LANDING.footer.social.length).toBeGreaterThan(0);
+  });
+});
+
+describe("pricing page + trial framing copy (#214)", () => {
+  it("carries the focused pricing-page copy and a per-plan CTA", () => {
+    expect(PRICING.title).toBeTruthy();
+    expect(PRICING.sub).toBeTruthy();
+    expect(PRICING.planCta).toBeTruthy();
+    expect(PRICING.footnote.toLowerCase()).toMatch(/free trial|no card/);
+    expect(PRICING.faqMatch.length).toBeGreaterThan(0);
+  });
+
+  it("frames the chosen plan as a free trial with no card up front", () => {
+    expect(PRICING.trial.eyebrow).toBeTruthy();
+    expect(PRICING.trial.onPlan("Pro")).toContain("Pro");
+    expect(PRICING.trial.onPlan("Pro").toLowerCase()).toMatch(/no card/);
+    expect(PRICING.trial.generic.toLowerCase()).toMatch(/free|no card/);
+  });
+
+  it("its faq filters surface at least one real pricing question from the shared FAQ", () => {
+    const matched = FAQ.items.filter((item) => PRICING.faqMatch.some((re) => re.test(item.q)));
+    expect(matched.length).toBeGreaterThan(0);
   });
 });
 
@@ -347,6 +380,8 @@ describe("no hardcoded brand strings in product chrome", () => {
     // The public landing (#149 → #165) is the most brand-heavy surface — every word must come from
     // brand.ts. The #165 full-workspace simulation splits across several components; scan them all.
     "components/landing/Landing.tsx",
+    // The dedicated public pricing page (#214).
+    "components/landing/PricingPage.tsx",
     "components/landing/WorkspaceSim.tsx",
     "components/landing/Vignettes.tsx",
     "components/landing/BillingScreen.tsx",
