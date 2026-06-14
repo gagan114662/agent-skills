@@ -270,12 +270,12 @@ describe("Slack interactivity → #13 decision round-trip (#170)", () => {
     await connectSlack(owner, "U-OWNER");
     const agent = await newAgent(owner, `agent-${newId()}`);
 
-    // The agent submits an external.send → sensitive-by-default → pending (requester = agent).
+    // The agent submits a money action (billing.refund) → gated by default (#243) → pending (requester = agent).
     const submit = await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       headers: { authorization: `Bearer ${agent.token}` },
-      payload: { actionType: "external.send", payload: { summary: "post a launch tweet", target: "twitter" } },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_slack", reason: "double charge" } },
     });
     expect(submit.statusCode).toBe(202);
     const rid = submit.json().request.id;
@@ -310,7 +310,7 @@ describe("Slack interactivity → #13 decision round-trip (#170)", () => {
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       cookies: { rid: owner.cookie },
-      payload: { actionType: "external.send", payload: { summary: "self-approve attempt" } },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_self", reason: "self-approve attempt" } },
     });
     expect(submit.statusCode).toBe(202);
     const rid = submit.json().request.id;
@@ -339,7 +339,7 @@ describe("Slack interactivity → #13 decision round-trip (#170)", () => {
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       headers: { authorization: `Bearer ${agent.token}` },
-      payload: { actionType: "external.send", payload: { summary: "needs a human" } },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_dm", reason: "needs a human" } },
     });
     // The pending hook DMed the owner a Block Kit message with the two buttons (best-effort, recorded).
     const dm = slackClient.posts.slice(before).find((p) =>

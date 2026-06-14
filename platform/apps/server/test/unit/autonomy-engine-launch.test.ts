@@ -205,9 +205,10 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
     getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
   });
 
-  it("with NO autonomy.complete rule wired, parks at the human gate — exactly as today", async () => {
+  it("with a policy source wired and NO gating rule, auto-completes autonomously (#243 money-only)", async () => {
     const { launcher } = makeLauncher({ status: "completed", joinResolves: true });
-    // A policy source is wired but returns no rule for this workspace.
+    // A policy source is wired but returns no rule → autonomy.complete is not money, so under #243 it is
+    // autonomous: the gate artifact is still recorded (audit anchor) but decided BY POLICY with no rule.
     const engine = new AutonomyEngine({
       poster,
       logger: silentLogger,
@@ -219,10 +220,13 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
     await engine.drain();
 
     expect(createApproval).toHaveBeenCalledTimes(1);
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
-    expect(decideApproval).not.toHaveBeenCalled();
-    expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
-    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "completed");
+    expect(decideApproval).toHaveBeenCalledWith(
+      "appr_1",
+      expect.objectContaining({ status: "approved", decisionSource: "policy", policyRuleId: null }),
+    );
+    expect(updateStatus).toHaveBeenCalledWith("task_1", "done", "agent_r");
+    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "completed");
+    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "awaiting_approval");
   });
 
   it("with an auto-approve rule, drives completed → done and records which rule fired", async () => {

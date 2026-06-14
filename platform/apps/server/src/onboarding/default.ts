@@ -5,6 +5,7 @@ import type { DnsProvider } from "./dns/provider.js";
 import { resolveOnboardingCaps } from "./caps.js";
 import { loadConfig } from "../config/loader.js";
 import { evaluatePolicy, SETUP_EXTERNAL_ACCOUNT_ACTION } from "../approvals/policy.js";
+import { isMoneyServiceKind } from "./types.js";
 import { createRequest, listPolicyRules } from "../db/repositories/approvals.js";
 import {
   upsertSetupRequest,
@@ -47,10 +48,13 @@ export function createDefaultOnboardingService(
       record: (input) => recordDnsReceipts(input),
       list: (workspaceId, domain) => listDnsReceipts(workspaceId, domain),
     },
-    // #13 setup gate: `setup.external_account` is sensitive by default — evaluate the workspace policy and,
-    // when gated, create a PENDING request a human must satisfy (the owner creates the account + pastes keys).
+    // #13 setup gate (#243 money-only): connecting LIVE payment credentials (`payment` kind) is the only
+    // MONEY connect, so it parks a PENDING owner approval. Every other external-account connect (hosting,
+    // ESP, registrar, analytics, ads) is autonomous — it still shows on the setup checklist as a human
+    // paste-the-key step, but it never pauses for an owner approval.
     approvals: {
-      requiresApproval: async (workspaceId) =>
+      requiresApproval: async (workspaceId, serviceKind) =>
+        isMoneyServiceKind(serviceKind) &&
         evaluatePolicy(
           { actionType: SETUP_EXTERNAL_ACCOUNT_ACTION },
           await listPolicyRules(workspaceId),

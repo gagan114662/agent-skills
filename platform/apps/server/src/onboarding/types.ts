@@ -13,6 +13,19 @@ export type ServiceKind =
   | "other";
 
 /**
+ * The service kinds whose connection is a MONEY action under #243 — connecting/using LIVE payment
+ * credentials (e.g. a live Stripe key). ONLY these park a #13 owner-approval; every other external-account
+ * connect (hosting, ESP, registrar, analytics, ads) is autonomous. A non-money connect still surfaces on
+ * the setup checklist as a human paste-the-key step, but it never pauses for an owner approval.
+ */
+export const MONEY_SERVICE_KINDS: readonly ServiceKind[] = ["payment"];
+
+/** True iff connecting a service of this kind moves money (live payment credentials) — gates under #243. */
+export function isMoneyServiceKind(kind: ServiceKind): boolean {
+  return MONEY_SERVICE_KINDS.includes(kind);
+}
+
+/**
  * Reversibility class (#200 failure-mode 4). Drives the premortem irreversible-action count and whether
  * the setup is a pre-committed human decision. A domain purchase / payment account is MONEY → irreversible.
  */

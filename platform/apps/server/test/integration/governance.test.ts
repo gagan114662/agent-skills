@@ -270,12 +270,12 @@ describe("#151 governance — RBAC gate on clearing approvals (no weakening when
     const owner = await newOwner();
     const agent = await newAgent(owner, "Requester");
 
-    // The agent submits a sensitive external.send → it pauses for a human (#13 default-sensitive).
+    // The agent submits a money action (billing.refund) → it pauses for a human (#243 money-gated).
     const submit = await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       headers: bearer(agent.token),
-      payload: { actionType: "external.send", payload: { summary: "ping", target: "https://api.example.com" } },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_rbac", reason: "double charge" } },
     });
     expect(submit.statusCode).toBe(202);
     const requestId = submit.json().request.id;
@@ -313,7 +313,7 @@ describe("#151 governance — RBAC gate on clearing approvals (no weakening when
 });
 
 describe("#151 governance — egress allowlist + flagged-domains report", () => {
-  it("blocks a disallowed external.send, records a violation, and surfaces it in the report", async () => {
+  it("blocks a disallowed external.send autonomously, records a violation, and surfaces it in the report", async () => {
     const owner = await newOwner();
     const agent = await newAgent(owner, "Sender");
     const prevEnabled = process.env.RELOAD_EGRESS_ENABLED;
@@ -321,24 +321,17 @@ describe("#151 governance — egress allowlist + flagged-domains report", () => 
     process.env.RELOAD_EGRESS_ENABLED = "1";
     process.env.RELOAD_EGRESS_ALLOWLIST = "api.example.com";
     try {
-      // The agent submits an external.send to a domain NOT on the allowlist → pauses for a human.
-      const requestId = (
-        await app.inject({
-          method: "POST",
-          url: `/workspaces/${owner.workspaceId}/actions`,
-          headers: bearer(agent.token),
-          payload: { actionType: "external.send", payload: { summary: "leak?", target: "https://evil.com/x" } },
-        })
-      ).json().request.id;
-
-      // Owner approves the human decision — but the executor's egress check blocks the send (502 failed).
-      const approve = await app.inject({
+      // Under #243 a non-paid external.send ships AUTONOMOUSLY (no owner gate) — but the egress allowlist
+      // is an automatic safeguard that still runs in the executor: a send to a non-allowlisted domain is
+      // blocked (502 failed) and the violation recorded, with NO owner prompt.
+      const send = await app.inject({
         method: "POST",
-        url: `/approvals/${requestId}/approve`,
-        cookies: { rid: owner.cookie },
+        url: `/workspaces/${owner.workspaceId}/actions`,
+        headers: bearer(agent.token),
+        payload: { actionType: "external.send", payload: { summary: "leak?", target: "https://evil.com/x" } },
       });
-      expect(approve.statusCode).toBe(502);
-      expect(approve.json().status).toBe("failed");
+      expect(send.statusCode).toBe(502);
+      expect(send.json().status).toBe("failed");
 
       // The violation is in the flagged-domains report.
       const report = (

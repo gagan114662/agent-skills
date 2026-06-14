@@ -626,7 +626,7 @@ export const CONSOLE = {
     steps: [
       { k: "team", title: "Hire the team", body: "Seven departments — growth, product, design and the rest — each led by a named agent." },
       { k: "work", title: "They clock in", body: "Every lead opens their first task the moment they're hired. You'll watch the board fill up." },
-      { k: "control", title: "You hold the keys", body: "Nothing ships — no email, no spend — without your yes. Every step is on the record." },
+      { k: "control", title: "You hold the keys", body: "Only money needs your yes — a charge, a payout, real spend. Everything else the fleet ships on its own, every step on the record." },
     ],
     cta: "Start your first venture",
     ctaBusy: "Hiring your team…",
@@ -680,7 +680,7 @@ export const CONSOLE = {
     whyPrefix: "why",
     back: "← back to steps",
     emptyTranscript: "Nothing logged yet. Brief them and the steps start landing here.",
-    held: "Ready when you are — nothing leaves without your yes.",
+    held: "Ready when you are — anything that spends money waits for your yes.",
     /** Drawer status line, by item kind (the shared status grammar, in words). */
     statusRunning: "working",
     statusWaiting: "needs your yes",
@@ -732,8 +732,8 @@ export const CONSOLE = {
       windowPrefix: "Spent this window",
     },
     approvals: {
-      gateTitle: "Nothing leaves without your yes",
-      gateSub: "enforced in code, not a setting",
+      gateTitle: "Only money needs your yes",
+      gateSub: "money moves are gated in code; the fleet ships everything else on its own",
       approverLabel: "APPROVERS",
       approverHint: "every yes is on the record",
     },
@@ -756,7 +756,7 @@ export const CONSOLE = {
   brief: {
     eyebrow: "Brief the fleet",
     title: "Hand a lead a goal",
-    sub: "Pick a department lead and tell them what to chase. They open a real task and the board fills up — nothing leaves the building without your yes.",
+    sub: "Pick a department lead and tell them what to chase. They open a real task and the board fills up — only money needs your yes, the fleet ships everything else on its own.",
     leadLabel: "Who's it for?",
     leads: [
       { handle: "scout", name: "Scout", dept: "SEO", blurb: "keywords + articles to rank" },
@@ -879,8 +879,8 @@ export const FAQ = {
       a: "Real agents. Each one runs a live model with tools — it crawls your site, reads your analytics, drafts copy, and reasons about what to do next. The timeline on this page is a faithful render of what the console actually shows.",
     },
     {
-      q: "Will an agent ever send something without my approval?",
-      a: "No. Anything that leaves the building — an email, a social post, an ad-spend change, a refund — pauses for a human. Agents draft and queue; you approve or send back. The approval gate is enforced in code, not a setting you can forget.",
+      q: "Which actions still need my approval?",
+      a: "Money — and only money. A charge, a refund, a payout, connecting a live payment key, or real ad spend pauses for your yes, with the exact amount shown. Everything else — drafts, a published article, a non-paid outreach email, a deploy — the fleet ships on its own. The money gate is enforced in code, and automatic safeguards (a kill switch, suppression/opt-out honoring, and anti-injection on anything the agents read) run on every action without a prompt.",
     },
     {
       q: "What can the agents actually do?",
@@ -943,8 +943,8 @@ export const SECURITY = {
   /** Real, shipped, code-enforced guarantees. Each maps to a mechanism that exists in the product. */
   guarantees: [
     {
-      title: "Human approval gates",
-      body: "Anything that leaves the building — an outbound send, a refund — pauses for a human to approve or reject. Agents draft; people decide.",
+      title: "Money approval gates",
+      body: "Anything that moves money — a charge, a refund, a payout, real ad spend — pauses for a human to approve or reject, with the exact amount shown. Everything else the fleet ships on its own.",
     },
     {
       title: "Tenant isolation",

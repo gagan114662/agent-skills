@@ -4,11 +4,11 @@ import { evaluatePolicy } from "../../../src/approvals/policy.js";
 import { validateExternalSend } from "../../../src/approvals/executor.js";
 
 /**
- * #153 publish gate — publishing a marketing page is an `external.send` action: sensitive-by-default
- * (#13), so a human MUST approve before it goes live. This module only builds the descriptor; it changes
- * neither the policy engine nor the executor, so every existing approval test is untouched.
+ * #153 publish — publishing a marketing page is an `external.send` action. Under #243 (money-only
+ * approval) content publishing is AUTONOMOUS: it carries no money, so the fleet ships it on its own with
+ * no owner prompt. This module only builds the descriptor; the policy engine decides the gate.
  */
-describe("#153 content publish is #13-gated", () => {
+describe("#153 content publish ships autonomously (#243)", () => {
   it("builds an external.send descriptor targeting the public path", () => {
     const action = buildContentPublish({
       section: "compare",
@@ -31,9 +31,10 @@ describe("#153 content publish is #13-gated", () => {
     );
   });
 
-  it("is gated by default with no workspace rule (sensitive-by-default)", () => {
+  it("ships autonomously by default with no workspace rule (no money → no owner prompt) (#243)", () => {
     const action = buildContentPublish({ section: "guides", slug: "seo", title: "SEO", agent: "scout" });
-    expect(evaluatePolicy({ actionType: action.actionType, amount: action.amount }, []).requiresApproval).toBe(true);
+    expect(action.amount).toBeNull();
+    expect(evaluatePolicy({ actionType: action.actionType, amount: action.amount }, []).requiresApproval).toBe(false);
   });
 
   it("produces a payload the existing external.send validator accepts (no executor change)", () => {

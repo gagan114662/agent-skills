@@ -86,7 +86,7 @@ describe("#153 public marketing-site content API", () => {
   });
 });
 
-describe("#153 every publish is #13-gated (external.send)", () => {
+describe("#153 publishing ships autonomously (#243 money-only)", () => {
   async function newOwner() {
     const slug = `site-${newId()}`;
     slugs.push(slug);
@@ -100,9 +100,9 @@ describe("#153 every publish is #13-gated (external.send)", () => {
     return { cookie, workspaceId: me.workspaceId as string };
   }
 
-  it("publishing a page submits a pending approval, then a human approves it", async () => {
+  it("publishing a page executes autonomously — no money, no owner prompt (#243)", async () => {
     const owner = await newOwner();
-    // The agent that drafted the content is registered so it can submit the publish (and can't self-approve).
+    // The agent that drafted the content is registered so it can submit the publish.
     const reg = (
       await app.inject({
         method: "POST",
@@ -119,25 +119,24 @@ describe("#153 every publish is #13-gated (external.send)", () => {
       agent: "quill",
     });
 
-    // Submit the publish as an external.send action — sensitive-by-default → MUST pause for a human.
+    // Content publishing carries no money → under #243 it ships on its own, with no parked approval.
     const submit = await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       headers: { authorization: `Bearer ${reg.token}` },
       payload: { actionType: action.actionType, payload: action.payload, amount: action.amount },
     });
-    expect(submit.statusCode).toBe(202);
-    expect(submit.json().status).toBe("pending");
-    const requestId = submit.json().request.id;
+    expect(submit.statusCode).toBe(200);
+    expect(submit.json().status).toBe("executed");
 
-    // The owner approves → the gate clears (recorded-only execute).
-    const approve = await app.inject({
-      method: "POST",
-      url: `/approvals/${requestId}/approve`,
-      cookies: { rid: owner.cookie },
-      payload: { reason: "reads well, ship it" },
-    });
-    expect(approve.statusCode).toBe(200);
-    expect(approve.json().status).toBe("executed");
+    // Nothing parked for the owner.
+    const pending = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${owner.workspaceId}/approvals?status=pending`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json();
+    expect(pending).toHaveLength(0);
   });
 });

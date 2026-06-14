@@ -208,10 +208,11 @@ describe("#123 marketing department fleet (real Postgres)", () => {
     expect(tasks.some((t) => t.kind === "mention")).toBe(false);
   });
 
-  it("keeps anything leaving the building #13-gated (a social post is pending, never auto-sent)", async () => {
+  it("ships a non-paid social post autonomously but gates real ad spend (#243 money-only)", async () => {
     const owner = await newOwner();
     await seed(owner);
-    const action = await app.inject({
+    // A non-paid social post leaves the building on its own — no owner prompt (#243).
+    const post = await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       cookies: { rid: owner.cookie },
@@ -220,8 +221,23 @@ describe("#123 marketing department fleet (real Postgres)", () => {
         payload: { kind: "social.post", summary: "Launch day thread", target: "x" },
       },
     });
-    expect(action.statusCode).toBe(202);
-    expect(action.json().status).toBe("pending");
+    expect(post.statusCode).toBe(200);
+    expect(post.json().status).toBe("executed");
+
+    // Real ad spend (money) still pauses for the owner, with the exact amount on the request.
+    const spend = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/actions`,
+      cookies: { rid: owner.cookie },
+      payload: {
+        actionType: "external.send",
+        amount: 5000,
+        payload: { kind: "ad.spend", summary: "Google Ads starter", amountCents: 5000 },
+      },
+    });
+    expect(spend.statusCode).toBe(202);
+    expect(spend.json().status).toBe("pending");
+    expect(spend.json().request.amount).toBe(5000);
   });
 
   // #235: the owner BRIEFS a lead from the dashboard composer → a REAL session spawns and the board fills.

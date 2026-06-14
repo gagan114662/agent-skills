@@ -67,9 +67,10 @@ export interface DnsReceiptStore {
   list(workspaceId: string, domain?: string): Promise<DnsReceiptRow[]>;
 }
 
-/** The #13 approval gate (a blocked setup parks here). Mirrors the portfolio-sunset gate seam. */
+/** The #13 approval gate (a blocked setup parks here). Mirrors the portfolio-sunset gate seam. Under #243
+ * the gate is kind-aware: only a MONEY connect (live payment credentials) parks an owner approval. */
 export interface OnboardingApprovalGate {
-  requiresApproval(workspaceId: string): Promise<boolean>;
+  requiresApproval(workspaceId: string, serviceKind: SetupRequestSpec["serviceKind"]): Promise<boolean>;
   submit(input: {
     workspaceId: string;
     requesterMemberId: string;
@@ -140,10 +141,11 @@ export class OnboardingService {
       (await this.deps.setupRequests.list(input.workspaceId)).map((r) => [r.serviceKey, r]),
     );
     const filed: FiledSetup[] = [];
-    const gated = await this.deps.approvals.requiresApproval(input.workspaceId);
     for (const spec of specs) {
       // Reuse an already-linked approval (idempotent re-file); otherwise submit one when the policy gates.
+      // Under #243 the gate is per-kind: only a MONEY connect (live payment credentials) parks an approval.
       let approvalRequestId = existing.get(spec.serviceKey)?.approvalRequestId ?? null;
+      const gated = await this.deps.approvals.requiresApproval(input.workspaceId, spec.serviceKind);
       if (!approvalRequestId && gated) {
         const approval = await this.deps.approvals.submit({
           workspaceId: input.workspaceId,

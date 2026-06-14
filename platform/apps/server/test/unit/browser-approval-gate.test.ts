@@ -63,10 +63,14 @@ describe("storeBackedApprovalGate (#174 — #13 wiring)", () => {
 });
 
 describe("browser.action as a #13 citizen (#174)", () => {
-  it("is a submittable action type, sensitive by default (gated with no workspace rule)", () => {
+  it("is a submittable action type whose remote-mutation gate lives in the browser runtime, not the money policy (#243)", () => {
     expect(isActionType("browser.action")).toBe(true);
-    expect(DEFAULT_SENSITIVE_ACTIONS).toContain("browser.action");
-    expect(evaluatePolicy({ actionType: "browser.action" }, []).requiresApproval).toBe(true);
+    // Under #243 the money predicate drives policy approval; browser.action is not money, so the policy
+    // default no longer gates it. A side-effectful browser step (a click that submits/posts/purchases) is
+    // still gated by the #174 runtime structural gate (`decideBrowserStep` → `needs_approval`), proven by
+    // the browser-decide tests and the `storeBackedApprovalGate` suite above — that gate always parks.
+    expect(DEFAULT_SENSITIVE_ACTIONS).not.toContain("browser.action");
+    expect(evaluatePolicy({ actionType: "browser.action" }, []).requiresApproval).toBe(false);
   });
 
   it("validates its payload shape", () => {
