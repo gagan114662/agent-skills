@@ -59,9 +59,14 @@ primary_region = "yyz"
   # ANTHROPIC_MODEL — a session is never blocked. The gateway KEY is a SECRET (never set in [env]).
   # RELOAD_AUTO_MODEL = "true"
 
-# Post-deploy smoke (#166 follow-up): boot the NEW image on a one-off machine and run ONE real
-# demo-harness session end-to-end BEFORE traffic shifts. A non-zero exit aborts the rollout, so an
-# image that cannot spawn a session (e.g. missing `bash`) can never reach production. No DB / no spend.
+# Post-deploy gate (#166; hardened in #238): boot the NEW image on a one-off machine BEFORE traffic
+# shifts and run, in order, (1) a PREFLIGHT that asserts the host posture — `bash`/`git` on PATH, the
+# `claude` binary, AND that the per-session workspace root is WRITABLE by the non-root runtime user —
+# then (2) ONE real demo-harness session that PROVISIONS a per-session workspace and spawns end-to-end.
+# A non-zero exit aborts the rollout, so an image missing a tool OR with a root-owned workspace root
+# (the #238 cause: every session died at provision with exit n/a) can never reach production. The
+# writable workspace root is baked into the image as RELOAD_WORKSPACE_ROOT=/home/reload/agent-workspaces
+# (created + chowned in the Dockerfile). No DB / no model spend.
 [deploy]
   release_command = "node /app/apps/server/dist/runtime/smoke-cli.js"
 

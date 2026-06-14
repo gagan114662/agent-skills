@@ -40,6 +40,16 @@ ENV NODE_ENV=production
 # the `claude` CLI needs a writable home for its config/credentials dir. Pin it to the reload user's
 # home so the harness child inherits a valid, writable HOME (verified: /home/reload, owned by reload).
 ENV HOME=/home/reload
+# #238: the per-session workspace root MUST be writable by the non-root `reload` user. The default
+# (`.reload/workspaces`, resolved against the server's cwd = WORKDIR `/app`) lives under a ROOT-owned
+# `/app` (`COPY --from=build` runs as root), so the #58 `FileConfigWorkspaceProvisioner.prepare()`
+# `mkdirSync('/app/.reload/workspaces/<id>')` fails with EACCES BEFORE the harness ever spawns — the
+# error is caught and surfaces as `exitCode=null` → the `spawn` failure class → the "missing a tool"
+# copy, so EVERY real session died at provision (21 spawn failures, prod, #238). Point the root at the
+# reload user's own home (created+chowned below) so provisioning succeeds. The startup preflight
+# (#69) now probes this path's writability, and the post-deploy smoke provisions through it, so a
+# non-writable root can never silently ship again.
+ENV RELOAD_WORKSPACE_ROOT=/home/reload/agent-workspaces
 WORKDIR /app
 
 # #174: bake the agent browser (Playwright + Chromium) into the image only when a deployment opts in.
@@ -56,10 +66,23 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # (CLAUDE_CODE_OAUTH_TOKEN), resolved per session and injected as env — so NO credential is baked into
 # the image. The binary is on PATH as `claude`, which the #69 preflight checks for. The reload user is
 # created with debian's useradd (not busybox adduser).
+#
+# #238: also install `git` (PINNED). debian-bookworm-slim does NOT ship git, and the `claude-code`
+# harness shells out to it (repo status/diff), as does the #51 GitWorkspaceProvisioner when a repo is
+# configured — a missing `git` is exactly the "runtime is missing a tool" class the issue flags. The
+# #69 preflight now asserts it for the real (claude-code/codex) harness so a git-less image fails the
+# deploy, not the user. Pin to debian's stable build for a reproducible image (mirrors the claude-code
+# pin); a debian point-release bump is a deliberate, visible lockfile change.
 RUN corepack enable \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends git=1:2.39.5-0+deb12u3 \
+  && rm -rf /var/lib/apt/lists/* \
   && npm install -g @anthropic-ai/claude-code@2.1.173 \
   && groupadd --system reload \
-  && useradd --system --gid reload --home-dir /home/reload --create-home reload
+  && useradd --system --gid reload --home-dir /home/reload --create-home reload \
+  # #238: a writable per-session workspace root for the non-root user (see RELOAD_WORKSPACE_ROOT above).
+  && mkdir -p /home/reload/agent-workspaces \
+  && chown -R reload:reload /home/reload
 # Same /app path as the build stage keeps pnpm's symlinked node_modules valid.
 COPY --from=build /app /app
 # Optionally install the `playwright` package + Chromium and its system libraries (#174). The `pnpm add`

@@ -1,4 +1,4 @@
-import { accessSync, constants as fsConstants } from "node:fs";
+import { accessSync, constants as fsConstants, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { RuntimeKind } from "../db/repositories/agent-sessions.js";
 import type { HarnessKind } from "./harness.js";
@@ -49,6 +49,13 @@ export interface PreflightDeps {
   binaryAvailable: (name: string) => boolean;
   /** Whether a module specifier resolves (e.g. `@vercel/sandbox` is installed). */
   moduleResolvable: (specifier: string) => boolean;
+  /**
+   * Whether a directory is creatable + writable (#238). Probes the EXACT operation the #58 workspace
+   * provisioner does on every launch (`mkdir -p <root>/<id>` then write), so a non-writable workspace
+   * root is caught at preflight/deploy instead of as a null-exit "spawn" failure on every session.
+   * Optional so existing partial-deps tests keep compiling; the production probe is in {@link defaultDeps}.
+   */
+  dirWritable?: (path: string) => boolean;
 }
 
 export interface PreflightInput {
@@ -59,6 +66,13 @@ export interface PreflightInput {
   env: NodeJS.ProcessEnv;
   /** Whether the agent browser runtime (#174) is enabled — gates the Playwright/Chromium checks. */
   browserEnabled?: boolean;
+  /**
+   * The resolved (absolute) per-session workspace root the #58 provisioner will `mkdir` under (#238).
+   * When provided on the local runtime, preflight asserts it is writable by the running (non-root) user
+   * — the check that would have caught the prod EACCES where every session died at provision. Absent ⇒
+   * the check is skipped (default posture / unit tests that don't exercise provisioning).
+   */
+  workspaceRoot?: string;
 }
 
 /** Thrown by the launch gate when preflight fails. Carries the report; the message is content-free. */
@@ -146,6 +160,49 @@ function checkBashBinary(deps: PreflightDeps): CheckResult {
     status: "fail",
     message: "bash not found — every local-runtime session spawns 'bash' and dies at exec without it",
     remedy: "Install bash in the image (Alpine ships only 'ash'): apk add --no-cache bash.",
+  };
+}
+
+/**
+ * `git` is a tool the REAL coding harnesses shell out to (#238): `claude-code`/`codex` run `git` for
+ * repo status/diff, and the #51 GitWorkspaceProvisioner needs it to create each session's worktree. A
+ * debian-slim image ships NO git, so a real session fails — the exact "my runtime is missing a tool"
+ * class the issue flags. Gate the deploy on it for the real harnesses (the `demo` harness never uses git).
+ */
+function checkGitBinary(deps: PreflightDeps): CheckResult {
+  const name = "git-binary";
+  if (deps.binaryAvailable("git")) {
+    return { name, status: "pass", message: "git found (the coding harness + worktree provisioner shell out to it)" };
+  }
+  return {
+    name,
+    status: "fail",
+    message: "git not found — the claude-code/codex harness and the #51 worktree provisioner require it",
+    remedy: "Install git in the image (debian-slim ships none): apt-get install -y git.",
+  };
+}
+
+/**
+ * The per-session workspace root must be CREATABLE + WRITABLE by the running (non-root) user (#238).
+ * The #58 provisioner does `mkdirSync('<workspaceRoot>/<sessionId>')` on every launch BEFORE the harness
+ * spawns; when the root lives under a root-owned dir (e.g. `/app` in the image) the non-root user hits
+ * EACCES, the error is caught, and the session surfaces as `exitCode=null` → the `spawn` class → the
+ * misleading "missing a tool" copy. This probe reproduces that mkdir+write so a non-writable root fails
+ * the deploy instead of every user's session. Secret-free: it emits the path only, never any value.
+ */
+function checkWorkspaceWritable(workspaceRoot: string, deps: PreflightDeps): CheckResult {
+  const name = "workspace-writable";
+  const probe = deps.dirWritable ?? defaultDeps.dirWritable;
+  if (probe?.(workspaceRoot)) {
+    return { name, status: "pass", message: `per-session workspace root is writable (${workspaceRoot})` };
+  }
+  return {
+    name,
+    status: "fail",
+    message: `per-session workspace root is not writable by this user (${workspaceRoot})`,
+    remedy:
+      "Point RELOAD_WORKSPACE_ROOT at a dir the runtime user owns (e.g. under $HOME), and create + chown " +
+      "it in the image — a root-owned root makes every session die at provision with exit n/a.",
   };
 }
 
@@ -243,6 +300,10 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
     // The local runtime spawns every harness via `bash` (the demo script / `bash -lc …`), so a host
     // without it fails EVERY session at exec → "exit n/a" (#166). Gate on it for the local runtime.
     checks.push(checkBashBinary(deps));
+    // #238: every local session provisions a per-session dir under the workspace root BEFORE spawning.
+    // A non-writable root (root-owned `/app` for the non-root runtime user) made that mkdir throw →
+    // exit n/a → "spawn" on EVERY session. Assert it when the caller resolved the root (prod thunk does).
+    if (input.workspaceRoot) checks.push(checkWorkspaceWritable(input.workspaceRoot, deps));
   }
 
   if (input.harness === "claude-code") {
@@ -251,6 +312,9 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
   } else {
     checks.push({ name: "harness", status: "pass", message: "harness 'demo' needs no model credentials" });
   }
+
+  // #238: the real coding harnesses (claude-code/codex) shell out to `git`; the demo harness does not.
+  if (input.harness === "claude-code" || input.harness === "codex") checks.push(checkGitBinary(deps));
 
   // #174 agent browser runtime: only checked when enabled (default OFF → no checks, posture unchanged).
   if (input.browserEnabled) {
@@ -291,8 +355,26 @@ function isExecutable(path: string): boolean {
   }
 }
 
+/**
+ * Whether a directory is creatable + writable — the EXACT op the #58 provisioner runs per launch (#238):
+ * `mkdir -p` the root, then write (and clean up) a probe file. Total: any error (EACCES, read-only fs)
+ * returns false instead of throwing, so preflight stays total.
+ */
+function realDirWritable(path: string): boolean {
+  try {
+    mkdirSync(path, { recursive: true });
+    const probe = join(path, `.preflight-write-probe-${process.pid}`);
+    writeFileSync(probe, "");
+    rmSync(probe, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The production probes; tests inject fakes so they never touch disk or the module resolver. */
 export const defaultDeps: PreflightDeps = {
   binaryAvailable: realBinaryAvailable,
   moduleResolvable: realModuleResolvable,
+  dirWritable: realDirWritable,
 };
