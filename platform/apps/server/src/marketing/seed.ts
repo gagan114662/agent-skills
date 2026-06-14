@@ -63,6 +63,22 @@ export interface MarketingSeedDeps {
     task: string;
     createdByMemberId: string;
   }): Promise<{ id: string }>;
+  /**
+   * Create the workspace's first venture in the pipeline if it has none (#221), so an activated console is
+   * never an empty `0/0/0` pipeline — the founding team has something to clock into. Idempotent: returns
+   * the existing venture (`created: false`) on a re-seed. Optional — omitted ⇒ no venture is created (the
+   * #138 boot backfill / signup auto-seed don't activate a pipeline, only the explicit first-run CTA does).
+   */
+  ensureFirstVenture?(input: {
+    workspaceId: string;
+    createdByMemberId: string;
+  }): Promise<{ ideaId: string; created: boolean }>;
+  /**
+   * How many welcome tasks the workspace already has (#221) — the idempotency key for activation. A
+   * workspace with ≥1 welcome task is already activated, so a re-seed must NOT re-launch the founding
+   * sessions (that is what 429'd the founder on a second click). Optional — omitted ⇒ treated as 0.
+   */
+  countWelcomeTasks?(workspaceId: string): Promise<number>;
 }
 
 export interface SeededAgent {
@@ -76,6 +92,11 @@ export interface MarketingSeedResult {
   channels: Array<{ id: string; name: string }>;
   agents: SeededAgent[];
   welcomeTasks: Array<{ id: string }>;
+  /**
+   * The workspace's first venture (#221), present once activation has run (`postWelcomeTasks`). `created`
+   * is true only on the seed that first stood it up; a re-seed echoes the same venture with `created: false`.
+   */
+  venture?: { ideaId: string; created: boolean };
 }
 
 export interface MarketingSeedInput {
@@ -156,33 +177,62 @@ export async function seedMarketingDepartment(
     await deps.post({ workspaceId, channelId: general.id, agentMemberId: agents[0]!.agentMemberId, body: BRAND_VOICE.welcome });
   }
 
-  // 4. Optionally launch one real welcome session per department (proves each agent alive) + record it.
+  // 4. Activation (#221): turn a seeded org into a *running* venture. Two parts, both idempotent so a
+  //    second click resumes the existing org instead of 429'ing the founder back into a dead end:
+  //
+  //    (a) Stand up the workspace's first venture so the pipeline is never an empty 0/0/0 desk — there is
+  //        something for the founding team to clock into. `ensureFirstVenture` no-ops when one exists.
+  //
+  //    (b) Open each lead's first task (a real welcome session) the FIRST time only — keyed on whether any
+  //        welcome task already exists. A re-seed of an already-activated workspace launches nothing, so it
+  //        never touches the #71 admission chokepoint and never 429s. On the first activation we launch
+  //        sequentially and best-effort: if a launch is denied AFTER at least one has started, we keep the
+  //        org + the venture + the sessions we did open; if the VERY FIRST launch is denied (kill switch /
+  //        no capacity) we let it bubble so the route returns 429/402 and the console shows an actionable
+  //        next step rather than a silent empty board.
   const welcomeTasks: Array<{ id: string }> = [];
+  let venture: { ideaId: string; created: boolean } | undefined;
   if (input.postWelcomeTasks && deps.launchWelcome && deps.recordTask) {
-    for (let i = 0; i < MARKETING_DEPARTMENTS.length; i++) {
-      const dept = MARKETING_DEPARTMENTS[i]!;
-      const agent = agents[i]!;
-      const channel = channelByName.get(dept.channel)!;
-      const session = await deps.launchWelcome({
-        workspaceId,
-        channelId: channel.id,
-        agentMemberId: agent.agentMemberId,
-        createdByMemberId,
-        task: dept.welcomeTask,
-      });
-      const task = await deps.recordTask({
-        workspaceId,
-        channelId: channel.id,
-        department: dept.key,
-        agentMemberId: agent.agentMemberId,
-        sessionId: session.id,
-        kind: "welcome",
-        task: dept.welcomeTask,
-        createdByMemberId,
-      });
-      welcomeTasks.push(task);
+    if (deps.ensureFirstVenture) {
+      venture = await deps.ensureFirstVenture({ workspaceId, createdByMemberId });
+    }
+    const alreadyActivated = deps.countWelcomeTasks
+      ? (await deps.countWelcomeTasks(workspaceId)) > 0
+      : false;
+    if (!alreadyActivated) {
+      for (let i = 0; i < MARKETING_DEPARTMENTS.length; i++) {
+        const dept = MARKETING_DEPARTMENTS[i]!;
+        const agent = agents[i]!;
+        const channel = channelByName.get(dept.channel)!;
+        let session: { id: string };
+        try {
+          session = await deps.launchWelcome({
+            workspaceId,
+            channelId: channel.id,
+            agentMemberId: agent.agentMemberId,
+            createdByMemberId,
+            task: dept.welcomeTask,
+          });
+        } catch (err) {
+          // Best-effort: once the board is lit (≥1 session), a later cap denial is fine — keep what ran.
+          // Nothing started yet ⇒ surface the denial so the founder gets an honest, actionable message.
+          if (welcomeTasks.length > 0) break;
+          throw err;
+        }
+        const task = await deps.recordTask({
+          workspaceId,
+          channelId: channel.id,
+          department: dept.key,
+          agentMemberId: agent.agentMemberId,
+          sessionId: session.id,
+          kind: "welcome",
+          task: dept.welcomeTask,
+          createdByMemberId,
+        });
+        welcomeTasks.push(task);
+      }
     }
   }
 
-  return { channels: [...channelByName.values()], agents, welcomeTasks };
+  return { channels: [...channelByName.values()], agents, welcomeTasks, venture };
 }

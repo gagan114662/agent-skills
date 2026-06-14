@@ -136,10 +136,17 @@ export interface SubmitActionInput {
  */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /**
+   * Seconds the server asked us to wait before retrying, parsed from the `Retry-After` header (#221).
+   * Present on a 429 capacity denial so the UI can show an honest "retry in Ns" and hold the retry control
+   * until then instead of re-firing straight back into the rate limit. Undefined when no header was sent.
+   */
+  readonly retryAfterSeconds?: number;
+  constructor(message: string, status: number, retryAfterSeconds?: number) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -197,7 +204,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new ApiError(message, res.status);
+    // #221: surface the server's `Retry-After` (whole seconds) so a rate-limited caller can hold its retry.
+    const retryAfterRaw = Number(res.headers.get("retry-after"));
+    const retryAfterSeconds = Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : undefined;
+    throw new ApiError(message, res.status, retryAfterSeconds);
   }
 
   // A 2xx whose body isn't JSON is not our API answering — almost always the SPA `index.html`

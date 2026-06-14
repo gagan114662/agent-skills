@@ -596,6 +596,15 @@ export const CONSOLE = {
     cta: "Start your first venture",
     ctaBusy: "Hiring your team…",
     ctaError: "That didn't take — give it another go.",
+    /** Shown when the seed is rate-limited (429). Pairs with {@link consoleSeedRetryNote} for the countdown. */
+    rateLimited: "You're going a little fast.",
+    /** The retry button label while the founder is held off (disabled until Retry-After elapses). */
+    retryWait: "Hang on a moment…",
+    /** The retry button label once the cool-off has elapsed. */
+    retryNow: "Try again",
+    /** Shown when the team can't run because no Claude runtime is connected — routes to Settings. */
+    connectError: "Your team can't run yet — connect Claude so they can actually clock in.",
+    connectErrorCta: "Connect Claude",
     assembling: "Your team's clocking in. The board fills in as each lead opens their first task — hang tight.",
     connectHint: "Bringing your own Claude? Connect it in Settings so the team can actually run.",
     connectCta: "Open Settings",
@@ -718,6 +727,11 @@ export function consoleWaitingChip(n: number): string {
 /** Approval-empty "next likely ask" line. */
 export function consoleNextAsk(hint: string = CONSOLE.approvalsClear.nextDefault): string {
   return `Next likely ask: ${hint}.`;
+}
+
+/** First-run seed rate-limit note (#221): the honest "retry in Ns" countdown beside the held retry button. */
+export function consoleSeedRetryNote(seconds: number): string {
+  return `${CONSOLE.firstRun.rateLimited} You can try again in ${seconds}s.`;
 }
 
 /**

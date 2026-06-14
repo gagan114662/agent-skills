@@ -195,6 +195,13 @@ import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
+
+/**
+ * The `Retry-After` (seconds) advertised on a 429 admission denial (#221). A capacity hold frees as
+ * in-flight sessions finish, so a short hint is right — long enough that an immediate re-tap doesn't just
+ * re-hit the cap, short enough that the founder isn't told to wait minutes for a slot that clears in seconds.
+ */
+const ADMISSION_RETRY_AFTER_SECONDS = 30;
 import type { SaturationCollectorDeps } from "./observability/saturation.js";
 import { getPool } from "./db/index.js";
 import { getRedis } from "./redis/index.js";
@@ -434,6 +441,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     if (err instanceof AdmissionError) {
       recordAdmissionDenied(err.reason);
       const status = err.reason === "budget_exceeded" ? 402 : 429;
+      // #221: a 429 (capacity / kill switch) carries a `Retry-After` so the client can show an honest
+      // "retry in Ns" and hold the retry control until then, instead of re-firing straight into the cap.
+      // Additive metadata only — the denial itself is unchanged (no gate is weakened).
+      if (status === 429) reply.header("retry-after", String(ADMISSION_RETRY_AFTER_SECONDS));
       return reply.code(status).send({ error: err.message, reason: err.reason });
     }
     // #96: the venture admission gate denies an autonomy launch lacking a fundable scorecard → 403.

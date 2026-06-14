@@ -7,9 +7,23 @@
  *
  * Two states: the pitch (steps + CTA) and, once the seed lands, the "clocking in" confirmation with a
  * gentle nudge to connect Claude so the team can actually run. Motion-free, so it's reduced-motion safe.
+ *
+ * When the seed fails (#221) the panel is honest about why and offers a real next step rather than a dead
+ * retry: a 429 rate-limit shows a countdown and holds the CTA until the server's `Retry-After` elapses; a
+ * missing runtime routes to Settings → Connect Claude; anything else falls back to a plain retry line.
  */
-import { CONSOLE } from "../../brand.js";
+import { useEffect, useState } from "react";
+import { CONSOLE, consoleSeedRetryNote } from "../../brand.js";
 import { PopMark } from "../PopMark.js";
+
+/** Why the seed didn't produce a running venture (#221) — drives the panel's actionable failure copy. */
+export type SeedError =
+  /** Rate-limited (429): hold the retry for `retryAfterSeconds`, then let them try again. */
+  | { kind: "rate"; retryAfterSeconds: number }
+  /** No Claude runtime connected: the team can't run until the owner connects one (→ Settings). */
+  | { kind: "connect" }
+  /** Anything else: a plain, quiet retry line. */
+  | { kind: "generic" };
 
 export interface ConsoleEmptyStateProps {
   /** Stand up the founding team (the #123/#138 seed). */
@@ -18,8 +32,8 @@ export interface ConsoleEmptyStateProps {
   busy: boolean;
   /** The seed landed — show the "clocking in" confirmation instead of the pitch. */
   seeded: boolean;
-  /** The seed call failed — surface a quiet retry line by the CTA. */
-  error: boolean;
+  /** The seed call failed — surface the matching actionable message by the CTA (null = no error). */
+  error: SeedError | null;
   /** Open workspace settings (where Claude/Slack connect lives). */
   onConnect: () => void;
 }
@@ -32,6 +46,21 @@ export function ConsoleEmptyState({
   onConnect,
 }: ConsoleEmptyStateProps): React.JSX.Element {
   const copy = CONSOLE.firstRun;
+
+  // Rate-limit cool-off (#221): seed the countdown from the server's Retry-After, then tick it down so the
+  // CTA stays held — and shows how long — instead of re-firing the founder straight back into the limit.
+  const [coolOff, setCoolOff] = useState(0);
+  useEffect(() => {
+    if (error?.kind !== "rate") {
+      setCoolOff(0);
+      return;
+    }
+    setCoolOff(error.retryAfterSeconds);
+    const timer = window.setInterval(() => {
+      setCoolOff((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [error]);
 
   if (seeded) {
     return (
@@ -47,6 +76,9 @@ export function ConsoleEmptyState({
       </div>
     );
   }
+
+  const held = error?.kind === "rate" && coolOff > 0;
+  const ctaLabel = busy ? copy.ctaBusy : held ? copy.retryWait : copy.cta;
 
   return (
     <div className="firstrun">
@@ -69,10 +101,26 @@ export function ConsoleEmptyState({
         ))}
       </ol>
 
-      <button className="btn btn--primary firstrun__cta" onClick={onStart} disabled={busy}>
-        {busy ? copy.ctaBusy : copy.cta}
+      <button className="btn btn--primary firstrun__cta" onClick={onStart} disabled={busy || held}>
+        {ctaLabel}
       </button>
-      {error && <p className="firstrun__err">{copy.ctaError}</p>}
+
+      {/* #221: an honest, actionable failure line — never a retry that just re-hits the same wall. */}
+      {error?.kind === "rate" && (
+        <p className="firstrun__err" role="status">
+          {coolOff > 0 ? consoleSeedRetryNote(coolOff) : copy.retryNow}
+        </p>
+      )}
+      {error?.kind === "connect" && (
+        <p className="firstrun__err">
+          {copy.connectError}{" "}
+          <button className="firstrun__link" onClick={onConnect}>
+            {copy.connectErrorCta}
+          </button>
+        </p>
+      )}
+      {error?.kind === "generic" && <p className="firstrun__err">{copy.ctaError}</p>}
+
       <p className="firstrun__hint">
         {copy.connectHint}{" "}
         <button className="firstrun__link" onClick={onConnect}>

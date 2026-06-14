@@ -11,7 +11,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { ConsoleView } from "./ConsoleView.js";
-import { api } from "../../api/client.js";
+import { api, ApiError } from "../../api/client.js";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { CONSOLE } from "../../brand.js";
 import { renderWithStore } from "../../test/utils.js";
@@ -190,6 +190,34 @@ describe("ConsoleView", () => {
     await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
     await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
     expect(await screen.findByText(CONSOLE.firstRun.ctaError)).toBeInTheDocument();
+  });
+
+  it("surfaces an actionable rate-limit countdown and HOLDS the retry when the seed is 429'd (#221)", async () => {
+    // The dead-end bug: a 429 re-fired the same request straight back into the limit. Now the panel shows
+    // an honest "retry in Ns" from the server's Retry-After and disables the CTA until it elapses.
+    vi.spyOn(api.department, "seed").mockRejectedValue(
+      new ApiError("launch denied: tenant_capacity", 429, 7),
+    );
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+
+    // The countdown line is shown (seeded from Retry-After), and the CTA is held — it cannot re-hit the cap.
+    expect(await screen.findByText(/You can try again in/)).toBeInTheDocument();
+    const held = screen.getByRole("button", { name: CONSOLE.firstRun.retryWait });
+    expect(held).toBeDisabled();
+    // The generic dead-end retry copy is NOT shown — the message is specific and actionable.
+    expect(screen.queryByText(CONSOLE.firstRun.ctaError)).toBeNull();
+  });
+
+  it("routes a runtime-less / unreachable seed failure to Connect Claude (#221)", async () => {
+    // When the team can't run for lack of a connected runtime, the real next step is to connect one —
+    // a settings route, not a retry. (API_UNAVAILABLE / non-429 ApiError classifies as the connect path.)
+    vi.spyOn(api.department, "seed").mockRejectedValue(new ApiError("API not connected", 0));
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+
+    expect(await screen.findByText(CONSOLE.firstRun.connectError)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectErrorCta })).toBeInTheDocument();
   });
 
   it("carries the in-header Upgrade CTA that opens the pricing overlay (#215)", async () => {

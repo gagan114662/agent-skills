@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
-import { api, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
+import { api, ApiError, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
@@ -30,7 +30,7 @@ import { PricingPanel } from "../PricingPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
-import { ConsoleEmptyState } from "./ConsoleEmptyState.js";
+import { ConsoleEmptyState, type SeedError } from "./ConsoleEmptyState.js";
 import { ProjectSettingsSheet } from "./ProjectSettingsSheet.js";
 import { PeekDrawer, type PeekAuditLine, type PeekTranscriptLine } from "./PeekDrawer.js";
 import {
@@ -63,6 +63,25 @@ function askLineOf(item: ConsoleItem): string {
   return item.amount != null ? `${action} · ${fmtCents(item.amount)}` : action;
 }
 
+/** Default cool-off when a 429 carries no `Retry-After` (matches the server's advertised default, #221). */
+const SEED_RETRY_FALLBACK_SECONDS = 30;
+
+/**
+ * Turn a failed first-run seed into an actionable {@link SeedError} (#221): a 429 becomes a held countdown
+ * (honouring the server's `Retry-After`), an unreachable/rejected API becomes a "connect Claude" route, and
+ * anything else stays a quiet generic retry. Keeps the dead "give it another go → re-hit the limit" loop out.
+ */
+function classifySeedError(err: unknown): SeedError {
+  if (err instanceof ApiError) {
+    if (err.status === 429) {
+      return { kind: "rate", retryAfterSeconds: err.retryAfterSeconds ?? SEED_RETRY_FALLBACK_SECONDS };
+    }
+    // Server reached but the team can't run (no connected runtime / unavailable backend) → route to Connect.
+    return { kind: "connect" };
+  }
+  return { kind: "generic" };
+}
+
 export function ConsoleView(): React.JSX.Element {
   const { identity, channels, directory, messagesByChannel, paywall } = useAppState();
   const store = useStore();
@@ -88,7 +107,7 @@ export function ConsoleView(): React.JSX.Element {
   // First-run activation: the seed that hires the founding team (the #123/#138 department seam).
   const [seeding, setSeeding] = useState(false);
   const [seeded, setSeeded] = useState(false);
-  const [seedError, setSeedError] = useState(false);
+  const [seedError, setSeedError] = useState<SeedError | null>(null);
 
   // Guards every async setState so a poll that resolves after unmount is a no-op (no leak / no warning).
   const mounted = useRef(true);
@@ -255,7 +274,7 @@ export function ConsoleView(): React.JSX.Element {
   async function startVenture(): Promise<void> {
     if (!workspaceId || seeding) return;
     setSeeding(true);
-    setSeedError(false);
+    setSeedError(null);
     try {
       await api.department.seed(workspaceId, { welcomeTasks: true });
       await store.bootstrap();
@@ -267,8 +286,8 @@ export function ConsoleView(): React.JSX.Element {
       if (!mounted.current) return;
       if (next) setMc(next);
       setSeeded(true);
-    } catch {
-      if (mounted.current) setSeedError(true);
+    } catch (err) {
+      if (mounted.current) setSeedError(classifySeedError(err));
     } finally {
       if (mounted.current) setSeeding(false);
     }
