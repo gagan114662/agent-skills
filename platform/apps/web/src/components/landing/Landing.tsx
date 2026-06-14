@@ -203,7 +203,7 @@ function Pricing(): React.JSX.Element {
       </h2>
       <p className="landing__section-sub">{LANDING.sections.pricingSub}</p>
       <BillingScreen />
-      <Link href="/signup" className="linklike landing__pricing-link">
+      <Link href="/pricing" className="linklike landing__pricing-link">
         {LANDING.sections.pricingCta} →
       </Link>
     </section>

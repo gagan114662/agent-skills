@@ -109,6 +109,10 @@ describe("Landing", () => {
     }
     // The billing chrome marks one plan as the current subscription.
     expect(within(pricing).getAllByText(BILLING.currentLabel).length).toBeGreaterThan(0);
+    // "See all plans" sends a price-shopping visitor to the dedicated pricing page (#214), not signup.
+    expect(
+      within(pricing).getByRole("link", { name: new RegExp(LANDING.sections.pricingCta, "i") }),
+    ).toHaveAttribute("href", "/pricing");
   });
 
   it("answers the FAQ with every question present", () => {

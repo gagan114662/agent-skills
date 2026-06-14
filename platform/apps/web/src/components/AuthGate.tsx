@@ -8,7 +8,7 @@
  */
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND, VOICE } from "../brand.js";
+import { BRAND, LANDING, PRICING, VOICE } from "../brand.js";
 import { Link, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -18,6 +18,17 @@ type Mode = "login" | "signup";
 
 // Code-split the marketing site: signed-in users never download it.
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
+// #214: the dedicated public pricing page. Its own lazy chunk; public at every phase like the landing.
+const PricingPage = lazy(() => import("./landing/PricingPage.js").then((m) => ({ default: m.PricingPage })));
+
+/** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
+const PLAN_INTENT_KEY = "plan-intent";
+
+/** Read a `?plan=<key>` hint off the URL and resolve it to a known plan teaser (or null). */
+function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
+  const key = new URLSearchParams(window.location.search).get("plan");
+  return key ? LANDING.plans.find((p) => p.key === key) ?? null : null;
+}
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
 // The marketing-site machine (#153): compare / stories / guides / changelog / brand. Its own lazy chunk.
@@ -49,6 +60,16 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <MarketingSite />
+      </Suspense>
+    );
+  }
+
+  // #214: the public pricing page is reachable at every phase (a price-shopping visitor, a shared link,
+  // an ad destination) — matched before the phase gates so it never falls through to the full landing.
+  if (path === "/pricing") {
+    return (
+      <Suspense fallback={<Splash />}>
+        <PricingPage />
       </Suspense>
     );
   }
@@ -106,6 +127,10 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   const [workspaceSlug, setWorkspaceSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // #214: a plan chosen on `/pricing` arrives as `?plan=<key>`. We frame it as a free trial here and
+  // hand it off (sessionStorage seam) for the post-signup activation/first-run to pick up — we don't
+  // change signup itself, so the billing/activation work owns what happens with the chosen plan.
+  const [intendedPlan] = useState(() => (initialMode === "signup" ? intendedPlanFromUrl() : null));
 
   async function onSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -115,6 +140,13 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
       if (mode === "login") {
         await store.login(email, password);
       } else {
+        if (intendedPlan) {
+          try {
+            window.sessionStorage.setItem(PLAN_INTENT_KEY, intendedPlan.key);
+          } catch {
+            // sessionStorage can throw in private mode — the plan hint is a nicety, not load-bearing.
+          }
+        }
         await store.signup({ email, password, displayName, workspaceSlug });
       }
     } catch (err) {
@@ -132,6 +164,13 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           <Wordmark />
         </Link>
         <p className="auth__tag">{BRAND.tagline}</p>
+
+        {mode === "signup" && (
+          <p className="auth__trial" role="note">
+            <span className="auth__trial-badge">{PRICING.trial.eyebrow}</span>{" "}
+            {intendedPlan ? PRICING.trial.onPlan(intendedPlan.name) : PRICING.trial.generic}
+          </p>
+        )}
 
         {mode === "signup" && (
           <label className="field">
