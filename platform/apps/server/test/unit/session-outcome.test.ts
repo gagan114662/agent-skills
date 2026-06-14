@@ -41,6 +41,35 @@ describe("classifyFailure (#166)", () => {
   it("classifies a plain non-zero exit as a generic error", () => {
     expect(classifyFailure({ status: "failed", exitCode: 2, outputTail: "boom" })).toBe("error");
   });
+
+  it("classifies a non-zero exit naming an unavailable model as a model misconfig (#242)", () => {
+    // The exact prod case: ANTHROPIC_MODEL=claude-fable-5 (a non-existent model) → claude -p exits 1
+    // having produced only Claude Code's own model error, which used to read as an opaque "error".
+    const o: SessionOutcome = {
+      status: "failed",
+      exitCode: 1,
+      outputTail:
+        "⚠️ There's an issue with the selected model (claude-fable-5). It may not exist or you may not have access to it.",
+    };
+    expect(classifyFailure(o)).toBe("model");
+  });
+
+  it("classifies an API model_not_found error as a model misconfig", () => {
+    expect(
+      classifyFailure({ status: "failed", exitCode: 1, outputTail: "404 model_not_found" }),
+    ).toBe("model");
+  });
+
+  it("a genuine auth error still wins over the model bucket", () => {
+    // Defense in depth: an unauthorized error mentioning a model must still route to auth (owner reconnects).
+    expect(
+      classifyFailure({
+        status: "failed",
+        exitCode: 1,
+        outputTail: "unauthorized: invalid api key for the selected model",
+      }),
+    ).toBe("auth");
+  });
 });
 
 describe("renderSessionOutcome (#166)", () => {
@@ -76,6 +105,22 @@ describe("renderSessionOutcome (#166)", () => {
     expect(msg).not.toContain("✅");
     expect(msg.toLowerCase()).toContain("auth");
     expect(msg).toContain("Connect Claude");
+  });
+
+  it("surfaces a model-misconfig reason the owner can act on instead of an opaque error (#242)", () => {
+    const msg = renderSessionOutcome({
+      status: "failed",
+      exitCode: 1,
+      outputTail:
+        "There's an issue with the selected model (claude-fable-5). It may not exist or you may not have access to it.",
+    });
+    expect(msg).not.toContain("✅");
+    expect(msg).toContain("❌");
+    expect(msg.toLowerCase()).toContain("model");
+    expect(msg).toContain("Settings → Model");
+    // Honest debug footer still carries the raw status + exit, but never the model name from the tail.
+    expect(msg).toContain("exit 1");
+    expect(msg).not.toContain("claude-fable-5");
   });
 
   it("never echoes the raw output tail (no secret leakage) into the rendered message", () => {

@@ -12,6 +12,7 @@ import { LocalRuntime } from "../../src/runtime/local.js";
 import { SessionManager, type SessionLogger } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { dbStore, channelPoster } from "../../src/runtime/default.js";
+import { harnessLineDecoder, type LineDecoder } from "../../src/runtime/stream-json.js";
 import { listOpen as listOpenRemediations, selfHealingStore } from "../../src/db/repositories/self-healing.js";
 import {
   recordSpawnFailureIncident,
@@ -19,6 +20,12 @@ import {
   AGENT_RUNTIME_SURFACE_KEY,
   SPAWN_INCIDENT_SIGNAL,
 } from "../../src/self-healing/spawn-incident.js";
+import {
+  recordModelFailureIncident,
+  resolveModelFailureIncident,
+  AGENT_MODEL_SURFACE_KEY,
+  MODEL_INCIDENT_SIGNAL,
+} from "../../src/self-healing/model-incident.js";
 import type { ResourceCaps } from "../../src/db/repositories/agent-sessions.js";
 
 /** A no-op logger so the manager's internal logging doesn't spam the test output. */
@@ -42,6 +49,16 @@ const COMPLETING_HARNESS = [
 // A harness that produces NO output and never exits on its own — to exercise the idle reaper.
 const SILENT_HARNESS = ["-e", "setTimeout(() => {}, 60000)"];
 
+// #242: a host harness that reproduces the EXACT prod model-misconfig stream — claude `-p --model
+// claude-fable-5` emits one stream-json `result` event with `is_error:true` naming the unavailable model,
+// then exits 1 having produced no artifact. Deterministic + spend-free, so it runs in CI.
+const MODEL_FAIL_HARNESS = [
+  "-e",
+  "console.log(JSON.stringify({type:'result',subtype:'success',is_error:true," +
+    "result:'There is an issue with the selected model (claude-fable-5). It may not exist or you may not have access to it.'}));" +
+    "process.exit(1)",
+];
+
 const apps: FastifyInstance[] = [];
 const slugs: string[] = [];
 
@@ -56,8 +73,10 @@ async function startApp(
   harnessArgs: string[],
   caps: ResourceCaps,
   command: string = process.execPath, // process.execPath = node
-  /** #238: wire the real self-healing spawn-incident hooks (open on spawn failure, resolve on success). */
+  /** #238/#242: wire the real self-healing incident hooks (open on spawn/model failure, resolve on success). */
   selfHeal = false,
+  /** #242: decode harness stdout (claude-code stream-json) so a model-error result becomes a channel line. */
+  decode?: LineDecoder,
 ): Promise<{
   app: FastifyInstance;
   http: string;
@@ -71,9 +90,20 @@ async function startApp(
     harness: { command, args: harnessArgs },
     caps,
     logger: silentLogger,
+    ...(decode ? { decodeOutput: decode } : {}),
     ...(selfHeal
       ? {
           onSessionFailure: async (e) => {
+            // #242: a model misconfig opens a DISTINCT self-healing incident (not the spawn surface), and is
+            // never routed to the auto-fix flywheel — it's owner-actionable config. Mirrors production wiring.
+            if (e.failureClass === "model") {
+              await recordModelFailureIncident(selfHealingStore, {
+                workspaceId: e.workspaceId,
+                detail: `${e.message}${e.errorExcerpt ? ` — ${e.errorExcerpt}` : ""} · exit ${e.exitCode ?? "n/a"}`,
+                now: new Date(),
+              });
+              return;
+            }
             if (e.failureClass === "spawn") {
               await recordSpawnFailureIncident(selfHealingStore, {
                 workspaceId: e.workspaceId,
@@ -84,6 +114,7 @@ async function startApp(
           },
           onSessionRecovered: async (e) => {
             await resolveSpawnFailureIncident(selfHealingStore, e.workspaceId, new Date());
+            await resolveModelFailureIncident(selfHealingStore, e.workspaceId, new Date());
           },
         }
       : {}),
@@ -292,6 +323,66 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     });
     await pollStatus(goodApp, w, launch3.json().id, (s) => s === "completed" || s === "failed");
     // The open incident closed once a real session succeeded again (production-grounded recovery proof).
+    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
+  });
+
+  it("a model misconfig (claude-fable-5) surfaces an actionable reason + opens a self-healing incident, then resolves on recovery (#242)", async () => {
+    // The exact prod incident: ANTHROPIC_MODEL=claude-fable-5 made every claude-code session exit 1 having
+    // produced nothing, surfacing only an opaque "error · exit 1". With the model class + incident wired, it
+    // must now surface an OWNER-ACTIONABLE reason and open a DISTINCT self-healing incident the console reads.
+    const { app: badApp } = await startApp(
+      MODEL_FAIL_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      true,
+      harnessLineDecoder("claude-code"),
+    );
+    const w = await seed(badApp);
+    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
+
+    const launch = await badApp.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft an SEO article with a $49 trial CTA" },
+    });
+    const session = await pollStatus(badApp, w, launch.json().id, (s) => s === "failed");
+    expect(session.status).toBe("failed");
+    expect(session.exitCode).toBe(1);
+
+    const bodies = (
+      await badApp.inject({ method: "GET", url: `/channels/${w.channelId}/messages`, cookies: { rid: w.cookie } })
+    ).json().map((m: { body: string }) => m.body) as string[];
+    const terminal = bodies.find((b) => b.includes("session failed"));
+    // Not the opaque generic error — an actionable model reason the owner can act on.
+    expect(terminal).toContain("❌");
+    expect(terminal).toContain("Settings → Model");
+    expect(bodies.some((b) => b.includes("✅"))).toBe(false);
+    // The real cause is in the thread (the decoded model error), proving "the details are in the thread".
+    expect(bodies.some((b) => b.toLowerCase().includes("selected model"))).toBe(true);
+
+    // The failure is now a tracked self-healing incident on the DISTINCT agent-model surface (NOT spawn).
+    const open = await listOpenRemediations(w.workspaceId);
+    expect(open).toHaveLength(1);
+    expect(open[0]!.surfaceKey).toBe(AGENT_MODEL_SURFACE_KEY);
+    expect(open[0]!.signal).toBe(MODEL_INCIDENT_SIGNAL);
+    expect(open[0]!.detail).toContain("claude-fable-5"); // names the actual unavailable model
+
+    // A retry on a VALID model (the fix) COMPLETES and resolves the incident — the self-heal loop.
+    const { app: goodApp } = await startApp(
+      COMPLETING_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      true,
+    );
+    const retry = await goodApp.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft an SEO article with a $49 trial CTA" },
+    });
+    const ok = await pollStatus(goodApp, w, retry.json().id, (s) => s === "completed" || s === "failed");
+    expect(ok.status).toBe("completed");
     expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
   });
 

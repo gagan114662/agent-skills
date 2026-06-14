@@ -67,7 +67,8 @@ runs agents on **its own** Claude subscription, never a pooled key.
    token is stored **encrypted** in the per-tenant vault and never shown again — only a fingerprint is.)
 
 That's it. @mention a fleet agent (`@scout`, `@quill`, …) in its channel and it runs a real
-`claude-fable-5` session billed to your subscription, replying in-thread. A workspace that hasn't
+`claude-sonnet-4-6` session (the deployment-default model — #242) billed to your subscription, replying
+in-thread. A workspace that hasn't
 connected gets a friendly in-channel "connect your Claude account" reply instead — it never crashes.
 
 ### Optional operator / platform secrets (set on the app, never committed)

@@ -12,10 +12,12 @@ deployment's non-secret env lives in [`fly.toml`](./fly.toml) `[env]`; secrets a
 | `AGENT_HARNESS` | `demo` | Which harness runs per session (`demo` \| `claude-code` \| `codex`). `demo` spends nothing. |
 | `AGENT_RUNTIME` | `local` | Where sessions execute (`local` \| `sandbox`). |
 | `CLAUDE_BIN` | `claude` | Path/name of the Claude Code binary (`claude-code` harness only). |
-| **`ANTHROPIC_MODEL`** | **`claude-fable-5`** | **Deployment-wide default model.** The harness emits an env-gated `--model` flag (`${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"}`, #52) that reads this. Empty ⇒ Claude Code's own default. |
+| **`ANTHROPIC_MODEL`** | **`claude-sonnet-4-6`** | **Deployment-wide default model.** The harness emits an env-gated `--model` flag (`${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"}`, #52) that reads this. **MUST be a model the API actually serves** — a non-existent id makes every session exit 1 producing nothing (#242). Empty ⇒ Claude Code's own default. |
 
-**Owner directive:** live ipop agents default to **`claude-fable-5`**. This is set in three places that
-must stay in sync:
+**Default model:** live ipop agents run **`claude-sonnet-4-6`** (the project-canonical default; use
+`claude-opus-4-8` for a premium default). A mis-set value is caught + surfaced as a `model` failure with
+a self-heal incident (#242), not an opaque "error · exit 1". This is set in three places that must stay
+in sync:
 
 1. [`.env.example`](./.env.example) — local/dev default.
 2. [`fly.toml`](./fly.toml) `[env]` — the live Fly default (`fly deploy` applies it).
