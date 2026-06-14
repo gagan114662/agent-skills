@@ -20,12 +20,14 @@ import {
   validateBrowserAction,
   validateChatPostMessage,
   validateExternalSend,
+  validateFinanceDisbursement,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
+import { FINANCE_DISBURSEMENT_ACTION } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
 export { ActionExecutionError };
@@ -201,6 +203,31 @@ const browserAction: ActionExecutor = {
 };
 
 /**
+ * Outbound money — a finance disbursement (#194, ADR-0194). Like `billing.refund` it is **sensitive by
+ * default** (always pauses for a human) and **recorded-only**: it performs **no** money movement
+ * (`{recorded:true, executed:false}`). The owner disburses the funds by hand. Wiring a real transfer
+ * behind this gate is a deliberate future ADR — never an autonomous call (money is irreversible).
+ */
+const financeDisbursement: ActionExecutor = {
+  actionType: FINANCE_DISBURSEMENT_ACTION,
+  validate: validateFinanceDisbursement,
+  summarize: (p) =>
+    (
+      `disburse ${typeof p.amountCents === "number" ? `${(p.amountCents / 100).toFixed(2)} ` : ""}` +
+      `for ${String(p.purpose)}`
+    ).slice(0, 120),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false,
+      amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+      currency: typeof payload.currency === "string" ? payload.currency : "usd",
+      purpose: typeof payload.purpose === "string" ? payload.purpose : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151) and an optional acquisition
  * dispatcher (#189). With no dispatcher (the default) the `external.send` executor is recorded-only,
  * exactly as before — every existing approval test is untouched.
@@ -215,6 +242,7 @@ export function buildDefaultRegistry(
     billingRefund,
     browserAction,
     ventureWeeklyPlanExecutor,
+    financeDisbursement,
   ]);
 }
 

@@ -61,6 +61,11 @@ app.buildLoopEngine.start(env.buildLoop.intervalMs);
 // dedups repeats within a period). Stopped on server close via buildApp.
 app.founderBriefingsEngine.start(env.briefings.intervalMs);
 
+// #194 finance ledger: start the opt-in posting/close tick (FINANCE_INTERVAL_MS; default 0 = off) that
+// posts each enabled workspace's external receipts into the per-venture ledger and refreshes the current
+// period's close pack (the idempotent upsert makes a repeat tick a no-op). Stopped on server close via buildApp.
+app.financeEngine.start(env.finance.intervalMs);
+
 // #147 automations: start the opt-in tick (AUTOMATIONS_INTERVAL_MS; default 0 = off) that launches
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);

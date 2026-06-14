@@ -851,6 +851,28 @@ export const acquisitionSchema = z.object({
   unsubscribeUrl: z.string().optional(),
 });
 
+/**
+ * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
+ * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
+ * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
+ * sets nothing runs no posting/close tick and the read routes answer 409. Even enabled, nothing here can
+ * move money (the `finance.disbursement` action stays human-gated + recorded-only).
+ */
+export const financeSchema = z.object({
+  /** Master switch for the posting/close tick + the read surface — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Lookback (months) for the runway burn-rate + recent-periods forecast basis (default 6). */
+  lookbackMonths: z.number().int().positive().optional(),
+  /** Cash floor (cents) the runway/recommendation treat as the breach line (default 0). */
+  floorCents: z.number().int().nonnegative().optional(),
+  /** At/below this many post-spend runway days a money decision is recommended `caution` (default 30). */
+  cautionRunwayDays: z.number().int().positive().optional(),
+  /** Months-to-breach at/below which the runway header reads `at_risk` (default 3). */
+  atRiskMonths: z.number().int().positive().optional(),
+  /** Max ledger rows a single read/CSV export returns (default 500). */
+  ledgerLimit: z.number().int().positive().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -940,6 +962,8 @@ export const settingsSchema = z.object({
   onboarding: onboardingSchema.optional(),
   /** Acquisition execution policy (#189): real ads/email/social/SEO sends + auto-send caps (default OFF). */
   acquisition: acquisitionSchema.optional(),
+  /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
+  finance: financeSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -989,6 +1013,7 @@ export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 export type BrowserConfig = z.infer<typeof browserSchema>;
 export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
+export type FinanceConfig = z.infer<typeof financeSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1085,6 +1110,8 @@ export interface ResolvedConfig {
   /** External account onboarding policy (#192). A partial whose hard defaults `resolveOnboardingCaps` fills. */
   onboarding: OnboardingConfig;
   acquisition: AcquisitionConfig;
+  /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
+  finance: FinanceConfig;
 }
 
 /**
@@ -1135,4 +1162,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   browser: {},
   onboarding: {},
   acquisition: {},
+  finance: {},
 };

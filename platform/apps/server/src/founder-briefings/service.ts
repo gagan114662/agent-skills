@@ -8,6 +8,7 @@ import {
   type DailyBrief,
   type DecisionItem,
   type DecisionQueue,
+  type FinanceBriefingSection,
   type ShippedItem,
   type VentureKpiSnapshot,
   type VoiceSignal,
@@ -113,12 +114,19 @@ export interface FounderBriefingsDeps {
   revenue: RevenueReader;
   voice: VoiceReader;
   backlog: BacklogReader;
+  /** Optional #194 finance close-pack section for the weekly report; absent ⇒ report unchanged. */
+  finance?: FinanceSectionReader;
   notifier: BriefingNotifier;
   deliveries: DeliveryStore;
   /** Acquisition execution receipts (#189, AC5). Optional — absent → no acquisition section. */
   acquisition?: AcquisitionReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
+}
+
+/** The #194 finance close-pack section (or null when the finance layer is off for the workspace). */
+export interface FinanceSectionReader {
+  section(workspaceId: string): Promise<FinanceBriefingSection | null>;
 }
 
 /** A delivery attempt's outcome (returned to the engine/tests). */
@@ -208,11 +216,12 @@ export class FounderBriefingsService {
   async weeklyReport(workspaceId: string): Promise<WeeklyReport> {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
-    const [ventures, revenue, voice, backlog] = await Promise.all([
+    const [ventures, revenue, voice, backlog, financeSection] = await Promise.all([
       this.deps.ventures.ventures(workspaceId),
       this.deps.revenue.total(workspaceId),
       this.deps.voice.signals(workspaceId, caps.digestVoiceLimit),
       this.deps.backlog.upcoming(workspaceId, caps.backlogLimit),
+      this.deps.finance ? this.deps.finance.section(workspaceId) : Promise.resolve(null),
     ]);
     return composeWeeklyReport({
       workspaceId,
@@ -224,6 +233,7 @@ export class FounderBriefingsService {
       voiceSignals: voice,
       backlog,
       maxWords: caps.maxReportWords,
+      ...(financeSection ? { financeSection } : {}),
     });
   }
 
