@@ -553,3 +553,89 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     wordCount: wc,
   };
 }
+
+// ───────────────────────────── Premortem panel (#187 / #200 AC2) ─────────────────────────────
+
+/**
+ * The raw counters the premortem panel summarizes. Sourced read-only from the venture-factory + approval
+ * loops by the briefings `service.ts` — every number is a count, no estimate.
+ */
+export interface PremortemPanelInput {
+  /** Active ventures carrying a QUALIFIED edge (FM#1) vs total active ventures. */
+  venturesWithEdge: number;
+  totalVentures: number;
+  /** Metrics backed by an EXTERNAL receipt (FM#2) vs total metrics surfaced this period. */
+  externallyVerifiedMetrics: number;
+  totalMetrics: number;
+  /** Irreversible actions taken/queued in the window (FM#4) — domain/brand/legal/money. */
+  irreversibleActionCount: number;
+  /** Owner attention: decisions presented vs the daily top-N budget (FM#5). */
+  decisionsPresented: number;
+  attentionBudget: number;
+  /** Approvals decided in the window, and how many were rubber-stamped (near-zero latency) (FM#5). */
+  approvalsDecided: number;
+  approvalsRubberStamped: number;
+  /** Owner overrides of an agent recommendation — the taste gap (FM#7). */
+  ownerOverrides: number;
+}
+
+/** The weekly premortem panel (#200 AC2): the five standing failure-mode gauges + warning flags. */
+export interface PremortemPanel {
+  /** % of active ventures with a falsifiable edge (FM#1). 100 when there are no ventures. */
+  edgeCoveragePct: number;
+  /** % of surfaced metrics that are externally verified (FM#2). 100 when there are no metrics. */
+  externallyVerifiedPct: number;
+  /** Count of irreversible actions in the window (FM#4). */
+  irreversibleActionCount: number;
+  /** Owner attention spend vs budget (FM#5). */
+  attentionSpend: { presented: number; budget: number; overBudget: boolean };
+  /** % of approvals rubber-stamped — high ⇒ the gate may be theater (FM#5). */
+  rubberStampRatePct: number;
+  /** % of decisions the owner overrode — the taste gap (FM#7). */
+  overrideRatePct: number;
+  /** Human-readable warnings (empty when every gauge is healthy). */
+  flags: string[];
+}
+
+function pct(part: number, whole: number): number {
+  if (whole <= 0) return 100;
+  return Math.round((Math.max(0, part) / whole) * 100);
+}
+
+/**
+ * Compose the premortem panel — the weekly answer to #200 ("assume the roadmap shipped and the company
+ * still failed"). **Pure.** Every gauge maps to a standing failure mode; `flags` calls out any gauge in
+ * the danger zone so the brief can never quietly read "all green" while an edge is missing or metrics are
+ * self-reported.
+ */
+export function composePremortemPanel(input: PremortemPanelInput): PremortemPanel {
+  const edgeCoveragePct = pct(input.venturesWithEdge, input.totalVentures);
+  const externallyVerifiedPct = pct(input.externallyVerifiedMetrics, input.totalMetrics);
+  const rubberStampRatePct = input.approvalsDecided > 0 ? pct(input.approvalsRubberStamped, input.approvalsDecided) : 0;
+  const overrideRatePct = input.approvalsDecided > 0 ? pct(input.ownerOverrides, input.approvalsDecided) : 0;
+  const overBudget = input.decisionsPresented > input.attentionBudget;
+
+  const flags: string[] = [];
+  if (input.totalVentures > 0 && edgeCoveragePct < 100) {
+    flags.push(`${input.totalVentures - input.venturesWithEdge} venture(s) without a falsifiable edge (FM#1)`);
+  }
+  if (input.totalMetrics > 0 && externallyVerifiedPct < 100) {
+    flags.push(`${100 - externallyVerifiedPct}% of metrics are self-reported, not externally verified (FM#2)`);
+  }
+  if (overBudget) {
+    flags.push(`owner attention over budget: ${input.decisionsPresented} presented > ${input.attentionBudget} (FM#5)`);
+  }
+  if (rubberStampRatePct >= 80 && input.approvalsDecided >= 3) {
+    flags.push(`${rubberStampRatePct}% of approvals rubber-stamped — the gate may be theater (FM#5)`);
+  }
+
+  return {
+    edgeCoveragePct,
+    externallyVerifiedPct,
+    irreversibleActionCount: Math.max(0, input.irreversibleActionCount),
+    attentionSpend: { presented: input.decisionsPresented, budget: input.attentionBudget, overBudget },
+    rubberStampRatePct,
+    overrideRatePct,
+    flags,
+  };
+}

@@ -600,6 +600,42 @@ export const ventureMemorySchema = z.object({
 });
 
 /**
+ * Venture Factory policy (#187, ADR-0187). All **non-secret** knobs for the idea → validated → launched
+ * pipeline. Every field is optional and defaults to **off** (`enabled: false`) AND **owner workspace
+ * first** (`ownerWorkspaceOnly: true`) so a deployment that sets nothing runs no scanner, ships no smoke
+ * test, and bootstraps no venture (recording/reading candidates stays available, harmless). `enabled`
+ * gates the proactive scanner/validation/bootstrap tick. The thresholds parameterize the pure
+ * `scanner`/`validation`/`edge-gate` modules; `validationBudgetCapCents` is the HARD smoke-test cap;
+ * `requireProfitableBeforeScale` enforces premortem #200 FM#1 (make ONE venture profitable first).
+ */
+export const ventureFactorySchema = z.object({
+  /** The factory flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** When true (default), the autonomous factory runs only in the owner's own workspace. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** Half-life (days) for candidate freshness decay. */
+  freshnessHalfLifeDays: z.number().nonnegative().optional(),
+  /** Minimum opportunity score for a candidate to earn a validation experiment. */
+  minScoreToValidate: z.number().min(0).max(100).optional(),
+  /** The HARD validation budget cap (cents) per smoke test. */
+  validationBudgetCapCents: z.number().int().nonnegative().optional(),
+  /** Points per external signup when scoring a validation scorecard. */
+  pointsPerSignup: z.number().nonnegative().optional(),
+  /** Minimum EXTERNAL signups to PROMOTE a validated candidate. */
+  minSignupsToPromote: z.number().int().nonnegative().optional(),
+  /** Maximum acceptable CAC (cents) to PROMOTE. */
+  maxCacCents: z.number().int().nonnegative().optional(),
+  /** Signups at/below which validation is a clear KILL. */
+  killSignups: z.number().int().nonnegative().optional(),
+  /** Hard cap on concurrently-active ventures (the scaling gate). */
+  maxConcurrentVentures: z.number().int().positive().optional(),
+  /** Bar a new bootstrap until at least one venture is externally profitable (FM#1). */
+  requireProfitableBeforeScale: z.boolean().optional(),
+  /** Estimated cost (cents) charged to tenant usage per scan pass. */
+  scanCostCents: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Per-agent scoped credentials policy (#151, ADR-0151). All **non-secret** — only secret KEY NAMES
  * grouped by purpose; the secret VALUES stay on the #25 `SecretsResolver`/`AGENT_SECRETS` path. Every
  * field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
@@ -971,6 +1007,8 @@ export const settingsSchema = z.object({
   planning: planningSchema.optional(),
   /** Venture Memory & Planning policy (#197): per-venture memory + weekly planning loop (default OFF). */
   ventureMemory: ventureMemorySchema.optional(),
+  /** Venture Factory policy (#187): opportunity scanner → validation → bootstrap pipeline (default OFF). */
+  ventureFactory: ventureFactorySchema.optional(),
   /** Per-agent scoped credentials policy (#151): the allowlist matrix (key NAMES only, default OFF). */
   credentialScopes: credentialScopesSchema.optional(),
   /** Egress domain allowlist policy (#151) for cloud agent sessions (default OFF). */
@@ -1037,6 +1075,7 @@ export type SupportDeskConfig = z.infer<typeof supportDeskSchema>;
 export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type VentureMemoryConfig = z.infer<typeof ventureMemorySchema>;
+export type VentureFactoryConfig = z.infer<typeof ventureFactorySchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
 export type EgressConfig = z.infer<typeof egressSchema>;
 export type RbacConfig = z.infer<typeof rbacSchema>;
@@ -1123,6 +1162,8 @@ export interface ResolvedConfig {
   planning: PlanningConfig;
   /** Venture Memory & Planning policy (#197). A partial whose defaults `resolveVentureMemoryCaps` fills. */
   ventureMemory: VentureMemoryConfig;
+  /** Venture Factory policy (#187). A partial whose defaults `resolveVentureFactoryCaps` fills. */
+  ventureFactory: VentureFactoryConfig;
   /** Per-agent scoped credentials policy (#151). A partial whose defaults `resolveCredentialMatrix` fills. */
   credentialScopes: CredentialScopesConfig;
   /** Egress domain allowlist policy (#151). A partial whose defaults `resolveEgressPolicy` fills. */
@@ -1189,6 +1230,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   portfolio: {},
   planning: {},
   ventureMemory: {},
+  ventureFactory: {},
   credentialScopes: {},
   egress: {},
   rbac: {},

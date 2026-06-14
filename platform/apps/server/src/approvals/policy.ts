@@ -61,6 +61,19 @@ export const SETUP_EXTERNAL_ACCOUNT_ACTION = "setup.external_account" as const;
 export const FINANCE_DISBURSEMENT_ACTION = "finance.disbursement" as const;
 
 /**
+ * The Venture Factory MONEY/launch boundary action kinds (#187, ADR-0187). Like `autonomy.complete` they
+ * are never submitted through the #13 action route; the factory evaluates them against the same workspace
+ * `approval_policies`. `venture.bootstrap` is the single owner go/no-go that spins up a whole venture
+ * (AC3). The other three are the MONEY boundary (AC4): registering a domain, starting paid acquisition,
+ * and attaching a payment method are irreversible (premortem FM#4) and ALWAYS queue for the owner — they
+ * are never agent-initiated. Everything else in the bootstrap (reversible) proceeds without a human.
+ */
+export const VENTURE_BOOTSTRAP_ACTION = "venture.bootstrap" as const;
+export const VENTURE_DOMAIN_PURCHASE_ACTION = "venture.domain_purchase" as const;
+export const VENTURE_AD_SPEND_ACTION = "venture.ad_spend" as const;
+export const VENTURE_PAYMENT_METHOD_ACTION = "venture.payment_method" as const;
+
+/**
  * Action types that require approval when **no** workspace rule matches. `external.send` ships
  * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
  * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
@@ -78,6 +91,12 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   SETUP_EXTERNAL_ACCOUNT_ACTION,
   // #194 a finance disbursement (outbound spend) is irreversible — always a human gate, recorded-only. ADR-0194.
   FINANCE_DISBURSEMENT_ACTION,
+  // #187 starting a whole venture is an owner go/no-go; domain/ad-spend/payment-method are the MONEY
+  // boundary (irreversible — premortem FM#4), always human, never agent-initiated. ADR-0187.
+  VENTURE_BOOTSTRAP_ACTION,
+  VENTURE_DOMAIN_PURCHASE_ACTION,
+  VENTURE_AD_SPEND_ACTION,
+  VENTURE_PAYMENT_METHOD_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",

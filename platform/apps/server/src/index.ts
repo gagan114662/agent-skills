@@ -56,6 +56,11 @@ app.planningEngine.start(env.planning.intervalMs);
 // premortem, and #13-gates it to the owner. Stopped on server close via buildApp.
 app.ventureMemoryEngine.start(env.ventureMemory.intervalMs);
 
+// #187 venture factory: start the opt-in opportunity-scanner tick (VENTURE_FACTORY_INTERVAL_MS; default
+// 0 = off) that advances `scanned` candidates through the edge gate into validation. The factory itself
+// is config default-OFF + owner-workspace-first; nothing autonomous runs until a deployment opts in.
+app.ventureFactoryEngine.start(env.ventureFactory.intervalMs);
+
 // #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
 // the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.
