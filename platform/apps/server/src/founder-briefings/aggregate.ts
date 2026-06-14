@@ -1,4 +1,5 @@
 import { budgetExceeded } from "../scale/usage.js";
+import type { AcquisitionBriefView } from "../acquisition/cac.js";
 
 /**
  * Founder Briefings roll-up (#173, ADR-0173). **Pure**: given the read-structs gathered from every
@@ -189,6 +190,12 @@ export interface DailyBriefInput {
   decisionQueue: DecisionQueue;
   spend: SpendSnapshot;
   constitution: ConstitutionSummary;
+  /**
+   * Acquisition execution receipts (#189, AC5): real channel spend + CAC + failing channels for the
+   * window. OPTIONAL — when undefined (the default, acquisition flag off) the brief renders exactly as
+   * before, so existing composer tests and today's behavior are unchanged.
+   */
+  acquisition?: AcquisitionBriefView;
   /** Hard word budget for the rendered brief (default 200 at the caps layer). */
   maxWords: number;
 }
@@ -211,6 +218,8 @@ export interface DailyBrief {
   decisionsWaiting: DecisionQueueItem[];
   spend: SpendView;
   constitution: ConstitutionSummary;
+  /** The acquisition section (#189) when provided, else null. */
+  acquisition: AcquisitionBriefView | null;
   /** The brand-voice brief, guaranteed `wordCount <= maxWords`. */
   text: string;
   wordCount: number;
@@ -288,6 +297,24 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
     );
   }
 
+  // #189 acquisition receipts (AC5): real channel spend + CAC + any failing channel. Rendered only when
+  // the section is present (acquisition on) and there is something real to report. CAC is labeled
+  // UNVERIFIED when the conversions backing it are not external receipts (premortem #200 §2).
+  const acq = input.acquisition ?? null;
+  if (acq && (acq.totalSpentCents > 0 || acq.totalConversions > 0 || acq.failingChannels.length > 0)) {
+    const spent = formatMoney(acq.totalSpentCents, input.spend.currency);
+    const cac =
+      acq.blendedCacCents !== null
+        ? `CAC ${formatMoney(acq.blendedCacCents, input.spend.currency)}${acq.verified ? "" : " (UNVERIFIED)"}`
+        : "CAC n/a";
+    parts.push(
+      `Acquisition: ${spent} spent, ${pluralize(acq.totalConversions, "conversion")}, ${cac}.`,
+    );
+    if (acq.failingChannels.length > 0) {
+      parts.push(`Channel failures: ${acq.failingChannels.join(", ")}.`);
+    }
+  }
+
   const { text, wordCount: wc } = clampWords(parts, input.maxWords);
 
   return {
@@ -298,6 +325,7 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
     decisionsWaiting,
     spend,
     constitution: input.constitution,
+    acquisition: acq,
     text,
     wordCount: wc,
   };

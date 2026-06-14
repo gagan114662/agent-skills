@@ -25,6 +25,7 @@ import {
   type ExecutorRegistry,
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
+import type { AcquisitionDispatcher } from "../acquisition/execution.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
 export { ActionExecutionError };
@@ -105,15 +106,24 @@ const chatPostMessage: ActionExecutor = {
 };
 
 /**
- * Represent an outbound "external send". Recorded-only: it performs **no** network egress (so tests
- * and CI never reach out), it just confirms the gated action would have been sent. ADR-0013 §2.
+ * Represent an outbound "external send". Recorded-only **by default**: it performs no network egress
+ * (so tests and CI never reach out), it just confirms the gated action would have been sent (ADR-0013
+ * §2). #189 (ADR-0189) makes this the place a REAL ads/email/social/SEO campaign actually leaves the
+ * building: an optional {@link AcquisitionDispatcher} is consulted AFTER the egress check. The
+ * dispatcher returns a real send result when the channel is cleared to execute (master + channel flag
+ * on AND the owner connected the provider), or `null` to fall back to recorded-only. With no dispatcher
+ * injected — and with the acquisition flag off, which makes the dispatcher always return `null` — this
+ * is byte-for-byte today's recorded-only behavior.
  *
  * #151: when the payload names a `target` and the workspace has an egress allowlist enabled, the target's
  * domain is checked here — the one application chokepoint for outbound sends. A blocked target records a
  * violation to the audit trail and fails the action (the #13 trail already recorded the human decision;
  * the egress trail records where it was refused). With the allowlist off (default), this is a no-op.
  */
-function makeExternalSend(egress: EgressEnforcer): ActionExecutor {
+function makeExternalSend(
+  egress: EgressEnforcer,
+  dispatcher?: AcquisitionDispatcher,
+): ActionExecutor {
   return {
     actionType: "external.send",
     validate: validateExternalSend,
@@ -128,6 +138,16 @@ function makeExternalSend(egress: EgressEnforcer): ActionExecutor {
           actorMemberId: ctx.requesterMemberId,
         });
         if (blocked) throw new ActionExecutionError(blocked);
+      }
+      // #189: hand the approved send to the acquisition dispatcher. A non-null result means a real
+      // (or dry-run) campaign action ran; null means this is not an acquisition send, or the channel is
+      // not cleared to execute → fall back to recorded-only (the default, no-egress behavior).
+      if (dispatcher) {
+        const dispatched = await dispatcher.dispatch(payload, {
+          workspaceId: ctx.workspaceId,
+          requesterMemberId: ctx.requesterMemberId,
+        });
+        if (dispatched) return dispatched;
       }
       return { recorded: true, target, summary: String(payload.summary) };
     },
@@ -180,11 +200,18 @@ const browserAction: ActionExecutor = {
   },
 };
 
-/** Build the executor registry with an injectable egress enforcer (tests pass a fake; #151). */
-export function buildDefaultRegistry(egress: EgressEnforcer = defaultEgressEnforcer): ExecutorRegistry {
+/**
+ * Build the executor registry with an injectable egress enforcer (#151) and an optional acquisition
+ * dispatcher (#189). With no dispatcher (the default) the `external.send` executor is recorded-only,
+ * exactly as before — every existing approval test is untouched.
+ */
+export function buildDefaultRegistry(
+  egress: EgressEnforcer = defaultEgressEnforcer,
+  dispatcher?: AcquisitionDispatcher,
+): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
-    makeExternalSend(egress),
+    makeExternalSend(egress, dispatcher),
     billingRefund,
     browserAction,
     ventureWeeklyPlanExecutor,

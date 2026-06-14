@@ -28,7 +28,13 @@ export interface MarketingSendInput {
 export interface MarketingSendDescriptor {
   actionType: "external.send";
   amount: number | null;
-  payload: { kind: MarketingSendKind; summary: string; target?: string };
+  /**
+   * `amountCents` is mirrored INTO the payload (in addition to the `amount` column) so the #189
+   * acquisition dispatcher — which only sees the executor `payload` at execution time — can enforce the
+   * owner-approved budget envelope against the real spend. Additive + optional; the policy/gate is
+   * unchanged (it reads the `amount` column).
+   */
+  payload: { kind: MarketingSendKind; summary: string; target?: string; amountCents?: number };
 }
 
 /**
@@ -41,6 +47,7 @@ export function buildMarketingSend(input: MarketingSendInput): MarketingSendDesc
   }
   const payload: MarketingSendDescriptor["payload"] = { kind: input.kind, summary: input.summary };
   if (input.target !== undefined) payload.target = input.target;
+  if (typeof input.amountCents === "number") payload.amountCents = input.amountCents;
   return {
     actionType: "external.send",
     amount: typeof input.amountCents === "number" ? input.amountCents : null,

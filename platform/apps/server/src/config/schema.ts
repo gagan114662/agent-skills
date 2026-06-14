@@ -804,6 +804,53 @@ export const onboardingSchema = z.object({
   dnsProvider: z.string().optional(),
 });
 
+/**
+ * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
+ * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
+ * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
+ * today's behavior exactly (the `external.send` executor stays recorded-only, no network egress). The
+ * per-channel flags (`ads`/`email`/`social`/`seo`) gate REAL execution on each channel independently —
+ * a channel only ever leaves the building once the owner connects its provider (#192 vault) AND its
+ * flag is on. `autoSend` is the separate, stricter switch for letting an earned venture send WITHOUT a
+ * human #13 yes, within `*WindowCap` pre-commitment bounds (premortem #200 §4); it is OFF by default
+ * and owner-workspace-first. `ownerWorkspaceId` scopes the owner-first rollout. Footer fields supply
+ * the CAN-SPAM/GDPR footer enforced in code.
+ */
+export const acquisitionSchema = z.object({
+  /** Master flag for the real-send dispatcher — default OFF (recorded-only stays the behavior). */
+  enabled: z.boolean().optional(),
+  /** Real ad spend execution within an owner-approved envelope. Default OFF. */
+  ads: z.boolean().optional(),
+  /** Real email sending (ESP). Default OFF. */
+  email: z.boolean().optional(),
+  /** Real social publishing (X/LinkedIn). Default OFF. */
+  social: z.boolean().optional(),
+  /** Real SEO publishing to venture sites (#153). Default OFF. */
+  seo: z.boolean().optional(),
+  /** Allow an EARNED venture to send without a human #13 yes, within caps. Default OFF. */
+  autoSend: z.boolean().optional(),
+  /** The owner's own workspace id — auto-send rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Pre-committed per-window cap on autonomous email sends (the bound for an irreversible channel). */
+  emailWindowCap: z.number().int().nonnegative().optional(),
+  /** Pre-committed per-window cap on autonomous social posts. */
+  socialWindowCap: z.number().int().nonnegative().optional(),
+  /** Max publish-retry attempts before a social failure surfaces to the brief. */
+  maxRetries: z.number().int().positive().optional(),
+  /** Ads provider kind the factory selects (`dryrun` default — no network). */
+  adsProvider: z.string().optional(),
+  /** ESP (email) provider kind (`dryrun` default). */
+  espProvider: z.string().optional(),
+  /** Social provider kind (`dryrun` default). */
+  socialProvider: z.string().optional(),
+  /** CAN-SPAM footer: the sending brand / legal entity name. */
+  brandName: z.string().optional(),
+  /** CAN-SPAM footer: physical postal address of the sending entity. */
+  postalAddress: z.string().optional(),
+  /** CAN-SPAM/RFC-8058 unsubscribe URL. */
+  unsubscribeUrl: z.string().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -891,6 +938,8 @@ export const settingsSchema = z.object({
   browser: browserSchema.optional(),
   /** External account onboarding policy (#192): human-once setup + agent credential injection (default OFF). */
   onboarding: onboardingSchema.optional(),
+  /** Acquisition execution policy (#189): real ads/email/social/SEO sends + auto-send caps (default OFF). */
+  acquisition: acquisitionSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -939,6 +988,7 @@ export type SlackConfig = z.infer<typeof slackSchema>;
 export type BriefingsConfig = z.infer<typeof briefingsSchema>;
 export type BrowserConfig = z.infer<typeof browserSchema>;
 export type OnboardingConfig = z.infer<typeof onboardingSchema>;
+export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1034,6 +1084,7 @@ export interface ResolvedConfig {
   browser: BrowserConfig;
   /** External account onboarding policy (#192). A partial whose hard defaults `resolveOnboardingCaps` fills. */
   onboarding: OnboardingConfig;
+  acquisition: AcquisitionConfig;
 }
 
 /**
@@ -1083,4 +1134,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   briefings: {},
   browser: {},
   onboarding: {},
+  acquisition: {},
 };

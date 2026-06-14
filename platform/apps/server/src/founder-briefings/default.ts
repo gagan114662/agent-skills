@@ -26,6 +26,7 @@ import { rankBacklog } from "../planning/rice.js";
 import { getWorkspaceOwnerContact } from "../db/repositories/reliability.js";
 import { selectPagerTransport } from "../reliability/pager/transport.js";
 import { dbDeliveryStore } from "../db/repositories/founder-briefings.js";
+import { buildAcquisitionBriefSection } from "../acquisition/default.js";
 import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 
@@ -223,6 +224,11 @@ export function createDefaultFounderBriefingsService(deps: {
       slack: deps.slack ? slackBriefingDeliverer(deps.slack) : new NoopSlackDeliverer(),
     }),
     deliveries: dbDeliveryStore,
+    // #189 acquisition execution (AC5): real channel spend + CAC + failing channels. Returns null when
+    // there is nothing to report (no spend/conversions/failures), so the brief is unchanged when idle.
+    acquisition: {
+      section: (workspaceId) => buildAcquisitionBriefSection(workspaceId),
+    },
     now: deps.now,
   });
 }

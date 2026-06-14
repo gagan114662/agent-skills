@@ -51,3 +51,4 @@ export * from "./founder-briefings.js";
 export * from "./browser-steps.js";
 export * from "./onboarding.js";
 export * from "./venture-memory.js";
+export * from "./acquisition.js";
