@@ -54,3 +54,4 @@ export * from "./onboarding.js";
 export * from "./venture-memory.js";
 export * from "./acquisition.js";
 export * from "./finance.js";
+export * from "./venture-factory.js";
