@@ -22,13 +22,19 @@ import {
   validateChatPostMessage,
   validateExternalSend,
   validateFinanceDisbursement,
+  validateMonetizationActivatePrice,
+  validateMonetizationPayoutSettings,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
-import { FINANCE_DISBURSEMENT_ACTION } from "./policy.js";
+import {
+  FINANCE_DISBURSEMENT_ACTION,
+  MONETIZATION_ACTIVATE_PRICE_ACTION,
+  MONETIZATION_PAYOUT_SETTINGS_ACTION,
+} from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
 export { ActionExecutionError };
@@ -271,6 +277,56 @@ const financeDisbursement: ActionExecutor = {
 };
 
 /**
+ * Outbound money boundary — activating a venture's pricing (#188, ADR-0188). **Sensitive by default**
+ * (always pauses for the owner) and **recorded-only**: approving records the owner's go on the #13 audit
+ * trail; it performs NO money movement and mints NO link here. The monetization engine, seeing this
+ * approval `executed`, then mints the REAL hosted payment link (inbound-only collection) using the
+ * venture's OWN Stripe key — a live link is enabled only after the human go, never autonomously.
+ */
+const monetizationActivatePrice: ActionExecutor = {
+  actionType: MONETIZATION_ACTIVATE_PRICE_ACTION,
+  validate: validateMonetizationActivatePrice,
+  summarize: (p) =>
+    (
+      `activate pricing for ${String(p.ventureName)}: ` +
+      `${typeof p.amountCents === "number" ? (p.amountCents / 100).toFixed(2) : "?"} ` +
+      `${typeof p.currency === "string" ? p.currency.toUpperCase() : "USD"}` +
+      `${typeof p.previousAmountCents === "number" ? ` (was ${(p.previousAmountCents / 100).toFixed(2)})` : ""}`
+    ).slice(0, 140),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // the live link is minted by the monetization engine once this approval exists.
+      planId: typeof payload.planId === "string" ? payload.planId : null,
+      amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+      currency: typeof payload.currency === "string" ? payload.currency : "usd",
+      previousAmountCents:
+        typeof payload.previousAmountCents === "number" ? payload.previousAmountCents : null,
+    });
+  },
+};
+
+/**
+ * Outbound money boundary — changing a venture's payout settings (#188, ADR-0188). **Sensitive by
+ * default** and **recorded-only**: approving records the owner's go; re-routing money is never
+ * autonomous — the owner makes the change in the venture's own Stripe dashboard.
+ */
+const monetizationPayoutSettings: ActionExecutor = {
+  actionType: MONETIZATION_PAYOUT_SETTINGS_ACTION,
+  validate: validateMonetizationPayoutSettings,
+  summarize: (p) =>
+    `payout settings for ${String(p.ventureName ?? p.ventureId)} → ${String(p.destination)}`.slice(0, 140),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false,
+      ventureId: typeof payload.ventureId === "string" ? payload.ventureId : null,
+      destination: typeof payload.destination === "string" ? payload.destination : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), and an optional acquisition dispatcher (#189). The compliance default is a no-op and the
  * dispatcher is absent by default, so the `external.send` executor stays recorded-only exactly as before —
@@ -288,6 +344,8 @@ export function buildDefaultRegistry(
     browserAction,
     ventureWeeklyPlanExecutor,
     financeDisbursement,
+    monetizationActivatePrice,
+    monetizationPayoutSettings,
   ]);
 }
 

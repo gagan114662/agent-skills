@@ -134,3 +134,43 @@ export function validateFinanceDisbursement(payload: unknown): ValidationResult 
   }
   return { ok: true };
 }
+
+/**
+ * Validate a venture monetization activation (#188) — a recorded-only MONEY decision the money queue
+ * gates. Needs a `planId`, a positive-integer `amountCents` (the price the owner is approving — shown on
+ * the card), and a non-empty `ventureName`; `currency`/`previousAmountCents` optional. The executor never
+ * moves money (a live link is minted, inbound-only, only after this go), so this only guards the shape.
+ */
+export function validateMonetizationActivatePrice(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.planId)) return { ok: false, error: "planId required" };
+  if (typeof p.amountCents !== "number" || !Number.isInteger(p.amountCents) || p.amountCents <= 0) {
+    return { ok: false, error: "amountCents must be a positive integer" };
+  }
+  if (!nonEmptyString(p.ventureName)) return { ok: false, error: "ventureName required" };
+  if (p.currency !== undefined && typeof p.currency !== "string") {
+    return { ok: false, error: "currency must be a string" };
+  }
+  if (
+    p.previousAmountCents !== undefined &&
+    p.previousAmountCents !== null &&
+    (typeof p.previousAmountCents !== "number" || !Number.isInteger(p.previousAmountCents))
+  ) {
+    return { ok: false, error: "previousAmountCents must be an integer" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
+ * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
+ * change in the venture's own Stripe dashboard (no autonomous payout re-routing).
+ */
+export function validateMonetizationPayoutSettings(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.ventureId)) return { ok: false, error: "ventureId required" };
+  if (!nonEmptyString(p.destination)) return { ok: false, error: "destination required" };
+  return { ok: true };
+}

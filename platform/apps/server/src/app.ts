@@ -142,6 +142,12 @@ import { financeRoutes } from "./routes/finance.js";
 import { createDefaultFinanceService, createDefaultFinanceEngine } from "./finance/default.js";
 import type { FinanceService } from "./finance/service.js";
 import type { FinanceLedgerEngine } from "./finance/engine.js";
+import {
+  createDefaultMonetizationService,
+  createDefaultMonetizationEngine,
+} from "./monetization/default.js";
+import type { MonetizationService } from "./monetization/service.js";
+import type { MonetizationEngine } from "./monetization/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -225,6 +231,8 @@ declare module "fastify" {
     founderBriefingsEngine: FounderBriefingsEngine;
     /** The #194 finance ledger engine; `index.ts` starts its opt-in tick (FINANCE_INTERVAL_MS). */
     financeEngine: FinanceLedgerEngine;
+    /** The #188 monetization engine; `index.ts` starts its opt-in tick (MONETIZATION_INTERVAL_MS). */
+    monetizationEngine: MonetizationEngine;
     /** The #147 automations engine; `index.ts` starts its opt-in tick (AUTOMATIONS_INTERVAL_MS). */
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
@@ -333,6 +341,10 @@ export interface BuildAppOptions {
   finance?: FinanceService;
   /** #194 finance ledger engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   financeEngine?: FinanceLedgerEngine;
+  /** #188 monetization: tests inject a service over fakes; default wires the real repos/vault/provider. */
+  monetization?: MonetizationService;
+  /** #188 monetization engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  monetizationEngine?: MonetizationEngine;
   /** #119 evidence-priced autonomy: tests inject a pricer and drive `tick()`; default builds the real one. */
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -623,6 +635,18 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     financeEngine.stop();
   });
   app.decorate("financeEngine", financeEngine);
+  // #188 venture monetization: every venture can charge money, the owner holds the keys. Drafting plans
+  // is free; activating/re-pricing/payout changes queue as #13 MONEY decisions (exact amounts shown); the
+  // opt-in tick (MONETIZATION_INTERVAL_MS, default off, started in index.ts) mints the REAL inbound-only
+  // payment link AFTER the owner approves, using the venture's OWN Stripe key from the #192 vault — never
+  // ipop's. Per-venture webhook revenue feeds the #194 ledger → #173 P&L. Config default-OFF.
+  const monetization = opts.monetization ?? createDefaultMonetizationService(app.log);
+  const monetizationEngine =
+    opts.monetizationEngine ?? createDefaultMonetizationEngine(app.log, monetization);
+  app.addHook("onClose", async () => {
+    monetizationEngine.stop();
+  });
+  app.decorate("monetizationEngine", monetizationEngine);
   // #173 founder briefings: the company reports UP — a daily brief + weekly P&L report pushed to the
   // owner via the #148 email seam (+ optional #170 Slack DM), and ONE ordered decision queue (#13 +
   // #172 + #146). The read routes render the views into the console; the opt-in tick (BRIEFINGS_INTERVAL_MS,

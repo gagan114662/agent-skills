@@ -46,6 +46,8 @@ export interface Env {
   briefings: BriefingsEnv;
   /** Finance Ledger posting/close tick (#194). */
   finance: FinanceEnv;
+  /** Venture monetization activation tick (#188). */
+  monetization: MonetizationEnv;
   /** Automations scheduled tick (#147). */
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
@@ -243,6 +245,11 @@ export interface FinanceEnv {
   intervalMs: number;
 }
 
+export interface MonetizationEnv {
+  /** Monetization activation-tick interval in ms. Default `0` = the minting loop is OFF (opt-in, #188). */
+  intervalMs: number;
+}
+
 export interface AutomationsEnv {
   /** Automations-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #147). */
   intervalMs: number;
@@ -404,6 +411,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     finance: {
       // Default 0 (off): the finance ledger loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
       intervalMs: Number(source.FINANCE_INTERVAL_MS ?? 0) || 0,
+    },
+    monetization: {
+      // Default 0 (off): the monetization activation loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
+      intervalMs: Number(source.MONETIZATION_INTERVAL_MS ?? 0) || 0,
     },
     automations: {
       // Default 0 (off): the automations loop is opt-in so tests/CI drive `tickAll()` deterministically.
