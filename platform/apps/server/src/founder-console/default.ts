@@ -16,6 +16,8 @@ import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { listPostmortems, listIncidents } from "../db/repositories/sre.js";
+import { listOpen as listOpenRemediations } from "../db/repositories/self-healing.js";
+import { countEscalatedRevivals } from "../db/repositories/watchdog.js";
 import { computeReliabilityInsights } from "../reliability/insights/aggregate.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 import { ownedBoundaries, listBoundaryChanges } from "../db/repositories/gate-evidence.js";
@@ -173,6 +175,21 @@ export function createDefaultFounderConsoleService(deps: {
             status: d.status,
             reason: d.reason,
           })),
+        };
+      },
+    },
+    // #193 self-healing OPS signal: open per-venture incidents + the watchdog stuck-agent count. Any
+    // escalated incident or stuck agent turns the console fleet-health dot red (the AC3 signal).
+    selfHealingOps: {
+      snapshot: async (workspaceId) => {
+        const [open, stuckAgents] = await Promise.all([
+          listOpenRemediations(workspaceId),
+          countEscalatedRevivals(workspaceId),
+        ]);
+        return {
+          openIncidents: open.filter((r) => r.status === "firing" || r.status === "remediating").length,
+          escalatedIncidents: open.filter((r) => r.status === "escalated").length,
+          stuckAgents,
         };
       },
     },

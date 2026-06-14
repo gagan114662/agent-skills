@@ -285,9 +285,15 @@ export function ConsoleView(): React.JSX.Element {
             </span>
           )}
           {fc && (
-            <span className={`fleet-health${fc.attention.required ? " fleet-health--err" : ""}`}>
+            <span
+              className={`fleet-health${fc.attention.required ? " fleet-health--err" : ""}`}
+              title={fc.attention.required ? fc.attention.reasons.join(" · ") : undefined}
+            >
               <i aria-hidden="true" />
               {fc.attention.required ? CONSOLE.health.attention : CONSOLE.health.healthy}
+              {fc.attention.required && fc.attention.reasons.length > 0 && (
+                <span className="fleet-health__reason"> — {fc.attention.reasons[0]}</span>
+              )}
             </span>
           )}
           <span className="console__sp" />

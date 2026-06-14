@@ -4577,6 +4577,8 @@ select:focus-visible {
 .fleet-health { display: flex; align-items: center; gap: 5px; font-family: var(--console-mono); font-size: 9.5px; color: var(--text-dim); }
 .fleet-health i { width: 6px; height: 6px; border-radius: 50%; background: var(--online); }
 .fleet-health--err i { background: var(--danger); animation: console-pulse 1.2s infinite; }
+.fleet-health--err { color: var(--danger); }
+.fleet-health__reason { color: var(--text-dim); max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .waitchip { display: flex; align-items: center; gap: 7px; border: none; background: var(--accent-dim); color: var(--accent-press);
   font: inherit; font-weight: 700; font-size: 12px; border-radius: 99px; padding: 5px 13px; cursor: pointer; }

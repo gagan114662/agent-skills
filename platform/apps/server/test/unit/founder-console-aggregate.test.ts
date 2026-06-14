@@ -123,6 +123,27 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(out.budget.overBudget).toBe(false); // a 0 cap never bites
   });
 
+  it("turns the fleet-health signal red with a reason on an escalated ops incident or stuck agent (#193 AC3)", () => {
+    const quiet = aggregateFounderConsole(input());
+    expect(quiet.attention.required).toBe(false);
+    expect(quiet.selfHealingOps).toEqual({ openIncidents: 0, escalatedIncidents: 0, stuckAgents: 0 });
+
+    const red = aggregateFounderConsole(
+      input({ selfHealingOps: { openIncidents: 1, escalatedIncidents: 2, stuckAgents: 1 } }),
+    );
+    expect(red.attention.required).toBe(true);
+    expect(red.attention.reasons).toContain("2 self-healing incidents escalated (auto-remediation could not close)");
+    expect(red.attention.reasons).toContain("1 stuck agent escalated by the watchdog");
+    expect(red.selfHealingOps.openIncidents).toBe(1);
+  });
+
+  it("a firing/remediating ops incident alone does NOT page the owner (auto-remediation in flight)", () => {
+    const out = aggregateFounderConsole(
+      input({ selfHealingOps: { openIncidents: 3, escalatedIncidents: 0, stuckAgents: 0 } }),
+    );
+    expect(out.attention.required).toBe(false);
+  });
+
   it("ages each pending approval and returns the queue oldest-first (the decision SLA)", () => {
     const out = aggregateFounderConsole(
       input({

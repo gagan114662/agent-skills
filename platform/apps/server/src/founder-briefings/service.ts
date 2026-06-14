@@ -5,6 +5,7 @@ import {
   type BacklogEntry,
   type BlockedItem,
   type ConstitutionSummary,
+  type IncidentSummary,
   type DailyBrief,
   type DecisionItem,
   type DecisionQueue,
@@ -53,6 +54,11 @@ export interface SpendReader {
 /** Open constitution violations (#146). */
 export interface ConstitutionReader {
   summary(workspaceId: string): Promise<ConstitutionSummary>;
+}
+
+/** Self-healing ops incidents (#193) — the overnight incident summary for the daily brief. */
+export interface IncidentReader {
+  summary(workspaceId: string): Promise<IncidentSummary>;
 }
 
 /** Per-venture KPI snapshot for the weekly P&L (#96/#98/#107/#71). */
@@ -110,6 +116,8 @@ export interface FounderBriefingsDeps {
   decisions: DecisionReader;
   spend: SpendReader;
   constitution: ConstitutionReader;
+  /** Self-healing ops incidents (#193) — optional ⇒ a zeroed incident summary (loop off / unwired). */
+  incidents?: IncidentReader;
   ventures: VentureKpiReader;
   revenue: RevenueReader;
   voice: VoiceReader;
@@ -179,14 +187,17 @@ export class FounderBriefingsService {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
     const window = this.deps.spend.window(now);
-    const [shipped, blocked, decisionItems, usage, constitution, acquisition] = await Promise.all([
-      this.deps.ships.shipped(workspaceId),
-      this.deps.blocks.blocked(workspaceId),
-      this.deps.decisions.items(workspaceId),
-      this.deps.spend.usage(workspaceId, window),
-      this.deps.constitution.summary(workspaceId),
-      this.deps.acquisition ? this.deps.acquisition.section(workspaceId) : Promise.resolve(null),
-    ]);
+    const [shipped, blocked, decisionItems, usage, constitution, acquisition, incidents] =
+      await Promise.all([
+        this.deps.ships.shipped(workspaceId),
+        this.deps.blocks.blocked(workspaceId),
+        this.deps.decisions.items(workspaceId),
+        this.deps.spend.usage(workspaceId, window),
+        this.deps.constitution.summary(workspaceId),
+        this.deps.acquisition ? this.deps.acquisition.section(workspaceId) : Promise.resolve(null),
+        this.deps.incidents?.summary(workspaceId) ??
+          Promise.resolve<IncidentSummary>({ open: 0, escalated: 0, resolved: 0, topVenture: null }),
+      ]);
     const decisionQueue = composeDecisionQueue({
       workspaceId,
       nowMs: now.getTime(),
@@ -208,6 +219,7 @@ export class FounderBriefingsService {
       },
       constitution,
       acquisition: acquisition ?? undefined,
+      incidents,
       maxWords: caps.maxBriefWords,
     });
   }

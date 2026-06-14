@@ -252,6 +252,41 @@ export const sreSchema = z.object({
 });
 
 /**
+ * Self-Healing Ops policy (#193, ADR-0174): per-venture uptime/error/queue monitoring + bounded
+ * auto-remediation. Every field is optional and defaults to **off** so a deployment that sets nothing
+ * keeps today's behavior. `enabled` opts the workspace into per-venture probing + escalation;
+ * `autoRemediate` is the INDEPENDENT second switch that lets remediation actions run (off ⇒ every breach
+ * only escalates). Destructive actions (`allowRollback`/`allowScale`) are off and #13-gated by default;
+ * `preCommitRollback`/`preCommitScale` let the owner pre-commit a bounded action to skip the gate
+ * (#200 §4). `maxAutoAttempts` is the retry-once-then-escalate cap. Owner-workspace-first: ipop opts in
+ * via the managed layer; `caps.test` stays OFF.
+ */
+export const selfHealingSchema = z.object({
+  /** The self-healing loop flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Dispatch remediation actions automatically (else every breach escalates). Default OFF. */
+  autoRemediate: z.boolean().optional(),
+  /** Max acceptable error ratio (0..1) before the `error_rate` signal breaches. */
+  errorRateThreshold: z.number().min(0).max(1).optional(),
+  /** Max acceptable queue depth/backlog before the `queue_depth` signal breaches. */
+  queueDepthThreshold: z.number().nonnegative().optional(),
+  /** Allow the reversible restart action to auto-run. Default ON (no lasting effect). */
+  allowRestart: z.boolean().optional(),
+  /** Allow rollback-to-last-green (destructive). Default OFF. */
+  allowRollback: z.boolean().optional(),
+  /** Allow scale-within-caps (destructive: money). Default OFF. */
+  allowScale: z.boolean().optional(),
+  /** Gate rollback/scale through a #13 approval. Default ON. */
+  requireApprovalForDestructive: z.boolean().optional(),
+  /** Owner pre-committed rollback as a bounded action — auto-run without an approval. Default OFF. */
+  preCommitRollback: z.boolean().optional(),
+  /** Owner pre-committed scale as a bounded action — auto-run without an approval. Default OFF. */
+  preCommitScale: z.boolean().optional(),
+  /** Auto-remediation attempts before escalating to a human (retry-once ⇒ 1). */
+  maxAutoAttempts: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Reliability surface policy (#148, ADR-0148): the incident.io-class operating layer on top of the #112
  * SRE loop — owner paging, chat-native incidents, the AI investigation note, and the public status
  * page. Every field is optional and defaults to **off** (`enabled: false`, `statusPageEnabled: false`)
@@ -904,6 +939,8 @@ export const settingsSchema = z.object({
   watchdog: watchdogSchema.optional(),
   /** SRE Loop policy (#112): per-service SLOs + the agent-on-call alert/incident loop. */
   sre: sreSchema.optional(),
+  /** Self-Healing Ops policy (#193): per-venture monitoring + bounded auto-remediation (default OFF). */
+  selfHealing: selfHealingSchema.optional(),
   /** Reliability surface policy (#148): owner paging, chat-native incidents, AI investigation, status page. */
   reliability: reliabilitySchema.optional(),
   /** Evidence-Priced Autonomy policy (#119): the gate pricer that auto-relaxes/re-tightens #95 rules. */
@@ -984,6 +1021,7 @@ export type VentureConfig = z.infer<typeof ventureSchema>;
 export type WatchdogConfig = z.infer<typeof watchdogSchema>;
 export type SreConfig = z.infer<typeof sreSchema>;
 export type SreServiceConfig = z.infer<typeof sreServiceSchema>;
+export type SelfHealingConfig = z.infer<typeof selfHealingSchema>;
 export type ReliabilityConfig = z.infer<typeof reliabilitySchema>;
 export type GatePricingConfig = z.infer<typeof gatePricingSchema>;
 export type FlywheelConfig = z.infer<typeof flywheelSchema>;
@@ -1053,6 +1091,8 @@ export interface ResolvedConfig {
   watchdog: WatchdogConfig;
   /** SRE Loop policy (#112). A partial whose hard defaults `resolveSreCaps` fills. */
   sre: SreConfig;
+  /** Self-Healing Ops policy (#193). A partial whose hard defaults `resolveSelfHealingCaps` fills. */
+  selfHealing: SelfHealingConfig;
   /** Reliability surface policy (#148). A partial whose hard defaults `resolveReliabilityCaps` fills. */
   reliability: ReliabilityConfig;
   /** Evidence-Priced Autonomy policy (#119). A partial whose hard defaults `resolveGatePricingCaps` fills. */
@@ -1133,6 +1173,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   venture: {},
   watchdog: {},
   sre: {},
+  selfHealing: {},
   reliability: {},
   gatePricing: {},
   flywheel: {},

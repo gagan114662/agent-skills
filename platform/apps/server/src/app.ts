@@ -98,6 +98,9 @@ import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
 import { createDefaultSreEngine } from "./sre/default.js";
 import { sreRoutes } from "./routes/sre.js";
+import type { SelfHealingEngine } from "./self-healing/engine.js";
+import { createDefaultSelfHealingEngine } from "./self-healing/default.js";
+import { selfHealingRoutes } from "./routes/self-healing.js";
 import { statusRoutes } from "./routes/status.js";
 import { reliabilityRoutes } from "./routes/reliability.js";
 import type { FlywheelEngine } from "./flywheel/engine.js";
@@ -191,6 +194,8 @@ declare module "fastify" {
     watchdogEngine: WatchdogEngine;
     /** The #112 SRE on-call loop; `index.ts` starts its opt-in tick (SRE_INTERVAL_MS). */
     sreEngine: SreEngine;
+    /** The #193 self-healing ops loop; `index.ts` starts its opt-in tick (SELF_HEALING_INTERVAL_MS). */
+    selfHealingEngine: SelfHealingEngine;
     /** The #119 evidence pricer; config default-OFF, driven per-workspace via `tick(workspaceId)`. */
     gatePricingService: GatePricingService;
     /** The #117 self-healing flywheel; `index.ts` starts its opt-in tick (FLYWHEEL_INTERVAL_MS). */
@@ -289,6 +294,8 @@ export interface BuildAppOptions {
   watchdog?: WatchdogEngine;
   /** #112 SRE loop: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   sre?: SreEngine;
+  /** #193 self-healing ops: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
+  selfHealing?: SelfHealingEngine;
   /** #117 self-healing flywheel: tests inject an engine and drive `record`/`tickWorkspace()`. */
   flywheel?: FlywheelEngine;
   /** #171 self-QA loop: tests inject an engine and drive `runOnce()`. */
@@ -820,6 +827,23 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     selfqaEngine.stop();
   });
   app.decorate("selfqaEngine", selfqaEngine);
+  // #193 self-healing ops: ventures stay alive at 3am without the owner. A default-OFF, kill-switch-
+  // and maintenance-gated tick probes every live venture surface (a REAL HTTP probe — #200 §3),
+  // evaluates per-venture uptime/error/queue thresholds, and picks a reversibility-classed action:
+  // restart auto-runs (reversible) through the SAME #92 launcher; rollback/scale are destructive and
+  // go to the #13 queue unless the owner pre-committed them; an action retried once that still fails
+  // escalates AND self-files a postmortem (`agent-ok` issue → #172 loop + an `ops_incident` flywheel
+  // row). `autoRemediate` is an independent second switch (off ⇒ escalate-only). The timer is opt-in
+  // (SELF_HEALING_INTERVAL_MS, started in index.ts); tests inject the engine and drive `tickWorkspace()`.
+  // Stopped on close. Read-only routes surface the open incidents (the console fleet-health signal).
+  const selfHealingEngine =
+    opts.selfHealing ??
+    createDefaultSelfHealingEngine(app.log, sessionManager, (event) => app.flywheelEngine.record(event));
+  app.addHook("onClose", async () => {
+    selfHealingEngine.stop();
+  });
+  app.decorate("selfHealingEngine", selfHealingEngine);
+  app.register(selfHealingRoutes);
   // #147 automations: owner-defined scheduled/webhook agent tasks. A default-OFF, kill-switch-gated
   // tick launches each due automation through the SAME #123 venture-gated launcher a human @mention
   // uses (so #96/#71 gating + #13-gated sends are inherited), recording a durable run. Run-now + the

@@ -31,6 +31,7 @@ export const FAILURE_CLASSES = [
   "workflow_fail", // #152: a workflow firing's action failed (no DB CHECK on the column)
   "qa_failure", // #171: the self-QA synthetic user found a product-surface bug on the live deployment
   "customer_complaint", // #190: a recurring support complaint crossed the threshold (no DB CHECK on the column)
+  "ops_incident", // #193: a self-healing ops incident (uptime/error/queue/stuck-agent) that auto-remediation could not close
 ] as const;
 
 export const failureFingerprints = pgTable(

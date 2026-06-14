@@ -20,6 +20,7 @@ import { resolveScaleCaps } from "../scale/caps.js";
 import { buildLoopRunStore } from "../db/repositories/build-loop.js";
 import { listRequests } from "../db/repositories/approvals.js";
 import { listOpenViolations } from "../db/repositories/constitution.js";
+import { listIncidents as listRemediations } from "../db/repositories/self-healing.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
 import { listEvaluations, listIterations } from "../db/repositories/venture.js";
 import { dbInsightStore } from "../db/repositories/voice.js";
@@ -164,6 +165,24 @@ export function createDefaultFounderBriefingsService(deps: {
       summary: async (workspaceId) => {
         const open = await listOpenViolations(workspaceId);
         return { open: open.length, topCodes: [...new Set(open.map((v) => v.code))] };
+      },
+    },
+    // #193 self-healing ops: the overnight incident summary — open/escalated/auto-resolved counts + the
+    // most-affected venture surface, read off the same `self_healing_remediations` ledger the loop writes.
+    incidents: {
+      summary: async (workspaceId) => {
+        const recent = await listRemediations(workspaceId, 100);
+        const open = recent.filter((r) => r.status === "firing" || r.status === "remediating");
+        const escalated = recent.filter((r) => r.status === "escalated");
+        const resolved = recent.filter((r) => r.status === "resolved");
+        const active = [...open, ...escalated];
+        const topVenture = active[0]?.surfaceKey ?? null;
+        return {
+          open: open.length,
+          escalated: escalated.length,
+          resolved: resolved.length,
+          topVenture,
+        };
       },
     },
     // #96/#98/#107/#71 per-venture KPI: the latest portfolio review (P&L + decision) joined to the

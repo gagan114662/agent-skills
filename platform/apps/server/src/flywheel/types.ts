@@ -22,6 +22,7 @@ export const FAILURE_CLASSES = [
   "workflow_fail", // #152: a workflow firing's action failed — fingerprints + dedupes like any failure
   "qa_failure", // #171: the self-QA synthetic user found a product-surface bug on the live deployment
   "customer_complaint", // #190: a recurring support complaint crossed the threshold → one deduped backlog issue
+  "ops_incident", // #193: a self-healing ops incident (uptime/error/queue/stuck-agent) auto-remediation could not close
 ] as const;
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
 

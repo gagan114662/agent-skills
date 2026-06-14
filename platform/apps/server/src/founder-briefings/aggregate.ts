@@ -177,6 +177,18 @@ export interface ConstitutionSummary {
   topCodes: string[];
 }
 
+/** Self-healing ops incident summary (#193): what broke overnight + what we did about it. */
+export interface IncidentSummary {
+  /** Incidents firing/remediating (auto-remediation in flight). */
+  open: number;
+  /** Incidents escalated to a human (auto-remediation could not close). */
+  escalated: number;
+  /** Incidents auto-resolved in the window (restarted/rolled back back to health). */
+  resolved: number;
+  /** The most-affected venture surface, for the one-line summary (null ⇒ omit). */
+  topVenture: string | null;
+}
+
 export interface DailyBriefInput {
   workspaceId: string;
   nowMs: number;
@@ -196,6 +208,8 @@ export interface DailyBriefInput {
    * before, so existing composer tests and today's behavior are unchanged.
    */
   acquisition?: AcquisitionBriefView;
+  /** Self-healing ops incidents (#193) — the overnight incident summary. */
+  incidents: IncidentSummary;
   /** Hard word budget for the rendered brief (default 200 at the caps layer). */
   maxWords: number;
 }
@@ -220,6 +234,8 @@ export interface DailyBrief {
   constitution: ConstitutionSummary;
   /** The acquisition section (#189) when provided, else null. */
   acquisition: AcquisitionBriefView | null;
+  /** The self-healing ops incident summary (#193). */
+  incidents: IncidentSummary;
   /** The brand-voice brief, guaranteed `wordCount <= maxWords`. */
   text: string;
   wordCount: number;
@@ -267,6 +283,16 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
 
   if (input.blocked.length > 0) {
     parts.push(`Blocked ${pluralize(input.blocked.length, "item")}: ${input.blocked[0]!.reason}.`);
+  }
+
+  // #193 incident summary: what broke overnight + what we did. Terse (word budget) and high-priority,
+  // so it survives the clamp ahead of spend/constitution when the fleet had an incident.
+  const inc = input.incidents;
+  if (inc.open + inc.escalated + inc.resolved > 0) {
+    const where = inc.topVenture ? ` (${inc.topVenture})` : "";
+    const fixed = inc.resolved > 0 ? `, ${inc.resolved} auto-fixed` : "";
+    const esc = inc.escalated > 0 ? `, ${inc.escalated} escalated` : "";
+    parts.push(`${pluralize(inc.open + inc.escalated + inc.resolved, "ops incident")}${where}${fixed}${esc}.`);
   }
 
   if (decisionsWaiting.length > 0) {
@@ -326,6 +352,7 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
     spend,
     constitution: input.constitution,
     acquisition: acq,
+    incidents: input.incidents,
     text,
     wordCount: wc,
   };
