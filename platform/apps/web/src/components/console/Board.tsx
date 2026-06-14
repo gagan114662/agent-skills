@@ -1,9 +1,10 @@
 /**
- * The kanban board: In motion / Waiting on you / Shipped. Each card wears its department hue as a 3px
- * left edge (the only place the hue appears as anything but a legend swatch). The Waiting lane is the
- * "different room" — it lights vermilion when live and shows the approvals-clear moment when empty.
- * Approvals decide through the real #13 gate (the parent calls store.decideApprove/decideReject); this
- * component only renders + raises intent, so no gate is weakened here.
+ * The kanban — exactly three columns (console v5): Work in progress / Approval needed / Done. Each card
+ * wears its department hue as a 3px left edge (the only place the hue ever appears; never a filled shape).
+ * Every card opens the drawer to dive in. The Approval-needed lane is the "different room" — it lights
+ * vermilion when live and shows the approvals-clear moment when empty; its cards carry the ask line and
+ * open into the drawer, where Approve / Not yet decide through the real #13 gate. This component only
+ * renders + raises intent (onPeek / onWhy), so no gate is weakened here.
  */
 import { CONSOLE, consoleNextAsk } from "../../brand.js";
 import { BrailleSpinner } from "./StatusGlyph.js";
@@ -13,10 +14,6 @@ export interface BoardProps {
   columns: Record<ItemKind, readonly ConsoleItem[]>;
   onPeek: (item: ConsoleItem) => void;
   onWhy: (item: ConsoleItem) => void;
-  onApprove: (item: ConsoleItem, e: React.MouseEvent) => void;
-  onReject: (item: ConsoleItem) => void;
-  /** The request key currently being decided (disables its buttons). */
-  decidingKey: string | null;
   /** Optional "next likely ask" hint for the empty-approvals moment. */
   nextAskHint?: string;
 }
@@ -56,32 +53,14 @@ function RunningCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<Board
   );
 }
 
-function WaitingCard({
-  item,
-  onPeek,
-  onApprove,
-  onReject,
-  deciding,
-}: {
-  item: ConsoleItem;
-  deciding: boolean;
-} & Pick<BoardProps, "onPeek" | "onApprove" | "onReject">): React.JSX.Element {
+/** Approval-needed card: the ask line only — clicking dives into the drawer to Approve / Not yet. */
+function WaitingCard({ item, onPeek }: { item: ConsoleItem } & Pick<BoardProps, "onPeek">): React.JSX.Element {
   return (
-    <article className="card card--need" style={hueStyle(item)}>
-      <div className="card__ttl" onClick={() => onPeek(item)}>
-        {item.title}
-      </div>
-      <div className="card__meta" onClick={() => onPeek(item)}>
-        {item.meta}
+    <article className="card card--need" style={hueStyle(item)} onClick={() => onPeek(item)}>
+      <div className="card__ttl">{item.title}</div>
+      <div className="card__ask">
+        {CONSOLE.card.askPrefix} {item.meta}
         {item.amount != null && <span className="card__amount"> · {fmtCents(item.amount)}</span>}
-      </div>
-      <div className="card__actions">
-        <button className="btn" disabled={deciding} onClick={(e) => onApprove(item, e)}>
-          {CONSOLE.card.approve}
-        </button>
-        <button className="btn btn--ghost" disabled={deciding} onClick={() => onReject(item)}>
-          {CONSOLE.card.sendBack}
-        </button>
       </div>
     </article>
   );
@@ -103,7 +82,7 @@ function ShippedCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<Board
 }
 
 export function Board(props: BoardProps): React.JSX.Element {
-  const { columns, onPeek, onWhy, onApprove, onReject, decidingKey, nextAskHint } = props;
+  const { columns, onPeek, onWhy, nextAskHint } = props;
   const waitingLive = columns.waiting.length > 0;
 
   return (
@@ -129,16 +108,7 @@ export function Board(props: BoardProps): React.JSX.Element {
           <span className="board__coln">{columns.waiting.length}</span>
         </header>
         {waitingLive ? (
-          columns.waiting.map((item) => (
-            <WaitingCard
-              key={item.key}
-              item={item}
-              onPeek={onPeek}
-              onApprove={onApprove}
-              onReject={onReject}
-              deciding={decidingKey === item.key}
-            />
-          ))
+          columns.waiting.map((item) => <WaitingCard key={item.key} item={item} onPeek={onPeek} />)
         ) : (
           <div className="board__clear" role="status">
             <b>{CONSOLE.approvalsClear.headline}</b>

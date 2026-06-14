@@ -89,15 +89,19 @@ async function mount(opts?: Parameters<typeof mockSeams>[0]) {
 }
 
 describe("ConsoleView", () => {
-  it("renders the three board lanes from the live seams", async () => {
+  it("renders the three v5 board lanes from the live seams", async () => {
     await mount();
-    expect(await screen.findByText(CONSOLE.columns.running)).toBeInTheDocument();
-    expect(screen.getByText(CONSOLE.columns.shipped)).toBeInTheDocument();
-    // The pending approval shows as a waiting card with the gate's Approve/Send back affordances.
+    // The lanes are the board's listitems, addressed by their column title (scoped so "Done" never
+    // collides with the settings sheet's "Done" button).
+    expect(await screen.findByRole("listitem", { name: CONSOLE.columns.running })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: CONSOLE.columns.waiting })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: CONSOLE.columns.shipped })).toBeInTheDocument();
+    // The pending #13 request shows as an approval-needed card. In v5 the card carries only the ask line —
+    // the Approve / Not yet pair lives in the drawer (you dive in to decide), so there's no inline button.
     // (The same item also appears as a standup row — board + standup are two groupings of one item.)
-    const waitingLane = screen.getByText(CONSOLE.columns.waiting).closest(".board__col")!;
-    expect(await within(waitingLane as HTMLElement).findByText("Send launch email sequence")).toBeInTheDocument();
-    expect(within(waitingLane as HTMLElement).getByRole("button", { name: CONSOLE.card.approve })).toBeInTheDocument();
+    const waitingLane = screen.getByRole("listitem", { name: CONSOLE.columns.waiting });
+    expect(await within(waitingLane).findByText("Send launch email sequence")).toBeInTheDocument();
+    expect(within(waitingLane).queryByRole("button", { name: CONSOLE.peek.approve })).toBeNull();
   });
 
   it("carries the spend gauge, fleet-health, and the waiting chip in the header", async () => {
@@ -124,11 +128,15 @@ describe("ConsoleView", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("approves through the real #13 gate (store.decideApprove), not a shortcut", async () => {
+  it("approves through the real #13 gate (store.decideApprove) from the drawer, not a shortcut", async () => {
     const utils = await mount();
     const spy = vi.spyOn(utils.store, "decideApprove");
-    await screen.findAllByText("Send launch email sequence");
-    await userEvent.click(screen.getByRole("button", { name: CONSOLE.card.approve }));
+    // Dive into the approval-needed task from its board card, then Approve inside the drawer.
+    const waitingLane = await screen.findByRole("listitem", { name: CONSOLE.columns.waiting });
+    const card = within(waitingLane).getByText("Send launch email sequence").closest("article")!;
+    await userEvent.click(card);
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: CONSOLE.peek.approve }));
     await waitFor(() => expect(spy).toHaveBeenCalledWith("r1"));
   });
 

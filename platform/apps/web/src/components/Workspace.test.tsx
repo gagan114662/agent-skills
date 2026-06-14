@@ -1,34 +1,47 @@
+/**
+ * The authed shell (console v5). The whole product is two panes — left projects → sessions, center board,
+ * a drawer to dive in — with NO top nav. These tests pin that: the console is the default surface, the old
+ * tab strip (Board / Chat / Founder / Automations / … / Pricing) is gone, the brand shows (not the internal
+ * name), and the account utilities that replaced the nav (settings, sign out) live in the left footer.
+ */
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen } from "@testing-library/react";
 import { Workspace } from "./Workspace.js";
+import { CONSOLE } from "../brand.js";
 import { renderWithStore } from "../test/utils.js";
 
-describe("Workspace shell", () => {
-  it("opens on the console board by default, with chat one click away", async () => {
+describe("Workspace shell (console v5)", () => {
+  it("opens directly on the two-pane console — left projects panel + the three board lanes", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
 
-    // The redesigned console (board + standup) is the primary surface.
+    // LEFT: the Conductor-style projects panel.
     expect(await screen.findByLabelText("Standup")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: new RegExp("^Board") }).length).toBeGreaterThan(0);
-
-    // Chat stays reachable from the top nav and still composes the sidebar, pane, and members rail.
-    await userEvent.click(screen.getByRole("button", { name: new RegExp("^Chat") }));
-    expect(await screen.findByText("first post")).toBeInTheDocument(); // message pane
-    expect(screen.getByText("random")).toBeInTheDocument(); // sidebar
-    expect(await screen.findByText("Atlas")).toBeInTheDocument(); // members rail
+    // CENTER: exactly the three v5 columns (addressed as the board's listitems by their aria-label).
+    expect(screen.getByRole("listitem", { name: CONSOLE.columns.running })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: CONSOLE.columns.waiting })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: CONSOLE.columns.shipped })).toBeInTheDocument();
   });
 
-  it("shows only the slimmed product nav — Chat/Founder/Approvals/Deploy, no Review/Run/Usage (#122)", async () => {
+  it("has no top nav — the old Board/Chat/Founder/…/Pricing tab strip is gone", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
+    await screen.findByLabelText("Standup");
 
-    for (const kept of ["Chat", "Founder", "Approvals", "Deploy"]) {
-      expect(screen.getByRole("button", { name: new RegExp(`^${kept}`) })).toBeInTheDocument();
-    }
-    for (const removed of ["Review", "Run", "Usage"]) {
-      expect(screen.queryByRole("button", { name: new RegExp(`^${removed}`) })).toBeNull();
+    for (const gone of [
+      "Board",
+      "Chat",
+      "Founder",
+      "Automations",
+      "Catalog",
+      "Workflows",
+      "Mission",
+      "Audit",
+      "Approvals",
+      "Deploy",
+      "Pricing",
+    ]) {
+      expect(screen.queryByRole("button", { name: new RegExp(`^${gone}$`) }), gone).toBeNull();
     }
   });
 
@@ -42,71 +55,12 @@ describe("Workspace shell", () => {
     expect(screen.queryByText(/Reload/)).toBeNull();
   });
 
-  it("surfaces an unread @mention indicator from the gateway", async () => {
-    const { store, rt } = renderWithStore(<Workspace />);
-    await store.bootstrap();
-
-    rt.fire({
-      type: "mention",
-      mention: {
-        id: "x1",
-        messageId: "m9",
-        channelId: "c1",
-        mentionedMemberId: "me1",
-        authorMemberId: "ag1",
-        body: "@Ada please review",
-      },
-    });
-
-    const bell = await screen.findByRole("button", { name: /mentions/i });
-    await waitFor(() => expect(bell).toHaveTextContent("1"));
-
-    await userEvent.click(bell);
-    await waitFor(() => expect(store.getState().unreadMentions).toBe(0));
-  });
-
-  // #168 — bug 1: the mentions inbox popover must be dismissable, not stuck open until reload.
-  it("dismisses the mentions inbox on an outside click", async () => {
+  it("keeps the account utilities (settings, sign out) in the left footer, not a top bar", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
     await screen.findByLabelText("Standup");
 
-    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
-    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
-
-    // Clicking anywhere outside the popover (here, the standup panel) closes it.
-    await userEvent.click(screen.getByLabelText("Standup"));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
-    );
-  });
-
-  it("dismisses the mentions inbox when Escape is pressed", async () => {
-    const { store } = renderWithStore(<Workspace />);
-    await store.bootstrap();
-    await screen.findByLabelText("Standup");
-
-    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
-    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
-
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
-    );
-  });
-
-  it("dismisses the mentions inbox when the view changes", async () => {
-    const { store } = renderWithStore(<Workspace />);
-    await store.bootstrap();
-    await screen.findByLabelText("Standup");
-
-    await userEvent.click(screen.getByRole("button", { name: /mentions/i }));
-    expect(screen.getByRole("dialog", { name: /mention inbox/i })).toBeInTheDocument();
-
-    // Switching to another product view (route change) closes the inbox so it never hangs over it.
-    await userEvent.click(screen.getByRole("button", { name: /^Founder/ }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /mention inbox/i })).not.toBeInTheDocument(),
-    );
+    expect(screen.getByRole("button", { name: CONSOLE.shell.settings })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.shell.signOut })).toBeInTheDocument();
   });
 });

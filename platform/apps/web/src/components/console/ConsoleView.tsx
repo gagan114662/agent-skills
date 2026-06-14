@@ -1,17 +1,19 @@
 /**
- * The console — the product's primary surface (board + standup redesign, per the approved brand-book
- * mockup). Composition only: it reads the live seams and wires them into the presentational pieces.
+ * The console — the product's one and only authed surface (console v5). The whole app is two panes:
  *
- *   · standup (left)   ← channels + directory (store) grouped by project, plus the status grammar
- *   · board (center)   ← live sessions (#147 mission control) · #13 approvals (pending/executed)
- *   · header gauge     ← #104 founder-console budget burn → on-track / at-risk forecast
- *   · while-you-were-out + reports ← the same #104 roll-up (the closest real seam to a daily brief)
- *   · peek drawer      ← the store's channel transcript + composer (steer the session)
+ *   · LEFT  (StandupPanel)  ← projects → sessions, the Conductor anatomy + account utilities
+ *   · CENTER (this board)   ← one kanban: Work in progress / Approval needed / Done
+ *   · DRAWER (PeekDrawer)   ← dive into any card or session row: steps, the "why?" audit, a composer to
+ *                             steer, and (for approval-needed work) Approve / Not yet
  *
- * Approvals decide through `store.decideApprove` / `store.decideReject` — the real #13 gate, reconciled
- * against the server. No gate is weakened and no data is invented; surfaces with no real seam (a new
- * #173 brief endpoint) reuse the honest closest one rather than fabricate. All motion is reduced-motion
- * gated in the leaf components.
+ * Every surface reads a real seam: live sessions from #147 mission control, pending/done from the #13
+ * approvals queue, the spend gauge + fleet-health from the #104 founder console. Approvals decide through
+ * `store.decideApprove` / `store.decideReject` — the real #13 gate, never a shortcut and never weakened.
+ * Nothing is invented; the only copy comes from `brand.ts`; all motion is reduced-motion gated in leaves.
+ *
+ * There is no top nav (it superseded the #199 layout): the few off-board surfaces that must stay reachable
+ * — the owner's Claude/Slack connection (#68/#170) and the trial → pricing funnel (#153) — open as
+ * overlays from the left footer / the paywall nudge rather than a tab strip.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
@@ -19,19 +21,14 @@ import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { api } from "../../api/client.js";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
-import {
-  BRAND,
-  CONSOLE,
-  VOICE,
-  DEPARTMENT_SPECTRUM,
-  agentColor,
-  consoleOvernightSummary,
-  consoleWaitingChip,
-} from "../../brand.js";
+import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
+import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
+import { SlackConnectPanel } from "../SlackConnectPanel.js";
+import { PricingPanel } from "../PricingPanel.js";
+import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
-import { ReportsView } from "./ReportsView.js";
 import { ProjectSettingsSheet } from "./ProjectSettingsSheet.js";
 import { PeekDrawer, type PeekAuditLine, type PeekTranscriptLine } from "./PeekDrawer.js";
 import {
@@ -39,7 +36,6 @@ import {
   fmtCents,
   spendForecast,
   type ConsoleItem,
-  type ConsoleNav,
   type ConsoleProject,
 } from "./model.js";
 
@@ -59,8 +55,14 @@ function auditLines(item: ConsoleItem): PeekAuditLine[] {
   return lines;
 }
 
+/** The concrete "what you're approving" line shown above the Approve / Not yet pair (waiting items). */
+function askLineOf(item: ConsoleItem): string {
+  const action = item.actionType ?? item.meta;
+  return item.amount != null ? `${action} · ${fmtCents(item.amount)}` : action;
+}
+
 export function ConsoleView(): React.JSX.Element {
-  const { identity, channels, directory, messagesByChannel } = useAppState();
+  const { identity, channels, directory, messagesByChannel, paywall } = useAppState();
   const store = useStore();
   const workspaceId = identity?.workspaceId;
 
@@ -69,7 +71,6 @@ export function ConsoleView(): React.JSX.Element {
   const [pending, setPending] = useState<readonly ApprovalRequestDto[]>([]);
   const [shipped, setShipped] = useState<readonly ApprovalRequestDto[]>([]);
 
-  const [view, setView] = useState<ConsoleNav>("board");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [openProjectIds, setOpenProjectIds] = useState<ReadonlySet<string>>(new Set());
   const [filterNeedsYou, setFilterNeedsYou] = useState(false);
@@ -77,7 +78,8 @@ export function ConsoleView(): React.JSX.Element {
   const [settingsProject, setSettingsProject] = useState<ConsoleProject | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
-  const [wyoDismissed, setWyoDismissed] = useState(false);
+  const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   // Guards every async setState so a poll that resolves after unmount is a no-op (no leak / no warning).
   const mounted = useRef(true);
@@ -100,7 +102,7 @@ export function ConsoleView(): React.JSX.Element {
       setPending(p);
       setShipped(s);
     } catch {
-      /* transient; the standup/board degrade to what's already shown */
+      /* transient; the board degrades to what's already shown */
     }
   }
 
@@ -114,8 +116,8 @@ export function ConsoleView(): React.JSX.Element {
     }
   }
 
-  // Both the brief/spend snapshot AND the approvals queue refresh on the same 15s beat, so the board's
-  // "waiting on you" lane never goes stale while the page sits open.
+  // The spend snapshot AND the approvals queue refresh on the same 15s beat, so the board's "Approval
+  // needed" lane never goes stale while the page sits open.
   useEffect(() => {
     if (!workspaceId) return;
     void refreshApprovals();
@@ -176,13 +178,15 @@ export function ConsoleView(): React.JSX.Element {
     });
   }
 
-  function openPeek(item: ConsoleItem): void {
+  /** Open the drawer on a task. `audit` opens straight to the "why?" receipts (the board's why link). */
+  function dive(item: ConsoleItem, mode: "transcript" | "audit"): void {
     if (item.channelId) void store.selectChannel(item.channelId);
-    setPeek({ item, mode: "transcript" });
+    setPeek({ item, mode });
   }
 
-  function openWhy(item: ConsoleItem): void {
-    setPeek({ item, mode: "audit" });
+  function openFirstWaiting(): void {
+    const first = model.columns.waiting[0];
+    if (first) dive(first, "transcript");
   }
 
   function openSettings(project: ConsoleProject): void {
@@ -196,8 +200,9 @@ export function ConsoleView(): React.JSX.Element {
     try {
       await store.decideApprove(id);
       await Promise.all([refreshApprovals(), refreshFounder()]);
+      if (mounted.current) setPeek(null);
     } finally {
-      setDeciding(null);
+      if (mounted.current) setDeciding(null);
     }
   }
 
@@ -205,10 +210,11 @@ export function ConsoleView(): React.JSX.Element {
     if (!item.requestId) return;
     setDeciding(item.requestId);
     try {
-      await store.decideReject(item.requestId, "Sent back for another pass.");
+      await store.decideReject(item.requestId, CONSOLE.peek.notYetReason);
       await Promise.all([refreshApprovals(), refreshFounder()]);
+      if (mounted.current) setPeek(null);
     } finally {
-      setDeciding(null);
+      if (mounted.current) setDeciding(null);
     }
   }
 
@@ -218,7 +224,7 @@ export function ConsoleView(): React.JSX.Element {
 
   // --- peek drawer data ----------------------------------------------------------------------------
   const transcript: readonly PeekTranscriptLine[] = useMemo(() => {
-    if (!peek || peek.mode !== "transcript" || !peek.item.channelId) return [];
+    if (!peek || !peek.item.channelId) return [];
     const msgs = messagesByChannel[peek.item.channelId] ?? [];
     return msgs.map((m) => {
       const who = authorLabel(directory, m.authorMemberId);
@@ -232,34 +238,25 @@ export function ConsoleView(): React.JSX.Element {
     });
   }, [peek, messagesByChannel, directory, identity]);
 
-  const peekTitle = peek
-    ? peek.mode === "audit"
-      ? `${CONSOLE.peek.whyPrefix} · ${peek.item.agentLabel}`
-      : peek.item.title
-    : "";
-  const peekStatus = peek ? (peek.mode === "audit" ? CONSOLE.peek.auditStatus : peek.item.meta) : "";
-  const canCompose = !!peek && peek.mode === "transcript" && !!peek.item.channelId && peek.item.kind !== "shipped";
-
-  const overnight = fc
-    ? consoleOvernightSummary(shipped.length, pendingCount, fmtCents(fc.budget.estimatedCostCents))
-    : "";
+  const peekItem = peek?.item ?? null;
+  const canCompose = !!peekItem?.channelId;
+  const canApprove = peekItem?.kind === "waiting" && !!peekItem.requestId;
 
   return (
     <div className="console">
       <StandupPanel
-        view={view}
-        onSelectView={setView}
         projects={model.projects}
         activeProjectId={activeProjectId}
         openProjectIds={openProjectIds}
         onToggleProject={toggleProject}
         onSelectProject={(p) => setActiveProjectId(p.id)}
         onOpenSettings={openSettings}
-        onPeek={openPeek}
+        onPeek={(item) => dive(item, "transcript")}
         filterNeedsYou={filterNeedsYou}
         onToggleFilter={() => setFilterNeedsYou((v) => !v)}
-        pendingCount={pendingCount}
         activeItemKey={peek?.item.key ?? null}
+        onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
+        onSignOut={() => void store.logout()}
       />
 
       <main className="console__main">
@@ -295,74 +292,36 @@ export function ConsoleView(): React.JSX.Element {
           )}
           <span className="console__sp" />
           {pendingCount > 0 && (
-            <button className="waitchip" onClick={() => setView("board")}>
+            <button className="waitchip" onClick={openFirstWaiting}>
               <span className="glyph-dot glyph-dot--wait" aria-hidden="true" />
               {consoleWaitingChip(pendingCount)}
             </button>
           )}
         </header>
 
-        {fc && !wyoDismissed && view === "board" && (
-          <div className="wyo">
-            <span className="wyo__t">{CONSOLE.wyo.title}</span>
-            <span className="wyo__m">{overnight}</span>
-            <span className="console__sp" />
-            <button className="btn btn--ghost wyo__read" onClick={() => setView("reports")}>
-              {CONSOLE.wyo.read}
-            </button>
-            <button className="iconbtn" aria-label={CONSOLE.wyo.dismiss} onClick={() => setWyoDismissed(true)}>
-              ✕
-            </button>
-          </div>
-        )}
-
-        {view === "board" && (
-          <div className="legend">
-            {Object.entries(DEPARTMENT_SPECTRUM).map(([dept, hue]) => (
-              <span key={dept} className="legend__item">
-                <i className="legend__sw" style={{ background: hue }} aria-hidden="true" />
-                {dept}
-              </span>
-            ))}
-            <span className="legend__caption">{CONSOLE.legend.caption}</span>
-          </div>
-        )}
-
-        {view === "board" ? (
-          <Board
-            columns={model.columns}
-            onPeek={openPeek}
-            onWhy={openWhy}
-            onApprove={(item, e) => void (item.requestId && approveById(item.requestId, e))}
-            onReject={(item) => void rejectItem(item)}
-            decidingKey={deciding}
-          />
-        ) : view === "reports" ? (
-          <ReportsView
-            console={fc}
-            onApprove={(id, e) => void approveById(id, e)}
-            onPeekBrief={() => fc && setView("reports")}
-            decidingId={deciding}
-          />
-        ) : (
-          <div className="console__history">
-            <div className="board__clear" role="status">
-              <b>{CONSOLE.reports.handoverEmpty}</b>
-            </div>
-          </div>
-        )}
-
-        <div className="console__foot">{VOICE.signOff}</div>
+        <Board
+          columns={model.columns}
+          onPeek={(item) => dive(item, "transcript")}
+          onWhy={(item) => dive(item, "audit")}
+        />
       </main>
 
       <PeekDrawer
         open={!!peek}
-        title={peekTitle}
-        status={peekStatus}
-        mode={peek?.mode ?? "transcript"}
+        title={peekItem?.title ?? ""}
+        dept={peekItem?.channelName ?? null}
+        agent={peekItem?.agentLabel ?? ""}
+        hue={peekItem?.hue}
+        kind={peekItem?.kind ?? null}
+        initialMode={peek?.mode === "audit" ? "audit" : "steps"}
         transcript={transcript}
-        audit={peek && peek.mode === "audit" ? auditLines(peek.item) : []}
+        audit={peekItem ? auditLines(peekItem) : []}
+        askLine={canApprove && peekItem ? askLineOf(peekItem) : null}
         canCompose={canCompose}
+        canApprove={canApprove}
+        deciding={!!peekItem?.requestId && deciding === peekItem.requestId}
+        onApprove={(e) => void (peekItem?.requestId && approveById(peekItem.requestId, e))}
+        onReject={() => peekItem && void rejectItem(peekItem)}
         onClose={() => setPeek(null)}
         onSend={sendSteer}
       />
@@ -376,6 +335,53 @@ export function ConsoleView(): React.JSX.Element {
         approverEmail={identity?.kind === "human" ? identity.displayName : null}
         onClose={() => setSettingsOpen(false)}
       />
+
+      {/* #153 trial funnel: a hit cap surfaces the soft paywall nudge → the pricing overlay. */}
+      {paywall && identity && (
+        <SoftPaywall
+          workspaceId={identity.workspaceId}
+          onSeePlans={() => {
+            store.dismissPaywall();
+            setPricingOpen(true);
+          }}
+          onDismiss={() => store.dismissPaywall()}
+        />
+      )}
+
+      {shellSettingsOpen && (
+        <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setShellSettingsOpen(false)}>
+          <ConnectClaudePanel />
+          <SlackConnectPanel />
+        </ShellOverlay>
+      )}
+
+      {pricingOpen && (
+        <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setPricingOpen(false)}>
+          <PricingPanel />
+        </ShellOverlay>
+      )}
+    </div>
+  );
+}
+
+/** A full-bleed overlay for the off-board surfaces (settings, pricing) — there is no nav to host them. */
+function ShellOverlay({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="shell-overlay" role="dialog" aria-label={title}>
+      <div className="shell-overlay__bar">
+        <button className="btn btn--ghost" onClick={onClose}>
+          {CONSOLE.shell.closeSettings}
+        </button>
+      </div>
+      <div className="shell-overlay__body">{children}</div>
     </div>
   );
 }

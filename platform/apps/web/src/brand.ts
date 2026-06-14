@@ -516,8 +516,9 @@ export const CONSOLE = {
     newSession: "New session",
     settings: "Project settings",
   },
-  /** The three board lanes. "In motion" runs left→right toward "Shipped". */
-  columns: { running: "In motion", waiting: "Waiting on you", shipped: "Shipped" },
+  /** The three board lanes (console v5). A card runs left→right: Work in progress → Approval needed →
+   * Done. These are the only column titles — the whole product is one board. */
+  columns: { running: "Work in progress", waiting: "Approval needed", shipped: "Done" },
   /** The one quiet legend line under the header: department = the 3px card edge. */
   legend: { caption: "edge colour = department" },
   /** Fleet-health dot copy (header). */
@@ -526,16 +527,39 @@ export const CONSOLE = {
   gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set" },
   /** Status-grammar words used on rows + cards. */
   status: { yourYes: "your yes", running: "working", shipped: "shipped", idle: "idle", sending: "sending" },
-  /** Card chrome. */
-  card: { why: "why?", approve: "Approve", sendBack: "Send back", waiting: "waiting", est: "est." },
-  /** Peek drawer (slide-over). */
+  /** Card chrome. The ▲ marks an approval-needed card (its ask line); the card opens the drawer. */
+  card: { why: "why?", approve: "Approve", sendBack: "Send back", askPrefix: "▲", waiting: "waiting", est: "est." },
+  /** The drawer — the single "dive in" surface (console v5). Open any card or session row into it. */
   peek: {
-    steerPlaceholder: "Steer this session",
+    /** Section title above the live step trail. */
+    doing: "What it's doing",
+    /** The audit-trail link under the steps; flips the drawer to the receipts we actually hold. */
+    why: "why did it do this? →",
+    whyHint: "Every step is logged.",
+    /** The approval pair, decided through the #13 gate. */
+    approve: "Approve",
+    notYet: "Not yet",
+    notYetReason: "Sent back for another pass.",
+    steerPlaceholder: "Steer this task…",
+    followUpPlaceholder: "Reopen or ask a follow-up…",
     send: "Send",
     auditStatus: "audit trail",
     whyPrefix: "why",
-    emptyTranscript: "Nothing said yet. Brief them and the receipts start landing here.",
+    back: "← back to steps",
+    emptyTranscript: "Nothing logged yet. Brief them and the steps start landing here.",
     held: "Ready when you are — nothing leaves without your yes.",
+    /** Drawer status line, by item kind (the shared status grammar, in words). */
+    statusRunning: "working",
+    statusWaiting: "needs your yes",
+    statusShipped: "done",
+  },
+  /** Two-pane shell utilities (console v5 has no top nav; these live in the left-panel footer/header). */
+  shell: {
+    signOut: "Sign out",
+    settings: "Settings",
+    settingsTitle: "Workspace settings",
+    mentions: "Mentions",
+    closeSettings: "Close",
   },
   /** Reports view sections. */
   reports: {
