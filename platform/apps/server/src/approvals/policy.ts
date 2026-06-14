@@ -76,6 +76,15 @@ export const VENTURE_PAYMENT_METHOD_ACTION = "venture.payment_method" as const;
 export const VENTURE_DEPLOY_ACTION = "venture.deploy" as const;
 
 /**
+ * #231 the real-world `publish` tool — publishing a page to a live, reachable PUBLIC URL is an outward
+ * brand surface, so it is gated for the owner by default (like `venture.deploy`). Never submitted
+ * through the #13 action route; the real-world actuator service evaluates it against the same workspace
+ * `approval_policies` and parks a PENDING request the blocked publish ages in. Reversible (a page can be
+ * redeployed / taken down) so it is NOT in `IRREVERSIBLE_ACTIONS`.
+ */
+export const REALWORLD_PUBLISH_ACTION = "realworld.publish" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
@@ -117,6 +126,8 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   MONETIZATION_PAYOUT_SETTINGS_ACTION,
   // #195 a venture prod cutover (customer-facing) / failed-release escalation is gated by default. ADR-0195.
   VENTURE_DEPLOY_ACTION,
+  // #231 publishing a page to a live public URL is an outward brand surface — gated by default. ADR-0231.
+  REALWORLD_PUBLISH_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",

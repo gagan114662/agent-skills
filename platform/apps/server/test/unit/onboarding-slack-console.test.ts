@@ -58,18 +58,41 @@ function baseInput(setup?: FounderConsoleInput["setup"]): FounderConsoleInput {
 describe("founder console setup pane (#192)", () => {
   it("zeroes the pane and adds no attention reason when onboarding is unwired", () => {
     const out = aggregateFounderConsole(baseInput());
-    expect(out.setup).toEqual({ pendingSetup: 0, connected: 0, rotationDue: 0, offlineCapabilities: 0 });
+    expect(out.setup).toEqual({
+      pendingSetup: 0,
+      connected: 0,
+      rotationDue: 0,
+      offlineCapabilities: 0,
+      needed: 0,
+    });
     expect(out.attention.reasons).toEqual([]);
   });
 
-  it("surfaces pending setup / rotation / offline as attention reasons", () => {
+  it("surfaces pending setup / rotation / offline / real-work needs as attention reasons", () => {
     const out = aggregateFounderConsole(
-      baseInput({ pendingSetup: 2, connected: 3, rotationDue: 1, offlineCapabilities: 1 }),
+      baseInput({ pendingSetup: 2, connected: 3, rotationDue: 1, offlineCapabilities: 1, needed: 4 }),
     );
-    expect(out.setup).toEqual({ pendingSetup: 2, connected: 3, rotationDue: 1, offlineCapabilities: 1 });
+    expect(out.setup).toEqual({
+      pendingSetup: 2,
+      connected: 3,
+      rotationDue: 1,
+      offlineCapabilities: 1,
+      needed: 4,
+    });
     expect(out.attention.reasons).toContain("2 external accounts need setup");
+    expect(out.attention.reasons).toContain("4 accounts to connect before a venture can do real work");
     expect(out.attention.reasons).toContain("1 credential due for rotation");
     expect(out.attention.reasons).toContain("1 capability offline (credential revoked)");
     expect(out.attention.required).toBe(true);
+  });
+
+  it("counts Claude (#68) in `connected` and reports real-work `needed` separately (#231)", () => {
+    // The #231 fix: with ONLY Claude connected, `connected` must be >=1 (was 0), while `needed` still
+    // tells the owner what external accounts to connect before a venture can do real work.
+    const out = aggregateFounderConsole(
+      baseInput({ pendingSetup: 0, connected: 1, rotationDue: 0, offlineCapabilities: 0, needed: 4 }),
+    );
+    expect(out.setup.connected).toBe(1);
+    expect(out.setup.needed).toBe(4);
   });
 });

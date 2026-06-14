@@ -36,7 +36,11 @@ import { rankBacklog } from "../planning/rice.js";
 import { listOpenViolations } from "../db/repositories/constitution.js";
 import { listSetupRequests } from "../db/repositories/setup-requests.js";
 import { listServiceStatuses } from "../db/repositories/external-credentials.js";
+import { getCredentialStatus } from "../db/repositories/agent-credentials.js";
 import { decideRotationReminders } from "../onboarding/decide.js";
+import type { ServiceKind } from "../onboarding/types.js";
+import { realWorldReadinessNeeded } from "../realworld/decide.js";
+import { resolveRealworldCaps } from "../realworld/caps.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -372,9 +376,14 @@ export function createDefaultFounderConsoleService(deps: {
     // capability registry is persisted (capability state is derived per-request by the pure core).
     setup: {
       snapshot: async (workspaceId) => {
-        const [requests, creds] = await Promise.all([
+        const [requests, creds, claude] = await Promise.all([
           listSetupRequests(workspaceId),
           listServiceStatuses(workspaceId),
+          // #231: "Connect Claude" (#68) writes the `workspace_agent_credentials` vault, a DIFFERENT
+          // table from the #192 `external_credentials` this pane reads — which is exactly why `connected`
+          // read 0 with Claude wired. Fold the Claude subscription into the connected count so the
+          // readiness signal reflects reality.
+          getCredentialStatus(workspaceId),
         ]);
         const connectedSet = new Set(creds.filter((c) => c.connected).map((c) => c.serviceKey));
         const rotationDue = decideRotationReminders(
@@ -387,13 +396,28 @@ export function createDefaultFounderConsoleService(deps: {
             })),
           (deps.now ?? (() => new Date()))().getTime(),
         ).length;
+        // #231: what the owner must still connect before a venture can do REAL real-world work — the
+        // external account KINDS the real-world tools act through, minus what's connected. Map each
+        // connected service to its kind via its setup request, then ask the real-world readiness core.
+        // Only surfaced once the owner opts into the real-world surface (default OFF keeps it quiet).
+        const realworldEnabled = resolveRealworldCaps(loadConfig(workspaceId).realworld).enabled;
+        const kindByKey = new Map<string, ServiceKind>(
+          requests.map((r) => [r.serviceKey, r.serviceKind as ServiceKind]),
+        );
+        const connectedKinds = new Set<ServiceKind>();
+        for (const key of connectedSet) {
+          const kind = kindByKey.get(key);
+          if (kind) connectedKinds.add(kind);
+        }
+        const needed = realworldEnabled ? realWorldReadinessNeeded(connectedKinds).length : 0;
         return {
           pendingSetup: requests.filter(
             (r) => !connectedSet.has(r.serviceKey) && r.status !== "dismissed",
           ).length,
-          connected: connectedSet.size,
+          connected: connectedSet.size + (claude.connected ? 1 : 0),
           rotationDue,
           offlineCapabilities: 0,
+          needed,
         };
       },
     },

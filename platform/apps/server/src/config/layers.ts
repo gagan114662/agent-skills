@@ -142,6 +142,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #192 onboarding policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // onboarding flag / DNS provider cannot be flipped (e.g. credential injection turned on) by a lower layer.
     if (layer.onboarding !== undefined) out.onboarding = { ...layer.onboarding };
+    // #231 real-world tool surface: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's real-world flag / publish provider cannot be flipped on (e.g. a live publisher) by a
+    // lower layer.
+    if (layer.realworld !== undefined) out.realworld = { ...layer.realworld };
     // #189 acquisition policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // real-send flags / auto-send switch / send caps cannot be loosened (e.g. real ads turned on, or a
     // window cap raised) by a lower layer.
@@ -214,6 +218,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     briefings: merged.briefings ?? { ...CONFIG_DEFAULTS.briefings },
     browser: merged.browser ?? { ...CONFIG_DEFAULTS.browser },
     onboarding: merged.onboarding ?? { ...CONFIG_DEFAULTS.onboarding },
+    realworld: merged.realworld ?? { ...CONFIG_DEFAULTS.realworld },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },

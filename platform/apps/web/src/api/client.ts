@@ -50,6 +50,9 @@ import type {
   SessionMode,
   SlackStatus,
   SlackConnectInput,
+  ExternalAccountsChecklist,
+  RealworldReadiness,
+  ExternalAccountConnectInput,
   StatusPageDto,
   TaskTemplateDto,
   SiteDocDetail,
@@ -293,6 +296,36 @@ export const api = {
   },
   disconnectSlack(): Promise<SlackStatus> {
     return del("/me/slack") as Promise<SlackStatus>;
+  },
+
+  // --- Connect external accounts (#192/#231): the venture-operating accounts the fleet acts through ---
+  getExternalAccounts(): Promise<ExternalAccountsChecklist> {
+    return request<ExternalAccountsChecklist>("/me/external-services");
+  },
+  getRealworldReadiness(): Promise<RealworldReadiness> {
+    return request<RealworldReadiness>("/me/realworld");
+  },
+  // File the need (so the checklist records the kind), then seal the secret — both gated by onboarding.
+  async connectExternalAccount(input: ExternalAccountConnectInput): Promise<ExternalAccountsChecklist> {
+    await post("/me/external-services", {
+      required: [
+        {
+          serviceKey: input.serviceKey,
+          serviceKind: input.serviceKind,
+          displayName: input.displayName,
+          reason: "Connected by the owner from Settings",
+        },
+      ],
+    });
+    await request(`/me/external-credentials/${encodeURIComponent(input.serviceKey)}`, {
+      method: "PUT",
+      body: JSON.stringify({ secrets: input.secrets }),
+    });
+    return this.getExternalAccounts();
+  },
+  async disconnectExternalAccount(serviceKey: string): Promise<ExternalAccountsChecklist> {
+    await del(`/me/external-credentials/${encodeURIComponent(serviceKey)}`);
+    return this.getExternalAccounts();
   },
 
   // --- channels ---

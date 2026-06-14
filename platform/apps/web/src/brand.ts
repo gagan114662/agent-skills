@@ -115,6 +115,41 @@ export const SLACK_CONNECT = {
 } as const;
 
 /**
+ * Connect external accounts (#192/#231) — the venture-operating accounts the fleet acts THROUGH (a
+ * hosting/publish account, an email-sending domain/ESP, analytics, ads, payments). Human-once connect,
+ * agent-forever operation. All copy lives here (house rule: no hardcoded strings in product chrome).
+ */
+export const EXTERNAL_ACCOUNTS = {
+  title: "Connect external accounts",
+  hint:
+    "Your fleet acts in the real world through these accounts. Connect them once — the agents use " +
+    "them forever. Keys are stored encrypted and never shown again.",
+  loading: "Loading…",
+  neededTitle: "To do real work, connect:",
+  allConnected: "All set — every account a venture needs for real work is connected.",
+  noneYet: "No external accounts connected yet.",
+  connectedBadge: "Connected",
+  pendingBadge: "Needs setup",
+  kindLabel: "Account type",
+  keyLabel: "Account name",
+  keyPlaceholder: "e.g. sendgrid-prod",
+  secretLabel: "Key or token",
+  secretPlaceholder: "Paste the account key or token",
+  connect: "Connect",
+  disconnect: "Disconnect",
+  error: "Couldn't update the connection. This workspace may need external onboarding enabled first.",
+  kinds: {
+    hosting: "Hosting / publishing",
+    esp: "Email sending (ESP)",
+    registrar: "Domain registrar",
+    analytics: "Analytics",
+    ad_account: "Ads / social",
+    payment: "Payments",
+    other: "Other API",
+  } as Readonly<Record<string, string>>,
+} as const;
+
+/**
  * The department spectrum (#123 fleet × #138 pop identity): one hue per marketing function, a
  * warm→cool arc anchored on Pop Vermilion. Keyed by the preloaded channel name so each department
  * channel and its named agent can wear its colour. See docs/brand/ipop-brand-identity.html.

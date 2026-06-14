@@ -381,12 +381,21 @@ export interface FounderConsoleInput {
 export interface SetupSnapshot {
   /** Services still awaiting the owner (filed but not connected, not dismissed). */
   pendingSetup: number;
-  /** Connected (operational) services. */
+  /**
+   * Connected (operational) connections — INCLUDING the Claude runtime subscription (#68), not just the
+   * #192 external-service vault. Fixes the #231 readiness bug where `connected` read 0 with Claude wired.
+   */
   connected: number;
   /** Connected credentials currently past their rotation age. */
   rotationDue: number;
   /** Dependent capabilities currently offline because a required credential is missing/revoked. */
   offlineCapabilities: number;
+  /**
+   * External account kinds the owner must still connect before a venture can do REAL real-world work
+   * (#231) — the union of accounts the real-world tools act through (hosting/ESP/registrar/ad) minus
+   * what's connected. >0 means the fleet can mutate internal state but cannot publish/send/post yet.
+   */
+  needed: number;
 }
 
 // ---- derived view ------------------------------------------------------------------------------
@@ -628,6 +637,8 @@ export interface SetupView {
   connected: number;
   rotationDue: number;
   offlineCapabilities: number;
+  /** External account kinds still to connect before a venture can do real work (#231). */
+  needed: number;
 }
 
 export interface AttentionView {
@@ -934,6 +945,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     connected: input.setup?.connected ?? 0,
     rotationDue: input.setup?.rotationDue ?? 0,
     offlineCapabilities: input.setup?.offlineCapabilities ?? 0,
+    needed: input.setup?.needed ?? 0,
   };
 
   // #193 self-healing ops: per-venture incidents + watchdog stuck agents. Zeroed when unwired.
@@ -978,6 +990,11 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   }
   if (setup.pendingSetup > 0) {
     reasons.push(`${pluralize(setup.pendingSetup, "external account")} need setup`);
+  }
+  if (setup.needed > 0) {
+    reasons.push(
+      `${pluralize(setup.needed, "account")} to connect before a venture can do real work`,
+    );
   }
   if (setup.rotationDue > 0) {
     reasons.push(`${pluralize(setup.rotationDue, "credential")} due for rotation`);

@@ -40,6 +40,36 @@ export interface SlackConnectInput {
   slackUserId?: string;
 }
 
+/** One external account in the #192 onboarding checklist (`GET /me/external-services`). */
+export interface ExternalAccountRequest {
+  serviceKey: string;
+  displayName: string;
+  serviceKind: string;
+  reason: string;
+  status: "requested" | "connected" | "dismissed";
+  connected: boolean;
+}
+
+/** The external account onboarding checklist (#192) — what the workspace has filed + connected. */
+export interface ExternalAccountsChecklist {
+  requests: ExternalAccountRequest[];
+  pendingSetupCount: number;
+}
+
+/** The real-world readiness summary (#231, `GET /me/realworld`) — what to connect for real work. */
+export interface RealworldReadiness {
+  enabled: boolean;
+  neededAccounts: string[];
+}
+
+/** Body for connecting an external account from Settings (#231): file the need, then seal the secret. */
+export interface ExternalAccountConnectInput {
+  serviceKey: string;
+  serviceKind: string;
+  displayName: string;
+  secrets: Record<string, string>;
+}
+
 /** Current caller, from `GET /me`. */
 export interface Identity {
   workspaceId: string;
