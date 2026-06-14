@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ServerEvent } from "../../api/types.js";
-import { Workspace } from "../Workspace.js";
+import { DeployPanel } from "./DeployPanel.js";
 import { VOICE } from "../../brand.js";
 import { renderWithStore } from "../../test/utils.js";
 import type { AgentSessionSummary } from "../../api/types.js";
@@ -27,20 +27,18 @@ function fire(rt: { fire: (e: ServerEvent) => void }, event: ServerEvent): void 
   act(() => rt.fire(event));
 }
 
-/** Boot the workspace, open the Deploy tab, and select the session. */
+/** Render the Deploy panel (off-nav in console v5 — reachable directly for operators) and pick a session. */
 async function openDeployTab(): Promise<ReturnType<typeof renderWithStore>> {
-  const rendered = renderWithStore(<Workspace />, { sessions: [SESSION] });
+  const rendered = renderWithStore(<DeployPanel />, { sessions: [SESSION] });
   await rendered.store.bootstrap();
-  await userEvent.click(screen.getByRole("button", { name: "Deploy" }));
   await userEvent.click(await screen.findByRole("button", { name: /agent\/s1/ }));
   return rendered;
 }
 
 describe("DeployPanel (#73 Deploy tab)", () => {
-  it("switches to the Deploy tab from the top bar", async () => {
-    const { store } = renderWithStore(<Workspace />, { sessions: [SESSION] });
+  it("prompts to pick a session in the house voice", async () => {
+    const { store } = renderWithStore(<DeployPanel />, { sessions: [SESSION] });
     await store.bootstrap();
-    await userEvent.click(screen.getByRole("button", { name: "Deploy" }));
     // The pick-a-session prompt now speaks the house voice (#145 empty-state pass).
     expect(await screen.findByText(VOICE.pickSessionToDeploy)).toBeInTheDocument();
   });

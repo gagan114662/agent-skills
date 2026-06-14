@@ -301,15 +301,24 @@ describe("marketing-site machine copy (#153)", () => {
 });
 
 describe("console redesign copy (board + standup)", () => {
-  it("names the three board lanes and the standup nav, in the status grammar", () => {
-    expect(CONSOLE.columns.running).toBeTruthy();
-    expect(CONSOLE.columns.waiting).toBeTruthy();
-    expect(CONSOLE.columns.shipped).toBeTruthy();
-    for (const k of ["board", "reports", "history"] as const) expect(CONSOLE.nav[k]).toBeTruthy();
+  it("names the three v5 board lanes exactly: Work in progress / Approval needed / Done", () => {
+    expect(CONSOLE.columns.running).toBe("Work in progress");
+    expect(CONSOLE.columns.waiting).toBe("Approval needed");
+    expect(CONSOLE.columns.shipped).toBe("Done");
     // The five per-project settings tabs the mockup defines.
     for (const k of ["general", "models", "agents", "budget", "approvals"] as const) {
       expect(CONSOLE.settings.tabs[k]).toBeTruthy();
     }
+  });
+
+  it("carries the v5 drawer copy (steps, why link, the approve pair) and the two-pane shell utilities", () => {
+    for (const k of ["doing", "why", "approve", "notYet", "notYetReason", "steerPlaceholder", "send"] as const) {
+      expect(CONSOLE.peek[k], `peek.${k}`).toBeTruthy();
+    }
+    // The "why did it do this?" link reads as a question into the audit trail.
+    expect(CONSOLE.peek.why).toMatch(/why/i);
+    // The shell utilities that replace the removed top nav (account actions live in the left footer).
+    for (const k of ["signOut", "settings"] as const) expect(CONSOLE.shell[k], `shell.${k}`).toBeTruthy();
   });
 
   it("carries the approvals-clear moment and the local-model connected label", () => {
@@ -331,7 +340,8 @@ describe("console redesign copy (board + standup)", () => {
 describe("no hardcoded brand strings in product chrome", () => {
   // Components that render the product shell. Every brand string here must come from BRAND.*.
   const CHROME_COMPONENTS = [
-    "components/Workspace.tsx",
+    // Workspace.tsx is now a trivial full-height wrapper around ConsoleView (console v5 removed the top
+    // nav), so it carries no brand copy — the scan covers the two-pane console components below instead.
     "components/AuthGate.tsx",
     "components/ChannelSidebar.tsx",
     // The public landing (#149 → #165) is the most brand-heavy surface — every word must come from

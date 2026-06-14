@@ -100,6 +100,30 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   if (method === "GET" && url.includes("/task-templates")) return json(200, TASK_TEMPLATES);
+  // Console v5 seams (#104 founder console + #147 mission control), so the board renders live work.
+  if (method === "GET" && url.includes("/founder-console")) {
+    return json(200, {
+      workspaceId: "ws_demo", generatedAtMs: Date.now(),
+      fleet: { activeSessions: 2, sessionsThisWindow: 6, globalInFlight: 2 },
+      venturePipeline: { total: 3, active: 2, funded: 1, killed: 0, escalated: 0 },
+      revenue: { currency: "usd", totalCents: 21000, paymentCount: 4, willingnessToPayCount: 2, hasWillingnessToPay: true },
+      budget: { window: "2026-06", estimatedCostCents: 170, budgetCents: 500, overBudget: false, utilization: 0.34 },
+      pendingApprovals: [], switches: { killSwitch: false, maintenance: { enabled: false } },
+      attention: { required: false, reasons: [] },
+    });
+  }
+  if (method === "GET" && url.includes("/mission-control")) {
+    return json(200, {
+      sessions: [
+        { id: "mc1", channelId: "c_seo", agentMemberId: "ag_scout", status: "crawling · 18 pages", elapsedMs: 720_000, estimatedCostCents: 84, startedAt: null, progressAt: null },
+        { id: "mc2", channelId: "c_content", agentMemberId: "ag_quill", status: "writing · 2 of 3", elapsedMs: 300_000, estimatedCostCents: 42, startedAt: null, progressAt: null },
+      ],
+      count: 2, totalEstimatedCostCents: 126, rateCentsPerMinute: 7, costIsEstimate: true,
+    });
+  }
+  if (method === "GET" && url.includes("/approvals")) {
+    return json(200, url.includes("status=pending") ? PENDING : []);
+  }
   if (method === "GET" && url.includes("/automations")) return json(200, []);
   if (method === "POST" && url.includes("/automations")) {
     return json(201, { id: "a1", name: "Monday SEO audit", triggerKind: "schedule", templateKey: "seo_audit", agentHandle: "scout", enabled: true, nextRunAt: new Date(Date.now() + 86_400_000).toISOString() });
