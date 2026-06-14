@@ -224,6 +224,100 @@ describe("#123 marketing department fleet (real Postgres)", () => {
     expect(action.json().status).toBe("pending");
   });
 
+  // #235: the owner BRIEFS a lead from the dashboard composer → a REAL session spawns and the board fills.
+  it("owner briefs a lead → posts the goal, launches a real session, threads the agent's work back", async () => {
+    const owner = await newOwner();
+    const seed1 = (await seed(owner)).json();
+    const seo = seed1.channels.find((c: { name: string }) => c.name === "seo");
+
+    const goal = "go get us our first paying founders for ipop.ai";
+    const res = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/department/brief`,
+      cookies: { rid: owner.cookie },
+      payload: { lead: "scout", goal },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as {
+      lead: string;
+      department: string;
+      channelId: string;
+      messageId: string;
+      launched: Array<{ handle: string; sessionId: string }>;
+      connectPrompted: unknown[];
+    };
+    expect(body.lead).toBe("scout");
+    expect(body.department).toBe("seo");
+    expect(body.channelId).toBe(seo.id);
+    // A REAL session spawned synchronously — this is the row the board's "Work in progress" lane renders.
+    expect(body.launched).toHaveLength(1);
+    expect(body.launched[0]!.handle).toBe("scout");
+    const sessionId = body.launched[0]!.sessionId;
+
+    // The board fills: mission control reports the live session for the workspace (WIP >= 1).
+    const mc = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${owner.workspaceId}/mission-control`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json() as { sessions: Array<{ id: string }> };
+    expect(mc.sessions.length).toBeGreaterThanOrEqual(1);
+
+    // The brief was posted into #seo AS the owner, @mentioning the lead (the working control, not chrome).
+    const messages = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${seo.id}/messages`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json() as Array<{ authorMemberId: string; body: string }>;
+    const brief = messages.find((m) => m.body === `@scout ${goal}`);
+    expect(brief, "the brief is posted with the @mention").toBeDefined();
+    expect(brief!.authorMemberId).toBe(owner.memberId);
+
+    // The agent actually ran on the goal and threaded its work back under the brief.
+    expect(await waitForSession(owner, seo.id, sessionId)).toBe("completed");
+    const replies = await threadReplies(owner, seo.id, body.messageId);
+    expect(replies.map((r) => r.body).join("\n")).toContain(`agent: task=${goal}`);
+  });
+
+  it("rejects a brief with an unknown lead (400) or a goal-less brief (400), launching nothing", async () => {
+    const owner = await newOwner();
+    await seed(owner);
+    const unknown = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/department/brief`,
+      cookies: { rid: owner.cookie },
+      payload: { lead: "nobody", goal: "do a thing" },
+    });
+    expect(unknown.statusCode).toBe(400);
+    const empty = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/department/brief`,
+      cookies: { rid: owner.cookie },
+      payload: { lead: "scout", goal: "   " },
+    });
+    expect(empty.statusCode).toBe(400);
+  });
+
+  it("halts a brief when the kill switch is engaged (#71 admission — the brief reuses the audited path)", async () => {
+    const owner = await newOwner();
+    await seed(owner);
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/autonomy/kill`,
+      cookies: { rid: owner.cookie },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/department/brief`,
+      cookies: { rid: owner.cookie },
+      payload: { lead: "scout", goal: "rank us for AI marketing agency" },
+    });
+    expect(res.statusCode).toBe(429);
+  });
+
   it("halts a marketing launch when the kill switch is engaged (#71 admission)", async () => {
     const owner = await newOwner();
     const social = (await seed(owner)).json().channels.find((c: { name: string }) => c.name === "social");

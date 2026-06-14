@@ -426,6 +426,13 @@ export const marketingSchema = z.object({
   enabled: z.boolean().optional(),
   /** Launch one welcome session per department when seeding (default true). */
   seedWelcomeTasks: z.boolean().optional(),
+  /**
+   * The owner's own workspace id (#235). When a seeded workspace matches this, its founding venture is the
+   * ipop **dogfood** venture ("acquire paying founders for ipop.ai") rather than the brand-neutral founding
+   * stub — so ipop runs its OWN marketing as venture #1. Default unset ⇒ every workspace gets the generic
+   * founding venture (a customer never inherits ipop's growth brief).
+   */
+  ownerWorkspaceId: z.string().optional(),
 });
 
 /**

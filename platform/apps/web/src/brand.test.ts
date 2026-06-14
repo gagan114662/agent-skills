@@ -34,6 +34,8 @@ import {
   consoleWaitingChip,
   consoleNextAsk,
   consoleOvernightSummary,
+  consoleBriefLaunched,
+  consoleBriefConnect,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -368,6 +370,26 @@ describe("console redesign copy (board + standup)", () => {
     expect(consoleOvernightSummary(3, 1, "$4.10")).toBe("3 shipped · 1 needs your yes · $4.10 overnight");
     expect(consoleOvernightSummary(0, 2, "$0.00")).toContain("2 need your yes");
   });
+
+  // #235: the owner brief composer copy — the working control that replaces the passive board.
+  it("carries the brief composer: five acquisition leads + the launched/connect confirmations", () => {
+    expect(CONSOLE.brief.title).toBeTruthy();
+    expect(CONSOLE.brief.sub).toBeTruthy();
+    expect(CONSOLE.brief.submit).toBeTruthy();
+    expect(CONSOLE.brief.placeholder).toBeTruthy();
+    // The five acquisition leads named in #235 (seo/social/content/email/ads), each a real @handle.
+    const handles = CONSOLE.brief.leads.map((l) => l.handle);
+    expect(handles).toEqual(["scout", "echo", "quill", "postmark", "bid"]);
+    for (const l of CONSOLE.brief.leads) {
+      expect(l.name, l.handle).toBeTruthy();
+      expect(l.dept, l.handle).toBeTruthy();
+      // Every brief lead wears its department hue (resolved by display name, #145).
+      expect(agentColor(l.name), l.handle).toBeTruthy();
+    }
+    // The outcome lines name the lead.
+    expect(consoleBriefLaunched("Scout")).toMatch(/^Scout .+Work in progress/);
+    expect(consoleBriefConnect("Scout")).toMatch(/^Scout .+connect Claude/i);
+  });
 });
 
 describe("no hardcoded brand strings in product chrome", () => {
@@ -401,6 +423,7 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/console/StandupPanel.tsx",
     "components/console/ConsoleEmptyState.tsx",
     "components/console/Board.tsx",
+    "components/console/BriefComposer.tsx",
     "components/console/PeekDrawer.tsx",
     "components/console/ReportsView.tsx",
     "components/console/ProjectSettingsSheet.tsx",

@@ -8,7 +8,11 @@ import { listMarketingTasks } from "../db/repositories/marketing-tasks.js";
 import { getMessage } from "../db/repositories/messages.js";
 import { buildMarketingRoster } from "../marketing/roster.js";
 import { BRAND_VOICE } from "../marketing/blueprint.js";
-import { seedDepartmentForWorkspace, createMarketingMentionService } from "../marketing/default.js";
+import {
+  seedDepartmentForWorkspace,
+  createMarketingMentionService,
+  createMarketingBriefService,
+} from "../marketing/default.js";
 import { resolveMarketingCaps } from "../marketing/caps.js";
 import { loadConfig } from "../config/loader.js";
 
@@ -26,6 +30,7 @@ export interface MarketingRoutesOptions {
 export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoutesOptions): Promise<void> {
   const { sessionManager } = opts;
   const mention = createMarketingMentionService(sessionManager);
+  const brief = createMarketingBriefService(sessionManager);
 
   // Seed the department fleet (idempotent, human-auth). `welcomeTasks` launches a welcome session per
   // department (default off here; signup auto-seed turns it on per the workspace config).
@@ -42,6 +47,35 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       welcomeTasks: b.welcomeTasks === true,
     });
     return reply.code(201).send(result);
+  });
+
+  // #235: the owner BRIEFS the fleet. Pick a department lead + a goal ("go get us paying founders for
+  // ipop.ai") and this posts the brief into the lead's channel AS the owner and launches a REAL session
+  // down the audited @mention path (#68 → #59 → #96 → #71). Human-auth + workspace-scoped. A launch
+  // denial (kill switch / budget) bubbles to the app error handler (→ 402/429) — deliberately not caught.
+  app.post("/workspaces/:wid/department/brief", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (id.kind !== "human") return reply.code(401).send({ error: "human authentication required" });
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = (req.body ?? {}) as { lead?: string; goal?: string };
+    if (typeof b.lead !== "string" || typeof b.goal !== "string") {
+      return reply.code(400).send({ error: "lead and goal are required" });
+    }
+    const result = await brief.brief(
+      { workspaceId: wid, memberId: id.memberId },
+      { lead: b.lead, goal: b.goal },
+    );
+    if (!result.ok) return reply.code(result.code).send({ error: result.error });
+    return reply.code(202).send({
+      lead: result.lead,
+      department: result.department,
+      channelId: result.channelId,
+      messageId: result.messageId,
+      launched: result.launched,
+      connectPrompted: result.connectPrompted,
+    });
   });
 
   // The team panel: humans + department agents with roles + live presence (#105). Read-only.

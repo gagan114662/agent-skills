@@ -71,6 +71,49 @@ export const FOUNDING_VENTURE = {
   marketPath: "Direct: the founder steers the team toward their own audience and refines the wedge from real demand.",
 } as const;
 
+/**
+ * The dogfood venture (#235): ipop runs ITS OWN marketing as venture #1. ipop's pitch is "your marketing
+ * agency of AI agents" — the most credible proof, and its most direct path to its own first dollars, is the
+ * agency acquiring ipop's OWN paying founders. So in the **owner's own workspace** (the config
+ * `marketing.ownerWorkspaceId` marker) the founding venture is specialized to this concrete, product-named
+ * brief instead of the brand-neutral {@link FOUNDING_VENTURE} stub. Its `wedge` folds into every department
+ * lead's welcome session and the funded epic, pointing the whole fleet at ipop's growth. It is a real
+ * {@link IdeaInput} the #96 loop refines from here; every external send it implies stays #13-gated (the
+ * agents carry only {@link DRAFT_TOOLS}).
+ */
+export const DOGFOOD_VENTURE = {
+  problem:
+    "Early-stage founders need marketing done but have no growth team and can't afford an agency. ipop.ai " +
+    "is the AI marketing department they hire in one click — and it has to win its own first paying founders " +
+    "to prove the claim.",
+  targetUser:
+    "Early-stage founders and solo operators who need marketing (SEO, content, social, email, ads) but have " +
+    "no in-house growth team.",
+  insight:
+    "The most credible proof that an AI marketing agency works is that agency acquiring its OWN paying " +
+    "customers — ipop running ipop's marketing, in the open, with every send owner-approved.",
+  wedge:
+    "Acquire paying founders for ipop.ai — Starter $49 / Pro $199 / Agency $499 — by ranking for high-intent " +
+    'terms like "AI marketing agency" and "autonomous growth team", shipping SEO articles + social proof, and ' +
+    "running owner-approved email/ads that convert founders onto a free trial.",
+  marketPath:
+    "Self-serve: SEO + content + social bring founders to ipop.ai, a free trial proves the fleet, and the paid " +
+    "tiers (Starter $49 / Pro $199 / Agency $499) close them — measured by real signups and Stripe subscriptions, " +
+    "never self-reported, with every external send held for the owner's yes.",
+} as const;
+
+/**
+ * Pick the founding venture for a workspace (#235): the ipop {@link DOGFOOD_VENTURE} when this is the
+ * owner's own workspace (`ownerWorkspaceId` matches), otherwise the brand-neutral {@link FOUNDING_VENTURE}
+ * stub. Pure, so the selection is unit-testable without a DB. `ownerWorkspaceId` undefined ⇒ always the stub.
+ */
+export function foundingVentureFor(
+  workspaceId: string,
+  ownerWorkspaceId?: string,
+): typeof FOUNDING_VENTURE | typeof DOGFOOD_VENTURE {
+  return ownerWorkspaceId !== undefined && ownerWorkspaceId === workspaceId ? DOGFOOD_VENTURE : FOUNDING_VENTURE;
+}
+
 function prompt(title: string, channel: string, role: string, external: boolean): string {
   const externalLine = external
     ? "Anything that leaves the building — posting, sending, or spending — is a sensitive action: " +

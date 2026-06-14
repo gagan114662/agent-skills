@@ -31,6 +31,7 @@ import { PricingPanel } from "../PricingPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
+import { BriefComposer, type BriefOutcomeKind } from "./BriefComposer.js";
 import { ConsoleEmptyState, type SeedError } from "./ConsoleEmptyState.js";
 import { ProjectSettingsSheet } from "./ProjectSettingsSheet.js";
 import { PeekDrawer, type PeekAuditLine, type PeekTranscriptLine } from "./PeekDrawer.js";
@@ -322,6 +323,30 @@ export function ConsoleView(): React.JSX.Element {
     }
   }
 
+  /**
+   * #235: the owner briefs a department lead. Posts the goal into the lead's channel and launches a REAL
+   * session down the audited @mention path, then pulls the live seams ONCE so the board fills immediately
+   * (the "Work in progress" lane) rather than on the next 4s poll. Never throws — the composer renders the
+   * outcome: a launched session, a connect-prompt (no Claude connected), or a quiet error (e.g. a budget /
+   * kill-switch 402/429, or the fleet not yet hired).
+   */
+  async function briefLead(lead: string, goal: string): Promise<BriefOutcomeKind> {
+    if (!workspaceId) return "error";
+    try {
+      const res = await api.department.brief(workspaceId, { lead, goal });
+      const [next] = await Promise.all([
+        api.missionControl.get(workspaceId).catch(() => null),
+        refreshApprovals(),
+      ]);
+      if (mounted.current && next) setMc(next);
+      if (res.launched.length > 0) return "launched";
+      if (res.connectPrompted.length > 0) return "connect";
+      return "launched";
+    } catch {
+      return "error";
+    }
+  }
+
   // --- peek drawer data ----------------------------------------------------------------------------
   const transcript: readonly PeekTranscriptLine[] = useMemo(() => {
     if (!peek || !peek.item.channelId) return [];
@@ -460,11 +485,16 @@ export function ConsoleView(): React.JSX.Element {
             onConnect={() => setShellSettingsOpen(true)}
           />
         ) : (
-          <Board
-            columns={model.columns}
-            onPeek={(item) => dive(item, "transcript")}
-            onWhy={(item) => dive(item, "audit")}
-          />
+          <>
+            {/* #235: the owner's always-present brief composer — point a lead at a goal and the board fills.
+                Replaces the passive "between tasks — @mention a lead" board with a real working control. */}
+            <BriefComposer leads={CONSOLE.brief.leads} onBrief={briefLead} />
+            <Board
+              columns={model.columns}
+              onPeek={(item) => dive(item, "transcript")}
+              onWhy={(item) => dive(item, "audit")}
+            />
+          </>
         )}
       </main>
 

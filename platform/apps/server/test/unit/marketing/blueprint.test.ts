@@ -9,6 +9,9 @@ import {
   departmentForChannel,
   departmentForHandle,
   isExternalSendDepartment,
+  foundingVentureFor,
+  FOUNDING_VENTURE,
+  DOGFOOD_VENTURE,
 } from "../../../src/marketing/blueprint.js";
 import { validatePersonaInput } from "../../../src/subagents/scope.js";
 
@@ -82,5 +85,24 @@ describe("#123 marketing blueprint", () => {
     expect(BRAND_VOICE.signOff.toLowerCase()).toContain("made by robots");
     expect(BRAND_VOICE.welcome.toLowerCase()).toContain("marketing department");
     expect(BRAND_VOICE.emptyState.length).toBeGreaterThan(0);
+  });
+
+  // #235: ipop runs ITS OWN marketing as venture #1 in the owner's own workspace.
+  it("points the owner's own workspace at the ipop dogfood venture, everyone else at the neutral stub", () => {
+    // Owner workspace → the concrete ipop marketing brief with the real pricing tiers.
+    const owned = foundingVentureFor("ws-owner", "ws-owner");
+    expect(owned).toBe(DOGFOOD_VENTURE);
+    expect(owned.wedge).toContain("ipop.ai");
+    expect(owned.wedge).toMatch(/\$49/);
+    expect(owned.wedge).toMatch(/\$199/);
+    expect(owned.wedge).toMatch(/\$499/);
+    // A customer workspace (no owner marker, or a different one) keeps the brand-neutral founding stub —
+    // it never inherits ipop's growth brief.
+    expect(foundingVentureFor("ws-customer", undefined)).toBe(FOUNDING_VENTURE);
+    expect(foundingVentureFor("ws-customer", "ws-owner")).toBe(FOUNDING_VENTURE);
+    // The dogfood venture is a real IdeaInput (the #96 loop refines it from here).
+    for (const k of ["problem", "targetUser", "insight", "wedge", "marketPath"] as const) {
+      expect(DOGFOOD_VENTURE[k].length).toBeGreaterThan(0);
+    }
   });
 });
