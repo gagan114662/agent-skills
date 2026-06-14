@@ -101,6 +101,24 @@ function baseSeedDeps(): Omit<MarketingSeedDeps, "launchWelcome" | "recordTask">
   };
 }
 
+/**
+ * #221: stand up the workspace's first venture so the activated console has a live pipeline. Idempotent —
+ * if the workspace already has any evaluation we return it untouched (re-seed never multiplies the
+ * pipeline). A fresh workspace gets the founding idea + its durable #96 evaluation (status `active`), which
+ * is exactly what `venturePipeline.total` counts on the Founder Console. A DB row, never a launch, so it
+ * consumes no #71 admission slot and cannot 429. Shared by the seeder and the #226 boot venture-backfill.
+ */
+async function ensureFoundingVenture(
+  workspaceId: string,
+  createdByMemberId: string,
+): Promise<{ ideaId: string; created: boolean }> {
+  const existing = await listEvaluations(workspaceId);
+  if (existing.length > 0) return { ideaId: existing[0]!.ideaId, created: false };
+  const idea = await createIdea({ ...FOUNDING_VENTURE, workspaceId, createdByMemberId });
+  await getOrCreateEvaluation(workspaceId, idea.id);
+  return { ideaId: idea.id, created: true };
+}
+
 /** The full seam set for the seeder, adding welcome launches through the gated launcher. */
 function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
   const launcher = ventureGatedSubagentLauncher(sessionManager);
@@ -108,19 +126,9 @@ function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
     ...baseSeedDeps(),
     launchWelcome: async (input) => launcher.launch(input),
     recordTask: async (input) => createMarketingTask(input),
-    // #221: stand up the workspace's first venture so the activated console has a live pipeline. Idempotent
-    // — if the workspace already has any evaluation we return it untouched (re-seed never multiplies the
-    // pipeline). A fresh workspace gets the founding idea + its durable #96 evaluation (status `active`),
-    // which is exactly what `venturePipeline.total` counts on the Founder Console.
-    ensureFirstVenture: async ({ workspaceId, createdByMemberId }) => {
-      const existing = await listEvaluations(workspaceId);
-      if (existing.length > 0) return { ideaId: existing[0]!.ideaId, created: false };
-      const idea = await createIdea({ ...FOUNDING_VENTURE, workspaceId, createdByMemberId });
-      await getOrCreateEvaluation(workspaceId, idea.id);
-      return { ideaId: idea.id, created: true };
-    },
-    // #221: the activation idempotency key — once any welcome task exists the founding sessions have already
-    // been opened, so a re-seed must not relaunch them (that was the 429 dead-end on a second click).
+    ensureFirstVenture: ({ workspaceId, createdByMemberId }) =>
+      ensureFoundingVenture(workspaceId, createdByMemberId),
+    // #221: fallback activation idempotency key (the venture row above is the authoritative one, #226/#227).
     countWelcomeTasks: async (workspaceId) =>
       (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome").length,
   };
@@ -179,6 +187,16 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
     isEnabled: (workspaceId) => resolveMarketingCaps(loadConfig(workspaceId).marketing).enabled,
     seed: ({ workspaceId, createdByMemberId }) =>
       seedMarketingDepartment({ workspaceId, createdByMemberId, postWelcomeTasks: false }, deps).then(() => undefined),
+    // #226: an account activated before #221 has welcome tasks but no venture row — its console used to sit
+    // on the empty desk forever. Conservatively stand up the missing venture ONLY for such already-activated
+    // workspaces (those with ≥1 welcome task), so a merely auto-seeded tenant that never activated keeps its
+    // genuine first-run empty desk.
+    backfillVenture: async ({ workspaceId, createdByMemberId }) => {
+      const welcomeTasks = (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome");
+      if (welcomeTasks.length === 0) return { created: false };
+      const { created } = await ensureFoundingVenture(workspaceId, createdByMemberId);
+      return { created };
+    },
     log,
   });
 }

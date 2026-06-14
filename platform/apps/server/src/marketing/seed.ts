@@ -74,9 +74,11 @@ export interface MarketingSeedDeps {
     createdByMemberId: string;
   }): Promise<{ ideaId: string; created: boolean }>;
   /**
-   * How many welcome tasks the workspace already has (#221) — the idempotency key for activation. A
-   * workspace with ≥1 welcome task is already activated, so a re-seed must NOT re-launch the founding
-   * sessions (that is what 429'd the founder on a second click). Optional — omitted ⇒ treated as 0.
+   * How many welcome tasks the workspace already has (#221) — a FALLBACK idempotency key for activation,
+   * used only when {@link ensureFirstVenture} is not wired (e.g. the no-DB unit job). When the venture
+   * seam is present, "the workspace already has a venture" is the authoritative key instead (#226/#227),
+   * because a first activation whose launches were all denied has a venture but zero welcome tasks — and
+   * must still be treated as activated so a re-seed never re-hits the admission cap. Optional — omitted ⇒ 0.
    */
   countWelcomeTasks?(workspaceId: string): Promise<number>;
 }
@@ -177,28 +179,35 @@ export async function seedMarketingDepartment(
     await deps.post({ workspaceId, channelId: general.id, agentMemberId: agents[0]!.agentMemberId, body: BRAND_VOICE.welcome });
   }
 
-  // 4. Activation (#221): turn a seeded org into a *running* venture. Two parts, both idempotent so a
-  //    second click resumes the existing org instead of 429'ing the founder back into a dead end:
+  // 4. Activation (#221, hardened by #226/#227): turn a seeded org into a venture that always renders.
   //
   //    (a) Stand up the workspace's first venture so the pipeline is never an empty 0/0/0 desk — there is
-  //        something for the founding team to clock into. `ensureFirstVenture` no-ops when one exists.
+  //        something for the founding team to clock into. `ensureFirstVenture` no-ops when one exists. This
+  //        is the durable activation success: it is a DB row, NOT a launch, so it consumes no #71 admission
+  //        slot and can never 429. The console drives its empty-state strictly off "the workspace has a
+  //        venture" (#226), so once this row exists the founder never sees the empty desk again.
   //
-  //    (b) Open each lead's first task (a real welcome session) the FIRST time only — keyed on whether any
-  //        welcome task already exists. A re-seed of an already-activated workspace launches nothing, so it
-  //        never touches the #71 admission chokepoint and never 429s. On the first activation we launch
-  //        sequentially and best-effort: if a launch is denied AFTER at least one has started, we keep the
-  //        org + the venture + the sessions we did open; if the VERY FIRST launch is denied (kill switch /
-  //        no capacity) we let it bubble so the route returns 429/402 and the console shows an actionable
-  //        next step rather than a silent empty board.
+  //    (b) The activation idempotency key is now "the workspace already has a venture" (#226/#227): once it
+  //        does, a re-seed launches NOTHING and so never touches the admission chokepoint — that was the
+  //        429 dead-end on a second click. (Fall back to the welcome-task count only when no venture seam
+  //        is wired, e.g. the no-DB unit job.)
+  //
+  //    (c) On the FIRST activation we open each lead's first task best-effort. A launch denial (admission
+  //        cap / kill switch / venture gate / no runtime) must NEVER discard the venture we just created:
+  //        we keep the venture + any sessions that did open and stop, so the console renders the venture
+  //        created-but-paused rather than throwing the founder a 429 dead-end. The denial is honest (no
+  //        work is faked) — the venture itself is the activation proof, not the welcome sessions.
   const welcomeTasks: Array<{ id: string }> = [];
   let venture: { ideaId: string; created: boolean } | undefined;
   if (input.postWelcomeTasks && deps.launchWelcome && deps.recordTask) {
     if (deps.ensureFirstVenture) {
       venture = await deps.ensureFirstVenture({ workspaceId, createdByMemberId });
     }
-    const alreadyActivated = deps.countWelcomeTasks
-      ? (await deps.countWelcomeTasks(workspaceId)) > 0
-      : false;
+    const alreadyActivated = venture
+      ? !venture.created
+      : deps.countWelcomeTasks
+        ? (await deps.countWelcomeTasks(workspaceId)) > 0
+        : false;
     if (!alreadyActivated) {
       for (let i = 0; i < MARKETING_DEPARTMENTS.length; i++) {
         const dept = MARKETING_DEPARTMENTS[i]!;
@@ -213,11 +222,11 @@ export async function seedMarketingDepartment(
             createdByMemberId,
             task: dept.welcomeTask,
           });
-        } catch (err) {
-          // Best-effort: once the board is lit (≥1 session), a later cap denial is fine — keep what ran.
-          // Nothing started yet ⇒ surface the denial so the founder gets an honest, actionable message.
-          if (welcomeTasks.length > 0) break;
-          throw err;
+        } catch {
+          // Keep the venture (+ any sessions already opened) and stop — never re-throw. A blocked launch
+          // leaves the venture created-but-paused, which the console renders honestly (#226/#227), instead
+          // of collapsing a successful activation into a 429 the founder can only re-fire into the wall.
+          break;
         }
         const task = await deps.recordTask({
           workspaceId,

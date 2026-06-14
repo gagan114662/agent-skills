@@ -20,6 +20,14 @@ export interface MarketingBackfillDeps {
   isEnabled(workspaceId: string): boolean;
   /** Ensure the department fleet for a workspace (idempotent, no welcome-session launches). */
   seed(input: { workspaceId: string; createdByMemberId: string }): Promise<void>;
+  /**
+   * #226 backfill: ensure the founding venture for a workspace that was ACTIVATED before #221 shipped — it
+   * has welcome tasks (a human clicked "Start your first venture") but no venture row, so the console's
+   * venture-keyed empty-state used to leave it on the empty desk forever. Idempotent and conservative:
+   * creates a venture only for already-activated workspaces, returns `{ created: false }` otherwise. A DB
+   * row, never a launch — so it spends nothing and cannot 429. Optional — omitted ⇒ no venture backfill.
+   */
+  backfillVenture?(input: { workspaceId: string; createdByMemberId: string }): Promise<{ created: boolean }>;
   log: {
     info: (obj: unknown, msg?: string) => void;
     warn: (obj: unknown, msg?: string) => void;
@@ -31,10 +39,12 @@ export interface MarketingBackfillResult {
   seeded: number;
   skipped: number;
   failed: number;
+  /** #226: workspaces whose founding venture was backfilled (activated pre-#221, had none). */
+  venturesBackfilled: number;
 }
 
 export async function runMarketingBackfill(deps: MarketingBackfillDeps): Promise<MarketingBackfillResult> {
-  const result: MarketingBackfillResult = { seeded: 0, skipped: 0, failed: 0 };
+  const result: MarketingBackfillResult = { seeded: 0, skipped: 0, failed: 0, venturesBackfilled: 0 };
   const workspaceIds = await deps.listWorkspaceIds();
   for (const workspaceId of workspaceIds) {
     if (!deps.isEnabled(workspaceId)) {
@@ -50,12 +60,19 @@ export async function runMarketingBackfill(deps: MarketingBackfillDeps): Promise
     try {
       await deps.seed({ workspaceId, createdByMemberId });
       result.seeded++;
+      // #226: an account activated before #221 has departments but no venture row — its console used to
+      // sit on the empty desk forever. Stand up the missing venture so it renders on next load. Best-effort
+      // and independent of the seed count above (a failure here never undoes the department seed).
+      if (deps.backfillVenture) {
+        const { created } = await deps.backfillVenture({ workspaceId, createdByMemberId });
+        if (created) result.venturesBackfilled++;
+      }
     } catch (err) {
       deps.log.error({ err, workspaceId }, "marketing backfill failed for workspace");
       result.failed++;
     }
   }
-  if (result.seeded > 0 || result.failed > 0) {
+  if (result.seeded > 0 || result.failed > 0 || result.venturesBackfilled > 0) {
     deps.log.info(result, "marketing department backfill complete");
   }
   return result;

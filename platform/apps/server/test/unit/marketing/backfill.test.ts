@@ -29,21 +29,21 @@ describe("#138 runMarketingBackfill", () => {
     const { deps, seeded } = makeDeps();
     const result = await runMarketingBackfill(deps);
     expect(seeded.sort()).toEqual(["ws-a", "ws-b"]);
-    expect(result).toEqual({ seeded: 2, skipped: 0, failed: 0 });
+    expect(result).toEqual({ seeded: 2, skipped: 0, failed: 0, venturesBackfilled: 0 });
   });
 
   it("skips workspaces where marketing is not enabled (per-workspace config)", async () => {
     const { deps, seeded } = makeDeps({ isEnabled: (wid) => wid === "ws-a" });
     const result = await runMarketingBackfill(deps);
     expect(seeded).toEqual(["ws-a"]);
-    expect(result).toEqual({ seeded: 1, skipped: 1, failed: 0 });
+    expect(result).toEqual({ seeded: 1, skipped: 1, failed: 0, venturesBackfilled: 0 });
   });
 
   it("skips a workspace with no human owner (nothing to attribute the seed to)", async () => {
     const { deps, seeded } = makeDeps({ ownerMemberId: async (wid) => (wid === "ws-a" ? "owner-ws-a" : undefined) });
     const result = await runMarketingBackfill(deps);
     expect(seeded).toEqual(["ws-a"]);
-    expect(result).toEqual({ seeded: 1, skipped: 1, failed: 0 });
+    expect(result).toEqual({ seeded: 1, skipped: 1, failed: 0, venturesBackfilled: 0 });
   });
 
   it("is best-effort: one workspace's failure never stops the others and never throws", async () => {
@@ -56,7 +56,23 @@ describe("#138 runMarketingBackfill", () => {
     });
     const result = await runMarketingBackfill(deps);
     expect(seeded.sort()).toEqual(["ws-a", "ws-c"]);
-    expect(result).toEqual({ seeded: 2, skipped: 0, failed: 1 });
+    expect(result).toEqual({ seeded: 2, skipped: 0, failed: 1, venturesBackfilled: 0 });
     expect(deps.log.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("backfills the founding venture only for workspaces activated before #221 had one (#226)", async () => {
+    // ws-a was activated pre-#221 (its `backfillVenture` reports it stood one up); ws-b was merely
+    // auto-seeded and never activated (reports created:false → keeps its genuine first-run empty desk).
+    const backfilled: string[] = [];
+    const { deps } = makeDeps({
+      backfillVenture: async ({ workspaceId }) => {
+        const created = workspaceId === "ws-a";
+        if (created) backfilled.push(workspaceId);
+        return { created };
+      },
+    });
+    const result = await runMarketingBackfill(deps);
+    expect(backfilled).toEqual(["ws-a"]);
+    expect(result).toEqual({ seeded: 2, skipped: 0, failed: 0, venturesBackfilled: 1 });
   });
 });

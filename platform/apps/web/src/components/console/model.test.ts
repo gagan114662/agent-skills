@@ -137,6 +137,21 @@ describe("buildConsole — standup projects", () => {
     expect(model.projects.map((p) => p.name)).toEqual(["seo"]);
   });
 
+  it("renders every department channel as a lane when activated, even with zero work (#226)", () => {
+    // An activated workspace (≥1 venture) must show its departments even before the first session spawns —
+    // created-but-paused — so the console never collapses to an empty desk. Shared/DM rooms stay quiet.
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [],
+      shipped: [],
+      channels,
+      directory,
+      activated: true,
+    });
+    expect(model.projects.map((p) => p.name).sort()).toEqual(["email", "seo"]);
+    expect(model.projects.every((p) => p.items.length === 0)).toBe(true);
+  });
+
   it("never drops an item on a non-public/unknown channel — it lands in the trailing 'other' lane", () => {
     const model = buildConsole({
       liveSessions: [
