@@ -33,6 +33,9 @@ import { getWorkspaceOwnerContact } from "../db/repositories/reliability.js";
 import { selectPagerTransport } from "../reliability/pager/transport.js";
 import { dbDeliveryStore } from "../db/repositories/founder-briefings.js";
 import { buildAcquisitionBriefSection } from "../acquisition/default.js";
+import { dbReleaseStore } from "../db/repositories/venture-deploy.js";
+import { resolveVentureDeployCaps } from "../venture-deploy/caps.js";
+import { summarizeReleasesForBrief } from "../venture-deploy/brief.js";
 import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
 
@@ -351,6 +354,16 @@ export function createDefaultFounderBriefingsService(deps: {
           approvalsRubberStamped,
           ownerOverrides,
         };
+      },
+    },
+    // #195 venture deploys (AC4): summarize the window's release receipts. Returns null when the feature
+    // is off or no release happened, so the brief is unchanged when idle.
+    ventureDeploys: {
+      section: async (workspaceId) => {
+        if (!resolveVentureDeployCaps(loadConfig(workspaceId).ventureDeploys).enabled) return null;
+        const receipts = await dbReleaseStore.listRecentForWorkspace(workspaceId, 50);
+        if (receipts.length === 0) return null;
+        return summarizeReleasesForBrief(receipts);
       },
     },
     now: deps.now,

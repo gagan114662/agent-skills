@@ -6,6 +6,7 @@ import {
   BuildLoopEngine,
   type BuildLauncher,
   type Escalator,
+  type PostMergeVerifier,
   type RepoHost,
   type Reviewer,
 } from "./engine.js";
@@ -123,10 +124,16 @@ const escalator: Escalator = {
   },
 };
 
-/** Build the production BuildLoopEngine. The background timer is started in `index.ts`. */
+/**
+ * Build the production BuildLoopEngine. The background timer is started in `index.ts`. An optional
+ * post-merge `verifier` (#195) lets a merged VENTURE run go through the deploy → smoke → promote/rollback
+ * release pipeline; for agent-skills' own self-shipping the verifier is a no-op (it resolves no venture),
+ * so attaching it is byte-for-byte safe.
+ */
 export function createDefaultBuildLoopEngine(
   logger: SessionLogger,
   sessionManager: SessionManager,
+  verifier?: PostMergeVerifier,
 ): BuildLoopEngine {
   return new BuildLoopEngine({
     runs: buildLoopRunStore,
@@ -135,6 +142,7 @@ export function createDefaultBuildLoopEngine(
     launcher: buildLauncherFrom(sessionManager),
     reviewer: rubricReviewer(),
     escalator,
+    verifier,
     caps: (workspaceId) => resolveBuildLoopCaps(loadConfig(workspaceId).buildLoop),
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     budgetExhausted: async (workspaceId, now) =>

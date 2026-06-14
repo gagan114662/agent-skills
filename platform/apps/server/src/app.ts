@@ -170,6 +170,11 @@ import type { VentureMemoryService } from "./venture-memory/service.js";
 import { ventureMemoryRoutes } from "./routes/venture-memory.js";
 import { buildLoopRoutes } from "./routes/build-loop.js";
 import { createDefaultBuildLoopEngine } from "./build-loop/default.js";
+import {
+  createDefaultVentureDeployProvisioner,
+  createDefaultVentureReleasePipeline,
+} from "./venture-deploy/default.js";
+import { releasePipelineAsPostMergeVerifier } from "./venture-deploy/release.js";
 import type { BuildLoopEngine } from "./build-loop/engine.js";
 import { automationRoutes } from "./routes/automations.js";
 import { createDefaultAutomationEngine } from "./automations/default.js";
@@ -713,7 +718,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Record issues + read runs are always available; every auto action is gated by the config flag +
   // the #17 kill switch, and out-of-guardrail steps escalate via the #13 queue. Default-OFF; the repo
   // host defaults to a no-op (no GitHub) so CI never ships. The timer is started in index.ts.
-  const buildLoopEngine = opts.buildLoop ?? createDefaultBuildLoopEngine(app.log, sessionManager);
+  // #195 venture deploys: a merged VENTURE run goes through the deploy → smoke → promote/rollback release
+  // pipeline as the build loop's post-merge verifier. The flywheel recorder is lazy (the engine is created
+  // below). For agent-skills' OWN self-shipping the verifier resolves no venture, so it is a byte-for-byte
+  // no-op — wiring venture repos through the loop (the `resolveVenture` registry) is a follow-up seam.
+  const ventureReleaseVerifier = releasePipelineAsPostMergeVerifier(
+    createDefaultVentureReleasePipeline({ flywheelRecord: (event) => app.flywheelEngine.record(event) }),
+    () => null,
+  );
+  const buildLoopEngine =
+    opts.buildLoop ?? createDefaultBuildLoopEngine(app.log, sessionManager, ventureReleaseVerifier);
   app.register(buildLoopRoutes, { engine: buildLoopEngine });
   app.addHook("onClose", async () => {
     buildLoopEngine.stop();
@@ -953,7 +967,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // kill/scale pipeline. Config default-OFF (`ventureFactory.enabled`) + the scanner timer is opt-in
   // (VENTURE_FACTORY_INTERVAL_MS, started in index.ts), so wiring it changes nothing until a deployment
   // opts in. The real #138 fleet seed / #98 profitability / #107 archiver injections are a follow-up.
-  const ventureFactoryEngine = createDefaultVentureFactoryEngine(app.log);
+  // #195 inject the deploy-target provisioner so the factory's reversible `repo_deploy_target` bootstrap
+  // step provisions a per-venture Fly/Vercel target (idempotent, budget-capped). Default-OFF via config.
+  const ventureFactoryEngine = createDefaultVentureFactoryEngine(app.log, {
+    deploy: createDefaultVentureDeployProvisioner(),
+  });
   app.addHook("onClose", async () => {
     ventureFactoryEngine.stop();
   });

@@ -1,5 +1,6 @@
 import { budgetExceeded } from "../scale/usage.js";
 import type { AcquisitionBriefView } from "../acquisition/cac.js";
+import type { VentureDeployBriefView } from "../venture-deploy/brief.js";
 
 /**
  * Founder Briefings roll-up (#173, ADR-0173). **Pure**: given the read-structs gathered from every
@@ -208,6 +209,11 @@ export interface DailyBriefInput {
    * before, so existing composer tests and today's behavior are unchanged.
    */
   acquisition?: AcquisitionBriefView;
+  /**
+   * Venture deploy receipts (#195, AC4): prod promotes / auto-rollbacks / releases needing the owner for
+   * the window. OPTIONAL — undefined (the default, venture-deploys flag off) renders the brief unchanged.
+   */
+  ventureDeploys?: VentureDeployBriefView;
   /** Self-healing ops incidents (#193) — the overnight incident summary. */
   incidents: IncidentSummary;
   /** Hard word budget for the rendered brief (default 200 at the caps layer). */
@@ -234,6 +240,8 @@ export interface DailyBrief {
   constitution: ConstitutionSummary;
   /** The acquisition section (#189) when provided, else null. */
   acquisition: AcquisitionBriefView | null;
+  /** The venture-deploy section (#195) when provided, else null. */
+  ventureDeploys: VentureDeployBriefView | null;
   /** The self-healing ops incident summary (#193). */
   incidents: IncidentSummary;
   /** The brand-voice brief, guaranteed `wordCount <= maxWords`. */
@@ -341,6 +349,16 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
     }
   }
 
+  // #195 venture deploys (AC4): prod promotes + auto-rollbacks + releases needing the owner. Rendered only
+  // when the section is present (venture-deploys on) and a release actually happened in the window.
+  const vd = input.ventureDeploys ?? null;
+  if (vd && vd.total > 0) {
+    const tail = vd.needsOwner > 0 ? `, ${pluralize(vd.needsOwner, "need your call")}` : "";
+    parts.push(
+      `Venture deploys: ${vd.promoted} promoted, ${pluralize(vd.rolledBack, "rolled back")}${tail}.`,
+    );
+  }
+
   const { text, wordCount: wc } = clampWords(parts, input.maxWords);
 
   return {
@@ -352,6 +370,7 @@ export function composeDailyBrief(input: DailyBriefInput): DailyBrief {
     spend,
     constitution: input.constitution,
     acquisition: acq,
+    ventureDeploys: vd,
     incidents: input.incidents,
     text,
     wordCount: wc,

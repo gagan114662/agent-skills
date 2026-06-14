@@ -94,6 +94,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #187 venture-factory policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's factory flag / budget caps / scaling gate cannot be loosened by a lower layer.
     if (layer.ventureFactory !== undefined) out.ventureFactory = { ...layer.ventureFactory };
+    // #195 venture-deploys policy: a higher layer fully owns the block (replace) so a managed-layer
+    // tenant's deploy flag / provider / cutover-gate cannot be loosened by a lower layer.
+    if (layer.ventureDeploys !== undefined) out.ventureDeploys = { ...layer.ventureDeploys };
     // #151 credential-scopes policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's per-agent allowlist matrix cannot be widened (e.g. scoping turned off) by a lower layer.
     if (layer.credentialScopes !== undefined) out.credentialScopes = { ...layer.credentialScopes };
@@ -190,6 +193,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
     ventureMemory: merged.ventureMemory ?? { ...CONFIG_DEFAULTS.ventureMemory },
     ventureFactory: merged.ventureFactory ?? { ...CONFIG_DEFAULTS.ventureFactory },
+    ventureDeploys: merged.ventureDeploys ?? { ...CONFIG_DEFAULTS.ventureDeploys },
     credentialScopes: merged.credentialScopes ?? { ...CONFIG_DEFAULTS.credentialScopes },
     egress: merged.egress ?? { ...CONFIG_DEFAULTS.egress },
     rbac: merged.rbac ?? { ...CONFIG_DEFAULTS.rbac },

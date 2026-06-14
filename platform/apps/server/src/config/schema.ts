@@ -652,6 +652,32 @@ export const ventureFactorySchema = z.object({
 });
 
 /**
+ * Venture Deploys policy (#195, ADR-0195): the fleet provisions a per-venture deploy target at bootstrap
+ * and runs the review→CI→merge→deploy→post-deploy-smoke release pipeline on the venture repo, auto-rolling
+ * back a broken image. **Default OFF** (`enabled: false`) and **owner-workspace first**. The release gate
+ * is production-grounded (a real deploy + smoke is the only path to a customer-facing promote, #200 §3);
+ * the prod cutover is gated/pre-committed and the auto-rollback is the pre-committed safety action (#200 §4).
+ */
+export const ventureDeploysSchema = z.object({
+  /** The feature flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** When true (default), provisioning + releases run only in the owner's own workspace. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The infra backend: `dryrun` (no spend, default) | `fly` | `vercel`. */
+  provider: z.enum(["dryrun", "fly", "vercel"]).optional(),
+  /** Hard per-venture cap (cents) on one-time provisioning spend (charged against the tenant ceiling). */
+  infraSetupCapCents: z.number().int().nonnegative().optional(),
+  /** Roll back a broken image without a human — the pre-committed safety action (default ON, #195 AC3). */
+  autoRollbackOnSmokeFail: z.boolean().optional(),
+  /** Gate the prod cutover behind a #13 approval (default ON — the irreversible-ish customer cutover). */
+  requireApprovalForProdPromote: z.boolean().optional(),
+  /** Owner pre-committed autonomous prod cutovers once smoke is green (default OFF, #200 §4). */
+  preCommitProdPromote: z.boolean().optional(),
+  /** File a #193 self-healing incident when a release fails / rolls back (default ON). */
+  fileIncidentOnFailure: z.boolean().optional(),
+});
+
+/**
  * Per-agent scoped credentials policy (#151, ADR-0151). All **non-secret** — only secret KEY NAMES
  * grouped by purpose; the secret VALUES stay on the #25 `SecretsResolver`/`AGENT_SECRETS` path. Every
  * field is optional and defaults to **off** (`enabled: false`) so a deployment that sets nothing keeps
@@ -1050,6 +1076,8 @@ export const settingsSchema = z.object({
   ventureMemory: ventureMemorySchema.optional(),
   /** Venture Factory policy (#187): opportunity scanner → validation → bootstrap pipeline (default OFF). */
   ventureFactory: ventureFactorySchema.optional(),
+  /** Venture Deploys policy (#195): per-venture provisioning + release pipeline (default OFF). */
+  ventureDeploys: ventureDeploysSchema.optional(),
   /** Per-agent scoped credentials policy (#151): the allowlist matrix (key NAMES only, default OFF). */
   credentialScopes: credentialScopesSchema.optional(),
   /** Egress domain allowlist policy (#151) for cloud agent sessions (default OFF). */
@@ -1120,6 +1148,7 @@ export type PortfolioConfig = z.infer<typeof portfolioSchema>;
 export type PlanningConfig = z.infer<typeof planningSchema>;
 export type VentureMemoryConfig = z.infer<typeof ventureMemorySchema>;
 export type VentureFactoryConfig = z.infer<typeof ventureFactorySchema>;
+export type VentureDeploysConfig = z.infer<typeof ventureDeploysSchema>;
 export type CredentialScopesConfig = z.infer<typeof credentialScopesSchema>;
 export type EgressConfig = z.infer<typeof egressSchema>;
 export type RbacConfig = z.infer<typeof rbacSchema>;
@@ -1211,6 +1240,8 @@ export interface ResolvedConfig {
   ventureMemory: VentureMemoryConfig;
   /** Venture Factory policy (#187). A partial whose defaults `resolveVentureFactoryCaps` fills. */
   ventureFactory: VentureFactoryConfig;
+  /** Venture Deploys policy (#195). A partial whose defaults `resolveVentureDeployCaps` fills. */
+  ventureDeploys: VentureDeploysConfig;
   /** Per-agent scoped credentials policy (#151). A partial whose defaults `resolveCredentialMatrix` fills. */
   credentialScopes: CredentialScopesConfig;
   /** Egress domain allowlist policy (#151). A partial whose defaults `resolveEgressPolicy` fills. */
@@ -1281,6 +1312,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   planning: {},
   ventureMemory: {},
   ventureFactory: {},
+  ventureDeploys: {},
   credentialScopes: {},
   egress: {},
   rbac: {},
