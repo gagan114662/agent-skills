@@ -150,6 +150,9 @@ import type { MonetizationService } from "./monetization/service.js";
 import type { MonetizationEngine } from "./monetization/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
+import { decisionMakerRoutes } from "./routes/decision-maker.js";
+import { createDefaultDecisionMakerService } from "./decision-maker/default.js";
+import type { DecisionMakerService } from "./decision-maker/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
 import { createDefaultSemanticLayerService } from "./semantic/default.js";
 import type { SemanticLayerService } from "./semantic/service.js";
@@ -361,6 +364,8 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #223 decision-maker resolver: tests inject a service over fakes; default builds the real one. */
+  decisionMaker?: DecisionMakerService;
   /** #107 portfolio lifecycle loop: tests inject a service over fakes; default reads the live moat/
    * growth/demand/billing surfaces. */
   portfolio?: PortfolioService;
@@ -700,6 +705,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // until the workspace opts into acquisition email; the webhook secret lives in the #192 vault).
   app.register(acquisitionRoutes);
   app.register(growthRoutes, { service: growthService });
+  // #223 decision-maker resolver: target account (#222) -> the right buyer + a buyer brief (who, a
+  // falsifiable why, what they care about, cited angle hooks). Enrichment runs in a QUARANTINED reader
+  // with no send/spend capability; a poisoned profile can never steer an action (#200). Default-OFF (the
+  // flag gates only the live web-reading posture; producing a brief from already-fetched public text is
+  // harmless and always available, mirroring #102's always-on event ingest).
+  const decisionMakerService = opts.decisionMaker ?? createDefaultDecisionMakerService();
+  app.register(decisionMakerRoutes, { service: decisionMakerService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build

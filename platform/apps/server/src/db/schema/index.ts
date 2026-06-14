@@ -58,3 +58,4 @@ export * from "./finance.js";
 export * from "./venture-factory.js";
 export * from "./monetization.js";
 export * from "./venturedeploy.js";
+export * from "./decision-maker.js";

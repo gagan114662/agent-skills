@@ -443,6 +443,20 @@ export const growthSchema = z.object({
 });
 
 /**
+ * Decision-maker resolver policy (#223, ADR-0223). All **non-secret** knobs for the resolver that turns a
+ * target account (#222) into a buyer brief. Default **off** (`enabled: false`): the flag gates the
+ * proactive, LIVE web-reading posture (the quarantined #174 browser fetching public profiles) — producing
+ * a brief from public text the discovery layer already fetched is harmless and always available.
+ * `maxHooks` narrows the video's "2–3 angle hooks" (clamped into `[1, 3]` by `resolveDecisionMakerCaps`).
+ */
+export const decisionMakerSchema = z.object({
+  /** The proactive/live-reading flag — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Max angle hooks per brief (clamped to `[1, 3]`). */
+  maxHooks: z.number().int().positive().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1058,6 +1072,8 @@ export const settingsSchema = z.object({
   verification: verificationSchema.optional(),
   /** Growth-loop policy (#102): distribution instrumentation + funnel scoring (default OFF). */
   growth: growthSchema.optional(),
+  /** Decision-maker resolver policy (#223): account -> buyer brief, quarantined enrichment (default OFF). */
+  decisionMaker: decisionMakerSchema.optional(),
   /** Insight Miner policy (#100): the evidence-mining loop feeding the #96 SOURCE stage (default OFF). */
   insight: insightSchema.optional(),
   /** Moat-accrual policy (#103): moat scoring weights + stagnation-flagging window (default OFF). */
@@ -1139,6 +1155,7 @@ export type MarketingConfig = z.infer<typeof marketingSchema>;
 export type VerifierConfig = z.infer<typeof verifiersSchema>;
 export type VerificationConfig = z.infer<typeof verificationSchema>;
 export type GrowthConfig = z.infer<typeof growthSchema>;
+export type DecisionMakerConfig = z.infer<typeof decisionMakerSchema>;
 export type InsightConfig = z.infer<typeof insightSchema>;
 export type MoatConfig = z.infer<typeof moatSchema>;
 export type VoiceConfig = z.infer<typeof voiceSchema>;
@@ -1222,6 +1239,8 @@ export interface ResolvedConfig {
   verification: VerificationConfig;
   /** Growth-loop policy (#102). A partial whose hard defaults `resolveGrowthCaps` fills. */
   growth: GrowthConfig;
+  /** Decision-maker resolver policy (#223). A partial whose hard defaults `resolveDecisionMakerCaps` fills. */
+  decisionMaker: DecisionMakerConfig;
   /** Insight Miner policy (#100). A partial whose hard defaults `resolveInsightCaps` fills. */
   insight: InsightConfig;
   /** Moat-accrual policy (#103). A partial whose hard defaults `resolveMoatCaps` fills. */
@@ -1303,6 +1322,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   verifiers: {},
   verification: {},
   growth: {},
+  decisionMaker: {},
   insight: {},
   moat: {},
   voice: {},
