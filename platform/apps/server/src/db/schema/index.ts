@@ -50,3 +50,4 @@ export * from "./slack.js";
 export * from "./founder-briefings.js";
 export * from "./browser-steps.js";
 export * from "./onboarding.js";
+export * from "./venture-memory.js";

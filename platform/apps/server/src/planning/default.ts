@@ -6,6 +6,7 @@ import { PlanningService, type SpecApprovalQueue, type SpecDispatcher } from "./
 import { autonomyLauncherFrom } from "../autonomy/default.js";
 import { ventureGatedLauncher } from "../venture/admission.js";
 import { createVentureAdmission } from "../venture/default.js";
+import { createDefaultVentureMemoryService } from "../venture-memory/default.js";
 import {
   insertBacklogItem,
   getBacklogItem,
@@ -48,6 +49,13 @@ async function autoDispatchAllowed(workspaceId: string): Promise<boolean> {
   return !evaluatePolicy({ actionType: PLANNING_DISPATCH_ACTION }, [rule]).requiresApproval;
 }
 
+/**
+ * The #197 venture-memory service, used here ONLY to retrieve a venture's brief (memory + OKR drift) and
+ * prepend it to a build session's task — the AC1 "retrieved into every new session's context" seam. A
+ * brand-new venture returns "" (no injection). Construction is cheap (seams only; no timer started).
+ */
+const ventureMemoryForBrief = createDefaultVentureMemoryService();
+
 /** The #92 launcher (venture-gated #96), adapted to launch a build agent into the item's target. */
 function specDispatcherFrom(sessionManager: SessionManager): SpecDispatcher {
   const launcher = ventureGatedLauncher(autonomyLauncherFrom(sessionManager), createVentureAdmission());
@@ -58,12 +66,23 @@ function specDispatcherFrom(sessionManager: SessionManager): SpecDispatcher {
         // stays #13-gated). Fail loud: the dispatch decision should never route such an item to auto.
         throw new Error("planning: cannot auto-dispatch a backlog item with no target channel/agent");
       }
+      let task = `Implement the spec "${spec.title}" (backlog item ${item.id}).\n\n${spec.body}`;
+      // #197 AC1: a venture build session starts with the venture's durable memory + OKR drift, so the
+      // session is not a goldfish. Best-effort — a memory failure never blocks the dispatch.
+      if (item.ideaId) {
+        try {
+          const brief = await ventureMemoryForBrief.sessionBrief(workspaceId, item.ideaId);
+          if (brief) task = `${brief}\n\n---\n\n${task}`;
+        } catch {
+          // memory retrieval is non-critical; dispatch proceeds without the brief
+        }
+      }
       return launcher.launch({
         workspaceId,
         channelId: item.targetChannelId,
         agentMemberId: item.targetAgentMemberId,
         createdByMemberId: item.targetAgentMemberId,
-        task: `Implement the spec "${spec.title}" (backlog item ${item.id}).\n\n${spec.body}`,
+        task,
         harnessEnv: { AGENT_PLANNING_DISPATCH: "1" },
       });
     },

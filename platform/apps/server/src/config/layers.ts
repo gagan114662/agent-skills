@@ -82,6 +82,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #115 planning policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // planning flag / effort ceiling / dispatch caps cannot be loosened by a lower layer.
     if (layer.planning !== undefined) out.planning = { ...layer.planning };
+    // #197 venture-memory/planning policy: a higher layer fully owns the block (replace) so a
+    // managed-layer tenant's weekly-tick flag / plan caps cannot be loosened by a lower layer.
+    if (layer.ventureMemory !== undefined) out.ventureMemory = { ...layer.ventureMemory };
     // #151 credential-scopes policy: a higher layer fully owns the block (replace) so a managed-layer
     // tenant's per-agent allowlist matrix cannot be widened (e.g. scoping turned off) by a lower layer.
     if (layer.credentialScopes !== undefined) out.credentialScopes = { ...layer.credentialScopes };
@@ -164,6 +167,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     supportDesk: merged.supportDesk ?? { ...CONFIG_DEFAULTS.supportDesk },
     portfolio: merged.portfolio ?? { ...CONFIG_DEFAULTS.portfolio },
     planning: merged.planning ?? { ...CONFIG_DEFAULTS.planning },
+    ventureMemory: merged.ventureMemory ?? { ...CONFIG_DEFAULTS.ventureMemory },
     credentialScopes: merged.credentialScopes ?? { ...CONFIG_DEFAULTS.credentialScopes },
     egress: merged.egress ?? { ...CONFIG_DEFAULTS.egress },
     rbac: merged.rbac ?? { ...CONFIG_DEFAULTS.rbac },

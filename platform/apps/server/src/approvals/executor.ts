@@ -5,6 +5,13 @@
  */
 import type { FastifyBaseLogger } from "fastify";
 
+/**
+ * Thrown by an executor when the action can't run; the route / `executeApprovedRequest` records the
+ * request as `failed` (with this message). Lives in the pure module (no DB) so concrete executors in
+ * any feature area can throw it without importing `runtime.ts` (avoiding an import cycle).
+ */
+export class ActionExecutionError extends Error {}
+
 /** What an executor needs to run an approved action: the workspace + the member it runs *as*. */
 export interface ExecutorContext {
   workspaceId: string;

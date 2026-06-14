@@ -14,6 +14,7 @@ import { publishMessageEvent } from "../realtime/bus.js";
 import { loadConfig } from "../config/loader.js";
 import { decideEgress, resolveEgressPolicy } from "../runtime/egress-allowlist.js";
 import {
+  ActionExecutionError,
   buildRegistry,
   validateBillingRefund,
   validateBrowserAction,
@@ -23,9 +24,10 @@ import {
   type ExecutorContext,
   type ExecutorRegistry,
 } from "./executor.js";
+import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 
-/** Thrown by an executor when the action can't run; the route records the request as `failed`. */
-export class ActionExecutionError extends Error {}
+/** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
+export { ActionExecutionError };
 
 /**
  * Egress enforcement seam (#151, ADR-0151). The #13 gate already decides *whether* an outbound action
@@ -180,7 +182,13 @@ const browserAction: ActionExecutor = {
 
 /** Build the executor registry with an injectable egress enforcer (tests pass a fake; #151). */
 export function buildDefaultRegistry(egress: EgressEnforcer = defaultEgressEnforcer): ExecutorRegistry {
-  return buildRegistry([chatPostMessage, makeExternalSend(egress), billingRefund, browserAction]);
+  return buildRegistry([
+    chatPostMessage,
+    makeExternalSend(egress),
+    billingRefund,
+    browserAction,
+    ventureWeeklyPlanExecutor,
+  ]);
 }
 
 /** The executors wired for this deployment (ADR-0013 §2, #98, #151). */
