@@ -32,6 +32,7 @@ import type {
   WorkflowInsightsDto,
   Channel,
   CredentialStatus,
+  DepartmentSeedResult,
   EffortLevel,
   FounderConsoleDto,
   DailyBriefDto,
@@ -629,6 +630,19 @@ export const api = {
   /** The append-only audit trail (who/what/when/gated-by), newest first. */
   getAudit(workspaceId: string): Promise<AuditEventDto[]> {
     return request<AuditEventDto[]>(`/workspaces/${workspaceId}/audit`);
+  },
+  // --- founding-team department fleet (#123/#138) — the first-run activation seam ---
+  department: {
+    /**
+     * Stand up the founding team for a workspace: seven department channels, each with a named lead
+     * (idempotent, human-auth). With `welcomeTasks`, each lead launches its first real welcome session —
+     * so a dead first-run board lights up with running work. The same seam #187's bootstrap reuses.
+     */
+    seed(workspaceId: string, opts: { welcomeTasks?: boolean } = {}): Promise<DepartmentSeedResult> {
+      return post(`/workspaces/${workspaceId}/department/seed`, {
+        welcomeTasks: opts.welcomeTasks ?? false,
+      }) as Promise<DepartmentSeedResult>;
+    },
   },
   missionControl: {
     get(workspaceId: string): Promise<MissionControlDto> {

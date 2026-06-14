@@ -589,3 +589,10 @@ export interface SiteDocMeta {
 export interface SiteDocDetail extends SiteDocMeta {
   blocks: SiteBlock[];
 }
+
+/** The result of seeding a workspace's founding-team department fleet (#123/#138 — the first-run seam). */
+export interface DepartmentSeedResult {
+  channels: Array<{ id: string; name: string }>;
+  agents: Array<{ id: string; agentMemberId: string; handle: string; department: string }>;
+  welcomeTasks: Array<{ id: string }>;
+}
