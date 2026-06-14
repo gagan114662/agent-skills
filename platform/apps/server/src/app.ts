@@ -159,6 +159,9 @@ import type { DecisionMakerService } from "./decision-maker/service.js";
 import { discoveryRoutes } from "./routes/discovery.js";
 import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
+import { outreachRoutes } from "./routes/outreach.js";
+import { createDefaultOutreachService } from "./outreach/default.js";
+import type { OutreachService } from "./outreach/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
 import { createDefaultSemanticLayerService } from "./semantic/default.js";
 import type { SemanticLayerService } from "./semantic/service.js";
@@ -379,6 +382,8 @@ export interface BuildAppOptions {
   growth?: GrowthService;
   /** #223 decision-maker resolver: tests inject a service over fakes; default builds the real one. */
   decisionMaker?: DecisionMakerService;
+  /** #225 outreach engine: tests inject a service over fakes; default builds the real repo-backed one. */
+  outreach?: OutreachService;
   /** #107 portfolio lifecycle loop: tests inject a service over fakes; default reads the live moat/
    * growth/demand/billing surfaces. */
   portfolio?: PortfolioService;
@@ -636,6 +641,20 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // event-driven counts. Built before the console so the console can read the pipeline pane.
   const discoveryService =
     opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
+  // #223 decision-maker resolver — built here (before the console) so the #225 outreach engine can consume
+  // its buyer briefs and the console can surface the outreach pane. Enrichment stays in a QUARANTINED
+  // reader with no send/spend capability (#200).
+  const decisionMakerService = opts.decisionMaker ?? createDefaultDecisionMakerService();
+  // #225 outreach engine: consume the #222 discovery queue + #223 buyer brief to compose problem-led,
+  // channel-specific messages, PARK each one for one-tap owner approval (never auto-sent — premortem #200),
+  // and conclude message experiments from EXTERNAL receipts only. The injection-quarantine wall holds: the
+  // brief is read as sanitized DATA and the recipient is always structural. Default-OFF (recorded-only).
+  const outreachService =
+    opts.outreach ??
+    createDefaultOutreachService({
+      discovery: discoveryService,
+      decisionMaker: decisionMakerService,
+    });
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -662,6 +681,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       voice: voiceService,
       supportDesk: supportDeskService,
       discovery: discoveryService,
+      outreach: outreachService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
@@ -731,12 +751,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // falsifiable why, what they care about, cited angle hooks). Enrichment runs in a QUARANTINED reader
   // with no send/spend capability; a poisoned profile can never steer an action (#200). Default-OFF (the
   // flag gates only the live web-reading posture; producing a brief from already-fetched public text is
-  // harmless and always available, mirroring #102's always-on event ingest).
-  const decisionMakerService = opts.decisionMaker ?? createDefaultDecisionMakerService();
+  // harmless and always available, mirroring #102's always-on event ingest). Built above the console.
   app.register(decisionMakerRoutes, { service: decisionMakerService });
   // #222 customer discovery engine: define owner signals, ingest real product/channel receipts, and read
   // the ranked prospect queue / PQL events / GTM pipeline. Always-live ingest + reads (READ-ONLY surface).
   app.register(discoveryRoutes, { service: discoveryService });
+  // #225 outreach engine: preview drafts, PARK a message for one-tap owner approval (never auto-sent),
+  // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send
+  // endpoint exists — the send happens only after the owner approves, via the recorded-only executor.
+  app.register(outreachRoutes, { service: outreachService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build

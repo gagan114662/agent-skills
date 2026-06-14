@@ -85,6 +85,18 @@ export const VENTURE_DEPLOY_ACTION = "venture.deploy" as const;
 export const REALWORLD_PUBLISH_ACTION = "realworld.publish" as const;
 
 /**
+ * #225 the outreach engine SEND — composing a message is free, but pushing it to a real prospect on a
+ * real channel (email/LinkedIn/X) is an outward, IRREVERSIBLE brand surface (premortem #200: a sent
+ * message cannot be unsent; deliverability + brand are at stake). It is sensitive by default AND
+ * irreversible, so it ALWAYS pauses for the owner with the exact recipient + content shown, and is never
+ * agent-initiated. Like `realworld.publish` it is never submitted through the #13 action route; the
+ * outreach service evaluates it against the same workspace `approval_policies` and parks a PENDING request
+ * the message ages in. The executor is recorded-only (it records the owner's approved send) — a real ESP/
+ * social adapter behind this gate is a deliberate future ADR, never an autonomous call.
+ */
+export const OUTREACH_SEND_ACTION = "outreach.send" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
@@ -128,6 +140,9 @@ export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
   VENTURE_DEPLOY_ACTION,
   // #231 publishing a page to a live public URL is an outward brand surface — gated by default. ADR-0231.
   REALWORLD_PUBLISH_ACTION,
+  // #225 an outreach send (email/LinkedIn/X to a real prospect) is irreversible (deliverability/brand) —
+  // always human-gated, never agent-initiated. ADR-0225.
+  OUTREACH_SEND_ACTION,
   // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
   // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",
@@ -162,6 +177,7 @@ export const IRREVERSIBLE_ACTIONS: readonly string[] = [
   VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
   PORTFOLIO_SUNSET_ACTION, // killing a launched venture cannot be undone (#107)
   DR_RESTORE_ACTION, // a destructive restore (#99)
+  OUTREACH_SEND_ACTION, // an outreach message sent to a real prospect — deliverability/brand (#225)
 ];
 
 /** True iff `actionType` is in the irreversible class (premortem #200 FM#4). Pure + total. */

@@ -25,7 +25,7 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
     );
   }
 
-  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline } = data;
+  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline, outreach } = data;
   const stageLabel = (stage: string): string =>
     stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const brief = attention.required
@@ -143,6 +143,39 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
                     <dd>{s.prospects}</dd>
                   </div>
                 ))}
+              </div>
+            </article>
+          </>
+        )}
+
+        {outreach && (
+          <>
+            <header className="board__colh">
+              <span className="board__colt">Outreach</span>
+              <span className="board__coln">{outreach.experimentsRunning} experiments</span>
+            </header>
+            <article className="card" style={{ ["--hue" as string]: "var(--dept-brand)" } as React.CSSProperties}>
+              <div className="reports__pl">
+                <div>
+                  <dt>Awaiting approval</dt>
+                  <dd>{outreach.messagesPendingApproval}</dd>
+                </div>
+                <div>
+                  <dt>Sent</dt>
+                  <dd>{outreach.messagesSent}</dd>
+                </div>
+                <div>
+                  <dt>Replies</dt>
+                  <dd>{outreach.replies}</dd>
+                </div>
+                <div>
+                  <dt>Meetings</dt>
+                  <dd>{outreach.meetings}</dd>
+                </div>
+                <div>
+                  <dt>Signups</dt>
+                  <dd>{outreach.signups}</dd>
+                </div>
               </div>
             </article>
           </>

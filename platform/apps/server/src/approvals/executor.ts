@@ -163,6 +163,19 @@ export function validateMonetizationActivatePrice(payload: unknown): ValidationR
 }
 
 /**
+ * Validate an outreach send (#225) — a recorded-only, IRREVERSIBLE send the owner gates. Needs a
+ * `messageId` (the parked `outreach_messages` row the approval flips to `sent`). The recipient + content
+ * live on the card via the summary/payload; the executor never resolves a raw address (no PII here) and
+ * never makes a network call (recorded-only), so CI/tests never reach out.
+ */
+export function validateOutreachSend(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.messageId)) return { ok: false, error: "messageId required" };
+  return { ok: true };
+}
+
+/**
  * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
  * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
  * change in the venture's own Stripe dashboard (no autonomous payout re-routing).
