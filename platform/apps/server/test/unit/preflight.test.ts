@@ -142,6 +142,63 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.ok).toBe(true); // a warn does not block
   });
 
+  it("claude-code asserts git is present (the harness + #51 worktree provisioner shell out to it) — #238", () => {
+    const report = preflight(
+      input({ runtime: "local", env: { ANTHROPIC_API_KEY: "sk" } }),
+      // every binary present EXCEPT git → the deploy must fail on the missing tool.
+      { binaryAvailable: (n) => n !== "git", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "git-binary");
+    expect(check?.status).toBe("fail");
+    expect(check?.message.toLowerCase()).toContain("git");
+    expect(report.ok).toBe(false);
+  });
+
+  it("the demo harness does NOT require git (it never shells out to it) — #238", () => {
+    const report = preflight(
+      input({ profile: "dev", runtime: "local", harness: "demo", env: {} }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => false },
+    );
+    expect(report.checks.find((c) => c.name === "git-binary")).toBeUndefined();
+    expect(report.ok).toBe(true);
+  });
+
+  it("a NON-writable per-session workspace root FAILS the deploy — the prod EACCES that died at exit n/a (#238)", () => {
+    const report = preflight(
+      input({ runtime: "local", harness: "demo", workspaceRoot: "/app/.reload/workspaces", env: {} }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true, dirWritable: () => false },
+    );
+    const check = report.checks.find((c) => c.name === "workspace-writable");
+    expect(check?.status).toBe("fail");
+    expect(check?.message).toContain("/app/.reload/workspaces");
+    expect(check?.remedy).toContain("RELOAD_WORKSPACE_ROOT");
+    expect(report.ok).toBe(false);
+  });
+
+  it("a writable workspace root passes; the check is skipped when no root is resolved — #238", () => {
+    const pass = preflight(
+      input({ runtime: "local", harness: "demo", workspaceRoot: "/home/reload/agent-workspaces", env: {} }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true, dirWritable: () => true },
+    );
+    expect(pass.checks.find((c) => c.name === "workspace-writable")?.status).toBe("pass");
+    expect(pass.ok).toBe(true);
+
+    const skipped = preflight(
+      input({ runtime: "local", harness: "demo", env: {} }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true, dirWritable: () => false },
+    );
+    expect(skipped.checks.find((c) => c.name === "workspace-writable")).toBeUndefined();
+    expect(skipped.ok).toBe(true);
+  });
+
+  it("the workspace-writable check is NOT applied to the sandbox runtime (provisioning is a microVM concern) — #238", () => {
+    const report = preflight(
+      input({ runtime: "sandbox", harness: "demo", workspaceRoot: "/app/.reload", env: { VERCEL_OIDC_TOKEN: "t" } }),
+      { binaryAvailable: () => true, moduleResolvable: () => true, dirWritable: () => false },
+    );
+    expect(report.checks.find((c) => c.name === "workspace-writable")).toBeUndefined();
+  });
+
   it("never returns a secret VALUE — only variable names + statuses", () => {
     const report = preflight(
       input({

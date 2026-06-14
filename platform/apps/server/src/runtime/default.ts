@@ -1,3 +1,4 @@
+import { isAbsolute, join } from "node:path";
 import { loadEnv } from "../env.js";
 import { loadConfig } from "../config/loader.js";
 import { FileConfigWorkspaceProvisioner, type WorkspaceProvisioner } from "../config/workspace.js";
@@ -34,6 +35,8 @@ import { createBraintrustTracer } from "../observability/braintrust.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { resolveBrowserCaps } from "./browser/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
+import { selfHealingStore } from "../db/repositories/self-healing.js";
+import { recordSpawnFailureIncident, resolveSpawnFailureIncident } from "../self-healing/spawn-incident.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -112,12 +115,18 @@ export function defaultPreflight(): PreflightReport {
   const env = loadEnv().agent;
   // #174: gate the Playwright/Chromium checks on the deployment-wide browser flag (server-level config).
   const browserEnabled = resolveBrowserCaps(loadConfig().browser).enabled;
+  // #238: resolve the per-session workspace root EXACTLY as the #58 FileConfigWorkspaceProvisioner does
+  // (absolute as-is, else against the server cwd) so the writability probe targets the real provision
+  // path — the EACCES that killed every prod session at provision is now a hard preflight failure.
+  const wsRoot = loadConfig().workspaceRoot;
+  const workspaceRoot = isAbsolute(wsRoot) ? wsRoot : join(process.cwd(), wsRoot);
   return preflight({
     profile: env.profile,
     runtime: env.runtime,
     harness: env.harness,
     env: process.env,
     browserEnabled,
+    workspaceRoot,
   });
 }
 
@@ -247,6 +256,30 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         channelId: e.channelId,
         agentMemberId: e.agentMemberId,
       });
+      // #238: a SPAWN cluster (exit n/a — a missing image tool / non-writable workspace root) ALSO
+      // opens a self-healing OPS incident (#193). The flywheel writes `failure_fingerprints`; the
+      // console's `selfHealingOps` pane reads `self_healing_remediations` — so without this the pane
+      // stayed 0 despite 21 real spawn failures. Best-effort: an incident hiccup never affects a session.
+      if (e.failureClass === "spawn") {
+        try {
+          await recordSpawnFailureIncident(selfHealingStore, {
+            workspaceId: e.workspaceId,
+            detail: `${e.message} · session ${e.status} · exit ${e.exitCode ?? "n/a"}`,
+            now: new Date(),
+          });
+        } catch (err: unknown) {
+          logger.error({ err }, "spawn-incident recording failed");
+        }
+      }
+    },
+    // #238: resolve the open agent-runtime spawn incident once a real session completes — the
+    // production-grounded proof the runtime recovered (the image was patched/redeployed).
+    onSessionRecovered: async (e) => {
+      try {
+        await resolveSpawnFailureIncident(selfHealingStore, e.workspaceId, new Date());
+      } catch (err: unknown) {
+        logger.error({ err }, "spawn-incident resolution failed");
+      }
     },
   });
   return manager;

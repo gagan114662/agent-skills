@@ -1,5 +1,9 @@
+import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { runDemoSmoke, DONE_MARKER } from "../../src/runtime/smoke-demo.js";
+import { FileConfigWorkspaceProvisioner, type WorkspaceProvisioner } from "../../src/config/workspace.js";
 import type { AgentRuntime, RunningSession, RuntimeResult, RuntimeHooks } from "../../src/runtime/types.js";
 
 /**
@@ -33,10 +37,16 @@ function fakeRuntime(opts: {
   };
 }
 
-describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
+/** A no-IO workspace provisioner returning a fixed cwd — keeps fake-runtime tests hermetic. */
+function fakeWorkspace(cwd: string): WorkspaceProvisioner {
+  return { prepare: () => Promise.resolve({ cwd }) };
+}
+
+describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke; #238 provisioning gate)", () => {
   it("passes when the session emits the done marker and exits 0", async () => {
     const res = await runDemoSmoke({
       runtime: fakeRuntime({ output: `working…\n${DONE_MARKER} 'x'\n`, result: { status: "completed", exitCode: 0 } }),
+      workspace: fakeWorkspace("/tmp"),
     });
     expect(res.ok).toBe(true);
     expect(res.exitCode).toBe(0);
@@ -46,6 +56,7 @@ describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
   it("FAILS on a spawn error (exitCode=null) — the missing-bash signature, and says so", async () => {
     const res = await runDemoSmoke({
       runtime: fakeRuntime({ output: "", result: { status: "failed", exitCode: null } }),
+      workspace: fakeWorkspace("/tmp"),
     });
     expect(res.ok).toBe(false);
     expect(res.exitCode).toBeNull();
@@ -53,7 +64,7 @@ describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
   });
 
   it("FAILS when runtime.start throws (no session at all)", async () => {
-    const res = await runDemoSmoke({ runtime: fakeRuntime({ throwOnStart: true }) });
+    const res = await runDemoSmoke({ runtime: fakeRuntime({ throwOnStart: true }), workspace: fakeWorkspace("/tmp") });
     expect(res.ok).toBe(false);
     expect(res.reason).toContain("runtime.start threw");
   });
@@ -61,6 +72,7 @@ describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
   it("FAILS when the process exits 0 but produced no real output (incomplete)", async () => {
     const res = await runDemoSmoke({
       runtime: fakeRuntime({ output: "", result: { status: "completed", exitCode: 0 } }),
+      workspace: fakeWorkspace("/tmp"),
     });
     expect(res.ok).toBe(false);
     expect(res.sawMarker).toBe(false);
@@ -70,6 +82,7 @@ describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
     const cancelled = { value: false };
     const res = await runDemoSmoke({
       runtime: fakeRuntime({ output: "", result: "hang", cancelled }),
+      workspace: fakeWorkspace("/tmp"),
       timeoutMs: 50,
     });
     expect(res.ok).toBe(false);
@@ -77,12 +90,34 @@ describe("runDemoSmoke (#166 — post-deploy demo-harness E2E smoke)", () => {
     expect(cancelled.value).toBe(true);
   });
 
-  it("REAL end-to-end: spawns the actual demo harness via bash and completes", async () => {
-    // Exercises the true spawn path the deploy gate protects — needs `bash` on the host (every dev/CI
-    // host has it). Default cwd resolves to apps/server so scripts/agent-harness-demo.sh is found.
-    const res = await runDemoSmoke({ task: "unit-test smoke", timeoutMs: 15_000 });
-    expect(res.ok).toBe(true);
-    expect(res.exitCode).toBe(0);
-    expect(res.sawMarker).toBe(true);
+  it("FAILS (never spawns) when workspace provisioning throws — the #238 EACCES root, with an actionable reason", async () => {
+    // The prod cause: the per-session mkdir under a root-owned workspace root throws EACCES BEFORE the
+    // harness spawns. The smoke must catch this and abort the deploy — not let users hit exit n/a.
+    const throwingWorkspace: WorkspaceProvisioner = {
+      prepare: () => Promise.reject(new Error("EACCES: permission denied, mkdir '/app/.reload/workspaces/smoke-demo'")),
+    };
+    const res = await runDemoSmoke({ runtime: fakeRuntime({ result: { status: "completed", exitCode: 0 } }), workspace: throwingWorkspace });
+    expect(res.ok).toBe(false);
+    expect(res.exitCode).toBeNull();
+    expect(res.reason.toLowerCase()).toContain("workspace provisioning failed");
+    expect(res.reason).toContain("RELOAD_WORKSPACE_ROOT");
+  });
+
+  it("REAL end-to-end: PROVISIONS a per-session workspace then spawns the actual demo harness via bash and completes", async () => {
+    // Exercises the true provision→spawn path the deploy gate protects: a real `mkdir <root>/<id>` under
+    // a writable root, then `bash <abs script>` run FROM that provisioned cwd. Needs `bash` (every CI
+    // host has it). A non-writable root would throw here, exactly like the prod EACCES.
+    const baseDir = mkdtempSync(join(tmpdir(), "smoke-ws-"));
+    try {
+      const workspace = new FileConfigWorkspaceProvisioner({ baseDir });
+      const res = await runDemoSmoke({ task: "unit-test smoke", timeoutMs: 15_000, workspace });
+      expect(res.ok).toBe(true);
+      expect(res.exitCode).toBe(0);
+      expect(res.sawMarker).toBe(true);
+      // The per-session workspace dir was really created under the (writable) root.
+      expect(existsSync(join(baseDir, ".reload", "workspaces", "smoke-demo"))).toBe(true);
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+    }
   });
 });

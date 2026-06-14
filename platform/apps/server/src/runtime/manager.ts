@@ -182,6 +182,14 @@ export interface SessionManagerDeps {
     /** Brand-voice headline (no raw output) — the fingerprint message. */
     message: string;
   }): Promise<void>;
+  /**
+   * Optional recovery sink (#238): called best-effort when a session COMPLETES cleanly — the
+   * production-grounded proof the runtime is healthy again. Wired in production to resolve an open
+   * agent-runtime spawn incident (#193) so a self-healing incident opened by a spawn cluster closes
+   * itself once real sessions succeed (e.g. after the image is patched/redeployed). Absent → no-op; a
+   * sink error never affects the already-finalized session.
+   */
+  onSessionRecovered?(event: { workspaceId: string; sessionId: string }): Promise<void>;
 }
 
 export interface LaunchInput {
@@ -685,6 +693,14 @@ export class SessionManager {
           })
           .catch((err: unknown) => log.error({ err }, "session failure routing failed"));
       }
+    }
+    // #238: a clean completion is the production-grounded proof the runtime recovered — resolve any open
+    // agent-runtime spawn incident (#193) so a self-healing incident opened by a spawn cluster closes
+    // itself once real sessions succeed again. Best-effort; never affects the finalized session.
+    if (this.deps.onSessionRecovered && isSuccess(result.status)) {
+      await this.deps
+        .onSessionRecovered({ workspaceId: session.workspaceId, sessionId: session.id })
+        .catch((err: unknown) => log.error({ err }, "session recovery routing failed"));
     }
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.

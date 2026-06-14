@@ -12,6 +12,13 @@ import { LocalRuntime } from "../../src/runtime/local.js";
 import { SessionManager, type SessionLogger } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { dbStore, channelPoster } from "../../src/runtime/default.js";
+import { listOpen as listOpenRemediations, selfHealingStore } from "../../src/db/repositories/self-healing.js";
+import {
+  recordSpawnFailureIncident,
+  resolveSpawnFailureIncident,
+  AGENT_RUNTIME_SURFACE_KEY,
+  SPAWN_INCIDENT_SIGNAL,
+} from "../../src/self-healing/spawn-incident.js";
 import type { ResourceCaps } from "../../src/db/repositories/agent-sessions.js";
 
 /** A no-op logger so the manager's internal logging doesn't spam the test output. */
@@ -49,6 +56,8 @@ async function startApp(
   harnessArgs: string[],
   caps: ResourceCaps,
   command: string = process.execPath, // process.execPath = node
+  /** #238: wire the real self-healing spawn-incident hooks (open on spawn failure, resolve on success). */
+  selfHeal = false,
 ): Promise<{
   app: FastifyInstance;
   http: string;
@@ -62,6 +71,22 @@ async function startApp(
     harness: { command, args: harnessArgs },
     caps,
     logger: silentLogger,
+    ...(selfHeal
+      ? {
+          onSessionFailure: async (e) => {
+            if (e.failureClass === "spawn") {
+              await recordSpawnFailureIncident(selfHealingStore, {
+                workspaceId: e.workspaceId,
+                detail: `${e.message} · exit ${e.exitCode ?? "n/a"}`,
+                now: new Date(),
+              });
+            }
+          },
+          onSessionRecovered: async (e) => {
+            await resolveSpawnFailureIncident(selfHealingStore, e.workspaceId, new Date());
+          },
+        }
+      : {}),
   });
   const app = buildApp({ sessionManager: manager });
   apps.push(app);
@@ -214,6 +239,60 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     expect(terminal!.toLowerCase()).toContain("spawn");
     // No green check anywhere in the thread for this run.
     expect(bodies.some((b) => b.includes("✅"))).toBe(false);
+  });
+
+  it("a spawn failure OPENS a self-healing ops incident, and a later success RESOLVES it (#238)", async () => {
+    // The #238 gap: 21 spawn failures, yet selfHealingOps read 0 — spawn clusters were never recorded as
+    // incidents. With the hooks wired, an un-spawnable harness must open ONE firing incident on the
+    // agent-runtime surface (the exact row `listOpen` feeds the founder-console pane from).
+    const { app: badApp } = await startApp(
+      [],
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      "definitely-not-a-real-binary-xyz",
+      true,
+    );
+    const w = await seed(badApp);
+
+    // No incident before anything runs.
+    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
+
+    const launch = await badApp.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "do the thing" },
+    });
+    await pollStatus(badApp, w, launch.json().id, (s) => s === "failed");
+
+    // The spawn cluster is now a tracked, deduped self-healing incident (what the console reads).
+    const open = await listOpenRemediations(w.workspaceId);
+    expect(open).toHaveLength(1);
+    expect(open[0]!.surfaceKey).toBe(AGENT_RUNTIME_SURFACE_KEY);
+    expect(open[0]!.signal).toBe(SPAWN_INCIDENT_SIGNAL);
+    expect(open[0]!.status).toBe("firing");
+
+    // A second spawn failure DEDUPS into the same incident (no second row).
+    const launch2 = await badApp.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "again" },
+    });
+    await pollStatus(badApp, w, launch2.json().id, (s) => s === "failed");
+    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(1);
+
+    // Now the runtime "recovers": a real session COMPLETES → the incident resolves itself. Run a
+    // completing harness against the SAME workspace's channel (reuse the cookie/channel/agent).
+    const { app: goodApp } = await startApp(COMPLETING_HARNESS, { wallClockMs: 20_000, idleMs: 8_000 }, process.execPath, true);
+    const launch3 = await goodApp.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "recovered work" },
+    });
+    await pollStatus(goodApp, w, launch3.json().id, (s) => s === "completed" || s === "failed");
+    // The open incident closed once a real session succeeded again (production-grounded recovery proof).
+    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
   });
 
   it("reaps an idle session to idle_reaped and enforces the cap", async () => {
