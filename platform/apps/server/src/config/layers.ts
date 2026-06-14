@@ -67,6 +67,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #102 growth policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // growth flag / traffic floor cannot be loosened by a lower layer.
     if (layer.growth !== undefined) out.growth = { ...layer.growth };
+    // #223 decision-maker policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
+    // live-web-reading flag / hook cap cannot be loosened (e.g. live reading turned on) by a lower layer.
+    if (layer.decisionMaker !== undefined) out.decisionMaker = { ...layer.decisionMaker };
     // #100 insight policy: a higher layer fully owns the block (replace) so a managed-layer tenant's
     // mining flag / cost cap / source cut cannot be loosened (e.g. mining turned off) by a lower layer.
     if (layer.insight !== undefined) out.insight = { ...layer.insight };
@@ -184,6 +187,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     verifiers: merged.verifiers ?? { ...CONFIG_DEFAULTS.verifiers },
     verification: merged.verification ?? { ...CONFIG_DEFAULTS.verification },
     growth: merged.growth ?? { ...CONFIG_DEFAULTS.growth },
+    decisionMaker: merged.decisionMaker ?? { ...CONFIG_DEFAULTS.decisionMaker },
     insight: merged.insight ?? { ...CONFIG_DEFAULTS.insight },
     moat: merged.moat ?? { ...CONFIG_DEFAULTS.moat },
     voice: merged.voice ?? { ...CONFIG_DEFAULTS.voice },
