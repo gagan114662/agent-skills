@@ -4625,6 +4625,36 @@ select:focus-visible {
   color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; animation: swell-pop 0.4s var(--pop-ease) both; }
 .board__clear b { color: var(--ink); }
 
+/* ---- first-run activation (empty console → first running project) ---- */
+.firstrun { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 12px; padding: 48px 24px; max-width: 520px; margin: 0 auto; animation: swell-pop 0.4s var(--pop-ease) both; }
+.firstrun__mark { --pop-size: 44px; border-width: 3px; }
+.firstrun__eyebrow { font-family: var(--console-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.firstrun__headline { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
+.firstrun__sub { margin: 0; max-width: 44ch; font-size: 14px; line-height: 1.55; color: var(--text-dim); }
+.firstrun__steps { list-style: none; margin: 10px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 12px; width: 100%; text-align: left; }
+.firstrun__step { display: flex; align-items: flex-start; gap: 12px; }
+.firstrun__num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg-2); color: var(--ink); font-family: var(--console-mono); font-size: 12px; font-weight: 700; }
+.firstrun__steptext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.firstrun__steptitle { font-size: 13.5px; font-weight: 700; }
+.firstrun__stepbody { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.firstrun__cta { margin-top: 8px; min-width: 220px; }
+.firstrun__err { margin: 0; font-size: 12px; color: var(--accent); }
+.firstrun__assembling { margin: 4px 0 0; max-width: 42ch; font-size: 14.5px; font-weight: 600; line-height: 1.5; }
+.firstrun__hint { margin: 4px 0 0; max-width: 42ch; font-size: 12px; line-height: 1.5; color: var(--text-faint); }
+.firstrun__link { border: none; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.firstrun__link:hover { color: var(--ink); }
+
+/* The left-rail "start a venture" control (always present; the primary affordance lives on the board). */
+.standup__new:disabled { opacity: 0.5; cursor: default; }
+.standup__start { display: flex; align-items: center; gap: 7px; margin: 6px 8px 2px; padding: 8px 12px; width: calc(100% - 16px);
+  border: 1px dashed var(--line); border-radius: 9px; background: none; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; font-weight: 700; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.standup__start:hover:not(:disabled) { background: var(--bg-2); color: var(--ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.standup__start:disabled { opacity: 0.55; cursor: default; }
+.standup__start-plus { font-size: 14px; line-height: 1; color: var(--accent); }
+
 /* ---- reports ---- */
 .reports { flex: 1; overflow-y: auto; padding: 18px 24px; display: grid; grid-template-columns: minmax(0, 600px); justify-content: center; min-height: 0; }
 .reports__col { display: flex; flex-direction: column; gap: 10px; }

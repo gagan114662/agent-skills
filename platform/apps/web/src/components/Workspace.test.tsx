@@ -11,16 +11,17 @@ import { CONSOLE } from "../brand.js";
 import { renderWithStore } from "../test/utils.js";
 
 describe("Workspace shell (console v5)", () => {
-  it("opens directly on the two-pane console — left projects panel + the three board lanes", async () => {
+  it("opens directly on the two-pane console — left projects panel + a guided first-run center (#213)", async () => {
     const { store } = renderWithStore(<Workspace />);
     await store.bootstrap();
 
     // LEFT: the Conductor-style projects panel.
     expect(await screen.findByLabelText("Standup")).toBeInTheDocument();
-    // CENTER: exactly the three v5 columns (addressed as the board's listitems by their aria-label).
-    expect(screen.getByRole("listitem", { name: CONSOLE.columns.running })).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { name: CONSOLE.columns.waiting })).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { name: CONSOLE.columns.shipped })).toBeInTheDocument();
+    // CENTER: with no work yet (the seams aren't wired in this shell test), the console shows the first-run
+    // activation panel rather than a dead 0/0/0 board — the owner gets a clear path to a first project.
+    // (The three board lanes rendering from live data is pinned in ConsoleView.test.)
+    expect(screen.getByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.cta })).toBeInTheDocument();
   });
 
   it("has no top nav — the old Board/Chat/Founder/…/Pricing tab strip is gone", async () => {

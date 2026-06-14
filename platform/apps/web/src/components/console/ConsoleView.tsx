@@ -29,6 +29,7 @@ import { PricingPanel } from "../PricingPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
+import { ConsoleEmptyState } from "./ConsoleEmptyState.js";
 import { ProjectSettingsSheet } from "./ProjectSettingsSheet.js";
 import { PeekDrawer, type PeekAuditLine, type PeekTranscriptLine } from "./PeekDrawer.js";
 import {
@@ -80,6 +81,11 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  // First-run activation: the seed that hires the founding team (the #123/#138 department seam).
+  const [seeding, setSeeding] = useState(false);
+  const [seeded, setSeeded] = useState(false);
+  const [seedError, setSeedError] = useState(false);
 
   // Guards every async setState so a poll that resolves after unmount is a no-op (no leak / no warning).
   const mounted = useRef(true);
@@ -222,6 +228,34 @@ export function ConsoleView(): React.JSX.Element {
     void store.sendMessage(text);
   }
 
+  /**
+   * First-run activation: hire the founding team and light up the board. Runs the REAL #123/#138 seed
+   * (seven department leads, each launching its first welcome session — `welcomeTasks`), then reloads the
+   * channels and pulls the live seams once so the board fills in immediately rather than on the next poll.
+   * Idempotent at the seam, so a re-click never duplicates the fleet; failures surface a quiet retry line.
+   */
+  async function startVenture(): Promise<void> {
+    if (!workspaceId || seeding) return;
+    setSeeding(true);
+    setSeedError(false);
+    try {
+      await api.department.seed(workspaceId, { welcomeTasks: true });
+      await store.bootstrap();
+      const [next] = await Promise.all([
+        api.missionControl.get(workspaceId).catch(() => null),
+        refreshApprovals(),
+        refreshFounder(),
+      ]);
+      if (!mounted.current) return;
+      if (next) setMc(next);
+      setSeeded(true);
+    } catch {
+      if (mounted.current) setSeedError(true);
+    } finally {
+      if (mounted.current) setSeeding(false);
+    }
+  }
+
   // --- peek drawer data ----------------------------------------------------------------------------
   const transcript: readonly PeekTranscriptLine[] = useMemo(() => {
     if (!peek || !peek.item.channelId) return [];
@@ -257,6 +291,8 @@ export function ConsoleView(): React.JSX.Element {
         activeItemKey={peek?.item.key ?? null}
         onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
         onSignOut={() => void store.logout()}
+        onNewProject={() => void startVenture()}
+        newProjectBusy={seeding}
       />
 
       <main className="console__main">
@@ -305,11 +341,21 @@ export function ConsoleView(): React.JSX.Element {
           )}
         </header>
 
-        <Board
-          columns={model.columns}
-          onPeek={(item) => dive(item, "transcript")}
-          onWhy={(item) => dive(item, "audit")}
-        />
+        {model.projects.length === 0 ? (
+          <ConsoleEmptyState
+            onStart={() => void startVenture()}
+            busy={seeding}
+            seeded={seeded}
+            error={seedError}
+            onConnect={() => setShellSettingsOpen(true)}
+          />
+        ) : (
+          <Board
+            columns={model.columns}
+            onPeek={(item) => dive(item, "transcript")}
+            onWhy={(item) => dive(item, "audit")}
+          />
+        )}
       </main>
 
       <PeekDrawer

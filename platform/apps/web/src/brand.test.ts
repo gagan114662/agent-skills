@@ -364,6 +364,7 @@ describe("no hardcoded brand strings in product chrome", () => {
     // CONSOLE block in brand.ts; even the copy-free StatusGlyph reads its braille grammar from brand.
     "components/console/ConsoleView.tsx",
     "components/console/StandupPanel.tsx",
+    "components/console/ConsoleEmptyState.tsx",
     "components/console/Board.tsx",
     "components/console/PeekDrawer.tsx",
     "components/console/ReportsView.tsx",

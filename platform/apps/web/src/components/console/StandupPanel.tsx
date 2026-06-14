@@ -27,6 +27,10 @@ export interface StandupPanelProps {
   /** Shell utilities (no top nav in v5 — account actions live in the footer). */
   onOpenWorkspaceSettings: () => void;
   onSignOut: () => void;
+  /** Stand up the founding team — the always-present "start a venture" control (#123/#138 seed). */
+  onNewProject: () => void;
+  /** True while the seed is in flight (disables the control so it can't double-fire). */
+  newProjectBusy: boolean;
 }
 
 /** Right-aligned mono meta for a session row, in the status grammar. */
@@ -50,6 +54,8 @@ export function StandupPanel(props: StandupPanelProps): React.JSX.Element {
     activeItemKey,
     onOpenWorkspaceSettings,
     onSignOut,
+    onNewProject,
+    newProjectBusy,
   } = props;
 
   return (
@@ -62,6 +68,15 @@ export function StandupPanel(props: StandupPanelProps): React.JSX.Element {
         <span>{CONSOLE.projects.label}</span>
         <span className="standup__sp" />
         <button
+          className="iconbtn iconbtn--mini standup__new"
+          title={CONSOLE.projects.startTitle}
+          aria-label={CONSOLE.projects.startTitle}
+          onClick={onNewProject}
+          disabled={newProjectBusy}
+        >
+          +
+        </button>
+        <button
           className={`iconbtn iconbtn--mini${filterNeedsYou ? " iconbtn--on" : ""}`}
           title={CONSOLE.projects.filterTitle}
           aria-pressed={filterNeedsYou}
@@ -71,6 +86,16 @@ export function StandupPanel(props: StandupPanelProps): React.JSX.Element {
           ≔
         </button>
       </div>
+      <button
+        className="standup__start"
+        onClick={onNewProject}
+        disabled={newProjectBusy}
+      >
+        <span className="standup__start-plus" aria-hidden="true">
+          +
+        </span>
+        {CONSOLE.projects.start}
+      </button>
 
       <div className="standup__plist">
         {projects.map((p) => {

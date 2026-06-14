@@ -513,8 +513,32 @@ export const CONSOLE = {
     label: "Projects",
     filterTitle: "Only what needs you",
     newTitle: "New project",
+    /** The always-present left-rail control that stands up the founding team (#123/#138 seed seam). */
+    start: "Start a venture",
+    startTitle: "Start a venture — hire your founding team",
     newSession: "New session",
     settings: "Project settings",
+  },
+  /**
+   * First-run activation: a fresh workspace has no projects and a dead board. Rather than a void, this
+   * walks the owner to their first running project in under a minute by hiring the founding team (the real
+   * #123/#138 department seed — the same seam #187's venture-factory bootstrap uses). Nothing faked.
+   */
+  firstRun: {
+    eyebrow: "New here",
+    headline: "Your company's an empty desk. Let's staff it.",
+    sub: "Hire your founding team — seven departments, each with a named lead — and hand them their first brief. About a minute from here to your first running task.",
+    steps: [
+      { k: "team", title: "Hire the team", body: "Seven departments — growth, product, design and the rest — each led by a named agent." },
+      { k: "work", title: "They clock in", body: "Every lead opens their first task the moment they're hired. You'll watch the board fill up." },
+      { k: "control", title: "You hold the keys", body: "Nothing ships — no email, no spend — without your yes. Every step is on the record." },
+    ],
+    cta: "Start your first venture",
+    ctaBusy: "Hiring your team…",
+    ctaError: "That didn't take — give it another go.",
+    assembling: "Your team's clocking in. The board fills in as each lead opens their first task — hang tight.",
+    connectHint: "Bringing your own Claude? Connect it in Settings so the team can actually run.",
+    connectCta: "Open Settings",
   },
   /** The three board lanes (console v5). A card runs left→right: Work in progress → Approval needed →
    * Done. These are the only column titles — the whole product is one board. */

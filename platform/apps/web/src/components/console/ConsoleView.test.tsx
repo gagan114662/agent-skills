@@ -155,6 +155,43 @@ describe("ConsoleView", () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith("r1"));
   });
 
+  it("walks a dead first-run workspace to a guided empty-state with a start CTA (#213)", async () => {
+    // A fresh workspace: no live sessions, nothing pending → buildConsole yields zero project lanes, so
+    // instead of a 0/0/0 dead board the console shows the first-run activation panel.
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    expect(await screen.findByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.cta })).toBeInTheDocument();
+    // The board lanes are NOT rendered while empty (the empty-state replaces them).
+    expect(screen.queryByRole("listitem", { name: CONSOLE.columns.running })).toBeNull();
+    // The left-rail control is present too (the always-available affordance).
+    expect(
+      screen.getByRole("button", { name: new RegExp(CONSOLE.projects.startTitle) }),
+    ).toBeInTheDocument();
+  });
+
+  it("starts a venture through the REAL #123/#138 department seed, not a fake (#213)", async () => {
+    const seedSpy = vi
+      .spyOn(api.department, "seed")
+      .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+
+    await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+
+    // The seed seam is hit with welcomeTasks so each lead launches its first real session.
+    await waitFor(() =>
+      expect(seedSpy).toHaveBeenCalledWith("w1", { welcomeTasks: true }),
+    );
+    // Until the new sessions surface on the next poll, the panel confirms the team is clocking in.
+    expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+  });
+
+  it("surfaces a quiet retry line when the seed seam fails (#213)", async () => {
+    vi.spyOn(api.department, "seed").mockRejectedValue(new Error("boom"));
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [] });
+    await userEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+    expect(await screen.findByText(CONSOLE.firstRun.ctaError)).toBeInTheDocument();
+  });
+
   it("opens the per-project settings sheet from the standup gear", async () => {
     await mount();
     const gears = await screen.findAllByRole("button", { name: new RegExp(`^${CONSOLE.projects.settings}`) });
