@@ -18,6 +18,8 @@ import { decideToolGate } from "./decide.js";
 import { REAL_WORLD_TOOL_NAMES } from "./types.js";
 import type { RealWorldToolName, ToolGateDecision } from "./types.js";
 import type { PublishProvider } from "./publish/provider.js";
+import type { SitePrProvider } from "./publish/site-pr-provider.js";
+import { decidePublishToIpop, type PublishToIpopRequest } from "./publish/site-pr-decide.js";
 
 // ---------------------------------------------------------------------------------------------------
 // #223 read surface — DATA only, zero actuation capability.
@@ -210,5 +212,95 @@ export class RealWorldActuatorService {
       detail: `published via ${this.deps.publish.kind}`,
     });
     return { status: "published", url: outcome.url, providerId: outcome.providerId };
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// #250 self-publish to ipop.ai — AUTONOMOUS. ipop owns the site repo, so committing content + opening
+// a PR is money-free and reversible; per the money-only approval policy (#243) it carries NO #13 gate.
+// It is an actuator, but a constrained one: it can only ever open a PR (a review surface) against ipop's
+// own repo via the {@link SitePrProvider} — it has no send/spend/deploy seam, so even a poisoned web read
+// folded into the content can do no more than draft a PR a human still merges. Deliberately a separate
+// service from {@link RealWorldActuatorService} (which is #13-gated): the dependency surface is the proof.
+// ---------------------------------------------------------------------------------------------------
+
+export interface IpopSitePublishDeps {
+  provider: SitePrProvider;
+  /** Repo dir new content files are committed under (e.g. `content/blog`). */
+  contentDir: string;
+  /** Durable receipt sink (optional — absent ⇒ no artifact row, behavior otherwise unchanged). */
+  artifacts?: ArtifactStore;
+}
+
+export type IpopSitePublishResult =
+  | { status: "rejected"; reason: string }
+  | { status: "published"; prUrl: string; branch: string; path: string; providerId?: string }
+  | { status: "failed"; error: string };
+
+export class IpopSitePublishService {
+  constructor(private readonly deps: IpopSitePublishDeps) {}
+
+  /**
+   * Plan + open a PR for a content file against ipop's site repo. No approval gate — opening a PR is
+   * autonomous (#243 money-only). Rejects an invalid request (empty/ unslugglable) BEFORE any network
+   * call, and records a durable receipt for every terminal outcome.
+   */
+  async publish(input: {
+    workspaceId: string;
+    ventureId?: string | null;
+    request: PublishToIpopRequest;
+  }): Promise<IpopSitePublishResult> {
+    const ventureId = input.ventureId ?? null;
+    const plan = decidePublishToIpop(input.request, { contentDir: this.deps.contentDir });
+    if (!plan.ok) {
+      await this.record(input.workspaceId, ventureId, null, "failed", plan.reason);
+      return { status: "rejected", reason: plan.reason };
+    }
+
+    const outcome = await this.deps.provider.openPr({
+      workspaceId: input.workspaceId,
+      ventureId,
+      path: plan.path,
+      content: plan.content,
+      title: plan.title,
+      body: plan.body,
+      branch: plan.branch,
+      onLog: () => undefined,
+    });
+
+    if (outcome.status !== "ready" || !outcome.prUrl) {
+      await this.record(input.workspaceId, ventureId, null, "failed", outcome.error ?? "publish failed");
+      return { status: "failed", error: outcome.error ?? "publish failed" };
+    }
+    await this.record(input.workspaceId, ventureId, outcome.prUrl, "published", `PR via ${this.deps.provider.kind}`);
+    return {
+      status: "published",
+      prUrl: outcome.prUrl,
+      branch: outcome.branch ?? plan.branch,
+      path: plan.path,
+      providerId: outcome.providerId,
+    };
+  }
+
+  private async record(
+    workspaceId: string,
+    ventureId: string | null,
+    url: string | null,
+    status: ArtifactRecordInput["status"],
+    detail: string,
+  ): Promise<void> {
+    if (!this.deps.artifacts) return;
+    await this.deps.artifacts
+      .record({
+        workspaceId,
+        ventureId,
+        tool: "publish_site",
+        url,
+        provider: this.deps.provider.kind,
+        status,
+        approvalRequestId: null,
+        detail,
+      })
+      .catch(() => undefined); // a receipt hiccup must never fail an otherwise-successful publish
   }
 }

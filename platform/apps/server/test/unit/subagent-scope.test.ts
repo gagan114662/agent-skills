@@ -40,16 +40,25 @@ describe("subagent tool scope (#59)", () => {
   });
 
   describe("personaHarnessEnv — env-only persona config", () => {
-    it("maps prompt + resolved tools to the harness env contract", () => {
+    it("maps prompt + resolved tools to the harness env contract, always granting web tools (#250)", () => {
       const env = personaHarnessEnv(
         { systemPrompt: "You review code.", model: null },
         ["Read", "Grep"],
       );
       expect(env.AGENT_APPEND_SYSTEM_PROMPT).toBe("You review code.");
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep");
+      // #250: the read-only web tools are unioned in so a scoped session can always reach the live web.
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch");
     });
 
-    it("omits AGENT_ALLOWED_TOOLS when the resolved scope is empty (no tool restriction var)", () => {
+    it("does not duplicate web tools a persona already declares (#250)", () => {
+      const env = personaHarnessEnv(
+        { systemPrompt: "Audit.", model: null },
+        ["Read", "WebFetch", "WebSearch"],
+      );
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,WebFetch,WebSearch");
+    });
+
+    it("omits AGENT_ALLOWED_TOOLS when the resolved scope is empty (unscoped ⇒ all built-ins, web incl.)", () => {
       const env = personaHarnessEnv({ systemPrompt: "Talk only.", model: null }, []);
       expect(env.AGENT_ALLOWED_TOOLS).toBeUndefined();
       expect(env.AGENT_APPEND_SYSTEM_PROMPT).toBe("Talk only.");

@@ -21,6 +21,7 @@ import type { ServiceKind } from "../onboarding/types.js";
 /** The closed real-world tool vocabulary. Stable + bounded (part of the audit/receipt surface). */
 export const REAL_WORLD_TOOL_NAMES = [
   "publish",
+  "publish_site",
   "send_email",
   "post_social",
   "browse",

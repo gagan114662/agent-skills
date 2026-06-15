@@ -19,14 +19,25 @@ const NONE = new Set<ServiceKind>();
 const ALL = new Set<ServiceKind>(["hosting", "esp", "registrar", "ad_account"]);
 
 describe("real-world tool surface (#231) — safety invariants", () => {
-  it("enumerates exactly the seven issue capabilities and is a closed surface", () => {
+  it("enumerates exactly the issue capabilities (incl. #250 publish_site) and is a closed surface", () => {
     expect([...REAL_WORLD_TOOL_NAMES].sort()).toEqual(
-      ["browse", "call_api", "post_social", "publish", "research", "send_email", "store_asset"].sort(),
+      ["browse", "call_api", "post_social", "publish", "publish_site", "research", "send_email", "store_asset"].sort(),
     );
     // unknown names throw — a new tool can never bypass the gate by being unclassified.
     expect(() => realWorldToolSpec("fly_a_drone" as never)).toThrow(/unknown real-world tool/);
     expect(isRealWorldToolName("publish")).toBe(true);
     expect(isRealWorldToolName("nope")).toBe(false);
+  });
+
+  it("publish_site (#250) is an autonomous actuator — money-free + reversible, no #13 gate", () => {
+    const spec = realWorldToolSpec("publish_site");
+    expect(spec.dataFlow).toBe("actuate");
+    expect(spec.reversibility).toBe("reversible");
+    expect(spec.requiresApproval).toBe(false); // opening a PR is autonomous (#243 money-only)
+    expect(spec.requiredAccounts).toEqual([]); // ipop owns the repo — server token, no connected account
+    const gate = decideToolGate("publish_site", { connectedAccounts: NONE });
+    expect(gate.allowed).toBe(true);
+    expect(gate.requiresApproval).toBe(false);
   });
 
   it("every IRREVERSIBLE tool requires a #13 approval (#200)", () => {

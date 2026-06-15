@@ -433,6 +433,13 @@ export const marketingSchema = z.object({
    * founding venture (a customer never inherits ipop's growth brief).
    */
   ownerWorkspaceId: z.string().optional(),
+  /**
+   * The workspace's real, public marketing site URL (#250) — substituted into the `{{site}}` template
+   * variable so a seeded task (the SEO audit) points the fleet at a real domain instead of the generic
+   * `"our website"` placeholder. Default unset ⇒ the owner workspace falls back to `https://ipop.ai`
+   * (the ipop dogfood site, see {@link resolveSiteUrl}) and any other workspace keeps the placeholder.
+   */
+  siteUrl: z.string().optional(),
 });
 
 /**
@@ -974,6 +981,19 @@ export const realworldSchema = z.object({
   enabled: z.boolean().optional(),
   /** Publish provider kind (`dryrun` default — no network; `github_pages` publishes a live URL). */
   publishProvider: z.string().optional(),
+  /**
+   * Self-publish-to-ipop.ai provider kind (#250): `dryrun` (default — no network, returns a fake PR url)
+   * or `github` (opens a real PR against the configured site repo via the GitHub REST API). ipop owns the
+   * site repo, so the token is a server env var (`REALWORLD_GITHUB_TOKEN`/`GITHUB_TOKEN`/`GH_TOKEN`) — no
+   * third-party OAuth. Opening a PR is autonomous (money-free + reversible); merge/deploy stays a human gate.
+   */
+  sitePrProvider: z.string().optional(),
+  /** The ipop site repo the fleet commits content to, as `owner/repo` (#250). Required for the `github` provider. */
+  siteRepo: z.string().optional(),
+  /** Base branch the PR targets (default `main`). */
+  siteBaseBranch: z.string().optional(),
+  /** Directory inside the repo new content files are committed under (default `content/blog`). */
+  siteContentDir: z.string().optional(),
 });
 
 /**

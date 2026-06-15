@@ -1,5 +1,6 @@
 import { loadConfig } from "../config/loader.js";
 import { resolveAutomationCaps } from "./caps.js";
+import { resolveSiteUrl } from "../marketing/site.js";
 import { AutomationEngine, type AutomationLauncher } from "./engine.js";
 import { automationStore } from "../db/repositories/automations.js";
 import { getPersonaByHandle } from "../db/repositories/personas.js";
@@ -41,6 +42,16 @@ export function createDefaultAutomationEngine(
       return persona ? { agentMemberId: persona.agentMemberId } : null;
     },
     caps: (workspaceId) => resolveAutomationCaps(loadConfig(workspaceId).automations),
+    // #250: substitute the workspace's real site URL into the `{{site}}` template var (owner workspace ⇒
+    // ipop.ai fallback) so a seeded SEO audit points the fleet at a real domain, not "our website".
+    resolveSiteUrl: (workspaceId) => {
+      const marketing = loadConfig(workspaceId).marketing;
+      return resolveSiteUrl({
+        workspaceId,
+        ownerWorkspaceId: marketing.ownerWorkspaceId,
+        configuredSiteUrl: marketing.siteUrl,
+      });
+    },
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     maintenancePaused: () => isMaintenanceActive(),
     logger,

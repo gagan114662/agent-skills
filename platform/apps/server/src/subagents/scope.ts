@@ -16,6 +16,18 @@
 const HANDLE_RE = /^[A-Za-z0-9._-]+$/;
 const TOOL_RE = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * The read-only WEB tool surface (#250). These are Claude Code's OWN built-in tools, so they are
+ * exposed to a session purely by appearing in the `--allowedTools` list the harness builds — nothing
+ * else to wire. They are DATA-only (a fetch / a search returns text, never an actuator), so — exactly
+ * like the #223 read surface — they are always safe to grant and are NEVER gated. {@link
+ * personaHarnessEnv} unions them into EVERY scoped persona's allowlist so a task that needs the live web
+ * (an SEO audit, competitor research) can never silently fail just because a persona's declared tool
+ * ceiling omitted them. An unscoped session already inherits all of Claude Code's built-ins (these
+ * included), so this only ever ADDS capability — it can never remove a tool a session had before.
+ */
+export const WEB_TOOLS = ["WebFetch", "WebSearch"] as const;
+
 export class PersonaValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -61,7 +73,12 @@ export function personaHarnessEnv(
   const env: Record<string, string> = {
     AGENT_APPEND_SYSTEM_PROMPT: persona.systemPrompt,
   };
-  if (scope.length > 0) env.AGENT_ALLOWED_TOOLS = scope.join(",");
+  // #250: a scoped session always gets the read-only web tools, even if the persona ceiling omitted
+  // them — so web-dependent work (SEO audits, research) never fails for lack of a fetch tool. We only
+  // add them when the session is already scoped (a non-empty ceiling sets `--allowedTools`); an empty
+  // scope is left untouched so an unscoped session keeps ALL of Claude Code's built-ins (web included)
+  // rather than being narrowed down to just two tools.
+  if (scope.length > 0) env.AGENT_ALLOWED_TOOLS = dedupe([...scope, ...WEB_TOOLS]).join(",");
   const safeSkills = dedupe(skills.map((s) => s.trim())).filter((s) => s && SKILL_ID_RE.test(s));
   if (safeSkills.length > 0) env.AGENT_SKILLS = safeSkills.join(",");
   return env;
