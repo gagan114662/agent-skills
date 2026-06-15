@@ -115,5 +115,5 @@ workspace has no auth yet.
 - typecheck/lint/build green; default (`demo`) posture and all existing tests unchanged.
 
 ## 🎥 PROVE (production cut)
-Owner @mentions `@scout` in `#seo` on ipop.ai → scout runs a real `claude-fable-5` session and
+Owner @mentions `@scout` in `#seo` on ipop.ai → scout runs a real `claude-sonnet-4-6` session and
 replies in-thread. **Video gate waived by the owner for this issue.**

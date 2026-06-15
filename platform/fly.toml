@@ -23,9 +23,14 @@ primary_region = "yyz"
   # for tenants who've connected nothing). Tracing: `fly secrets set -a reload-api BRAINTRUST_API_KEY=…`.
   AGENT_HARNESS = "claude-code"
   AGENT_RUNTIME = "local"
-  # Owner directive: live ipop agents default to Fable. The harness emits an env-gated --model flag
-  # (#52) that reads this; per-session model selection (#52) can still override it.
-  ANTHROPIC_MODEL = "claude-fable-5"
+  # Deployment-wide default model. The harness emits an env-gated --model flag (#52) that reads this;
+  # per-session model selection (#52) can still override it. MUST be a model the API actually serves —
+  # #242: a non-existent id (`claude-fable-5`) made every claude-code session exit 1 ("error · exit 1")
+  # producing nothing, because the harness passed `--model claude-fable-5` and the API rejected it. This
+  # is the project-canonical default (see model-providers config/demo); switch to `claude-opus-4-8` for a
+  # premium default. A mis-set value here is now caught + surfaced as a "model" failure with a self-heal
+  # incident instead of an opaque crash (runtime/outcome.ts, self-healing/model-incident.ts).
+  ANTHROPIC_MODEL = "claude-sonnet-4-6"
   # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
   RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
   # #138 marketing department fleet: turn the agency ON for the live product (the config env base layer,

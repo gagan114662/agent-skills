@@ -561,3 +561,69 @@ describe("SessionManager — per-session harness selection (#50)", () => {
     expect(runtime.job).toBeUndefined();
   });
 });
+
+describe("SessionManager — mid-run failure routing (#242)", () => {
+  type FailureEvent = Parameters<NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionFailure"]>>[0];
+
+  function makeRoutingManager(runtime: AgentRuntime, onSessionFailure: (e: FailureEvent) => Promise<void>) {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      harnessKind: "claude-code",
+      decodeOutput: harnessLineDecoder("claude-code"),
+      caps: caps(),
+      logger: silentLogger,
+      onSessionFailure,
+    });
+    return { manager, poster };
+  }
+
+  it("routes a model-misconfig (claude-fable-5) as failureClass 'model' with the real error excerpt", async () => {
+    // The exact prod stream: claude -p --model claude-fable-5 emits a single is_error result, exit 1.
+    const resultEvent =
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result:
+          "There's an issue with the selected model (claude-fable-5). It may not exist or you may not have access to it.",
+      }) + "\n";
+    const runtime = new CompletingRuntime([resultEvent], 1);
+    const events: FailureEvent[] = [];
+    const { manager, poster } = makeRoutingManager(runtime, async (e) => {
+      events.push(e);
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]!.failureClass).toBe("model");
+    expect(events[0]!.exitCode).toBe(1);
+    // The surfaced excerpt names the ACTUAL cause (not just "error · exit 1").
+    expect(events[0]!.errorExcerpt).toContain("claude-fable-5");
+    // The owner-facing terminal message is actionable, not the opaque generic error.
+    const terminal = poster.bodies().at(-1)!;
+    expect(terminal).toContain("❌");
+    expect(terminal).toContain("Settings → Model");
+  });
+
+  it("a clean completion never routes a failure (happy path after the model is fixed)", async () => {
+    const ok =
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Here's your SEO draft." }) +
+      "\n";
+    const runtime = new CompletingRuntime([ok], 0);
+    const events: FailureEvent[] = [];
+    const { manager } = makeRoutingManager(runtime, async (e) => {
+      events.push(e);
+    });
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(events).toHaveLength(0);
+  });
+});

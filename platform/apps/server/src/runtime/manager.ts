@@ -181,6 +181,12 @@ export interface SessionManagerDeps {
     failureClass: FailureReasonClass;
     /** Brand-voice headline (no raw output) — the fingerprint message. */
     message: string;
+    /**
+     * A short, already-redacted excerpt of the real terminal output (#242) — so the surfaced incident /
+     * flywheel record names the ACTUAL cause (e.g. the unavailable model) instead of only the generic
+     * headline ("error · exit 1"). Bounded + redacted upstream; may be empty when the run produced no tail.
+     */
+    errorExcerpt?: string;
   }): Promise<void>;
   /**
    * Optional recovery sink (#238): called best-effort when a session COMPLETES cleanly — the
@@ -679,7 +685,15 @@ export class SessionManager {
         exitCode: result.exitCode,
         outputTail: resultText,
       });
-      if (failureClass === "spawn" || failureClass === "error" || failureClass === "timeout") {
+      // #242: a "model" misconfig (a `--model` the API can't serve) is ALSO routed — owner-actionable,
+      // surfaced as a self-healing incident (not a doomed auto-fix agent). auth/budget stay unrouted (the
+      // owner alone can act). The real error excerpt rides along so the surface names the actual cause.
+      if (
+        failureClass === "spawn" ||
+        failureClass === "error" ||
+        failureClass === "timeout" ||
+        failureClass === "model"
+      ) {
         await this.deps
           .onSessionFailure({
             workspaceId: session.workspaceId,
@@ -690,6 +704,8 @@ export class SessionManager {
             exitCode: result.exitCode,
             failureClass,
             message: failureCopy(failureClass).headline,
+            // Already redacted (resultText is the redacted tail); bounded so the surface stays compact.
+            errorExcerpt: resultText ? resultText.slice(0, 240) : undefined,
           })
           .catch((err: unknown) => log.error({ err }, "session failure routing failed"));
       }

@@ -37,6 +37,7 @@ import { resolveBrowserCaps } from "./browser/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
 import { selfHealingStore } from "../db/repositories/self-healing.js";
 import { recordSpawnFailureIncident, resolveSpawnFailureIncident } from "../self-healing/spawn-incident.js";
+import { recordModelFailureIncident, resolveModelFailureIncident } from "../self-healing/model-incident.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -242,6 +243,22 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     autoModel,
     // #230: route genuine session failures into the self-healing flywheel (see note above).
     onSessionFailure: async (e) => {
+      // #242: a "model" misconfig is OWNER-actionable config (a `--model` the API can't serve), not a
+      // harness crash a fix agent could repair — so it routes ONLY to a self-healing incident, never the
+      // #117 auto-fix flywheel (which would spin a doomed fix session against an unfixable-by-agent value).
+      if (e.failureClass === "model") {
+        try {
+          await recordModelFailureIncident(selfHealingStore, {
+            workspaceId: e.workspaceId,
+            // The real cause (the redacted error excerpt) so the console names the unavailable model.
+            detail: `${e.message}${e.errorExcerpt ? ` — ${e.errorExcerpt}` : ""} · session ${e.status} · exit ${e.exitCode ?? "n/a"}`,
+            now: new Date(),
+          });
+        } catch (err: unknown) {
+          logger.error({ err }, "model-incident recording failed");
+        }
+        return;
+      }
       if (!failureFlywheel) {
         const { createDefaultFlywheelEngine } = await import("../flywheel/default.js");
         failureFlywheel = createDefaultFlywheelEngine(logger, manager);
@@ -249,9 +266,11 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       await failureFlywheel.record({
         workspaceId: e.workspaceId,
         failureClass: "harness_crash",
+        // #242: carry the real error excerpt so the fingerprinted record names the actual cause, not just
+        // the generic headline + exit code.
         message: `${e.message} (${e.failureClass})`,
         source: "harness",
-        detail: `session ${e.status} · exit ${e.exitCode ?? "n/a"}`,
+        detail: `session ${e.status} · exit ${e.exitCode ?? "n/a"}${e.errorExcerpt ? ` · ${e.errorExcerpt}` : ""}`,
         sessionId: e.sessionId,
         channelId: e.channelId,
         agentMemberId: e.agentMemberId,
@@ -272,13 +291,19 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         }
       }
     },
-    // #238: resolve the open agent-runtime spawn incident once a real session completes — the
-    // production-grounded proof the runtime recovered (the image was patched/redeployed).
+    // #238/#242: resolve the open agent-runtime spawn incident AND any open agent-model incident once a
+    // real session completes — the production-grounded proof the runtime recovered (image patched) and the
+    // model was corrected (a valid model selected / redeployed). Both are no-ops when nothing is open.
     onSessionRecovered: async (e) => {
       try {
         await resolveSpawnFailureIncident(selfHealingStore, e.workspaceId, new Date());
       } catch (err: unknown) {
         logger.error({ err }, "spawn-incident resolution failed");
+      }
+      try {
+        await resolveModelFailureIncident(selfHealingStore, e.workspaceId, new Date());
+      } catch (err: unknown) {
+        logger.error({ err }, "model-incident resolution failed");
       }
     },
   });

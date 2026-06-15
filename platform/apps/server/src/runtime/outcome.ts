@@ -15,7 +15,7 @@ import type { SessionStatus } from "./types.js";
  */
 
 /** The bucket a failed session falls into, surfaced inline so the message is actionable. */
-export type FailureReasonClass = "spawn" | "auth" | "timeout" | "budget" | "canceled" | "error";
+export type FailureReasonClass = "spawn" | "auth" | "timeout" | "budget" | "canceled" | "model" | "error";
 
 export interface SessionOutcome {
   status: SessionStatus;
@@ -42,6 +42,24 @@ const AUTH_MARKERS = [
 
 const BUDGET_MARKERS = ["budget", "spending limit", "quota exceeded", "402"];
 
+/**
+ * Markers of a **model misconfiguration** (#242): the deployment (or a per-session #52 selection) pinned
+ * a `--model` the API can't serve, so `claude -p` exits 1 having produced nothing — the exact prod cause
+ * of "error · exit 1" after `claude-fable-5` (a non-existent model) was set deployment-wide. This is an
+ * OWNER-actionable config error (like auth/budget), NOT a transient harness crash, so it gets its own
+ * class + copy and routes to a self-healing incident instead of a doomed auto-fix agent. The phrases are
+ * Claude Code's own model-error wording ("There's an issue with the selected model (X). It may not exist
+ * or you may not have access to it.") plus the API's `model_not_found` shapes.
+ */
+const MODEL_MARKERS = [
+  "selected model",
+  "model_not_found",
+  "model not found",
+  "may not exist or you may not have access",
+  "unknown model",
+  "no endpoints found that support",
+];
+
 function matches(tail: string | undefined, markers: string[]): boolean {
   if (!tail) return false;
   const t = tail.toLowerCase();
@@ -56,6 +74,9 @@ function matches(tail: string | undefined, markers: string[]): boolean {
  *  - a null exit code on a plain failure means the child never returned an exit code: it never even
  *    started (spawn ENOENT — a missing binary/shell, the exact #166 prod cause) or died before exit.
  *  - a non-zero exit whose output looks like an auth/budget problem is bucketed accordingly.
+ *  - a non-zero exit whose output names a model the API can't serve is a "model" misconfig (#242) — an
+ *    owner-actionable config error, surfaced before the generic bucket so "claude-fable-5" stops reading
+ *    as an opaque "error · exit 1".
  *  - everything else is a generic harness "error".
  */
 export function classifyFailure(o: SessionOutcome): FailureReasonClass {
@@ -64,6 +85,7 @@ export function classifyFailure(o: SessionOutcome): FailureReasonClass {
   if (o.exitCode === null) return "spawn";
   if (matches(o.outputTail, AUTH_MARKERS)) return "auth";
   if (matches(o.outputTail, BUDGET_MARKERS)) return "budget";
+  if (matches(o.outputTail, MODEL_MARKERS)) return "model";
   return "error";
 }
 
@@ -88,6 +110,12 @@ const FAILURE_COPY: Record<FailureReasonClass, { headline: string; detail: strin
   canceled: {
     headline: "This run was stopped before I finished",
     detail: "@mention me again whenever you'd like me to take another pass.",
+  },
+  model: {
+    headline: "The model this workspace is set to use isn't available",
+    detail:
+      "This one's on the setup, not you — the configured AI model can't be reached. Pick a valid model in " +
+      "**Settings → Model** (or clear it to use the default), then @mention me again and I'll pick this right up.",
   },
   error: {
     headline: "I hit an error mid-run and had to stop",
