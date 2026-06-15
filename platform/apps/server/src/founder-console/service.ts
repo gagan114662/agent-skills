@@ -22,6 +22,7 @@ import {
   type SupportSlaSnapshot,
   type SetupSnapshot,
 } from "./aggregate.js";
+import type { ProofMetricReading } from "./proof-scorecard.js";
 import type { UsageTrendPoint } from "../scale/forecast.js";
 
 /**
@@ -171,6 +172,16 @@ export interface SetupReader {
   snapshot(workspaceId: string): Promise<SetupSnapshot>;
 }
 
+/**
+ * The per-department PROOF readings (#253). Optional — absent ⇒ the scorecard renders all seven tiles as
+ * "not connected". Receives `now` so the reader can compute the trend window (recent vs prior). Each reading
+ * is grounded in a real source (published artifacts / send receipts / growth events); departments with no
+ * wired source are returned as `connected: false` (or simply omitted).
+ */
+export interface ProofScorecardReader {
+  readings(workspaceId: string, now: Date): Promise<ProofMetricReading[]>;
+}
+
 export interface FounderConsoleDeps {
   fleet: FleetReader;
   venture: VentureReader;
@@ -211,6 +222,8 @@ export interface FounderConsoleDeps {
   portfolio?: PortfolioReader;
   /** External account onboarding roll-up (#192) — optional, read-only. */
   setup?: SetupReader;
+  /** Per-department proof readings (#253) — optional, read-only. Absent ⇒ all tiles "not connected". */
+  proofScorecard?: ProofScorecardReader;
   /** Injectable clock (tests pin it). */
   now?: () => Date;
 }
@@ -253,6 +266,7 @@ export class FounderConsoleService {
       portfolioReviews,
       setup,
       selfHealingOps,
+      proofReadings,
     ] =
       await Promise.all([
         this.deps.venture.evaluations(workspaceId),
@@ -279,6 +293,7 @@ export class FounderConsoleService {
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
         this.deps.setup?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.selfHealingOps?.snapshot(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.proofScorecard?.readings(workspaceId, now) ?? Promise.resolve(undefined),
       ]);
 
     return aggregateFounderConsole({
@@ -323,6 +338,7 @@ export class FounderConsoleService {
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
       setup,
+      proofReadings,
     });
   }
 }

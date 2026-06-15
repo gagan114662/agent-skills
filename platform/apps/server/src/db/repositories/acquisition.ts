@@ -171,6 +171,31 @@ export async function spendByChannelSince(
   }));
 }
 
+/**
+ * Count of successfully-SENT receipts on `channel` since `since` (#253) — e.g. social posts that actually
+ * went out. Counts rows, not recipients (one row = one post/send), so it's the honest "live posts" figure
+ * the proof scorecard reads. Only `status = 'sent'` rows count (a `dryrun`/recorded-only send still records
+ * a `sent` receipt with an `external_id`, which is the external-grounded proof the work shipped).
+ */
+export async function sentCountByChannelSince(
+  workspaceId: string,
+  channel: AcquisitionChannel,
+  since: Date,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<number>`COUNT(*)` })
+    .from(acquisitionSendReceipts)
+    .where(
+      and(
+        eq(acquisitionSendReceipts.workspaceId, workspaceId),
+        eq(acquisitionSendReceipts.channel, channel),
+        eq(acquisitionSendReceipts.status, "sent"),
+        gte(acquisitionSendReceipts.createdAt, since),
+      ),
+    );
+  return Number(row?.total ?? 0);
+}
+
 /** Channels whose most-recent receipt is a failure (surfaced in the brief, AC3). */
 export async function failingChannelsSince(
   workspaceId: string,
