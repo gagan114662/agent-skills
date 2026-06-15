@@ -4,9 +4,12 @@ import { listServiceStatuses } from "../db/repositories/external-credentials.js"
 import { listSetupRequests } from "../db/repositories/setup-requests.js";
 import { dbArtifactStore } from "../db/repositories/realworld-artifacts.js";
 import type { ServiceKind } from "../onboarding/types.js";
-import { RealWorldActuatorService } from "./service.js";
+import { IpopSitePublishService, RealWorldActuatorService } from "./service.js";
 import type { PublishProvider } from "./publish/provider.js";
 import { DryRunPublishProvider } from "./publish/dry-run-provider.js";
+import { createSitePrProvider } from "./publish/site-pr-factory.js";
+import type { SitePrProvider } from "./publish/site-pr-provider.js";
+import { loadConfig } from "../config/loader.js";
 
 /**
  * The external account KINDS connected for a workspace (#231). The #192 vault stores credentials by
@@ -64,5 +67,29 @@ export function createDefaultRealworldActuatorService(
       },
     },
     connectedAccounts: (workspaceId) => connectedAccountKinds(workspaceId),
+  });
+}
+
+/**
+ * Wire the AUTONOMOUS self-publish-to-ipop.ai service (#250). The provider defaults to the non-networked
+ * {@link DryRunSitePrProvider}; the real GitHub provider is selected only when config
+ * `realworld.sitePrProvider = "github"` AND `realworld.siteRepo` is set (plus a server token). Opening a
+ * PR is money-free + reversible, so there is NO #13 gate here (#243 money-only) — the service can only
+ * draft a PR a human still merges. The content dir + repo come from the workspace's #58 config.
+ */
+export async function createDefaultIpopSitePublishService(
+  workspaceId: string,
+  override?: SitePrProvider,
+): Promise<IpopSitePublishService> {
+  const cfg = loadConfig(workspaceId).realworld;
+  const provider = await createSitePrProvider(cfg.sitePrProvider ?? "dryrun", {
+    repo: cfg.siteRepo,
+    baseBranch: cfg.siteBaseBranch,
+    override,
+  });
+  return new IpopSitePublishService({
+    provider,
+    contentDir: cfg.siteContentDir ?? "content/blog",
+    artifacts: dbArtifactStore,
   });
 }

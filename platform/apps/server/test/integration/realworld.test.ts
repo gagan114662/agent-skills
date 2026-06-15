@@ -73,13 +73,13 @@ describe("readiness signal (#231) — setup.connected reflects Claude", () => {
 });
 
 describe("real-world tool surface (#231) — /me/realworld", () => {
-  it("reports the seven tools, what to connect, and the published-artifacts feed", async () => {
+  it("reports the eight tools, what to connect, and the published-artifacts feed", async () => {
     const { cookie } = await seed();
     const res = await app.inject({ method: "GET", url: "/me/realworld", cookies: { rid: cookie } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.enabled).toBe(false); // default OFF
-    expect(body.availability).toHaveLength(7);
+    expect(body.availability).toHaveLength(8);
     // With nothing connected the owner must still connect the real-work accounts.
     expect(body.neededAccounts.sort()).toEqual(["ad_account", "esp", "hosting", "registrar"].sort());
     expect(body.artifacts).toEqual([]);
@@ -99,5 +99,54 @@ describe("real-world actuator (#231) — publish is gated + recorded", () => {
     expect(out.status).toBe("blocked");
     const artifacts = await listArtifacts(workspaceId);
     expect(artifacts[0]).toMatchObject({ tool: "publish", status: "blocked", url: null });
+  });
+});
+
+describe("self-publish to ipop.ai (#250) — POST /me/realworld/publish-site (autonomous)", () => {
+  it("403s when the real-world surface is disabled (default OFF)", async () => {
+    const { cookie } = await seed();
+    const res = await app.inject({
+      method: "POST",
+      url: "/me/realworld/publish-site",
+      cookies: { rid: cookie },
+      payload: { title: "Hello", content: "# hi" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("opens a PR autonomously (no #13 approval) via the dry-run provider when enabled", async () => {
+    const prev = process.env.RELOAD_REALWORLD_ENABLED;
+    process.env.RELOAD_REALWORLD_ENABLED = "true"; // loadConfig reads env live
+    try {
+      const { cookie, workspaceId } = await seed();
+
+      // Missing fields ⇒ 400 (validated after the enabled gate).
+      const bad = await app.inject({
+        method: "POST",
+        url: "/me/realworld/publish-site",
+        cookies: { rid: cookie },
+        payload: { title: "" },
+      });
+      expect(bad.statusCode).toBe(400);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/me/realworld/publish-site",
+        cookies: { rid: cookie },
+        payload: { title: "Why AI Marketing Wins", content: "# A real post\n\nbody" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.status).toBe("published");
+      expect(body.path).toBe("content/blog/why-ai-marketing-wins.md");
+      expect(body.branch).toBe("ipop-content/why-ai-marketing-wins");
+      expect(body.prUrl).toContain("/pull/dryrun-");
+      // A durable receipt was recorded for the autonomous publish.
+      const artifacts = await listArtifacts(workspaceId);
+      expect(artifacts.find((a) => a.tool === "publish_site")).toMatchObject({ status: "published" });
+    } finally {
+      if (prev === undefined) delete process.env.RELOAD_REALWORLD_ENABLED;
+      else process.env.RELOAD_REALWORLD_ENABLED = prev;
+    }
   });
 });

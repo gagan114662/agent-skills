@@ -83,6 +83,13 @@ export interface AutomationEngineDeps {
   caps: (workspaceId: string) => AutomationCaps;
   /** The #17 kill switch for a workspace (halts its tick). */
   killSwitch: (workspaceId: string) => Promise<boolean>;
+  /**
+   * Resolve the workspace's real public site URL for the `{{site}}` template variable (#250). Optional —
+   * absent (or returning undefined) ⇒ the template keeps its `"our website"` placeholder, today's
+   * behavior. Wired in production from `resolveSiteUrl(marketing config)`. A stored `params.site` set by
+   * the owner always wins over this default.
+   */
+  resolveSiteUrl?: (workspaceId: string) => string | undefined;
   /** Optional maintenance-pause check (#99) — when true, `tickAll()` skips BEFORE any DB call. */
   maintenancePaused?: () => Promise<boolean>;
   logger: SessionLogger;
@@ -200,7 +207,11 @@ export class AutomationEngine {
     }
 
     const member = await this.deps.resolveAgentMember(automation.workspaceId, automation.agentHandle);
-    const task = renderTemplate(automation.templateKey, automation.params);
+    // #250: default the `{{site}}` param to the workspace's real site URL so a seeded SEO task points the
+    // fleet at a real domain (not the "our website" placeholder). An owner-supplied `params.site` wins.
+    const site = this.deps.resolveSiteUrl?.(automation.workspaceId);
+    const params = site ? { site, ...automation.params } : automation.params;
+    const task = renderTemplate(automation.templateKey, params);
     if (!member) {
       return this.recordBlocked(automation, trigger, "agent_not_seeded", task);
     }

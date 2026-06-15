@@ -53,7 +53,10 @@ describe("SubagentService.invoke (#59)", () => {
         createdByMemberId: "mem_human",
         task: "review this diff",
         parentMessageId: "msg_invoke",
-        harnessEnv: { AGENT_APPEND_SYSTEM_PROMPT: "Review diffs.", AGENT_ALLOWED_TOOLS: "Read,Grep" },
+        harnessEnv: {
+          AGENT_APPEND_SYSTEM_PROMPT: "Review diffs.",
+          AGENT_ALLOWED_TOOLS: "Read,Grep,WebFetch,WebSearch", // #250 web tools unioned in
+        },
       }),
     );
   });
@@ -119,8 +122,11 @@ describe("SubagentService.invoke (#59)", () => {
       task: "x",
       tools: ["Read", "Bash", "Write"], // Bash/Write outside the ["Read","Grep"] ceiling
     });
+    // Narrowing still holds (Bash/Write are dropped); #250 only ADDS the read-only web tools on top.
     expect(launch).toHaveBeenCalledWith(
-      expect.objectContaining({ harnessEnv: expect.objectContaining({ AGENT_ALLOWED_TOOLS: "Read" }) }),
+      expect.objectContaining({
+        harnessEnv: expect.objectContaining({ AGENT_ALLOWED_TOOLS: "Read,WebFetch,WebSearch" }),
+      }),
     );
   });
 });

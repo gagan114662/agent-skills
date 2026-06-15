@@ -27,6 +27,18 @@ export const REAL_WORLD_TOOLS: readonly RealWorldToolSpec[] = [
     description: "Publish/deploy a venture page to a live, reachable public URL (gated — brand surface)",
   },
   {
+    // #250 self-publish to ipop.ai: commit a content file + open a PR against ipop's OWN site repo. ipop
+    // owns the repo (server token, no third-party OAuth ⇒ no required account), and a PR is reversible +
+    // money-free, so per the money-only approval policy (#243) this is AUTONOMOUS — `requiresApproval`
+    // false. The PR is a review surface; merge/deploy to the live site remains a human action on GitHub.
+    name: "publish_site",
+    reversibility: "reversible",
+    dataFlow: "actuate",
+    requiresApproval: false,
+    requiredAccounts: [],
+    description: "Commit a content file and open a PR against ipop's own site repo (autonomous — money-free, reversible)",
+  },
+  {
     name: "send_email",
     reversibility: "irreversible",
     dataFlow: "actuate",

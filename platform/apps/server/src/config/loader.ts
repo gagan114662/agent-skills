@@ -207,12 +207,28 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // wins as the lock. The GitHub token is NEVER config — it's read from the secret env at publish time.
   const realworldEnabled = env.RELOAD_REALWORLD_ENABLED;
   const realworldProvider = env.RELOAD_REALWORLD_PUBLISH_PROVIDER;
-  if (realworldEnabled !== undefined || realworldProvider !== undefined) {
+  // #250 self-publish to ipop.ai: the site-PR provider + repo come from env too (token stays secret env).
+  const sitePrProvider = env.RELOAD_REALWORLD_SITE_PR_PROVIDER;
+  const siteRepo = env.RELOAD_REALWORLD_SITE_REPO;
+  const siteBaseBranch = env.RELOAD_REALWORLD_SITE_BASE_BRANCH;
+  const siteContentDir = env.RELOAD_REALWORLD_SITE_CONTENT_DIR;
+  if (
+    realworldEnabled !== undefined ||
+    realworldProvider !== undefined ||
+    sitePrProvider !== undefined ||
+    siteRepo !== undefined ||
+    siteBaseBranch !== undefined ||
+    siteContentDir !== undefined
+  ) {
     raw.realworld = {
       ...(realworldEnabled !== undefined
         ? { enabled: realworldEnabled === "true" || realworldEnabled === "1" }
         : {}),
       ...(realworldProvider !== undefined ? { publishProvider: realworldProvider } : {}),
+      ...(sitePrProvider !== undefined ? { sitePrProvider } : {}),
+      ...(siteRepo !== undefined ? { siteRepo } : {}),
+      ...(siteBaseBranch !== undefined ? { siteBaseBranch } : {}),
+      ...(siteContentDir !== undefined ? { siteContentDir } : {}),
     };
   }
   // #225 outreach engine: let the deployment env turn the proactive posture on + pick a sender without a

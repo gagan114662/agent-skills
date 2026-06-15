@@ -147,6 +147,13 @@ describe("automations templates (#147)", () => {
     expect(renderTemplate("seo_audit", { site: "  " })).toContain("our website");
   });
 
+  it("renders a real site URL into {{site}} when supplied (#250)", () => {
+    const rendered = renderTemplate("seo_audit", { site: "https://ipop.ai" });
+    expect(rendered).toContain("https://ipop.ai");
+    expect(rendered).not.toContain("our website");
+    expect(rendered).not.toContain("{{site}}");
+  });
+
   it("returns empty string for an unknown template", () => {
     expect(renderTemplate("nope", {})).toBe("");
     expect(getTemplate("nope")).toBeUndefined();
