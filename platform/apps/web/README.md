@@ -23,8 +23,28 @@ Point the proxy at a different API origin with `VITE_API_ORIGIN` (default `http:
 ```bash
 pnpm --filter @reload/web test            # vitest (jsdom + Testing Library)
 pnpm --filter @reload/web typecheck
-pnpm --filter @reload/web build           # tsc --noEmit && vite build
+pnpm --filter @reload/web build           # tsc --noEmit && vite build && prerender
 ```
+
+## SEO / prerendering (#252)
+
+The public marketing surfaces are **prerendered to static HTML** at build time so crawlers (and a raw
+`curl`) get the real headline + sections instead of an empty `<div id="root">`. `pnpm build` runs, after
+the normal client build:
+
+```
+vite build --ssr src/entry-server.tsx --outDir dist-ssr   # SSR bundle of the marketing pages
+node scripts/prerender.mjs                                  # injects bodies into the built shell
+```
+
+This writes `dist/index.html` (home), `dist/blog/**/index.html`, `dist/sitemap.xml`, and `dist/robots.txt`.
+The browser still loads the full SPA on top (createRoot replaces the static markup), so the interactive
+experience is unchanged. Override the canonical origin for previews with `SITE_ORIGIN` (default
+`https://ipop.ai`). The HTML/XML generation is pure + unit-tested in `src/blog/seo.ts`.
+
+The **blog** lives at `/blog`. Posts are committed markdown under `content/blog/*.md` (frontmatter +
+body) — fleet agents (Scout/Quill) add an article by dropping a new file; the next build prerenders and
+lists it. See `src/blog/`.
 
 ## Architecture (one store, no router)
 

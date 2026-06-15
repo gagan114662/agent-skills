@@ -3760,6 +3760,20 @@ select:focus-visible {
   text-transform: capitalize;
 }
 
+/* blog bylines (#252): author + date + reading time. No capitalize — preserves "SEO"/"By". */
+.blog-by {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.72;
+}
+.site-card__link .blog-by {
+  margin-top: 0.75rem;
+}
+.site-doc__head .blog-by {
+  margin-top: 0.6rem;
+}
+
 /* rendered markdown */
 .md {
   line-height: 1.7;
