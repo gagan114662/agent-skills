@@ -14,23 +14,24 @@ primary_region = "yyz"
   PORT = "8080"
   NODE_ENV = "production"
   RELOAD_PROFILE = "prod"
-  # Real agents in production (#68): the `claude-code` harness runs an actual Claude session per
+  # Real agents in production (#68/#246): the `claude-code` harness runs an actual Claude session per
   # @mention, in-host (AGENT_RUNTIME=local; the `claude` CLI is baked into the image). Auth is
-  # SUBSCRIPTION-FIRST and per-tenant — each workspace connects its OWN Claude (Settings → Connect
+  # SUBSCRIPTION-ONLY and per-tenant — each workspace connects its OWN Claude (Settings → Connect
   # Claude → CLAUDE_CODE_OAUTH_TOKEN in the per-tenant vault), so no model credential is baked here.
-  # A workspace that hasn't connected gets a friendly in-channel "connect your account" reply, never a
-  # crash. Optional operator fallback: `fly secrets set -a reload-api ANTHROPIC_API_KEY=…` (used only
-  # for tenants who've connected nothing). Tracing: `fly secrets set -a reload-api BRAINTRUST_API_KEY=…`.
+  # #246: there is NO ANTHROPIC_API_KEY fallback for agent runs — a workspace that hasn't connected (or
+  # whose token expired) gets a friendly in-channel "reconnect your Claude" reply, never an API-key
+  # charge and never a crash. Tracing: `fly secrets set -a reload-api BRAINTRUST_API_KEY=…`.
   AGENT_HARNESS = "claude-code"
   AGENT_RUNTIME = "local"
   # Deployment-wide default model. The harness emits an env-gated --model flag (#52) that reads this;
-  # per-session model selection (#52) can still override it. MUST be a model the API actually serves —
-  # #242: a non-existent id (`claude-fable-5`) made every claude-code session exit 1 ("error · exit 1")
-  # producing nothing, because the harness passed `--model claude-fable-5` and the API rejected it. This
-  # is the project-canonical default (see model-providers config/demo); switch to `claude-opus-4-8` for a
-  # premium default. A mis-set value here is now caught + surfaced as a "model" failure with a self-heal
-  # incident instead of an opaque crash (runtime/outcome.ts, self-healing/model-incident.ts).
-  ANTHROPIC_MODEL = "claude-sonnet-4-6"
+  # a workspace's owner-picked model (Settings → Connect Claude) and a per-session #52 selection still
+  # override it. MUST be a model the API actually serves — #242/#246: a non-existent id (`claude-fable-5`)
+  # made every claude-code session exit 1 ("error · exit 1") producing nothing, because the harness passed
+  # `--model claude-fable-5` and the API rejected it. The fleet model is now the OWNER DECISION
+  # `claude-opus-4-8` (run on the connected SUBSCRIPTION token, never an API key). A mis-set value is
+  # caught BEFORE spawn by the #246 launch preflight (runtime/models.ts → ModelUnavailableError) and
+  # surfaced as an actionable owner message + self-heal incident, never an opaque mid-run crash.
+  ANTHROPIC_MODEL = "claude-opus-4-8"
   # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
   RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
   # #138 marketing department fleet: turn the agency ON for the live product (the config env base layer,

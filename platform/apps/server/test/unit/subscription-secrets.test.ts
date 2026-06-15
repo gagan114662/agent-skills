@@ -5,56 +5,56 @@ import {
   StaticSecretsResolver,
 } from "../../src/runtime/secrets-resolver.js";
 
-/** An auth resolver whose vault returns a fixed map keyed by workspace, and a fixed platform key. */
-function authResolver(tokens: Record<string, string>, platformKey: string | null): AgentAuthResolver {
+/** An auth resolver whose vault returns a fixed map keyed by workspace. #246: there is NO platform key. */
+function authResolver(tokens: Record<string, string>): AgentAuthResolver {
   return new AgentAuthResolver({
     getSubscriptionToken: (workspaceId) => Promise.resolve(tokens[workspaceId] ?? null),
-    platformKey: () => platformKey,
   });
 }
 
-describe("AgentAuthResolver (#68 — per-tenant auth resolution)", () => {
+describe("AgentAuthResolver (#68/#246 — per-tenant, subscription-only)", () => {
   it("resolves subscription mode for a workspace with a connected token", async () => {
-    const auth = await authResolver({ wsA: "tok-A" }, null).resolve("wsA");
+    const auth = await authResolver({ wsA: "tok-A" }).resolve("wsA");
     expect(auth).toEqual({ mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: "tok-A" } });
   });
 
-  it("resolves platform fallback for a workspace with no token when a platform key exists", async () => {
-    const auth = await authResolver({}, "sk-platform").resolve("wsB");
-    expect(auth).toEqual({ mode: "platform", secrets: { ANTHROPIC_API_KEY: "sk-platform" } });
-  });
-
-  it("resolves none when neither a token nor a platform key exists", async () => {
-    expect((await authResolver({}, null).resolve("wsC")).mode).toBe("none");
+  it("#246: resolves none (NO API-key fallback) for a workspace with no token", async () => {
+    const auth = await authResolver({}).resolve("wsB");
+    expect(auth).toEqual({ mode: "none", secrets: {} });
   });
 
   it("never crosses tenants — wsB's resolve never sees wsA's token", async () => {
-    const r = authResolver({ wsA: "tok-A" }, null);
+    const r = authResolver({ wsA: "tok-A" });
     expect((await r.resolve("wsA")).mode).toBe("subscription");
     expect((await r.resolve("wsB")).mode).toBe("none");
   });
 });
 
-describe("SubscriptionSecretsResolver (#68 — injects the chosen auth as runtime env)", () => {
+describe("SubscriptionSecretsResolver (#68/#246 — injects the chosen auth as runtime env)", () => {
   it("injects the workspace subscription token", async () => {
-    const r = new SubscriptionSecretsResolver(authResolver({ wsA: "tok-A" }, "sk-platform"));
+    const r = new SubscriptionSecretsResolver(authResolver({ wsA: "tok-A" }));
     expect(await r.resolve("wsA")).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: "tok-A" });
   });
 
-  it("falls back to the platform key when the workspace has no token", async () => {
-    const r = new SubscriptionSecretsResolver(authResolver({}, "sk-platform"));
-    expect(await r.resolve("wsB")).toEqual({ ANTHROPIC_API_KEY: "sk-platform" });
+  it("#246: injects nothing (NO API key) when the workspace has no token — connect-prompt handles it", async () => {
+    const r = new SubscriptionSecretsResolver(authResolver({}));
+    expect(await r.resolve("wsB")).toEqual({});
   });
 
-  it("injects nothing when neither is configured (the connect-prompt path handles this)", async () => {
-    const r = new SubscriptionSecretsResolver(authResolver({}, null));
-    expect(await r.resolve("wsC")).toEqual({});
+  it("#246: an inner-resolver API key is STRIPPED even when the workspace has no subscription token", async () => {
+    // A leaked ANTHROPIC_API_KEY must never reach the agent runtime, with or without a subscription.
+    const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", OPENAI_API_KEY: "sk-oai" });
+    const r = new SubscriptionSecretsResolver(authResolver({}), extra);
+    const secrets = await r.resolve("wsB");
+    expect(secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(secrets).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(secrets.OPENAI_API_KEY).toBe("sk-oai");
   });
 
-  it("subscription token wins — a platform key never ships alongside it from extra secrets", async () => {
+  it("subscription token wins — a leaked API key never ships alongside it from extra secrets", async () => {
     // The inner resolver leaks a platform key; the auth layer OWNS the credential keys, so it is stripped.
     const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", OPENAI_API_KEY: "sk-oai" });
-    const r = new SubscriptionSecretsResolver(authResolver({ wsA: "tok-A" }, null), extra);
+    const r = new SubscriptionSecretsResolver(authResolver({ wsA: "tok-A" }), extra);
     const secrets = await r.resolve("wsA");
     expect(secrets.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-A");
     expect(secrets).not.toHaveProperty("ANTHROPIC_API_KEY");

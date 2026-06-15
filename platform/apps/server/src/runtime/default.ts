@@ -22,6 +22,7 @@ import {
 } from "./secrets-resolver.js";
 import { resolveCredentialMatrix } from "./credential-scope.js";
 import { getPersonaByAgentMember } from "../db/repositories/personas.js";
+import { getWorkspaceClaudeModel } from "../db/repositories/agent-credentials.js";
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import { resolveAllServiceSecrets } from "../db/repositories/external-credentials.js";
 import { createAgentAuthResolver } from "./auth-default.js";
@@ -241,6 +242,12 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // Auto model-selection (convene-llm-gateway): undefined unless LLM_GATEWAY_URL is set. The resolver
     // gates itself further on the master switch + per-tenant config, so this is OFF by default.
     autoModel,
+    // #246 model preflight: the workspace's owner-picked fleet model (Settings → Connect Claude → Model)
+    // and the deployment default, so the launch gate validates the EFFECTIVE model against the models
+    // known to resolve BEFORE spawning a real claude-code session — an unservable id (claude-fable-5)
+    // throws an actionable ModelUnavailableError instead of crashing mid-run.
+    modelForWorkspace: (workspaceId: string) => getWorkspaceClaudeModel(workspaceId),
+    envDefaultModel: process.env.ANTHROPIC_MODEL,
     // #230: route genuine session failures into the self-healing flywheel (see note above).
     onSessionFailure: async (e) => {
       // #242: a "model" misconfig is OWNER-actionable config (a `--model` the API can't serve), not a

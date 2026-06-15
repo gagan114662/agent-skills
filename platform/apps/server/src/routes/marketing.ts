@@ -75,6 +75,7 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       messageId: result.messageId,
       launched: result.launched,
       connectPrompted: result.connectPrompted,
+      modelBlocked: result.modelBlocked,
     });
   });
 
@@ -127,6 +128,12 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
     if (!result.ok) return reply.code(result.code).send({ error: result.error });
     // #68: `connectPrompted` lists any mentioned agent that couldn't run because the workspace hasn't
     // connected a Claude account — the persona posted a friendly connect prompt instead of launching.
-    return reply.code(202).send({ launched: result.launched, connectPrompted: result.connectPrompted });
+    return reply.code(202).send({
+      launched: result.launched,
+      connectPrompted: result.connectPrompted,
+      // #246: agents skipped because the workspace's fleet model isn't servable — the persona posted a
+      // "pick a valid model" prompt instead of launching a doomed session.
+      modelBlocked: result.modelBlocked,
+    });
   });
 }

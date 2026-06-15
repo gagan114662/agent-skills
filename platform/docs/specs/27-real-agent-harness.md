@@ -21,9 +21,11 @@ Selection via `AGENT_HARNESS` (`demo` | `claude-code`); `CLAUDE_BIN` and `ANTHRO
 claude invocation; `AGENT_HARNESS_CMD` / `AGENT_HARNESS_ARGS` still override everything.
 
 The **deployment-wide default model** is `ANTHROPIC_MODEL` (set in `.env.example`, `fly.toml [env]`,
-and documented in `PLATFORM-ENV-SETUP.md`). Live ipop agents default to `claude-sonnet-4-6` (it MUST be
-a model the API serves — #242 fixed a non-existent default that exited every session 1). Per-session
-model selection (#52) still overrides it via the merged session env.
+and documented in `PLATFORM-ENV-SETUP.md`). The fleet model is the owner-decision `claude-opus-4-8`
+(#246) — it MUST be a model the API serves (#242/#246 fixed a non-existent default that exited every
+session 1; #246 added a launch preflight that rejects an unservable id BEFORE spawn). A workspace's
+owner-picked model + a per-session #52 selection still override it via the merged session env. Auth is
+subscription-only (#246): the connected `CLAUDE_CODE_OAUTH_TOKEN`, never an `ANTHROPIC_API_KEY`.
 
 ### Security
 The task/prompt is **never** interpolated into argv — it is passed at run time as `AGENT_TASK` and

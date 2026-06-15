@@ -8,7 +8,9 @@ import {
   getCredentialStatus,
   setWorkspaceClaudeToken,
   clearWorkspaceClaudeToken,
+  setWorkspaceClaudeModel,
 } from "../db/repositories/agent-credentials.js";
+import { knownModels, isKnownModel, DEFAULT_AGENT_MODEL } from "../runtime/models.js";
 
 export async function meRoutes(app: FastifyInstance): Promise<void> {
   app.get("/me", async (req, reply) => {
@@ -63,6 +65,39 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     await clearWorkspaceClaudeToken(identity.workspaceId);
-    return { connected: false, fingerprint: null, connectedAt: null };
+    return { connected: false, fingerprint: null, connectedAt: null, model: null };
+  });
+
+  // The set of models the owner picker may select — those known to resolve on the subscription (#246),
+  // plus the canonical default. Static + secret-free.
+  app.get("/me/agent-models", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    return { models: knownModels(), default: DEFAULT_AGENT_MODEL };
+  });
+
+  // Owner model picker (#246): set (or clear with null) the workspace's fleet model. Validated against
+  // the models known to resolve with the subscription BEFORE it persists — an unservable id (the
+  // `claude-fable-5` class) is rejected with a 400 here instead of crashing every session mid-run. The
+  // workspace must have connected a Claude subscription first (the picker lives in that panel).
+  app.put("/me/agent-model", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const body = (req.body ?? {}) as { model?: unknown };
+    const raw = typeof body.model === "string" ? body.model.trim() : "";
+    const model = raw.length > 0 ? raw : null;
+    if (model !== null && !isKnownModel(model)) {
+      return reply.code(400).send({
+        error: `model "${model}" is unavailable on your plan — pick a valid model`,
+        models: knownModels(),
+      });
+    }
+    const status = await setWorkspaceClaudeModel(identity.workspaceId, model);
+    if (!status) {
+      return reply
+        .code(409)
+        .send({ error: "connect a Claude subscription first (Settings → Connect Claude)" });
+    }
+    return status;
   });
 }

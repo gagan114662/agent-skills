@@ -41,4 +41,32 @@ describe("ConnectClaude (#68)", () => {
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(onDisconnect).toHaveBeenCalled();
   });
+
+  it("#246: shows the model picker when connected and calls onSelectModel with the choice", () => {
+    const onSelectModel = vi.fn();
+    render(
+      <ConnectClaude
+        status={{ connected: true, fingerprint: "fp", model: null }}
+        models={["claude-opus-4-8", "claude-sonnet-4-6"]}
+        defaultModel="claude-opus-4-8"
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+        onSelectModel={onSelectModel}
+      />,
+    );
+    const select = screen.getByLabelText(/fleet model/i) as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "claude-sonnet-4-6" } });
+    expect(onSelectModel).toHaveBeenCalledWith("claude-sonnet-4-6");
+    // Selecting the blank "Default" option clears the pick (null → deployment default).
+    fireEvent.change(select, { target: { value: "" } });
+    expect(onSelectModel).toHaveBeenCalledWith(null);
+  });
+
+  it("#246: hides the model picker until a model list is provided", () => {
+    render(
+      <ConnectClaude status={{ connected: true, fingerprint: "fp" }} onConnect={() => {}} onDisconnect={() => {}} />,
+    );
+    expect(screen.queryByLabelText(/fleet model/i)).not.toBeInTheDocument();
+  });
 });

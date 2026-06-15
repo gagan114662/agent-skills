@@ -24,7 +24,9 @@ import { loadConfig } from "../config/loader.js";
 import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
 import { createAgentAuthResolver } from "../runtime/auth-default.js";
-import { buildConnectPrompt } from "./connect-prompt.js";
+import { getWorkspaceClaudeModel } from "../db/repositories/agent-credentials.js";
+import { effectiveModel, isKnownModel } from "../runtime/models.js";
+import { buildConnectPrompt, buildModelPrompt } from "./connect-prompt.js";
 import type { MarketingMentionTrigger } from "../messaging/delivery.js";
 import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
@@ -263,6 +265,28 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
           channelId: input.channelId,
           agentMemberId: input.agentMemberId,
           body: buildConnectPrompt(input.personaName),
+          parentMessageId: input.parentMessageId,
+        }),
+    },
+    // #246 model preflight: same shape as the auth gate. Resolves the workspace's effective fleet model
+    // (owner pick → deployment default → canonical) and validates it against the models known to resolve;
+    // an unservable id posts an actionable "pick a valid model" prompt instead of launching a session
+    // that would 403 + crash mid-run. Same SAME default model logic the SessionManager launch gate uses.
+    model: {
+      required: harnessRequiresAuth(loadEnv().agent.harness),
+      check: async (workspaceId) => {
+        const model = effectiveModel({
+          workspacePicked: await getWorkspaceClaudeModel(workspaceId),
+          envDefault: process.env.ANTHROPIC_MODEL ?? null,
+        });
+        return isKnownModel(model) ? { ok: true } : { ok: false, model };
+      },
+      postModelPrompt: async (input) =>
+        channelPoster.post({
+          workspaceId: input.workspaceId,
+          channelId: input.channelId,
+          agentMemberId: input.agentMemberId,
+          body: buildModelPrompt(input.personaName, input.model),
           parentMessageId: input.parentMessageId,
         }),
     },
