@@ -713,6 +713,85 @@ describe("SessionManager — deliverable surfacing on completion (#248)", () => 
   });
 });
 
+describe("SessionManager — a harness-reported error never surfaces a deliverable (#251)", () => {
+  type CompletedEvent = Parameters<
+    NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionCompleted"]>
+  >[0];
+  type FailureEvent = Parameters<
+    NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionFailure"]>
+  >[0];
+
+  function makeManager251(runtime: AgentRuntime) {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const completed: CompletedEvent[] = [];
+    const failures: FailureEvent[] = [];
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      harnessKind: "claude-code",
+      decodeOutput: harnessLineDecoder("claude-code"),
+      caps: caps(),
+      logger: silentLogger,
+      onSessionCompleted: async (e) => {
+        completed.push(e);
+      },
+      onSessionFailure: async (e) => {
+        failures.push(e);
+      },
+    });
+    return { manager, store, poster, completed, failures };
+  }
+
+  it("an exit-0 run that ends with is_error:true is treated as FAILED — no deliverable card, failure routed", async () => {
+    // The prod bug: `claude -p` can exit 0 yet emit a terminal `{type:'result', is_error:true}` ("I'm
+    // missing a tool I need"). The PROCESS succeeded; the agent RUN failed with no artifact. Surfacing it
+    // as a "deliverable ready for review" card with an Approve button is a lying success.
+    const errorResult =
+      JSON.stringify({
+        type: "result",
+        subtype: "error",
+        is_error: true,
+        result: "I couldn't complete the task — I'm missing a tool I need.",
+      }) + "\n";
+    const runtime = new CompletingRuntime([errorResult], 0); // exit 0 despite the error result
+    const { manager, store, poster, completed, failures } = makeManager251(runtime);
+
+    const session = await manager.launch({ ...launch, task: "draft 3 tweets" });
+    await manager.join(session.id);
+
+    // NO deliverable card is surfaced (never an Approve button on a no-artifact run).
+    expect(completed).toHaveLength(0);
+    // The run is recorded as failed (the board never reports success for a failed run)...
+    expect(store.finalized?.status).toBe("failed");
+    // ...and routed to the failure sink so it shows Failed-with-reason + retry.
+    expect(failures).toHaveLength(1);
+    expect(failures[0]!.status).toBe("failed");
+    // The terminal channel message is a failure mark, not a green check.
+    const terminal = poster.bodies().at(-1)!;
+    expect(terminal).toContain("❌");
+    expect(terminal).not.toContain("✅");
+  });
+
+  it("an exit-0 run with a clean is_error:false result still surfaces its deliverable (happy path intact)", async () => {
+    const ok =
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Here are 3 tweets." }) + "\n";
+    const runtime = new CompletingRuntime([ok], 0);
+    const { manager, store, completed, failures } = makeManager251(runtime);
+
+    const session = await manager.launch({ ...launch, task: "draft 3 tweets" });
+    await manager.join(session.id);
+
+    expect(store.finalized?.status).toBe("completed");
+    expect(failures).toHaveLength(0);
+    expect(completed).toHaveLength(1);
+    expect(completed[0]!.result).toContain("3 tweets");
+  });
+});
+
 describe("SessionManager — owner can ALWAYS stop a runaway (#248)", () => {
   it("force-finalizes an orphaned (not-in-memory) session to canceled — kills the stuck Scout", async () => {
     // The 30-min stuck session is orphaned: no child on this process, frozen `running` in the DB.

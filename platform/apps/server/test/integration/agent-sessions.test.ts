@@ -61,6 +61,16 @@ const MODEL_FAIL_HARNESS = [
     "process.exit(1)",
 ];
 
+// #251: a host harness that exits 0 yet ends its stream-json with a terminal `is_error:true` result —
+// the exact "process succeeded, agent run FAILED with no artifact" shape (`claude -p` reporting it's
+// missing a tool / hit a cap, then exiting cleanly). Deterministic + spend-free, so it runs in CI.
+const ERROR_RESULT_EXIT0_HARNESS = [
+  "-e",
+  "console.log(JSON.stringify({type:'result',subtype:'error',is_error:true," +
+    "result:'I could not complete the task — I am missing a tool I need.'}));" +
+    "process.exit(0)",
+];
+
 const apps: FastifyInstance[] = [];
 const slugs: string[] = [];
 
@@ -463,6 +473,49 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     expect(pending[0]!.amount).toBeNull(); // NOT a money action (#243 intact)
     expect(pending[0]!.summary).toContain("draft 3 tweets");
     expect((pending[0]!.payload as { sessionId: string }).sessionId).toBe(launch.json().id);
+  });
+
+  it("a run that exits 0 but reports an error NEVER surfaces a deliverable card — it lands Failed (#251)", async () => {
+    // The prod bug: `claude -p` exited 0 yet ended its stream with `{type:'result', is_error:true}`. The
+    // process succeeded, so the run was finalized `completed` and surfaced a "Deliverable ready for
+    // review" approval card with an Approve button — but the only "content" was the agent's error. With
+    // the fix, that run is reconciled to `failed`: no card, a failure mark in the channel, no green check.
+    const { app } = await startApp(
+      ERROR_RESULT_EXIT0_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      false,
+      harnessLineDecoder("claude-code"), // decode the stream-json result so is_error is seen
+      true, // surface deliverables (the sink that wrongly fired before the fix)
+    );
+    const w = await seed(app);
+    expect(await listRequests(w.workspaceId, { status: "pending" })).toHaveLength(0);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft 3 tweets" },
+    });
+    // The run is reconciled to failed (not "completed") despite the clean exit 0.
+    const session = await pollStatus(app, w, launch.json().id, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("failed");
+
+    // The terminal channel message is a failure mark + reason, never the lying green check.
+    const messages = await app.inject({
+      method: "GET",
+      url: `/channels/${w.channelId}/messages`,
+      cookies: { rid: w.cookie },
+    });
+    const bodies = (messages.json() as { body: string }[]).map((m) => m.body);
+    const terminal = bodies.find((b) => b.includes("session failed"));
+    expect(terminal).toBeTruthy();
+    expect(bodies.some((b) => b.includes("✅"))).toBe(false);
+
+    // And NO deliverable / approval card was created (never an Approve button on a no-artifact run).
+    await new Promise((r) => setTimeout(r, 300)); // a card would be created best-effort just after finalize
+    const pending = await listRequests(w.workspaceId, { status: "pending" });
+    expect(pending.filter((r) => r.actionType === "agent.deliverable")).toHaveLength(0);
   });
 
   it("the owner can STOP an orphaned/stuck running session — it reaches a terminal state (#248)", async () => {
