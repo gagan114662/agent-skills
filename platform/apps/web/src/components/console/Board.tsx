@@ -4,7 +4,8 @@
  * Every card opens the drawer to dive in. The Approval-needed lane is the "different room" — it lights
  * vermilion when live and shows the approvals-clear moment when empty; its cards carry the ask line and
  * open into the drawer, where Approve / Not yet decide through the real #13 gate. This component only
- * renders + raises intent (onPeek / onWhy), so no gate is weakened here.
+ * renders + raises intent (onPeek / onWhy / onStop), so no gate is weakened here. The running card
+ * carries a Stop control (#248) so the owner can kill a runaway agent without leaving the board.
  */
 import { CONSOLE, consoleNextAsk } from "../../brand.js";
 import { BrailleSpinner } from "./StatusGlyph.js";
@@ -14,6 +15,8 @@ export interface BoardProps {
   columns: Record<ItemKind, readonly ConsoleItem[]>;
   onPeek: (item: ConsoleItem) => void;
   onWhy: (item: ConsoleItem) => void;
+  /** #248: stop a running session from its card. Absent → no Stop control (back-compat). */
+  onStop?: (item: ConsoleItem) => void;
   /** Optional "next likely ask" hint for the empty-approvals moment. */
   nextAskHint?: string;
 }
@@ -36,7 +39,12 @@ function Why({ item, onWhy }: { item: ConsoleItem; onWhy: (i: ConsoleItem) => vo
   );
 }
 
-function RunningCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<BoardProps, "onPeek" | "onWhy">): React.JSX.Element {
+function RunningCard({
+  item,
+  onPeek,
+  onWhy,
+  onStop,
+}: { item: ConsoleItem } & Pick<BoardProps, "onPeek" | "onWhy" | "onStop">): React.JSX.Element {
   return (
     <article className="card" style={hueStyle(item)} onClick={() => onPeek(item)}>
       <div className="card__ttl">
@@ -48,6 +56,18 @@ function RunningCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<Board
         <Why item={item} onWhy={onWhy} />
         <span className="card__sp" />
         {item.elapsedMs !== undefined && <span>{fmtElapsed(item.elapsedMs)}</span>}
+        {onStop && (
+          <button
+            className="card__stop"
+            aria-label={`${CONSOLE.card.stop} ${item.agentLabel}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStop(item);
+            }}
+          >
+            {CONSOLE.card.stop}
+          </button>
+        )}
       </div>
     </article>
   );
@@ -82,7 +102,7 @@ function ShippedCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<Board
 }
 
 export function Board(props: BoardProps): React.JSX.Element {
-  const { columns, onPeek, onWhy, nextAskHint } = props;
+  const { columns, onPeek, onWhy, onStop, nextAskHint } = props;
   const waitingLive = columns.waiting.length > 0;
 
   return (
@@ -93,7 +113,7 @@ export function Board(props: BoardProps): React.JSX.Element {
           <span className="board__coln">{columns.running.length}</span>
         </header>
         {columns.running.map((item) => (
-          <RunningCard key={item.key} item={item} onPeek={onPeek} onWhy={onWhy} />
+          <RunningCard key={item.key} item={item} onPeek={onPeek} onWhy={onWhy} onStop={onStop} />
         ))}
       </section>
 

@@ -17,6 +17,7 @@ import { defaultComplianceEnforcer } from "../legal/enforcer.js";
 import {
   ActionExecutionError,
   buildRegistry,
+  validateAgentDeliverable,
   validateBillingRefund,
   validateBrowserAction,
   validateChatPostMessage,
@@ -139,6 +140,22 @@ const chatPostMessage: ActionExecutor = {
     );
     return { messageId: message.id, channelId };
   },
+};
+
+/**
+ * `agent.deliverable` (#248): a completed agent session's draft, surfaced for owner review in the
+ * APPROVAL NEEDED queue so a briefed task never "vanishes" (its result lived only as a channel message
+ * + `agent_sessions.result` row the owner never saw). The executor is a pure ACKNOWLEDGEMENT — it
+ * performs NO side effect: approving simply records the owner saw the draft (publishing/sending stays
+ * autonomous under #243, gated only for money). So a clean `recordExecution(ok:true)` is the right
+ * outcome, never "no executor for …". Creates no new authority; the payload is data.
+ */
+const agentDeliverable: ActionExecutor = {
+  actionType: "agent.deliverable",
+  validate: validateAgentDeliverable,
+  summarize: (p) => `deliverable ready for review (session ${String(p.sessionId).slice(0, 8)})`,
+  execute: (payload) =>
+    Promise.resolve({ acknowledged: true, sessionId: String(payload.sessionId) }),
 };
 
 /**
@@ -374,6 +391,7 @@ export function buildDefaultRegistry(
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
+    agentDeliverable,
     makeExternalSend(egress, compliance, dispatcher),
     billingRefund,
     browserAction,

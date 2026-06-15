@@ -7,10 +7,12 @@ import { GitWorkspaceProvisioner } from "../git/provisioner.js";
 import {
   createAgentSession,
   finalizeSession,
+  forceFinalizeIfLive,
   heartbeatSession,
   markSessionRunning,
 } from "../db/repositories/agent-sessions.js";
 import { postMessage } from "../db/repositories/messages.js";
+import { createRequest } from "../db/repositories/approvals.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
@@ -46,6 +48,9 @@ export const dbStore: SessionStore = {
   markRunning: markSessionRunning,
   heartbeat: heartbeatSession,
   finalize: finalizeSession,
+  // #248: race-safe terminal write used to cancel an orphaned/cross-process session and to defend the
+  // pre-start vanish path — only finalizes a still-live row (never stomps a concurrent finalize).
+  forceFinalize: forceFinalizeIfLive,
 };
 
 /**
@@ -312,6 +317,35 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       } catch (err: unknown) {
         logger.error({ err }, "model-incident resolution failed");
       }
+    },
+    // #248: a clean completion with real output SURFACES the deliverable as a board artifact — a pending
+    // #13 review card (APPROVAL NEEDED) carrying the draft — so a briefed task never "vanishes" (its
+    // result previously lived only as a channel message + `agent_sessions.result` row the owner never
+    // saw). `agent.deliverable` is NOT a money action (#243 money-only intact) and grants no new
+    // authority: the executor is a pure acknowledgement, publishing stays autonomous. The recipient/
+    // payload is STRUCTURAL data (#223 injection-safe — no agent-controlled action type or amount).
+    // Best-effort: a surfacing error never affects the already-finalized session.
+    onSessionCompleted: async (e) => {
+      const task = e.task.trim();
+      const headline = task.length > 80 ? `${task.slice(0, 79)}…` : task || "deliverable";
+      await createRequest({
+        workspaceId: e.workspaceId,
+        requesterMemberId: e.agentMemberId,
+        actionType: "agent.deliverable",
+        payload: {
+          sessionId: e.sessionId,
+          channelId: e.channelId,
+          task,
+          // The draft is already redacted + bounded (the result tail). Stored so the review drawer can
+          // show what the agent produced without re-reading the channel.
+          draft: e.result.slice(0, 4000),
+        },
+        amount: null,
+        summary: `Deliverable ready for review: ${headline}`,
+        status: "pending",
+        expiresAt: null,
+        events: [{ type: "requested", detail: { sessionId: e.sessionId } }],
+      });
     },
   });
   return manager;

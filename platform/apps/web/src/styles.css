@@ -4724,6 +4724,12 @@ select:focus-visible {
   color: var(--text-faint); cursor: pointer; transition: opacity 0.15s; }
 .card:hover .card__why { opacity: 1; }
 .card__why:hover { color: var(--ink); }
+/* #248: stop a runaway agent from its running card. Hidden until hover so the board stays calm. */
+.card__stop { opacity: 0; margin-left: 8px; border: 1px solid var(--line); background: none; border-radius: 4px;
+  padding: 1px 6px; font-family: var(--console-mono); font-size: 9.5px; color: var(--text-faint);
+  cursor: pointer; transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
+.card:hover .card__stop { opacity: 1; }
+.card__stop:hover { color: var(--danger, #c0392b); border-color: var(--danger, #c0392b); }
 .card__actions { display: flex; gap: 8px; margin-top: 10px; }
 .board__clear { border: 1.5px dashed var(--line); border-radius: var(--radius); padding: 20px 16px; text-align: center;
   color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; animation: swell-pop 0.4s var(--pop-ease) both; }

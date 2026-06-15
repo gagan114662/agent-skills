@@ -207,6 +207,24 @@ export function ConsoleView(): React.JSX.Element {
     return () => window.clearInterval(timer);
   }, [workspaceId]);
 
+  // #248: the owner can stop a runaway agent straight from the board. The backend cancel works even
+  // for an orphaned/stuck session (it force-finalizes the row), so the WIP card always clears. Refresh
+  // mission control immediately so the stopped session drops off the board.
+  async function stopSession(sessionId: string): Promise<void> {
+    if (!workspaceId) return;
+    try {
+      await api.missionControl.stop(workspaceId, sessionId);
+    } catch {
+      /* best-effort; the next poll reflects the terminal state regardless */
+    }
+    try {
+      const next = await api.missionControl.get(workspaceId);
+      if (mounted.current) setMc(next);
+    } catch {
+      /* transient */
+    }
+  }
+
   // The console is "activated" once the workspace has ≥1 venture (#226), read from the #104 pipeline
   // roll-up. This — NOT the live-session count or a seed flag — is what drives the first-run empty desk and
   // the rendered PROJECTS: a workspace with a venture is never an empty desk, with or without a reload, and
@@ -493,6 +511,7 @@ export function ConsoleView(): React.JSX.Element {
               columns={model.columns}
               onPeek={(item) => dive(item, "transcript")}
               onWhy={(item) => dive(item, "audit")}
+              onStop={(item) => void stopSession(item.key)}
             />
           </>
         )}

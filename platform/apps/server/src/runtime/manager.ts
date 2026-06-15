@@ -78,6 +78,18 @@ export interface SessionStore {
       snapshotId?: string | null;
     },
   ): Promise<void>;
+  /**
+   * Force a session to a terminal state ONLY if it is still live (#248) — used by {@link
+   * SessionManager.cancel} to kill a session this process is no longer driving (an orphan left
+   * `running` by a deploy/restart, or one started on another machine) and by the pre-start vanish
+   * defense. Returns whether a live row was finalized (`false` ⇒ already terminal / unknown, so a
+   * concurrent finalize is never stomped). **Optional** so every existing fake store still satisfies
+   * the seam; absent ⇒ the manager can only cancel sessions it is actively driving (today's behavior).
+   */
+  forceFinalize?(
+    id: string,
+    fields: { status: SessionStatus; result?: string | null; exitCode?: number | null },
+  ): Promise<boolean>;
 }
 
 /** Channel delivery seam (real impl persists + publishes a message; tests inject a fake). */
@@ -213,6 +225,26 @@ export interface SessionManagerDeps {
    * sink error never affects the already-finalized session.
    */
   onSessionRecovered?(event: { workspaceId: string; sessionId: string }): Promise<void>;
+  /**
+   * Optional completion sink (#248): called best-effort when a session COMPLETES cleanly with real
+   * output — so a briefed deliverable (the actual draft) is SURFACED as a board artifact (the #13
+   * APPROVAL NEEDED queue) instead of living only as a channel message + `agent_sessions.result` row
+   * the owner never sees (the "vanished" bug). Fires ONLY when the launch opted in
+   * ({@link LaunchInput.surfaceDeliverable} !== false) — autonomy/watchdog launches opt OUT because
+   * they surface completion through their own settler. Not a money action and creates no new authority
+   * (#243 money-only intact); the draft is data, the card is a review receipt. Absent → no surfacing
+   * (today's behavior); a sink error never affects the already-finalized session.
+   */
+  onSessionCompleted?(event: {
+    workspaceId: string;
+    sessionId: string;
+    channelId: string;
+    agentMemberId: string;
+    /** The task the session was briefed with (for the card summary). */
+    task: string;
+    /** The already-redacted, bounded result tail (the deliverable/draft). */
+    result: string;
+  }): Promise<void>;
 }
 
 export interface LaunchInput {
@@ -256,6 +288,14 @@ export interface LaunchInput {
     effort: EffortLevel;
     mode: SessionMode;
   };
+  /**
+   * Whether a clean completion should SURFACE its result as a board deliverable artifact (#248).
+   * Defaults to `true` (surface) so a user-briefed @mention/department/REST launch never "vanishes" —
+   * its draft lands in the APPROVAL NEEDED queue. Autonomy + watchdog-revival launches pass `false`:
+   * they own completion via their own settler, so surfacing here would double-card every workflow
+   * stage. Only consulted when {@link SessionManagerDeps.onSessionCompleted} is wired.
+   */
+  surfaceDeliverable?: boolean;
 }
 
 /** How many trailing output lines to keep as the persisted result summary. */
@@ -373,8 +413,14 @@ export class SessionManager {
       spec: harness.spec,
       decode: harness.decode,
       ticket,
-    }).catch(() => {
-      /* drive() never throws — terminal failures are persisted as `failed` */
+      surfaceDeliverable: input.surfaceDeliverable,
+    }).catch((err: unknown) => {
+      // #248 silent-vanish defense: `runSession` finalizes the row on every normal path, but a throw
+      // BEFORE its inner try (secrets.resolve / loadConfig) or in the tracer escapes here. Previously
+      // swallowed → the row stayed `provisioning` forever with NO failure recorded (the session
+      // "vanished"). Now we best-effort force-finalize it to `failed` with the real reason and route the
+      // failure, so a briefed task NEVER disappears without a surfaced outcome.
+      void this.finalizeOrphanedFailure(session, err);
     });
     this.runs.set(session.id, run);
     void run.finally(() => this.runs.delete(session.id));
@@ -484,12 +530,31 @@ export class SessionManager {
     return harnessEnv;
   }
 
-  /** Cancel a running session (idempotent; no-op if already terminal). */
+  /**
+   * Cancel a session so the owner can ALWAYS kill a runaway (#248). Two paths:
+   *  - In-flight on THIS process → cancel the runtime (SIGKILLs the child); `runSession` then finalizes
+   *    the row to `canceled` on its teardown path.
+   *  - NOT in our in-memory map (an orphan left `running` by a deploy/restart, or a session driven by
+   *    another machine — the 30-min stuck Scout) → force-finalize the DB row to `canceled` directly, so
+   *    it leaves the live board immediately even though no process is holding it. Race-safe: the guarded
+   *    store update is a no-op (returns false) if the row already went terminal.
+   * Idempotent; returns whether the cancel took effect.
+   */
   async cancel(id: string): Promise<boolean> {
     const running = this.running.get(id);
-    if (!running) return false;
-    await running.cancel("canceled");
-    return true;
+    if (running) {
+      await running.cancel("canceled");
+      return true;
+    }
+    // Orphan / cross-process: there is no child to signal — finalize the durable row so a runaway can
+    // still be killed from the UI. Absent forceFinalize (a bare fake store) ⇒ unchanged: cannot cancel.
+    if (this.deps.store.forceFinalize) {
+      return this.deps.store.forceFinalize(id, {
+        status: "canceled",
+        result: "Canceled by the owner (no live process was attached — orphaned or cross-process).",
+      });
+    }
+    return false;
   }
 
   /**
@@ -529,6 +594,8 @@ export class SessionManager {
       decode: LineDecoder;
       /** Cloud-scale admission ticket (#71): released at teardown. */
       ticket?: AdmissionTicket;
+      /** #248: surface a clean completion's result as a board deliverable (default true). */
+      surfaceDeliverable?: boolean;
     },
   ): Promise<void> {
     const log = this.deps.logger.child({
@@ -557,6 +624,7 @@ export class SessionManager {
           spec: opts.spec,
           decode: opts.decode,
           ticket: opts.ticket,
+          surfaceDeliverable: opts.surfaceDeliverable,
         }),
     );
   }
@@ -572,6 +640,7 @@ export class SessionManager {
       spec: HarnessSpec;
       decode: LineDecoder;
       ticket?: AdmissionTicket;
+      surfaceDeliverable?: boolean;
     },
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only. #151: the launching
@@ -776,6 +845,27 @@ export class SessionManager {
         .onSessionRecovered({ workspaceId: session.workspaceId, sessionId: session.id })
         .catch((err: unknown) => log.error({ err }, "session recovery routing failed"));
     }
+    // #248: surface a clean completion's deliverable as a board artifact so a briefed task NEVER
+    // vanishes — its draft lands in the APPROVAL NEEDED queue instead of living only as a channel
+    // message + result row. Only for a real completion WITH output, and only when the launch opted in
+    // (autonomy/watchdog pass surfaceDeliverable:false — they surface via their own settler). Best-effort.
+    if (
+      this.deps.onSessionCompleted &&
+      isSuccess(result.status) &&
+      opts.surfaceDeliverable !== false &&
+      resultText.trim()
+    ) {
+      await this.deps
+        .onSessionCompleted({
+          workspaceId: session.workspaceId,
+          sessionId: session.id,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          task,
+          result: resultText,
+        })
+        .catch((err: unknown) => log.error({ err }, "session deliverable surfacing failed"));
+    }
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.
     if (this.deps.usage) {
@@ -786,6 +876,50 @@ export class SessionManager {
     }
     log.info({ status: result.status, snapshotId: result.snapshotId }, "agent session finalized");
     return { status: result.status, exitCode: result.exitCode ?? null, result: resultText || null };
+  }
+
+  /**
+   * #248 silent-vanish defense: a session whose {@link drive} threw BEFORE `runSession` could finalize
+   * (a pre-`try` secrets/config throw, or a tracer throw) is stuck at `provisioning` with no record.
+   * Best-effort force-finalize it to `failed` with the real (redacted) reason and route the failure so
+   * it surfaces in recentFailures / self-healing — a briefed task never disappears without an outcome.
+   * The guarded store update is a no-op if the row already reached a terminal state.
+   */
+  private async finalizeOrphanedFailure(session: AgentSession, err: unknown): Promise<void> {
+    const reason = err instanceof Error ? err.message : String(err);
+    const log = this.deps.logger.child({ sessionId: session.id, workspaceId: session.workspaceId });
+    log.error({ err }, "agent session failed before start — finalizing as failed (#248)");
+    const detail = `session failed before start: ${reason}`.slice(0, RESULT_MAX_CHARS);
+    let finalized = false;
+    try {
+      if (this.deps.store.forceFinalize) {
+        finalized = await this.deps.store.forceFinalize(session.id, {
+          status: "failed",
+          result: detail,
+          exitCode: null,
+        });
+      } else {
+        await this.deps.store.finalize(session.id, { status: "failed", exitCode: null, result: detail });
+        finalized = true;
+      }
+    } catch (e: unknown) {
+      log.error({ err: e }, "failed to finalize an orphaned session (#248)");
+    }
+    if (finalized && this.deps.onSessionFailure) {
+      await this.deps
+        .onSessionFailure({
+          workspaceId: session.workspaceId,
+          sessionId: session.id,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          status: "failed",
+          exitCode: null,
+          failureClass: "spawn",
+          message: failureCopy("spawn").headline,
+          errorExcerpt: detail.slice(0, 240),
+        })
+        .catch((e: unknown) => log.error({ err: e }, "orphaned-failure routing failed (#248)"));
+    }
   }
 
   /** Post to the channel without ever letting a delivery error fail the session. */

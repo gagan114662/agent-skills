@@ -27,6 +27,8 @@ import {
   MODEL_INCIDENT_SIGNAL,
 } from "../../src/self-healing/model-incident.js";
 import type { ResourceCaps } from "../../src/db/repositories/agent-sessions.js";
+import { createAgentSession, markSessionRunning, getAgentSessionById } from "../../src/db/repositories/agent-sessions.js";
+import { createRequest, listRequests } from "../../src/db/repositories/approvals.js";
 
 /** A no-op logger so the manager's internal logging doesn't spam the test output. */
 const silentLogger: SessionLogger = {
@@ -77,6 +79,8 @@ async function startApp(
   selfHeal = false,
   /** #242: decode harness stdout (claude-code stream-json) so a model-error result becomes a channel line. */
   decode?: LineDecoder,
+  /** #248: wire the production deliverable-surfacing sink (completed session → pending review card). */
+  surface = false,
 ): Promise<{
   app: FastifyInstance;
   http: string;
@@ -91,6 +95,25 @@ async function startApp(
     caps,
     logger: silentLogger,
     ...(decode ? { decodeOutput: decode } : {}),
+    ...(surface
+      ? {
+          // Mirror production wiring (runtime/default.ts): a clean completion with output surfaces a
+          // pending `agent.deliverable` review card so a briefed task never vanishes (#248).
+          onSessionCompleted: async (e) => {
+            await createRequest({
+              workspaceId: e.workspaceId,
+              requesterMemberId: e.agentMemberId,
+              actionType: "agent.deliverable",
+              payload: { sessionId: e.sessionId, channelId: e.channelId, task: e.task, draft: e.result.slice(0, 4000) },
+              amount: null,
+              summary: `Deliverable ready for review: ${e.task.slice(0, 80)}`,
+              status: "pending",
+              expiresAt: null,
+              events: [{ type: "requested", detail: { sessionId: e.sessionId } }],
+            });
+          },
+        }
+      : {}),
     ...(selfHeal
       ? {
           onSessionFailure: async (e) => {
@@ -401,6 +424,79 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     const session = await pollStatus(app, w, launch.json().id, (s) => s === "idle_reaped");
     expect(session.status).toBe("idle_reaped");
     expect(session.endedAt).toBeTruthy();
+  });
+
+  it("a completed task SURFACES its draft as a pending review card — never vanishes (#248)", async () => {
+    // The prod bug: an @mention-briefed session completed with a real draft in agent_sessions.result +
+    // a channel post, but created NO approval_request → it "vanished" from the board. With the
+    // deliverable sink wired, a clean completion lands a pending `agent.deliverable` review card.
+    const { app } = await startApp(
+      COMPLETING_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      false,
+      undefined,
+      true, // surface deliverables
+    );
+    const w = await seed(app);
+    expect(await listRequests(w.workspaceId, { status: "pending" })).toHaveLength(0);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft 3 tweets" },
+    });
+    const session = await pollStatus(app, w, launch.json().id, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("completed");
+
+    // Poll the queue: the deliverable card is created best-effort just after finalize.
+    let pending: Awaited<ReturnType<typeof listRequests>> = [];
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      pending = await listRequests(w.workspaceId, { status: "pending" });
+      if (pending.length > 0 || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.actionType).toBe("agent.deliverable");
+    expect(pending[0]!.amount).toBeNull(); // NOT a money action (#243 intact)
+    expect(pending[0]!.summary).toContain("draft 3 tweets");
+    expect((pending[0]!.payload as { sessionId: string }).sessionId).toBe(launch.json().id);
+  });
+
+  it("the owner can STOP an orphaned/stuck running session — it reaches a terminal state (#248)", async () => {
+    // The 30-min stuck Scout: a `running` row this process is not driving (orphaned by a deploy). The
+    // existing cancel returned false for it. The robust cancel force-finalizes the durable row.
+    const { app } = await startApp(COMPLETING_HARNESS, { wallClockMs: 20_000, idleMs: 8_000 });
+    const w = await seed(app);
+
+    // Simulate an orphaned live row directly (no in-memory runner attached to THIS manager).
+    const orphan = await createAgentSession({
+      workspaceId: w.workspaceId,
+      channelId: w.channelId,
+      agentMemberId: w.agentMemberId,
+      createdByMemberId: null,
+      runtime: "local",
+      command: "node",
+      caps: { wallClockMs: 20_000, idleMs: 8_000 },
+    });
+    await markSessionRunning(orphan.id);
+    expect((await getAgentSessionById(orphan.id))?.status).toBe("running");
+
+    // The owner stops it from the board (mission-control stop → robust cancel).
+    const res = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/mission-control/sessions/${orphan.id}/stop`,
+      cookies: { rid: w.cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().canceled).toBe(true);
+
+    const after = await getAgentSessionById(orphan.id);
+    expect(after?.status).toBe("canceled");
+    expect(after?.endedAt).toBeTruthy();
+    expect(after?.result).toContain("Canceled by the owner");
   });
 
   it("a workspace cannot launch a session into another workspace's channel (IDOR)", async () => {
