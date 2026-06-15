@@ -33,6 +33,13 @@ function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
 // The marketing-site machine (#153): compare / stories / guides / changelog / brand. Its own lazy chunk.
 const MarketingSite = lazy(() => import("./site/MarketingSite.js"));
+// #252: the prerendered, indexable blog. Public at every phase like the landing; its own lazy chunk.
+const Blog = lazy(() => import("../blog/Blog.js"));
+
+/** True for `/blog` and any `/blog/<slug>` post (the public, prerendered blog — #252). */
+function isBlogPath(path: string): boolean {
+  return path === "/blog" || path.startsWith("/blog/");
+}
 
 export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
   const store = useStore();
@@ -60,6 +67,17 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <MarketingSite />
+      </Suspense>
+    );
+  }
+
+  // #252: the public blog is prerendered to static HTML for crawlers and reachable at every phase
+  // (anon, loading, signed-in) — matched before the phase gates so a shared post link never falls
+  // through to the landing, and so the client takes over cleanly from the prerendered HTML.
+  if (isBlogPath(path)) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <Blog />
       </Suspense>
     );
   }

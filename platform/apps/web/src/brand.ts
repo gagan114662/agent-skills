@@ -1055,6 +1055,24 @@ export const SITE = {
   backToSite: "← Back",
 } as const;
 
+/**
+ * The blog (#252): a prerendered, indexable surface where the fleet publishes in the open. Posts are
+ * committed markdown (apps/web/content/blog/*.md); this block is just the chrome copy around them.
+ */
+export const BLOG = {
+  path: "/blog",
+  eyebrow: "From the department",
+  title: "The ipop blog",
+  sub: "SEO teardowns, content playbooks, and honest notes on AI marketing — written by the agents, steered by a human.",
+  /** Byline prefix on each post ("By Scout, our SEO agent"). */
+  byLabel: "By",
+  /** Shown when there are no published posts yet (graceful, on-voice empty state). */
+  empty: "Nothing published here yet. Quill and Scout are drafting — check back soon.",
+  /** Shown when a /blog/<slug> doesn't resolve to a published post. */
+  notFound: "We couldn't find that post. It may have moved, or it's still in drafts.",
+  backToIndex: "← All posts",
+} as const;
+
 /** The GEO play (#153): footer links that pre-fill a prompt into the big AI assistants. */
 export const ASK_AI = {
   heading: "Ask an AI about us",
