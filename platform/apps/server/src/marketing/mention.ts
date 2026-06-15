@@ -47,6 +47,37 @@ export interface ConnectPrompted {
   messageId: string;
 }
 
+/**
+ * Model preflight gate (#246). When the deployment runs a real harness and the workspace's effective
+ * fleet model isn't one that resolves on the subscription (the `claude-fable-5` class), the persona
+ * posts an actionable "pick a valid model" prompt INSTEAD of launching — so a bad model can never crash
+ * every session mid-run. Absent (or `required:false`, the demo harness) → no gate, today's behavior.
+ */
+export interface MarketingModelGate {
+  /** True when the deployment harness requires model auth (claude-code/codex). */
+  required: boolean;
+  /** Resolve + validate the workspace's effective model; ok:false carries the unservable id. */
+  check(workspaceId: string): Promise<{ ok: true } | { ok: false; model: string }>;
+  /** Post the brand-voice "pick a valid model" prompt as the persona, threaded under the @mention. */
+  postModelPrompt(input: {
+    workspaceId: string;
+    channelId: string;
+    agentMemberId: string;
+    personaName: string;
+    model: string;
+    parentMessageId: string;
+  }): Promise<{ id: string }>;
+}
+
+/** A persona that was @mentioned but couldn't run because the workspace's fleet model is unservable. */
+export interface ModelBlocked {
+  personaId: string;
+  handle: string;
+  department: string;
+  model: string;
+  messageId: string;
+}
+
 export interface MarketingMentionDeps {
   getChannel(channelId: string): Promise<{ id: string; workspaceId: string; name: string | null } | undefined>;
   isMarketingChannel(name: string | null): boolean;
@@ -72,6 +103,8 @@ export interface MarketingMentionDeps {
   departmentForHandle(handle: string): string | undefined;
   /** #68: optional subscription-first auth gate. Absent → no gate (demo/local default). */
   auth?: MarketingAuthGate;
+  /** #246: optional model preflight gate. Absent → no gate (demo/local default). */
+  model?: MarketingModelGate;
 }
 
 export interface LaunchedMention {
@@ -83,7 +116,7 @@ export interface LaunchedMention {
 }
 
 export type MarketingMentionResult =
-  | { ok: true; launched: LaunchedMention[]; connectPrompted: ConnectPrompted[] }
+  | { ok: true; launched: LaunchedMention[]; connectPrompted: ConnectPrompted[]; modelBlocked: ModelBlocked[] }
   | { ok: false; code: number; error: string };
 
 export class MarketingMentionService {
@@ -108,6 +141,7 @@ export class MarketingMentionService {
 
     const launched: LaunchedMention[] = [];
     const connectPrompted: ConnectPrompted[] = [];
+    const modelBlocked: ModelBlocked[] = [];
     for (const persona of personas) {
       const department = this.deps.departmentForHandle(persona.name);
       if (!department) continue; // a mentioned non-marketing persona is skipped here
@@ -132,6 +166,32 @@ export class MarketingMentionService {
           messageId: posted.id,
         });
         continue;
+      }
+
+      // #246 model preflight: if the workspace's effective fleet model isn't servable, post an
+      // actionable "pick a valid model" prompt as the persona and move on — no launch, no doomed
+      // session, no admission slot. Runs after the auth gate (auth is the prerequisite for a launch).
+      const modelGate = this.deps.model;
+      if (modelGate?.required) {
+        const verdict = await modelGate.check(identity.workspaceId);
+        if (!verdict.ok) {
+          const posted = await modelGate.postModelPrompt({
+            workspaceId: identity.workspaceId,
+            channelId: input.channelId,
+            agentMemberId: persona.agentMemberId,
+            personaName: persona.name,
+            model: verdict.model,
+            parentMessageId: input.messageId,
+          });
+          modelBlocked.push({
+            personaId: persona.id,
+            handle: persona.name,
+            department,
+            model: verdict.model,
+            messageId: posted.id,
+          });
+          continue;
+        }
       }
 
       const task = input.task ?? `@${persona.name}`;
@@ -163,9 +223,9 @@ export class MarketingMentionService {
       });
     }
 
-    if (launched.length === 0 && connectPrompted.length === 0) {
+    if (launched.length === 0 && connectPrompted.length === 0 && modelBlocked.length === 0) {
       return { ok: false, code: 400, error: "no marketing agents are mentioned on this message" };
     }
-    return { ok: true, launched, connectPrompted };
+    return { ok: true, launched, connectPrompted, modelBlocked };
   }
 }

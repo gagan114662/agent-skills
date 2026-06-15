@@ -23,6 +23,13 @@ export const workspaceAgentCredentials = pgTable("workspace_agent_credentials", 
   claudeOauthToken: text("claude_oauth_token").notNull(),
   /** Non-reversible fingerprint for the UI's connected state — never the token itself. */
   tokenFingerprint: text("token_fingerprint").notNull(),
+  /**
+   * The owner-picked fleet model for this workspace (#246) — a NON-secret, validated against the models
+   * known to resolve before it's stored. NULL ⇒ the deployment default (`ANTHROPIC_MODEL` → the canonical
+   * `claude-opus-4-8`). Read at launch and injected as the session's `ANTHROPIC_MODEL`; a per-session #52
+   * selection still overrides it. Migration 0246 rewrites any stored `claude-fable-5` to the opus default.
+   */
+  model: text("model"),
   /** The member who connected it (audit). Soft — survives member deletion. */
   connectedByMemberId: uuid("connected_by_member_id").references(() => members.id, {
     onDelete: "set null",

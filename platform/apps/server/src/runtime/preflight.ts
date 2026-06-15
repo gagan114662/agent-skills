@@ -222,27 +222,28 @@ function checkClaudeBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckRe
 }
 
 /**
- * Claude auth presence. An API key OR a cloud-provider credential chain (Bedrock/Vertex) is a clear
- * pass. Otherwise WARN, not fail: an interactive `claude login` session on the host is also valid,
- * and we can't confirm it without spending — so we surface it as actionable advice, not a hard block.
+ * Claude auth presence (#246: subscription-only). Agent runs authenticate with the workspace's
+ * connected `CLAUDE_CODE_OAUTH_TOKEN` (the per-tenant `claude setup-token` vault), injected per session
+ * — NOT a host-level API key. So this host-posture check is informational only: it never fails (the real
+ * auth is per-workspace, validated at @mention time by the subscription-first gate) and it surfaces a
+ * deployment-wide subscription token if the operator set one (an org-wide default for shared workspaces).
  */
 function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
   const name = "claude-auth";
-  if (env.CLAUDE_CODE_USE_BEDROCK || env.CLAUDE_CODE_USE_VERTEX) {
+  if (env.CLAUDE_CODE_OAUTH_TOKEN) {
     return {
       name,
       status: "pass",
-      message: "using a cloud provider credential chain (Bedrock/Vertex) — no API key needed",
+      message: "deployment-wide Claude subscription token present (CLAUDE_CODE_OAUTH_TOKEN)",
     };
-  }
-  if (env.ANTHROPIC_API_KEY) {
-    return { name, status: "pass", message: "Anthropic API key present (ANTHROPIC_API_KEY)" };
   }
   return {
     name,
     status: "warn",
-    message: "no ANTHROPIC_API_KEY detected — Claude Code will use an existing interactive login if present",
-    remedy: "Run `claude login` on the host, set ANTHROPIC_API_KEY, or select Bedrock/Vertex.",
+    message:
+      "no deployment-wide Claude token — agents authenticate with each workspace's connected subscription " +
+      "(Settings → Connect Claude); a workspace that hasn't connected gets a reconnect prompt, never an API key",
+    remedy: "Each workspace owner connects their own `claude setup-token` in Settings → Connect Claude.",
   };
 }
 

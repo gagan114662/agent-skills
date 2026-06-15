@@ -10,6 +10,8 @@ import { useState } from "react";
 export interface ConnectClaudeStatus {
   connected: boolean;
   fingerprint: string | null;
+  /** The owner-picked fleet model (#246); null/undefined ⇒ the deployment default. */
+  model?: string | null;
 }
 
 export interface ConnectClaudeProps {
@@ -21,10 +23,16 @@ export interface ConnectClaudeProps {
   error?: string | null;
   onConnect: (token: string) => void;
   onDisconnect: () => void;
+  /** The models the owner may pick (#246) + the deployment default. Empty ⇒ picker hidden. */
+  models?: string[];
+  /** The canonical default model id (shown as the "(default)" option). */
+  defaultModel?: string;
+  /** Persist the workspace's fleet model (null ⇒ clear → use the default). */
+  onSelectModel?: (model: string | null) => void;
 }
 
 export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
-  const { status, busy, error, onConnect, onDisconnect } = props;
+  const { status, busy, error, onConnect, onDisconnect, models, defaultModel, onSelectModel } = props;
   const [token, setToken] = useState("");
 
   return (
@@ -42,6 +50,31 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
           <p className="connect-claude__status" role="status">
             ✅ Connected{status.fingerprint ? ` · ${status.fingerprint}` : ""}
           </p>
+          {models && models.length > 0 && onSelectModel ? (
+            <div className="connect-claude__model">
+              <label htmlFor="claude-model">Model</label>
+              <select
+                id="claude-model"
+                aria-label="Fleet model"
+                disabled={busy}
+                value={status.model ?? ""}
+                onChange={(e) => onSelectModel(e.target.value === "" ? null : e.target.value)}
+              >
+                <option value="">
+                  {defaultModel ? `Default (${defaultModel})` : "Default"}
+                </option>
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                    {m === defaultModel ? " — recommended" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="connect-claude__hint">
+                Your fleet runs on this model via your subscription. We check it works on your plan before saving.
+              </p>
+            </div>
+          ) : null}
           <button type="button" disabled={busy} onClick={() => onDisconnect()}>
             Disconnect
           </button>

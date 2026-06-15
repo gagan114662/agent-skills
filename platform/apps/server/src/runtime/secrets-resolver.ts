@@ -104,12 +104,13 @@ export class StaticSecretsResolver implements SecretsResolver {
 }
 
 /**
- * Subscription-first secrets resolver (#68, ADR-0068). Injects the per-tenant Claude subscription
- * token (`CLAUDE_CODE_OAUTH_TOKEN`) so a session bills the OWNER's subscription — falling back to the
- * operator platform key (`ANTHROPIC_API_KEY`) only when the workspace has none. The auth layer OWNS
- * those two keys: any value an inner resolver supplies for them is stripped, so the chosen auth is
- * authoritative and a platform key never ships alongside a subscription token. Other secrets from the
- * inner resolver (e.g. `OPENAI_API_KEY` for the codex harness) pass through unchanged.
+ * Subscription-ONLY secrets resolver (#68, ADR-0068; tightened in #246). Injects the per-tenant Claude
+ * subscription token (`CLAUDE_CODE_OAUTH_TOKEN`) so a session bills the OWNER's subscription, with NO
+ * API-key fallback (#246) — an unconnected workspace gets no model credential at all (the @mention gate
+ * posts a reconnect prompt instead of launching). The auth layer OWNS the model-auth keys
+ * ({@link AGENT_AUTH_KEYS}, incl. `ANTHROPIC_API_KEY`): any value an inner resolver supplies for them is
+ * STRIPPED, so an API key can never reach the agent runtime even if it leaks into `AGENT_SECRET_KEYS`.
+ * Other secrets from the inner resolver (e.g. `OPENAI_API_KEY` for the codex harness) pass through.
  */
 export class SubscriptionSecretsResolver implements SecretsResolver {
   constructor(

@@ -20,6 +20,7 @@ import type {
   MarketingMentionResult,
   LaunchedMention,
   ConnectPrompted,
+  ModelBlocked,
 } from "./mention.js";
 
 export interface MarketingBriefDeps {
@@ -58,6 +59,7 @@ export type MarketingBriefResult =
       messageId: string;
       launched: LaunchedMention[];
       connectPrompted: ConnectPrompted[];
+      modelBlocked: ModelBlocked[];
     }
   | { ok: false; code: number; error: string };
 
@@ -113,6 +115,7 @@ export class MarketingBriefService {
       messageId: message.id,
       launched: result.launched,
       connectPrompted: result.connectPrompted,
+      modelBlocked: result.modelBlocked,
     };
   }
 }

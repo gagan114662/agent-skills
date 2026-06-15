@@ -32,6 +32,7 @@ import type {
   WorkflowInsightsDto,
   Channel,
   CredentialStatus,
+  AgentModels,
   DepartmentBriefResult,
   DepartmentSeedResult,
   EffortLevel,
@@ -283,6 +284,16 @@ export const api = {
   },
   disconnectAgentCredentials(): Promise<CredentialStatus> {
     return del("/me/agent-credentials") as Promise<CredentialStatus>;
+  },
+  // #246: the owner model picker — list the selectable models + set/clear the workspace's fleet model.
+  getAgentModels(): Promise<AgentModels> {
+    return request<AgentModels>("/me/agent-models");
+  },
+  setAgentModel(model: string | null): Promise<CredentialStatus> {
+    return request<CredentialStatus>("/me/agent-model", {
+      method: "PUT",
+      body: JSON.stringify({ model }),
+    });
   },
 
   // --- Connect Slack (#170): the per-tenant Slack app vault (token write-only) ---

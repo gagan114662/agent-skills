@@ -18,6 +18,8 @@ export interface CredentialStatus {
   connected: boolean;
   fingerprint: string | null;
   connectedAt: Date | null;
+  /** The owner-picked fleet model for this workspace (#246); null ⇒ the deployment default. */
+  model: string | null;
 }
 
 /** Connect (or re-connect) a workspace's Claude subscription token. Last write wins. */
@@ -48,9 +50,40 @@ export async function setWorkspaceClaudeToken(input: {
         connectedByMemberId: input.connectedByMemberId ?? null,
         connectedAt: now,
         updatedAt: now,
+        // #246: deliberately NOT in the conflict SET — reconnecting a token preserves the owner's model pick.
       },
     });
-  return { connected: true, fingerprint, connectedAt: now };
+  // Re-read so the returned status reflects the preserved model pick (#246), never resetting it.
+  return getCredentialStatus(input.workspaceId);
+}
+
+/** Resolve a workspace's owner-picked fleet model (#246), or null when none is set (use the default). */
+export async function getWorkspaceClaudeModel(workspaceId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ model: workspaceAgentCredentials.model })
+    .from(workspaceAgentCredentials)
+    .where(eq(workspaceAgentCredentials.workspaceId, workspaceId))
+    .limit(1);
+  return row?.model ?? null;
+}
+
+/**
+ * Set (or clear, with `null`) a workspace's owner-picked fleet model (#246). The caller validates the
+ * model against the models known to resolve BEFORE calling this (so an unservable id never persists).
+ * Requires a connected credential row (the picker lives in the connected Connect-Claude panel); returns
+ * the updated status, or `null` when the workspace hasn't connected a Claude subscription yet.
+ */
+export async function setWorkspaceClaudeModel(
+  workspaceId: string,
+  model: string | null,
+): Promise<CredentialStatus | null> {
+  const updated = await db
+    .update(workspaceAgentCredentials)
+    .set({ model, updatedAt: new Date() })
+    .where(eq(workspaceAgentCredentials.workspaceId, workspaceId))
+    .returning({ workspaceId: workspaceAgentCredentials.workspaceId });
+  if (updated.length === 0) return null;
+  return getCredentialStatus(workspaceId);
 }
 
 /** Resolve a workspace's subscription token (decrypted), or null when none is connected. */
@@ -70,12 +103,13 @@ export async function getCredentialStatus(workspaceId: string): Promise<Credenti
     .select({
       fingerprint: workspaceAgentCredentials.tokenFingerprint,
       connectedAt: workspaceAgentCredentials.connectedAt,
+      model: workspaceAgentCredentials.model,
     })
     .from(workspaceAgentCredentials)
     .where(eq(workspaceAgentCredentials.workspaceId, workspaceId))
     .limit(1);
-  if (!row) return { connected: false, fingerprint: null, connectedAt: null };
-  return { connected: true, fingerprint: row.fingerprint, connectedAt: row.connectedAt };
+  if (!row) return { connected: false, fingerprint: null, connectedAt: null, model: null };
+  return { connected: true, fingerprint: row.fingerprint, connectedAt: row.connectedAt, model: row.model };
 }
 
 /** Disconnect a workspace's subscription (idempotent). */

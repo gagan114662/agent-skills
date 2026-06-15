@@ -25,6 +25,7 @@ import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
 import { renderSessionOutcome, classifyFailure, failureCopy, isSuccess, type FailureReasonClass } from "./outcome.js";
+import { assertModelLaunchable, effectiveModel } from "./models.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
 /**
@@ -164,6 +165,22 @@ export interface SessionManagerDeps {
    * Wired centrally HERE (not at the REST route) so @mention/autonomy/marketing launches are covered too.
    */
   autoModel?: AutoModelResolver;
+  /**
+   * Model preflight (#246): the workspace's owner-picked fleet model, read at launch. When set (and no
+   * per-session #52 model is pinned), it is injected as the session's `ANTHROPIC_MODEL`, overriding the
+   * deployment default. Together with {@link envDefaultModel} it lets the launch gate validate the
+   * EFFECTIVE model against the models known to resolve BEFORE spawning a real `claude-code` session —
+   * so an unservable id (the `claude-fable-5` class) throws an actionable {@link ModelUnavailableError}
+   * instead of crashing mid-run. Absent ⇒ no per-workspace model + no gate (today's behavior); the
+   * deployment `ANTHROPIC_MODEL` still applies via the harness's env-gated `--model` flag.
+   */
+  modelForWorkspace?: (workspaceId: string) => Promise<string | null>;
+  /**
+   * The deployment-wide default model (`ANTHROPIC_MODEL`) the gate validates when a workspace pins none.
+   * Wired from env in production. Absent ⇒ the gate falls back to the canonical default. Only consulted
+   * when {@link modelForWorkspace} is wired (the #246 production path).
+   */
+  envDefaultModel?: string;
   /**
    * Optional failure sink (#230): called best-effort when a session ends in a genuine failure
    * (spawn-and-die / harness crash / timeout) so the failure is ROUTED to self-healing/escalation
@@ -306,7 +323,14 @@ export class SessionManager {
     // routing call doesn't hold a concurrency slot; it never throws (a failure degrades to the default).
     const auto = await this.maybeAutoSelectModel(input);
     const selectionRow = auto?.selectionRow ?? input.selection;
-    const harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
+    let harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
+
+    // #246 model preflight: resolve + validate the EFFECTIVE model BEFORE admission/persist, so an
+    // unservable model (the `claude-fable-5` class that 403'd every session) throws an actionable
+    // ModelUnavailableError here instead of spawning a doomed session that crashes mid-run. Injects the
+    // workspace's owner-picked model as ANTHROPIC_MODEL when no per-session model is pinned. No-op unless
+    // the #246 resolver is wired AND this launch resolves to the real `claude-code` harness.
+    harnessEnv = await this.applyModelPreflight(input.workspaceId, harness.kind, harnessEnv);
 
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
     // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
@@ -424,6 +448,40 @@ export class SessionManager {
       harnessEnv: { ...auto.selection.env, ...input.harnessEnv },
       decision: auto.decision,
     };
+  }
+
+  /**
+   * Model preflight (#246): resolve the effective model for a launch and validate it is launchable
+   * BEFORE any session spawns. Precedence: a per-session #52 pin (`ANTHROPIC_MODEL` in `harnessEnv`) >
+   * the workspace's owner-picked model > the deployment env default > the canonical default. When the
+   * effective model is not known to resolve, throws {@link ModelUnavailableError} (owner-actionable) so
+   * the launch fails fast instead of crashing mid-run. Only acts for the real `claude-code` harness with
+   * the #246 resolver wired — otherwise returns `harnessEnv` unchanged (today's behavior). When the
+   * workspace has picked a model and the caller pinned none, injects it as `ANTHROPIC_MODEL`.
+   */
+  private async applyModelPreflight(
+    workspaceId: string,
+    harnessKind: HarnessKind,
+    harnessEnv: Record<string, string> | undefined,
+  ): Promise<Record<string, string> | undefined> {
+    // The model only reaches the model via `--model "$ANTHROPIC_MODEL"` on the claude-code harness.
+    if (harnessKind !== "claude-code" || !this.deps.modelForWorkspace) return harnessEnv;
+    const sessionPinned = harnessEnv?.ANTHROPIC_MODEL ?? null;
+    const workspacePicked = await this.deps.modelForWorkspace(workspaceId);
+    const model = effectiveModel({
+      sessionPinned,
+      workspacePicked,
+      envDefault: this.deps.envDefaultModel ?? null,
+    });
+    // Throws ModelUnavailableError for an unservable id — propagates out of launch(), like the preflight
+    // and admission gates, before any row/slot is created.
+    assertModelLaunchable(model);
+    // No per-session pin but the workspace picked a model ⇒ make it the session's ANTHROPIC_MODEL so the
+    // child uses it even though process.env carries the deployment default.
+    if (!sessionPinned && workspacePicked) {
+      return { ...harnessEnv, ANTHROPIC_MODEL: model };
+    }
+    return harnessEnv;
   }
 
   /** Cancel a running session (idempotent; no-op if already terminal). */

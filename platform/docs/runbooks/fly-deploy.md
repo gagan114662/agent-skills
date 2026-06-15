@@ -67,9 +67,10 @@ runs agents on **its own** Claude subscription, never a pooled key.
    token is stored **encrypted** in the per-tenant vault and never shown again — only a fingerprint is.)
 
 That's it. @mention a fleet agent (`@scout`, `@quill`, …) in its channel and it runs a real
-`claude-sonnet-4-6` session (the deployment-default model — #242) billed to your subscription, replying
-in-thread. A workspace that hasn't
-connected gets a friendly in-channel "connect your Claude account" reply instead — it never crashes.
+`claude-opus-4-8` session (the fleet model — owner decision #246; pick another in **Settings → Connect
+Claude → Model**) billed to your **subscription** (#246: never an `ANTHROPIC_API_KEY`), replying
+in-thread. A workspace that hasn't connected gets a friendly in-channel "connect your Claude account"
+reply instead — it never crashes; an unservable model gets a "pick a valid model" reply, not a crash.
 
 ### Optional operator / platform secrets (set on the app, never committed)
 
@@ -77,9 +78,9 @@ connected gets a friendly in-channel "connect your Claude account" reply instead
 # Encrypt the per-tenant token vault at rest (32-byte key as hex or base64). Strongly recommended in prod.
 flyctl secrets set AGENT_CREDENTIALS_ENC_KEY="$(openssl rand -hex 32)" -a reload-api
 
-# Fallback platform key — used ONLY for tenants who have connected nothing (an operator org key, not a
-# user subscription). Omit it to require every workspace to connect its own.
-flyctl secrets set ANTHROPIC_API_KEY='sk-ant-…' -a reload-api
+# #246: agent auth is SUBSCRIPTION-ONLY. There is NO ANTHROPIC_API_KEY fallback for agent runs — each
+# workspace connects its own `claude setup-token`; an unconnected workspace gets a "reconnect" reply,
+# never an API-key charge. (Do NOT set ANTHROPIC_API_KEY for the fleet; it is ignored by the agent path.)
 
 # Observability: trace every agent session to Braintrust (no-op unless set).
 flyctl secrets set BRAINTRUST_API_KEY='…' -a reload-api

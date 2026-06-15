@@ -105,9 +105,9 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.ok).toBe(false);
   });
 
-  it("claude-code with the binary present + an API key passes", () => {
+  it("claude-code with the binary present + a deployment-wide subscription token passes (#246)", () => {
     const report = preflight(
-      input({ runtime: "local", env: { ANTHROPIC_API_KEY: "sk" } }),
+      input({ runtime: "local", env: { CLAUDE_CODE_OAUTH_TOKEN: "oat" } }),
       okDeps,
     );
     expect(report.ok).toBe(true);
@@ -126,16 +126,15 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.ok).toBe(false);
   });
 
-  it("claude-code with no API key but a Bedrock/Vertex chain selected passes (no key needed)", () => {
-    const report = preflight(
-      input({ runtime: "local", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }),
-      okDeps,
-    );
-    expect(report.checks.find((c) => c.name === "claude-auth")?.status).toBe("pass");
-    expect(report.ok).toBe(true);
+  it("#246 subscription-only: no deployment token WARNS (per-workspace auth) but stays ok", () => {
+    // Auth is per-workspace (#246) — the host posture has no API key, so claude-auth is informational.
+    const report = preflight(input({ runtime: "local", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }), okDeps);
+    const check = report.checks.find((c) => c.name === "claude-auth");
+    expect(check?.status).toBe("warn");
+    expect(report.ok).toBe(true); // a warn does not block
   });
 
-  it("claude-code with neither a key nor a provider chain WARNS (interactive login is valid) but stays ok", () => {
+  it("claude-code with no deployment-wide token WARNS (per-workspace subscription is valid) but stays ok", () => {
     const report = preflight(input({ runtime: "local", env: {} }), okDeps);
     const check = report.checks.find((c) => c.name === "claude-auth");
     expect(check?.status).toBe("warn");

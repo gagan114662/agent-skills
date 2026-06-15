@@ -21,6 +21,14 @@ export interface CredentialStatus {
   connected: boolean;
   fingerprint: string | null;
   connectedAt?: string | null;
+  /** The owner-picked fleet model (#246); null ⇒ the deployment default. */
+  model?: string | null;
+}
+
+/** The selectable fleet models (#246), from `GET /me/agent-models`. */
+export interface AgentModels {
+  models: string[];
+  default: string;
 }
 
 /** Slack connection state (#170), from `GET /me/slack`. Never carries the bot token or signing secret. */
