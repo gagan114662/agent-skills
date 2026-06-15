@@ -3,6 +3,7 @@ import {
   decodeClaudeCodeLine,
   decodeCodexLine,
   harnessLineDecoder,
+  harnessEventReportsError,
 } from "../../src/runtime/stream-json.js";
 
 describe("claude-code stream-json decoder (#81)", () => {
@@ -173,5 +174,39 @@ describe("harnessLineDecoder factory (#81, #50)", () => {
     // A JSON-looking demo line is NOT decoded — it streams exactly as the demo harness printed it.
     const jsonish = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hi" }] } });
     expect(decode(jsonish)).toEqual({ display: [jsonish], raw: null });
+  });
+});
+
+describe("harnessEventReportsError — terminal agent-run failure detector (#251)", () => {
+  it("flags a claude-code result event with is_error:true (a failed run that may still exit 0)", () => {
+    const event = decodeClaudeCodeLine(
+      JSON.stringify({ type: "result", subtype: "error", is_error: true, result: "I'm missing a tool I need." }),
+    ).raw;
+    expect(harnessEventReportsError(event)).toBe(true);
+  });
+
+  it("does NOT flag a clean claude-code result (is_error:false)", () => {
+    const event = decodeClaudeCodeLine(
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Here's your draft." }),
+    ).raw;
+    expect(harnessEventReportsError(event)).toBe(false);
+  });
+
+  it("does NOT flag an assistant text event (work in progress, not a terminal error)", () => {
+    const event = decodeClaudeCodeLine(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "working" }] } }),
+    ).raw;
+    expect(harnessEventReportsError(event)).toBe(false);
+  });
+
+  it("flags a codex top-level error / turn.failed event", () => {
+    expect(harnessEventReportsError({ type: "error", message: "boom" })).toBe(true);
+    expect(harnessEventReportsError({ type: "turn.failed" })).toBe(true);
+  });
+
+  it("returns false for non-events (null, plain text raw)", () => {
+    expect(harnessEventReportsError(null)).toBe(false);
+    expect(harnessEventReportsError("plain line")).toBe(false);
+    expect(harnessEventReportsError({ type: "system", subtype: "init" })).toBe(false);
   });
 });

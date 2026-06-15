@@ -13,7 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
-import type { LineDecoder } from "./stream-json.js";
+import { harnessEventReportsError, type LineDecoder } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
@@ -680,12 +680,18 @@ export class SessionManager {
     // lines out of order or missing entirely (they were still in flight). safePost never rejects, so
     // the chain never breaks.
     let postChain: Promise<unknown> = Promise.resolve();
+    // #251: a `claude -p` run can exit 0 yet end its stream with a terminal error event
+    // (`{type:'result', is_error:true}` — a usage cap, a tool error, "I'm missing a tool I need"). The
+    // PROCESS succeeded but the RUN failed with no artifact. Watch the decoded events for that signal so
+    // the run is finalized as a failure (not surfaced as a green check / "deliverable ready for review").
+    let harnessReportedError = false;
     const emitLine = (line: string): void => {
       const decoded = decode(line);
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
       // the structured log so secrets never persist there either.
       if (decoded.raw !== null) {
         log.info({ event: redact(JSON.stringify(decoded.raw)) }, "agent stream event");
+        if (harnessEventReportsError(decoded.raw)) harnessReportedError = true;
       }
       for (const text of decoded.display) {
         const clean = redact(text).trimEnd();
@@ -786,6 +792,15 @@ export class SessionManager {
     await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
+    // #251: reconcile the process exit with the agent's own terminal signal. A run that EXITED CLEANLY
+    // (status `completed`) but whose stream ended in a harness error event produced no real artifact —
+    // downgrade it to `failed` so it never lies with a green check or surfaces a no-content deliverable
+    // card. Every consumer below (terminal message, finalize, failure routing, recovery, deliverable
+    // surfacing) keys off `result.status`, so the single reassignment fixes all of them at once. The
+    // exit code is left untouched (an honest `exit 0`) — the failure class is refined from the output.
+    if (harnessReportedError && isSuccess(result.status)) {
+      result = { ...result, status: "failed" };
+    }
     // #166: a green check ONLY on a clean completion. A failed/timed-out/canceled session renders a
     // failure mark + brand-voice reason (spawn/auth/timeout/budget/…) instead of the old lying
     // "✅ session failed (exit n/a)". `resultText` is already redacted; it's passed only to refine the

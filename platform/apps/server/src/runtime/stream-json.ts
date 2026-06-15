@@ -59,6 +59,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/**
+ * Whether a decoded harness event signals that the AGENT RUN itself ended in error — even when the
+ * process is about to exit 0 (#251). `claude -p` can emit a terminal `{type:'result', is_error:true}`
+ * (a usage cap, a tool error, "I'm missing a tool I need") and STILL exit with code 0: the process
+ * succeeded but the run failed and produced no artifact. Codex signals the same with a top-level
+ * `error`/`turn.failed` event. The {@link file://./manager.ts SessionManager} watches the decoded raw
+ * events for this so a no-artifact run is never surfaced as a green check or a "deliverable ready for
+ * review" approval card. Pure; defaults to `false` for anything that is not an error-terminal event.
+ */
+export function harnessEventReportsError(raw: unknown): boolean {
+  if (!isRecord(raw)) return false;
+  // claude-code: the terminal `result` event carries an explicit `is_error` flag.
+  if (raw.type === "result" && raw.is_error === true) return true;
+  // codex: a top-level `error` or `turn.failed` event ends the run in failure.
+  if (raw.type === "error" || raw.type === "turn.failed") return true;
+  return false;
+}
+
 const TOOL = "🔧";
 const ERROR = "⚠️";
 const INPUT_MAX = 200;
