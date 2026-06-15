@@ -75,6 +75,17 @@ class FakeStore implements SessionStore {
     this.finalized = fields;
     return Promise.resolve();
   }
+  // #248: race-safe terminal write — only finalizes a row that has not already gone terminal.
+  forced?: { status: SessionStatus; result?: string | null; exitCode?: number | null };
+  forceFinalize(
+    _id: string,
+    fields: { status: SessionStatus; result?: string | null; exitCode?: number | null },
+  ): Promise<boolean> {
+    if (this.finalized) return Promise.resolve(false);
+    this.finalized = fields;
+    this.forced = fields;
+    return Promise.resolve(true);
+  }
   // unique id helper for posts
   nextId(): string {
     this.seq += 1;
@@ -625,5 +636,132 @@ describe("SessionManager — mid-run failure routing (#242)", () => {
     const session = await manager.launch(launch);
     await manager.join(session.id);
     expect(events).toHaveLength(0);
+  });
+});
+
+// --- #248: tasks reach a TERMINAL surfaced state; robust cancel; no silent vanish -----------------
+
+describe("SessionManager — deliverable surfacing on completion (#248)", () => {
+  type CompletedEvent = Parameters<
+    NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionCompleted"]>
+  >[0];
+
+  function makeSurfacingManager(
+    runtime: AgentRuntime,
+    onSessionCompleted: (e: CompletedEvent) => Promise<void>,
+  ) {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+      onSessionCompleted,
+    });
+    return { manager, store };
+  }
+
+  it("surfaces a completed session's draft as a deliverable artifact (the 'vanish' fix)", async () => {
+    const runtime = new CompletingRuntime(["Here's a draft: 3 tweets ready.\n"], 0);
+    const events: CompletedEvent[] = [];
+    const { manager } = makeSurfacingManager(runtime, async (e) => {
+      events.push(e);
+    });
+    const session = await manager.launch({ ...launch, task: "draft 3 tweets" });
+    await manager.join(session.id);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.sessionId).toBe(session.id);
+    expect(events[0]!.task).toBe("draft 3 tweets");
+    expect(events[0]!.result).toContain("3 tweets ready");
+  });
+
+  it("does NOT surface a deliverable when the launch opted out (autonomy/watchdog)", async () => {
+    const runtime = new CompletingRuntime(["stage output\n"], 0);
+    const events: CompletedEvent[] = [];
+    const { manager } = makeSurfacingManager(runtime, async (e) => {
+      events.push(e);
+    });
+    const session = await manager.launch({ ...launch, surfaceDeliverable: false });
+    await manager.join(session.id);
+    expect(events).toHaveLength(0);
+  });
+
+  it("does NOT surface a deliverable for a failed session (it routes a failure instead)", async () => {
+    const runtime = new CompletingRuntime(["boom\n"], 1);
+    const events: CompletedEvent[] = [];
+    const { manager } = makeSurfacingManager(runtime, async (e) => {
+      events.push(e);
+    });
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(events).toHaveLength(0);
+  });
+
+  it("does NOT surface a deliverable when the run produced no output", async () => {
+    const runtime = new CompletingRuntime([], 0);
+    const events: CompletedEvent[] = [];
+    const { manager } = makeSurfacingManager(runtime, async (e) => {
+      events.push(e);
+    });
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(events).toHaveLength(0);
+  });
+});
+
+describe("SessionManager — owner can ALWAYS stop a runaway (#248)", () => {
+  it("force-finalizes an orphaned (not-in-memory) session to canceled — kills the stuck Scout", async () => {
+    // The 30-min stuck session is orphaned: no child on this process, frozen `running` in the DB.
+    const { manager, store } = makeManager(new PendingRuntime(), caps(), new Secrets({}));
+    // A session this manager is NOT driving (e.g. left running by a deploy / another machine).
+    const canceled = await manager.cancel("orphaned_session_id");
+    expect(canceled).toBe(true);
+    expect(store.forced?.status).toBe("canceled");
+    expect(store.forced?.result).toContain("Canceled by the owner");
+  });
+
+  it("returns false when an orphan is already terminal (idempotent, never stomps a row)", async () => {
+    const { manager, store } = makeManager(new CompletingRuntime(["done\n"], 0), caps(), new Secrets({}));
+    const session = await manager.launch(launch);
+    await manager.join(session.id); // row is now terminal (completed)
+    // A late cancel must not overwrite the completed row.
+    expect(await manager.cancel(session.id)).toBe(false);
+    expect(store.finalized?.status).toBe("completed");
+  });
+});
+
+describe("SessionManager — a session NEVER vanishes silently (#248)", () => {
+  /** A secrets resolver that throws BEFORE the run starts (the pre-`try` vanish path). */
+  const throwingSecrets = {
+    resolve: () => Promise.reject(new Error("vault unreachable")),
+  } as unknown as StaticSecretsResolver;
+
+  it("finalizes a session that fails BEFORE start as failed + routes the failure", async () => {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const failures: { failureClass: string; status: string }[] = [];
+    const manager = new SessionManager({
+      runtime: new CompletingRuntime(["never reached\n"], 0),
+      store,
+      poster,
+      secrets: throwingSecrets,
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+      onSessionFailure: async (e) => {
+        failures.push({ failureClass: e.failureClass, status: e.status });
+      },
+    });
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    // The row reached a terminal state (no orphaned `provisioning`) and the failure surfaced.
+    expect(store.finalized?.status).toBe("failed");
+    expect(store.finalized?.result).toContain("session failed before start");
+    expect(store.finalized?.result).toContain("vault unreachable");
+    expect(failures).toEqual([{ failureClass: "spawn", status: "failed" }]);
   });
 });

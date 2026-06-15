@@ -192,6 +192,35 @@ export async function finalizeSession(
     .where(eq(agentSessions.id, id));
 }
 
+/**
+ * Force a session to a terminal state ONLY if it is still live (`provisioning`/`running`) — a race-safe
+ * UPDATE used to (a) cancel an orphaned/cross-process session the in-memory manager can no longer reach
+ * (#248), and (b) defend the pre-start vanish path. Returns whether a live row was finalized: `false`
+ * means the row was already terminal (a concurrent finalize won) or does not exist, so a caller never
+ * stomps a `completed` row. The terminal `result` carries the human-readable reason.
+ */
+export async function forceFinalizeIfLive(
+  id: string,
+  fields: { status: SessionStatus; result?: string | null; exitCode?: number | null },
+): Promise<boolean> {
+  const updated = await db
+    .update(agentSessions)
+    .set({
+      status: fields.status,
+      result: fields.result ?? null,
+      exitCode: fields.exitCode ?? null,
+      endedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(agentSessions.id, id),
+        inArray(agentSessions.status, ["provisioning", "running"]),
+      ),
+    )
+    .returning({ id: agentSessions.id });
+  return updated.length > 0;
+}
+
 /** Record a session's git refs (#51): branch + base + latest committed head sha. Idempotent. */
 export async function setSessionGitRefs(
   id: string,

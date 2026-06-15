@@ -661,7 +661,7 @@ export const CONSOLE = {
   /** Status-grammar words used on rows + cards. */
   status: { yourYes: "your yes", running: "working", shipped: "shipped", idle: "idle", sending: "sending" },
   /** Card chrome. The ▲ marks an approval-needed card (its ask line); the card opens the drawer. */
-  card: { why: "why?", approve: "Approve", sendBack: "Send back", askPrefix: "▲", waiting: "waiting", est: "est." },
+  card: { why: "why?", approve: "Approve", sendBack: "Send back", askPrefix: "▲", waiting: "waiting", est: "est.", stop: "Stop" },
   /** The drawer — the single "dive in" surface (console v5). Open any card or session row into it. */
   peek: {
     /** Section title above the live step trail. */

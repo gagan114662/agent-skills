@@ -1,4 +1,5 @@
 import { loadConfig } from "../config/loader.js";
+import { loadEnv } from "../env.js";
 import { resolveWatchdogCaps } from "./caps.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { budgetExceeded, windowKey } from "../scale/usage.js";
@@ -51,9 +52,18 @@ export function createDefaultWatchdogEngine(
   logger: SessionLogger,
   sessionManager: SessionManager,
 ): WatchdogEngine {
+  // #248: starting the supervisor timer (WATCHDOG_INTERVAL_MS > 0) is the operator's opt-in, so it ALSO
+  // enables the per-workspace caps by default — otherwise the timer would run but reap nothing (the
+  // `watchdog.enabled` config double-gate that left the 30-min stuck Scout un-reaped in prod). A workspace
+  // can still explicitly set `watchdog.enabled: false` to opt back out. With no timer (dev/demo/tests,
+  // interval 0) this stays false → today's behavior, no background reaping.
+  const enabledByDefault = loadEnv().watchdog.intervalMs > 0;
   return new WatchdogEngine({
     listLiveSessions,
-    caps: (workspaceId) => resolveWatchdogCaps(loadConfig(workspaceId).watchdog),
+    caps: (workspaceId) => {
+      const cfg = loadConfig(workspaceId).watchdog;
+      return { ...resolveWatchdogCaps(cfg), enabled: cfg?.enabled ?? enabledByDefault };
+    },
     // Infrastructure-time supervision is gated by the same #17 kill switch as autonomy launches.
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     // Dollar ceiling reuses the #71 scale budget — one tenant budget bounds sessions, ventures, AND
@@ -67,7 +77,16 @@ export function createDefaultWatchdogEngine(
     // Revive = relaunch through the SAME #92 launcher the autonomy engine uses (so it passes the same
     // #71 admission chokepoint and lands on the same #70 worktree / #51 branch).
     reviver: autonomyLauncherFrom(sessionManager),
-    finalizeDead: (sessionId, status) => finalizeSession(sessionId, { status }),
+    // #248: record a clear, owner-readable reason on the reaped row (it shows in recentFailures) instead
+    // of a bare status — so a stuck session that the watchdog finalizes never looks like an unexplained
+    // failure. The session left the live board with a stated cause.
+    finalizeDead: (sessionId, status) =>
+      finalizeSession(sessionId, {
+        status,
+        result:
+          "Reaped by the fleet watchdog — no progress past the stall threshold (the driving process " +
+          "likely died or the run hung). The work was not completed; re-brief if still needed.",
+      }),
     escalator: approvalEscalator,
     poster: channelPoster,
     // #99: pause the supervisor during maintenance (same Redis flag the write-gate + autonomy loop read).

@@ -65,6 +65,19 @@ export function validateChatPostMessage(payload: unknown): ValidationResult {
   return { ok: true };
 }
 
+/**
+ * `agent.deliverable` payload: `{ sessionId, draft, task?, channelId? }` (#248). A completed agent
+ * session's draft surfaced for owner review in the APPROVAL NEEDED queue so a briefed task never
+ * "vanishes". NOT a money action (#243 money-only intact) and creates NO new authority: the card is a
+ * review receipt, the draft is data. Only `sessionId` is required; the rest is display context.
+ */
+export function validateAgentDeliverable(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.sessionId)) return { ok: false, error: "sessionId required" };
+  return { ok: true };
+}
+
 /** `external.send` payload: `{ summary, target? }` — `summary` is required, `target` optional. */
 export function validateExternalSend(payload: unknown): ValidationResult {
   const p = asRecord(payload);

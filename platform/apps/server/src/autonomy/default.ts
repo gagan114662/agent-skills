@@ -13,7 +13,10 @@ import { AutonomyEngine, type AutonomyLauncher } from "./engine.js";
  */
 export function autonomyLauncherFrom(sessionManager: SessionManager): AutonomyLauncher {
   return {
-    launch: (input) => sessionManager.launch(input),
+    // #248: autonomy/watchdog-revival launches surface completion through the engine's own settler
+    // (createApproval + task→done), so opt OUT of the SessionManager deliverable card — otherwise every
+    // workflow stage would also raise an APPROVAL NEEDED review card (double-surfacing).
+    launch: (input) => sessionManager.launch({ ...input, surfaceDeliverable: false }),
     join: (id) => sessionManager.join(id),
     status: async (id) => (await getAgentSessionStatus(id)) ?? "failed",
   };
