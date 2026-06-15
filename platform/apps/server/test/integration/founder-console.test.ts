@@ -52,6 +52,20 @@ describe("founder console route (integration, real Postgres)", () => {
     expect(body.pendingApprovals).toEqual([]);
     expect(body.switches.killSwitch).toBe(false);
     expect(body.attention).toEqual({ required: false, reasons: [] });
+
+    // #253: the proof scorecard is wired end-to-end off the real repos. A fresh workspace has shipped
+    // nothing yet, so the source-backed departments read 0 (still "connected" — a true zero), and the
+    // unwired ones (Search Console SEO, the brand-asset store) report "not connected", never a fake number.
+    expect(body.proofScorecard.total).toBe(7);
+    const byDept: Record<string, { connection: string; value: number | null }> = Object.fromEntries(
+      body.proofScorecard.tiles.map((t: { department: string; connection: string; value: number | null }) => [
+        t.department,
+        { connection: t.connection, value: t.value },
+      ]),
+    );
+    expect(byDept.content).toEqual({ connection: "connected", value: 0 });
+    expect(byDept.seo.connection).toBe("not_connected");
+    expect(byDept.brand.connection).toBe("not_connected");
   });
 
   it("aggregates real usage, a pending #13 approval, and willingness-to-pay evidence", async () => {

@@ -393,4 +393,33 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(out.portfolio.sunsetsPendingApproval).toBe(1); // still reported
     expect(out.attention.reasons).not.toContain("1 venture sunset awaiting approval");
   });
+
+  it("always renders the seven-tile proof scorecard, all 'not connected' when no readings are supplied (#253)", () => {
+    const out = aggregateFounderConsole(input());
+    expect(out.proofScorecard.total).toBe(7);
+    expect(out.proofScorecard.connectedCount).toBe(0);
+    expect(out.proofScorecard.tiles.every((t) => t.connection === "not_connected")).toBe(true);
+  });
+
+  it("flows the gathered per-department proof readings through to the scorecard (#253)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        proofReadings: [
+          {
+            department: "content",
+            connected: true,
+            current: 5,
+            prior: 2,
+            unit: "count",
+            source: "Published artifacts (#231)",
+          },
+        ],
+      }),
+    );
+    expect(out.proofScorecard.connectedCount).toBe(1);
+    const content = out.proofScorecard.tiles.find((t) => t.department === "content")!;
+    expect(content.value).toBe(5);
+    expect(content.trend).toBe("up");
+    expect(content.delta).toBe(3);
+  });
 });

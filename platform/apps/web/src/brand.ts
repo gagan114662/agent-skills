@@ -703,6 +703,8 @@ export const CONSOLE = {
     handoverEmpty: "No calls waiting. The fleet's running clean.",
     plTitle: "Weekly numbers",
     plOneNumber: "the one number that matters",
+    /** #253 proof scorecard heading — real outcomes shipped on the product itself, not draft counts. */
+    proofTitle: `Proof on ${BRAND.name}.ai`,
   },
   /** Per-project settings sheet: tab labels + field copy. */
   settings: {

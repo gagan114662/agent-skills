@@ -9,6 +9,11 @@ import {
   type RightSizing,
   type UsageTrendPoint,
 } from "../scale/forecast.js";
+import {
+  buildProofScorecard,
+  type ProofMetricReading,
+  type ProofScorecard,
+} from "./proof-scorecard.js";
 
 /**
  * The Founder Console roll-up (#104, ADR-0050). **Pure**: given the read-structs gathered from every
@@ -392,6 +397,12 @@ export interface FounderConsoleInput {
   portfolioEnabled?: boolean;
   /** External account onboarding roll-up (#192). Optional ⇒ zeroed pane (onboarding off / unwired). */
   setup?: SetupSnapshot;
+  /**
+   * Per-department PROOF readings (#253) — one real, sourced outcome reading per marketing department. Optional
+   * ⇒ the scorecard still renders all seven tiles as "not connected" (no source wired). Departments absent from
+   * the array also render "not connected"; the builder never fabricates a number.
+   */
+  proofReadings?: ProofMetricReading[];
 }
 
 /** External account onboarding roll-up (#192) — the setup checklist + credential-hygiene pulse. */
@@ -722,6 +733,11 @@ export interface FounderConsole {
   portfolio: PortfolioView;
   /** The external account onboarding roll-up (#192). Zero-valued when onboarding is off / unwired. */
   setup: SetupView;
+  /**
+   * The per-department PROOF scorecard (#253): one tile per marketing department carrying a real, sourced
+   * outcome metric + trend — or "not connected" where a source isn't wired yet. Always present (all-seven).
+   */
+  proofScorecard: ProofScorecard;
   attention: AttentionView;
 }
 
@@ -1000,6 +1016,12 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     stuckAgents: 0,
   };
 
+  // #253 proof scorecard: one tile per marketing department with a real, sourced outcome metric (articles
+  // live, emails sent, blended CAC, …) or "not connected" where the source isn't wired. Pure + always-on:
+  // the builder emits all seven tiles even when no readings were gathered, so the console never hides the
+  // honesty gap behind an empty pane.
+  const proofScorecard = buildProofScorecard({ readings: input.proofReadings });
+
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
@@ -1087,6 +1109,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     supportSla,
     portfolio,
     setup,
+    proofScorecard,
     attention: { required: reasons.length > 0, reasons },
   };
 }

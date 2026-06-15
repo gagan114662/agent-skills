@@ -43,6 +43,15 @@ import { decideRotationReminders } from "../onboarding/decide.js";
 import type { ServiceKind } from "../onboarding/types.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
+import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realworld-artifacts.js";
+import {
+  spendByChannelSince,
+  conversionsByChannelSince,
+  emailSentToday,
+  sentCountByChannelSince,
+} from "../db/repositories/acquisition.js";
+import { buildAcquisitionBriefView } from "../acquisition/cac.js";
+import type { ProofMetricReading } from "./proof-scorecard.js";
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -445,6 +454,144 @@ export function createDefaultFounderConsoleService(deps: {
           offlineCapabilities: 0,
           needed,
         };
+      },
+    },
+    // #253 proof scorecard: one real, sourced OUTCOME reading per marketing department — not draft counts.
+    // Every number is grounded in a real source (published artifacts, external send receipts, growth events)
+    // or returned `connected:false` with the reason (Search Console / brand-asset store not wired) so the
+    // tile renders "not connected" rather than a fabricated figure (premortem #200 §2). The trend compares a
+    // cumulative total against its value 7 days ago (so the delta = what shipped this week). Read-only.
+    proofScorecard: {
+      readings: async (workspaceId, now) => {
+        const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+        const since7 = new Date(now.getTime() - WEEK_MS);
+        const epoch = new Date(0);
+        const readings: ProofMetricReading[] = [];
+
+        // content (Quill): articles published & live, off the #231 real-world publish artifacts.
+        const [publishedTotal, artifacts] = await Promise.all([
+          countPublishedArtifacts(workspaceId),
+          listArtifacts(workspaceId),
+        ]);
+        const publishedLast7 = artifacts.filter(
+          (a) => a.status === "published" && a.createdAtMs >= since7.getTime(),
+        ).length;
+        readings.push({
+          department: "content",
+          connected: true,
+          current: publishedTotal,
+          prior: publishedTotal - publishedLast7,
+          unit: "count",
+          metricLabel: "Articles live on the blog",
+          source: "Published artifacts (#231)",
+        });
+
+        // email (Postmark): recipients actually sent, off #189 external send receipts. Opens/clicks aren't
+        // modelled yet → flagged as a partial source, never faked.
+        const [emailAll, email7] = await Promise.all([
+          emailSentToday(workspaceId, epoch),
+          emailSentToday(workspaceId, since7),
+        ]);
+        readings.push({
+          department: "email",
+          connected: true,
+          current: emailAll,
+          prior: emailAll - email7,
+          unit: "count",
+          metricLabel: "Emails sent to opted-in list",
+          source: "Acquisition send receipts (#189)",
+          note: "open / click not connected",
+        });
+
+        // social (Echo): posts that actually went out (one sent receipt = one post). Impressions aren't
+        // modelled yet → partial source.
+        const [socialAll, social7] = await Promise.all([
+          sentCountByChannelSince(workspaceId, "social", epoch),
+          sentCountByChannelSince(workspaceId, "social", since7),
+        ]);
+        readings.push({
+          department: "social",
+          connected: true,
+          current: socialAll,
+          prior: socialAll - social7,
+          unit: "count",
+          metricLabel: "Posts live",
+          source: "Acquisition send receipts (#189)",
+          note: "impressions not connected",
+        });
+
+        // ads (Bid): blended CAC from external receipts when there's a verified conversion to divide by;
+        // otherwise the real spend so far with the CAC flagged pending. Raw clicks aren't modelled → partial.
+        const [spend, conversions] = await Promise.all([
+          spendByChannelSince(workspaceId, epoch),
+          conversionsByChannelSince(workspaceId, epoch),
+        ]);
+        const brief = buildAcquisitionBriefView(spend, conversions, []);
+        const spentDisplay = `$${(brief.totalSpentCents / 100).toFixed(2)} spent`;
+        readings.push(
+          brief.blendedCacCents !== null
+            ? {
+                department: "ads",
+                connected: true,
+                current: brief.blendedCacCents,
+                unit: "currency",
+                metricLabel: "Blended CAC",
+                higherIsBetter: false,
+                source: "Acquisition receipts → CAC (#189)",
+                note: `${brief.totalConversions} verified conversions · ${spentDisplay} · raw clicks not connected`,
+              }
+            : {
+                department: "ads",
+                connected: true,
+                current: brief.totalSpentCents,
+                unit: "currency",
+                metricLabel: "Ad spend (CAC pending first conversion)",
+                higherIsBetter: false,
+                source: "Acquisition receipts (#189)",
+                note: "no verified conversions yet · raw clicks not connected",
+              },
+        );
+
+        // analytics (Lens): trial conversions (signups) off the #102 growth funnel, with sessions/activations
+        // in the note. The funnel sums the same events the growth routes read (so the console matches the API).
+        const events = await listEvents(workspaceId);
+        const funnel = funnelFromEvents(events);
+        const conv7 = funnelFromEvents(
+          events.filter((e) => e.occurredAt.getTime() >= since7.getTime()),
+        ).conversion;
+        readings.push({
+          department: "analytics",
+          connected: true,
+          current: funnel.conversion,
+          prior: funnel.conversion - conv7,
+          unit: "count",
+          metricLabel: "Trial conversions (signups)",
+          source: "Growth events (#102)",
+          note: `${funnel.acquisition} sessions · ${funnel.activation} activations tracked`,
+        });
+
+        // seo (Scout) + brand (Mark): no real source wired yet. Surface the reason so the owner sees WHAT to
+        // connect — never a fabricated rank or asset count.
+        readings.push({
+          department: "seo",
+          connected: false,
+          current: null,
+          unit: "count",
+          metricLabel: "Indexed pages + target-keyword positions",
+          source: "Search Console not connected",
+          note: "connect Google Search Console to prove indexed pages + rankings",
+        });
+        readings.push({
+          department: "brand",
+          connected: false,
+          current: null,
+          unit: "count",
+          metricLabel: "Brand assets live",
+          source: "Asset store not wired",
+          note: "no brand-asset source connected yet",
+        });
+
+        return readings;
       },
     },
     now: deps.now,

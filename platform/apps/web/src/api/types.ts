@@ -346,6 +346,31 @@ export interface FounderConsoleDto {
     meetings: number;
     signups: number;
   };
+  /**
+   * The per-department PROOF scorecard (#253): one tile per marketing department with a real, sourced outcome
+   * metric + trend — or "not connected" where a source isn't wired yet. Optional only for backward-compat with
+   * older payloads; the live server always sends it (all seven tiles).
+   */
+  proofScorecard?: {
+    connectedCount: number;
+    total: number;
+    tiles: {
+      department: string;
+      agent: string;
+      title: string;
+      metricLabel: string;
+      connection: "connected" | "not_connected";
+      unit: "count" | "currency" | "ratio_bps";
+      value: number | null;
+      display: string;
+      trend: "up" | "down" | "flat" | "none";
+      delta: number | null;
+      improving: boolean | null;
+      trendDetail: string;
+      source: string;
+      note: string | null;
+    }[];
+  };
   /** Whether the platform needs a human right now, and why. */
   attention: { required: boolean; reasons: string[] };
 }

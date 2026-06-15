@@ -25,9 +25,11 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
     );
   }
 
-  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline, outreach } = data;
+  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline, outreach, proofScorecard } = data;
   const stageLabel = (stage: string): string =>
     stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const trendGlyph = (trend: string): string =>
+    trend === "up" ? "▲" : trend === "down" ? "▼" : trend === "flat" ? "▬" : "";
   const brief = attention.required
     ? attention.reasons.join(" · ")
     : `${fleet.activeSessions} in motion · ${pendingApprovals.length} waiting · ${fmtCents(budget.estimatedCostCents)} spent this window`;
@@ -43,6 +45,45 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
           <div className="card__ttl">{CONSOLE.reports.briefTitle}</div>
           <div className="card__meta">{brief}</div>
         </article>
+
+        {proofScorecard && (
+          <>
+            <header className="board__colh">
+              <span className="board__colt">{CONSOLE.reports.proofTitle}</span>
+              <span className="board__coln">
+                {proofScorecard.connectedCount}/{proofScorecard.total} connected
+              </span>
+            </header>
+            <div className="reports__proof">
+              {proofScorecard.tiles.map((t) => (
+                <article
+                  key={t.department}
+                  className={`card proof-tile proof-tile--${t.connection}`}
+                  style={{ ["--hue" as string]: `var(--dept-${t.department})` } as React.CSSProperties}
+                >
+                  <div className="proof-tile__dept">
+                    {t.agent} · {t.title}
+                  </div>
+                  <div className="proof-tile__metric">{t.metricLabel}</div>
+                  <div className="proof-tile__value">{t.display}</div>
+                  {t.trend !== "none" && (
+                    <div
+                      className={`proof-tile__trend proof-tile__trend--${
+                        t.improving === null ? "flat" : t.improving ? "up" : "down"
+                      }`}
+                    >
+                      {trendGlyph(t.trend)} {t.trendDetail}
+                    </div>
+                  )}
+                  <div className="proof-tile__source">
+                    {t.source}
+                    {t.note ? ` · ${t.note}` : ""}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
 
         <header className="board__colh">
           <span className="board__colt">{CONSOLE.reports.handoversTitle}</span>
