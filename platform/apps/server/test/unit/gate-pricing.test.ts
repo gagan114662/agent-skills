@@ -126,14 +126,16 @@ describe("decideGatePricing (the pure evidence pricer)", () => {
 });
 
 describe("invariant action classes (structural — can NEVER auto-relax)", () => {
-  it("includes the whole #13 hard list plus secrets access", () => {
+  it("includes the whole #13 hard list (money actions, #243) plus secrets access", () => {
     for (const a of DEFAULT_SENSITIVE_ACTIONS) {
       expect(isInvariantAction(a)).toBe(true);
     }
     expect(isInvariantAction(SECRETS_ACCESS_ACTION)).toBe(true);
     expect(INVARIANT_ACTION_TYPES).toContain("billing.payout");
-    expect(INVARIANT_ACTION_TYPES).toContain("external.send");
     expect(INVARIANT_ACTION_TYPES).toContain("secrets.access");
+    // Under #243 the hard list is money-only: an autonomous non-money action (a send) is NOT invariant.
+    expect(INVARIANT_ACTION_TYPES).not.toContain("external.send");
+    expect(isInvariantAction("external.send")).toBe(false);
     // a reversible class is not invariant
     expect(isInvariantAction("chat.post_message")).toBe(false);
   });

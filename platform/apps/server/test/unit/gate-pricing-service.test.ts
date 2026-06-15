@@ -97,13 +97,14 @@ describe("GatePricingService.tick", () => {
   });
 
   it("RE-TIGHTENs an invariant class that is somehow found relaxed (defense in depth)", async () => {
+    // Under #243 the invariant (never-relax) class is money-only — use a money action like billing.refund.
     const { svc, rec } = build({
-      evidence: { "external.send": approvals(1000) },
-      relaxedRules: { "external.send": "stray-rule" },
+      evidence: { "billing.refund": approvals(1000) },
+      relaxedRules: { "billing.refund": "stray-rule" },
     });
     await svc.tick("ws");
     expect(rec.retightened).toEqual([{ ruleId: "stray-rule" }]);
-    expect(rec.audited[0]).toMatchObject({ actionType: "external.send", direction: "RETIGHTEN" });
+    expect(rec.audited[0]).toMatchObject({ actionType: "billing.refund", direction: "RETIGHTEN" });
   });
 
   it("HOLDs (no side effects) when error sits in the hysteresis dead band", async () => {

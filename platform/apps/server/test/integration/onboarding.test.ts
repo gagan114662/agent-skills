@@ -71,7 +71,7 @@ describe("External account onboarding API (#192)", () => {
     expect(res.json()).toMatchObject({ requests: [], pendingSetupCount: 0 });
   });
 
-  it("files a setup need and PARKS it in the #13 decision queue (acceptance 1 + 5)", async () => {
+  it("files a non-money connect WITHOUT parking an approval, but PARKS a live-payment connect (#243)", async () => {
     const { rid, slug } = await signup();
     const res = await app.inject({
       method: "POST",
@@ -87,18 +87,31 @@ describe("External account onboarding API (#192)", () => {
             projectedCostCents: 1500,
             envKeys: ["SENDGRID_API_KEY"],
           },
+          {
+            serviceKey: "stripe-live",
+            serviceKind: "payment",
+            displayName: "Stripe (live)",
+            reason: "charge customers with the live key",
+            projectedCostCents: 0,
+            envKeys: ["STRIPE_LIVE_KEY"],
+          },
         ],
       },
     });
     expect(res.statusCode).toBe(200);
     const filed = res.json().filed as Array<{ serviceKey: string; approvalRequestId: string | null }>;
-    expect(filed[0].serviceKey).toBe("sendgrid");
-    expect(filed[0].approvalRequestId).toBeTruthy();
+    // The ESP connect is autonomous under #243 (it still shows on the setup checklist, but no owner gate).
+    const esp = filed.find((f) => f.serviceKey === "sendgrid")!;
+    expect(esp.approvalRequestId).toBeNull();
+    // Connecting LIVE payment credentials is MONEY → it parks an owner approval with the exact details.
+    const pay = filed.find((f) => f.serviceKey === "stripe-live")!;
+    expect(pay.approvalRequestId).toBeTruthy();
 
-    // The parked approval is a pending request in the decision queue, tenant-scoped.
+    // Exactly one parked approval (the payment connect), tenant-scoped in the decision queue.
     const workspaceId = await workspaceIdOf(slug);
     const pending = await listRequests(workspaceId, { status: "pending" });
-    expect(pending.some((r) => r.actionType === "setup.external_account")).toBe(true);
+    const setupPending = pending.filter((r) => r.actionType === "setup.external_account");
+    expect(setupPending).toHaveLength(1);
   });
 
   it("connects credentials WRITE-ONLY (sealed, never echoed) and injects them only as resolved env", async () => {

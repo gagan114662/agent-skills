@@ -215,16 +215,17 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     ).toHaveLength(0);
   });
 
-  it("external.send is gated by default; an agent cannot decide its own request (humans only)", async () => {
+  it("a money action (billing.refund) is gated by default; an agent cannot decide its own request (humans only)", async () => {
     const owner = await newOwner();
     const agent = await newAgent(owner, "Sender");
 
-    // no rule for external.send → sensitive by default → pending
+    // no rule for billing.refund → money → gated by default (#243) → pending. (A non-paid external.send
+    // would auto-execute now; money is the only class that pauses for the owner.)
     const submit = await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/actions`,
       headers: bearer(agent.token),
-      payload: { actionType: "external.send", payload: { summary: "page oncall", target: "ops" } },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_123", reason: "duplicate charge" } },
     });
     expect(submit.statusCode).toBe(202);
     const requestId = submit.json().request.id;
@@ -237,14 +238,39 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     });
     expect(agentApprove.statusCode).toBe(403);
 
-    // a human approves → external.send is recorded (no real egress)
+    // a human approves → billing.refund is recorded-only (no real money moves)
     const approve = await app.inject({
       method: "POST",
       url: `/approvals/${requestId}/approve`,
       cookies: { rid: owner.cookie },
     });
     expect(approve.statusCode).toBe(200);
-    expect(approve.json().result).toMatchObject({ recorded: true, target: "ops" });
+    expect(approve.json().result).toMatchObject({ recorded: true, paymentIntentId: "pi_123" });
+  });
+
+  it("a non-money outbound send (external.send, non-paid) ships autonomously — no owner prompt (#243)", async () => {
+    const owner = await newOwner();
+    const agent = await newAgent(owner, "Sender");
+
+    // No rule, no money, no spend → external.send executes immediately with no parked approval.
+    const submit = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/actions`,
+      headers: bearer(agent.token),
+      payload: { actionType: "external.send", payload: { summary: "page oncall", target: "ops" } },
+    });
+    expect(submit.statusCode).toBe(200);
+    expect(submit.json().status).toBe("executed");
+    expect(submit.json().result).toMatchObject({ recorded: true, target: "ops" });
+
+    const pending = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${owner.workspaceId}/approvals?status=pending`,
+        cookies: { rid: owner.cookie },
+      })
+    ).json();
+    expect(pending).toHaveLength(0);
   });
 
   it("a non-sensitive action with no rule auto-executes (no approval row pending)", async () => {
@@ -282,12 +308,13 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     const b = await newOwner();
     const agent = await newAgent(a, "Sender");
 
+    // A money action gates → a real pending request exists to attempt IDOR against.
     const requestId = (
       await app.inject({
         method: "POST",
         url: `/workspaces/${a.workspaceId}/actions`,
         headers: bearer(agent.token),
-        payload: { actionType: "external.send", payload: { summary: "secret" } },
+        payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_secret" } },
       })
     ).json().request.id;
 

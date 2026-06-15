@@ -186,17 +186,22 @@ describe("auto-approve policy rule for autonomous completion (#84 follow-up, ADR
     expect(bodies.some((b) => b.includes("auto-approved"))).toBe(true);
   });
 
-  it("the rule is per-workspace: a rule in workspace A never auto-approves workspace B", async () => {
+  it("rules are per-workspace: A's auto-approve and B's explicit gate never leak across tenants (#243)", async () => {
     const engine = makeEngine();
     const app = buildApp({ autonomyEngine: engine });
     apps.push(app);
     const a = await provision(app);
     const b = await provision(app);
 
-    // Only workspace A configures the auto-approve rule.
+    // Workspace A opts its completion OUT of any gate. Under #243 autonomy.complete is autonomous by
+    // default, so to prove isolation workspace B opts back INTO a human gate with its own rule.
     await post(app, `/workspaces/${a.workspaceId}/approval-policies`, a.cookie, {
       actionType: "autonomy.complete",
       requireApproval: false,
+    });
+    await post(app, `/workspaces/${b.workspaceId}/approval-policies`, b.cookie, {
+      actionType: "autonomy.complete",
+      requireApproval: true,
     });
 
     const wfA = await createWorkflow(app, a, "A: summarize");

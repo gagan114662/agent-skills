@@ -5,13 +5,42 @@ import {
   isActionType,
   isApprovalStatus,
   isIrreversibleAction,
+  isMoneyAction,
+  MONEY_ACTIONS,
   DEFAULT_SENSITIVE_ACTIONS,
   IRREVERSIBLE_ACTIONS,
   AUTONOMY_COMPLETE_ACTION,
   DR_RESTORE_ACTION,
+  PORTFOLIO_SUNSET_ACTION,
   VENTURE_BOOTSTRAP_ACTION,
   type PolicyRule,
 } from "../../src/approvals/policy.js";
+
+/** Money actions: gated by default. Non-money: autonomous (#243 owner decision). */
+const MONEY = [
+  "billing.refund",
+  "billing.payout",
+  "billing.transfer",
+  "finance.disbursement",
+  "venture.domain_purchase",
+  "venture.ad_spend",
+  "venture.payment_method",
+  "monetization.activate_price",
+  "monetization.payout_settings",
+  "setup.external_account",
+];
+const NON_MONEY = [
+  "external.send",
+  "outreach.send",
+  "realworld.publish",
+  "venture.deploy",
+  "venture.bootstrap",
+  "portfolio.sunset",
+  "dr.restore",
+  "autonomy.complete",
+  "browser.action",
+  "chat.post_message",
+];
 import {
   buildRegistry,
   validateChatPostMessage,
@@ -51,36 +80,36 @@ describe("evaluatePolicy (gating engine)", () => {
     );
   });
 
-  it("falls back to DEFAULT_SENSITIVE_ACTIONS when no rule matches", () => {
-    expect(DEFAULT_SENSITIVE_ACTIONS).toContain("external.send");
-    expect(evaluatePolicy({ actionType: "external.send" }, []).requiresApproval).toBe(true);
-    expect(evaluatePolicy({ actionType: "chat.post_message" }, []).requiresApproval).toBe(false);
+  it("drives approval off a single MONEY predicate: money gates, everything else is autonomous (#243)", () => {
+    // Money actions gate by default (no rule), with no owner prompt needed for anything else.
+    for (const a of MONEY) {
+      expect(isMoneyAction(a), a).toBe(true);
+      expect(DEFAULT_SENSITIVE_ACTIONS, a).toContain(a);
+      expect(evaluatePolicy({ actionType: a }, []).requiresApproval, a).toBe(true);
+    }
+    // Non-money actions (sends, posts, publish, deploy, bootstrap, sunset, restore, complete, browser)
+    // run autonomously by default — the owner sees no approval prompt.
+    for (const a of NON_MONEY) {
+      expect(isMoneyAction(a), a).toBe(false);
+      expect(DEFAULT_SENSITIVE_ACTIONS, a).not.toContain(a);
+      expect(evaluatePolicy({ actionType: a }, []).requiresApproval, a).toBe(false);
+    }
   });
 
-  it("gates autonomy.complete by default so the human gate stays unless a rule opts in (#84/ADR-0042)", () => {
-    // No rule → the autonomous-completion gate holds (today's behaviour, exactly).
-    expect(DEFAULT_SENSITIVE_ACTIONS).toContain(AUTONOMY_COMPLETE_ACTION);
-    expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, []).requiresApproval).toBe(true);
-    // An explicit auto-approve rule opts the workspace out of the human gate.
-    const auto: PolicyRule[] = [
-      { actionType: AUTONOMY_COMPLETE_ACTION, requiresApproval: false, maxAutoAmount: null },
-    ];
-    expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, auto).requiresApproval).toBe(
-      false,
-    );
-    // A rule that still requires approval keeps the gate.
+  it("a workspace rule can still opt a non-money action back into a gate (#243)", () => {
+    // The fleet is autonomous by default, but a cautious workspace can re-gate any action explicitly.
     const gated: PolicyRule[] = [
       { actionType: AUTONOMY_COMPLETE_ACTION, requiresApproval: true, maxAutoAmount: null },
     ];
     expect(evaluatePolicy({ actionType: AUTONOMY_COMPLETE_ACTION }, gated).requiresApproval).toBe(
       true,
     );
-  });
-
-  it("gates dr.restore by default so a destructive restore always needs a human (#99)", () => {
-    // No rule → a DISASTER restore requires explicit #13 approval; an agent can never self-approve.
-    expect(DEFAULT_SENSITIVE_ACTIONS).toContain(DR_RESTORE_ACTION);
-    expect(evaluatePolicy({ actionType: DR_RESTORE_ACTION }, []).requiresApproval).toBe(true);
+    // dr.restore is no longer gated by default (only money gates) — but a rule can bring the gate back.
+    expect(evaluatePolicy({ actionType: DR_RESTORE_ACTION }, []).requiresApproval).toBe(false);
+    const drGated: PolicyRule[] = [
+      { actionType: DR_RESTORE_ACTION, requiresApproval: true, maxAutoAmount: null },
+    ];
+    expect(evaluatePolicy({ actionType: DR_RESTORE_ACTION }, drGated).requiresApproval).toBe(true);
   });
 });
 
@@ -149,27 +178,37 @@ describe("executor registry", () => {
   });
 });
 
-describe("isIrreversibleAction (premortem #200 FM#4)", () => {
-  it("classifies money / deliverability / kill / restore actions as irreversible", () => {
-    expect(isIrreversibleAction("external.send")).toBe(true);
+describe("isIrreversibleAction (premortem #200 FM#4 — money-only under #243)", () => {
+  it("classifies irreversible MONEY actions as irreversible", () => {
     expect(isIrreversibleAction("billing.refund")).toBe(true);
     expect(isIrreversibleAction("finance.disbursement")).toBe(true);
     expect(isIrreversibleAction("venture.domain_purchase")).toBe(true);
-    expect(isIrreversibleAction("portfolio.sunset")).toBe(true);
-    expect(isIrreversibleAction(DR_RESTORE_ACTION)).toBe(true);
+    expect(isIrreversibleAction("venture.ad_spend")).toBe(true);
+    expect(isIrreversibleAction("venture.payment_method")).toBe(true);
   });
 
-  it("does NOT mark a reversible launch or an unknown/read action as irreversible", () => {
-    // A launch can be archived/sunset, so bootstrap itself is reversible (it still gates for a human).
+  it("does NOT mark now-autonomous (non-money) or reversible/read actions as irreversible", () => {
+    // Under #243 a sent message / a kill / a destructive restore are no longer gated, so they are no
+    // longer counted as irreversible owner-exposure — only money is.
+    expect(isIrreversibleAction("external.send")).toBe(false);
+    expect(isIrreversibleAction("outreach.send")).toBe(false);
+    expect(isIrreversibleAction(PORTFOLIO_SUNSET_ACTION)).toBe(false);
+    expect(isIrreversibleAction(DR_RESTORE_ACTION)).toBe(false);
     expect(isIrreversibleAction(VENTURE_BOOTSTRAP_ACTION)).toBe(false);
     expect(isIrreversibleAction("browser.action")).toBe(false);
     expect(isIrreversibleAction("chat.post_message")).toBe(false);
     expect(isIrreversibleAction("unknown.thing")).toBe(false);
   });
 
-  it("every irreversible action is also sensitive-by-default (human-gated, never post-hoc)", () => {
+  it("every irreversible action is also a gated money action (human-gated, never post-hoc)", () => {
     for (const a of IRREVERSIBLE_ACTIONS) {
+      expect(isMoneyAction(a)).toBe(true);
       expect(DEFAULT_SENSITIVE_ACTIONS).toContain(a);
     }
+  });
+
+  it("the gated-by-default set is exactly the money set (single MONEY predicate, #243)", () => {
+    expect([...DEFAULT_SENSITIVE_ACTIONS].sort()).toEqual([...MONEY_ACTIONS].sort());
+    expect([...MONEY_ACTIONS].sort()).toEqual([...MONEY].sort());
   });
 });

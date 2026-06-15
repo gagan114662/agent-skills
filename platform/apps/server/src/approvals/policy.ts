@@ -109,65 +109,73 @@ export const MONETIZATION_ACTIVATE_PRICE_ACTION = "monetization.activate_price" 
 export const MONETIZATION_PAYOUT_SETTINGS_ACTION = "monetization.payout_settings" as const;
 
 /**
- * Action types that require approval when **no** workspace rule matches. `external.send` ships
- * gated ("external sends require approval", ADR-0013 §1); `autonomy.complete` ships gated so the
- * autonomous-completion human gate (#13/#20) holds unless a workspace explicitly opts out (ADR-0042);
- * `dr.restore` ships gated so a destructive restore always needs a human (#99, ADR-0099). A workspace
- * rule can override either way (but a destructive restore should stay gated).
+ * The MONEY actions — the **only** class that requires owner approval (#243, owner decision 2026-06-14).
+ * This SUPERSEDES the prior "sensitive-by-default / nothing leaves the building without your yes" policy:
+ * a money action is any movement or commitment of REAL money — charging a customer, refunds, payouts/
+ * withdrawals, transfers, plan/billing changes, connecting or using LIVE payment credentials, and any
+ * real spend (ad budgets, paid tools/APIs). A money action ALWAYS pauses for the owner with the exact
+ * amount shown (and the workspace spend cap / `maxAutoAmount` still re-gates over its threshold).
+ *
+ * Everything else the fleet ships AUTONOMOUSLY — outbound non-paid sends, social posts, content
+ * publishing, venture/prod deploys, a venture bootstrap, autonomous completion, a destructive DR restore,
+ * a portfolio sunset, an agent-browser action. None of those is in this set, so {@link evaluatePolicy}
+ * lets them run with no owner prompt (a workspace rule can still opt one back into a gate).
+ *
+ * The non-approval safeguards are KEPT and run automatically (they are security/compliance, NOT gates):
+ * the #223 injection-quarantine (poisoned web content can never trigger an autonomous send/action), email
+ * opt-out / suppression / do-not-contact honoring (CAN-SPAM/GDPR), and per-domain send rate caps. A
+ * side-effectful agent-browser step also still gates via the #174 runtime structural gate
+ * (`decideBrowserStep` → `needs_approval`), independent of this money set.
+ *
+ * `setup.external_account` is money ONLY for the `payment` service kind (connecting LIVE payment
+ * credentials); the onboarding service decides money-ness by kind (`isMoneyServiceKind`), so a hosting/
+ * ESP/analytics connect is autonomous. It is listed here so that, when the gate IS consulted (payment
+ * kind), it gates by default.
  */
-export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = [
-  "external.send",
-  AUTONOMY_COMPLETE_ACTION,
-  // #99 a destructive disaster-recovery restore always needs a human (never agent-initiated). ADR-0099.
-  DR_RESTORE_ACTION,
-  // #107 a portfolio SUNSET (kill of a launched venture) is irreversible — always a human gate. ADR-0107.
-  PORTFOLIO_SUNSET_ACTION,
-  // #192 external account setup ALWAYS needs the owner (create account, accept ToS, paste keys). ADR-0192.
-  SETUP_EXTERNAL_ACCOUNT_ACTION,
-  // #194 a finance disbursement (outbound spend) is irreversible — always a human gate, recorded-only. ADR-0194.
-  FINANCE_DISBURSEMENT_ACTION,
-  // #187 starting a whole venture is an owner go/no-go; domain/ad-spend/payment-method are the MONEY
-  // boundary (irreversible — premortem FM#4), always human, never agent-initiated. ADR-0187.
-  VENTURE_BOOTSTRAP_ACTION,
-  VENTURE_DOMAIN_PURCHASE_ACTION,
-  VENTURE_AD_SPEND_ACTION,
-  VENTURE_PAYMENT_METHOD_ACTION,
-  // #188 activating a venture's pricing (so customers can be charged) and changing payout settings are
-  // irreversible money decisions — always human, never agent-initiated, recorded-only. ADR-0188.
-  MONETIZATION_ACTIVATE_PRICE_ACTION,
-  MONETIZATION_PAYOUT_SETTINGS_ACTION,
-  // #195 a venture prod cutover (customer-facing) / failed-release escalation is gated by default. ADR-0195.
-  VENTURE_DEPLOY_ACTION,
-  // #231 publishing a page to a live public URL is an outward brand surface — gated by default. ADR-0231.
-  REALWORLD_PUBLISH_ACTION,
-  // #225 an outreach send (email/LinkedIn/X to a real prospect) is irreversible (deliverability/brand) —
-  // always human-gated, never agent-initiated. ADR-0225.
-  OUTREACH_SEND_ACTION,
-  // #98 outbound money is NEVER autonomous: refunds/payouts/transfers are sensitive by default, gated
-  // for a human, and recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
+export const MONEY_ACTIONS: readonly string[] = [
+  // #98 outbound money is NEVER autonomous: refunds/payouts/transfers gate for a human and are
+  // recorded-only in v1 (payouts stay manual in the Stripe dashboard). ADR-0043.
   "billing.refund",
   "billing.payout",
   "billing.transfer",
-  // #174 a side-effectful agent-browser action (a click that submits/posts/purchases, typing into a
-  // form) is sensitive by default — read-only browsing is free, but mutating remote state always
-  // pauses for a human. ADR-0174.
-  "browser.action",
+  // #194 a finance disbursement (a budget-envelope release / outbound spend) — money out the door,
+  // human-gated and recorded-only. ADR-0194.
+  FINANCE_DISBURSEMENT_ACTION,
+  // #187 the venture MONEY boundary — registering a domain, paid acquisition spend, attaching a LIVE
+  // payment method: real spend, irreversible (premortem FM#4), always the owner's call. ADR-0187.
+  VENTURE_DOMAIN_PURCHASE_ACTION,
+  VENTURE_AD_SPEND_ACTION,
+  VENTURE_PAYMENT_METHOD_ACTION,
+  // #188 charging customers (activating/re-pricing) and re-routing payouts — money decisions, exact
+  // amount shown, recorded-only. ADR-0188.
+  MONETIZATION_ACTIVATE_PRICE_ACTION,
+  MONETIZATION_PAYOUT_SETTINGS_ACTION,
+  // #192 connecting/using LIVE payment credentials — gated ONLY for the `payment` service kind (the
+  // onboarding service decides by kind; every other external-account connect is autonomous). ADR-0192.
+  SETUP_EXTERNAL_ACCOUNT_ACTION,
 ];
 
+/** True iff `actionType` moves or commits real money — the single predicate that drives approval (#243). */
+export function isMoneyAction(actionType: string): boolean {
+  return MONEY_ACTIONS.includes(actionType);
+}
+
 /**
- * The IRREVERSIBLE action types (premortem #200 FM#4): an action whose blast radius cannot be cheaply
- * reversed — money out the door, a domain registered, an email sent (deliverability/brand), a venture
- * killed, a destructive restore. The premortem mandates these be **pre-committed or human-gated, never
- * post-hoc review**, which they already are (every one is in {@link DEFAULT_SENSITIVE_ACTIONS}); this set
- * is the read side — the founder report counts how many irreversible actions a window carried so the
- * owner sees the company's exposure to the one class of mistake that is not cheaply undoable.
- *
- * Pure data, colocated with the action constants so the taxonomy has one home. Deliberately EXCLUDES
- * `venture.bootstrap` (a launch is reversible — a venture can be archived/sunset) and `browser.action`
- * (read-or-write ambiguous), to avoid over-counting; both still gate for a human via the sensitive list.
+ * The set of actions {@link evaluatePolicy} gates when no workspace rule matches. Under #243 this IS the
+ * money set — there is exactly one source ({@link MONEY_ACTIONS}). The name is retained because the #119
+ * Evidence-Priced Autonomy invariants derive from it (a money action can never auto-relax) and a few
+ * consumers import it; it no longer carries the broad "sensitive" list.
+ */
+export const DEFAULT_SENSITIVE_ACTIONS: readonly string[] = MONEY_ACTIONS;
+
+/**
+ * The IRREVERSIBLE money actions (premortem #200 FM#4): money whose blast radius cannot be cheaply
+ * reversed — out the door, charged, or committed as real spend. The read side: the founder report counts
+ * how many irreversible actions a window carried so the owner sees the company's money exposure. Under
+ * #243 the irreversible class is money-only (a sent email, a deploy, a sunset are no longer gated and are
+ * not counted here). Every entry is also in {@link MONEY_ACTIONS}, so it is human-gated, never post-hoc.
  */
 export const IRREVERSIBLE_ACTIONS: readonly string[] = [
-  "external.send", // deliverability/brand — a sent message cannot be unsent
   "billing.refund",
   "billing.payout",
   "billing.transfer",
@@ -175,12 +183,9 @@ export const IRREVERSIBLE_ACTIONS: readonly string[] = [
   VENTURE_DOMAIN_PURCHASE_ACTION, // a registered domain (money + brand) (#187)
   VENTURE_AD_SPEND_ACTION, // paid acquisition spend (#187)
   VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
-  PORTFOLIO_SUNSET_ACTION, // killing a launched venture cannot be undone (#107)
-  DR_RESTORE_ACTION, // a destructive restore (#99)
-  OUTREACH_SEND_ACTION, // an outreach message sent to a real prospect — deliverability/brand (#225)
 ];
 
-/** True iff `actionType` is in the irreversible class (premortem #200 FM#4). Pure + total. */
+/** True iff `actionType` is in the irreversible money class (premortem #200 FM#4). Pure + total. */
 export function isIrreversibleAction(actionType: string): boolean {
   return IRREVERSIBLE_ACTIONS.includes(actionType);
 }
@@ -233,10 +238,12 @@ export interface PolicyDecision {
 /**
  * Decide whether `action` must pause for a human, given the workspace's `rules`:
  *   - a matching rule with `requiresApproval` → gated;
- *   - else a matching rule whose `maxAutoAmount` is exceeded by `amount` → gated (the spend gate);
+ *   - else a matching rule whose `maxAutoAmount` is exceeded by `amount` → gated (the spend cap);
  *   - else a matching rule → auto-approved;
- *   - else, no rule → gated iff the type is sensitive by default (`external.send`).
- * Total and pure — the single source of truth for gating (ADR-0013 §1).
+ *   - else, no rule → gated iff the action moves money ({@link isMoneyAction}).
+ * Under #243 (owner decision 2026-06-14) approval is driven by a single MONEY predicate: only money
+ * actions pause for the owner; everything else the fleet ships autonomously. Total and pure — the single
+ * source of truth for gating (ADR-0013 §1, ADR-0243).
  */
 export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): PolicyDecision {
   const rule = rules.find((r) => r.actionType === action.actionType);
@@ -257,10 +264,21 @@ export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): P
     }
     return { requiresApproval: false, reason: "auto-approved by policy" };
   }
-  if (DEFAULT_SENSITIVE_ACTIONS.includes(action.actionType)) {
-    return { requiresApproval: true, reason: `${action.actionType} is sensitive by default` };
+  // No workspace rule → gate iff money. The MONEY predicate is two-pronged (#243): a money action TYPE,
+  // OR any real spend — a positive `amount` committed through a generic action type (e.g. a marketing
+  // `ad.spend` that rides `external.send` and carries the budget as `amount`). "Any real spend (ad
+  // budgets, paid tools/APIs)" is money even when it isn't a dedicated money action type. A workspace
+  // rule's `maxAutoAmount` is the spend cap that auto-approves small spends under its ceiling.
+  if (isMoneyAction(action.actionType)) {
+    return { requiresApproval: true, reason: `${action.actionType} moves money — owner approval required` };
   }
-  return { requiresApproval: false, reason: "no policy requires approval" };
+  if (action.amount !== null && action.amount !== undefined && action.amount > 0) {
+    return {
+      requiresApproval: true,
+      reason: `commits real spend (${action.amount}) — owner approval required`,
+    };
+  }
+  return { requiresApproval: false, reason: "autonomous: only money needs approval (#243)" };
 }
 
 /** A request is expired once its TTL deadline has passed. Pure so expiry is deterministically tested. */

@@ -95,7 +95,7 @@ describe("portfolio lifecycle loop (integration, real Postgres)", () => {
     expect(res.json().reviews).toHaveLength(0);
   });
 
-  it("gates the SUNSET behind a #13 approval, then kills + writes a post-mortem once approved", async () => {
+  it("executes the SUNSET autonomously (#243 money-only), killing + writing a post-mortem with no approval", async () => {
     const { cookie, workspaceId } = await seed();
     const ideaId = await createIdea(cookie, workspaceId, "portfolio-sunset");
     await launch(workspaceId, ideaId, 90);
@@ -103,50 +103,27 @@ describe("portfolio lifecycle loop (integration, real Postgres)", () => {
     const reviewId = (await post(`/workspaces/${workspaceId}/portfolio/review`, cookie)).json()
       .reviews[0].id;
 
-    // Request the sunset → 202 gated, a PENDING approval, NOTHING torn down yet.
+    // Under #243 a sunset (a kill) is not a money action → it runs autonomously: requesting it executes
+    // it immediately (200, gated:false), with no parked owner approval. (A workspace can still opt a
+    // portfolio.sunset rule back into a gate; the policy seam is unchanged.)
     const reqRes = await post(
       `/workspaces/${workspaceId}/portfolio/reviews/${reviewId}/sunset`,
       cookie,
     );
-    expect(reqRes.statusCode).toBe(202);
-    const { approvalRequestId, gated } = reqRes.json();
-    expect(gated).toBe(true);
-    expect(approvalRequestId).toBeTruthy();
+    expect(reqRes.statusCode).toBe(200);
+    const { approvalRequestId, gated, review } = reqRes.json();
+    expect(gated).toBe(false);
+    expect(approvalRequestId).toBeNull();
+    expect(review.status).toBe("sunset_executed");
 
-    const pendingReq = (
-      await db.select().from(approvalRequests).where(eq(approvalRequests.id, approvalRequestId))
-    )[0];
-    expect(pendingReq.actionType).toBe("portfolio.sunset");
-    expect(pendingReq.status).toBe("pending");
+    // No portfolio.sunset approval was ever parked.
+    const parked = await db
+      .select()
+      .from(approvalRequests)
+      .where(eq(approvalRequests.actionType, "portfolio.sunset"));
+    expect(parked).toHaveLength(0);
 
-    // The idea is NOT killed before approval.
-    const beforeIdea = (
-      await db.select().from(ventureIdeas).where(eq(ventureIdeas.id, ideaId))
-    )[0];
-    expect(beforeIdea.status).not.toBe("killed");
-
-    // Execute is refused while the approval is still pending (an agent cannot bypass its own gate).
-    const blocked = await post(
-      `/workspaces/${workspaceId}/portfolio/reviews/${reviewId}/execute`,
-      cookie,
-    );
-    expect(blocked.statusCode).toBe(409);
-
-    // A human approves the #13 request (simulated by flipping its status).
-    await db
-      .update(approvalRequests)
-      .set({ status: "approved" })
-      .where(eq(approvalRequests.id, approvalRequestId));
-
-    // Now execute → the venture is killed + the lesson is written to memory.
-    const done = await post(
-      `/workspaces/${workspaceId}/portfolio/reviews/${reviewId}/execute`,
-      cookie,
-    );
-    expect(done.statusCode).toBe(200);
-    expect(done.json().executed).toBe(true);
-    expect(done.json().review.status).toBe("sunset_executed");
-
+    // The venture is killed and the lesson is written to memory — all without an owner prompt.
     const killedIdea = (
       await db.select().from(ventureIdeas).where(eq(ventureIdeas.id, ideaId))
     )[0];
