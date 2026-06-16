@@ -8,16 +8,20 @@ import type { RealworldConfig } from "../config/schema.js";
 export interface RealworldCaps {
   enabled: boolean;
   publishProvider: string;
+  /** Image generation provider kind (#271). `dryrun` ⇒ local on-brand SVG, no network/spend. */
+  imageProvider: string;
 }
 
 export const REALWORLD_DEFAULTS: RealworldCaps = {
   enabled: false,
   publishProvider: "dryrun",
+  imageProvider: "dryrun",
 };
 
 export function resolveRealworldCaps(cfg: RealworldConfig | undefined): RealworldCaps {
   return {
     enabled: cfg?.enabled ?? REALWORLD_DEFAULTS.enabled,
     publishProvider: cfg?.publishProvider ?? REALWORLD_DEFAULTS.publishProvider,
+    imageProvider: cfg?.imageProvider ?? REALWORLD_DEFAULTS.imageProvider,
   };
 }

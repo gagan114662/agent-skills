@@ -75,10 +75,10 @@ describe("RealWorldActuatorService.publishPage (#231 — gated)", () => {
     expect(store.records.at(-1)).toMatchObject({ status: "published", tool: "publish" });
   });
 
-  it("availability reports all eight tools with per-tool gate decisions", async () => {
+  it("availability reports all nine tools with per-tool gate decisions", async () => {
     const svc = makeActuator(["hosting"], fakeGate({ gated: true, submitted: [] }), fakeStore());
     const avail = await svc.availability("w1");
-    expect(avail).toHaveLength(8);
+    expect(avail).toHaveLength(9); // #271 added generate_image
     expect(avail.find((d) => d.tool === "publish")?.allowed).toBe(true);
     expect(avail.find((d) => d.tool === "send_email")?.allowed).toBe(false); // esp/registrar missing
     expect(avail.find((d) => d.tool === "browse")?.requiresApproval).toBe(false);

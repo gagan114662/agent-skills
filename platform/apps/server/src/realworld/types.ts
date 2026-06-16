@@ -27,6 +27,7 @@ export const REAL_WORLD_TOOL_NAMES = [
   "browse",
   "research",
   "store_asset",
+  "generate_image",
   "call_api",
 ] as const;
 

@@ -79,6 +79,19 @@ export const REAL_WORLD_TOOLS: readonly RealWorldToolSpec[] = [
     description: "Store a file/asset in the workspace (internal — not outward, free)",
   },
   {
+    // #271 brand assets: generate an on-brand image into the workspace asset store. Generation is a
+    // fleet OPERATING cost (like the LLM tokens a session already spends) — NOT a #243 money action that
+    // moves the venture's money outward — so it is AUTONOMOUS (`requiresApproval` false). The output is an
+    // INTERNAL asset (a stored image, not a public surface), reversible (delete/re-generate), and needs no
+    // customer money account: the image provider's key is server/workspace config, default-OFF (dry-run).
+    name: "generate_image",
+    reversibility: "reversible",
+    dataFlow: "actuate",
+    requiresApproval: false,
+    requiredAccounts: [],
+    description: "Generate an on-brand image into the workspace asset store (internal — fleet op-cost, free)",
+  },
+  {
     name: "call_api",
     reversibility: "irreversible",
     dataFlow: "actuate",

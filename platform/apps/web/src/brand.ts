@@ -182,6 +182,36 @@ export const CONNECTIONS = {
 } as const;
 
 /**
+ * Settings → Brand kit (#271): the one-time brand identity the owner sets (logo, colours, voice). Mark
+ * enforces it and the fleet draws from it to generate on-brand images. Every word lives here so the
+ * panel carries no hardcoded brand copy (enforced by brand.test.ts).
+ */
+export const BRAND_KIT = {
+  title: "Brand kit",
+  hint:
+    "Set your brand once — colours, voice, and logo. Mark enforces it, and the rest of the fleet draws " +
+    "from it so every image and post is on-brand.",
+  loading: "Loading…",
+  connectedBadge: "Brand kit set",
+  unsetBadge: "Not set yet",
+  nameLabel: "Brand name",
+  namePlaceholder: "e.g. Acme",
+  paletteLabel: "Brand colours",
+  paletteHint: "Add your colours as #rrggbb hex. The first colour is the primary (the lead).",
+  addColor: "Add colour",
+  removeColor: "Remove",
+  voiceLabel: "Brand voice",
+  voicePlaceholder: "e.g. Confident and friendly. Plain words, no jargon. Never salesy.",
+  logoLabel: "Logo asset id (optional)",
+  logoPlaceholder: "An uploaded asset id, if you have one",
+  save: "Save brand kit",
+  saving: "Saving…",
+  saved: "Brand kit saved.",
+  error: "Couldn't save the brand kit. Check that every colour is a valid #rrggbb hex.",
+  assetCount: (n: number): string => (n === 1 ? "1 on-brand asset" : `${n} on-brand assets`),
+} as const;
+
+/**
  * The department spectrum (#123 fleet × #138 pop identity): one hue per marketing function, a
  * warm→cool arc anchored on Pop Vermilion. Keyed by the preloaded channel name so each department
  * channel and its named agent can wear its colour. See docs/brand/ipop-brand-identity.html.

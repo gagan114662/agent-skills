@@ -6,6 +6,10 @@ import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { connectedAccountKinds, createDefaultSitePublisher } from "../realworld/default.js";
 import type { RealWorldActuatorService } from "../realworld/service.js";
 import { listArtifacts } from "../db/repositories/realworld-artifacts.js";
+import { createDefaultAssetService } from "../assets/default.js";
+
+/** Canonical UUID form — `draft_ref`/`venture_id` are uuid columns, so a non-UUID would 500 on insert. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Real-world tool surface routes (#231, ADR-0231). Read-only and `/me/*`-scoped to the caller's
@@ -78,5 +82,62 @@ export async function realworldRoutes(
     if (result.status === "not_connected") return reply.code(409).send({ error: result.reason });
     if (result.status === "failed") return reply.code(502).send({ error: result.error });
     return result;
+  });
+
+  /**
+   * Generate an on-brand image into the workspace asset store (#271), optionally attached to a draft
+   * (the `agent.deliverable` approval card, via `draftRef`). AUTONOMOUS — generation is a fleet operating
+   * cost, not a #243 money action, so there is NO #13 gate. Mark enforces the brand: with no brand kit
+   * set, this 400s ("set the brand kit first"); the image is rendered FROM the kit palette and re-checked
+   * before it is stored. Gated only by the real-world master flag (default OFF) + the default dry-run
+   * provider, so it never touches anything external by default.
+   */
+  app.post("/me/realworld/generate-image", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const wid = identity.workspaceId;
+    if (!resolveRealworldCaps(loadConfig(wid).realworld).enabled) {
+      return reply.code(403).send({ error: "the real-world tool surface is disabled for this workspace" });
+    }
+    const body = (req.body ?? {}) as {
+      prompt?: string;
+      title?: string;
+      draftRef?: string | null;
+      ventureId?: string | null;
+    };
+    if (!body.prompt || !body.prompt.trim()) {
+      return reply.code(400).send({ error: "prompt is required" });
+    }
+    // draft_ref / venture_id are uuid columns — validate before insert so a bad ref is a clean 400, not a 500.
+    const draftRef = typeof body.draftRef === "string" && body.draftRef.trim() ? body.draftRef.trim() : null;
+    const ventureId = typeof body.ventureId === "string" && body.ventureId.trim() ? body.ventureId.trim() : null;
+    if (draftRef && !UUID_RE.test(draftRef)) {
+      return reply.code(400).send({ error: "draftRef must be a valid UUID" });
+    }
+    if (ventureId && !UUID_RE.test(ventureId)) {
+      return reply.code(400).send({ error: "ventureId must be a valid UUID" });
+    }
+    const svc = createDefaultAssetService(wid);
+    const result = await svc.generateImage({
+      workspaceId: wid,
+      ventureId,
+      prompt: body.prompt,
+      title: body.title,
+      draftRef,
+    });
+    if (result.status === "rejected") {
+      return reply.code(400).send({ error: result.reason, violations: result.violations });
+    }
+    return result;
+  });
+
+  /** The workspace's stored brand assets (generated + uploaded), newest first. Read-only. */
+  app.get("/me/realworld/assets", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const wid = identity.workspaceId;
+    const svc = createDefaultAssetService(wid);
+    const assets = await svc.listAssets(wid, 50);
+    return { assets };
   });
 }
