@@ -137,6 +137,8 @@ import type { FounderBriefingsEngine } from "./founder-briefings/engine.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { acquisitionRoutes } from "./routes/acquisition.js";
 import { createDefaultOnboardingService } from "./onboarding/default.js";
+import { createDefaultDnsManager } from "./onboarding/dns/default.js";
+import type { DnsManager } from "./onboarding/dns/manager.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
@@ -366,6 +368,8 @@ export interface BuildAppOptions {
   founderBriefingsEngine?: FounderBriefingsEngine;
   /** #192 external account onboarding: tests inject a service over fakes (incl. a fake DNS provider); default wires the real repos. */
   onboarding?: OnboardingService;
+  /** #264 DNS automation: tests inject a manager over a fake provider + receipt sink; default wires the real repos. */
+  dnsManager?: DnsManager;
   /** #231 real-world tool surface: tests inject a service over fakes; default wires the real repos + the dry-run publisher. */
   realworld?: RealWorldActuatorService;
   /** #194 finance ledger: tests inject a service over store/reader fakes; default wires the real repos. */
@@ -739,7 +743,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // them via the resolver (never read back). Domains: owner buys, agent configures + verifies DNS with
   // receipts. Read routes always render the checklist; the risky writes 409 unless `onboarding.enabled`.
   const onboarding = opts.onboarding ?? createDefaultOnboardingService(app.log);
-  app.register(onboardingRoutes, { service: onboarding });
+  // #264 DNS automation: the manager the three DNS-blocked lanes call (Search Console verification, email
+  // auth, hosted-pages CNAME). Resolves the workspace's connected DNS provider (Cloudflare w/ a vault
+  // token, else the dry-run default) and publishes + verifies records with receipts — no manual DNS edits.
+  const dnsManager = opts.dnsManager ?? createDefaultDnsManager();
+  app.register(onboardingRoutes, { service: onboarding, dnsManager });
   const realworld = opts.realworld ?? createDefaultRealworldActuatorService();
   app.register(realworldRoutes, { service: realworld });
   // #189 acquisition execution: the email suppression list (read + manual add) + the signature-verified

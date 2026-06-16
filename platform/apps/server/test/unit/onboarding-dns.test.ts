@@ -5,6 +5,8 @@ import {
   buildDmarcRecord,
   buildVerificationRecord,
   buildCaaRecord,
+  buildGoogleVerificationRecord,
+  buildCnameRecord,
   planDomainRecords,
 } from "../../src/onboarding/dns/records.js";
 import { summarizeReceipts } from "../../src/onboarding/dns/provider.js";
@@ -44,6 +46,13 @@ describe("DNS record builders (acceptance 3)", () => {
     expect(buildVerificationRecord("tok123").value).toBe("reload-verification=tok123");
     expect(buildCaaRecord().value).toBe('0 issue "letsencrypt.org"');
     expect(buildCaaRecord().purpose).toBe("ssl");
+  });
+
+  it("builds a Google Search Console verification TXT and a hosted-pages CNAME (#264)", () => {
+    const g = buildGoogleVerificationRecord("gtok");
+    expect(g).toEqual({ recordType: "TXT", name: "@", value: "google-site-verification=gtok", purpose: "verification" });
+    const c = buildCnameRecord("cname.vercel-dns.com", "www");
+    expect(c).toEqual({ recordType: "CNAME", name: "www", value: "cname.vercel-dns.com", purpose: "dns" });
   });
 });
 
@@ -98,7 +107,12 @@ describe("DryRunDnsProvider (default, no network)", () => {
 describe("createDnsProvider", () => {
   it("defaults to the dry-run provider with zero network", () => {
     expect(createDnsProvider().kind).toBe("dryrun");
-    expect(createDnsProvider({ provider: "cloudflare" }).kind).toBe("dryrun"); // no live adapter yet → safe default
+    // cloudflare selected but NO token resolved → degrades safely to dry-run (never throws) (#264).
+    expect(createDnsProvider({ provider: "cloudflare" }).kind).toBe("dryrun");
+  });
+
+  it("returns the live Cloudflare provider when a token is resolved (#264)", () => {
+    expect(createDnsProvider({ provider: "cloudflare", cloudflareToken: "cf_tok" }).kind).toBe("cloudflare");
   });
 
   it("returns an injected provider verbatim", () => {

@@ -3,6 +3,7 @@ import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import type { OnboardingService } from "../onboarding/service.js";
+import type { DnsManager } from "../onboarding/dns/manager.js";
 import type { RequiredService } from "../onboarding/types.js";
 import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
 
@@ -17,9 +18,9 @@ import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
  */
 export async function onboardingRoutes(
   app: FastifyInstance,
-  opts: { service: OnboardingService },
+  opts: { service: OnboardingService; dnsManager: DnsManager },
 ): Promise<void> {
-  const { service } = opts;
+  const { service, dnsManager } = opts;
 
   function enabled(workspaceId: string): boolean {
     return resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled;
@@ -146,6 +147,144 @@ export async function onboardingRoutes(
     const domain = (req.query as { domain?: string }).domain;
     return { receipts: await listDnsReceipts(identity.workspaceId, domain) };
   });
+
+  // -------------------------------------------------------------------------------------------------
+  // #264 DnsManager lanes — automate the three DNS-blocked lanes through the connected provider
+  // (Cloudflare, else dry-run) so a non-technical user never edits a record by hand. All gated behind
+  // `onboarding.enabled`; none move money; none echo the registrar token (responses are public records).
+  // -------------------------------------------------------------------------------------------------
+
+  // Lane 1 — domain ownership verification (Search Console by default). Publishes + verifies the TXT.
+  app.post("/me/dns/verify-domain", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    if (!enabled(identity.workspaceId)) {
+      return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
+    }
+    const body = (req.body ?? {}) as { domain?: unknown; token?: unknown; kind?: unknown };
+    const domain = parseDomain(body.domain);
+    if (!domain) return reply.code(400).send({ error: "domain is required" });
+    if (typeof body.token !== "string" || body.token.trim() === "") {
+      return reply.code(400).send({ error: "token is required" });
+    }
+    return dnsManager.verifyDomain({
+      workspaceId: identity.workspaceId,
+      domain,
+      token: body.token.trim(),
+      kind: body.kind === "reload" ? "reload" : "google",
+    });
+  });
+
+  // Lane 2 — email sender authentication (SPF/DKIM/DMARC) for the connected ESP.
+  app.post("/me/dns/email-auth", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    if (!enabled(identity.workspaceId)) {
+      return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
+    }
+    const body = (req.body ?? {}) as {
+      domain?: unknown;
+      spfIncludes?: unknown;
+      dkim?: unknown;
+      dmarcRua?: unknown;
+      dmarcPolicy?: unknown;
+    };
+    const domain = parseDomain(body.domain);
+    if (!domain) return reply.code(400).send({ error: "domain is required" });
+    return dnsManager.ensureEmailAuth({
+      workspaceId: identity.workspaceId,
+      domain,
+      spfIncludes: parseStringArray(body.spfIncludes),
+      dkim: parseDkim(body.dkim),
+      dmarcRua: typeof body.dmarcRua === "string" ? body.dmarcRua : undefined,
+      dmarcPolicy: parseDmarcPolicy(body.dmarcPolicy),
+    });
+  });
+
+  // Lane 3 — attach a custom domain to hosted pages (CNAME + CAA for the TLS cert).
+  app.post("/me/dns/site-cname", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    if (!enabled(identity.workspaceId)) {
+      return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
+    }
+    const body = (req.body ?? {}) as {
+      domain?: unknown;
+      target?: unknown;
+      name?: unknown;
+      ssl?: unknown;
+    };
+    const domain = parseDomain(body.domain);
+    if (!domain) return reply.code(400).send({ error: "domain is required" });
+    if (typeof body.target !== "string" || body.target.trim() === "") {
+      return reply.code(400).send({ error: "target is required (the hosting CNAME target)" });
+    }
+    return dnsManager.ensureSiteCname({
+      workspaceId: identity.workspaceId,
+      domain,
+      target: body.target.trim(),
+      name: typeof body.name === "string" ? body.name : undefined,
+      ssl: typeof body.ssl === "boolean" ? body.ssl : undefined,
+    });
+  });
+
+  // One-time "connect a domain" — runs every lane the inputs cover (verification + email + CNAME).
+  app.post("/me/dns/setup", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    if (!enabled(identity.workspaceId)) {
+      return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
+    }
+    const body = (req.body ?? {}) as {
+      domain?: unknown;
+      googleVerificationToken?: unknown;
+      reloadVerificationToken?: unknown;
+      appTarget?: unknown;
+      spfIncludes?: unknown;
+      dkim?: unknown;
+      dmarcRua?: unknown;
+      dmarcPolicy?: unknown;
+    };
+    const domain = parseDomain(body.domain);
+    if (!domain) return reply.code(400).send({ error: "domain is required" });
+    return dnsManager.setupDomain({
+      workspaceId: identity.workspaceId,
+      domain,
+      googleVerificationToken:
+        typeof body.googleVerificationToken === "string" ? body.googleVerificationToken : undefined,
+      reloadVerificationToken:
+        typeof body.reloadVerificationToken === "string" ? body.reloadVerificationToken : undefined,
+      appTarget: typeof body.appTarget === "string" ? body.appTarget : undefined,
+      spfIncludes: parseStringArray(body.spfIncludes),
+      dkim: parseDkim(body.dkim),
+      dmarcRua: typeof body.dmarcRua === "string" ? body.dmarcRua : undefined,
+      dmarcPolicy: parseDmarcPolicy(body.dmarcPolicy),
+    });
+  });
+}
+
+/** Parse + trim a required domain string. Returns null when absent/blank. */
+function parseDomain(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/** Parse a `{selector, publicKey}` DKIM object; returns undefined unless both strings are present. */
+function parseDkim(value: unknown): { selector: string; publicKey: string } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const d = value as { selector?: unknown; publicKey?: unknown };
+  return typeof d.selector === "string" && typeof d.publicKey === "string"
+    ? { selector: d.selector, publicKey: d.publicKey }
+    : undefined;
+}
+
+/** Parse a string[] body field, dropping non-strings. Returns undefined when not an array. */
+function parseStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : undefined;
+}
+
+/** Parse a DMARC policy enum body field. Returns undefined for anything else (builder defaults to none). */
+function parseDmarcPolicy(value: unknown): "none" | "quarantine" | "reject" | undefined {
+  return value === "none" || value === "quarantine" || value === "reject" ? value : undefined;
 }
 
 /** Parse the `required[]` setup payload, dropping malformed entries. Returns null when none are valid. */
