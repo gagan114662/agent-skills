@@ -7,10 +7,9 @@ date: 2026-06-16
 status: published
 ---
 
-# How to do marketing without hiring a team
-
 Most early founders hit the same wall: marketing clearly matters, but a first marketing hire costs
-[$80k–$140k a year], a contractor wants a retainer before they've written a word, and an agency wants a
+roughly $80k–$140k a year (industry estimate — swap in your real number), a contractor wants a retainer
+before they've written a word, and an agency wants a
 three-month minimum. So marketing becomes the thing you'll "get to later" — and later never comes, because
 there's no one whose job it is.
 
@@ -54,7 +53,7 @@ silence. Set a loop you can actually sustain:
 3. **Friday — ship and measure.** Publish, note what you'll watch, move on.
 
 The loop matters more than any single post. A founder running a boring weekly loop outperforms a "growth
-hacker" chasing the algorithm — because [the compounding only starts once you stop starting over].
+hacker" chasing the algorithm — because the compounding only starts once you stop starting over.
 
 ## Let AI agents do the production — but keep the gate
 
@@ -66,8 +65,8 @@ wrong, or just bland, and you won't catch it until a customer does.
 The pattern that works is **bounded autonomy**: the agent does the work, you approve before anything goes
 public. You review a finished draft instead of staring at a blank page — minutes of judgement instead of
 hours of production. ipop is built around exactly this: a marketing department of AI agents that drafts,
-schedules, and reports, and waits for your nod before it sends. You can [run a full week's content through
-the approval gate in the time it used to take to write one post].
+schedules, and reports, and waits for your nod before it sends. You can run a full week's content through
+the approval gate in roughly the time it used to take to write one post (your results will vary).
 
 ## What you should never automate away
 
@@ -85,7 +84,7 @@ A few things stay in your hands no matter how lean you run:
 You won't match a ten-person team's polish, and you don't need to. The bar for a founder doing their own
 marketing is simpler: *show up consistently, sound like a human, and be findable.* Most of your competitors
 fail the consistency test — they start, stall, and disappear. Just by not disappearing, you'll be ahead of
-[most of the field].
+most of the field.
 
 Marketing without a team isn't about doing less. It's about deciding what only you can decide, and letting
 a system handle the rest. **Try ipop.ai** and let an AI marketing department do the typing — while you keep
