@@ -3,8 +3,10 @@
 > Issue: [#138](https://github.com/gagan114662/agent-skills/issues/138) · ADR: [0138-pop-identity-channels-deploy](../adrs/0138-pop-identity-channels-deploy.md) · App: `reload-api` (Fly, region `yyz`)
 >
 > The web console (https://ipop.ai) auto-deploys on Vercel. The API (https://api.ipop.ai) deploys to
-> Fly via `.github/workflows/fly-deploy.yml` on every push to `main` touching `platform/**`. The image
-> self-migrates on boot, so a deploy is the whole story — no separate migration step.
+> Fly via `.github/workflows/fly-deploy.yml` on every push to `main` touching `platform/**`. The Fly
+> `[deploy] release_command` (`release-cli.js`) applies pending DB migrations + runs the preflight/smoke
+> **before traffic shifts**; a failure aborts the rollout (automatic rollback). So a deploy is the whole
+> story — **no human runs `flyctl deploy` or `db:migrate` by hand** (#273).
 
 ## Stack
 
@@ -13,8 +15,10 @@
 | Web console | Vercel → https://ipop.ai (auto-deploy on push to main) |
 | API | Fly app `reload-api` → https://api.ipop.ai / https://reload-api.fly.dev |
 | Build | `platform/apps/server/Dockerfile`, context `platform/` (run flyctl from `platform/`) |
-| Migrate-on-deploy | `apps/server/docker-entrypoint.sh` runs `migrate.js up` before starting the server |
-| Readiness | `GET /readyz` → `{"status":"ready","db":"up","redis":"up"}` (Fly routes only when green) |
+| Release gate (#273) | `[deploy] release_command` → `dist/runtime/release-cli.js`: migrate → preflight (#238) → smoke (#166), fail-fast, **before traffic shifts** = automatic rollback on failure |
+| Rollout | `[deploy] strategy = "rolling"`, health-gated on `/readyz` (Fly routes only when green) |
+| Migrate-on-boot | `apps/server/docker-entrypoint.sh` runs `migrate.js up` — idempotent no-op safety net for local/compose (on Fly the release gate is the authority) |
+| Readiness | `GET /readyz` → `{"status":"ready","db":"up","redis":"up"}` |
 
 ## One-time setup — the `FLY_API_TOKEN` secret
 
@@ -110,6 +114,11 @@ flyctl status -a reload-api                 # machine state + the deployed image
 
 ## Rollback
 
+**Automatic (the common case):** a deploy whose release_command fails (bad migration, missing tool,
+broken smoke) never shifts traffic — Fly aborts the rollout and the previous release keeps serving. The
+CI job goes red; no manual step is needed to stay up. Fix forward and re-push.
+
+**Manual (e.g. a bad deploy that *passed* the gate but misbehaves under real load):**
 ```bash
 flyctl releases -a reload-api               # list releases (newest first)
 flyctl deploy --image <previous-image-ref> -a reload-api   # redeploy a known-good image

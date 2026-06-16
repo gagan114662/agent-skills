@@ -65,16 +65,25 @@ primary_region = "yyz"
   # ANTHROPIC_MODEL — a session is never blocked. The gateway KEY is a SECRET (never set in [env]).
   # RELOAD_AUTO_MODEL = "true"
 
-# Post-deploy gate (#166; hardened in #238): boot the NEW image on a one-off machine BEFORE traffic
-# shifts and run, in order, (1) a PREFLIGHT that asserts the host posture — `bash`/`git` on PATH, the
-# `claude` binary, AND that the per-session workspace root is WRITABLE by the non-root runtime user —
-# then (2) ONE real demo-harness session that PROVISIONS a per-session workspace and spawns end-to-end.
-# A non-zero exit aborts the rollout, so an image missing a tool OR with a root-owned workspace root
-# (the #238 cause: every session died at provision with exit n/a) can never reach production. The
-# writable workspace root is baked into the image as RELOAD_WORKSPACE_ROOT=/home/reload/agent-workspaces
-# (created + chowned in the Dockerfile). No DB / no model spend.
+# Release gate + rolling rollout (#166/#238; migrations gated in #273). On every deploy, Fly boots the
+# NEW image on a one-off machine BEFORE traffic shifts and runs the release_command. A non-zero exit
+# ABORTS the rollout with the current (healthy) release still serving — so the gate IS the automatic
+# rollback, and shipping never needs a human at a terminal. release-cli.js runs three gates, fail-fast:
+#   0. MIGRATIONS (#273) — apply pending DB migrations (`migrate up`) HERE, before the cutover. A bad
+#      migration aborts the deploy with the old code + schema live, instead of crash-looping freshly
+#      rolled machines (the migrate-on-boot failure mode). Migrations are additive, so the still-running
+#      old code is unaffected. (docker-entrypoint.sh still migrates on boot as an idempotent no-op safety
+#      net for local/compose; on Fly this gate is the authority and the boot run finds nothing pending.)
+#   1. PREFLIGHT (#238) — assert host posture: `bash`/`git` on PATH, the `claude` binary, AND that the
+#      per-session workspace root (RELOAD_WORKSPACE_ROOT, baked + chowned in the Dockerfile) is WRITABLE
+#      by the non-root runtime user (the #238 cause: every session died at provision with exit n/a).
+#   2. SMOKE (#166) — PROVISION a per-session workspace + spawn ONE real demo-harness session end-to-end.
+# The migration gate touches the DB (DATABASE_URL is injected into the release VM); preflight + smoke
+# need no model spend. strategy = "rolling": machines are replaced one at a time and Fly waits for the
+# /readyz http check below to pass before continuing — a health-gated rollout.
 [deploy]
-  release_command = "node /app/apps/server/dist/runtime/smoke-cli.js"
+  strategy = "rolling"
+  release_command = "node /app/apps/server/dist/runtime/release-cli.js"
 
 [http_service]
   internal_port = 8080
