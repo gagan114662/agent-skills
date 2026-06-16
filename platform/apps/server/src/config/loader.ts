@@ -142,10 +142,14 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // the seed/backfill never launches (spends on) welcome sessions.
   const mktEnabled = env.RELOAD_MARKETING_ENABLED;
   const mktWelcome = env.RELOAD_MARKETING_SEED_WELCOME_TASKS;
-  if (mktEnabled !== undefined || mktWelcome !== undefined) {
+  // #258: designate ipop.ai's OWN workspace from the deployment env (no managed.toml needed) so the
+  // internal-only connectors (the GitHub site-publish paste) are admin-gated to exactly that workspace.
+  const mktOwner = env.RELOAD_MARKETING_OWNER_WORKSPACE_ID;
+  if (mktEnabled !== undefined || mktWelcome !== undefined || mktOwner) {
     const marketing: Record<string, unknown> = {};
     if (mktEnabled !== undefined) marketing.enabled = mktEnabled === "true" || mktEnabled === "1";
     if (mktWelcome !== undefined) marketing.seedWelcomeTasks = mktWelcome === "true" || mktWelcome === "1";
+    if (mktOwner) marketing.ownerWorkspaceId = mktOwner;
     raw.marketing = marketing;
   }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on

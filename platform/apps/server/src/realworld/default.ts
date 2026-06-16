@@ -1,14 +1,13 @@
 import { evaluatePolicy, REALWORLD_PUBLISH_ACTION } from "../approvals/policy.js";
 import { createRequest, listPolicyRules } from "../db/repositories/approvals.js";
-import { listServiceStatuses } from "../db/repositories/external-credentials.js";
+import { listServiceStatuses, resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { listSetupRequests } from "../db/repositories/setup-requests.js";
 import { dbArtifactStore } from "../db/repositories/realworld-artifacts.js";
 import type { ServiceKind } from "../onboarding/types.js";
-import { IpopSitePublishService, RealWorldActuatorService } from "./service.js";
+import { RealWorldActuatorService } from "./service.js";
 import type { PublishProvider } from "./publish/provider.js";
 import { DryRunPublishProvider } from "./publish/dry-run-provider.js";
-import { createSitePrProvider } from "./publish/site-pr-factory.js";
-import type { SitePrProvider } from "./publish/site-pr-provider.js";
+import { resolveSitePublisher, type SitePublisher } from "./publish/site-publisher.js";
 import { loadConfig } from "../config/loader.js";
 
 /**
@@ -71,25 +70,23 @@ export function createDefaultRealworldActuatorService(
 }
 
 /**
- * Wire the AUTONOMOUS self-publish-to-ipop.ai service (#250). The provider defaults to the non-networked
- * {@link DryRunSitePrProvider}; the real GitHub provider is selected only when config
- * `realworld.sitePrProvider = "github"` AND `realworld.siteRepo` is set (plus a server token). Opening a
- * PR is money-free + reversible, so there is NO #13 gate here (#243 money-only) — the service can only
- * draft a PR a human still merges. The content dir + repo come from the workspace's #58 config.
+ * Wire the AUTONOMOUS self-publish {@link SitePublisher} (#258, was #250). `publish_site` resolves an
+ * abstract publisher per workspace: the internal GitHub impl reads its token + repo from the ENCRYPTED
+ * per-workspace connection (#192 vault), NOT a Fly server secret — so the token is no longer infra. Falls
+ * back to a legacy env-token config path, then to a dry-run publisher (the safe internal default — no
+ * network). Opening a PR is money-free + reversible, so there is NO #13 gate here (#243 money-only) — the
+ * publisher has no send/spend seam, and a poisoned read can at most draft a PR a human still merges.
  */
-export async function createDefaultIpopSitePublishService(
-  workspaceId: string,
-  override?: SitePrProvider,
-): Promise<IpopSitePublishService> {
+export async function createDefaultSitePublisher(workspaceId: string): Promise<SitePublisher> {
   const cfg = loadConfig(workspaceId).realworld;
-  const provider = await createSitePrProvider(cfg.sitePrProvider ?? "dryrun", {
-    repo: cfg.siteRepo,
-    baseBranch: cfg.siteBaseBranch,
-    override,
-  });
-  return new IpopSitePublishService({
-    provider,
-    contentDir: cfg.siteContentDir ?? "content/blog",
+  return resolveSitePublisher(workspaceId, {
+    readConnectionSecrets: (wid, id) => resolveServiceSecrets(wid, id),
+    config: {
+      sitePrProvider: cfg.sitePrProvider,
+      siteRepo: cfg.siteRepo,
+      siteBaseBranch: cfg.siteBaseBranch,
+      siteContentDir: cfg.siteContentDir,
+    },
     artifacts: dbArtifactStore,
   });
 }

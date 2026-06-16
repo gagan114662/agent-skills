@@ -71,6 +71,12 @@ export interface GitHubSitePrOptions {
   repo: string;
   /** Base branch the PR targets (default `main`). */
   baseBranch?: string;
+  /**
+   * The GitHub token, injected from the per-workspace #192 connection (the internal site-publish
+   * connection). When set it ALWAYS wins over the env vars — the token is no longer a Fly server secret
+   * but an encrypted per-workspace credential. Omitted ⇒ legacy env fallback (back-compat only).
+   */
+  token?: string;
 }
 
 /**
@@ -86,10 +92,15 @@ export class GitHubSitePrProvider implements SitePrProvider {
   private readonly api = "https://api.github.com";
   private readonly repo: string;
   private readonly baseBranch: string;
+  private readonly injectedToken?: string;
 
   constructor(opts: GitHubSitePrOptions) {
-    this.repo = opts.repo;
+    // The repo is interpolated into every GitHub API URL — never construct without one (the dry-run
+    // provider is the no-repo path). Guards against a downstream TypeError on `this.repo.split(...)`.
+    if (!opts.repo?.trim()) throw new Error("GitHubSitePrProvider requires a repo (owner/repo)");
+    this.repo = opts.repo.trim();
     this.baseBranch = opts.baseBranch?.trim() || "main";
+    this.injectedToken = opts.token?.trim() || undefined;
   }
 
   private headers(token: string): Record<string, string> {
@@ -102,12 +113,16 @@ export class GitHubSitePrProvider implements SitePrProvider {
   }
 
   private token(): string {
+    // The per-workspace connection token wins; env vars are a back-compat fallback only.
     const token =
-      process.env.REALWORLD_GITHUB_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+      this.injectedToken ||
+      process.env.REALWORLD_GITHUB_TOKEN ||
+      process.env.GITHUB_TOKEN ||
+      process.env.GH_TOKEN;
     if (!token) {
       throw new Error(
-        'realworld.sitePrProvider: "github" requires REALWORLD_GITHUB_TOKEN (or GITHUB_TOKEN / GH_TOKEN) ' +
-          "with repo scope, or run with the default dryrun provider.",
+        "the internal site-publish connection requires a GitHub token (REALWORLD_GITHUB_TOKEN with repo " +
+          "scope) — connect it once in Settings, or run with the default dryrun provider.",
       );
     }
     return token;

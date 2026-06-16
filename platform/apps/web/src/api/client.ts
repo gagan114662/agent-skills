@@ -55,6 +55,7 @@ import type {
   ExternalAccountsChecklist,
   RealworldReadiness,
   ExternalAccountConnectInput,
+  ConnectionsResponse,
   StatusPageDto,
   TaskTemplateDto,
   SiteDocDetail,
@@ -338,6 +339,27 @@ export const api = {
   async disconnectExternalAccount(serviceKey: string): Promise<ExternalAccountsChecklist> {
     await del(`/me/external-credentials/${encodeURIComponent(serviceKey)}`);
     return this.getExternalAccounts();
+  },
+
+  // --- Connections (#258): the OAuth-first "connect once, the agents do the rest" surface ---
+  getConnections(): Promise<ConnectionsResponse> {
+    return request<ConnectionsResponse>("/me/connections");
+  },
+  // Internal/admin paste connect (the GitHub site-publish connection). Owner-gated on the server.
+  async connectInternal(id: string, input: { repo: string; token: string; baseBranch?: string }): Promise<ConnectionsResponse> {
+    await request(`/me/connections/${encodeURIComponent(id)}/connect`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return this.getConnections();
+  },
+  async disconnectConnection(id: string): Promise<ConnectionsResponse> {
+    await del(`/me/connections/${encodeURIComponent(id)}`);
+    return this.getConnections();
+  },
+  // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
+  startConnectionOAuth(id: string): Promise<unknown> {
+    return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
   },
 
   // --- channels ---

@@ -80,27 +80,35 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
           </button>
         </div>
       ) : (
-        <form
-          className="connect-claude__form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (token.trim()) onConnect(token.trim());
-          }}
-        >
+        <div className="connect-claude__notconnected">
           <p className="connect-claude__status">Not connected</p>
-          <label htmlFor="claude-token">Claude token</label>
-          <input
-            id="claude-token"
-            type="password"
-            autoComplete="off"
-            placeholder="sk-ant-oat-…"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <button type="submit" disabled={busy || !token.trim()}>
-            Connect
-          </button>
-        </form>
+          {/* #263: no free-text secret field by default — the manual token paste lives behind this
+              collapsed disclosure. Claude has no in-app OAuth (the token comes from the CLI), so the
+              advanced paste is the connect path, never shown until the owner opens it. */}
+          <details className="connect-claude__advanced">
+            <summary>Connect Claude (advanced — paste a setup token)</summary>
+            <form
+              className="connect-claude__form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (token.trim()) onConnect(token.trim());
+              }}
+            >
+              <label htmlFor="claude-token">Claude token</label>
+              <input
+                id="claude-token"
+                type="password"
+                autoComplete="off"
+                placeholder="sk-ant-oat-…"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+              />
+              <button type="submit" disabled={busy || !token.trim()}>
+                Connect
+              </button>
+            </form>
+          </details>
+        </div>
       )}
 
       {error ? (

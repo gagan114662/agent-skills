@@ -121,6 +121,12 @@ describe("GitHubSitePrProvider (#250) — REST sequence", () => {
     expect(branchCreate?.body).toMatchObject({ ref: "refs/heads/ipop-content/new-post", sha: "basesha" });
   });
 
+  it("throws if constructed without a repo (defensive guard — repo is interpolated into API URLs)", () => {
+    expect(() => new GitHubSitePrProvider({ repo: "" })).toThrow(/repo/i);
+    // @ts-expect-error — intentionally omit repo to prove the runtime guard
+    expect(() => new GitHubSitePrProvider({})).toThrow(/repo/i);
+  });
+
   it("returns an error outcome (never throws) when the token is missing", async () => {
     delete process.env.REALWORLD_GITHUB_TOKEN;
     delete process.env.GITHUB_TOKEN;
@@ -128,6 +134,32 @@ describe("GitHubSitePrProvider (#250) — REST sequence", () => {
     const out = await new GitHubSitePrProvider({ repo: "ipop/site" }).openPr(input);
     expect(out.status).toBe("error");
     expect(out.error).toMatch(/REALWORLD_GITHUB_TOKEN/);
+  });
+
+  it("uses an injected per-workspace token (the connection) over the env secret", async () => {
+    // The internal GitHub publisher is now fed its token from the per-workspace #192 connection, NOT a
+    // Fly env secret. Prove the injected token wins even when no env var is set.
+    delete process.env.REALWORLD_GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GH_TOKEN;
+    let seenAuth: string | undefined;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seenAuth = headers.Authorization;
+      const method = init?.method ?? "GET";
+      if (url.includes("/git/ref/heads/")) return jsonRes({ object: { sha: "basesha" } });
+      if (url.endsWith("/git/refs") && method === "POST") return jsonRes({}, 201);
+      if (url.includes("/contents/") && method === "GET") return jsonRes({}, 404);
+      if (url.includes("/contents/") && method === "PUT") return jsonRes({}, 201);
+      if (url.endsWith("/pulls") && method === "POST")
+        return jsonRes({ html_url: "https://github.com/ipop/site/pull/11" }, 201);
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await new GitHubSitePrProvider({ repo: "ipop/site", token: "tok_connection" }).openPr(input);
+    expect(out.status).toBe("ready");
+    expect(seenAuth).toBe("Bearer tok_connection");
   });
 });
 

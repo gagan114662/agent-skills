@@ -70,6 +70,27 @@ export interface RealworldReadiness {
   neededAccounts: string[];
 }
 
+/** One connectable integration (#258, `GET /me/connections`) — descriptor metadata, never a secret. */
+export interface ConnectionView {
+  id: string;
+  label: string;
+  summary: string;
+  provider: string;
+  kind: string;
+  audience: "customer" | "internal";
+  auth: "oauth" | "paste_internal";
+  status: "available" | "coming_soon";
+  capabilities: string[];
+  oauthScopes: string[];
+  connected: boolean;
+}
+
+/** The connections surface (#258): what this workspace can connect + whether it manages internal ones. */
+export interface ConnectionsResponse {
+  connections: ConnectionView[];
+  canManageInternal: boolean;
+}
+
 /** Body for connecting an external account from Settings (#231): file the need, then seal the secret. */
 export interface ExternalAccountConnectInput {
   serviceKey: string;

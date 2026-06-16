@@ -49,14 +49,19 @@ export function SlackConnect(props: SlackConnectProps): React.JSX.Element {
           </button>
         </div>
       ) : (
-        <form
-          className="connect-slack__form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (ready) onConnect({ botToken: botToken.trim(), signingSecret: signingSecret.trim() });
-          }}
-        >
+        <div className="connect-slack__notconnected">
           <p className="connect-slack__status">{SLACK_CONNECT.notConnected}</p>
+          {/* #263: no free-text secret field by default — the app credentials paste lives behind this
+              collapsed disclosure (full OAuth "Add to Slack" is a follow-up). */}
+          <details className="connect-slack__advanced">
+            <summary>{SLACK_CONNECT.advancedSummary}</summary>
+            <form
+              className="connect-slack__form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (ready) onConnect({ botToken: botToken.trim(), signingSecret: signingSecret.trim() });
+              }}
+            >
           <label htmlFor="slack-bot-token">{SLACK_CONNECT.botTokenLabel}</label>
           <input
             id="slack-bot-token"
@@ -75,10 +80,12 @@ export function SlackConnect(props: SlackConnectProps): React.JSX.Element {
             value={signingSecret}
             onChange={(e) => setSigningSecret(e.target.value)}
           />
-          <button type="submit" disabled={busy || !ready}>
-            {SLACK_CONNECT.connect}
-          </button>
-        </form>
+              <button type="submit" disabled={busy || !ready}>
+                {SLACK_CONNECT.connect}
+              </button>
+            </form>
+          </details>
+        </div>
       )}
 
       {error ? (
