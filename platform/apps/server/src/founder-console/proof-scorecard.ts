@@ -97,6 +97,7 @@ const DEFAULT_METRIC_LABEL: Record<string, string> = {
   ads: "Campaign clicks + CAC",
   analytics: "Sessions · signups · trial conversions",
   brand: "Brand assets live",
+  reach: "Prospects reached · replies · meetings",
 };
 
 const NOT_CONNECTED_DISPLAY = "not connected";

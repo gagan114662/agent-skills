@@ -5,7 +5,7 @@ import { MARKETING_CHANNELS, MARKETING_DEPARTMENTS } from "../../../src/marketin
 
 /**
  * #123 seeding — idempotent, reuse-first. Drives the seeder with in-memory fakes for every #4/#9/#59
- * seam so it runs in the no-DB unit job. Asserts the agency it builds: nine channels, seven agents, the
+ * seam so it runs in the no-DB unit job. Asserts the agency it builds: ten channels, eight agents, the
  * human granted propagate (so they may @mention-invoke), intros posted, and a welcome session + task
  * record per department proving each agent alive — and that re-seeding creates nothing twice.
  */
@@ -59,21 +59,21 @@ describe("#123 seedMarketingDepartment", () => {
   const workspaceId = "ws-1";
   const human = "human-1";
 
-  it("creates all nine channels, seven agents, grants, intros and welcome tasks", async () => {
+  it("creates all ten channels, eight agents, grants, intros and welcome tasks", async () => {
     const f = makeFakes();
     const result = await seedMarketingDepartment(
       { workspaceId, createdByMemberId: human, postWelcomeTasks: true },
       f.deps,
     );
 
-    // Nine channels, seven agents.
+    // Ten channels, eight agents.
     expect([...f.channels.keys()].sort()).toEqual([...MARKETING_CHANNELS].sort());
-    expect(f.personas.size).toBe(7);
-    expect(result.channels).toHaveLength(9);
-    expect(result.agents).toHaveLength(7);
+    expect(f.personas.size).toBe(8);
+    expect(result.channels).toHaveLength(10);
+    expect(result.agents).toHaveLength(8);
 
     // The human is granted propagate on every seeded channel (so they may @mention-invoke).
-    expect(new Set(f.grants.map((g) => g.channelId)).size).toBe(9);
+    expect(new Set(f.grants.map((g) => g.channelId)).size).toBe(10);
     expect(f.grants.every((g) => g.memberId === human && g.capability === "propagate")).toBe(true);
 
     // Each agent is a member of its own department channel + the two shared channels.
@@ -87,10 +87,10 @@ describe("#123 seedMarketingDepartment", () => {
 
     // Intros posted + a welcome message in #general; a welcome session + task per department.
     expect(f.posts.length).toBeGreaterThanOrEqual(MARKETING_DEPARTMENTS.length + 1);
-    expect(f.launches).toHaveLength(7);
-    expect(f.tasks).toHaveLength(7);
+    expect(f.launches).toHaveLength(8);
+    expect(f.tasks).toHaveLength(8);
     expect(f.tasks.every((t) => t.kind === "welcome" && t.sessionId !== null)).toBe(true);
-    expect(result.welcomeTasks).toHaveLength(7);
+    expect(result.welcomeTasks).toHaveLength(8);
   });
 
   it("is idempotent — re-seeding creates no new channels, agents, or grants", async () => {
@@ -179,7 +179,7 @@ describe("#123 seedMarketingDepartment", () => {
     expect(activateCalls).toEqual([{ ideaId: "idea-1" }]);
     expect(result.venture).toMatchObject({ ideaId: "idea-1", created: true, epicTaskId: "epic-1", iterations: 1, verdict: "FUND" });
     // Every welcome session's task carries the venture brief so the launched session works the venture.
-    expect(f.launches).toHaveLength(7);
+    expect(f.launches).toHaveLength(8);
     expect(f.launches.every((l) => l.task.includes("VENTURE_BRIEF_MARKER"))).toBe(true);
   });
 
@@ -201,7 +201,7 @@ describe("#123 seedMarketingDepartment", () => {
     );
 
     expect(result.venture).toMatchObject({ ideaId: "idea-1", created: true });
-    expect(f.launches).toHaveLength(7); // launches still fired
+    expect(f.launches).toHaveLength(8); // launches still fired
   });
 
   it("posts intros only on creation — re-seeding an existing agency posts no new messages (#138)", async () => {
@@ -212,7 +212,7 @@ describe("#123 seedMarketingDepartment", () => {
     const f = makeFakes();
     await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
     const postsAfterFirst = f.posts.length;
-    expect(postsAfterFirst).toBeGreaterThanOrEqual(MARKETING_DEPARTMENTS.length + 1); // 7 intros + welcome
+    expect(postsAfterFirst).toBeGreaterThanOrEqual(MARKETING_DEPARTMENTS.length + 1); // 8 intros + welcome
 
     await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: false }, f.deps);
     expect(f.posts.length).toBe(postsAfterFirst); // nothing new on re-seed

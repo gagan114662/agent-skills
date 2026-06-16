@@ -200,6 +200,21 @@ export function validateOutreachSend(payload: unknown): ValidationResult {
 }
 
 /**
+ * Validate a Reach paid-data-credit spend (#280) — a recorded-only MONEY decision. Needs a positive
+ * `amountCents` (the estimated credit spend, exact amount shown to the owner) and a non-empty `provider`
+ * (clay/lusha/vibe). Recorded-only on approval; a real paid fetch behind the gate is a deliberate follow-up.
+ */
+export function validateReachDataCreditSpend(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (typeof p.amountCents !== "number" || !Number.isInteger(p.amountCents) || p.amountCents <= 0) {
+    return { ok: false, error: "amountCents must be a positive integer" };
+  }
+  if (!nonEmptyString(p.provider)) return { ok: false, error: "provider required" };
+  return { ok: true };
+}
+
+/**
  * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
  * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
  * change in the venture's own Stripe dashboard (no autonomous payout re-routing).

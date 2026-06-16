@@ -45,6 +45,7 @@ import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
 import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realworld-artifacts.js";
 import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
+import { reachProofReading } from "../db/repositories/reach.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -614,6 +615,20 @@ export function createDefaultFounderConsoleService(deps: {
             note: "set your brand kit (logo, colours, voice) to connect this tile and let the fleet generate on-brand assets",
           });
         }
+
+        // reach (Comet): outbound messages SENT (the headline) with prospects reached + replies + meetings
+        // in the note — all off the #280 reach_sends / reach_receipts tables (real receipts, never faked).
+        const reach = await reachProofReading(workspaceId, since7);
+        readings.push({
+          department: "reach",
+          connected: true,
+          current: reach.sentAll,
+          prior: reach.sentAll - reach.sentSince,
+          unit: "count",
+          metricLabel: "Prospects reached · replies · meetings",
+          source: "Reach send + reply receipts (#280)",
+          note: `${reach.prospects} prospects · ${reach.replies} replies · ${reach.booked} meetings booked`,
+        });
 
         return readings;
       },

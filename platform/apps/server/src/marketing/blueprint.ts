@@ -230,6 +230,17 @@ export const MARKETING_DEPARTMENTS: readonly MarketingDepartment[] = [
       "drifts off-voice.",
     "Draft a one-page voice & tone guide for the brand.",
   ),
+  dept(
+    "reach",
+    "reach",
+    "Reach",
+    "comet",
+    "Comet",
+    "Comet here. I go *find* the people who just raised, just hired, just switched — and write each one a " +
+      "single good line about what they just did. Email goes out under the caps; LinkedIn waits for a real " +
+      "door, never a back one. Every reply lands right here.",
+    "Draft our outbound ICP and a 1:1 opener for three live-signal prospects — the loop sends within the caps.",
+  ),
 ];
 
 /** Every channel a fresh workspace gets: each department channel plus the shared rooms. */

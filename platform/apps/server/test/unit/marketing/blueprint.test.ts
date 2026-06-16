@@ -21,18 +21,18 @@ import { validatePersonaInput } from "../../../src/subagents/scope.js";
  * the seeder/roster/trigger can rely on it and so extending it is a deliberate, tested change.
  */
 describe("#123 marketing blueprint", () => {
-  it("defines exactly the seven department agents with the named handles", () => {
+  it("defines exactly the eight department agents with the named handles", () => {
     const handles = MARKETING_DEPARTMENTS.map((d) => d.agent.handle).sort();
-    expect(handles).toEqual(["bid", "echo", "lens", "mark", "postmark", "quill", "scout"]);
+    expect(handles).toEqual(["bid", "comet", "echo", "lens", "mark", "postmark", "quill", "scout"]);
     const channels = MARKETING_DEPARTMENTS.map((d) => d.channel).sort();
-    expect(channels).toEqual(["ads", "analytics", "brand", "content", "email", "seo", "social"]);
+    expect(channels).toEqual(["ads", "analytics", "brand", "content", "email", "reach", "seo", "social"]);
   });
 
-  it("seeds nine channels: every department channel plus #general and #launch, all unique", () => {
+  it("seeds ten channels: every department channel plus #general and #launch, all unique", () => {
     expect(SHARED_CHANNELS).toEqual(["general", "launch"]);
-    expect(MARKETING_CHANNELS).toHaveLength(9);
-    expect(new Set(MARKETING_CHANNELS).size).toBe(9);
-    for (const c of ["seo", "social", "content", "email", "ads", "analytics", "brand", "general", "launch"]) {
+    expect(MARKETING_CHANNELS).toHaveLength(10);
+    expect(new Set(MARKETING_CHANNELS).size).toBe(10);
+    for (const c of ["seo", "social", "content", "email", "ads", "analytics", "brand", "reach", "general", "launch"]) {
       expect(MARKETING_CHANNELS).toContain(c);
     }
   });

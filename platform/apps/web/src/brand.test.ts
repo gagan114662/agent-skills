@@ -75,13 +75,14 @@ describe("pop identity (#138)", () => {
     }
   });
 
-  it("maps the seven marketing departments to a spectrum, keyed by channel name", () => {
+  it("maps the eight marketing departments to a spectrum, keyed by channel name", () => {
     expect(Object.keys(DEPARTMENT_SPECTRUM).sort()).toEqual([
       "ads",
       "analytics",
       "brand",
       "content",
       "email",
+      "reach",
       "seo",
       "social",
     ]);
@@ -104,10 +105,10 @@ describe("pop identity (#138)", () => {
 });
 
 describe("landing fleet + copy (#149)", () => {
-  it("names the seven marketing specialists, each tied to a real department hue", () => {
-    expect(FLEET).toHaveLength(7);
+  it("names the eight marketing specialists, each tied to a real department hue", () => {
+    expect(FLEET).toHaveLength(8);
     const handles = FLEET.map((a) => a.handle);
-    expect(new Set(handles).size).toBe(7); // no duplicates
+    expect(new Set(handles).size).toBe(8); // no duplicates
     for (const agent of FLEET) {
       expect(agent.name, agent.handle).toBeTruthy();
       expect(agent.personality, agent.handle).toBeTruthy();
@@ -118,7 +119,7 @@ describe("landing fleet + copy (#149)", () => {
     }
   });
 
-  it("covers all seven departments exactly once", () => {
+  it("covers all eight departments exactly once", () => {
     expect(FLEET.map((a) => a.department).sort()).toEqual(Object.keys(DEPARTMENT_SPECTRUM).sort());
   });
 

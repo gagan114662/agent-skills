@@ -165,6 +165,8 @@ import { discoveryRoutes } from "./routes/discovery.js";
 import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
 import { outreachRoutes } from "./routes/outreach.js";
+import { reachRoutes } from "./routes/reach.js";
+import { createDefaultReachService } from "./reach/default.js";
 import { createDefaultOutreachService } from "./outreach/default.js";
 import type { OutreachService } from "./outreach/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -673,6 +675,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       discovery: discoveryService,
       decisionMaker: decisionMakerService,
     });
+  // #280 Reach outbound demand-gen: the self-improving loop service. Default-OFF + mock source + dry-run
+  // sender, so it spends nothing and sends nothing until an owner opts in (caps) and connects a real ESP.
+  const reachService = createDefaultReachService(app.log);
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -791,6 +796,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send
   // endpoint exists — the send happens only after the owner approves, via the recorded-only executor.
   app.register(outreachRoutes, { service: outreachService });
+  // #280 Reach outbound demand-gen: run a batch of the self-improving loop (source live-signal prospects →
+  // score/dedupe → personalise → auto-send under caps + suppression → enrol cadence → measure → self-tune),
+  // record external engagement receipts, and read the proof summary. Default-OFF (caps gate the batch); a
+  // paid data source money-gates its search. No #13 gate on the send (autonomous under the caps).
+  app.register(reachRoutes, { service: reachService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build

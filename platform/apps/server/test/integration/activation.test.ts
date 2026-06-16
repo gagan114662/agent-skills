@@ -124,7 +124,7 @@ describe("#221 activation produces a running venture (real Postgres)", () => {
       venture?: { ideaId: string; created: boolean };
     };
     // The org is seeded, the first venture is stood up, and each lead opened its first task.
-    expect(body.channels).toHaveLength(9);
+    expect(body.channels).toHaveLength(10);
     expect(body.venture?.created).toBe(true);
     expect(body.welcomeTasks.length).toBeGreaterThanOrEqual(1);
 
@@ -161,7 +161,7 @@ describe("#221 activation produces a running venture (real Postgres)", () => {
       venture?: { ideaId: string; created: boolean };
       welcomeTasks: unknown[];
     };
-    expect(second.channels).toHaveLength(9);
+    expect(second.channels).toHaveLength(10);
     expect(second.venture?.created).toBe(false);
     expect(second.venture?.ideaId).toBe(first.venture?.ideaId);
     expect(second.welcomeTasks).toHaveLength(0);

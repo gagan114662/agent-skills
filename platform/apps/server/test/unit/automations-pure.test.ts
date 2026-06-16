@@ -128,8 +128,8 @@ describe("automations caps (#147)", () => {
 });
 
 describe("automations templates (#147)", () => {
-  it("ships six department templates that all resolve", () => {
-    expect(TASK_TEMPLATES.length).toBe(6);
+  it("ships seven department templates that all resolve", () => {
+    expect(TASK_TEMPLATES.length).toBe(7);
     for (const t of TASK_TEMPLATES) {
       expect(getTemplate(t.key)).toBe(t);
       expect(templatesForDepartment(t.department)).toContain(t);

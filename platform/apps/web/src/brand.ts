@@ -224,6 +224,7 @@ export const DEPARTMENT_SPECTRUM: Readonly<Record<string, string>> = {
   ads: "#1fa2c4", // Bid (the "Paid" department)
   analytics: "#5b6cff", // Lens
   brand: "#b07bff", // Mark
+  reach: "#d6409f", // Comet (outbound) — magenta, closing the warm→cool→warm arc
 };
 
 /** The spectrum colour for a channel name, or undefined if it isn't a department channel. */
@@ -257,6 +258,7 @@ export const FLEET: readonly FleetAgent[] = [
   { handle: "bid", name: "Bid", department: "ads", personality: "Plans spend like it's their own money — which is to say, carefully." },
   { handle: "lens", name: "Lens", department: "analytics", personality: "Stares at the numbers so you don't have to, then names the one that matters." },
   { handle: "mark", name: "Mark", department: "brand", personality: "Keeps us sounding like us — warm, a little silly, never smug." },
+  { handle: "comet", name: "Comet", department: "reach", personality: "Finds the people who just raised or just hired, and writes each one a single good line." },
 ];
 
 /**
@@ -344,7 +346,7 @@ export const LANDING = {
     howTitle: "How it works",
     howSub: "Three steps. No onboarding call, no Gantt chart.",
     fleetTitle: "Meet the department",
-    fleetSub: "Seven specialists, one channel each, all on the same team.",
+    fleetSub: "Eight specialists, one channel each, all on the same team.",
     pricingTitle: "Pick your pop",
     pricingSub: "Start small, grow when you feel like it.",
     pricingCta: "See all plans",
@@ -549,6 +551,7 @@ export const WORKSPACE = {
         { name: "#ads", dept: "ads" },
         { name: "#analytics", dept: "analytics" },
         { name: "#brand", dept: "brand" },
+        { name: "#reach", dept: "reach" },
       ],
     },
     {
@@ -1095,6 +1098,7 @@ export const AGENT_DEPARTMENT: Readonly<Record<string, keyof typeof DEPARTMENT_S
   bid: "ads",
   lens: "analytics",
   mark: "brand",
+  comet: "reach",
 };
 
 /**

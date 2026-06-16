@@ -55,12 +55,12 @@ describe("#138 marketing department backfill (real Postgres)", () => {
     const channels = await listChannels(workspaceId);
     expect(channels.map((c) => c.name).sort()).toEqual([...MARKETING_CHANNELS].sort());
     const personas = await listPersonas(workspaceId);
-    expect(personas.map((p) => p.name).sort()).toEqual(["bid", "echo", "lens", "mark", "postmark", "quill", "scout"]);
+    expect(personas.map((p) => p.name).sort()).toEqual(["bid", "comet", "echo", "lens", "mark", "postmark", "quill", "scout"]);
 
     // Idempotent: a second boot sweep creates no duplicate channels or personas.
     await backfillMarketingDepartments(silentLog as never);
     expect(await listChannels(workspaceId)).toHaveLength(MARKETING_CHANNELS.length);
-    expect(await listPersonas(workspaceId)).toHaveLength(7);
+    expect(await listPersonas(workspaceId)).toHaveLength(8);
   });
 
   it("is a no-op for a workspace where marketing is disabled", async () => {

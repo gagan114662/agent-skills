@@ -101,6 +101,18 @@ export const TASK_TEMPLATES: readonly TaskTemplate[] = [
       "two or three trends worth acting on. Post the digest as a draft.",
     params: [{ key: "period", label: "Period", placeholder: "week" }],
   },
+  {
+    key: "reach_outbound_review",
+    department: "reach",
+    title: "Outbound batch review",
+    description: "Review the latest Reach outbound batch and propose the next ICP/opener tweaks.",
+    body:
+      "Review the most recent Reach outbound batch for {{site}}: which live-signal segments and opener " +
+      "angles are replying, which aren't, and what the self-tuning report changed. Draft the two highest-" +
+      "leverage tweaks to the ICP filters or openers for the next batch. Draft only — the loop sends within " +
+      "the rate caps; you don't send anything yourself.",
+    params: [{ key: "site", label: "Site URL", placeholder: "our website" }],
+  },
 ];
 
 /** Look up a template by key, or undefined. */

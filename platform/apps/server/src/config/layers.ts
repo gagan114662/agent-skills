@@ -163,6 +163,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #222 discovery policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // proactive posture + queue limits cannot be loosened by a lower layer — owner-workspace-first.
     if (layer.discovery !== undefined) out.discovery = { ...layer.discovery };
+    // #280 reach policy: a higher (managed/owner) layer fully owns the block (replace) so the autonomous
+    // send posture + per-domain caps + paid-source selection cannot be loosened by a lower layer.
+    if (layer.reach !== undefined) out.reach = { ...layer.reach };
   }
   return out;
 }
@@ -228,5 +231,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
+    reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },
   };
 }
