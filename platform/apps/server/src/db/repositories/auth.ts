@@ -38,6 +38,32 @@ export async function createHumanAccount(input: {
   return { userId: user!.id, memberId: member!.id };
 }
 
+/**
+ * Create an OAuth-only human (no password) + their member row in a workspace (#260). Mirrors
+ * {@link createHumanAccount} but leaves `password_hash` NULL — the existing login path already refuses a
+ * password login for such a user (`!user.passwordHash`), so the account is reachable only via OAuth.
+ */
+export async function createOAuthHumanAccount(input: {
+  workspaceId: string;
+  email: string;
+  displayName: string;
+}): Promise<{ userId: string; memberId: string }> {
+  const [user] = await db
+    .insert(users)
+    .values({ email: input.email, passwordHash: null, displayName: input.displayName })
+    .returning({ id: users.id });
+  const [member] = await db
+    .insert(members)
+    .values({
+      workspaceId: input.workspaceId,
+      kind: "human",
+      userId: user!.id,
+      displayName: input.displayName,
+    })
+    .returning({ id: members.id });
+  return { userId: user!.id, memberId: member!.id };
+}
+
 /** The human's member (first membership) — used to resolve identity for /me. */
 export async function getHumanMember(
   userId: string,

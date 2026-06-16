@@ -253,6 +253,15 @@ export function checkoutReturnUrl(): string {
   return `${origin}/?${CHECKOUT_RETURN_PARAM}=success`;
 }
 
+/**
+ * The #260 onboarding entry: the absolute URL the browser navigates to (full page, not fetch) to begin the
+ * single Google consent for a typed domain. Goes to the API origin so the OAuth redirect/callback land on
+ * the server that holds the session cookie.
+ */
+export function googleStartUrl(domain: string): string {
+  return apiUrl(`/auth/google/start?domain=${encodeURIComponent(domain)}`);
+}
+
 export const api = {
   // --- auth ---
   signup(input: {
