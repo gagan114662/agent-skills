@@ -3,7 +3,7 @@ import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
-import { connectedAccountKinds, createDefaultIpopSitePublishService } from "../realworld/default.js";
+import { connectedAccountKinds, createDefaultSitePublisher } from "../realworld/default.js";
 import type { RealWorldActuatorService } from "../realworld/service.js";
 import { listArtifacts } from "../db/repositories/realworld-artifacts.js";
 
@@ -63,19 +63,19 @@ export async function realworldRoutes(
     if (!body.title || !body.content) {
       return reply.code(400).send({ error: "title and content are required" });
     }
-    const svc = await createDefaultIpopSitePublishService(wid);
-    const result = await svc.publish({
+    const publisher = await createDefaultSitePublisher(wid);
+    const result = await publisher.publish({
       workspaceId: wid,
       ventureId: body.ventureId ?? null,
-      request: {
-        title: body.title,
-        content: body.content,
-        slug: body.slug,
-        body: body.prBody,
-        extension: body.extension,
-      },
+      title: body.title,
+      content: body.content,
+      slug: body.slug,
+      body: body.prBody,
+      extension: body.extension,
     });
     if (result.status === "rejected") return reply.code(400).send({ error: result.reason });
+    // No publishing connection (e.g. customer hasn't connected their website) — actionable 409.
+    if (result.status === "not_connected") return reply.code(409).send({ error: result.reason });
     if (result.status === "failed") return reply.code(502).send({ error: result.error });
     return result;
   });
