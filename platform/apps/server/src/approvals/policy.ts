@@ -97,6 +97,17 @@ export const REALWORLD_PUBLISH_ACTION = "realworld.publish" as const;
 export const OUTREACH_SEND_ACTION = "outreach.send" as const;
 
 /**
+ * #280 Reach buys prospect DATA credits. Sending a Reach message is autonomous (not money) — but spending
+ * real money on a paid data provider (Clay/Lusha/Vibe) to FIND prospects is a money action: it commits
+ * real spend, irreversibly (the credits are consumed on the API call). So Reach money-gates the paid
+ * search BEFORE the call, with the exact estimated amount shown; the free `mock` source carries no cost
+ * and runs autonomously. Never submitted through the #13 action route — the Reach service parks a PENDING
+ * request against the same workspace `approval_policies`. The executor is recorded-only (a real paid fetch
+ * behind the gate is a deliberate follow-up, never an autonomous spend).
+ */
+export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
@@ -153,6 +164,9 @@ export const MONEY_ACTIONS: readonly string[] = [
   // #192 connecting/using LIVE payment credentials — gated ONLY for the `payment` service kind (the
   // onboarding service decides by kind; every other external-account connect is autonomous). ADR-0192.
   SETUP_EXTERNAL_ACCOUNT_ACTION,
+  // #280 buying paid prospect-data credits (Clay/Lusha/Vibe) — real spend, exact amount shown. The
+  // marketing SEND it enables stays autonomous; only the data purchase is money. ADR-0280.
+  REACH_DATA_CREDIT_ACTION,
 ];
 
 /** True iff `actionType` moves or commits real money — the single predicate that drives approval (#243). */
@@ -183,6 +197,7 @@ export const IRREVERSIBLE_ACTIONS: readonly string[] = [
   VENTURE_DOMAIN_PURCHASE_ACTION, // a registered domain (money + brand) (#187)
   VENTURE_AD_SPEND_ACTION, // paid acquisition spend (#187)
   VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
+  REACH_DATA_CREDIT_ACTION, // paid prospect-data credits, consumed on the API call (#280)
 ];
 
 /** True iff `actionType` is in the irreversible money class (premortem #200 FM#4). Pure + total. */

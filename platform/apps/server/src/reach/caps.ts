@@ -1,0 +1,63 @@
+import type { ReachConfig } from "../config/schema.js";
+import { isProspectSourceKind, type ProspectSourceKind } from "./types.js";
+
+/**
+ * Resolved Reach policy (#280). Fills the hard defaults the config partial omits. Default OFF + `mock`
+ * source + `dryrun` sender, so an un-configured workspace spends nothing (free source) and sends nothing
+ * (recorded-only). `perDomainDailyCap` is the deliverability bound that makes the autonomous email send
+ * safe (premortem #200 §4); `batchSize` caps how many prospects one cron run processes. The footer fields
+ * supply the CAN-SPAM/GDPR footer enforced in code on every email.
+ */
+export interface ReachCaps {
+  enabled: boolean;
+  /** Which prospect data provider to use. A paid one makes prospect search a money-gated action. */
+  prospectSource: ProspectSourceKind;
+  /** Email sender kind (`dryrun` = recorded-only, no network). */
+  sendProvider: string;
+  /** Per-sending-domain daily send ceiling (deliverability bound). */
+  perDomainDailyCap: number;
+  /** Max prospects sourced + processed per cron batch. */
+  batchSize: number;
+  /** The owner's own workspace id (owner-first rollout marker), or null. */
+  ownerWorkspaceId: string | null;
+  brandName: string | null;
+  postalAddress: string | null;
+  unsubscribeUrl: string | null;
+}
+
+export const REACH_DEFAULTS: ReachCaps = {
+  enabled: false,
+  prospectSource: "mock",
+  sendProvider: "dryrun",
+  perDomainDailyCap: 50,
+  batchSize: 25,
+  ownerWorkspaceId: null,
+  brandName: null,
+  postalAddress: null,
+  unsubscribeUrl: null,
+};
+
+function positiveIntOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+export function resolveReachCaps(cfg: ReachConfig | undefined): ReachCaps {
+  const source = cfg?.prospectSource;
+  return {
+    enabled: cfg?.enabled ?? REACH_DEFAULTS.enabled,
+    prospectSource:
+      source && isProspectSourceKind(source) ? source : REACH_DEFAULTS.prospectSource,
+    sendProvider: cfg?.sendProvider ?? REACH_DEFAULTS.sendProvider,
+    perDomainDailyCap: positiveIntOr(cfg?.perDomainDailyCap, REACH_DEFAULTS.perDomainDailyCap),
+    batchSize: positiveIntOr(cfg?.batchSize, REACH_DEFAULTS.batchSize),
+    ownerWorkspaceId: cfg?.ownerWorkspaceId ?? REACH_DEFAULTS.ownerWorkspaceId,
+    brandName: cfg?.brandName ?? REACH_DEFAULTS.brandName,
+    postalAddress: cfg?.postalAddress ?? REACH_DEFAULTS.postalAddress,
+    unsubscribeUrl: cfg?.unsubscribeUrl ?? REACH_DEFAULTS.unsubscribeUrl,
+  };
+}
+
+/** True iff this is the owner's own workspace (owner-first rollout). */
+export function isOwnerWorkspace(caps: ReachCaps, workspaceId: string): boolean {
+  return caps.ownerWorkspaceId !== null && caps.ownerWorkspaceId === workspaceId;
+}

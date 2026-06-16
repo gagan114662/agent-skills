@@ -172,6 +172,30 @@
         "brand/message-consistency"
       ],
       "metrics": []
+    },
+    "comet": {
+      "skills": [
+        {
+          "id": "comet/knowledge",
+          "kind": "knowledge",
+          "path": "comet/knowledge.md",
+          "version": "1.0.0"
+        },
+        {
+          "id": "comet/runbook",
+          "kind": "runbook",
+          "path": "comet/runbook.md",
+          "version": "1.0.0"
+        }
+      ],
+      "references": [
+        "reach/icp-playbook",
+        "reach/cold-email-compliance",
+        "reach/buying-signal-sources"
+      ],
+      "metrics": [
+        "growth.venture_signal"
+      ]
     }
   }
 }

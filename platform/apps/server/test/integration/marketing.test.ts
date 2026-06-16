@@ -119,7 +119,7 @@ async function threadReplies(owner: { cookie: string }, channelId: string, messa
 }
 
 describe("#123 marketing department fleet (real Postgres)", () => {
-  it("seeds nine channels and seven named agents that show up on the roster", async () => {
+  it("seeds ten channels and eight named agents that show up on the roster", async () => {
     const owner = await newOwner();
     const res = await seed(owner);
     expect(res.statusCode).toBe(201);
@@ -127,9 +127,10 @@ describe("#123 marketing department fleet (real Postgres)", () => {
       channels: Array<{ id: string; name: string }>;
       agents: Array<{ handle: string; department: string }>;
     };
-    expect(body.channels).toHaveLength(9);
+    expect(body.channels).toHaveLength(10);
     expect(body.agents.map((a) => a.handle).sort()).toEqual([
       "bid",
+      "comet",
       "echo",
       "lens",
       "mark",
@@ -146,13 +147,13 @@ describe("#123 marketing department fleet (real Postgres)", () => {
       })
     ).json() as { humans: unknown[]; agents: Array<{ handle: string; present: boolean }> };
     expect(roster.humans).toHaveLength(1);
-    expect(roster.agents).toHaveLength(7);
+    expect(roster.agents).toHaveLength(8);
     expect(roster.agents.every((a) => a.present === false)).toBe(true);
 
     // Idempotent: re-seeding returns the same agency, not duplicates.
     const again = await seed(owner);
     expect(again.statusCode).toBe(201);
-    expect(again.json().channels).toHaveLength(9);
+    expect(again.json().channels).toHaveLength(10);
   });
 
   it("@mentions an agent from a plain message post → spawns a real session, threads the result, records a task", async () => {

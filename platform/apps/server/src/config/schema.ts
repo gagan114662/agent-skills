@@ -1019,6 +1019,37 @@ export const outreachSchema = z.object({
 });
 
 /**
+ * Reach — autonomous outbound demand-gen department policy (#280, ADR-0280). Default OFF: with nothing set
+ * the engine still composes + dedupes, but its sender is `dryrun` (recorded-only, no network) and its only
+ * data source is the free `mock` provider, so it spends nothing and sends nothing. `prospectSource` picks
+ * the data provider (a PAID one — clay/lusha/vibe — turns prospect search into a money-gated `data.credit_spend`
+ * action; `mock` is free + autonomous). `perDomainDailyCap` is the per-sending-domain rate ceiling that makes
+ * the autonomous email send safe (premortem #200 §4 deliverability bound). `batchSize` caps prospects per run.
+ * Sending a marketing message is NOT a money action, so email auto-send is autonomous under the cap +
+ * suppression + the CAN-SPAM/GDPR footer fields. `ownerWorkspaceId` scopes the owner-first rollout.
+ */
+export const reachSchema = z.object({
+  /** Master flag for the proactive outbound posture — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Prospect data provider: `mock` (free, default) | `clay` | `lusha` | `vibe` (paid → money-gated search). */
+  prospectSource: z.string().optional(),
+  /** Email send provider kind (`dryrun` default — recorded-only, no network egress). */
+  sendProvider: z.string().optional(),
+  /** Per-sending-domain daily send cap (deliverability bound for the autonomous channel). */
+  perDomainDailyCap: z.number().int().positive().optional(),
+  /** Max prospects sourced + processed per cron batch. */
+  batchSize: z.number().int().positive().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** CAN-SPAM footer: the sending brand / legal entity name. */
+  brandName: z.string().optional(),
+  /** CAN-SPAM footer: physical postal address of the sending entity. */
+  postalAddress: z.string().optional(),
+  /** CAN-SPAM/RFC-8058 unsubscribe URL (a token is appended per recipient). */
+  unsubscribeUrl: z.string().optional(),
+});
+
+/**
  * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
  * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
  * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
@@ -1215,6 +1246,8 @@ export const settingsSchema = z.object({
   monetization: monetizationSchema.optional(),
   /** Customer Discovery Engine policy (#222): per-venture signal layer + ranked prospect queue (default OFF). */
   discovery: discoverySchema.optional(),
+  /** Reach outbound demand-gen policy (#280): pluggable prospect sources + autonomous capped sends (default OFF). */
+  reach: reachSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1274,6 +1307,7 @@ export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
+export type ReachConfig = z.infer<typeof reachSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1390,6 +1424,8 @@ export interface ResolvedConfig {
   monetization: MonetizationConfig;
   /** Customer Discovery Engine policy (#222). A partial whose hard defaults `resolveDiscoveryCaps` fills. */
   discovery: DiscoveryConfig;
+  /** Reach outbound demand-gen policy (#280). A partial whose hard defaults `resolveReachCaps` fills. */
+  reach: ReachConfig;
 }
 
 /**
@@ -1450,4 +1486,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   finance: {},
   monetization: {},
   discovery: {},
+  reach: {},
 };

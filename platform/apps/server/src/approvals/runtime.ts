@@ -26,6 +26,7 @@ import {
   validateMonetizationActivatePrice,
   validateMonetizationPayoutSettings,
   validateOutreachSend,
+  validateReachDataCreditSpend,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
@@ -38,6 +39,7 @@ import {
   MONETIZATION_ACTIVATE_PRICE_ACTION,
   MONETIZATION_PAYOUT_SETTINGS_ACTION,
   OUTREACH_SEND_ACTION,
+  REACH_DATA_CREDIT_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -379,6 +381,32 @@ const outreachSend: ActionExecutor = {
 };
 
 /**
+ * Reach paid prospect-data credit spend (#280) — a recorded-only MONEY decision. Buying credits from a
+ * paid data provider (Clay/Lusha/Vibe) to find prospects is real, irreversible spend, so it pauses for the
+ * owner with the exact estimated amount shown. Recorded-only: approving records the owner's go on the #13
+ * audit trail; a real paid fetch behind this gate is a deliberate follow-up. The Reach SEND it enables is
+ * never gated here — sending a marketing message is autonomous under the caps.
+ */
+const reachDataCreditSpend: ActionExecutor = {
+  actionType: REACH_DATA_CREDIT_ACTION,
+  validate: validateReachDataCreditSpend,
+  summarize: (p) =>
+    (
+      `Reach data credits via ${String(p.provider ?? "?")}: ` +
+      `${typeof p.amountCents === "number" ? `$${(p.amountCents / 100).toFixed(2)}` : "?"}` +
+      `${typeof p.prospectCount === "number" ? ` for ~${p.prospectCount} prospects` : ""}`
+    ).slice(0, 140),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // a real paid fetch behind this gate is a deliberate follow-up ADR.
+      provider: typeof payload.provider === "string" ? payload.provider : null,
+      amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), and an optional acquisition dispatcher (#189). The compliance default is a no-op and the
  * dispatcher is absent by default, so the `external.send` executor stays recorded-only exactly as before —
@@ -400,6 +428,7 @@ export function buildDefaultRegistry(
     monetizationActivatePrice,
     monetizationPayoutSettings,
     outreachSend,
+    reachDataCreditSpend,
   ]);
 }
 

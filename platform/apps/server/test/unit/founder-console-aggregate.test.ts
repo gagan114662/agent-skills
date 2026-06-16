@@ -394,9 +394,9 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(out.attention.reasons).not.toContain("1 venture sunset awaiting approval");
   });
 
-  it("always renders the seven-tile proof scorecard, all 'not connected' when no readings are supplied (#253)", () => {
+  it("always renders the eight-tile proof scorecard, all 'not connected' when no readings are supplied (#253)", () => {
     const out = aggregateFounderConsole(input());
-    expect(out.proofScorecard.total).toBe(7);
+    expect(out.proofScorecard.total).toBe(8);
     expect(out.proofScorecard.connectedCount).toBe(0);
     expect(out.proofScorecard.tiles.every((t) => t.connection === "not_connected")).toBe(true);
   });
