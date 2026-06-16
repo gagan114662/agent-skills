@@ -18,18 +18,26 @@ describe("brand-kit (#271) — pure validation + derivation", () => {
   });
 
   it("validates a clean kit, trimming the name + voice and de-duping the palette", () => {
+    const logo = "11111111-1111-4111-8111-111111111111";
     const res = validateBrandKit({
       name: "  Acme  ",
       palette: ["#FF0000", "#ff0000", "#00FF00"],
       voice: "  Bold and friendly.  ",
-      logoAssetId: "asset-1",
+      logoAssetId: logo,
     });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.kit.name).toBe("Acme");
     expect(res.kit.palette).toEqual(["#ff0000", "#00ff00"]); // duplicate collapsed, normalised
     expect(res.kit.voice).toBe("Bold and friendly.");
-    expect(res.kit.logoAssetId).toBe("asset-1");
+    expect(res.kit.logoAssetId).toBe(logo);
+  });
+
+  it("rejects a non-UUID logoAssetId (a uuid column would 500 on insert)", () => {
+    const res = validateBrandKit({ name: "Acme", palette: ["#ff0000"], logoAssetId: "asset-1" });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.errors).toContain("logoAssetId must be a valid UUID");
   });
 
   it("collects every failure reason at once (name + palette required, bad hex flagged)", () => {

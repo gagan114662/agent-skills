@@ -61,7 +61,10 @@ export function renderBrandSvg(req: ImageRequest): string {
   const height = req.height ?? 630;
   const { palette, primary, voiceSummary } = req.style;
   const accents = palette.slice(1);
-  const bandWidth = accents.length > 0 ? width / 6 : 0;
+  // Constrain the accent bands to the RIGHT half so they never creep under the left-aligned text (which
+  // is coloured for contrast against `primary`). With many palette colours a fixed band width would run
+  // off-screen and cover the text; scaling by accent count keeps the left half a clean primary field.
+  const bandWidth = accents.length > 0 ? width / 2 / accents.length : 0;
   const bands = accents
     .map((color, i) => {
       const x = width - bandWidth * (accents.length - i);

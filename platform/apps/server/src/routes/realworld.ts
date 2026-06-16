@@ -8,6 +8,9 @@ import type { RealWorldActuatorService } from "../realworld/service.js";
 import { listArtifacts } from "../db/repositories/realworld-artifacts.js";
 import { createDefaultAssetService } from "../assets/default.js";
 
+/** Canonical UUID form — `draft_ref`/`venture_id` are uuid columns, so a non-UUID would 500 on insert. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Real-world tool surface routes (#231, ADR-0231). Read-only and `/me/*`-scoped to the caller's
  * workspace (#3). Surfaces what the fleet CAN do in the real world right now: each tool's gate decision,
@@ -105,13 +108,22 @@ export async function realworldRoutes(
     if (!body.prompt || !body.prompt.trim()) {
       return reply.code(400).send({ error: "prompt is required" });
     }
+    // draft_ref / venture_id are uuid columns — validate before insert so a bad ref is a clean 400, not a 500.
+    const draftRef = typeof body.draftRef === "string" && body.draftRef.trim() ? body.draftRef.trim() : null;
+    const ventureId = typeof body.ventureId === "string" && body.ventureId.trim() ? body.ventureId.trim() : null;
+    if (draftRef && !UUID_RE.test(draftRef)) {
+      return reply.code(400).send({ error: "draftRef must be a valid UUID" });
+    }
+    if (ventureId && !UUID_RE.test(ventureId)) {
+      return reply.code(400).send({ error: "ventureId must be a valid UUID" });
+    }
     const svc = createDefaultAssetService(wid);
     const result = await svc.generateImage({
       workspaceId: wid,
-      ventureId: body.ventureId ?? null,
+      ventureId,
       prompt: body.prompt,
       title: body.title,
-      draftRef: body.draftRef ?? null,
+      draftRef,
     });
     if (result.status === "rejected") {
       return reply.code(400).send({ error: result.reason, violations: result.violations });

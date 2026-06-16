@@ -94,6 +94,25 @@ describe("on-brand image generation (#271) — POST /me/realworld/generate-image
     expect(res.statusCode).toBe(403);
   });
 
+  it("rejects a non-UUID draftRef with a clean 400 (never a DB 500)", async () => {
+    const prev = process.env.RELOAD_REALWORLD_ENABLED;
+    process.env.RELOAD_REALWORLD_ENABLED = "true";
+    try {
+      const { cookie } = await seed();
+      const res = await app.inject({
+        method: "POST",
+        url: "/me/realworld/generate-image",
+        cookies: { rid: cookie },
+        payload: { prompt: "Banner", draftRef: "not-a-uuid" },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/draftRef must be a valid UUID/);
+    } finally {
+      if (prev === undefined) delete process.env.RELOAD_REALWORLD_ENABLED;
+      else process.env.RELOAD_REALWORLD_ENABLED = prev;
+    }
+  });
+
   it("blocks generation until a brand kit exists, then attaches an on-brand image to a draft", async () => {
     const prev = process.env.RELOAD_REALWORLD_ENABLED;
     process.env.RELOAD_REALWORLD_ENABLED = "true"; // loadConfig reads env live

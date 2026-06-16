@@ -9,6 +9,9 @@ import type { BrandKit, BrandKitInput, BrandKitValidation, BrandImageStyle } fro
 /** A `#rrggbb` hex colour (the only palette form we store — shorthand/`rgb()` are rejected as ambiguous). */
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
+/** Canonical UUID form — `logo_asset_id` is a uuid column, so a non-UUID would 500 on insert. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const MAX_NAME = 80;
 const MAX_VOICE = 2000;
 const MAX_PALETTE = 12;
@@ -52,8 +55,12 @@ export function validateBrandKit(input: BrandKitInput): BrandKitValidation {
   const voice = typeof input.voice === "string" ? input.voice.trim() : "";
   if (voice.length > MAX_VOICE) errors.push(`voice must be ${MAX_VOICE} characters or fewer`);
 
-  const logoAssetId =
-    typeof input.logoAssetId === "string" && input.logoAssetId.trim() ? input.logoAssetId.trim() : null;
+  let logoAssetId: string | null = null;
+  if (typeof input.logoAssetId === "string" && input.logoAssetId.trim()) {
+    const trimmed = input.logoAssetId.trim();
+    if (UUID_RE.test(trimmed)) logoAssetId = trimmed;
+    else errors.push("logoAssetId must be a valid UUID");
+  }
 
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, kit: { name, palette, voice, logoAssetId } };

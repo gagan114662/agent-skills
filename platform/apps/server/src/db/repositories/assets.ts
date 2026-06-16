@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { brandKits, workspaceAssets } from "../schema/index.js";
 import type {
@@ -125,10 +125,11 @@ export const dbAssetStore: AssetStore = {
   },
 
   async count(workspaceId: string): Promise<number> {
-    const rows = await db
-      .select({ id: workspaceAssets.id })
+    // Aggregate in the database (not in memory) so the count stays cheap as the store grows.
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
       .from(workspaceAssets)
       .where(eq(workspaceAssets.workspaceId, workspaceId));
-    return rows.length;
+    return Number(row?.count ?? 0);
   },
 };
