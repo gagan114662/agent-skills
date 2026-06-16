@@ -52,6 +52,13 @@ describe("ExternalAccounts (#231)", () => {
     );
   });
 
+  it("#263: keeps the key/token field behind a collapsed Advanced disclosure (no default free-text secret)", () => {
+    render(<ExternalAccounts checklist={EMPTY} needed={[]} onConnect={() => {}} onDisconnect={() => {}} />);
+    const details = (screen.getByLabelText(/key or token/i).closest("details")) as HTMLDetailsElement | null;
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false);
+  });
+
   it("lists a connected account with a disconnect action", () => {
     const onDisconnect = vi.fn();
     const checklist: ExternalAccountsChecklist = {

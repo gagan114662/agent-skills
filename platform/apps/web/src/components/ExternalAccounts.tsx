@@ -88,20 +88,24 @@ export function ExternalAccounts(props: ExternalAccountsProps): React.JSX.Elemen
             </ul>
           )}
 
-          <form
-            className="connect-accounts__form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!ready) return;
-              onConnect({
-                serviceKind,
-                serviceKey: serviceKey.trim(),
-                displayName: `${kindLabel(serviceKind)} (${serviceKey.trim()})`,
-                secret: secret.trim(),
-              });
-              setSecret("");
-            }}
-          >
+          {/* #263: no free-text secret field by default — the manual key/token paste lives behind this
+              collapsed disclosure. The default connect surface is the OAuth-first Connections panel. */}
+          <details className="connect-accounts__advanced">
+            <summary>{EXTERNAL_ACCOUNTS.advancedSummary}</summary>
+            <form
+              className="connect-accounts__form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!ready) return;
+                onConnect({
+                  serviceKind,
+                  serviceKey: serviceKey.trim(),
+                  displayName: `${kindLabel(serviceKind)} (${serviceKey.trim()})`,
+                  secret: secret.trim(),
+                });
+                setSecret("");
+              }}
+            >
             <label htmlFor="account-kind">{EXTERNAL_ACCOUNTS.kindLabel}</label>
             <select
               id="account-kind"
@@ -132,10 +136,11 @@ export function ExternalAccounts(props: ExternalAccountsProps): React.JSX.Elemen
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
             />
-            <button type="submit" disabled={busy || !ready}>
-              {EXTERNAL_ACCOUNTS.connect}
-            </button>
-          </form>
+              <button type="submit" disabled={busy || !ready}>
+                {EXTERNAL_ACCOUNTS.connect}
+              </button>
+            </form>
+          </details>
         </>
       )}
 

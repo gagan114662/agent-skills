@@ -14,6 +14,14 @@ describe("ConnectClaude (#68)", () => {
     expect(input.type).toBe("password"); // masked input — never shows what you type back as text
   });
 
+  it("#263: keeps the token field behind a collapsed Advanced disclosure (no default free-text secret)", () => {
+    render(<ConnectClaude status={{ connected: false, fingerprint: null }} onConnect={() => {}} onDisconnect={() => {}} />);
+    const input = screen.getByLabelText(/token/i);
+    const details = input.closest("details") as HTMLDetailsElement | null;
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false); // collapsed by default — the secret input is not shown until opened
+  });
+
   it("calls onConnect with the pasted token", () => {
     const onConnect = vi.fn();
     render(<ConnectClaude status={{ connected: false, fingerprint: null }} onConnect={onConnect} onDisconnect={() => {}} />);

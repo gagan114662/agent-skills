@@ -14,6 +14,14 @@ describe("SlackConnect (#170)", () => {
     expect((screen.getByLabelText(/signing secret/i) as HTMLInputElement).type).toBe("password");
   });
 
+  it("#263: keeps both secret fields behind a collapsed Advanced disclosure (no default free-text secrets)", () => {
+    render(<SlackConnect status={{ connected: false, fingerprint: null }} onConnect={() => {}} onDisconnect={() => {}} />);
+    const details = (screen.getByLabelText(/bot token/i).closest("details")) as HTMLDetailsElement | null;
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false);
+    expect(screen.getByLabelText(/signing secret/i).closest("details")).toBe(details);
+  });
+
   it("disables Connect until BOTH secrets are entered", () => {
     render(<SlackConnect status={{ connected: false, fingerprint: null }} onConnect={() => {}} onDisconnect={() => {}} />);
     const button = () => screen.getByRole("button", { name: /connect/i });
