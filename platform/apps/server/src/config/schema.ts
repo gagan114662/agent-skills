@@ -493,6 +493,25 @@ export const discoverySchema = z.object({
 });
 
 /**
+ * Agent Registry + A2A policy (#282, ADR-0282). Non-secret knobs for the department-fleet registry and
+ * the agent-to-agent (A2A) call surface. Every field is optional and the master `enabled` defaults **OFF**
+ * AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets nothing exposes the
+ * contract catalog read-only (harmless) but enables NO A2A call in any workspace, so today's behavior is
+ * unchanged. `maxCallDepth` is the bounded-autonomy depth cap the pure A2A decision enforces (premortem
+ * #200 §5). `ownerWorkspaceId` marks the owner's own workspace for the owner-first rollout.
+ */
+export const agentRegistrySchema = z.object({
+  /** The A2A feature flag — discovery lists regardless; A2A calls are OFF unless this is true. */
+  enabled: z.boolean().optional(),
+  /** Restrict A2A calls to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** Hard cap on A2A call depth (bounded autonomy, #200 §5). */
+  maxCallDepth: z.number().int().positive().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1248,6 +1267,8 @@ export const settingsSchema = z.object({
   discovery: discoverySchema.optional(),
   /** Reach outbound demand-gen policy (#280): pluggable prospect sources + autonomous capped sends (default OFF). */
   reach: reachSchema.optional(),
+  /** Agent Registry + A2A policy (#282): department-fleet contracts + governed agent-to-agent calls (default OFF). */
+  agentRegistry: agentRegistrySchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1308,6 +1329,7 @@ export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
+export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1426,6 +1448,8 @@ export interface ResolvedConfig {
   discovery: DiscoveryConfig;
   /** Reach outbound demand-gen policy (#280). A partial whose hard defaults `resolveReachCaps` fills. */
   reach: ReachConfig;
+  /** Agent Registry + A2A policy (#282). A partial whose hard defaults `resolveAgentRegistryCaps` fills. */
+  agentRegistry: AgentRegistryConfig;
 }
 
 /**
@@ -1487,4 +1511,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   monetization: {},
   discovery: {},
   reach: {},
+  agentRegistry: {},
 };

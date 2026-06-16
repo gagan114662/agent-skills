@@ -32,6 +32,7 @@ import {
 } from "./routes/integrations.js";
 import { subagentRoutes } from "./routes/subagents.js";
 import { marketingRoutes } from "./routes/marketing.js";
+import { agentRegistryRoutes } from "./routes/agent-registry.js";
 import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
 import { slackRoutes } from "./routes/slack.js";
@@ -561,6 +562,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // bootstrap over THIS SessionManager; tests inject a fake client + recording bootstrap.
   app.register(googleAuthRoutes, { sessionManager, ...opts.googleAuth });
   app.register(marketingRoutes, { sessionManager });
+  // #282 agent registry + A2A: list the fleet's declared contracts and run governed, observable
+  // agent-to-agent calls. Default OFF + owner-workspace-first; the call route reuses the marketing
+  // launch seam (no new authority). Read catalog at GET /workspaces/:wid/agents.
+  app.register(agentRegistryRoutes, { sessionManager });
   // #123 prod-incident fix: wire the @mention → real-session trigger into the SHARED message fan-out
   // (`messaging/delivery.ts`), so a plain `@scout …` post in a department channel launches a session
   // over REST or MCP — without this, the launch only ran via the unused `/marketing` endpoint and a
