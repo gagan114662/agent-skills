@@ -2349,11 +2349,15 @@ select:focus-visible {
   border-radius: 14px;
   padding: 22px 20px;
 }
-/* The pop: scale up past 1 then settle — bouncy, not a fade. Respects reduced-motion below. */
+/* The pop: scale up past 1 then settle — bouncy, not a fade. Respects reduced-motion below.
+   #234/#287: the card RESTS visible (opacity:1, no transform); the hidden start lives only in the
+   keyframes and is pre-filled via `both`. So visibility is never gated on the animation completing —
+   if the pop is throttled, interrupted, or never runs (the modal's async mount path), all three plan
+   cards still render. The old `opacity:0` resting state hid Pro/Agency whenever the pop didn't reach
+   them, leaving Starter alone with empty space where the upsell tiers should be. */
 .pricing-card--pop {
-  opacity: 0;
-  transform: scale(0.92) translateY(8px);
-  animation: pricing-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 1;
+  animation: pricing-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 @keyframes pricing-pop {
   0% {
