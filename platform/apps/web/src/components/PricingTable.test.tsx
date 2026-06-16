@@ -42,6 +42,17 @@ describe("PricingTable (#125 — pure)", () => {
     expect(screen.getAllByText("3 agent seats").length).toBeGreaterThan(0);
   });
 
+  it("renders a selectable Choose CTA for every tier (#234: all three plans, not just Starter)", () => {
+    render(<PricingTable plans={PLANS} current={null} onChoose={() => {}} />);
+    // The whole revenue ladder must be reachable — one enabled "Choose" per plan, not just the floor tier.
+    for (const name of ["Starter", "Pro", "Agency"]) {
+      const cta = screen.getByLabelText(`Choose the ${name} plan`);
+      expect(cta).toBeEnabled();
+      expect(cta).toHaveTextContent("Choose");
+    }
+    expect(screen.getAllByRole("button", { name: /Choose the .* plan/ })).toHaveLength(3);
+  });
+
   it("flags exactly the featured plan as most popular", () => {
     render(<PricingTable plans={PLANS} current={null} onChoose={() => {}} />);
     const ribbons = screen.getAllByText("Most popular");
