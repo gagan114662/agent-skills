@@ -1,16 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { SessionManager } from "../../src/runtime/manager.js";
-import { ModelUnavailableError } from "../../src/runtime/models.js";
+import { DEFAULT_AGENT_MODEL } from "../../src/runtime/models.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import type { ChannelPoster, SessionLogger, SessionStore } from "../../src/runtime/manager.js";
 import type { AgentJob, AgentRuntime, RunningSession, RuntimeHooks, RuntimeResult } from "../../src/runtime/types.js";
 import type { AgentSession, ResourceCaps } from "../../src/db/repositories/agent-sessions.js";
 
 /**
- * #246 launch-time model preflight: the SessionManager validates the EFFECTIVE model before spawning a
- * real `claude-code` session, throwing an actionable ModelUnavailableError for an unservable id (the
- * `claude-fable-5` class) instead of spawning a doomed session that crashes mid-run — and injecting the
- * workspace's owner-picked model as ANTHROPIC_MODEL when no per-session model is pinned.
+ * Launch-time model preflight: the SessionManager resolves the EFFECTIVE model at the runtime boundary
+ * and ALWAYS injects a launchable model as ANTHROPIC_MODEL before spawning a real `claude-code` session.
+ * The fleet runs on a managed, always-valid default (claude-opus-4-8) chosen by ipop. The runtime must
+ * never spawn with an empty or invalid model: empty / null / unknown (the `claude-fable-5` class, or an
+ * empty "Default" pick) resolves to the managed default and the session runs — it never disables the
+ * fleet. (Validation of an admin/dev override still happens at the save path, not here.)
  */
 
 class CapturingRuntime implements AgentRuntime {
@@ -82,22 +84,44 @@ function makeManager(opts: {
   });
 }
 
-describe("SessionManager model preflight (#246)", () => {
-  it("throws ModelUnavailableError BEFORE spawning when the workspace model is unservable", async () => {
+describe("SessionManager model preflight — runtime boundary always yields a launchable model", () => {
+  it("an unservable workspace model resolves to the managed default and the session STILL runs (never disabled)", async () => {
     const runtime = new CapturingRuntime();
-    const manager = makeManager({ runtime, workspaceModel: "claude-fable-5" });
-    await expect(manager.launch(baseLaunch)).rejects.toBeInstanceOf(ModelUnavailableError);
-    expect(runtime.job).toBeUndefined(); // never spawned — no doomed session
+    const manager = makeManager({ runtime, workspaceModel: "claude-fable-5", envDefaultModel: "claude-opus-4-8" });
+    const session = await manager.launch(baseLaunch);
+    await manager.join(session.id);
+    expect(runtime.job).toBeDefined(); // spawned — the fleet is never disabled by a bad value
+    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe(DEFAULT_AGENT_MODEL);
   });
 
-  it("throws when the env default model is unservable and the workspace pinned none", async () => {
+  it("an unservable env default + no workspace pick resolves to the managed default and runs", async () => {
     const runtime = new CapturingRuntime();
     const manager = makeManager({ runtime, workspaceModel: null, envDefaultModel: "claude-fable-5" });
-    await expect(manager.launch(baseLaunch)).rejects.toBeInstanceOf(ModelUnavailableError);
-    expect(runtime.job).toBeUndefined();
+    const session = await manager.launch(baseLaunch);
+    await manager.join(session.id);
+    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe(DEFAULT_AGENT_MODEL);
   });
 
-  it("injects the workspace's valid owner-picked model as ANTHROPIC_MODEL", async () => {
+  it("THE BUG: empty workspace pick AND empty env default still injects the managed default — never an empty model", async () => {
+    const runtime = new CapturingRuntime();
+    // An empty "Default" pick stored as "" + an unset/empty deployment default used to leave
+    // ANTHROPIC_MODEL absent → the harness emitted no --model → the fleet was effectively disabled.
+    const manager = makeManager({ runtime, workspaceModel: "", envDefaultModel: "" });
+    const session = await manager.launch(baseLaunch);
+    await manager.join(session.id);
+    expect(runtime.job).toBeDefined();
+    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe(DEFAULT_AGENT_MODEL);
+  });
+
+  it("no workspace pick + no env default at all injects the managed default and runs", async () => {
+    const runtime = new CapturingRuntime();
+    const manager = makeManager({ runtime, workspaceModel: null });
+    const session = await manager.launch(baseLaunch);
+    await manager.join(session.id);
+    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe(DEFAULT_AGENT_MODEL);
+  });
+
+  it("injects a valid (dev-override) workspace model as ANTHROPIC_MODEL", async () => {
     const runtime = new CapturingRuntime();
     const manager = makeManager({ runtime, workspaceModel: "claude-sonnet-4-6", envDefaultModel: "claude-opus-4-8" });
     const session = await manager.launch(baseLaunch);
@@ -105,7 +129,7 @@ describe("SessionManager model preflight (#246)", () => {
     expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
   });
 
-  it("a per-session model pin wins over the workspace pick and is validated", async () => {
+  it("a per-session model pin wins over the workspace pick", async () => {
     const runtime = new CapturingRuntime();
     const manager = makeManager({ runtime, workspaceModel: "claude-sonnet-4-6" });
     const session = await manager.launch({ ...baseLaunch, harnessEnv: { ANTHROPIC_MODEL: "claude-haiku-4-5" } });
@@ -113,19 +137,12 @@ describe("SessionManager model preflight (#246)", () => {
     expect(runtime.job?.env?.ANTHROPIC_MODEL).toBe("claude-haiku-4-5");
   });
 
-  it("no workspace pick + valid env default ⇒ does not inject (child inherits process env) and runs", async () => {
-    const runtime = new CapturingRuntime();
-    const manager = makeManager({ runtime, workspaceModel: null, envDefaultModel: "claude-opus-4-8" });
-    const session = await manager.launch(baseLaunch);
-    await manager.join(session.id);
-    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBeUndefined();
-  });
-
-  it("the demo harness is never gated (no model spend, no --model)", async () => {
+  it("the demo harness is never gated (no model spend, no --model injected)", async () => {
     const runtime = new CapturingRuntime();
     const manager = makeManager({ runtime, workspaceModel: "claude-fable-5", harnessKind: "demo" });
     const session = await manager.launch(baseLaunch);
     await manager.join(session.id);
-    expect(runtime.job).toBeDefined(); // ran despite the bad model — demo doesn't use it
+    expect(runtime.job).toBeDefined(); // ran — demo doesn't use a model
+    expect(runtime.job?.env?.ANTHROPIC_MODEL).toBeUndefined();
   });
 });
