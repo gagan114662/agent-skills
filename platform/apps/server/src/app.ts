@@ -9,6 +9,7 @@ import { healthRoutes } from "./routes/health.js";
 import { siteRoutes } from "./routes/site.js";
 import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
+import { googleAuthRoutes, type GoogleAuthRoutesOptions } from "./routes/google-auth.js";
 import { meRoutes } from "./routes/me.js";
 import { agentInterfaceRoutes } from "./routes/agent-interface.js";
 import { acpRoutes } from "./routes/acp.js";
@@ -411,6 +412,12 @@ export interface BuildAppOptions {
   slack?: SlackEventService;
   /** #170 Slack-native: tests inject a recording SlackClient so no real Slack call leaves the box. */
   slackClient?: SlackClient;
+  /**
+   * #260 non-technical onboarding (domain + "Sign in with Google"). Tests inject a fake Google client +
+   * config + recording bootstrap so the flow runs without network. Default reads Google config from env
+   * (feature off until configured) and builds the real bootstrap over the shared SessionManager.
+   */
+  googleAuth?: GoogleAuthRoutesOptions;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -540,6 +547,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
       maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
   });
+  // #260 non-technical onboarding: the single Google consent (identity + Search Console + Analytics) →
+  // create/attach the workspace, seal the connection, kick Scout to verify the domain + submit the sitemap,
+  // land on the board. Default reads Google config from env (off until configured) and builds the real
+  // bootstrap over THIS SessionManager; tests inject a fake client + recording bootstrap.
+  app.register(googleAuthRoutes, { sessionManager, ...opts.googleAuth });
   app.register(marketingRoutes, { sessionManager });
   // #123 prod-incident fix: wire the @mention → real-session trigger into the SHARED message fan-out
   // (`messaging/delivery.ts`), so a plain `@scout …` post in a department channel launches a session

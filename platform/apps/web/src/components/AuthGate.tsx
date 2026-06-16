@@ -12,6 +12,7 @@ import { BRAND, LANDING, PRICING, VOICE } from "../brand.js";
 import { Link, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
+import { Onboarding } from "./Onboarding.js";
 import { isMarketingPath } from "./site/paths.js";
 
 type Mode = "login" | "signup";
@@ -97,6 +98,9 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   if (phase === "offline") return <OfflineNotice onRetry={() => void store.bootstrap()} />;
 
   // Logged out: the public landing at "/", the auth forms at their own routes.
+  // #260: the non-technical onboarding entry — enter your domain, Sign in with Google. The OAuth callback
+  // also redirects failures back here (`/start?error=…`), so an un-authed visitor always sees this screen.
+  if (path === "/start") return <Onboarding />;
   if (path === "/login") return <AuthForm initialMode="login" />;
   if (path === "/signup") return <AuthForm initialMode="signup" />;
   return (

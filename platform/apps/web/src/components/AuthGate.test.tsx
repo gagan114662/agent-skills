@@ -87,6 +87,21 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
+  it("serves the #260 onboarding screen at /start for a logged-out visitor (domain + Google, no password)", async () => {
+    act(() => navigate("/start"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/your website/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
   it("frames signup as a free trial of the plan chosen on /pricing (?plan=pro)", async () => {
     act(() => navigate("/signup?plan=pro"));
     renderWithStore(

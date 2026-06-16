@@ -31,12 +31,13 @@ describe("Landing", () => {
     expect(screen.getByText(/made by robots, steered by humans/i)).toBeInTheDocument();
   });
 
-  it("routes the two hero calls-to-action to /signup and /login", () => {
+  it("routes the two hero calls-to-action to /start and /login", () => {
     render(<Landing />);
     const hero = screen.getByRole("region", { name: BRAND.tagline });
+    // #260: "Get started" now leads to the one-screen Google onboarding (/start), not the email form.
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaPrimary, "i") }),
-    ).toHaveAttribute("href", "/signup");
+    ).toHaveAttribute("href", "/start");
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaSecondary, "i") }),
     ).toHaveAttribute("href", "/login");

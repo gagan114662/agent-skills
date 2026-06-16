@@ -71,7 +71,7 @@ function LandingNav(): React.JSX.Element {
         <Link href="/login" className="linklike">
           {LANDING.hero.ctaSecondary}
         </Link>
-        <Link href="/signup" className="btn btn--primary landing__nav-cta">
+        <Link href="/start" className="btn btn--primary landing__nav-cta">
           {LANDING.hero.ctaPrimary}
         </Link>
       </nav>
@@ -89,7 +89,7 @@ function Hero(): React.JSX.Element {
         </h1>
         <p className="landing__sub">{LANDING.hero.sub}</p>
         <div className="landing__cta-row">
-          <Link href="/signup" className="btn btn--primary landing__cta">
+          <Link href="/start" className="btn btn--primary landing__cta">
             {LANDING.hero.ctaPrimary}
           </Link>
           <Link href="/login" className="btn landing__cta landing__cta--ghost">
@@ -217,7 +217,7 @@ function ClosingCta(): React.JSX.Element {
         {LANDING.sections.ctaTitle}
       </h2>
       <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
-      <Link href="/signup" className="btn btn--primary landing__cta landing__final-cta">
+      <Link href="/start" className="btn btn--primary landing__cta landing__final-cta">
         {LANDING.sections.ctaButton}
       </Link>
     </section>

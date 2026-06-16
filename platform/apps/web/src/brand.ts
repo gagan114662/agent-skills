@@ -223,6 +223,32 @@ export interface PlanTeaser {
 }
 
 /**
+ * Copy for the #260 one-screen onboarding (enter your domain → Sign in with Google). Centralised here so
+ * the screen reads the brand. `errors` maps the `?error=<code>` the OAuth routes redirect with to a
+ * house-voice line — every failure lands the user back on this screen, never a dead end.
+ */
+export const ONBOARDING = {
+  title: "Point us at your website",
+  sub: "Enter your domain and sign in with Google. That's the whole setup — we take it from there.",
+  domainLabel: "Your website",
+  domainPlaceholder: "acme.com",
+  googleCta: "Sign in with Google",
+  reassurance: "One sign-in covers Search Console and Analytics. No passwords, no DNS, no copy-pasting keys.",
+  needDomain: "Pop your website in first — something like acme.com.",
+  errors: {
+    invalid_domain: "That doesn't look like a domain. Try something like acme.com.",
+    google_denied: "Looks like the Google sign-in was cancelled. Give it another go.",
+    google_failed: "We couldn't finish signing you in with Google. Try once more.",
+    email_unverified: "That Google account's email isn't verified yet — verify it with Google, then retry.",
+    bad_state: "That sign-in link expired. Start again and you'll be in.",
+    bad_request: "Something got lost on the way back from Google. Start again.",
+    no_workspace: "We couldn't find a workspace for that account. Reach out and we'll sort it.",
+    google_unavailable: "Google sign-in isn't switched on for this deployment yet.",
+    generic: "That didn't pop. Give it another go.",
+  },
+} as const;
+
+/**
  * All copy for the public landing page (#149), in the house voice. Centralised here so the page reads
  * the brand instead of inlining strings (brand.test.ts scans the landing components for the rule).
  */
