@@ -52,6 +52,26 @@ export function buildVerificationRecord(token: string, name = "@"): DnsRecordSpe
   return { recordType: "TXT", name, value: `reload-verification=${token}`, purpose: "verification" };
 }
 
+/**
+ * Google Search Console domain-ownership TXT record (#264). The user gets a token from Search Console
+ * ("Domain" property → DNS verification); the agent publishes `google-site-verification=<token>` at the
+ * apex so verification completes with NO manual DNS edit. This is one of the three DNS-blocked lanes
+ * {@link DnsManager} unblocks (the others are email auth and the hosted-pages CNAME).
+ */
+export function buildGoogleVerificationRecord(token: string, name = "@"): DnsRecordSpec {
+  return {
+    recordType: "TXT",
+    name,
+    value: `google-site-verification=${token}`,
+    purpose: "verification",
+  };
+}
+
+/** A CNAME record pointing a host (apex `@` or e.g. `www`) at the hosting target (#264 hosted-pages lane). */
+export function buildCnameRecord(target: string, name = "@"): DnsRecordSpec {
+  return { recordType: "CNAME", name, value: target, purpose: "dns" };
+}
+
 /** A CAA record authorizing the ACME CA to issue SSL certs for the domain (acceptance 3 SSL). */
 export function buildCaaRecord(ca = "letsencrypt.org"): DnsRecordSpec {
   return { recordType: "CAA", name: "@", value: `0 issue "${ca}"`, purpose: "ssl" };
