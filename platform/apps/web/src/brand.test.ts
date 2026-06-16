@@ -431,6 +431,9 @@ describe("no hardcoded brand strings in product chrome", () => {
     // Settings → Connect external accounts (#192/#231): every word comes from EXTERNAL_ACCOUNTS.
     "components/ExternalAccounts.tsx",
     "components/ExternalAccountsPanel.tsx",
+    // Settings → Connections (#258): every word comes from CONNECTIONS (connector labels come from data).
+    "components/Connections.tsx",
+    "components/ConnectionsPanel.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.

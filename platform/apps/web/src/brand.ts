@@ -102,6 +102,8 @@ export const SLACK_CONNECT = {
     "Bring the fleet into your Slack. Paste your Slack app's bot token and signing secret below — " +
     "they're stored encrypted and never shown again. The agents reply in-thread, approvals come as " +
     "buttons, and your daily digest lands as a DM.",
+  // #263: the manual token paste is tucked behind this collapsed disclosure — never a default free-text field.
+  advancedSummary: "Connect Slack (advanced — paste app credentials)",
   botTokenLabel: "Bot token",
   botTokenPlaceholder: "xoxb-…",
   signingSecretLabel: "Signing secret",
@@ -137,6 +139,8 @@ export const EXTERNAL_ACCOUNTS = {
   secretPlaceholder: "Paste the account key or token",
   connect: "Connect",
   disconnect: "Disconnect",
+  // #263: the manual key/token paste is tucked behind this collapsed disclosure — never a default field.
+  advancedSummary: "Connect an account manually (advanced)",
   error: "Couldn't update the connection. This workspace may need external onboarding enabled first.",
   kinds: {
     hosting: "Hosting / publishing",
@@ -147,6 +151,34 @@ export const EXTERNAL_ACCOUNTS = {
     payment: "Payments",
     other: "Other API",
   } as Readonly<Record<string, string>>,
+} as const;
+
+/**
+ * Settings → Connections (#258): the OAuth-first "connect once, the agents do the rest" surface. Customer
+ * connectors are consumer OAuth ("Sign in with Google", "Connect X") — connect once and the fleet runs your
+ * marketing. The internal site-publishing connector (admin only) is the one paste path. Connector labels +
+ * summaries come from the server registry (data) — only this chrome copy lives here.
+ */
+export const CONNECTIONS = {
+  title: "Connections",
+  hint:
+    "Connect your accounts once — your fleet does the setup and the work. No code, no copy-paste keys. " +
+    "You only ever grant access once and approve real spend.",
+  loading: "Loading…",
+  comingSoon: "Coming soon",
+  connect: "Connect",
+  connectedBadge: "Connected",
+  disconnect: "Disconnect",
+  internalTitle: "Site publishing (admin)",
+  internalHint: "Internal publishing connection — admin only. Not shown to customers.",
+  repoLabel: "Repository (owner/repo)",
+  repoPlaceholder: "owner/repo",
+  branchLabel: "Base branch",
+  branchPlaceholder: "main",
+  tokenLabel: "Access token",
+  tokenPlaceholder: "Paste the token",
+  internalConnect: "Connect publishing",
+  error: "Couldn't update the connection.",
 } as const;
 
 /**
