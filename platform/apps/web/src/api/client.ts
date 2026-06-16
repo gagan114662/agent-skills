@@ -54,6 +54,8 @@ import type {
   SlackConnectInput,
   ExternalAccountsChecklist,
   RealworldReadiness,
+  BrandKitState,
+  BrandKitInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
   StatusPageDto,
@@ -369,6 +371,14 @@ export const api = {
   // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
   startConnectionOAuth(id: string): Promise<unknown> {
     return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+
+  // --- brand kit (#271): the owner's one-time brand identity the fleet draws from ---
+  getBrandKit(): Promise<BrandKitState> {
+    return request<BrandKitState>("/me/brand-kit");
+  },
+  setBrandKit(input: BrandKitInputDto): Promise<BrandKitState> {
+    return request<BrandKitState>("/me/brand-kit", { method: "PUT", body: JSON.stringify(input) });
   },
 
   // --- channels ---

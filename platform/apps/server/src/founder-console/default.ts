@@ -44,6 +44,7 @@ import type { ServiceKind } from "../onboarding/types.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
 import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realworld-artifacts.js";
+import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -570,8 +571,8 @@ export function createDefaultFounderConsoleService(deps: {
           note: `${funnel.acquisition} sessions · ${funnel.activation} activations tracked`,
         });
 
-        // seo (Scout) + brand (Mark): no real source wired yet. Surface the reason so the owner sees WHAT to
-        // connect — never a fabricated rank or asset count.
+        // seo (Scout): no real source wired yet. Surface the reason so the owner sees WHAT to connect —
+        // never a fabricated rank.
         readings.push({
           department: "seo",
           connected: false,
@@ -581,15 +582,38 @@ export function createDefaultFounderConsoleService(deps: {
           source: "Search Console not connected",
           note: "connect Google Search Console to prove indexed pages + rankings",
         });
-        readings.push({
-          department: "brand",
-          connected: false,
-          current: null,
-          unit: "count",
-          metricLabel: "Brand assets live",
-          source: "Asset store not wired",
-          note: "no brand-asset source connected yet",
-        });
+
+        // brand (Mark): connects the moment the owner sets a brand kit (#271). The proof is the count of
+        // on-brand assets in the workspace store (generated + uploaded); the trend is what was added this
+        // week. With no kit, the tile stays "not connected" and tells the owner exactly what to set.
+        const brandKit = await dbBrandKitStore.getActive(workspaceId);
+        if (brandKit) {
+          const [assetTotal, assetList] = await Promise.all([
+            dbAssetStore.count(workspaceId),
+            dbAssetStore.list(workspaceId, 500),
+          ]);
+          const assetsLast7 = assetList.filter((a) => a.createdAtMs >= since7.getTime()).length;
+          readings.push({
+            department: "brand",
+            connected: true,
+            current: assetTotal,
+            prior: assetTotal - assetsLast7,
+            unit: "count",
+            metricLabel: "On-brand assets in the store",
+            source: "Brand kit + asset store (#271)",
+            note: `${brandKit.kit.palette.length}-colour palette set`,
+          });
+        } else {
+          readings.push({
+            department: "brand",
+            connected: false,
+            current: null,
+            unit: "count",
+            metricLabel: "Brand assets live",
+            source: "Brand kit not set",
+            note: "set your brand kit (logo, colours, voice) to connect this tile and let the fleet generate on-brand assets",
+          });
+        }
 
         return readings;
       },

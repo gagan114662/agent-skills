@@ -21,12 +21,23 @@ const ALL = new Set<ServiceKind>(["hosting", "esp", "registrar", "ad_account"]);
 describe("real-world tool surface (#231) — safety invariants", () => {
   it("enumerates exactly the issue capabilities (incl. #250 publish_site) and is a closed surface", () => {
     expect([...REAL_WORLD_TOOL_NAMES].sort()).toEqual(
-      ["browse", "call_api", "post_social", "publish", "publish_site", "research", "send_email", "store_asset"].sort(),
+      ["browse", "call_api", "generate_image", "post_social", "publish", "publish_site", "research", "send_email", "store_asset"].sort(),
     );
     // unknown names throw — a new tool can never bypass the gate by being unclassified.
     expect(() => realWorldToolSpec("fly_a_drone" as never)).toThrow(/unknown real-world tool/);
     expect(isRealWorldToolName("publish")).toBe(true);
     expect(isRealWorldToolName("nope")).toBe(false);
+  });
+
+  it("generate_image (#271) is an autonomous INTERNAL actuator — fleet op-cost, money-free, no #13 gate", () => {
+    const spec = realWorldToolSpec("generate_image");
+    expect(spec.dataFlow).toBe("actuate"); // it produces a stored asset
+    expect(spec.reversibility).toBe("reversible"); // an asset can be deleted/re-generated
+    expect(spec.requiresApproval).toBe(false); // generation is op-cost like LLM tokens, not a #243 money action
+    expect(spec.requiredAccounts).toEqual([]); // the image provider key is server/workspace config, not a money account
+    const gate = decideToolGate("generate_image", { connectedAccounts: NONE });
+    expect(gate.allowed).toBe(true);
+    expect(gate.requiresApproval).toBe(false);
   });
 
   it("publish_site (#250) is an autonomous actuator — money-free + reversible, no #13 gate", () => {

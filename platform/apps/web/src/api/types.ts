@@ -91,6 +91,30 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+/** The brand kit (#271) — the owner's one-time brand identity the fleet draws from. */
+export interface BrandKitDto {
+  id: string;
+  name: string;
+  palette: string[];
+  voice: string;
+  logoAssetId: string | null;
+}
+
+/** `GET/PUT /me/brand-kit` — whether a kit is set, the kit itself, and the live on-brand asset count. */
+export interface BrandKitState {
+  connected: boolean;
+  brandKit: BrandKitDto | null;
+  assetCount?: number;
+}
+
+/** Body for setting the brand kit from Settings (#271). */
+export interface BrandKitInputDto {
+  name: string;
+  palette: string[];
+  voice?: string;
+  logoAssetId?: string | null;
+}
+
 /** Body for connecting an external account from Settings (#231): file the need, then seal the secret. */
 export interface ExternalAccountConnectInput {
   serviceKey: string;

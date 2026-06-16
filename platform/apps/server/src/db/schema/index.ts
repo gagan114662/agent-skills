@@ -63,3 +63,4 @@ export * from "./discovery.js";
 export * from "./realworld.js";
 export * from "./outreach.js";
 export * from "./workspace-onboarding.js";
+export * from "./assets.js";

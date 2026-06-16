@@ -24,6 +24,7 @@ export const REALWORLD_TOOLS = [
   "browse",
   "research",
   "store_asset",
+  "generate_image",
   "call_api",
 ] as const;
 
@@ -57,7 +58,7 @@ export const realworldArtifacts = pgTable(
     ),
     toolCk: check(
       "realworld_artifacts_tool_ck",
-      sql`${t.tool} IN ('publish','publish_site','send_email','post_social','browse','research','store_asset','call_api')`,
+      sql`${t.tool} IN ('publish','publish_site','send_email','post_social','browse','research','store_asset','generate_image','call_api')`,
     ),
     statusCk: check(
       "realworld_artifacts_status_ck",

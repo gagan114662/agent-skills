@@ -994,6 +994,13 @@ export const realworldSchema = z.object({
   siteBaseBranch: z.string().optional(),
   /** Directory inside the repo new content files are committed under (default `content/blog`). */
   siteContentDir: z.string().optional(),
+  /**
+   * Image generation provider kind (#271): `dryrun` (default — renders a deterministic on-brand SVG
+   * locally, no network/spend) or a future live external image API. Image generation is a fleet
+   * operating cost (not a #243 money action), so it is autonomous; the surface still stays default-OFF
+   * via the master `enabled` flag.
+   */
+  imageProvider: z.string().optional(),
 });
 
 /**
