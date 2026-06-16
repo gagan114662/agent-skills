@@ -45,11 +45,21 @@ docker run --rm -p 3000:3000 \
   -e REDIS_URL=redis://HOST:6379 reload-server
 ```
 
-### Fly deploy (api.ipop.ai)
+### Fly deploy (api.ipop.ai) — self-managed, no terminal ops (#273)
 The production API (`reload-api` on Fly, https://api.ipop.ai) deploys via
 `.github/workflows/fly-deploy.yml` on every push to `main` touching `platform/**`, authenticated by the
-`FLY_API_TOKEN` repo secret. The image self-migrates on boot, and the workflow polls `/readyz` as its
-own proof. Manual deploy from a flyctl-logged-in machine:
+`FLY_API_TOKEN` repo secret. **Shipping a change requires no manual terminal step** — no human runs
+`flyctl deploy` or `db:migrate`.
+
+How it stays safe: the Fly `[deploy] release_command` (`fly.toml` → `dist/runtime/release-cli.js`) runs
+on a one-off VM **before traffic shifts** and gates the rollout, fail-fast:
+1. **Migrations** — applies pending `migrate up` (gate 0). DB-touching; runs once, pre-cutover.
+2. **Preflight** (#238) — `bash`/`git`/`claude` on PATH + a writable workspace root.
+3. **Smoke** (#166) — provisions + spawns one real demo-harness session end-to-end.
+
+A non-zero exit **aborts the rollout with the current release still serving** — i.e. an automatic
+rollback — and turns the CI job red. The rollout is `strategy = "rolling"` and health-gated on `/readyz`,
+so Fly only routes to the new machine once it reports ready. Manual deploy (rarely needed) is identical:
 ```bash
 cd platform && flyctl deploy --remote-only --config fly.toml -a reload-api
 curl -s https://reload-api.fly.dev/readyz   # {"status":"ready","db":"up","redis":"up"}
@@ -57,7 +67,9 @@ curl -s https://reload-api.fly.dev/readyz   # {"status":"ready","db":"up","redis
 **Full setup (token minting, app secrets, rollback): [runbooks/fly-deploy.md](runbooks/fly-deploy.md).**
 
 ### Migrations
-Migrate-on-deploy is automatic (the `migrate` service / entrypoint). Manual control:
+On Fly, migrations are applied by the **release_command gate** above (before traffic shifts; a failure
+aborts the deploy). The boot-time `migrate up` in `docker-entrypoint.sh` remains as an idempotent no-op
+safety net for local/compose. Manual control (local, or an emergency op):
 ```bash
 pnpm --filter @reload/server db:migrate     # apply pending (up)
 pnpm --filter @reload/server db:rollback    # revert last migration (down)

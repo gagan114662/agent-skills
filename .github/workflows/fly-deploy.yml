@@ -4,8 +4,15 @@ name: fly-deploy
 # (https://ipop.ai) auto-deploys on every push to main, but the Fly API (https://api.ipop.ai, app
 # `reload-api`) had NO deploy pipeline — it ran a hand-deployed image, so the marketing fleet (#123),
 # pricing rails (#125) and everything since never went live. This workflow closes that gap: every push
-# to main that touches the platform redeploys the API. The image self-migrates on boot
-# (apps/server/docker-entrypoint.sh runs `migrate.js up` before starting), so no separate migration step.
+# to main that touches the platform redeploys the API — no human runs `flyctl deploy` or `db:migrate`
+# by hand (#273).
+#
+# Migrations + safety are gated by the Fly `[deploy] release_command` (fly.toml → release-cli.js), which
+# runs on a one-off VM BEFORE traffic shifts: it applies pending DB migrations, then a host preflight,
+# then a real demo-harness smoke. A non-zero exit ABORTS the rollout with the current release still
+# serving (automatic rollback) and makes `flyctl deploy` below exit non-zero, turning this job red. The
+# rollout itself is rolling + health-gated on `/readyz` (fly.toml). So a bad migration or a broken image
+# can never reach users, and a human never has to run an infra command to ship.
 #
 # Auth is a single repo secret, FLY_API_TOKEN (a Fly deploy token), referenced by name and NEVER echoed.
 # Setup is documented in platform/docs/operations.md → "Fly deploy (CI)".
@@ -55,8 +62,12 @@ jobs:
         if: env.FLY_CONFIGURED == 'true'
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Fly (reload-api) — image self-migrates on boot
+      - name: Deploy to Fly (reload-api) — release_command migrates + smokes, then rolling rollout
         if: env.FLY_CONFIGURED == 'true'
+        # `flyctl deploy` blocks until the release_command (migrate → preflight → smoke) passes AND the
+        # rolling rollout's /readyz health check is green. If the release_command exits non-zero, Fly
+        # aborts the rollout (the previous release keeps serving — automatic rollback) and flyctl exits
+        # non-zero, failing this step. No --strategy flag needed: fly.toml pins strategy = "rolling".
         run: flyctl deploy --remote-only --config fly.toml
 
       - name: Verify readiness (/readyz green after rollout)
