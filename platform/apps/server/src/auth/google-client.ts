@@ -35,24 +35,26 @@ export function createGoogleOAuthClient(config: GoogleOAuthConfig): GoogleOAuthC
         redirect_uri: config.redirectUri,
         grant_type: "authorization_code",
       });
-      let res: Response;
-      try {
-        res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body,
-        });
-      } catch (err) {
-        throw new GoogleOAuthError(`token exchange failed: ${(err as Error).message}`);
-      }
-      if (!res.ok) throw new GoogleOAuthError(`token exchange returned ${res.status}`);
-      const json = (await res.json()) as {
+      let json: {
         access_token?: string;
         refresh_token?: string;
         expires_in?: number;
         scope?: string;
         token_type?: string;
       };
+      try {
+        const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body,
+        });
+        if (!res.ok) throw new GoogleOAuthError(`token exchange returned ${res.status}`);
+        // Parse inside the try so a non-JSON error body (HTML/plaintext during an outage) is wrapped too.
+        json = (await res.json()) as typeof json;
+      } catch (err) {
+        if (err instanceof GoogleOAuthError) throw err;
+        throw new GoogleOAuthError(`token exchange failed: ${(err as Error).message}`);
+      }
       if (!json.access_token) throw new GoogleOAuthError("token exchange returned no access_token");
       return {
         accessToken: json.access_token,
@@ -64,21 +66,23 @@ export function createGoogleOAuthClient(config: GoogleOAuthConfig): GoogleOAuthC
     },
 
     async fetchUserInfo(accessToken) {
-      let res: Response;
-      try {
-        res = await fetch(GOOGLE_USERINFO_ENDPOINT, {
-          headers: { authorization: `Bearer ${accessToken}` },
-        });
-      } catch (err) {
-        throw new GoogleOAuthError(`userinfo failed: ${(err as Error).message}`);
-      }
-      if (!res.ok) throw new GoogleOAuthError(`userinfo returned ${res.status}`);
-      const json = (await res.json()) as {
+      let json: {
         sub?: string;
         email?: string;
         email_verified?: boolean | string;
         name?: string;
       };
+      try {
+        const res = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+          headers: { authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new GoogleOAuthError(`userinfo returned ${res.status}`);
+        // Parse inside the try so a non-JSON error body is wrapped as a GoogleOAuthError, not a SyntaxError.
+        json = (await res.json()) as typeof json;
+      } catch (err) {
+        if (err instanceof GoogleOAuthError) throw err;
+        throw new GoogleOAuthError(`userinfo failed: ${(err as Error).message}`);
+      }
       if (!json.sub || !json.email) throw new GoogleOAuthError("userinfo missing sub/email");
       return {
         sub: json.sub,

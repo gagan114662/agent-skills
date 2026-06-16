@@ -111,6 +111,24 @@ export async function googleAuthRoutes(
     return `${base}-${randomBytes(8).toString("hex")}`;
   }
 
+  /**
+   * Create a workspace for a brand-new customer, resilient to the slug TOCTOU race: the pre-check above
+   * narrows it, but two same-domain signups racing can still collide on the `workspaces.slug` UNIQUE
+   * constraint. On a 23505 unique-violation we regenerate a suffixed slug and retry rather than 500.
+   */
+  async function createWorkspaceForDomain(base: string, name: string): Promise<{ id: string }> {
+    let slug = await uniqueSlug(base);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        return await createWorkspace({ slug, name });
+      } catch (err) {
+        if ((err as { code?: string }).code !== "23505") throw err; // not a unique-violation — real error
+        slug = `${base}-${randomBytes(4).toString("hex")}`;
+      }
+    }
+    return createWorkspace({ slug: `${base}-${randomBytes(8).toString("hex")}`, name });
+  }
+
   // Step 1 — begin the single Google consent for the typed domain.
   app.get("/auth/google/start", async (req, reply) => {
     const config = resolveConfig();
@@ -161,10 +179,7 @@ export async function googleAuthRoutes(
       memberId = member.id;
       workspaceId = member.workspaceId;
     } else {
-      const ws = await createWorkspace({
-        slug: await uniqueSlug(domain.slug),
-        name: domain.domain,
-      });
+      const ws = await createWorkspaceForDomain(domain.slug, domain.domain);
       const created = await createOAuthHumanAccount({
         workspaceId: ws.id,
         email: user.email,
