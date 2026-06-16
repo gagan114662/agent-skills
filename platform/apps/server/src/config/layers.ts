@@ -154,6 +154,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // real-send flags / auto-send switch / send caps cannot be loosened (e.g. real ads turned on, or a
     // window cap raised) by a lower layer.
     if (layer.acquisition !== undefined) out.acquisition = { ...layer.acquisition };
+    // #295 delivery policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // approve→publish ship flags + owner-workspace scope cannot be loosened by a lower layer.
+    if (layer.delivery !== undefined) out.delivery = { ...layer.delivery };
     // #194 finance policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // ledger/close tick + the read surface cannot be flipped on by a lower layer — owner-workspace-first.
     if (layer.finance !== undefined) out.finance = { ...layer.finance };
@@ -234,6 +237,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     realworld: merged.realworld ?? { ...CONFIG_DEFAULTS.realworld },
     outreach: merged.outreach ?? { ...CONFIG_DEFAULTS.outreach },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
+    delivery: merged.delivery ?? { ...CONFIG_DEFAULTS.delivery },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },

@@ -1135,6 +1135,36 @@ export const acquisitionSchema = z.object({
 });
 
 /**
+ * Deliverable delivery policy (#295, ADR-0295). The flags that turn an APPROVED `agent.deliverable` review
+ * card into a REAL ship — a live published page (Scout/SEO, Quill/content), a social post (Echo), an email
+ * (Postmark). Every field is optional and defaults to **off**: a deployment that sets nothing keeps today's
+ * behavior exactly (approving a deliverable is a pure acknowledgement, nothing ships).
+ *
+ * The gate is two-pronged and DEFAULT-OFF, owner-workspace-first: the master `enabled` flag must be on AND
+ * the workspace must be in scope (`ownerWorkspaceOnly` defaults true ⇒ only `ownerWorkspaceId` ships).
+ * Turning `enabled` on WITHOUT naming the owner workspace ships to nobody (the safest default). The
+ * per-channel flags (`publish`/`social`/`email`) gate each channel independently. `publishProvider` selects
+ * the live-page provider (`dryrun` default — not reachable; `github_pages` publishes a real URL). No
+ * credentials/Stripe here — social/email ride the #189 dry-run providers (a real adapter is a future ADR).
+ */
+export const deliverySchema = z.object({
+  /** Master flag for approve→publish delivery — default OFF (acknowledgement-only stays the behavior). */
+  enabled: z.boolean().optional(),
+  /** Restrict live delivery to the owner workspace (default true). Set false to broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — delivery rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Ship content/SEO deliverables as a live published page. Default OFF. */
+  publish: z.boolean().optional(),
+  /** Ship social deliverables as a post (dry-run until a real adapter is connected). Default OFF. */
+  social: z.boolean().optional(),
+  /** Ship email deliverables (dry-run, no recipients, until a real ESP adapter is connected). Default OFF. */
+  email: z.boolean().optional(),
+  /** Live-page publish provider kind (`dryrun` default — no network; `github_pages` publishes a live URL). */
+  publishProvider: z.string().optional(),
+});
+
+/**
  * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
  * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
  * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
@@ -1278,6 +1308,8 @@ export const settingsSchema = z.object({
   outreach: outreachSchema.optional(),
   /** Acquisition execution policy (#189): real ads/email/social/SEO sends + auto-send caps (default OFF). */
   acquisition: acquisitionSchema.optional(),
+  /** Deliverable delivery policy (#295): approve→publish ship of `agent.deliverable` drafts (default OFF). */
+  delivery: deliverySchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
@@ -1346,6 +1378,7 @@ export type OnboardingConfig = z.infer<typeof onboardingSchema>;
 export type RealworldConfig = z.infer<typeof realworldSchema>;
 export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
+export type DeliveryConfig = z.infer<typeof deliverySchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
@@ -1462,6 +1495,8 @@ export interface ResolvedConfig {
   /** Outreach engine policy (#225). A partial whose hard defaults `resolveOutreachCaps` fills. */
   outreach: OutreachConfig;
   acquisition: AcquisitionConfig;
+  /** Deliverable delivery policy (#295). A partial resolved by `resolveDeliveryFlags`. */
+  delivery: DeliveryConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
@@ -1531,6 +1566,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   realworld: {},
   outreach: {},
   acquisition: {},
+  delivery: {},
   finance: {},
   monetization: {},
   discovery: {},

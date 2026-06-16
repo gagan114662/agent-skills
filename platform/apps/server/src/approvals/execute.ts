@@ -26,6 +26,7 @@ export async function executeApprovedRequest(
       workspaceId: request.workspaceId,
       requesterMemberId: request.requesterMemberId,
       log,
+      requestId: request.id,
     });
     return recordExecution(request.id, request.workspaceId, { ok: true, result });
   } catch (err) {

@@ -33,6 +33,7 @@ import {
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
+import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
 import { markMessageSent } from "../db/repositories/outreach.js";
 import {
   FINANCE_DISBURSEMENT_ACTION,
@@ -145,20 +146,42 @@ const chatPostMessage: ActionExecutor = {
 };
 
 /**
- * `agent.deliverable` (#248): a completed agent session's draft, surfaced for owner review in the
+ * `agent.deliverable` (#248 + #295): a completed agent session's draft, surfaced for owner review in the
  * APPROVAL NEEDED queue so a briefed task never "vanishes" (its result lived only as a channel message
- * + `agent_sessions.result` row the owner never saw). The executor is a pure ACKNOWLEDGEMENT — it
- * performs NO side effect: approving simply records the owner saw the draft (publishing/sending stays
- * autonomous under #243, gated only for money). So a clean `recordExecution(ok:true)` is the right
- * outcome, never "no executor for …". Creates no new authority; the payload is data.
+ * + `agent_sessions.result` row the owner never saw).
+ *
+ * **Without a delivery dispatcher (the default)** the executor is a pure ACKNOWLEDGEMENT — it performs NO
+ * side effect: approving simply records the owner saw the draft. This is byte-for-byte today's behavior.
+ *
+ * **With a {@link DeliveryDispatcher} injected (#295, default-OFF behind a flag, owner-workspace-first)**
+ * the OWNER's approval becomes the ship trigger: the dispatcher routes the draft to the right channel
+ * adapter (a live published page / a social post / an email), records a production-grounded receipt tied
+ * to THIS approval, and the result reports what shipped. The dispatcher returns `null` (→ fall back to the
+ * pure acknowledgement) whenever delivery is off for the workspace, the department is not shippable, or
+ * there is no approval id — so nothing ever ships without an explicit owner approval in the #13 queue.
+ *
+ * The approval (a human reviewing the draft on the card) IS the gate (premortem #200 §4: a public/
+ * irreversible action is human-gated, never autonomous), and routing is structural (#200 §6: a poisoned
+ * draft can never redirect the ship). Creates no new authority; the payload is data.
  */
-const agentDeliverable: ActionExecutor = {
-  actionType: "agent.deliverable",
-  validate: validateAgentDeliverable,
-  summarize: (p) => `deliverable ready for review (session ${String(p.sessionId).slice(0, 8)})`,
-  execute: (payload) =>
-    Promise.resolve({ acknowledged: true, sessionId: String(payload.sessionId) }),
-};
+function makeAgentDeliverable(delivery?: DeliveryDispatcher): ActionExecutor {
+  return {
+    actionType: "agent.deliverable",
+    validate: validateAgentDeliverable,
+    summarize: (p) => `deliverable ready for review (session ${String(p.sessionId).slice(0, 8)})`,
+    async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+      const ack = { acknowledged: true, sessionId: String(payload.sessionId) };
+      if (delivery) {
+        const shipped = await delivery.ship(payload, {
+          workspaceId: ctx.workspaceId,
+          approvalRequestId: ctx.requestId ?? "",
+        });
+        if (shipped) return { ...ack, ...shipped };
+      }
+      return ack;
+    },
+  };
+}
 
 /**
  * Represent an outbound "external send". Recorded-only **by default**: it performs no network egress
@@ -408,18 +431,20 @@ const reachDataCreditSpend: ActionExecutor = {
 
 /**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
- * (#196), and an optional acquisition dispatcher (#189). The compliance default is a no-op and the
- * dispatcher is absent by default, so the `external.send` executor stays recorded-only exactly as before —
- * every existing approval test is untouched.
+ * (#196), an optional acquisition dispatcher (#189), and an optional delivery dispatcher (#295). The
+ * compliance default is a no-op and both dispatchers are absent by default, so the `external.send` executor
+ * stays recorded-only and the `agent.deliverable` executor stays a pure acknowledgement — byte-for-byte
+ * today's behavior, every existing approval test untouched.
  */
 export function buildDefaultRegistry(
   egress: EgressEnforcer = defaultEgressEnforcer,
   compliance: ComplianceEnforcer = noopComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
+  delivery?: DeliveryDispatcher,
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
-    agentDeliverable,
+    makeAgentDeliverable(delivery),
     makeExternalSend(egress, compliance, dispatcher),
     billingRefund,
     browserAction,
