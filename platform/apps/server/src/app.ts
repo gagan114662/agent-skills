@@ -139,6 +139,7 @@ import { acquisitionRoutes } from "./routes/acquisition.js";
 import { createDefaultOnboardingService } from "./onboarding/default.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
+import { connectionsRoutes } from "./routes/connections.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
 import { financeRoutes } from "./routes/finance.js";
@@ -742,6 +743,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(onboardingRoutes, { service: onboarding });
   const realworld = opts.realworld ?? createDefaultRealworldActuatorService();
   app.register(realworldRoutes, { service: realworld });
+  // #258 connect-once integrations: the OAuth-first "connect once, the agents do the rest" surface.
+  // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
+  // its token into the #192 vault so `publish_site` needs no Fly server secret.
+  app.register(connectionsRoutes);
   // #189 acquisition execution: the email suppression list (read + manual add) + the signature-verified
   // ESP bounce/complaint webhook that keeps deliverability enforced in code. Default-OFF (the writes 409
   // until the workspace opts into acquisition email; the webhook secret lives in the #192 vault).
