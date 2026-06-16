@@ -199,6 +199,8 @@ interface CloudflareRecord {
   name: string;
   content?: string;
   data?: Record<string, unknown>;
+  /** For MX records Cloudflare returns the preference in its own field, not inside `content`. */
+  priority?: number;
 }
 
 interface CloudflareEnvelope {
@@ -243,7 +245,8 @@ function parseMx(value: string): { priority: number; host: string } {
   return m && m[1] && m[2] ? { priority: Number(m[1]), host: m[2] } : { priority: 10, host: value };
 }
 
-/** Does a Cloudflare record match what we planned? Normalizes TXT quoting, CNAME trailing dots, CAA data. */
+/** Does a Cloudflare record match what we planned? Normalizes TXT quoting, CNAME trailing dots, CAA data,
+ * and MX (Cloudflare splits the preference into its own `priority` field, with only the host in `content`). */
 function recordMatches(spec: DnsRecordSpec, found: CloudflareRecord): boolean {
   if (spec.recordType === "CAA") {
     const want = parseCaa(spec.value);
@@ -252,6 +255,10 @@ function recordMatches(spec: DnsRecordSpec, found: CloudflareRecord): boolean {
       (data.tag ?? "") === want.tag &&
       String(data.value ?? "").replace(/"/g, "") === want.value
     );
+  }
+  if (spec.recordType === "MX") {
+    const want = parseMx(spec.value);
+    return normalize(found.content ?? "") === normalize(want.host) && found.priority === want.priority;
   }
   const want = normalize(spec.value);
   return normalize(found.content ?? "") === want;

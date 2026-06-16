@@ -41,6 +41,29 @@ function fakeProvider(): DnsProvider & {
   };
 }
 
+/** A provider whose configure FAILS every record (bad token / unresolvable zone). Tracks verify calls. */
+function failingProvider(): DnsProvider & { configureCalls: DnsConfigureInput[]; verifyCalls: DnsVerifyInput[] } {
+  const configureCalls: DnsConfigureInput[] = [];
+  const verifyCalls: DnsVerifyInput[] = [];
+  return {
+    kind: "fake-fail",
+    configureCalls,
+    verifyCalls,
+    async configure(input) {
+      configureCalls.push(input);
+      return {
+        domain: input.domain,
+        provider: "fake-fail",
+        receipts: input.records.map((r) => ({ ...r, status: "failed" as const, detail: { error: "bad token" } })),
+      };
+    },
+    async verify(input) {
+      verifyCalls.push(input);
+      return { domain: input.domain, provider: "fake-fail", receipts: input.records.map((r) => ({ ...r, status: "verified" as const })) };
+    },
+  };
+}
+
 function fakeSink(): DnsReceiptSink & { batches: Array<{ provider: string; receipts: DnsReceiptResult[] }> } {
   const batches: Array<{ provider: string; receipts: DnsReceiptResult[] }> = [];
   return {
@@ -51,8 +74,7 @@ function fakeSink(): DnsReceiptSink & { batches: Array<{ provider: string; recei
   };
 }
 
-function makeManager() {
-  const provider = fakeProvider();
+function makeManager(provider: ReturnType<typeof fakeProvider> | ReturnType<typeof failingProvider> = fakeProvider()) {
   const sink = fakeSink();
   const resolved: string[] = [];
   const manager = new DnsManager({
@@ -146,5 +168,35 @@ describe("DnsManager.setupDomain (one-time connect — all lanes)", () => {
     const { manager, provider } = makeManager();
     await manager.setupDomain({ workspaceId: "w1", domain: "acme.com", googleVerificationToken: "gtok" });
     expect((provider.configureCalls[0]?.records ?? []).map((r) => r.purpose)).toEqual(["verification"]);
+  });
+});
+
+describe("DnsManager — early-return guards (no redundant/conflicting writes)", () => {
+  it("does NOTHING when no lane inputs are given (no provider resolution, no receipts)", async () => {
+    const { manager, provider, sink, resolved } = makeManager();
+    const out = await manager.setupDomain({ workspaceId: "w1", domain: "acme.com" });
+
+    expect(resolved).toEqual([]); // never resolved a provider
+    expect(provider.configureCalls).toHaveLength(0); // never touched the registrar
+    expect(sink.batches).toHaveLength(0); // no empty receipt batch written
+    expect(out).toMatchObject({ provider: "none", records: [] });
+    expect(out.summary).toMatchObject({ total: 0, allVerified: true });
+  });
+
+  it("skips verify (and its duplicate failed batch) when configure failed every record", async () => {
+    const { manager, provider, sink } = makeManager(failingProvider());
+    const out = await manager.verifyDomain({ workspaceId: "w1", domain: "acme.com", token: "gtok" });
+
+    expect(provider.configureCalls).toHaveLength(1);
+    expect(provider.verifyCalls).toHaveLength(0); // verify NOT re-run on a total configure failure
+    expect(sink.batches).toHaveLength(1); // only the one failed batch, not two
+    expect(out.records.every((r) => r.status === "failed")).toBe(true);
+    expect(out.summary).toMatchObject({ failed: 1, allVerified: false });
+  });
+
+  it("still verifies when at least one record configured (partial success proceeds)", async () => {
+    const { manager, provider } = makeManager(); // fakeProvider → all configured
+    await manager.ensureEmailAuth({ workspaceId: "w1", domain: "acme.com", spfIncludes: ["sendgrid.net"] });
+    expect(provider.verifyCalls).toHaveLength(1);
   });
 });

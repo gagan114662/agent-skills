@@ -37,7 +37,10 @@ function jsonRes(body: unknown, status = 200): Response {
  */
 function mockCloudflare(opts: {
   zones: Record<string, string>;
-  existing?: Record<string, { id: string; content?: string; data?: Record<string, unknown> }>;
+  existing?: Record<
+    string,
+    { id: string; content?: string; data?: Record<string, unknown>; priority?: number }
+  >;
 }): { calls: Call[]; fetchMock: ReturnType<typeof vi.fn> } {
   const calls: Call[] = [];
   const existing = opts.existing ?? {};
@@ -64,7 +67,9 @@ function mockCloudflare(opts: {
       const hit = existing[`${name}|${type}`];
       return jsonRes({
         success: true,
-        result: hit ? [{ id: hit.id, type, name, content: hit.content, data: hit.data }] : [],
+        result: hit
+          ? [{ id: hit.id, type, name, content: hit.content, data: hit.data, priority: hit.priority }]
+          : [],
       });
     }
     // Create: POST /zones/:zone/dns_records
@@ -130,6 +135,18 @@ describe("CloudflareDnsProvider.configure (#264) — REST sequence", () => {
     expect(post?.body).not.toHaveProperty("content");
   });
 
+  it("sends MX records with the preference in Cloudflare's `priority` field, host in `content`", async () => {
+    const { calls } = mockCloudflare({ zones: { "example.com": "zone123" } });
+    const provider = new CloudflareDnsProvider({ token: "cf_tok", apiBase: API });
+    const mx = { recordType: "MX" as const, name: "@", value: "10 mail.example.com", purpose: "dns" as const };
+    const out = await provider.configure({ domain: "example.com", records: [mx] });
+
+    expect(out.receipts[0]?.status).toBe("configured");
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.body).toMatchObject({ type: "MX", name: "example.com", content: "mail.example.com", priority: 10 });
+    expect(post?.body?.content).not.toBe("10 mail.example.com"); // preference is NOT smuggled into content
+  });
+
   it("walks sub-domain labels up to the registrable apex to find the zone", async () => {
     const { calls } = mockCloudflare({ zones: { "example.com": "zoneAPEX" } });
     const provider = new CloudflareDnsProvider({ token: "cf_tok", apiBase: API });
@@ -173,6 +190,29 @@ describe("CloudflareDnsProvider.verify (#264)", () => {
     });
     expect(out.receipts[0]?.status).toBe("verified");
     expect(out.receipts[0]?.detail).toMatchObject({ recordId: "r1" });
+  });
+
+  it("verifies an MX record by comparing host content AND priority", async () => {
+    mockCloudflare({
+      zones: { "example.com": "zone123" },
+      existing: { "example.com|MX": { id: "mx1", content: "mail.example.com", priority: 10 } },
+    });
+    const provider = new CloudflareDnsProvider({ token: "cf_tok", apiBase: API });
+    const mx = { recordType: "MX" as const, name: "@", value: "10 mail.example.com", purpose: "dns" as const };
+    const out = await provider.verify({ domain: "example.com", records: [mx] });
+    expect(out.receipts[0]?.status).toBe("verified");
+  });
+
+  it("fails MX verification when the host matches but the priority differs", async () => {
+    mockCloudflare({
+      zones: { "example.com": "zone123" },
+      existing: { "example.com|MX": { id: "mx1", content: "mail.example.com", priority: 20 } },
+    });
+    const provider = new CloudflareDnsProvider({ token: "cf_tok", apiBase: API });
+    const mx = { recordType: "MX" as const, name: "@", value: "10 mail.example.com", purpose: "dns" as const };
+    const out = await provider.verify({ domain: "example.com", records: [mx] });
+    expect(out.receipts[0]?.status).toBe("failed");
+    expect(out.receipts[0]?.detail).toMatchObject({ reason: "value mismatch" });
   });
 
   it("fails verification when the record is missing or the value differs", async () => {

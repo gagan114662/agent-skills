@@ -268,18 +268,31 @@ function parseDomain(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
-/** Parse a `{selector, publicKey}` DKIM object; returns undefined unless both strings are present. */
-function parseDkim(value: unknown): { selector: string; publicKey: string } | undefined {
+/**
+ * Parse a `{selector, publicKey}` DKIM object. Both must be present, string, and non-blank AFTER trimming
+ * — otherwise undefined. This stops a blank/whitespace input from producing a malformed record like
+ * `._domainkey` or `v=DKIM1; k=rsa; p=` that would fail or pollute the zone.
+ */
+export function parseDkim(value: unknown): { selector: string; publicKey: string } | undefined {
   if (!value || typeof value !== "object") return undefined;
   const d = value as { selector?: unknown; publicKey?: unknown };
-  return typeof d.selector === "string" && typeof d.publicKey === "string"
-    ? { selector: d.selector, publicKey: d.publicKey }
-    : undefined;
+  if (typeof d.selector !== "string" || typeof d.publicKey !== "string") return undefined;
+  const selector = d.selector.trim();
+  const publicKey = d.publicKey.trim();
+  return selector !== "" && publicKey !== "" ? { selector, publicKey } : undefined;
 }
 
-/** Parse a string[] body field, dropping non-strings. Returns undefined when not an array. */
-function parseStringArray(value: unknown): string[] | undefined {
-  return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : undefined;
+/**
+ * Parse a string[] body field: keep strings only, trim each, and drop blanks — so an empty SPF include
+ * can't yield an invalid record like `v=spf1 include: ~all`. Returns undefined when not an array.
+ */
+export function parseStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value
+        .filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim())
+        .filter((s) => s !== "")
+    : undefined;
 }
 
 /** Parse a DMARC policy enum body field. Returns undefined for anything else (builder defaults to none). */

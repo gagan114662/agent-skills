@@ -162,6 +162,17 @@ export class DnsManager {
     records: DnsRecordSpec[],
     onLog?: (line: string) => void,
   ): Promise<DnsLaneOutcome> {
+    // No records to plan (e.g. setupDomain called with no lane inputs): there is nothing to write or
+    // verify, so don't resolve a provider, hit the registrar, or append an empty receipt batch.
+    if (records.length === 0) {
+      return {
+        domain,
+        provider: "none",
+        records: [],
+        // Nothing requested ⇒ nothing outstanding: vacuously verified (no record is missing or wrong).
+        summary: { total: 0, configured: 0, verified: 0, failed: 0, allVerified: true },
+      };
+    }
     const provider = await this.deps.resolveProvider(workspaceId);
     const configured = await provider.configure({ domain, records, onLog });
     await this.deps.receipts.record({
@@ -170,6 +181,16 @@ export class DnsManager {
       provider: configured.provider,
       receipts: configured.receipts,
     });
+    // If configure failed for every record (bad token / unresolvable zone), verify would re-run the exact
+    // same failing requests and write a duplicate failed batch — short-circuit on the recorded configure.
+    if (configured.receipts.length > 0 && configured.receipts.every((r) => r.status === "failed")) {
+      return {
+        domain: configured.domain,
+        provider: configured.provider,
+        records: configured.receipts,
+        summary: summarizeReceipts(configured.receipts),
+      };
+    }
     const verified = await provider.verify({ domain, records, onLog });
     await this.deps.receipts.record({
       workspaceId,
