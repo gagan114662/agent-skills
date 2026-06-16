@@ -121,6 +121,12 @@ describe("GitHubSitePrProvider (#250) — REST sequence", () => {
     expect(branchCreate?.body).toMatchObject({ ref: "refs/heads/ipop-content/new-post", sha: "basesha" });
   });
 
+  it("throws if constructed without a repo (defensive guard — repo is interpolated into API URLs)", () => {
+    expect(() => new GitHubSitePrProvider({ repo: "" })).toThrow(/repo/i);
+    // @ts-expect-error — intentionally omit repo to prove the runtime guard
+    expect(() => new GitHubSitePrProvider({})).toThrow(/repo/i);
+  });
+
   it("returns an error outcome (never throws) when the token is missing", async () => {
     delete process.env.REALWORLD_GITHUB_TOKEN;
     delete process.env.GITHUB_TOKEN;

@@ -84,6 +84,29 @@ describe("Connections (#258)", () => {
     expect(onInternalConnect).toHaveBeenCalledWith("site_publish_github", { repo: "ipop/site", token: "ghp_x", baseBranch: "" });
   });
 
+  it("hides the internal paste form when already connected (shows badge + disconnect instead)", () => {
+    const onDisconnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: true,
+      connections: [
+        view({
+          id: "site_publish_github",
+          label: "Site publishing (internal)",
+          audience: "internal",
+          auth: "paste_internal",
+          status: "available",
+          connected: true,
+        }),
+      ],
+    };
+    render(<Connections data={data} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={onDisconnect} />);
+    // No free-text inputs when connected — only a disconnect affordance.
+    expect(screen.queryByLabelText(/repository/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
+    expect(onDisconnect).toHaveBeenCalledWith("site_publish_github");
+  });
+
   it("offers Disconnect for a connected connector", () => {
     const onDisconnect = vi.fn();
     const data: ConnectionsResponse = {

@@ -113,53 +113,55 @@ function InternalConnect(props: {
       <h4>{c.label}</h4>
       <p className="connections__hint">{CONNECTIONS.internalHint}</p>
       {c.connected ? (
+        // Connected — show the badge + disconnect only (no free-text fields), matching ConnectClaude/Slack.
         <p className="connections__connected">
           <span className="connections__badge">{CONNECTIONS.connectedBadge}</span>
           <button type="button" disabled={busy} onClick={() => onDisconnect(c.id)}>
             {CONNECTIONS.disconnect}
           </button>
         </p>
-      ) : null}
-      <form
-        className="connections__form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!ready) return;
-          onConnect(c.id, { repo: repo.trim(), token: token.trim(), baseBranch: baseBranch.trim() });
-          setToken("");
-        }}
-      >
-        <label htmlFor={repoId}>{CONNECTIONS.repoLabel}</label>
-        <input
-          id={repoId}
-          type="text"
-          autoComplete="off"
-          placeholder={CONNECTIONS.repoPlaceholder}
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
-        />
-        <label htmlFor={branchId}>{CONNECTIONS.branchLabel}</label>
-        <input
-          id={branchId}
-          type="text"
-          autoComplete="off"
-          placeholder={CONNECTIONS.branchPlaceholder}
-          value={baseBranch}
-          onChange={(e) => setBaseBranch(e.target.value)}
-        />
-        <label htmlFor={tokenId}>{CONNECTIONS.tokenLabel}</label>
-        <input
-          id={tokenId}
-          type="password"
-          autoComplete="off"
-          placeholder={CONNECTIONS.tokenPlaceholder}
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-        />
-        <button type="submit" disabled={busy || !ready}>
-          {CONNECTIONS.internalConnect}
-        </button>
-      </form>
+      ) : (
+        <form
+          className="connections__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!ready) return;
+            onConnect(c.id, { repo: repo.trim(), token: token.trim(), baseBranch: baseBranch.trim() });
+            setToken("");
+          }}
+        >
+          <label htmlFor={repoId}>{CONNECTIONS.repoLabel}</label>
+          <input
+            id={repoId}
+            type="text"
+            autoComplete="off"
+            placeholder={CONNECTIONS.repoPlaceholder}
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+          />
+          <label htmlFor={branchId}>{CONNECTIONS.branchLabel}</label>
+          <input
+            id={branchId}
+            type="text"
+            autoComplete="off"
+            placeholder={CONNECTIONS.branchPlaceholder}
+            value={baseBranch}
+            onChange={(e) => setBaseBranch(e.target.value)}
+          />
+          <label htmlFor={tokenId}>{CONNECTIONS.tokenLabel}</label>
+          <input
+            id={tokenId}
+            type="password"
+            autoComplete="off"
+            placeholder={CONNECTIONS.tokenPlaceholder}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+          />
+          <button type="submit" disabled={busy || !ready}>
+            {CONNECTIONS.internalConnect}
+          </button>
+        </form>
+      )}
     </section>
   );
 }

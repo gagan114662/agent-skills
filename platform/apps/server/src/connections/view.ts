@@ -48,6 +48,17 @@ export function decideConnectionView(opts: {
     }));
 }
 
+/**
+ * True iff `slug` is a safe `owner/repo` that is then interpolated directly into a GitHub REST API URL.
+ * Restricted to GitHub's naming conventions (owner: alphanumeric + hyphen; repo: adds dot/underscore) and
+ * explicitly forbids `.`/`..` as the repo name — so a path-traversal segment can never reach the API path.
+ */
+export function isValidRepoSlug(slug: string): boolean {
+  if (!/^[a-zA-Z0-9-]+\/[a-zA-Z0-9._-]+$/.test(slug)) return false;
+  const repo = slug.split("/")[1];
+  return repo !== "." && repo !== "..";
+}
+
 export type InternalConnectDecision =
   | { ok: true; serviceKey: string; serviceKind: ServiceKind; scopes: string[]; secrets: Record<string, string> }
   | { ok: false; reason: string };
@@ -68,7 +79,7 @@ export function decideInternalConnect(opts: {
   const repo = opts.repo?.trim() ?? "";
   const token = opts.token?.trim() ?? "";
   if (!token) return { ok: false, reason: "a GitHub token is required" };
-  if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) return { ok: false, reason: "repo must be owner/repo" };
+  if (!isValidRepoSlug(repo)) return { ok: false, reason: "repo must be owner/repo" };
   const baseBranch = opts.baseBranch?.trim() || "main";
   return {
     ok: true,

@@ -103,10 +103,15 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Disconnect — dependent capabilities go offline gracefully (the vault marks the row revoked).
+  // Internal connections (the GitHub site-publish paste) are admin-only: a non-owner can't revoke one.
   app.delete("/me/connections/:id", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const id = (req.params as { id: string }).id;
+    const descriptor = getConnectionDescriptor(id);
+    if (descriptor?.audience === "internal" && !isOwnerWorkspace(identity.workspaceId)) {
+      return reply.code(403).send({ error: "internal connection — admin only" });
+    }
     await revokeServiceCredentials(identity.workspaceId, id);
     return { revoked: true, id };
   });

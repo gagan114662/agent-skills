@@ -95,7 +95,10 @@ export class GitHubSitePrProvider implements SitePrProvider {
   private readonly injectedToken?: string;
 
   constructor(opts: GitHubSitePrOptions) {
-    this.repo = opts.repo;
+    // The repo is interpolated into every GitHub API URL — never construct without one (the dry-run
+    // provider is the no-repo path). Guards against a downstream TypeError on `this.repo.split(...)`.
+    if (!opts.repo?.trim()) throw new Error("GitHubSitePrProvider requires a repo (owner/repo)");
+    this.repo = opts.repo.trim();
     this.baseBranch = opts.baseBranch?.trim() || "main";
     this.injectedToken = opts.token?.trim() || undefined;
   }

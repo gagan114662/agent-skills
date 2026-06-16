@@ -76,6 +76,18 @@ describe("decideInternalConnect (#258)", () => {
     expect(decideInternalConnect({ descriptor: gh, isOwner: true, repo: "ipop/site", token: "  " })).toMatchObject({ ok: false });
   });
 
+  it("rejects path-traversal / out-of-charset repos (the repo is interpolated into a GitHub API URL)", () => {
+    for (const repo of ["../foo", "owner/..", "owner/.", "owner/../etc", "ow ner/repo", "owner/re po", "a/b/c", "../../etc/passwd"]) {
+      expect(decideInternalConnect({ descriptor: gh, isOwner: true, repo, token: "ghp_x" }), repo).toMatchObject({ ok: false });
+    }
+  });
+
+  it("accepts valid GitHub owner/repo names (dots/underscores/hyphens in the repo part)", () => {
+    for (const repo of ["ipop/site", "my-org/my.repo", "a/b_c-d.e", "Acme/Site_2"]) {
+      expect(decideInternalConnect({ descriptor: gh, isOwner: true, repo, token: "ghp_x" }), repo).toMatchObject({ ok: true });
+    }
+  });
+
   it("refuses an unknown connection", () => {
     expect(decideInternalConnect({ descriptor: undefined, isOwner: true, repo: "ipop/site", token: "x" })).toMatchObject({ ok: false });
   });

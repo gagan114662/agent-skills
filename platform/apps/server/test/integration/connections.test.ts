@@ -63,6 +63,14 @@ describe("connections (#258) — customer view is OAuth-only, GitHub paste is ad
       payload: { repo: "ipop/site", token: "ghp_secret" },
     });
     expect(connect.statusCode).toBe(400);
+
+    // Revoking an internal connection is also admin-only — a non-owner gets 403, not a silent revoke.
+    const del = await app.inject({
+      method: "DELETE",
+      url: "/me/connections/site_publish_github",
+      cookies: { rid: cookie },
+    });
+    expect(del.statusCode).toBe(403);
   });
 
   it("an OAuth connector's start is an honest 'coming soon' (501), never a silent success", async () => {
