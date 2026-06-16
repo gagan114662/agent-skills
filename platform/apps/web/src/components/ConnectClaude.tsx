@@ -10,7 +10,7 @@ import { useState } from "react";
 export interface ConnectClaudeStatus {
   connected: boolean;
   fingerprint: string | null;
-  /** The owner-picked fleet model (#246); null/undefined ⇒ the deployment default. */
+  /** The dev/admin model override, if any; null/undefined ⇒ the managed default. */
   model?: string | null;
 }
 
@@ -23,16 +23,22 @@ export interface ConnectClaudeProps {
   error?: string | null;
   onConnect: (token: string) => void;
   onDisconnect: () => void;
-  /** The models the owner may pick (#246) + the deployment default. Empty ⇒ picker hidden. */
+  /**
+   * Reveal the advanced model override. The fleet runs on a managed, always-valid model chosen by ipop,
+   * so there is NO model picker in the normal user flow. This is an admin/dev-only escape hatch (the
+   * container only sets it for dev builds) — never shown to ordinary owners.
+   */
+  advanced?: boolean;
+  /** The models the override may pick. Only consulted when {@link advanced} is set. */
   models?: string[];
-  /** The canonical default model id (shown as the "(default)" option). */
+  /** The managed default model id (shown as the "(managed default)" option). */
   defaultModel?: string;
-  /** Persist the workspace's fleet model (null ⇒ clear → use the default). */
+  /** Persist the override model (null ⇒ clear → use the managed default). */
   onSelectModel?: (model: string | null) => void;
 }
 
 export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
-  const { status, busy, error, onConnect, onDisconnect, models, defaultModel, onSelectModel } = props;
+  const { status, busy, error, onConnect, onDisconnect, advanced, models, defaultModel, onSelectModel } = props;
   const [token, setToken] = useState("");
 
   return (
@@ -50,30 +56,40 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
           <p className="connect-claude__status" role="status">
             ✅ Connected{status.fingerprint ? ` · ${status.fingerprint}` : ""}
           </p>
-          {models && models.length > 0 && onSelectModel ? (
-            <div className="connect-claude__model">
-              <label htmlFor="claude-model">Model</label>
-              <select
-                id="claude-model"
-                aria-label="Fleet model"
-                disabled={busy}
-                value={status.model ?? ""}
-                onChange={(e) => onSelectModel(e.target.value === "" ? null : e.target.value)}
-              >
-                <option value="">
-                  {defaultModel ? `Default (${defaultModel})` : "Default"}
-                </option>
-                {models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                    {m === defaultModel ? " — recommended" : ""}
+          <p className="connect-claude__hint connect-claude__managed">
+            Your fleet runs on a managed model{defaultModel ? ` (${defaultModel})` : ""}, kept up to date by
+            ipop — there’s nothing to choose.
+          </p>
+          {/* Advanced model override: admin/dev only. The fleet otherwise runs on the managed default, so
+              there is NO model picker in the normal user flow. The container reveals this for dev builds. */}
+          {advanced && models && models.length > 0 && onSelectModel ? (
+            <details className="connect-claude__advanced">
+              <summary>Advanced: override the model (dev)</summary>
+              <div className="connect-claude__model">
+                <label htmlFor="claude-model">Model override</label>
+                <select
+                  id="claude-model"
+                  aria-label="Fleet model override"
+                  disabled={busy}
+                  value={status.model ?? ""}
+                  onChange={(e) => onSelectModel(e.target.value === "" ? null : e.target.value)}
+                >
+                  <option value="">
+                    {defaultModel ? `Managed default (${defaultModel})` : "Managed default"}
                   </option>
-                ))}
-              </select>
-              <p className="connect-claude__hint">
-                Your fleet runs on this model via your subscription. We check it works on your plan before saving.
-              </p>
-            </div>
+                  {models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                      {m === defaultModel ? " — managed default" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="connect-claude__hint">
+                  Overrides the managed model for this workspace. Validated against the models known to
+                  resolve on your plan before saving; leave on the managed default unless you know you need this.
+                </p>
+              </div>
+            </details>
           ) : null}
           <button type="button" disabled={busy} onClick={() => onDisconnect()}>
             Disconnect

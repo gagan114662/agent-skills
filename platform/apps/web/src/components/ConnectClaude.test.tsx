@@ -50,11 +50,29 @@ describe("ConnectClaude (#68)", () => {
     expect(onDisconnect).toHaveBeenCalled();
   });
 
-  it("#246: shows the model picker when connected and calls onSelectModel with the choice", () => {
+  it("the normal connected flow shows a managed-model note and NO model picker", () => {
+    render(
+      <ConnectClaude
+        status={{ connected: true, fingerprint: "fp", model: null }}
+        // Even if a model list is passed, the picker stays hidden unless `advanced` is set.
+        models={["claude-opus-4-8", "claude-sonnet-4-6"]}
+        defaultModel="claude-opus-4-8"
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+        onSelectModel={() => {}}
+      />,
+    );
+    expect(screen.getByText(/managed model/i)).toBeInTheDocument();
+    // The fleet runs on a managed default — ordinary owners never see or set a model.
+    expect(screen.queryByLabelText(/fleet model/i)).not.toBeInTheDocument();
+  });
+
+  it("the advanced (dev) override exposes a model select and calls onSelectModel with the choice", () => {
     const onSelectModel = vi.fn();
     render(
       <ConnectClaude
         status={{ connected: true, fingerprint: "fp", model: null }}
+        advanced
         models={["claude-opus-4-8", "claude-sonnet-4-6"]}
         defaultModel="claude-opus-4-8"
         onConnect={() => {}}
@@ -62,19 +80,19 @@ describe("ConnectClaude (#68)", () => {
         onSelectModel={onSelectModel}
       />,
     );
-    const select = screen.getByLabelText(/fleet model/i) as HTMLSelectElement;
+    const select = screen.getByLabelText(/fleet model override/i) as HTMLSelectElement;
     expect(select).toBeInTheDocument();
     fireEvent.change(select, { target: { value: "claude-sonnet-4-6" } });
     expect(onSelectModel).toHaveBeenCalledWith("claude-sonnet-4-6");
-    // Selecting the blank "Default" option clears the pick (null → deployment default).
+    // Selecting the blank "Managed default" option clears the override (null → managed default).
     fireEvent.change(select, { target: { value: "" } });
     expect(onSelectModel).toHaveBeenCalledWith(null);
   });
 
-  it("#246: hides the model picker until a model list is provided", () => {
+  it("the advanced override stays hidden until a model list is provided", () => {
     render(
-      <ConnectClaude status={{ connected: true, fingerprint: "fp" }} onConnect={() => {}} onDisconnect={() => {}} />,
+      <ConnectClaude status={{ connected: true, fingerprint: "fp" }} advanced onConnect={() => {}} onDisconnect={() => {}} />,
     );
-    expect(screen.queryByLabelText(/fleet model/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/fleet model override/i)).not.toBeInTheDocument();
   });
 });

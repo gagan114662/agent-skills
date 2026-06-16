@@ -3,15 +3,19 @@
  * connect/disconnect to the API, rendering the pure {@link ConnectClaude} component. Kept separate
  * from the store (a view-local settings concern) so the component stays unit-tested in isolation.
  *
- * #246: also fetches the selectable fleet models + wires the owner model picker. The picker is
- * validated server-side against the models known to resolve on the subscription, so an unservable id
- * (the `claude-fable-5` class) can never be saved — the fix surfaces an error instead of crashing
- * every session mid-run.
+ * The fleet runs on a managed, always-valid model chosen by ipop, so there is NO model picker in the
+ * normal user flow. An advanced override remains for dev/admin builds only (revealed via `advanced`,
+ * which the container sets from `import.meta.env.DEV`); the selectable models are only fetched then. The
+ * override is still validated server-side against the models known to resolve, so an unservable id can
+ * never be saved — but even if a bad value slipped through, the runtime self-heals to the managed default.
  */
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import type { CredentialStatus } from "../api/types.js";
 import { ConnectClaude } from "./ConnectClaude.js";
+
+/** Advanced model override is dev/admin only — never in the normal production user flow. */
+const ADVANCED_MODEL_OVERRIDE = import.meta.env.DEV;
 
 export function ConnectClaudePanel(): React.JSX.Element {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -26,16 +30,19 @@ export function ConnectClaudePanel(): React.JSX.Element {
       .getAgentCredentials()
       .then((s) => live && setStatus(s))
       .catch(() => live && setStatus({ connected: false, fingerprint: null }));
-    void api
-      .getAgentModels()
-      .then((m) => {
-        if (!live) return;
-        setModels(m.models);
-        setDefaultModel(m.default);
-      })
-      .catch(() => {
-        /* picker stays hidden if the model list can't load — connect/disconnect still work */
-      });
+    // The managed default is fetched only for the advanced (dev) override — ordinary users never pick a model.
+    if (ADVANCED_MODEL_OVERRIDE) {
+      void api
+        .getAgentModels()
+        .then((m) => {
+          if (!live) return;
+          setModels(m.models);
+          setDefaultModel(m.default);
+        })
+        .catch(() => {
+          /* override stays hidden if the model list can't load — connect/disconnect still work */
+        });
+    }
     return () => {
       live = false;
     };
@@ -59,6 +66,7 @@ export function ConnectClaudePanel(): React.JSX.Element {
         status={status}
         busy={busy}
         error={error}
+        advanced={ADVANCED_MODEL_OVERRIDE}
         models={models}
         defaultModel={defaultModel}
         onConnect={(token) => void run(() => api.connectAgentCredentials(token))}

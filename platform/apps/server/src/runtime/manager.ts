@@ -25,7 +25,7 @@ import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
 import { renderSessionOutcome, classifyFailure, failureCopy, isSuccess, type FailureReasonClass } from "./outcome.js";
-import { assertModelLaunchable, effectiveModel } from "./models.js";
+import { resolveLaunchModel } from "./models.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
 /**
@@ -365,11 +365,12 @@ export class SessionManager {
     const selectionRow = auto?.selectionRow ?? input.selection;
     let harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
 
-    // #246 model preflight: resolve + validate the EFFECTIVE model BEFORE admission/persist, so an
-    // unservable model (the `claude-fable-5` class that 403'd every session) throws an actionable
-    // ModelUnavailableError here instead of spawning a doomed session that crashes mid-run. Injects the
-    // workspace's owner-picked model as ANTHROPIC_MODEL when no per-session model is pinned. No-op unless
-    // the #246 resolver is wired AND this launch resolves to the real `claude-code` harness.
+    // Model preflight: resolve the EFFECTIVE model at the runtime boundary and ALWAYS inject a launchable
+    // model as ANTHROPIC_MODEL BEFORE the session spawns. The fleet runs on a managed, always-valid
+    // default (claude-opus-4-8) chosen by ipop; an empty / null / unknown value (the `claude-fable-5`
+    // class, or an empty "Default" pick) self-heals to that default — the runtime never spawns with an
+    // empty or invalid model and is never disabled by a bad value. No-op unless the resolver is wired AND
+    // this launch resolves to the real `claude-code` harness.
     harnessEnv = await this.applyModelPreflight(input.workspaceId, harness.kind, harnessEnv);
 
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
@@ -497,37 +498,34 @@ export class SessionManager {
   }
 
   /**
-   * Model preflight (#246): resolve the effective model for a launch and validate it is launchable
-   * BEFORE any session spawns. Precedence: a per-session #52 pin (`ANTHROPIC_MODEL` in `harnessEnv`) >
-   * the workspace's owner-picked model > the deployment env default > the canonical default. When the
-   * effective model is not known to resolve, throws {@link ModelUnavailableError} (owner-actionable) so
-   * the launch fails fast instead of crashing mid-run. Only acts for the real `claude-code` harness with
-   * the #246 resolver wired — otherwise returns `harnessEnv` unchanged (today's behavior). When the
-   * workspace has picked a model and the caller pinned none, injects it as `ANTHROPIC_MODEL`.
+   * Model preflight: resolve the effective launch model and ALWAYS inject it as `ANTHROPIC_MODEL` BEFORE
+   * any session spawns. Precedence: a per-session #52 pin (`ANTHROPIC_MODEL` in `harnessEnv`) > the
+   * workspace/dev override > the deployment env default > the managed default. Empty / null / unknown
+   * candidates are skipped and the chain falls back to the managed {@link DEFAULT_AGENT_MODEL}, so the
+   * runtime never spawns with an empty or invalid model and the fleet is never disabled by a bad value
+   * (it self-heals instead of throwing). Because the resolved model is always written into the child's
+   * env, the spawn never depends on `process.env.ANTHROPIC_MODEL` being correctly set. Only acts for the
+   * real `claude-code` harness with the resolver wired — otherwise returns `harnessEnv` unchanged.
    */
   private async applyModelPreflight(
     workspaceId: string,
     harnessKind: HarnessKind,
     harnessEnv: Record<string, string> | undefined,
   ): Promise<Record<string, string> | undefined> {
-    // The model only reaches the model via `--model "$ANTHROPIC_MODEL"` on the claude-code harness.
+    // The model only reaches the child via `--model "$ANTHROPIC_MODEL"` on the claude-code harness.
     if (harnessKind !== "claude-code" || !this.deps.modelForWorkspace) return harnessEnv;
     const sessionPinned = harnessEnv?.ANTHROPIC_MODEL ?? null;
     const workspacePicked = await this.deps.modelForWorkspace(workspaceId);
-    const model = effectiveModel({
+    // Guaranteed-launchable — never throws, never empty. An empty "Default" pick or an unservable id
+    // resolves to the managed default here, at the runtime boundary.
+    const model = resolveLaunchModel({
       sessionPinned,
       workspacePicked,
       envDefault: this.deps.envDefaultModel ?? null,
     });
-    // Throws ModelUnavailableError for an unservable id — propagates out of launch(), like the preflight
-    // and admission gates, before any row/slot is created.
-    assertModelLaunchable(model);
-    // No per-session pin but the workspace picked a model ⇒ make it the session's ANTHROPIC_MODEL so the
-    // child uses it even though process.env carries the deployment default.
-    if (!sessionPinned && workspacePicked) {
-      return { ...harnessEnv, ANTHROPIC_MODEL: model };
-    }
-    return harnessEnv;
+    // Always inject the resolved model so the child spawns with a valid `--model`, independent of whether
+    // process.env carries (or lacks) a deployment default.
+    return { ...harnessEnv, ANTHROPIC_MODEL: model };
   }
 
   /**

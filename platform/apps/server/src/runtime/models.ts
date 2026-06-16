@@ -92,13 +92,47 @@ export function effectiveModel(input: {
 }
 
 /**
- * Launch/config-save preflight: assert a model is launchable, else throw {@link ModelUnavailableError}.
- * Pure + total (no network, no spend) — the deterministic guard that makes `claude-fable-5` (and any
- * other unservable id) fail fast with an actionable owner error instead of a mid-run "error · exit 1".
+ * Whether a model id is launchable: a non-blank, charset-clean id that is known to resolve. Pure +
+ * total (no network, no spend). Shared by {@link assertModelLaunchable} (admin save path) and
+ * {@link resolveLaunchModel} (runtime boundary).
+ */
+function isLaunchable(model: string | null | undefined, env: NodeJS.ProcessEnv): boolean {
+  const m = (model ?? "").trim();
+  return m.length > 0 && MODEL_ID_RE.test(m) && isKnownModel(m, env);
+}
+
+/**
+ * Config-save preflight (the admin/dev override only): assert a model is launchable, else throw
+ * {@link ModelUnavailableError}. Pure + total. This is the ONE place an unservable id surfaces an
+ * actionable error to a human who explicitly typed it. The RUNTIME boundary never calls this — see
+ * {@link resolveLaunchModel}, which self-heals so a bad value can never disable the fleet.
  */
 export function assertModelLaunchable(model: string, env: NodeJS.ProcessEnv = process.env): void {
-  const m = (model ?? "").trim();
-  if (!m || !MODEL_ID_RE.test(m) || !isKnownModel(m, env)) {
+  if (!isLaunchable(model, env)) {
     throw new ModelUnavailableError(model);
   }
+}
+
+/**
+ * Resolve the launch model AT THE RUNTIME BOUNDARY — guaranteed launchable, never throws.
+ *
+ * The fleet runs on a managed, always-valid default chosen by ipop ({@link DEFAULT_AGENT_MODEL}). The
+ * runtime must NEVER spawn with an empty or invalid model: this walks the precedence chain (per-session
+ * pin > workspace/dev override > deployment env default) and returns the FIRST candidate that is
+ * launchable, SKIPPING any that is empty, null, blank, or unknown (the `claude-fable-5` class, or an
+ * empty "Default" pick). When nothing resolves it falls back to the managed default — which is itself
+ * always launchable — so a misconfigured or empty value self-heals instead of disabling the fleet.
+ *
+ * This is the fix for the bug where an empty value left `ANTHROPIC_MODEL` absent and the harness spawned
+ * with no `--model`. Unlike {@link assertModelLaunchable} (which throws for the admin save path), the
+ * runtime never throws on a model.
+ */
+export function resolveLaunchModel(
+  input: { sessionPinned?: string | null; workspacePicked?: string | null; envDefault?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  for (const candidate of [input.sessionPinned, input.workspacePicked, input.envDefault]) {
+    if (isLaunchable(candidate, env)) return (candidate as string).trim();
+  }
+  return DEFAULT_AGENT_MODEL;
 }
