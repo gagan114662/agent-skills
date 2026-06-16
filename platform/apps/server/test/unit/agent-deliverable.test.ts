@@ -18,8 +18,19 @@ describe("agent.deliverable review card (#248)", () => {
 
   it("validates the payload (sessionId required; draft/task optional)", () => {
     expect(validateAgentDeliverable({ sessionId: "s1", draft: "x" }).ok).toBe(true);
+    expect(validateAgentDeliverable({ sessionId: "s1" }).ok).toBe(true); // optional fields may be absent
     expect(validateAgentDeliverable({ draft: "x" }).ok).toBe(false);
     expect(validateAgentDeliverable(null).ok).toBe(false);
+  });
+
+  it("rejects malformed optional fields so bad data never reaches the DB/UI (gemini #249)", () => {
+    expect(validateAgentDeliverable({ sessionId: "s1", draft: 42 }).ok).toBe(false);
+    expect(validateAgentDeliverable({ sessionId: "s1", task: { a: 1 } }).ok).toBe(false);
+    expect(validateAgentDeliverable({ sessionId: "s1", channelId: 7 }).ok).toBe(false);
+    // a well-typed full payload still passes
+    expect(
+      validateAgentDeliverable({ sessionId: "s1", draft: "d", task: "t", channelId: "c1" }).ok,
+    ).toBe(true);
   });
 
   it("acknowledges on approval — a clean ok:true with NO side effect (publishing stays autonomous)", async () => {
