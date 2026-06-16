@@ -445,6 +445,9 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     // let drive() reach the running state
     await new Promise((r) => setTimeout(r, 10));
     expect(await manager.cancel(session.id)).toBe(true);
+    // The terminal row is written BEFORE cancel() resolves — no join() needed — so a UI that polls
+    // right after Stop never still sees `running` (gemini #249 race-fix: cancel awaits the run promise).
+    expect(store.finalized?.status).toBe("canceled");
     await manager.join(session.id);
     expect(store.finalized?.status).toBe("canceled");
     // cancelling an unknown / already-finished session is a no-op

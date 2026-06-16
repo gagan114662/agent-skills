@@ -75,6 +75,17 @@ export function validateAgentDeliverable(payload: unknown): ValidationResult {
   const p = asRecord(payload);
   if (!p) return { ok: false, error: "payload must be an object" };
   if (!nonEmptyString(p.sessionId)) return { ok: false, error: "sessionId required" };
+  // `draft`/`task`/`channelId` are optional display context — validate their TYPE when present so
+  // malformed data never lands in the DB or breaks the review drawer (gemini #249 review note).
+  if (p.draft !== undefined && typeof p.draft !== "string") {
+    return { ok: false, error: "draft must be a string" };
+  }
+  if (p.task !== undefined && typeof p.task !== "string") {
+    return { ok: false, error: "task must be a string" };
+  }
+  if (p.channelId !== undefined && typeof p.channelId !== "string") {
+    return { ok: false, error: "channelId must be a string" };
+  }
   return { ok: true };
 }
 

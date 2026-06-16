@@ -531,7 +531,9 @@ export class SessionManager {
   /**
    * Cancel a session so the owner can ALWAYS kill a runaway (#248). Two paths:
    *  - In-flight on THIS process → cancel the runtime (SIGKILLs the child); `runSession` then finalizes
-   *    the row to `canceled` on its teardown path.
+   *    the row to `canceled` on its teardown path. We AWAIT that teardown (the tracked `drive` promise)
+   *    so the DB row is already `canceled` when this resolves — otherwise a UI that polls immediately
+   *    after Stop could still read `running` and the card would flicker back (gemini #249 review note).
    *  - NOT in our in-memory map (an orphan left `running` by a deploy/restart, or a session driven by
    *    another machine — the 30-min stuck Scout) → force-finalize the DB row to `canceled` directly, so
    *    it leaves the live board immediately even though no process is holding it. Race-safe: the guarded
@@ -542,6 +544,10 @@ export class SessionManager {
     const running = this.running.get(id);
     if (running) {
       await running.cancel("canceled");
+      // Wait for the driven lifecycle to finish writing the terminal row before returning, so a
+      // poll-right-after-Stop never still sees `running`. `drive` never rejects (its terminal failures
+      // are persisted), so awaiting it is safe; absent (already torn down) ⇒ resolves immediately.
+      await this.runs.get(id);
       return true;
     }
     // Orphan / cross-process: there is no child to signal — finalize the durable row so a runaway can
