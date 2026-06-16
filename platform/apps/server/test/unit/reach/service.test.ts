@@ -18,7 +18,10 @@ interface SendRow extends SendDatum {
 
 /** Build the full set of in-memory store fakes the service writes through. */
 function fakes() {
-  const contacts = new Map<string, { status: string; currentStep: number }>();
+  const contacts = new Map<
+    string,
+    { status: string; currentStep: number; lastStepAtMs: number; recipientLabel: string; channel: "email" | "linkedin"; score: number; signalKind: string | null }
+  >();
   const sends: SendRow[] = [];
   const receipts: (ReceiptDatum & { sendId: string; externalRef: string })[] = [];
   const runs: { status: string; tuning: ReachTuningConfig | null }[] = [];
@@ -34,11 +37,32 @@ function fakes() {
         return new Set(contacts.keys());
       },
       async upsertEnrollment(input) {
-        contacts.set(input.contactKey, { status: input.enrollment.status, currentStep: input.enrollment.currentStep });
+        contacts.set(input.contactKey, {
+          status: input.enrollment.status,
+          currentStep: input.enrollment.currentStep,
+          lastStepAtMs: input.enrollment.lastStepAtMs,
+          recipientLabel: input.recipientLabel,
+          channel: input.channel,
+          score: input.score,
+          signalKind: input.signalKind,
+        });
       },
       async markStatus(_w, contactKey, status) {
         const c = contacts.get(contactKey);
         if (c) c.status = status;
+      },
+      async activeEnrollments() {
+        return [...contacts.entries()]
+          .filter(([, c]) => c.status === "active")
+          .map(([contactKey, c]) => ({
+            contactKey,
+            recipientLabel: c.recipientLabel,
+            channel: c.channel,
+            currentStep: c.currentStep,
+            lastStepAtMs: c.lastStepAtMs,
+            score: c.score,
+            signalKind: c.signalKind,
+          }));
       },
     },
     sends: {
@@ -151,6 +175,28 @@ describe("ReachService.runBatch (#280)", () => {
     expect(f.contacts.size).toBe(10);
     const secondKeys = [...f.contacts.keys()].filter((k) => !firstKeys.has(k));
     expect(secondKeys).toHaveLength(5);
+  });
+
+  it("fires DUE cadence follow-ups on a later run (the multi-step cadence actually advances)", async () => {
+    const f = fakes();
+    let clock = NOW.getTime();
+    const svc = new ReachService({
+      ...f.deps,
+      now: () => new Date(clock),
+      caps: () => caps({ batchSize: 3, perDomainDailyCap: 100 }),
+      resolveSource: mockSource,
+    });
+    await svc.runBatch("ws1"); // 3 enrolled at step 1 (opener sent)
+    const enrolled = [...f.contacts.keys()];
+    expect(enrolled).toHaveLength(3);
+    for (const k of enrolled) expect(f.contacts.get(k)?.currentStep).toBe(1);
+
+    clock = NOW.getTime() + 4 * 24 * 60 * 60 * 1000; // +4 days → step 1 (wait 3d) is now due
+    await svc.runBatch("ws1");
+    // the original three advanced to step 2 — a follow-up touch fired for each
+    for (const k of enrolled) expect(f.contacts.get(k)?.currentStep).toBe(2);
+    // follow-ups carry the step-1 angle ("outcome") and the follow-up subject
+    expect(f.sends.some((s) => s.contactKey === enrolled[0] && s.variant === "outcome")).toBe(true);
   });
 
   it("enforces the per-domain daily cap (excess prospects are rate_limited, not sent)", async () => {

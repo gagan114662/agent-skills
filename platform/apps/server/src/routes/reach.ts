@@ -39,19 +39,29 @@ export async function reachRoutes(app: FastifyInstance, opts: ReachRoutesOptions
   app.post("/me/reach/receipts", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const body = req.body as {
-      contactKey?: string;
-      kind?: string;
-      externalRef?: string;
-      occurredAt?: string;
+    const body = (req.body ?? {}) as {
+      contactKey?: unknown;
+      kind?: unknown;
+      externalRef?: unknown;
+      occurredAt?: unknown;
     };
     if (!body.contactKey || !body.kind || !body.externalRef) {
       return reply.code(400).send({ error: "contactKey, kind, and externalRef are required" });
     }
+    if (
+      typeof body.contactKey !== "string" ||
+      typeof body.kind !== "string" ||
+      typeof body.externalRef !== "string"
+    ) {
+      return reply.code(400).send({ error: "contactKey, kind, and externalRef must be strings" });
+    }
     if (!isReachReceiptKind(body.kind)) {
       return reply.code(400).send({ error: "kind must be one of open|reply|booked" });
     }
-    const occurredAt = body.occurredAt ? new Date(body.occurredAt) : undefined;
+    const occurredAt =
+      typeof body.occurredAt === "string" || typeof body.occurredAt === "number"
+        ? new Date(body.occurredAt)
+        : undefined;
     return service.recordReceipt(id.workspaceId, {
       contactKey: body.contactKey,
       kind: body.kind,

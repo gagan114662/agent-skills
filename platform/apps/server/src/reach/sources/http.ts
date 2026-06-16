@@ -77,7 +77,17 @@ export function createHttpProspectSource(
       if (!res.ok) {
         throw new ProspectSourceUnavailableError(config.kind, `${config.kind} returned HTTP ${res.status}`);
       }
-      const mapped = config.mapResponse(await res.json());
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch (err) {
+        // A non-JSON body (an HTML error page, a truncated gateway response) must not crash the loop.
+        throw new ProspectSourceUnavailableError(
+          config.kind,
+          `${config.kind} returned a non-JSON response: ${err instanceof Error ? err.message : "parse error"}`,
+        );
+      }
+      const mapped = config.mapResponse(json);
       // Honour excludeKeys (already contacted) and the limit; only bill for what we keep.
       const fresh: RawProspect[] = [];
       for (const p of mapped) {

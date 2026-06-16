@@ -1,9 +1,15 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { ReachCaps } from "./caps.js";
-import { DEFAULT_CADENCE, advanceEnrollment, newEnrollment, type CadenceEnrollment } from "./cadence.js";
+import {
+  DEFAULT_CADENCE,
+  advanceEnrollment,
+  newEnrollment,
+  nextDueStep,
+  type CadenceEnrollment,
+} from "./cadence.js";
 import { deriveIcp, type IcpSeed } from "./icp.js";
 import { computeMetrics, type ReachMetrics, type ReceiptDatum, type SendDatum } from "./measure.js";
-import { personalizeOpener } from "./personalize.js";
+import { composeFollowUp, personalizeOpener } from "./personalize.js";
 import { ProspectSourceUnavailableError, type ProspectSource } from "./prospect-source.js";
 import { rankBatch } from "./score.js";
 import { REACH_TUNING_DEFAULTS, tuneNextBatch, type ReachTuningConfig, type TuningReport } from "./self-tune.js";
@@ -11,6 +17,7 @@ import type { ReachChannelAdapter } from "./channel.js";
 import type {
   ProspectSourceKind,
   ReachChannel,
+  ReachMessage,
   ReachReceiptKind,
   ReachRunStatus,
   ReachSendStatus,
@@ -48,6 +55,19 @@ export interface EnrollmentUpsert {
   signalKind: string | null;
 }
 
+/** An active cadence enrolment, for processing a due follow-up touch. */
+export interface ActiveEnrollment {
+  contactKey: string;
+  recipientLabel: string;
+  channel: ReachChannel;
+  currentStep: number;
+  lastStepAtMs: number;
+  /** The enrolment's fit score, preserved across follow-up advances. */
+  score: number;
+  /** The signal the opener was built around, preserved across follow-up advances. */
+  signalKind: string | null;
+}
+
 export interface ReachContactStore {
   /** Every contact_key we've already enrolled (the dedupe set — never re-touch last week's list). */
   contactedKeys(workspaceId: string): Promise<Set<string>>;
@@ -55,6 +75,8 @@ export interface ReachContactStore {
   upsertEnrollment(input: EnrollmentUpsert): Promise<void>;
   /** Mark a contact replied / opted_out (stops the cadence). */
   markStatus(workspaceId: string, contactKey: string, status: "replied" | "opted_out"): Promise<void>;
+  /** Active enrolments (status `active`) — the service filters these to the ones with a DUE follow-up step. */
+  activeEnrollments(workspaceId: string): Promise<ActiveEnrollment[]>;
 }
 
 export interface SendInsert {
@@ -302,47 +324,34 @@ export class ReachService {
     let rateLimitedCount = 0;
     let skippedCount = 0;
 
-    for (const scored of ranked) {
-      const channel = this.channelFor(scored.prospect.email, scored.prospect.linkedinUrl);
-      if (!channel) {
-        skippedCount += 1;
-        continue;
-      }
-
-      // Step 5a — per-domain rate cap on the live (email) channel, applied BEFORE the adapter is called.
+    /** Send a composed message, record the attempt, and (on a real touch) advance/enrol the cadence. */
+    const dispatch = async (
+      message: ReturnType<typeof personalizeOpener>,
+      channel: ReachChannel,
+      enrollment: CadenceEnrollment,
+      score: number,
+    ): Promise<void> => {
       if (channel === "email" && emailHeadroom <= 0) {
         await this.deps.sends.insert({
           workspaceId,
-          contactKey: scored.contactKey,
+          contactKey: message.contactKey,
           channel,
           status: "rate_limited",
-          variant: tuning.variant,
-          signalKind: scored.freshSignal?.kind ?? null,
+          variant: message.variant,
+          signalKind: message.signalKind,
           subject: "",
           externalId: null,
           sentHourUtc: tuning.sendHourUtc,
           detail: `per-domain daily cap (${caps.perDomainDailyCap}) reached`,
         });
         rateLimitedCount += 1;
-        outcomes.push({ contactKey: scored.contactKey, channel, status: "rate_limited" });
-        continue;
+        outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
+        return;
       }
-
-      // Step 4 — personalise the 1:1 opener around the freshest signal, in the tuned angle.
-      const message = personalizeOpener({
-        scored,
-        icp,
-        channel,
-        variant: tuning.variant,
-        brandName: caps.brandName ?? "the team",
-      });
-
-      // Step 5b — send under suppression + compliance (the adapter enforces both).
       const outcome = await this.deps.channels[channel].send(message, { suppressed, footerInfo });
-
       await this.deps.sends.insert({
         workspaceId,
-        contactKey: scored.contactKey,
+        contactKey: message.contactKey,
         channel,
         status: outcome.status,
         variant: message.variant,
@@ -352,8 +361,7 @@ export class ReachService {
         sentHourUtc: tuning.sendHourUtc,
         detail: outcome.detail,
       });
-
-      outcomes.push({ contactKey: scored.contactKey, channel, status: outcome.status });
+      outcomes.push({ contactKey: message.contactKey, channel, status: outcome.status });
       if (outcome.status === "sent") {
         messagesSent += 1;
         if (channel === "email") emailHeadroom -= 1;
@@ -361,19 +369,64 @@ export class ReachService {
       else if (outcome.status === "suppressed") suppressedCount += 1;
       else if (outcome.status === "skipped" || outcome.status === "failed") skippedCount += 1;
 
-      // Step 6 — enrol (or advance) the cadence only for a message that actually went out or queued.
+      // Enrol (or advance) the cadence only for a message that actually went out or queued.
       if (outcome.status === "sent" || outcome.status === "queued") {
-        const enrolled = advanceEnrollment(newEnrollment(scored.contactKey), DEFAULT_CADENCE, nowMs);
         await this.deps.contacts.upsertEnrollment({
           workspaceId,
-          contactKey: scored.contactKey,
+          contactKey: message.contactKey,
           recipientLabel: message.recipientLabel,
           channel,
-          enrollment: enrolled,
-          score: scored.score,
+          enrollment: advanceEnrollment(enrollment, DEFAULT_CADENCE, nowMs),
+          score,
           signalKind: message.signalKind,
         });
       }
+    };
+
+    // Step 6 (continued) — process DUE cadence FOLLOW-UPS for already-enrolled prospects (touches 2+).
+    // Without this the cadence would only ever send the opener; here a due step is composed as a short
+    // on-angle nudge and sent under the same per-domain cap + suppression.
+    for (const e of await this.deps.contacts.activeEnrollments(workspaceId)) {
+      const enrollment: CadenceEnrollment = {
+        contactKey: e.contactKey,
+        currentStep: e.currentStep,
+        lastStepAtMs: e.lastStepAtMs,
+        status: "active",
+      };
+      const step = nextDueStep(enrollment, DEFAULT_CADENCE, nowMs);
+      if (!step) continue;
+      const followUp = composeFollowUp({
+        contactKey: e.contactKey,
+        recipientLabel: e.recipientLabel,
+        channel: e.channel,
+        variant: step.variant,
+        step: step.stepIndex,
+        brandName: caps.brandName ?? "the team",
+      });
+      if (!followUp) {
+        skippedCount += 1;
+        continue;
+      }
+      // Carry the original signal kind forward (the follow-up itself references no signal).
+      await dispatch({ ...followUp, signalKind: e.signalKind as ReachMessage["signalKind"] }, e.channel, enrollment, e.score);
+    }
+
+    for (const scored of ranked) {
+      const channel = this.channelFor(scored.prospect.email, scored.prospect.linkedinUrl);
+      if (!channel) {
+        skippedCount += 1;
+        continue;
+      }
+      // Step 4 — personalise the 1:1 opener around the freshest signal, in the tuned angle. Step 5/6 (send
+      // under cap + suppression, then enrol at step 1) happen in `dispatch`.
+      const message = personalizeOpener({
+        scored,
+        icp,
+        channel,
+        variant: tuning.variant,
+        brandName: caps.brandName ?? "the team",
+      });
+      await dispatch(message, channel, newEnrollment(scored.contactKey), scored.score);
     }
 
     // Steps 7 + 8 — measure the trailing window and self-tune the NEXT batch.

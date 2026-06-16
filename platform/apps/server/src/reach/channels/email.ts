@@ -70,6 +70,10 @@ export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAda
       }
 
       const footerInfo = footerForRecipient(ctx.footerInfo, to);
+      if (!footerInfo) {
+        // No footer facts at all ⇒ a lawful email is impossible. Skip, never send.
+        return { status: "skipped", channel: "email", externalId: null, detail: "missing CAN-SPAM footer info" };
+      }
       const body = appendComplianceFooter(message.body, footerInfo as FooterInfo);
       const compliance = checkEmailCompliance({
         body,

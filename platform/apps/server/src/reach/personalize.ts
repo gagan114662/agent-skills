@@ -117,3 +117,55 @@ export function personalizeOpener(input: PersonalizeInput): ReachMessage {
     signalKind: scored.freshSignal?.kind ?? null,
   };
 }
+
+/** Recover the structured send target from a stored dedupe key ("email:foo@bar" → "foo@bar"). */
+export function addressFromContactKey(contactKey: string): { channel: ReachChannel; toAddress: string } | null {
+  if (contactKey.startsWith("email:")) return { channel: "email", toAddress: contactKey.slice("email:".length) };
+  if (contactKey.startsWith("linkedin:")) return { channel: "linkedin", toAddress: contactKey.slice("linkedin:".length) };
+  return null; // an "id:name|company" key has no reachable address — can't follow up
+}
+
+export interface FollowUpInput {
+  contactKey: string;
+  /** The stored "Name · Company" label (the only prospect text a follow-up has). */
+  recipientLabel: string;
+  channel: ReachChannel;
+  variant: ReachVariant;
+  /** Which touch this is (2nd = first follow-up, 3rd = nudge) — flavours the copy. */
+  step: number;
+  brandName: string;
+}
+
+/**
+ * Compose a later-cadence touch (step ≥ 1). A follow-up has only the structured label + key to work from
+ * (we don't re-fetch the prospect), so it's a short, on-angle nudge — never a re-blast of the opener. The
+ * send target is recovered from the structured contact key; signal text never re-enters here.
+ */
+export function composeFollowUp(input: FollowUpInput): ReachMessage | null {
+  const target = addressFromContactKey(input.contactKey);
+  if (!target) return null;
+  const label = sanitizeText(input.recipientLabel, 120);
+  const name = sanitizeText(label.split("·")[0] ?? "", 40).trim() || "there";
+  const first = name.split(" ")[0] || "there";
+  const subject =
+    target.channel === "email" ? (input.step >= 2 ? "One last thought" : "Following up") : "";
+  const body = [
+    `Hi ${first},`,
+    "",
+    input.step >= 2
+      ? "Last note from me — if the timing's off, no worries at all. If it's worth a quick look, I'm one reply away."
+      : "Circling back in case this slipped past — happy to share a couple of concrete ideas if it's useful.",
+    "",
+    `— ${sanitizeText(input.brandName, 60) || "The team"}`,
+  ].join("\n");
+  return {
+    contactKey: input.contactKey,
+    channel: input.channel,
+    toAddress: target.toAddress,
+    recipientLabel: label || "Prospect",
+    subject,
+    body,
+    variant: input.variant,
+    signalKind: null,
+  };
+}

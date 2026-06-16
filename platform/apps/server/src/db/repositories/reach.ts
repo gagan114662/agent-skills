@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte } from "drizzle-orm";
 import { db } from "../index.js";
 import { reachContacts, reachReceipts, reachRuns, reachSends } from "../schema/index.js";
 import type {
+  ActiveEnrollment,
   ReachContactStore,
   ReachReceiptStore,
   ReachRunStore,
@@ -61,6 +62,29 @@ export const dbReachContactStore: ReachContactStore = {
       .update(reachContacts)
       .set({ status, updatedAt: new Date() })
       .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)));
+  },
+  async activeEnrollments(workspaceId): Promise<ActiveEnrollment[]> {
+    const rows = await db
+      .select({
+        contactKey: reachContacts.contactKey,
+        recipientLabel: reachContacts.recipientLabel,
+        channel: reachContacts.channel,
+        currentStep: reachContacts.currentStep,
+        lastStepAt: reachContacts.lastStepAt,
+        score: reachContacts.score,
+        signalKind: reachContacts.signalKind,
+      })
+      .from(reachContacts)
+      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "active")));
+    return rows.map((r) => ({
+      contactKey: r.contactKey,
+      recipientLabel: r.recipientLabel,
+      channel: r.channel as ReachChannel,
+      currentStep: r.currentStep,
+      lastStepAtMs: r.lastStepAt ? r.lastStepAt.getTime() : 0,
+      score: r.score,
+      signalKind: r.signalKind,
+    }));
   },
 };
 
