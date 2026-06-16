@@ -21,6 +21,14 @@ export interface PrerenderPage {
   lastmod?: string;
   /** Sitemap priority hint (0.0–1.0). */
   priority?: number;
+  /** Per-page `og:type` override (e.g. "article" for a post; the shell defaults to "website"). */
+  ogType?: string;
+  /**
+   * Pre-rendered markup to inject immediately before `</head>` (#294): JSON-LD `<script>` blocks and any
+   * per-page `<meta property="article:*">` tags. The caller (`entry-server.tsx`) builds this string with
+   * the structured-data helpers; it must already be HTML-safe (see `renderJsonLd`).
+   */
+  headExtra?: string;
 }
 
 /** The production origin. Overridable for previews via SITE_ORIGIN; trailing slash stripped. */
@@ -86,6 +94,14 @@ export function injectPage(template: string, page: PrerenderPage, origin: string
     out = setMetaContent(out, "name", "description", page.description);
     out = setMetaContent(out, "property", "og:description", page.description);
     out = setMetaContent(out, "name", "twitter:description", page.description);
+  }
+  if (page.ogType) {
+    out = setMetaContent(out, "property", "og:type", page.ogType);
+  }
+  // Inject JSON-LD + per-page article meta just before </head>. The caller pre-renders this safely; we
+  // only place it (no escaping here — `headExtra` is already markup, not a text value).
+  if (page.headExtra) {
+    out = out.replace(/<\/head>/, `${page.headExtra}\n  </head>`);
   }
   return out;
 }

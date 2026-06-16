@@ -297,6 +297,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (agentRegistryOwner) agentRegistry.ownerWorkspaceId = agentRegistryOwner;
     raw.agentRegistry = agentRegistry;
   }
+  // #294 SEO rank tracking: let the deployment env turn the proactive rank FETCH on + pick a provider +
+  // owner workspace without a managed.toml (owner workspace opts in first). Hard default stays OFF (vars
+  // unset → no block ⇒ provider stays `dryrun`, reports nothing). Recording an external receipt is always
+  // allowed regardless of this flag. A managed layer still wins as the lock.
+  const seoEnabled = env.RELOAD_SEO_ENABLED;
+  const seoProvider = env.RELOAD_SEO_PROVIDER;
+  const seoOwner = env.RELOAD_SEO_OWNER_WORKSPACE_ID;
+  if (seoEnabled !== undefined || seoProvider !== undefined || seoOwner) {
+    const seo: Record<string, unknown> = {};
+    if (seoEnabled !== undefined) seo.enabled = seoEnabled === "true" || seoEnabled === "1";
+    if (seoProvider !== undefined) seo.provider = seoProvider;
+    if (seoOwner) seo.ownerWorkspaceId = seoOwner;
+    raw.seo = seo;
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).

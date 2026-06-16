@@ -168,6 +168,8 @@ import type { DiscoveryService } from "./discovery/service.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
+import { seoRoutes } from "./routes/seo.js";
+import { createDefaultSeoRankService } from "./seo/default.js";
 import { createDefaultOutreachService } from "./outreach/default.js";
 import type { OutreachService } from "./outreach/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -683,6 +685,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #280 Reach outbound demand-gen: the self-improving loop service. Default-OFF + mock source + dry-run
   // sender, so it spends nothing and sends nothing until an owner opts in (caps) and connects a real ESP.
   const reachService = createDefaultReachService(app.log);
+  // #294 SEO rank tracking: externally-grounded rank receipts feeding the SEO proof tile. Default-OFF +
+  // dry-run provider, so it fetches nothing and records nothing until an owner connects a real rank source.
+  const seoRankService = createDefaultSeoRankService(app.log);
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -806,6 +811,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // record external engagement receipts, and read the proof summary. Default-OFF (caps gate the batch); a
   // paid data source money-gates its search. No #13 gate on the send (autonomous under the caps).
   app.register(reachRoutes, { service: reachService });
+  app.register(seoRoutes, { service: seoRankService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build

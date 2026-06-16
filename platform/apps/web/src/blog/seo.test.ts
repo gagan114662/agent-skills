@@ -26,6 +26,7 @@ const SHELL = `<!doctype html>
       content="default description"
     />
     <link rel="canonical" href="https://ipop.ai/" />
+    <meta property="og:type" content="website" />
     <meta property="og:title" content="ipop" />
     <meta property="og:description" content="og default" />
     <meta property="og:url" content="https://ipop.ai/" />
@@ -91,6 +92,33 @@ describe("injectPage", () => {
     expect(out).toContain('<meta property="og:title" content="My Post — ipop" />');
     expect(out).toContain('<meta property="og:description" content="A specific post description." />');
     expect(out).toContain('<meta name="twitter:title" content="My Post — ipop" />');
+  });
+
+  it("sets og:type per page and injects headExtra (JSON-LD / article meta) before </head>", () => {
+    const page: PrerenderPage = {
+      outFile: "blog/post/index.html",
+      urlPath: "/blog/post",
+      html: "<article>Body</article>",
+      ogType: "article",
+      headExtra:
+        '<script type="application/ld+json">{"@type":"BlogPosting"}</script>\n' +
+        '  <meta property="article:published_time" content="2026-06-16" />',
+    };
+    const out = injectPage(SHELL, page, origin);
+    expect(out).toContain('<meta property="og:type" content="article" />');
+    expect(out).toContain('<script type="application/ld+json">{"@type":"BlogPosting"}</script>');
+    expect(out).toContain('<meta property="article:published_time" content="2026-06-16" />');
+    // The injected markup lands inside the head (before the closing tag), not after it.
+    expect(out.indexOf('"@type":"BlogPosting"')).toBeLessThan(out.indexOf("</head>"));
+    // Exactly one </head> — the injection didn't duplicate or drop it.
+    expect(out.match(/<\/head>/g)).toHaveLength(1);
+  });
+
+  it("leaves og:type as the shell default when no page override is given", () => {
+    const page: PrerenderPage = { outFile: "blog/x/index.html", urlPath: "/blog/x", html: "<p>x</p>" };
+    const out = injectPage(SHELL, page, origin);
+    // SHELL has no og:type tag, so nothing is added — and no headExtra means head is untouched past meta.
+    expect(out).not.toContain("article:published_time");
   });
 
   it("escapes special characters in injected meta", () => {

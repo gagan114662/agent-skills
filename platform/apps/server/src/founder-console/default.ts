@@ -46,6 +46,7 @@ import { resolveRealworldCaps } from "../realworld/caps.js";
 import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realworld-artifacts.js";
 import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import { reachProofReading } from "../db/repositories/reach.js";
+import { dbSeoRankStore } from "../db/repositories/seo-ranks.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -572,17 +573,33 @@ export function createDefaultFounderConsoleService(deps: {
           note: `${funnel.acquisition} sessions · ${funnel.activation} activations tracked`,
         });
 
-        // seo (Scout): no real source wired yet. Surface the reason so the owner sees WHAT to connect —
-        // never a fabricated rank.
-        readings.push({
-          department: "seo",
-          connected: false,
-          current: null,
-          unit: "count",
-          metricLabel: "Indexed pages + target-keyword positions",
-          source: "Search Console not connected",
-          note: "connect Google Search Console to prove indexed pages + rankings",
-        });
+        // seo (Scout): externally-grounded rankings off the #294 rank-observation receipts. Connected only
+        // when a real provider/webhook has reported at least one observation; otherwise "not connected"
+        // with the reason — never a fabricated rank (premortem #200 §2). The headline is target keywords
+        // sitting on page 1 (positions 1–10) as of each keyword's latest external reading.
+        const seoTotal = await dbSeoRankStore.count(workspaceId);
+        if (seoTotal > 0) {
+          const onPageOne = await dbSeoRankStore.countKeywordsOnPageOne(workspaceId);
+          readings.push({
+            department: "seo",
+            connected: true,
+            current: onPageOne,
+            unit: "count",
+            metricLabel: "Target keywords on page 1",
+            source: "External rank receipts (#294)",
+            note: `${seoTotal} rank observations recorded`,
+          });
+        } else {
+          readings.push({
+            department: "seo",
+            connected: false,
+            current: null,
+            unit: "count",
+            metricLabel: "Target keywords on page 1",
+            source: "No rank source connected",
+            note: "connect a rank tracker (Search Console / SERP API) or POST external rank receipts to /me/seo/observations to prove rankings",
+          });
+        }
 
         // brand (Mark): connects the moment the owner sets a brand kit (#271). The proof is the count of
         // on-brand assets in the workspace store (generated + uploaded); the trend is what was added this

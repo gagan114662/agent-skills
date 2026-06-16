@@ -65,3 +65,4 @@ export * from "./outreach.js";
 export * from "./workspace-onboarding.js";
 export * from "./assets.js";
 export * from "./reach.js";
+export * from "./seo.js";
