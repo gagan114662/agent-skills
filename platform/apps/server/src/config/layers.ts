@@ -166,6 +166,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #280 reach policy: a higher (managed/owner) layer fully owns the block (replace) so the autonomous
     // send posture + per-domain caps + paid-source selection cannot be loosened by a lower layer.
     if (layer.reach !== undefined) out.reach = { ...layer.reach };
+    // #282 agent registry + A2A policy: a higher (managed/owner) layer fully owns the block (replace) so
+    // the A2A flag + owner-first restriction + depth cap cannot be loosened by a lower layer.
+    if (layer.agentRegistry !== undefined) out.agentRegistry = { ...layer.agentRegistry };
   }
   return out;
 }
@@ -232,5 +235,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
     reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },
+    agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
   };
 }

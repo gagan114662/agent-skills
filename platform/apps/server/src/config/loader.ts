@@ -284,6 +284,19 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (discoveryEnabled !== undefined) {
     raw.discovery = { enabled: discoveryEnabled === "true" || discoveryEnabled === "1" };
   }
+  // #282 agent registry + A2A: let the deployment env turn the department-fleet A2A surface on without a
+  // managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no block); the
+  // contract catalog is always readable regardless. A managed layer still wins as the lock.
+  const agentRegistryEnabled = env.RELOAD_AGENT_REGISTRY_ENABLED;
+  const agentRegistryOwner = env.RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID;
+  if (agentRegistryEnabled !== undefined || agentRegistryOwner) {
+    const agentRegistry: Record<string, unknown> = {};
+    if (agentRegistryEnabled !== undefined) {
+      agentRegistry.enabled = agentRegistryEnabled === "true" || agentRegistryEnabled === "1";
+    }
+    if (agentRegistryOwner) agentRegistry.ownerWorkspaceId = agentRegistryOwner;
+    raw.agentRegistry = agentRegistry;
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).
