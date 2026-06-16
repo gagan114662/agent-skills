@@ -219,6 +219,36 @@ async function pollStatus(
   }
 }
 
+/**
+ * Poll the open self-healing remediations for a workspace until they satisfy `until`, then return them.
+ *
+ * #277: the self-healing incident hooks (`onSessionFailure`/`onSessionRecovered`) are wired in production
+ * to run as a best-effort step STRICTLY AFTER `store.finalize` writes the session's terminal status — the
+ * finalized session row is the source of truth and the incident write must never block or fail it. So a
+ * session reaching `failed`/`completed` (what `pollStatus` observes) does NOT guarantee the incident row
+ * has been written/resolved yet; that second DB round-trip lands a beat later and lags further under
+ * shared-Postgres contention. Asserting the row immediately after a status poll therefore raced and
+ * intermittently read 0 ("expected length 1, got 0"). Synchronize on the ACTUAL asserted state — the
+ * remediation rows — instead of the status proxy. This is condition-based waiting (bounded, clear error
+ * on real failure), NOT a blind sleep: it returns the instant the real post-finalize write is visible.
+ */
+async function waitForRemediations(
+  workspaceId: string,
+  until: (rows: Awaited<ReturnType<typeof listOpenRemediations>>) => boolean,
+  description: string,
+  timeoutMs = 10_000,
+): Promise<Awaited<ReturnType<typeof listOpenRemediations>>> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const rows = await listOpenRemediations(workspaceId);
+    if (until(rows)) return rows;
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${description}: saw ${rows.length} open remediation(s)`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)", () => {
   it("runs server-side with the client disconnected and lands the result in the channel", async () => {
     const { app, ws } = await startApp(COMPLETING_HARNESS, { wallClockMs: 20_000, idleMs: 8_000 });
@@ -328,8 +358,9 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     });
     await pollStatus(badApp, w, launch.json().id, (s) => s === "failed");
 
-    // The spawn cluster is now a tracked, deduped self-healing incident (what the console reads).
-    const open = await listOpenRemediations(w.workspaceId);
+    // The spawn cluster is now a tracked, deduped self-healing incident (what the console reads). The
+    // incident write is wired AFTER finalize (see waitForRemediations), so synchronize on the row itself.
+    const open = await waitForRemediations(w.workspaceId, (r) => r.length === 1, "spawn incident to open");
     expect(open).toHaveLength(1);
     expect(open[0]!.surfaceKey).toBe(AGENT_RUNTIME_SURFACE_KEY);
     expect(open[0]!.signal).toBe(SPAWN_INCIDENT_SIGNAL);
@@ -343,7 +374,7 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
       payload: { agentMemberId: w.agentMemberId, task: "again" },
     });
     await pollStatus(badApp, w, launch2.json().id, (s) => s === "failed");
-    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(1);
+    expect(await waitForRemediations(w.workspaceId, (r) => r.length === 1, "deduped spawn incident")).toHaveLength(1);
 
     // Now the runtime "recovers": a real session COMPLETES → the incident resolves itself. Run a
     // completing harness against the SAME workspace's channel (reuse the cookie/channel/agent).
@@ -356,7 +387,8 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     });
     await pollStatus(goodApp, w, launch3.json().id, (s) => s === "completed" || s === "failed");
     // The open incident closed once a real session succeeded again (production-grounded recovery proof).
-    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
+    // The resolve write is also post-finalize, so wait for it rather than racing the status flip.
+    expect(await waitForRemediations(w.workspaceId, (r) => r.length === 0, "spawn incident to resolve")).toHaveLength(0);
   });
 
   it("a model misconfig (claude-fable-5) surfaces an actionable reason + opens a self-healing incident, then resolves on recovery (#242)", async () => {
@@ -395,7 +427,15 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     expect(bodies.some((b) => b.toLowerCase().includes("selected model"))).toBe(true);
 
     // The failure is now a tracked self-healing incident on the DISTINCT agent-model surface (NOT spawn).
-    const open = await listOpenRemediations(w.workspaceId);
+    // The incident write is post-finalize, AND `recordModelFailureIncident` writes the row in two steps —
+    // `store.open` (no detail column) then a `store.update` that sets the cause — so "row exists" does not
+    // imply "detail committed". Synchronize on the fully-written state (detail present) to avoid catching
+    // the row in the gap between those two writes under shared-Postgres contention.
+    const open = await waitForRemediations(
+      w.workspaceId,
+      (r) => r.length === 1 && (r[0]!.detail?.includes("claude-fable-5") ?? false),
+      "model incident to open with detail",
+    );
     expect(open).toHaveLength(1);
     expect(open[0]!.surfaceKey).toBe(AGENT_MODEL_SURFACE_KEY);
     expect(open[0]!.signal).toBe(MODEL_INCIDENT_SIGNAL);
@@ -416,7 +456,8 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     });
     const ok = await pollStatus(goodApp, w, retry.json().id, (s) => s === "completed" || s === "failed");
     expect(ok.status).toBe("completed");
-    expect(await listOpenRemediations(w.workspaceId)).toHaveLength(0);
+    // The resolve write is also post-finalize, so wait for it rather than racing the status flip.
+    expect(await waitForRemediations(w.workspaceId, (r) => r.length === 0, "model incident to resolve")).toHaveLength(0);
   });
 
   it("reaps an idle session to idle_reaped and enforces the cap", async () => {
