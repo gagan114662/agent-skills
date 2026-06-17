@@ -533,6 +533,24 @@ export const agentRegistrySchema = z.object({
 });
 
 /**
+ * Agent collaboration policy (#319, ADR-0319). Whether a scoped fleet session is provisioned with the
+ * subagent-**spawn** tool so a department lead can delegate to a teammate ("collaborate"). Every field is
+ * optional and the master `enabled` defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly:
+ * true`) — a deployment that sets nothing keeps today's tool surface exactly (drafts only, no spawn), so
+ * behavior is unchanged. Turning it on without naming `ownerWorkspaceId` provisions it for nobody (the
+ * safest default, matching `agentRegistry`/`venture`/`delivery`). Spawn is a model-spend amplifier, so it
+ * stays gated behind the owner's own workspace until proven; broaden with `ownerWorkspaceOnly: false`.
+ */
+export const agentCollaborationSchema = z.object({
+  /** Provision the subagent-spawn tool into scoped sessions — default OFF (drafts-only otherwise). */
+  enabled: z.boolean().optional(),
+  /** Restrict spawn provisioning to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Connect-Claude policy (#262, ADR-0262). Non-secret knobs for the in-app one-click "Connect Claude"
  * flow that replaces the `claude setup-token` CLI step. Every field is optional and the master `enabled`
  * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets
@@ -1495,6 +1513,8 @@ export const settingsSchema = z.object({
   analytics: analyticsSchema.optional(),
   /** Agent Registry + A2A policy (#282): department-fleet contracts + governed agent-to-agent calls (default OFF). */
   agentRegistry: agentRegistrySchema.optional(),
+  /** Agent collaboration policy (#319): provision the subagent-spawn tool so leads can delegate (default OFF, owner-first). */
+  agentCollaboration: agentCollaborationSchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
   /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
@@ -1569,6 +1589,7 @@ export type ReachConfig = z.infer<typeof reachSchema>;
 export type SeoConfig = z.infer<typeof seoSchema>;
 export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
+export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
@@ -1703,6 +1724,8 @@ export interface ResolvedConfig {
   analytics: AnalyticsConfig;
   /** Agent Registry + A2A policy (#282). A partial whose hard defaults `resolveAgentRegistryCaps` fills. */
   agentRegistry: AgentRegistryConfig;
+  /** Agent collaboration policy (#319). A partial whose hard defaults `resolveAgentCollaborationCaps` fills. */
+  agentCollaboration: AgentCollaborationConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
   /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
@@ -1778,6 +1801,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   seo: {},
   analytics: {},
   agentRegistry: {},
+  agentCollaboration: {},
   connectClaude: {},
   connectOnce: {},
   skillopt: {},

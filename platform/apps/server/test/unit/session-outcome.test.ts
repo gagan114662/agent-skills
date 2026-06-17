@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   classifyFailure,
+  decideSessionDisposition,
+  looksLikeStartupFailure,
   renderSessionOutcome,
   type SessionOutcome,
 } from "../../src/runtime/outcome.js";
@@ -69,6 +71,128 @@ describe("classifyFailure (#166)", () => {
         outputTail: "unauthorized: invalid api key for the selected model",
       }),
     ).toBe("auth");
+  });
+
+  it("classifies a self-reported startup failure as spawn even on a clean (exit 0) process (#319)", () => {
+    // The board bug: claude BOOTS, can't find a tool, reports it to the user and exits 0 — neither the
+    // exit code nor an is_error event flags it. The content names a startup failure → spawn copy, not error.
+    expect(
+      classifyFailure({
+        status: "failed",
+        exitCode: 0,
+        outputTail: "I couldn't start up — my runtime is missing a tool I need (spawn).",
+      }),
+    ).toBe("spawn");
+  });
+
+  it("does NOT misread a deliverable that merely mentions a missing tool as a startup failure (#319)", () => {
+    // A real artifact that discusses tools is still an error/normal bucket, never the boot-failure copy.
+    expect(
+      classifyFailure({
+        status: "failed",
+        exitCode: 2,
+        outputTail: "Our launch thread covers the tool we were missing last quarter. boom",
+      }),
+    ).toBe("error");
+  });
+});
+
+describe("looksLikeStartupFailure (#319)", () => {
+  it("matches the agent's own boot-failure wording", () => {
+    expect(looksLikeStartupFailure("I could not start up - my runtime is missing a tool I need (spawn).")).toBe(true);
+    expect(looksLikeStartupFailure("I couldn't start up. Something went wrong.")).toBe(true);
+    expect(looksLikeStartupFailure("Unable to start up: missing dependency.")).toBe(true);
+  });
+
+  it("is false for a genuine artifact and for empty text", () => {
+    expect(looksLikeStartupFailure("Here are 5 tweets for the launch thread.")).toBe(false);
+    expect(looksLikeStartupFailure("")).toBe(false);
+    expect(looksLikeStartupFailure(undefined)).toBe(false);
+  });
+
+  it("only inspects the HEAD — a late, incidental mention does not trip it", () => {
+    const longArtifact = "A real, complete launch thread. ".repeat(40) + "could not start up";
+    expect(looksLikeStartupFailure(longArtifact)).toBe(false);
+  });
+});
+
+describe("decideSessionDisposition (#319 / #251 / #200)", () => {
+  it("a real, output-bearing clean completion is DONE", () => {
+    const d = decideSessionDisposition({
+      status: "completed",
+      exitCode: 0,
+      harnessReportedError: false,
+      artifact: "Here are 5 tweets ready to post.",
+    });
+    expect(d).toEqual({ status: "completed", done: true, failureClass: null });
+  });
+
+  it("a clean exit whose stream ended in a harness error is FAILED, not done (#251)", () => {
+    const d = decideSessionDisposition({
+      status: "completed",
+      exitCode: 0,
+      harnessReportedError: true,
+      artifact: "I couldn't complete the task — I'm missing a tool I need.",
+    });
+    expect(d.status).toBe("failed");
+    expect(d.done).toBe(false);
+  });
+
+  it("a clean exit whose OUTPUT is a self-reported startup failure is FAILED with spawn class (#319)", () => {
+    // THE board bug: a 'done/shipped' card whose entire content is "I couldn't start up". Never done.
+    const d = decideSessionDisposition({
+      status: "completed",
+      exitCode: 0,
+      harnessReportedError: false,
+      artifact: "I couldn't start up — my runtime is missing a tool I need (spawn).",
+    });
+    expect(d.status).toBe("failed");
+    expect(d.done).toBe(false);
+    expect(d.failureClass).toBe("spawn");
+  });
+
+  it("a true spawn failure (no exit code) is FAILED with spawn class", () => {
+    const d = decideSessionDisposition({
+      status: "failed",
+      exitCode: null,
+      harnessReportedError: false,
+      artifact: "",
+    });
+    expect(d).toEqual({ status: "failed", done: false, failureClass: "spawn" });
+  });
+
+  it("a clean exit with NO output is completed but NOT done (preserves prior no-deliverable behavior)", () => {
+    // An empty result is not a hard failure (it booted + exited cleanly) but there is nothing to surface,
+    // so it never becomes a deliverable/shipped card — exactly today's behavior, now expressed in one place.
+    const d = decideSessionDisposition({
+      status: "completed",
+      exitCode: 0,
+      harnessReportedError: false,
+      artifact: "   ",
+    });
+    expect(d.status).toBe("completed");
+    expect(d.done).toBe(false);
+    expect(d.failureClass).toBeNull();
+  });
+
+  it("a non-zero exit is FAILED and never done, regardless of output", () => {
+    const d = decideSessionDisposition({
+      status: "failed",
+      exitCode: 1,
+      harnessReportedError: false,
+      artifact: "boom",
+    });
+    expect(d.done).toBe(false);
+    expect(d.failureClass).toBe("error");
+  });
+
+  it("a timeout/canceled status is surfaced with its own class and is never done", () => {
+    expect(
+      decideSessionDisposition({ status: "timeout", exitCode: null, harnessReportedError: false, artifact: "" }),
+    ).toEqual({ status: "timeout", done: false, failureClass: "timeout" });
+    expect(
+      decideSessionDisposition({ status: "canceled", exitCode: null, harnessReportedError: false, artifact: "" }),
+    ).toEqual({ status: "canceled", done: false, failureClass: "canceled" });
   });
 });
 

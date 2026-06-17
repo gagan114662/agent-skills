@@ -794,6 +794,36 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
     expect(completed[0]!.result).toContain("3 tweets");
   });
 
+  it("an exit-0 run that self-reports a startup failure is FAILED — no done/shipped card (#319)", async () => {
+    // The #319 board bug: claude BOOTS, can't find a tool, reports it to the user as an ordinary message
+    // and exits 0 with a NON-error result (is_error:false). Neither the exit code (0) nor #251 flags it, so
+    // it surfaced as a green check + a "5-tweet launch thread" deliverable that auto-routed to Done/shipped —
+    // a shipped card for a session that never started. The disposition now believes the agent's own words.
+    const startupFailure =
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "I couldn't start up — my runtime is missing a tool I need (spawn).",
+      }) + "\n";
+    const runtime = new CompletingRuntime([startupFailure], 0); // clean exit despite never booting
+    const { manager, store, poster, completed, failures } = makeManager251(runtime);
+
+    const session = await manager.launch({ ...launch, task: "draft a 5-tweet launch thread" });
+    await manager.join(session.id);
+
+    // No deliverable card — the board never shows a failed-to-start session as done/shipped.
+    expect(completed).toHaveLength(0);
+    // The run is recorded as failed, not completed.
+    expect(store.finalized?.status).toBe("failed");
+    // Routed to the failure sink as a spawn failure (owner sees "couldn't start up", not a green check).
+    expect(failures).toHaveLength(1);
+    expect(failures[0]!.failureClass).toBe("spawn");
+    const terminal = poster.bodies().at(-1)!;
+    expect(terminal).toContain("❌");
+    expect(terminal).not.toContain("✅");
+  });
+
   it("surfaces the agent's FINAL ANSWER as the deliverable — not the narration/tool transcript", async () => {
     // The live bug: cards showed the transcript head — narration ("I'll start by…") or a tool trace
     // ("🔧 Bash …"). The deliverable must be the produced artifact: the terminal success `result` text.
