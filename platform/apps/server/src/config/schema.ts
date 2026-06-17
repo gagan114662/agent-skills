@@ -512,6 +512,24 @@ export const agentRegistrySchema = z.object({
 });
 
 /**
+ * Connect-Claude policy (#262, ADR-0262). Non-secret knobs for the in-app one-click "Connect Claude"
+ * flow that replaces the `claude setup-token` CLI step. Every field is optional and the master `enabled`
+ * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets
+ * nothing keeps today's manual paste path (behind the #263 Advanced disclosure), so behavior is unchanged.
+ * The OAuth client itself is env-driven (never in this non-secret config), so even with `enabled: true`
+ * the flow is an honest `coming_soon` until a live client is wired. `ownerWorkspaceId` marks the owner's
+ * own workspace for the owner-first rollout.
+ */
+export const connectClaudeSchema = z.object({
+  /** The managed one-click connect flag — default OFF (the manual paste path always remains). */
+  enabled: z.boolean().optional(),
+  /** Restrict the managed flow to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1322,6 +1340,8 @@ export const settingsSchema = z.object({
   seo: seoSchema.optional(),
   /** Agent Registry + A2A policy (#282): department-fleet contracts + governed agent-to-agent calls (default OFF). */
   agentRegistry: agentRegistrySchema.optional(),
+  /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
+  connectClaude: connectClaudeSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1385,6 +1405,7 @@ export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
 export type SeoConfig = z.infer<typeof seoSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
+export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1509,6 +1530,8 @@ export interface ResolvedConfig {
   seo: SeoConfig;
   /** Agent Registry + A2A policy (#282). A partial whose hard defaults `resolveAgentRegistryCaps` fills. */
   agentRegistry: AgentRegistryConfig;
+  /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
+  connectClaude: ConnectClaudeConfig;
 }
 
 /**
@@ -1573,4 +1596,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   reach: {},
   seo: {},
   agentRegistry: {},
+  connectClaude: {},
 };

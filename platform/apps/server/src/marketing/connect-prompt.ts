@@ -10,8 +10,8 @@ export function buildConnectPrompt(personaName: string): string {
   return (
     `👋 Hey — it's @${personaName}. I'd love to jump on this, but this workspace hasn't ` +
     `connected a Claude account yet, so I can't spin up a real session.\n\n` +
-    `Ask the workspace owner to head to **Settings → Connect Claude** and paste a token from ` +
-    "`claude setup-token` — then @mention me again and I'll get right to work. ✨"
+    `Ask the workspace owner to head to **Settings → Connect Claude** and connect your account ` +
+    `(no terminal needed) — then @mention me again and I'll get right to work. ✨`
   );
 }
 

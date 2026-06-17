@@ -175,6 +175,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #282 agent registry + A2A policy: a higher (managed/owner) layer fully owns the block (replace) so
     // the A2A flag + owner-first restriction + depth cap cannot be loosened by a lower layer.
     if (layer.agentRegistry !== undefined) out.agentRegistry = { ...layer.agentRegistry };
+    // #262 connect-Claude policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // managed one-click flag + owner-first restriction cannot be loosened by a lower layer.
+    if (layer.connectClaude !== undefined) out.connectClaude = { ...layer.connectClaude };
   }
   return out;
 }
@@ -244,5 +247,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },
     seo: merged.seo ?? { ...CONFIG_DEFAULTS.seo },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
+    connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
   };
 }

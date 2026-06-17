@@ -11,6 +11,7 @@ import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
 import { googleAuthRoutes, type GoogleAuthRoutesOptions } from "./routes/google-auth.js";
 import { meRoutes } from "./routes/me.js";
+import { claudeConnectRoutes, type ClaudeConnectRoutesOptions } from "./routes/claude-connect.js";
 import { agentInterfaceRoutes } from "./routes/agent-interface.js";
 import { acpRoutes } from "./routes/acp.js";
 import { a2aRoutes } from "./routes/a2a.js";
@@ -429,6 +430,12 @@ export interface BuildAppOptions {
    * (feature off until configured) and builds the real bootstrap over the shared SessionManager.
    */
   googleAuth?: GoogleAuthRoutesOptions;
+  /**
+   * #262 in-app Connect Claude. Tests inject a connect provider so the flow runs without network. Default
+   * derives it from env (dry-run unless a live `CLAUDE_OAUTH_*` client is configured), so the one-click
+   * flow stays an honest `coming_soon` until wired.
+   */
+  claudeConnect?: ClaudeConnectRoutesOptions;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -502,6 +509,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered
   // below, right after the manager is built.
   app.register(meRoutes);
+  // #262 in-app one-click Connect Claude (replaces the `claude setup-token` CLI; default OFF, owner-first).
+  app.register(claudeConnectRoutes, { ...opts.claudeConnect });
   // #11 framework-agnostic agent interface: GET /me/channels (capability-filtered) + GET /openapi.json.
   app.register(agentInterfaceRoutes);
   // #12 protocol adapters (grouped with the agent surface): ACP runs ⇄ channel threads, A2A
