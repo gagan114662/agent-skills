@@ -9,6 +9,7 @@ import { decideApprovalClear, resolveRbacConfig, type WorkspaceRole } from "../t
 import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
+import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
 import { executeApprovedRequest } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
@@ -240,7 +241,16 @@ export async function approvalRoutes(
     if (q.status && !isApprovalStatus(q.status)) {
       return reply.code(400).send({ error: "invalid status filter" });
     }
-    return listRequests(wid, { status: isApprovalStatus(q.status) ? q.status : undefined });
+    const status = isApprovalStatus(q.status) ? q.status : undefined;
+    const requests = await listRequests(wid, { status });
+    // #322: collapse duplicate Spend-Approval deliverable drafts (the dozen near-identical "audit"
+    // cards the duplicate-launch bug produced) to ONE card per real objective — but only for the
+    // PENDING queue and only when dedup is enabled for this workspace (DEFAULT-OFF, owner-first). Other
+    // statuses and non-deliverable approvals are returned untouched, so governance is never masked.
+    if (status === "pending" && resolveDedupeEnabled(loadConfig(wid).marketing, wid)) {
+      return collapseDuplicateDeliverables(requests);
+    }
+    return requests;
   });
 
   app.get("/approvals/:rid", async (req, reply) => {

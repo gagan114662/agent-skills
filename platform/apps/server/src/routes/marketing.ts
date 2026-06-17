@@ -76,6 +76,7 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       launched: result.launched,
       connectPrompted: result.connectPrompted,
       modelBlocked: result.modelBlocked,
+      deduped: result.deduped,
     });
   });
 
