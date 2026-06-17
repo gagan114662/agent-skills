@@ -64,6 +64,37 @@ describe("subagent tool scope (#59)", () => {
       expect(env.AGENT_APPEND_SYSTEM_PROMPT).toBe("Talk only.");
     });
 
+    it("unions extraTools (the gated spawn tool) into the allowlist after the web tools (#319)", () => {
+      const env = personaHarnessEnv(
+        { systemPrompt: "Draft.", model: null },
+        ["Read", "Grep"],
+        [],
+        ["Task"],
+      );
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch,Task");
+    });
+
+    it("does not duplicate an extra tool a persona already declares (#319)", () => {
+      const env = personaHarnessEnv(
+        { systemPrompt: "Draft.", model: null },
+        ["Read", "Task"],
+        [],
+        ["Task"],
+      );
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Task,WebFetch,WebSearch");
+    });
+
+    it("leaves the surface unchanged when extraTools is empty (default OFF, #319)", () => {
+      const env = personaHarnessEnv({ systemPrompt: "Draft.", model: null }, ["Read", "Grep"], [], []);
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch");
+    });
+
+    it("does NOT provision extra tools onto an UNSCOPED session (no --allowedTools to add to, #319)", () => {
+      // An unscoped session already inherits all built-ins (Task included); we never narrow it to a list.
+      const env = personaHarnessEnv({ systemPrompt: "Talk.", model: null }, [], [], ["Task"]);
+      expect(env.AGENT_ALLOWED_TOOLS).toBeUndefined();
+    });
+
     it("sets AGENT_SKILLS to the comma-joined skill ids (#155)", () => {
       const env = personaHarnessEnv({ systemPrompt: "x", model: null }, ["Read"], [
         "lens/knowledge",

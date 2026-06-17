@@ -28,6 +28,18 @@ const TOOL_RE = /^[A-Za-z0-9_-]+$/;
  */
 export const WEB_TOOLS = ["WebFetch", "WebSearch"] as const;
 
+/**
+ * The subagent-**spawn** tool surface (#319). `Task` is Claude Code's own built-in tool for delegating a
+ * sub-task to a teammate subagent — the "collaborate" capability the fleet was missing. Unlike the
+ * always-on {@link WEB_TOOLS} (read-only, never a spend amplifier), spawning multiplies model spend and is
+ * a bounded-autonomy concern (#200 §5), so it is **NOT** unioned unconditionally: a scoped session gets it
+ * only when {@link personaHarnessEnv} is passed `SPAWN_TOOLS` as `extraTools`, which the wiring does ONLY
+ * when `agentCollaboration` is enabled for the workspace (default OFF, owner-first — see `collaboration.ts`).
+ * Like every tool here it reaches the harness purely by appearing in the `--allowedTools` list; there is
+ * nothing else to wire.
+ */
+export const SPAWN_TOOLS = ["Task"] as const;
+
 export class PersonaValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -69,6 +81,7 @@ export function personaHarnessEnv(
   persona: PersonaPromptConfig,
   scope: string[],
   skills: string[] = [],
+  extraTools: string[] = [],
 ): Record<string, string> {
   const env: Record<string, string> = {
     AGENT_APPEND_SYSTEM_PROMPT: persona.systemPrompt,
@@ -78,7 +91,10 @@ export function personaHarnessEnv(
   // add them when the session is already scoped (a non-empty ceiling sets `--allowedTools`); an empty
   // scope is left untouched so an unscoped session keeps ALL of Claude Code's built-ins (web included)
   // rather than being narrowed down to just two tools.
-  if (scope.length > 0) env.AGENT_ALLOWED_TOOLS = dedupe([...scope, ...WEB_TOOLS]).join(",");
+  // #319: `extraTools` is the gated provisioning channel — the wiring passes `SPAWN_TOOLS` here ONLY when
+  // `agentCollaboration` is enabled for the workspace (default OFF, owner-first), so the spawn tool is
+  // unioned in exactly like the web tools but never by default. An empty `extraTools` ⇒ unchanged surface.
+  if (scope.length > 0) env.AGENT_ALLOWED_TOOLS = dedupe([...scope, ...WEB_TOOLS, ...extraTools]).join(",");
   const safeSkills = dedupe(skills.map((s) => s.trim())).filter((s) => s && SKILL_ID_RE.test(s));
   if (safeSkills.length > 0) env.AGENT_SKILLS = safeSkills.join(",");
   return env;

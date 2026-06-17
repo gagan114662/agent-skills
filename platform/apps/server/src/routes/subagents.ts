@@ -15,6 +15,7 @@ import {
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { seedBuiltinPersonas } from "../subagents/builtins.js";
 import { PersonaValidationError, validatePersonaInput } from "../subagents/scope.js";
+import { spawnToolsForWorkspace } from "../subagents/collaboration.js";
 import {
   SubagentService,
   type SubagentInvokeResult,
@@ -58,6 +59,7 @@ export async function subagentRoutes(
     channelCapabilityFor: effectiveChannelCapabilityFor,
     mentionedMemberIds: async (messageId) =>
       (await listMentionsOnMessage(messageId)).map((m) => m.memberId),
+    extraToolsForWorkspace: spawnToolsForWorkspace, // #319: gated subagent-spawn tool (default OFF, owner-first)
     launcher: sessionManager,
   });
 

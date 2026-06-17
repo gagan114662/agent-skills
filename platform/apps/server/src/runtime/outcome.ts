@@ -60,10 +60,46 @@ const MODEL_MARKERS = [
   "no endpoints found that support",
 ];
 
+/**
+ * Markers of a **self-reported startup failure** (#319). A `claude -p` run can BOOT, fail to find a tool
+ * its runtime needs, then report that to the user as an ordinary assistant message and exit **0 with a
+ * non-error `result` event** — so neither the exit code (0) nor {@link harnessEventReportsError}
+ * (`is_error:false`) flags it, and the run would otherwise surface a green check + a "deliverable ready
+ * for review" card whose entire content is "I couldn't start up — my runtime is missing a tool I need".
+ * That is the exact `(spawn)` message the owner saw shipped on the board.
+ *
+ * The phrases here are the agent's OWN startup-failure wording (and our `spawn` failure copy below, which
+ * the agent sometimes echoes). They are deliberately START-anchored at the call site (only the head of the
+ * produced artifact is inspected) and specific to "start up" / "runtime is missing a tool" so a genuine
+ * deliverable that merely *mentions* a missing tool is never misread as a boot failure.
+ */
+const STARTUP_FAILURE_MARKERS = [
+  "could not start up",
+  "couldn't start up",
+  "couldnt start up",
+  "cannot start up",
+  "can't start up",
+  "cant start up",
+  "unable to start up",
+  "failed to start up",
+  "my runtime is missing a tool",
+  "runtime is missing a tool",
+];
+
 function matches(tail: string | undefined, markers: string[]): boolean {
   if (!tail) return false;
   const t = tail.toLowerCase();
   return markers.some((m) => t.includes(m));
+}
+
+/**
+ * Whether the produced text is the agent telling us it never really booted (#319). Inspected only over
+ * the HEAD of the artifact — a real deliverable never *opens* by announcing it couldn't start up, and
+ * the bounded window keeps an incidental later mention from tripping the detector.
+ */
+export function looksLikeStartupFailure(artifact: string | undefined): boolean {
+  if (!artifact) return false;
+  return matches(artifact.slice(0, 400), STARTUP_FAILURE_MARKERS);
 }
 
 /**
@@ -77,16 +113,88 @@ function matches(tail: string | undefined, markers: string[]): boolean {
  *  - a non-zero exit whose output names a model the API can't serve is a "model" misconfig (#242) — an
  *    owner-actionable config error, surfaced before the generic bucket so "claude-fable-5" stops reading
  *    as an opaque "error · exit 1".
+ *  - a run whose OUTPUT is the agent self-reporting that it couldn't start up (#319) is a "spawn"
+ *    failure even on a clean (exit 0) process, so the message reads "couldn't start up — missing a tool"
+ *    rather than a generic error. Checked before auth/budget/model so the boot failure wins its own copy.
  *  - everything else is a generic harness "error".
  */
 export function classifyFailure(o: SessionOutcome): FailureReasonClass {
   if (o.status === "timeout" || o.status === "idle_reaped") return "timeout";
   if (o.status === "canceled") return "canceled";
   if (o.exitCode === null) return "spawn";
+  if (looksLikeStartupFailure(o.outputTail)) return "spawn";
   if (matches(o.outputTail, AUTH_MARKERS)) return "auth";
   if (matches(o.outputTail, BUDGET_MARKERS)) return "budget";
   if (matches(o.outputTail, MODEL_MARKERS)) return "model";
   return "error";
+}
+
+/** The produced work-product + the terminal signals a session ends with — the disposition's full input. */
+export interface SessionDispositionInput {
+  /** The process's terminal status (`completed` on a clean exit). */
+  status: SessionStatus;
+  /** The process exit code (`null` when it never returned one — a true spawn failure). */
+  exitCode: number | null;
+  /**
+   * Whether the harness stream ended in a terminal ERROR event (#251) — `{type:'result', is_error:true}`
+   * for claude-code, a top-level `error`/`turn.failed` for codex. A process can exit 0 yet have failed.
+   */
+  harnessReportedError: boolean;
+  /**
+   * The agent's produced artifact — its structured final answer when the harness marked one, else the
+   * redacted output tail (already bounded/redacted by the caller). The thing a deliverable card would show.
+   */
+  artifact: string;
+}
+
+/** The single, authoritative read of "did this session really finish real work, or did it fail?". */
+export interface SessionDisposition {
+  /**
+   * The RECONCILED terminal status. `failed` whenever the run is not an output-bearing clean completion —
+   * even when the process exited 0 (a harness error event, or a self-reported startup failure). Every
+   * downstream consumer (terminal message, finalize, failure routing, deliverable surfacing) keys off this.
+   */
+  status: SessionStatus;
+  /**
+   * True ONLY for a clean completion that produced a REAL artifact (#200 production-grounded: assert the
+   * agent actually booted and produced output before any done state). The single gate for surfacing a
+   * deliverable / "shipped" board card — so a failed-to-start or no-output run can never show as done.
+   */
+  done: boolean;
+  /** The failure bucket when not done (for routing + copy), else `null`. */
+  failureClass: FailureReasonClass | null;
+}
+
+/**
+ * Decide a session's honest disposition (#319) — the one place that maps a finished run to
+ * done-vs-failed. It is the answer to the two board bugs:
+ *   1. A failed/never-booted run must surface as **failed**, never done/shipped.
+ *   2. A "done" state must be earned by real output, not merely a zero exit code.
+ *
+ * Precedence:
+ *   - A non-clean terminal status (`failed`/`timeout`/`canceled`/…) is already a failure — classify + keep.
+ *   - A clean exit whose stream ended in a harness error event (#251) is a no-artifact failure.
+ *   - A clean exit whose OUTPUT is a self-reported startup failure (#319 — the `(spawn)` board bug) is a
+ *     failure: the agent told us it never really booted, so we believe it over the zero exit code.
+ *   - A clean exit with NO produced artifact is `completed` but **not done** — nothing to surface; this
+ *     preserves the prior "no output ⇒ no deliverable, but not a hard failure" behavior exactly.
+ *   - Otherwise: a real, output-bearing completion ⇒ done.
+ *
+ * Pure + total; the boolean and the reconciled status are unit-tested without a runtime.
+ */
+export function decideSessionDisposition(input: SessionDispositionInput): SessionDisposition {
+  const refine = (status: SessionStatus): FailureReasonClass =>
+    classifyFailure({ status, exitCode: input.exitCode, outputTail: input.artifact });
+
+  if (!isSuccess(input.status)) {
+    return { status: input.status, done: false, failureClass: refine(input.status) };
+  }
+  // Clean process exit, but a positive failure signal: the run failed and produced no real artifact.
+  if (input.harnessReportedError || looksLikeStartupFailure(input.artifact)) {
+    return { status: "failed", done: false, failureClass: refine("failed") };
+  }
+  // Clean completion. It is only DONE (surfaceable as a deliverable) if it actually produced something.
+  return { status: "completed", done: input.artifact.trim().length > 0, failureClass: null };
 }
 
 /** Brand-voice copy per reason class: one line on what happened, one on what to do next. */

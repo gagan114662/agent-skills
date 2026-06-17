@@ -52,6 +52,12 @@ export interface SubagentServiceDeps {
    * Skills reach the harness via `AGENT_SKILLS` (env, never argv).
    */
   resolveSkills?: (persona: AgentPersona) => string[];
+  /**
+   * The extra (beyond-ceiling) tools to provision for a session in this workspace (#319). The marketing /
+   * route wiring binds this to `agentCollaboration` — returning `SPAWN_TOOLS` only when spawn is enabled
+   * for the workspace (default OFF, owner-first), else `[]`. Omitted ⇒ no extra tools (today's surface).
+   */
+  extraToolsForWorkspace?: (workspaceId: string) => string[];
   launcher: SubagentLauncher;
 }
 
@@ -122,8 +128,10 @@ export class SubagentService {
       }
     }
 
-    // 6. Resolve the tool scope (narrow-only) and launch the session as the persona member.
+    // 6. Resolve the tool scope (narrow-only) and launch the session as the persona member. The extra
+    //    spawn-tool provisioning (#319) is gated per-workspace by the wiring (default OFF, owner-first).
     const scope = resolveToolScope(persona.allowedTools, input.tools);
+    const extraTools = this.deps.extraToolsForWorkspace?.(identity.workspaceId) ?? [];
     const session = await this.deps.launcher.launch({
       workspaceId: identity.workspaceId,
       channelId: input.channelId,
@@ -131,7 +139,7 @@ export class SubagentService {
       createdByMemberId: identity.memberId,
       task: input.task,
       parentMessageId: input.messageId,
-      harnessEnv: personaHarnessEnv(persona, scope, this.deps.resolveSkills?.(persona) ?? []),
+      harnessEnv: personaHarnessEnv(persona, scope, this.deps.resolveSkills?.(persona) ?? [], extraTools),
     });
     return { ok: true, sessionId: session.id };
   }

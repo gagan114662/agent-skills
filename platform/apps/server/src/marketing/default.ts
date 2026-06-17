@@ -19,6 +19,7 @@ import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/reposi
 import { foundingVentureFor } from "./blueprint.js";
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
 import { SubagentService, type SubagentLauncher } from "../subagents/service.js";
+import { spawnToolsForWorkspace } from "../subagents/collaboration.js";
 import { createVentureAdmission, kickoffFoundingVenture } from "../venture/default.js";
 import { loadConfig } from "../config/loader.js";
 import { loadEnv } from "../env.js";
@@ -235,6 +236,7 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
     channelCapabilityFor: effectiveChannelCapabilityFor,
     mentionedMemberIds: async (messageId) => (await listMentionsOnMessage(messageId)).map((m) => m.memberId),
     resolveSkills: (persona) => skillsForHandle(persona.name), // #155: load the agent's skill kit per session
+    extraToolsForWorkspace: spawnToolsForWorkspace, // #319: gated subagent-spawn tool (default OFF, owner-first)
     launcher: ventureGatedSubagentLauncher(sessionManager),
   });
 

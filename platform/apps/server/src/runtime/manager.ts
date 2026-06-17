@@ -24,7 +24,14 @@ import type { AdmissionController, AdmissionTicket } from "../scale/admission.js
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
-import { renderSessionOutcome, classifyFailure, failureCopy, isSuccess, type FailureReasonClass } from "./outcome.js";
+import {
+  renderSessionOutcome,
+  classifyFailure,
+  failureCopy,
+  isSuccess,
+  decideSessionDisposition,
+  type FailureReasonClass,
+} from "./outcome.js";
 import { resolveLaunchModel } from "./models.js";
 import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
 
@@ -803,14 +810,26 @@ export class SessionManager {
     await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
-    // #251: reconcile the process exit with the agent's own terminal signal. A run that EXITED CLEANLY
-    // (status `completed`) but whose stream ended in a harness error event produced no real artifact —
-    // downgrade it to `failed` so it never lies with a green check or surfaces a no-content deliverable
-    // card. Every consumer below (terminal message, finalize, failure routing, recovery, deliverable
-    // surfacing) keys off `result.status`, so the single reassignment fixes all of them at once. The
-    // exit code is left untouched (an honest `exit 0`) — the failure class is refined from the output.
-    if (harnessReportedError && isSuccess(result.status)) {
-      result = { ...result, status: "failed" };
+    // The agent's produced artifact: its structured final answer when the harness marked one, else the
+    // rolling tail (the demo / plain-text harness has no final event). This is what a deliverable card
+    // shows AND the evidence the disposition weighs for "did it actually produce real output?".
+    const artifact = (finalAnswer.trim() ? finalAnswer : resultText).slice(0, RESULT_MAX_CHARS);
+    // #319 / #251 / #200: ONE honest read of the run. A clean process exit is reconciled to `failed`
+    // whenever it didn't really finish real work — a harness error event (#251) OR the agent self-reporting
+    // that it never booted ("I couldn't start up — my runtime is missing a tool", the `(spawn)` board bug).
+    // `disposition.done` is the single gate for surfacing a deliverable: a clean completion that produced a
+    // REAL artifact (#200 production-grounded). Every consumer below (terminal message, finalize, failure
+    // routing, recovery, deliverable surfacing) keys off the reconciled `result.status` / `disposition.done`,
+    // so one decision fixes all of them — a failed-to-start or no-output run can never show as done/shipped.
+    // The exit code is left untouched (an honest `exit 0`) — the failure class is refined from the output.
+    const disposition = decideSessionDisposition({
+      status: result.status,
+      exitCode: result.exitCode,
+      harnessReportedError,
+      artifact,
+    });
+    if (disposition.status !== result.status) {
+      result = { ...result, status: disposition.status };
     }
     // #166: a green check ONLY on a clean completion. A failed/timed-out/canceled session renders a
     // failure mark + brand-voice reason (spawn/auth/timeout/budget/…) instead of the old lying
@@ -873,19 +892,13 @@ export class SessionManager {
     }
     // #248: surface a clean completion's deliverable as a board artifact so a briefed task NEVER
     // vanishes — its draft lands in the APPROVAL NEEDED queue instead of living only as a channel
-    // message + result row. Only for a real completion WITH output, and only when the launch opted in
-    // (autonomy/watchdog pass surfaceDeliverable:false — they surface via their own settler). Best-effort.
-    if (
-      this.deps.onSessionCompleted &&
-      isSuccess(result.status) &&
-      opts.surfaceDeliverable !== false &&
-      resultText.trim()
-    ) {
-      // The deliverable is the agent's final answer (the produced artifact) when the harness marked one;
-      // otherwise the rolling tail (the demo / plain-text harness has no structured final event). Either
-      // way the renderer still strips residual narration/tool noise and shows a "no deliverable yet" state
-      // if nothing substantive was produced — so a card never surfaces process noise as a draft.
-      const deliverable = (finalAnswer.trim() ? finalAnswer : resultText).slice(0, RESULT_MAX_CHARS);
+    // message + result row. #319: gated on `disposition.done` — the ONE source of truth — so a run that
+    // failed to start, ended in a harness error (#251), or produced no real artifact is NEVER surfaced as
+    // a done/shipped card (the "5-tweet launch thread shown shipped despite failing to start" bug). Only
+    // when the launch opted in (autonomy/watchdog pass surfaceDeliverable:false — own settler). Best-effort.
+    if (this.deps.onSessionCompleted && disposition.done && opts.surfaceDeliverable !== false) {
+      // The deliverable is the same `artifact` the disposition judged real (final answer, else the tail).
+      const deliverable = artifact;
       await this.deps
         .onSessionCompleted({
           workspaceId: session.workspaceId,
