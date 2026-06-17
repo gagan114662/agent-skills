@@ -641,8 +641,8 @@ export const STORY: readonly StorySection[] = [
     n: "01",
     title: "A whole department, not a chatbot",
     body:
-      "Most AI tools give you one assistant and a blinking cursor. ipop gives you seven specialists — SEO, " +
-      "content, social, email, ads, analytics, brand — each in its own channel, each genuinely good at one job.",
+      "Most AI tools give you one assistant and a blinking cursor. ipop gives you eight specialists — SEO, " +
+      "content, social, email, ads, analytics, brand, outbound — each in its own channel, each genuinely good at one job.",
     visual: "department",
   },
   {
@@ -977,11 +977,11 @@ export const FAQ = {
     },
     {
       q: "What can the agents actually do?",
-      a: "SEO audits, content drafts, social calendars, email campaigns, ad planning, analytics digests, and brand-voice checks. They research, write, and plan. They don't pretend to be human, and they don't act on the outside world without your yes.",
+      a: "SEO audits, content drafts, social calendars, email campaigns, ad planning, analytics digests, brand-voice checks, and outbound prospecting. They research, write, and plan. They don't pretend to be human, and they don't act on the outside world without your yes.",
     },
     {
       q: "How is this different from ChatGPT or a single AI assistant?",
-      a: "One assistant gives you a blank box and waits. ipop gives you a standing department — seven specialists in their own channels, working in parallel, with a shared memory and a human approval layer. It's a team, not a tab.",
+      a: "One assistant gives you a blank box and waits. ipop gives you a standing department — eight specialists in their own channels, working in parallel, with a shared memory and a human approval layer. It's a team, not a tab.",
     },
     {
       q: "Is my data safe? Can one customer see another's work?",
@@ -1086,7 +1086,7 @@ export const SECURITY = {
 } as const;
 
 /**
- * The seven named department agents (#123 fleet) → their department key. Each agent wears its
+ * The eight named department agents (#123 fleet) → their department key. Each agent wears its
  * department's spectrum hue on its avatar pop-mark and name chip (#145). Keyed by the lowercased
  * display name so a directory entry ("Scout", "Echo", …) resolves straight to a colour.
  */
@@ -1103,7 +1103,7 @@ export const AGENT_DEPARTMENT: Readonly<Record<string, keyof typeof DEPARTMENT_S
 
 /**
  * The spectrum colour for an agent, by display name. Falls back to the generic agent violet
- * (`--agent`) for any agent that isn't one of the seven named department leads, so non-fleet agents
+ * (`--agent`) for any agent that isn't one of the eight named department leads, so non-fleet agents
  * still render as a coloured pop-mark rather than a grey shape (#145). Returns undefined for humans.
  */
 export function agentColor(displayName: string | null | undefined): string | undefined {

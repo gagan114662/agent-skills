@@ -154,6 +154,51 @@ describe("AuthGate routing", () => {
     expect(window.sessionStorage.getItem("plan-intent")).toBe("agency");
   });
 
+  it("redirects a logged-out app-route hit to sign-in, preserving the return path (#304)", async () => {
+    act(() => navigate("/app/reports"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    // The marketing landing must NOT be served for a deep app link; the visitor lands on sign-in (/start).
+    await screen.findByRole("button", { name: /sign in with google/i });
+    expect(window.location.pathname).toBe("/start");
+    // …and the page they wanted is preserved so we can return them there after they sign in.
+    expect(new URLSearchParams(window.location.search).get("return")).toBe("/app/reports");
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("lands a signed-in visitor on the preserved return path after sign-in (#304)", async () => {
+    act(() => navigate("/start?return=%2Fapp%2Freports"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    // The ?return=<path> is honoured: the URL is restored to the originally requested page.
+    await waitFor(() => expect(window.location.pathname).toBe("/app/reports"));
+  });
+
+  it("ignores an off-site return target (no open redirect) (#304)", async () => {
+    act(() => navigate("/start?return=https%3A%2F%2Fevil.example.com"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    // A crafted external return is refused — we stay put rather than navigating off-origin.
+    expect(window.location.pathname).toBe("/start");
+  });
+
   it("sends a logged-in visitor straight to the app, even on an auth route", async () => {
     act(() => navigate("/login"));
     renderWithStore(

@@ -123,6 +123,29 @@ describe("landing fleet + copy (#149)", () => {
     expect(FLEET.map((a) => a.department).sort()).toEqual(Object.keys(DEPARTMENT_SPECTRUM).sort());
   });
 
+  it("the chip-cluster section states a specialist count that matches the chips shown (#303)", () => {
+    // Section 01's visual is DepartmentChips, which renders one chip per FLEET agent. The copy must
+    // claim exactly that many specialists — "says seven, shows eight" erodes trust on the conversion page.
+    const chipStory = STORY.find((s) => s.visual === "department");
+    expect(chipStory, "expected a story section paired with the department chips").toBeDefined();
+
+    const COUNT_WORD: Record<number, string> = { 7: "seven", 8: "eight", 9: "nine", 10: "ten" };
+    const word = COUNT_WORD[FLEET.length];
+    expect(word, `add a count word for FLEET.length=${FLEET.length}`).toBeTruthy();
+    expect(chipStory!.body).toContain(`${word} specialists`);
+
+    // The enumerated function list (between the em-dashes) carries one entry per chip, so every shown
+    // agent — including Comet (outbound) — has a described specialty.
+    const enumerated = chipStory!.body.match(/specialists — ([^—]+) —/);
+    expect(enumerated, "section 01 should enumerate the specialist functions").not.toBeNull();
+    const functions = enumerated![1]!.split(",").map((s) => s.trim()).filter(Boolean);
+    expect(functions).toHaveLength(FLEET.length);
+
+    // No landing copy may claim the old, smaller count anywhere on the page.
+    const copyBlob = JSON.stringify({ STORY, FAQ, LANDING });
+    expect(copyBlob).not.toContain("seven specialists");
+  });
+
   it("carries hero copy, three how-it-works steps, and a pricing teaser of three plans", () => {
     expect(LANDING.hero.ctaPrimary).toBeTruthy();
     expect(LANDING.hero.ctaSecondary).toBeTruthy();
