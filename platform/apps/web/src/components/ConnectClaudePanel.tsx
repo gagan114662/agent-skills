@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
-import type { CredentialStatus } from "../api/types.js";
+import type { CredentialStatus, ClaudeConnectOffer } from "../api/types.js";
 import { ConnectClaude } from "./ConnectClaude.js";
 
 /** Advanced model override is dev/admin only — never in the normal production user flow. */
@@ -19,6 +19,7 @@ const ADVANCED_MODEL_OVERRIDE = import.meta.env.DEV;
 
 export function ConnectClaudePanel(): React.JSX.Element {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
+  const [offer, setOffer] = useState<ClaudeConnectOffer | undefined>(undefined);
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -30,6 +31,14 @@ export function ConnectClaudePanel(): React.JSX.Element {
       .getAgentCredentials()
       .then((s) => live && setStatus(s))
       .catch(() => live && setStatus({ connected: false, fingerprint: null }));
+    // #262: which connect method to feature (managed one-click vs the Advanced paste). The paste path
+    // always works regardless, so a failed offer fetch just leaves the panel on today's behavior.
+    void api
+      .getClaudeConnectOffer()
+      .then((o) => live && setOffer(o.offer))
+      .catch(() => {
+        /* leave offer undefined → paste-first */
+      });
     // The managed default is fetched only for the advanced (dev) override — ordinary users never pick a model.
     if (ADVANCED_MODEL_OVERRIDE) {
       void api
@@ -60,17 +69,33 @@ export function ConnectClaudePanel(): React.JSX.Element {
     }
   }
 
+  // #262: begin the managed one-click flow — get the consent URL and hand off to it. The token is sealed
+  // server-side on the callback; on return the panel re-mounts and re-reads the connected state.
+  async function startManagedConnect(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const { authorizeUrl } = await api.startClaudeConnect();
+      window.location.assign(authorizeUrl);
+    } catch {
+      setError("Couldn't start the Claude connection. You can paste a setup token under Advanced.");
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="workspace__panel">
       <ConnectClaude
         status={status}
         busy={busy}
         error={error}
+        offer={offer}
         advanced={ADVANCED_MODEL_OVERRIDE}
         models={models}
         defaultModel={defaultModel}
         onConnect={(token) => void run(() => api.connectAgentCredentials(token))}
         onDisconnect={() => void run(() => api.disconnectAgentCredentials())}
+        onStartManagedConnect={() => void startManagedConnect()}
         onSelectModel={(model) => void run(() => api.setAgentModel(model))}
       />
     </div>

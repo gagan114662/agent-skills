@@ -309,6 +309,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (agentRegistryOwner) agentRegistry.ownerWorkspaceId = agentRegistryOwner;
     raw.agentRegistry = agentRegistry;
   }
+  // #262 connect-Claude: let the deployment env turn the in-app one-click Connect flow on + pick the owner
+  // workspace without a managed.toml (the owner workspace opts in first). Hard default stays OFF (vars
+  // unset → no block ⇒ today's manual paste path). Even enabled, the flow stays an honest `coming_soon`
+  // until a live OAuth client (CLAUDE_OAUTH_*) is configured. A managed layer still wins as the lock.
+  const connectClaudeEnabled = env.RELOAD_CONNECT_CLAUDE_ENABLED;
+  const connectClaudeOwner = env.RELOAD_CONNECT_CLAUDE_OWNER_WORKSPACE_ID;
+  if (connectClaudeEnabled !== undefined || connectClaudeOwner) {
+    const connectClaude: Record<string, unknown> = {};
+    if (connectClaudeEnabled !== undefined) {
+      connectClaude.enabled = connectClaudeEnabled === "true" || connectClaudeEnabled === "1";
+    }
+    if (connectClaudeOwner) connectClaude.ownerWorkspaceId = connectClaudeOwner;
+    raw.connectClaude = connectClaude;
+  }
   // #294 SEO rank tracking: let the deployment env turn the proactive rank FETCH on + pick a provider +
   // owner workspace without a managed.toml (owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ provider stays `dryrun`, reports nothing). Recording an external receipt is always

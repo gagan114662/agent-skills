@@ -31,6 +31,18 @@ export interface AgentModels {
   default: string;
 }
 
+/** The Connect-Claude offer (#262), from `GET /me/claude/connect`. What the panel should feature. */
+export interface ClaudeConnectOffer {
+  /** `managed_oauth` = one-click button; `paste_token` = today's Advanced setup-token paste. */
+  method: "managed_oauth" | "paste_token";
+  /** True iff the one-click managed flow is the featured path for this workspace. */
+  managed: boolean;
+  /** `available` = works now; `coming_soon` = featured but not wired yet (honest). */
+  status: "available" | "coming_soon";
+  /** A short, user-facing reason (e.g. why it's coming soon), or null. */
+  reason: string | null;
+}
+
 /** Slack connection state (#170), from `GET /me/slack`. Never carries the bot token or signing secret. */
 export interface SlackStatus {
   connected: boolean;

@@ -179,6 +179,18 @@ describe("real-world tool surface config (#231)", () => {
     const repo = `[realworld]\nenabled = true`;
     expect(loadConfig(undefined, sources({ managed, repo })).realworld).toEqual({ enabled: false });
   });
+
+  it("#262 connect-Claude defaults OFF, and env opts the owner workspace in (RELOAD_CONNECT_CLAUDE_*)", () => {
+    expect(loadConfig(undefined, sources({})).connectClaude).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_CONNECT_CLAUDE_ENABLED: "true", RELOAD_CONNECT_CLAUDE_OWNER_WORKSPACE_ID: "ws_owner" },
+      ),
+    );
+    expect(cfg.connectClaude).toEqual({ enabled: true, ownerWorkspaceId: "ws_owner" });
+  });
 });
 
 describe("validation & resilience (#58)", () => {

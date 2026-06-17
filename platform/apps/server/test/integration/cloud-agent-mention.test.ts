@@ -186,7 +186,9 @@ describe("#68 cloud agent @mention (real harness posture)", () => {
       if (!/Connect Claude/i.test(text)) await new Promise((r) => setTimeout(r, 100));
     }
     expect(text).toMatch(/Connect Claude/i);
-    expect(text).toMatch(/setup-token/i);
+    // #262: the prompt no longer tells a non-technical owner to run a terminal command — it points them
+    // at the in-app one-click Connect ("no terminal needed").
+    expect(text).toMatch(/no terminal/i);
 
     // No launch ⇒ no metering: the connect prompt never touched the admission/usage path. (The
     // connect-prompt path records no mention task either — only a real launch does.)

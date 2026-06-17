@@ -95,4 +95,43 @@ describe("ConnectClaude (#68)", () => {
     );
     expect(screen.queryByLabelText(/fleet model override/i)).not.toBeInTheDocument();
   });
+
+  it("#262: no managed button by default (paste-first) — backward compatible when no offer is given", () => {
+    render(<ConnectClaude status={{ connected: false, fingerprint: null }} onConnect={() => {}} onDisconnect={() => {}} />);
+    expect(screen.queryByRole("button", { name: /connect claude account/i })).not.toBeInTheDocument();
+    // The setup-token paste field is still reachable (behind Advanced).
+    expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
+  });
+
+  it("#262: shows a one-click Connect button when the managed flow is available, and starts it", () => {
+    const onStartManagedConnect = vi.fn();
+    render(
+      <ConnectClaude
+        status={{ connected: false, fingerprint: null }}
+        offer={{ method: "managed_oauth", managed: true, status: "available", reason: null }}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+        onStartManagedConnect={onStartManagedConnect}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /connect claude account/i }));
+    expect(onStartManagedConnect).toHaveBeenCalled();
+    // The Advanced paste fallback is still present so the user is never blocked.
+    expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
+  });
+
+  it("#262: shows an honest coming-soon note (no managed button) while not wired, paste still available", () => {
+    render(
+      <ConnectClaude
+        status={{ connected: false, fingerprint: null }}
+        offer={{ method: "managed_oauth", managed: true, status: "coming_soon", reason: "rolling out" }}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+        onStartManagedConnect={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /connect claude account/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/rolling out/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
+  });
 });

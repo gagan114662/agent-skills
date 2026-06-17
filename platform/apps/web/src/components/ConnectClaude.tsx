@@ -14,6 +14,14 @@ export interface ConnectClaudeStatus {
   model?: string | null;
 }
 
+/** The featured connect method for this workspace (#262), or undefined while loading / not fetched. */
+export interface ConnectClaudeOffer {
+  method: "managed_oauth" | "paste_token";
+  managed: boolean;
+  status: "available" | "coming_soon";
+  reason: string | null;
+}
+
 export interface ConnectClaudeProps {
   /** Current credential state, or null while loading. */
   status: ConnectClaudeStatus | null;
@@ -23,6 +31,15 @@ export interface ConnectClaudeProps {
   error?: string | null;
   onConnect: (token: string) => void;
   onDisconnect: () => void;
+  /**
+   * The featured connect method (#262). When `managed` + `available`, a one-click "Connect Claude
+   * account" button is shown (no terminal, no paste). Undefined ⇒ today's paste-first behavior. The
+   * manual setup-token paste ALWAYS remains available behind the Advanced disclosure, so a workspace is
+   * never left unable to connect.
+   */
+  offer?: ConnectClaudeOffer;
+  /** Begin the managed one-click flow (redirects to consent). Required for the managed button to act. */
+  onStartManagedConnect?: () => void;
   /**
    * Reveal the advanced model override. The fleet runs on a managed, always-valid model chosen by ipop,
    * so there is NO model picker in the normal user flow. This is an admin/dev-only escape hatch (the
@@ -38,15 +55,17 @@ export interface ConnectClaudeProps {
 }
 
 export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
-  const { status, busy, error, onConnect, onDisconnect, advanced, models, defaultModel, onSelectModel } = props;
+  const { status, busy, error, onConnect, onDisconnect, advanced, models, defaultModel, onSelectModel, offer, onStartManagedConnect } = props;
   const [token, setToken] = useState("");
+  const managedAvailable = offer?.managed === true && offer.status === "available" && !!onStartManagedConnect;
+  const managedComingSoon = offer?.managed === true && offer.status === "coming_soon";
 
   return (
     <div className="connect-claude">
       <h3>Connect Claude</h3>
       <p className="connect-claude__hint">
-        Your fleet agents run on your own Claude subscription. Generate a token with{" "}
-        <code>claude setup-token</code> and paste it below — it is stored encrypted and never shown again.
+        Your fleet agents run on your own Claude subscription — connect it once to bring them online. It’s
+        stored encrypted and never shown again.
       </p>
 
       {status === null ? (
@@ -98,11 +117,31 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
       ) : (
         <div className="connect-claude__notconnected">
           <p className="connect-claude__status">Not connected</p>
+
+          {/* #262: the one-click managed flow — no terminal, no paste. Shown only when it's the featured
+              method for this workspace AND wired; otherwise the Advanced paste below stays the path. */}
+          {managedAvailable ? (
+            <button
+              type="button"
+              className="connect-claude__primary"
+              disabled={busy}
+              onClick={() => onStartManagedConnect?.()}
+            >
+              Connect Claude account
+            </button>
+          ) : managedComingSoon ? (
+            <p className="connect-claude__hint connect-claude__comingsoon" role="status">
+              {offer?.reason ?? "One-click Connect is rolling out — paste a setup token under Advanced for now."}
+            </p>
+          ) : null}
+
           {/* #263: no free-text secret field by default — the manual token paste lives behind this
-              collapsed disclosure. Claude has no in-app OAuth (the token comes from the CLI), so the
-              advanced paste is the connect path, never shown until the owner opens it. */}
+              collapsed disclosure. It is always available as a fallback so a workspace is never blocked. */}
           <details className="connect-claude__advanced">
             <summary>Connect Claude (advanced — paste a setup token)</summary>
+            <p className="connect-claude__hint">
+              For power users: generate a token with <code>claude setup-token</code> and paste it below.
+            </p>
             <form
               className="connect-claude__form"
               onSubmit={(e) => {

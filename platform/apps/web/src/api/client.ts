@@ -33,6 +33,7 @@ import type {
   Channel,
   CredentialStatus,
   AgentModels,
+  ClaudeConnectOffer,
   DepartmentBriefResult,
   DepartmentSeedResult,
   EffortLevel,
@@ -296,6 +297,13 @@ export const api = {
   },
   disconnectAgentCredentials(): Promise<CredentialStatus> {
     return del("/me/agent-credentials") as Promise<CredentialStatus>;
+  },
+  // #262: the in-app one-click Connect Claude flow (replaces the `claude setup-token` CLI).
+  getClaudeConnectOffer(): Promise<{ offer: ClaudeConnectOffer }> {
+    return request<{ offer: ClaudeConnectOffer }>("/me/claude/connect");
+  },
+  startClaudeConnect(): Promise<{ authorizeUrl: string }> {
+    return request<{ authorizeUrl: string }>("/me/claude/connect/start", { method: "POST" });
   },
   // #246: the owner model picker — list the selectable models + set/clear the workspace's fleet model.
   getAgentModels(): Promise<AgentModels> {
