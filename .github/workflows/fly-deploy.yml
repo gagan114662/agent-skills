@@ -68,7 +68,9 @@ jobs:
         # rolling rollout's /readyz health check is green. If the release_command exits non-zero, Fly
         # aborts the rollout (the previous release keeps serving — automatic rollback) and flyctl exits
         # non-zero, failing this step. No --strategy flag needed: fly.toml pins strategy = "rolling".
-        run: flyctl deploy --remote-only --config fly.toml
+        # #292: stamp the deployed commit into the image (Dockerfile ARG GIT_SHA → ENV → GET /version) so
+        # the version-advance gate below can externally confirm THIS commit is the one now serving.
+        run: flyctl deploy --remote-only --config fly.toml --build-arg GIT_SHA="${{ github.sha }}"
 
       - name: Verify readiness (/readyz green after rollout)
         if: env.FLY_CONFIGURED == 'true'
@@ -107,6 +109,20 @@ jobs:
       - name: Install deps (for the self-QA smoke)
         if: env.FLY_CONFIGURED == 'true'
         run: pnpm install --frozen-lockfile
+
+      # #292: the version-advance gate. `/readyz` (above) proves deps are reachable — but the OLD release
+      # passes it too, so a deploy that silently no-ops (path-filter miss, unset-token guard, or a release
+      # that never cut over) leaves prod stuck on the previous image with CI green (the v80 blocker, which
+      # kept the merged #247 model fix off prod). This step probes the LIVE host's /version and asserts it
+      # reports THIS commit; a mismatch (or an old/unstamped host) fails the job red. The decision is the
+      # unit-tested, fail-closed `decideReleaseAdvanced` — one source of truth, no duplicated bash logic.
+      - name: Verify release advanced (live /version == this commit)
+        if: env.FLY_CONFIGURED == 'true'
+        env:
+          RELEASE_EXPECTED_SHA: ${{ github.sha }}
+          RELEASE_VERIFY_URL: https://reload-api.fly.dev
+        run: pnpm --filter @reload/server verify:release
+
       - name: Post-deploy self-QA smoke → open/dedupe selfqa bug issues
         if: env.FLY_CONFIGURED == 'true'
         env:
