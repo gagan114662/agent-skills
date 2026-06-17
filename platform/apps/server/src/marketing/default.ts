@@ -34,6 +34,7 @@ import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResu
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
 import { MarketingBriefService } from "./brief.js";
+import { resolveDedupeEnabled } from "./dedup.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 
@@ -302,6 +303,17 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         task: input.task,
         createdByMemberId: input.createdByMemberId,
       }),
+    // #322 idempotent task creation: a re-briefed objective that already has an OPEN (`launched`) task in
+    // the same department is skipped — no duplicate session / draft. DEFAULT-OFF, owner-workspace-first
+    // (`resolveDedupeEnabled`), so the default posture and every existing test launch exactly as before.
+    dedupe: {
+      isEnabled: async (workspaceId) =>
+        resolveDedupeEnabled(loadConfig(workspaceId).marketing, workspaceId),
+      openTasks: async (workspaceId) =>
+        (await listMarketingTasks(workspaceId))
+          .filter((t) => t.status === "launched")
+          .map((t) => ({ id: t.id, department: t.department, task: t.task })),
+    },
     departmentForHandle: (handle) => departmentForHandle(handle)?.key,
   });
 }

@@ -448,6 +448,19 @@ export const marketingSchema = z.object({
    * (the ipop dogfood site, see {@link resolveSiteUrl}) and any other workspace keeps the placeholder.
    */
   siteUrl: z.string().optional(),
+  /**
+   * Idempotent task / draft dedup (#322) — default OFF. When on, the launch seam skips re-opening a task
+   * whose normalized objective already has an OPEN task in the same department (no duplicate sessions /
+   * drafts), and the pending-approvals read collapses identical-objective deliverable drafts to one card.
+   * Rolls out owner-workspace-first (see {@link dedupeOwnerWorkspaceOnly}), reusing `ownerWorkspaceId`.
+   */
+  dedupeTasks: z.boolean().optional(),
+  /**
+   * Restrict dedup to the owner workspace (default true). Even with `dedupeTasks` on, only `ownerWorkspaceId`
+   * dedups; set false to apply to every tenant once the owner workspace has proven the path. Turning
+   * `dedupeTasks` on without naming the owner workspace dedups for NObody (the safest default).
+   */
+  dedupeOwnerWorkspaceOnly: z.boolean().optional(),
 });
 
 /**

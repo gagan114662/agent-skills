@@ -12,6 +12,7 @@
  * and propagates to the app error handler (→ 402/429) — NO task row is written. RBAC denials from the
  * SubagentService come back as `{ok:false}` and are returned verbatim.
  */
+import { findDuplicateOpenTask, type DedupeOpenTask } from "./dedup.js";
 
 export type InvokeResult =
   | { ok: true; sessionId: string }
@@ -78,6 +79,29 @@ export interface ModelBlocked {
   messageId: string;
 }
 
+/**
+ * Idempotent task creation gate (#322, ADR-0322). When wired AND enabled for the workspace, a re-briefed
+ * objective whose normalized text already has an OPEN task in the same department is SKIPPED — no second
+ * session, no second `marketing_tasks` row, no duplicate Spend-Approval draft downstream. Absent (or
+ * disabled) ⇒ today's behavior (every brief launches), so the default posture and every existing test are
+ * unchanged. The dep is read-only and pure-decided in {@link findDuplicateOpenTask}.
+ */
+export interface MarketingDedupeGate {
+  /** Whether dedup is active for this workspace (#322 default-OFF, owner-workspace-first). */
+  isEnabled(workspaceId: string): Promise<boolean>;
+  /** OPEN (non-terminal) department tasks to dedup against — id, department, raw objective. */
+  openTasks(workspaceId: string): Promise<DedupeOpenTask[]>;
+}
+
+/** A persona whose launch was SKIPPED because an open task with the same objective already exists (#322). */
+export interface DedupedMention {
+  personaId: string;
+  handle: string;
+  department: string;
+  /** The existing open task the new brief reused instead of opening a duplicate. */
+  existingTaskId: string;
+}
+
 export interface MarketingMentionDeps {
   getChannel(channelId: string): Promise<{ id: string; workspaceId: string; name: string | null } | undefined>;
   isMarketingChannel(name: string | null): boolean;
@@ -105,6 +129,8 @@ export interface MarketingMentionDeps {
   auth?: MarketingAuthGate;
   /** #246: optional model preflight gate. Absent → no gate (demo/local default). */
   model?: MarketingModelGate;
+  /** #322: optional idempotent task-creation gate. Absent → no dedup (today's behavior). */
+  dedupe?: MarketingDedupeGate;
 }
 
 export interface LaunchedMention {
@@ -116,7 +142,14 @@ export interface LaunchedMention {
 }
 
 export type MarketingMentionResult =
-  | { ok: true; launched: LaunchedMention[]; connectPrompted: ConnectPrompted[]; modelBlocked: ModelBlocked[] }
+  | {
+      ok: true;
+      launched: LaunchedMention[];
+      connectPrompted: ConnectPrompted[];
+      modelBlocked: ModelBlocked[];
+      /** Personas whose launch was skipped as a duplicate of an open task (#322); [] when dedup is off. */
+      deduped: DedupedMention[];
+    }
   | { ok: false; code: number; error: string };
 
 export class MarketingMentionService {
@@ -142,6 +175,17 @@ export class MarketingMentionService {
     const launched: LaunchedMention[] = [];
     const connectPrompted: ConnectPrompted[] = [];
     const modelBlocked: ModelBlocked[] = [];
+    const deduped: DedupedMention[] = [];
+
+    // #322 idempotent task creation: when the dedup gate is wired AND enabled for this workspace, read the
+    // open tasks ONCE up front. A re-briefed objective that already has an open task in the same department
+    // is skipped below (no duplicate session / draft). The list grows in-memory as we launch, so two
+    // personas on the same message can't open two copies of the same objective in the same department.
+    const dedupeGate = this.deps.dedupe;
+    const dedupeEnabled = dedupeGate ? await dedupeGate.isEnabled(identity.workspaceId) : false;
+    const openTasks: DedupeOpenTask[] =
+      dedupeGate && dedupeEnabled ? await dedupeGate.openTasks(identity.workspaceId) : [];
+
     for (const persona of personas) {
       const department = this.deps.departmentForHandle(persona.name);
       if (!department) continue; // a mentioned non-marketing persona is skipped here
@@ -195,6 +239,19 @@ export class MarketingMentionService {
       }
 
       const task = input.task ?? `@${persona.name}`;
+
+      // #322 idempotent task creation: if this objective already has an OPEN task in this department, the
+      // fleet is already on it — reuse it instead of opening a duplicate. No invoke, no admission slot, no
+      // second `marketing_tasks` row, no duplicate Spend-Approval draft. Pure-decided; injection-safe (the
+      // objective is compared as opaque data, never interpreted).
+      if (dedupeEnabled) {
+        const dup = findDuplicateOpenTask({ department, objective: task, openTasks });
+        if (dup) {
+          deduped.push({ personaId: persona.id, handle: persona.name, department, existingTaskId: dup.id });
+          continue;
+        }
+      }
+
       // A denial (kill switch / budget) throws out of `invoke` and propagates — no task is recorded.
       const result = await this.deps.invoke(identity, {
         personaId: persona.id,
@@ -221,11 +278,18 @@ export class MarketingMentionService {
         sessionId: result.sessionId,
         taskId: record.id,
       });
+      // Track the just-opened task so a later persona on the same message can dedup against it (#322).
+      if (dedupeEnabled) openTasks.push({ id: record.id, department, task });
     }
 
-    if (launched.length === 0 && connectPrompted.length === 0 && modelBlocked.length === 0) {
+    if (
+      launched.length === 0 &&
+      connectPrompted.length === 0 &&
+      modelBlocked.length === 0 &&
+      deduped.length === 0
+    ) {
       return { ok: false, code: 400, error: "no marketing agents are mentioned on this message" };
     }
-    return { ok: true, launched, connectPrompted, modelBlocked };
+    return { ok: true, launched, connectPrompted, modelBlocked, deduped };
   }
 }

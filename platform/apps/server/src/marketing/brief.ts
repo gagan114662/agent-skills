@@ -21,6 +21,7 @@ import type {
   LaunchedMention,
   ConnectPrompted,
   ModelBlocked,
+  DedupedMention,
 } from "./mention.js";
 
 export interface MarketingBriefDeps {
@@ -60,6 +61,8 @@ export type MarketingBriefResult =
       launched: LaunchedMention[];
       connectPrompted: ConnectPrompted[];
       modelBlocked: ModelBlocked[];
+      /** Personas skipped as a duplicate of an open task (#322); [] when dedup is off. */
+      deduped: DedupedMention[];
     }
   | { ok: false; code: number; error: string };
 
@@ -116,6 +119,7 @@ export class MarketingBriefService {
       launched: result.launched,
       connectPrompted: result.connectPrompted,
       modelBlocked: result.modelBlocked,
+      deduped: result.deduped,
     };
   }
 }

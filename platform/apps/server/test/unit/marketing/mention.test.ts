@@ -85,6 +85,69 @@ describe("#123 MarketingMentionService", () => {
     expect(recordTask).not.toHaveBeenCalled();
   });
 
+  it("#322 dedup: briefing the SAME objective twice does not create a second task or session", async () => {
+    // A shared store the dedup gate reads, that grows as launches record tasks — exactly the production
+    // wiring (the dedup gate reads `listMarketingTasks` filtered to open). The objective is identical.
+    const objective = "Audit our website's homepage for SEO and summarise the top quick wins";
+    const open: Array<{ id: string; department: string; task: string }> = [];
+    let n = 0;
+    const recordTask = vi.fn(async (input: { department: string; task: string }) => {
+      const id = `mt-${++n}`;
+      open.push({ id, department: input.department, task: input.task });
+      return { id };
+    });
+    const invoke = vi.fn(async () => ({ ok: true as const, sessionId: `sess-${n + 1}` }));
+    const { deps } = baseDeps({
+      recordTask: recordTask as never,
+      invoke,
+      dedupe: {
+        isEnabled: async () => true,
+        openTasks: async () => open.map((t) => ({ ...t })),
+      },
+    });
+    const svc = new MarketingMentionService(deps);
+
+    // First brief: opens the task and launches.
+    const first = await svc.launch(identity, { channelId: "c-seo", messageId: "m-1", task: objective });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("expected ok");
+    expect(first.launched).toHaveLength(1);
+    expect(first.deduped).toHaveLength(0);
+
+    // Second brief of the SAME objective: deduped — NO second invoke, NO second task recorded.
+    const second = await svc.launch(identity, { channelId: "c-seo", messageId: "m-2", task: objective });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("expected ok");
+    expect(second.launched).toHaveLength(0);
+    expect(second.deduped).toEqual([
+      { personaId: "p-scout", handle: "scout", department: "seo", existingTaskId: "mt-1" },
+    ]);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(recordTask).toHaveBeenCalledTimes(1);
+    expect(open).toHaveLength(1);
+  });
+
+  it("#322 dedup: a DIFFERENT objective in the same department still launches (no false collapse)", async () => {
+    const open: Array<{ id: string; department: string; task: string }> = [
+      { id: "mt-1", department: "seo", task: "Audit our homepage for SEO" },
+    ];
+    const { deps, invoke, recordTask } = baseDeps({
+      dedupe: { isEnabled: async () => true, openTasks: async () => open },
+    });
+    const res = await new MarketingMentionService(deps).launch(identity, {
+      channelId: "c-seo",
+      messageId: "m-2",
+      task: "Build us a backlink outreach plan",
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("expected ok");
+    expect(res.launched).toHaveLength(1);
+    expect(res.deduped).toHaveLength(0);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(recordTask).toHaveBeenCalledTimes(1);
+  });
+
   it("lets a launch denial (kill switch / budget) propagate and records no task", async () => {
     const recordTask = vi.fn();
     const { deps } = baseDeps({
