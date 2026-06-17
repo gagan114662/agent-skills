@@ -184,6 +184,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #283 SkillOpt-Sleep policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // self-improvement flag + owner-first restriction + gate bounds cannot be loosened by a lower layer.
     if (layer.skillopt !== undefined) out.skillopt = { ...layer.skillopt };
+    // #300 signup-entry policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // sample-workspace + progressive-scopes flags cannot be loosened by a lower layer.
+    if (layer.signupEntry !== undefined) out.signupEntry = { ...layer.signupEntry };
   }
   return out;
 }
@@ -256,5 +259,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
+    signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
   };
 }

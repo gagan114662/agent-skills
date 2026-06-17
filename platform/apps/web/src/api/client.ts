@@ -59,6 +59,7 @@ import type {
   BrandKitInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  SampleConsoleResponse,
   StatusPageDto,
   TaskTemplateDto,
   SiteDocDetail,
@@ -283,6 +284,11 @@ export const api = {
   },
   me(): Promise<Identity> {
     return request<Identity>("/me");
+  },
+  // #300 low-commitment front door: the read-only sample workspace. UNauthenticated; `offered:false` when
+  // the deployment hasn't turned the flag on (default), so the web hides the entry honestly.
+  getSampleConsole(): Promise<SampleConsoleResponse> {
+    return request<SampleConsoleResponse>("/sample/console");
   },
 
   // --- Connect Claude credentials (#68) ---

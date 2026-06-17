@@ -35,6 +35,14 @@ describe("oauth-state (#260 CSRF + domain carrier)", () => {
     expect(verifyState("nodot", SECRET)).toBeNull();
   });
 
+  it("#300 round-trips the deferred-SEO intent, and omits it for a plain signup state", () => {
+    const seo = signState({ domain: "acme.com", nonce: "n", intent: "seo" }, SECRET, 1000);
+    expect(verifyState(seo, SECRET, { now: 1000 })).toEqual({ domain: "acme.com", nonce: "n", intent: "seo" });
+    // A signup state (intent absent or "signup") stays exactly {domain, nonce} — #260 byte-for-byte.
+    const signup = signState({ domain: "acme.com", nonce: "n", intent: "signup" }, SECRET, 1000);
+    expect(verifyState(signup, SECRET, { now: 1000 })).toEqual({ domain: "acme.com", nonce: "n" });
+  });
+
   it("loadStateSecret prefers explicit secret, then enc key, then a dev fallback", () => {
     expect(loadStateSecret({ GOOGLE_OAUTH_STATE_SECRET: "a" } as NodeJS.ProcessEnv)).toBe("a");
     expect(loadStateSecret({ AGENT_CREDENTIALS_ENC_KEY: "b" } as NodeJS.ProcessEnv)).toBe("b");

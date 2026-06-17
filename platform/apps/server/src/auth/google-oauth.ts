@@ -76,6 +76,55 @@ export function buildGoogleAuthorizeUrl(input: {
   return `${GOOGLE_AUTHORIZE_ENDPOINT}?${params.toString()}`;
 }
 
+/**
+ * Progressive consent (#300, ADR-0300). The point in the journey a Google consent is requested at:
+ *  - `"signup"` — the front-door identity step (create/attach the account); identity-only when progressive
+ *    scopes are on, so a prospect never grants Search Console / Analytics just to sign up.
+ *  - `"seo"`    — the deferred grant requested when the user actually initiates SEO work; the full set.
+ */
+export type OnboardingIntent = "signup" | "seo";
+
+/**
+ * Decide which scopes a consent should request. Pure + total. With progressive scopes OFF (the #260
+ * default) EVERY consent requests the full set — today's behavior, byte-for-byte. With progressive ON, the
+ * signup step requests identity only and the SEO step requests the full set (GSC + Analytics), so the broad
+ * data scopes are deferred to the moment SEO work is initiated (#300 AC).
+ */
+export function resolveOnboardingScopes(input: {
+  progressive: boolean;
+  intent: OnboardingIntent;
+}): readonly string[] {
+  if (!input.progressive) return GOOGLE_OAUTH_SCOPES;
+  return input.intent === "seo" ? GOOGLE_OAUTH_SCOPES : [...GOOGLE_IDENTITY_SCOPES];
+}
+
+/**
+ * Derive the connection capability list (the #258 view shape) from a requested scope set. Pure + total:
+ * the full scope set maps back to {@link GOOGLE_CONNECTION_CAPABILITIES} exactly, while an identity-only
+ * signup consent records only `["identity"]` — so a deferred-SEO workspace honestly shows it has not yet
+ * granted Search Console / Analytics until the user asks Scout to do SEO work.
+ */
+export function capabilitiesForScopes(scopes: readonly string[]): string[] {
+  const caps: string[] = [];
+  if (GOOGLE_IDENTITY_SCOPES.some((s) => scopes.includes(s))) caps.push("identity");
+  if (scopes.includes(GOOGLE_SEARCH_CONSOLE_SCOPE)) caps.push("search_console");
+  if (scopes.includes(GOOGLE_ANALYTICS_SCOPE)) caps.push("analytics");
+  return caps;
+}
+
+/**
+ * Union an existing connection's recorded capabilities with the freshly-requested ones, existing-first and
+ * de-duplicated. Pure + total. This is the anti-downgrade rule (#300): a returning user whose workspace
+ * already granted Search Console / Analytics must keep them even when this login only requested identity —
+ * progressive consent can only ever ADD capabilities, never silently remove one.
+ */
+export function mergeGrantedCapabilities(
+  existing: readonly string[],
+  requested: readonly string[],
+): string[] {
+  return Array.from(new Set([...existing, ...requested]));
+}
+
 /** A Google token response (the fields we keep). */
 export interface GoogleTokens {
   accessToken: string;

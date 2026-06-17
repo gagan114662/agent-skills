@@ -13,6 +13,7 @@ import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 import { Onboarding } from "./Onboarding.js";
+import { SampleConsole } from "./SampleConsole.js";
 import { isMarketingPath } from "./site/paths.js";
 
 type Mode = "login" | "signup";
@@ -104,6 +105,11 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
       </Suspense>
     );
   }
+
+  // #300: the read-only sample workspace is a public, low-commitment front door — reachable at every phase
+  // (a prospect evaluating before signing up), matched before the phase gates so it never falls through to
+  // the landing and never requires a session. It degrades honestly when the deployment flag is OFF.
+  if (path === "/sample") return <SampleConsole />;
 
   // #214: the public pricing page is reachable at every phase (a price-shopping visitor, a shared link,
   // an ad destination) — matched before the phase gates so it never falls through to the full landing.

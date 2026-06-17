@@ -335,6 +335,23 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (connectClaudeOwner) connectClaude.ownerWorkspaceId = connectClaudeOwner;
     raw.connectClaude = connectClaude;
   }
+  // #300 signup entry: let the deployment env offer the read-only sample workspace + turn on progressive
+  // Google scopes (identity-only at signup, GSC/Analytics deferred to SEO) without a managed.toml. Hard
+  // default stays OFF (vars unset → no block ⇒ today's #260 Google-only, single full-scope consent). A
+  // managed layer still wins as the lock.
+  const signupSampleWorkspace = env.RELOAD_SIGNUP_SAMPLE_WORKSPACE;
+  const signupProgressiveScopes = env.RELOAD_SIGNUP_PROGRESSIVE_SCOPES;
+  if (signupSampleWorkspace !== undefined || signupProgressiveScopes !== undefined) {
+    const signupEntry: Record<string, unknown> = {};
+    if (signupSampleWorkspace !== undefined) {
+      signupEntry.sampleWorkspace = signupSampleWorkspace === "true" || signupSampleWorkspace === "1";
+    }
+    if (signupProgressiveScopes !== undefined) {
+      signupEntry.progressiveScopes =
+        signupProgressiveScopes === "true" || signupProgressiveScopes === "1";
+    }
+    raw.signupEntry = signupEntry;
+  }
   // #294 SEO rank tracking: let the deployment env turn the proactive rank FETCH on + pick a provider +
   // owner workspace without a managed.toml (owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ provider stays `dryrun`, reports nothing). Recording an external receipt is always

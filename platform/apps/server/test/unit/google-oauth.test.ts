@@ -3,6 +3,9 @@ import {
   loadGoogleOAuthConfig,
   buildGoogleAuthorizeUrl,
   googleConnectionSecrets,
+  resolveOnboardingScopes,
+  capabilitiesForScopes,
+  mergeGrantedCapabilities,
   GOOGLE_OAUTH_SCOPES,
   GOOGLE_IDENTITY_SCOPES,
   GOOGLE_SEARCH_CONSOLE_SCOPE,
@@ -83,5 +86,69 @@ describe("googleConnectionSecrets", () => {
     expect(secrets.GOOGLE_OAUTH_REFRESH_TOKEN).toBeUndefined();
     expect(secrets.GOOGLE_OAUTH_EXPIRES_AT).toBeUndefined();
     expect(secrets.GOOGLE_OAUTH_ACCESS_TOKEN).toBe("at");
+  });
+});
+
+describe("resolveOnboardingScopes (#300 — progressive consent, default OFF)", () => {
+  it("progressive OFF ⇒ full set at signup AND at SEO (today's #260 single consent)", () => {
+    expect(resolveOnboardingScopes({ progressive: false, intent: "signup" })).toEqual(GOOGLE_OAUTH_SCOPES);
+    expect(resolveOnboardingScopes({ progressive: false, intent: "seo" })).toEqual(GOOGLE_OAUTH_SCOPES);
+  });
+
+  it("progressive ON ⇒ identity-only at signup (no GSC/Analytics), full set when SEO is initiated", () => {
+    const signup = resolveOnboardingScopes({ progressive: true, intent: "signup" });
+    expect(signup).toEqual([...GOOGLE_IDENTITY_SCOPES]);
+    expect(signup).not.toContain(GOOGLE_SEARCH_CONSOLE_SCOPE);
+    expect(signup).not.toContain(GOOGLE_ANALYTICS_SCOPE);
+
+    const seo = resolveOnboardingScopes({ progressive: true, intent: "seo" });
+    expect(seo).toContain(GOOGLE_SEARCH_CONSOLE_SCOPE);
+    expect(seo).toContain(GOOGLE_ANALYTICS_SCOPE);
+  });
+});
+
+describe("capabilitiesForScopes (#300 — recorded connection capabilities)", () => {
+  it("the full scope set maps back to the #258 capability list exactly", () => {
+    expect(capabilitiesForScopes(GOOGLE_OAUTH_SCOPES)).toEqual([...GOOGLE_CONNECTION_CAPABILITIES]);
+  });
+
+  it("an identity-only signup consent records only identity (GSC/Analytics deferred)", () => {
+    expect(capabilitiesForScopes([...GOOGLE_IDENTITY_SCOPES])).toEqual(["identity"]);
+  });
+
+  it("ignores unknown scopes and stays order-stable", () => {
+    expect(capabilitiesForScopes(["openid", GOOGLE_ANALYTICS_SCOPE, "bogus"])).toEqual([
+      "identity",
+      "analytics",
+    ]);
+  });
+});
+
+describe("mergeGrantedCapabilities (#300 — never downgrade a returning user)", () => {
+  it("a returning broad-scope user keeps GSC/Analytics through an identity-only signup re-login", () => {
+    // The user already granted everything; today's login only requested identity (progressive signup).
+    const existing = ["identity", "search_console", "analytics"];
+    const requested = capabilitiesForScopes([...GOOGLE_IDENTITY_SCOPES]); // ["identity"]
+    expect(mergeGrantedCapabilities(existing, requested)).toEqual([
+      "identity",
+      "search_console",
+      "analytics",
+    ]);
+  });
+
+  it("adds the deferred SEO capabilities to an identity-only workspace (the upgrade path)", () => {
+    expect(mergeGrantedCapabilities(["identity"], ["identity", "search_console", "analytics"])).toEqual([
+      "identity",
+      "search_console",
+      "analytics",
+    ]);
+  });
+
+  it("is a de-duplicated union (no repeats, existing-first order)", () => {
+    expect(mergeGrantedCapabilities(["analytics"], ["identity", "analytics"])).toEqual([
+      "analytics",
+      "identity",
+    ]);
+    expect(mergeGrantedCapabilities([], ["identity"])).toEqual(["identity"]);
   });
 });

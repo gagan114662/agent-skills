@@ -794,3 +794,26 @@ export interface DepartmentBriefResult {
   launched: Array<{ personaId: string; handle: string; department: string; sessionId: string; taskId: string }>;
   connectPrompted: Array<{ personaId: string; handle: string; department: string; messageId: string }>;
 }
+
+/** A deliverable card in the #300 read-only sample workspace. */
+export interface SampleDeliverableDto {
+  id: string;
+  agent: string;
+  department: string;
+  title: string;
+  preview: string;
+  body: string;
+}
+
+/** The #300 read-only sample workspace payload (a demo, never a real tenant). */
+export interface SampleConsoleDto {
+  readOnly: true;
+  workspaceLabel: string;
+  deliverables: SampleDeliverableDto[];
+}
+
+/** The `GET /sample/console` response — `offered:false` when the front-door flag is OFF (default). */
+export interface SampleConsoleResponse {
+  offered: boolean;
+  console: SampleConsoleDto | null;
+}

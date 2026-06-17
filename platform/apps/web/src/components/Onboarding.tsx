@@ -6,9 +6,10 @@
  *
  * Every server-side failure redirects back here with `?error=<code>`, which we render in the house voice.
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { BRAND, ONBOARDING } from "../brand.js";
-import { googleStartUrl } from "../api/client.js";
+import { api, googleStartUrl } from "../api/client.js";
+import { Link } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 
@@ -25,6 +26,25 @@ export function Onboarding(): React.JSX.Element {
   const [domain, setDomain] = useState("");
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
+  // #300: offer the low-commitment "explore a sample workspace" entry only when the deployment turned it on
+  // (default OFF). We ask the server rather than assume, and a failure/offline just hides it — the Google
+  // path is always available, so this can never block sign-in.
+  const [sampleOffered, setSampleOffered] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void api
+      .getSampleConsole()
+      .then((res) => {
+        if (live) setSampleOffered(res.offered);
+      })
+      .catch(() => {
+        if (live) setSampleOffered(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   function onSubmit(e: FormEvent): void {
     e.preventDefault();
@@ -69,6 +89,15 @@ export function Onboarding(): React.JSX.Element {
         <button className="btn btn--primary" type="submit" disabled={busy}>
           {ONBOARDING.googleCta}
         </button>
+
+        {sampleOffered && (
+          <p className="auth__alt">
+            {ONBOARDING.sampleDivider}{" "}
+            <Link href="/sample" className="linklike">
+              {ONBOARDING.sampleCta}
+            </Link>
+          </p>
+        )}
 
         <p className="auth__switch">{ONBOARDING.reassurance}</p>
       </form>
