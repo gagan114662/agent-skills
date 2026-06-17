@@ -193,3 +193,91 @@ describe("spinner + forecast", () => {
     });
   });
 });
+
+describe("buildConsole — deliverable cards are human, never raw (#302)", () => {
+  const deliverable = (over: Partial<ApprovalRequestDto> & { id: string }): ApprovalRequestDto =>
+    approval({
+      requesterMemberId: "ag-scout",
+      actionType: "agent.deliverable",
+      summary: "Deliverable ready for review: Audit the homepage for SEO… fetch https://x.test",
+      payload: {
+        task: "Audit the homepage for SEO… fetch https://x.test",
+        draft: "Found 3 quick wins\nMissing meta description on /pricing",
+      },
+      ...over,
+    });
+
+  it("renders a HUMAN title (the work, no boilerplate/URL) — not the raw prompt", () => {
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [deliverable({ id: "d1" })],
+      shipped: [],
+      channels,
+      directory,
+    });
+    const card = model.columns.waiting[0]!;
+    expect(card.title).toBe("Audit the homepage for SEO");
+    expect(card.title).not.toMatch(/ready for review/i);
+    expect(card.title).not.toMatch(/https?:\/\//);
+  });
+
+  it("never exposes the raw `agent.deliverable` type id as the card meta", () => {
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [deliverable({ id: "d1" })],
+      shipped: [],
+      channels,
+      directory,
+    });
+    const card = model.columns.waiting[0]!;
+    expect(card.meta).not.toContain("agent.deliverable");
+    // A waiting deliverable carries a preview + a "what happens if I approve" consequence line.
+    expect(card.preview).toBe("Found 3 quick wins");
+    expect(card.consequence).toBeTruthy();
+  });
+
+  it("a Done deliverable reads as accepted — never 'ready for review'", () => {
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [],
+      shipped: [deliverable({ id: "d2", status: "executed" })],
+      channels,
+      directory,
+    });
+    const card = model.columns.shipped[0]!;
+    expect(card.meta).not.toMatch(/ready for review/i);
+    expect(card.consequence).toBeUndefined();
+  });
+
+  it("filters internal/test deliverables out of the board entirely", () => {
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [
+        deliverable({
+          id: "d-internal",
+          summary: "Deliverable ready for review: Reply with one sentence confirming you can run, then stop",
+          payload: { task: "Reply with one sentence confirming you can run, then stop", draft: "ok" },
+        }),
+        deliverable({ id: "d-real" }),
+      ],
+      shipped: [],
+      channels,
+      directory,
+    });
+    expect(model.columns.waiting).toHaveLength(1);
+    expect(model.columns.waiting[0]!.key).toBe("d-real");
+  });
+
+  it("humanises a non-deliverable action's meta too (no raw `external.send` id)", () => {
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [approval({ id: "r1", actionType: "external.send", summary: "Send launch emails" })],
+      shipped: [],
+      channels,
+      directory,
+    });
+    const card = model.columns.waiting[0]!;
+    expect(card.title).toBe("Send launch emails");
+    expect(card.meta).not.toContain("external.send");
+  });
+});

@@ -734,6 +734,50 @@ export const CONSOLE = {
     assembling: "Your team's clocking in. The board fills in as each lead opens their first task — hang tight.",
     connectHint: "Bringing your own Claude? Connect it in Settings so the team can actually run.",
     connectCta: "Open Settings",
+    /**
+     * First-run auto-deliverable (#301): the moment a fresh workspace lands on the board, Scout quietly
+     * takes a real, no-spend first pass — an SEO audit of the workspace's own site — so the owner has
+     * something useful to look at within the first minute, with zero setup. The handle is a department
+     * lead id (not a brand string); the goal is the brief Scout runs.
+     */
+    autoLead: "scout",
+    autoGoal:
+      "Audit our website's homepage for SEO and summarise the top quick wins — title, meta description, headings, and crawlability. No spend, no changes; just the findings.",
+  },
+  /**
+   * Calm "warming up" state (#299): a fresh workspace's first sessions can hit transient runner/spawn
+   * issues before the team is fully on the board. The console NEVER shows raw runner or exit-code errors;
+   * it shows this branded, reassuring state and silently retries in the background until a real
+   * deliverable lands. No exit codes, no internal class names — just the promise that work is coming.
+   */
+  warmingUp: {
+    headline: "Your team is warming up…",
+    sub: "Getting your first deliverable ready. This takes a moment on a brand-new workspace — nothing for you to do.",
+  },
+  /**
+   * Deliverable cards (#302): a completed agent session surfaces as a board card. The raw agent prompt is
+   * never the title and the internal `agent.deliverable` type id never shows. Each card carries a human
+   * title (the work itself), a short preview of what the agent produced, and — while it awaits review — a
+   * plain "what happens if I approve" line. The human action labels below replace every raw type id.
+   */
+  deliverable: {
+    /** Fallback title when the task text is empty/unreadable. */
+    untitled: "New deliverable",
+    /** The lifecycle word shown on a card by lane (never "ready for review" on a Done card). */
+    review: "Needs your review",
+    shipped: "Accepted",
+    /** The "what happens if I approve" line under a deliverable awaiting review. */
+    consequence: "Approve to accept this draft — nothing is sent or charged.",
+    /** Human labels for the action types that reach the board, so a raw `x.y` id never renders. */
+    actionLabels: {
+      "agent.deliverable": "Deliverable",
+      "external.send": "Outbound send",
+      "billing.refund": "Refund",
+      "billing.charge": "Charge",
+      "billing.payout": "Payout",
+    } as Record<string, string>,
+    /** Fallback action label for any unmapped type — still human, never the raw id. */
+    actionFallback: "Action",
   },
   /** The three board lanes (console v5). A card runs left→right: Work in progress → Approval needed →
    * Done. These are the only column titles — the whole product is one board. */

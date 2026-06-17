@@ -85,6 +85,23 @@ function mockSeams(opts: { pending?: ApprovalRequestDto[]; fc?: FounderConsoleDt
   );
 }
 
+/**
+ * Stub the #123/#138 department seams (seed + brief) so the #301 first-run auto-deliverable never hits a
+ * real fetch when it fires on a fresh-but-ready board. Returns the brief spy so a test can assert the
+ * auto-run actually briefed Scout.
+ */
+function mockDepartment() {
+  vi.spyOn(api.department, "seed").mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+  return vi.spyOn(api.department, "brief").mockResolvedValue({
+    lead: "scout",
+    department: "seo",
+    channelId: "c-seo",
+    messageId: "m1",
+    launched: [{ personaId: "p1", handle: "scout", department: "seo", sessionId: "s1", taskId: "t1" }],
+    connectPrompted: [],
+  });
+}
+
 afterEach(() => vi.restoreAllMocks());
 
 async function mount(opts?: Parameters<typeof mockSeams>[0], over?: FakeBackendOverrides) {
@@ -234,6 +251,7 @@ describe("ConsoleView", () => {
     // now driven strictly off "the workspace has a venture", so an activated workspace always renders its
     // departments — created-but-paused — instead of "Start your first venture".
     const seo: Channel = { id: "c-seo", workspaceId: "w1", kind: "public", name: "seo", isArchived: false };
+    mockDepartment(); // the #301 auto-run fires on this fresh-but-ready board; stub its seams.
     await mount(
       {
         mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }),
@@ -250,10 +268,13 @@ describe("ConsoleView", () => {
     expect(screen.getByText("seo")).toBeInTheDocument();
   });
 
-  it("surfaces the 'why is nothing running?' diagnostic + exit reason instead of an infinite hang (#230)", async () => {
-    // The #230 dogfood: activation produced a venture but every session spawn-and-died, and the console
-    // just sat there. The server now classifies WHY; the console shows it (headline + classified exit
-    // reason) so the owner is never stranded on "clocking in".
+  it("NEVER renders raw runner / exit-code errors — degrades to the calm warming-up state (#299)", async () => {
+    // #299: a fresh #seo workspace used to surface the server's raw failure copy + exit-code chips
+    // ("model isn't available — model · exit 1", "stopped before I finished — canceled · exit n/a"). The
+    // root cause is owner-gated prod (#292/#293); the UI must degrade gracefully. With a sessions_failing
+    // diagnostic the console shows ONLY the branded warming-up panel and silently retries — no exit codes,
+    // no internal failure-class names, no recent-failure list.
+    mockDepartment(); // the silent auto-run retry fires while failing; stub its seams.
     await mount({
       mc: mcDto({
         sessions: [],
@@ -261,11 +282,11 @@ describe("ConsoleView", () => {
         totalEstimatedCostCents: 0,
         diagnostic: {
           state: "sessions_failing",
-          headline: "I couldn't start up — my runtime is missing a tool I need",
-          detail: "This one's on us — the team's been pinged to patch the agent image.",
-          dominantFailureClass: "spawn",
+          headline: "The model this workspace is set to use isn't available",
+          detail: "Pick a valid model in Settings → Model.",
+          dominantFailureClass: "model",
           liveCount: 0,
-          recentFailureCount: 3,
+          recentFailureCount: 2,
         },
         recentFailures: [
           {
@@ -273,10 +294,10 @@ describe("ConsoleView", () => {
             channelId: "c1",
             agentMemberId: "ag1",
             status: "failed",
-            exitCode: null,
-            failureClass: "spawn",
-            headline: "I couldn't start up — my runtime is missing a tool I need",
-            detail: "patching",
+            exitCode: 1,
+            failureClass: "model",
+            headline: "The model this workspace is set to use isn't available",
+            detail: "configured model can't be reached",
             endedAtMs: 1_700_000_000_000,
           },
         ],
@@ -285,9 +306,42 @@ describe("ConsoleView", () => {
       fc: fcDto({ venturePipeline: { total: 1, active: 1, funded: 1, killed: 0, escalated: 0 } }),
     });
 
-    expect((await screen.findAllByText(/couldn't start up/i)).length).toBeGreaterThanOrEqual(1);
-    // The classified exit reason is shown (spawn · exit n/a) — the swallowed failure is now visible.
-    expect(screen.getByText(/spawn · exit n\/a/i)).toBeInTheDocument();
+    // The calm branded state is shown…
+    expect(await screen.findByText(CONSOLE.warmingUp.headline)).toBeInTheDocument();
+    // …and NONE of the raw runner/exit/model copy leaks (the #299 acceptance criteria, verbatim).
+    expect(screen.queryByText(/exit 1/)).toBeNull();
+    expect(screen.queryByText(/exit n\/a/i)).toBeNull();
+    expect(screen.queryByText(/isn't available/i)).toBeNull();
+    expect(screen.queryByText(/model · exit/i)).toBeNull();
+    expect(screen.queryByText(/spawn · exit/i)).toBeNull();
+  });
+
+  it("auto-runs ONE safe first-run deliverable (Scout audits the site) with zero setup (#301)", async () => {
+    // #301: a fresh-but-ready board (a venture, departments, nothing running) is a dead empty board. The
+    // console auto-briefs Scout on a safe, no-spend site audit so value appears with zero clicks.
+    const briefSpy = mockDepartment();
+    const seo: Channel = { id: "c-seo", workspaceId: "w1", kind: "public", name: "seo", isArchived: false };
+    await mount(
+      {
+        mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }),
+        pending: [],
+        fc: fcDto({ venturePipeline: { total: 1, active: 1, funded: 1, killed: 0, escalated: 0 } }),
+      },
+      { channels: [seo] },
+    );
+
+    // Scout is briefed on the safe audit goal, no owner action required.
+    await waitFor(() =>
+      expect(briefSpy).toHaveBeenCalledWith("w1", { lead: CONSOLE.firstRun.autoLead, goal: CONSOLE.firstRun.autoGoal }),
+    );
+  });
+
+  it("does NOT auto-run on the no-venture empty-state pitch (#301)", async () => {
+    // The guided #213 activation pitch owns the no-venture case — the auto-run must stay out of it.
+    const briefSpy = mockDepartment();
+    await mount({ mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() });
+    expect(await screen.findByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
+    expect(briefSpy).not.toHaveBeenCalled();
   });
 
   it("hard-holds EVERY seed control during the rate-limit cool-off — a blocked click can't re-fire (#227)", async () => {

@@ -73,13 +73,18 @@ function RunningCard({
   );
 }
 
-/** Approval-needed card: the ask line only — clicking dives into the drawer to Approve / Not yet. */
+/**
+ * Approval-needed card. A human title, an optional preview of what the agent produced, and a clear
+ * "what happens if I approve" line (#302) — never the raw agent prompt or the `agent.deliverable` type id.
+ * Clicking dives into the drawer to Approve / Not yet.
+ */
 function WaitingCard({ item, onPeek }: { item: ConsoleItem } & Pick<BoardProps, "onPeek">): React.JSX.Element {
   return (
     <article className="card card--need" style={hueStyle(item)} onClick={() => onPeek(item)}>
       <div className="card__ttl">{item.title}</div>
+      {item.preview && <div className="card__preview">{item.preview}</div>}
       <div className="card__ask">
-        {CONSOLE.card.askPrefix} {item.meta}
+        {CONSOLE.card.askPrefix} {item.consequence ?? item.meta}
         {item.amount != null && <span className="card__amount"> · {fmtCents(item.amount)}</span>}
       </div>
     </article>
@@ -90,7 +95,7 @@ function ShippedCard({ item, onPeek, onWhy }: { item: ConsoleItem } & Pick<Board
   return (
     <article className="card" style={hueStyle(item)} onClick={() => onPeek(item)}>
       <div className="card__ttl">{item.title}</div>
-      <div className="card__meta">{item.meta}</div>
+      <div className="card__meta">{item.preview || item.meta}</div>
       <div className="card__foot">
         {item.amount != null && <span className="card__a">{fmtCents(item.amount)}</span>}
         <Why item={item} onWhy={onWhy} />

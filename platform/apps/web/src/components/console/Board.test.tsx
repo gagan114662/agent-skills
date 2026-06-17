@@ -49,3 +49,38 @@ describe("Board — Stop control on a running card (#248)", () => {
     expect(screen.queryByRole("button", { name: new RegExp(CONSOLE.card.stop) })).toBeNull();
   });
 });
+
+describe("Board — deliverable cards are human, never raw (#302)", () => {
+  const waitingDeliverable: ConsoleItem = {
+    key: "d1",
+    kind: "waiting",
+    agentLabel: "Scout",
+    hue: undefined,
+    channelId: "c1",
+    channelName: "seo",
+    title: "Audit the homepage for SEO",
+    meta: CONSOLE.deliverable.review,
+    requestId: "d1",
+    actionType: "agent.deliverable",
+    preview: "Found 3 quick wins",
+    consequence: CONSOLE.deliverable.consequence,
+  };
+
+  it("shows the human title, preview, and consequence — no raw type id, no 'ready for review'", () => {
+    render(<Board columns={cols({ waiting: [waitingDeliverable] })} onPeek={vi.fn()} onWhy={vi.fn()} />);
+    expect(screen.getByText("Audit the homepage for SEO")).toBeInTheDocument();
+    expect(screen.getByText("Found 3 quick wins")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(CONSOLE.deliverable.consequence))).toBeInTheDocument();
+    expect(screen.queryByText(/agent\.deliverable/)).toBeNull();
+    expect(screen.queryByText(/ready for review/i)).toBeNull();
+  });
+
+  it("a Done deliverable shows its preview and the done status, not 'ready for review'", () => {
+    const shipped: ConsoleItem = { ...waitingDeliverable, kind: "shipped", meta: CONSOLE.deliverable.shipped, consequence: undefined };
+    render(<Board columns={cols({ shipped: [shipped] })} onPeek={vi.fn()} onWhy={vi.fn()} />);
+    expect(screen.getByText("Audit the homepage for SEO")).toBeInTheDocument();
+    expect(screen.getByText(CONSOLE.status.shipped)).toBeInTheDocument();
+    expect(screen.queryByText(/ready for review/i)).toBeNull();
+    expect(screen.queryByText(/agent\.deliverable/)).toBeNull();
+  });
+});

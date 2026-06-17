@@ -44,6 +44,12 @@ import {
   type ConsoleItem,
   type ConsoleProject,
 } from "./model.js";
+import { humanActionLabel } from "./deliverable.js";
+import {
+  FIRST_RUN_AUTORUN_ENABLED,
+  firstRunPanel,
+  shouldAutoRunFirstRun,
+} from "./firstrun.js";
 
 interface PeekTarget {
   item: ConsoleItem;
@@ -54,16 +60,22 @@ interface PeekTarget {
 function auditLines(item: ConsoleItem): PeekAuditLine[] {
   const lines: PeekAuditLine[] = [{ label: `Owner · ${item.agentLabel}`, tag: "agent" }];
   if (item.channelName) lines.push({ label: `Department · #${item.channelName}`, tag: "scope" });
-  if (item.actionType) lines.push({ label: `Action · ${item.actionType} · held for your yes`, tag: "gate" });
+  // #302: a HUMAN action label, never the raw `x.y` type id.
+  if (item.actionType) lines.push({ label: `Action · ${humanActionLabel(item.actionType)} · held for your yes`, tag: "gate" });
   if (item.amount != null) lines.push({ label: `Amount · ${fmtCents(item.amount)}`, tag: "budget" });
   if (item.costCents !== undefined) lines.push({ label: `Spend so far · ${fmtCents(item.costCents)}`, tag: "budget" });
   lines.push({ label: `Status · ${item.meta}`, tag: item.kind });
   return lines;
 }
 
-/** The concrete "what you're approving" line shown above the Approve / Not yet pair (waiting items). */
+/**
+ * The concrete "what you're approving" line shown above the Approve / Not yet pair (waiting items).
+ * Prefers the deliverable's plain consequence line (#302); otherwise a human action label (never a raw
+ * type id), with the amount for money actions.
+ */
 function askLineOf(item: ConsoleItem): string {
-  const action = item.actionType ?? item.meta;
+  if (item.consequence) return item.consequence;
+  const action = humanActionLabel(item.actionType);
   return item.amount != null ? `${action} · ${fmtCents(item.amount)}` : action;
 }
 
@@ -118,6 +130,13 @@ export function ConsoleView(): React.JSX.Element {
   // never re-fire into the limit or reset the window. A new rate error only ever arrives from a click that
   // actually fired (i.e. after the hold elapsed), so re-seeding the countdown from it is always honest.
   const [seedCoolOff, setSeedCoolOff] = useState(0);
+
+  // First-run auto-deliverable (#301): on a fresh board the console quietly runs ONE safe, no-spend
+  // deliverable (Scout audits the owner's own site) so a useful card appears with zero setup. `autoRunning`
+  // drives the calm "warming up" panel (#299); the attempts ref bounds the silent background retry.
+  const [autoRunning, setAutoRunning] = useState(false);
+  const autoRunAttempts = useRef(0);
+  const autoRunInFlight = useRef(false);
   useEffect(() => {
     if (seedError?.kind !== "rate") {
       setSeedCoolOff(0);
@@ -253,6 +272,40 @@ export function ConsoleView(): React.JSX.Element {
     setActiveProjectId((prev) => prev ?? model.projects[0]!.id);
   }, [model.projects]);
 
+  // The board is shown (not the no-venture empty-state pitch, which owns its own guided activation). The
+  // first-run auto-deliverable only applies once the owner is on a real board with departments (#301).
+  const boardShown = !(!hasVenture && model.projects.length === 0);
+
+  // #301: auto-run the safe first deliverable on a fresh-but-ready board, then silently retry only while a
+  // transient runner failure is in play (#299). Re-evaluated on every poll; `shouldAutoRunFirstRun` guards
+  // against double-firing, idle boards, and the attempt cap, so this never spams the seam.
+  useEffect(() => {
+    if (
+      !shouldAutoRunFirstRun({
+        flagOn: FIRST_RUN_AUTORUN_ENABLED,
+        hasWorkspace: !!workspaceId,
+        boardShown,
+        liveCount: mc?.sessions.length ?? 0,
+        deliverableCount: model.columns.waiting.length + model.columns.shipped.length,
+        busy: autoRunning || seeding,
+        attempts: autoRunAttempts.current,
+        diagnosticState: mc?.diagnostic?.state ?? null,
+      })
+    ) {
+      return;
+    }
+    void autoRunFirstDeliverable();
+  }, [
+    workspaceId,
+    boardShown,
+    autoRunning,
+    seeding,
+    mc?.sessions.length,
+    mc?.diagnostic?.state,
+    model.columns.waiting.length,
+    model.columns.shipped.length,
+  ]);
+
   const pendingCount = pending.length;
   const forecast = fc ? spendForecast(fc.budget) : null;
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
@@ -367,6 +420,29 @@ export function ConsoleView(): React.JSX.Element {
     }
   }
 
+  /**
+   * #301: produce the first-run deliverable with zero setup. Hires the department leads quietly
+   * (idempotent, no welcome sessions) so a lead exists to brief, then briefs Scout on the safe, no-spend
+   * site audit down the same audited @mention path the owner's brief uses. Fully silent (#299): any
+   * failure is swallowed — the calm "warming up" state plus the bounded retry cover it, never a raw error.
+   */
+  async function autoRunFirstDeliverable(): Promise<void> {
+    if (!workspaceId || autoRunInFlight.current) return;
+    autoRunInFlight.current = true;
+    autoRunAttempts.current += 1;
+    setAutoRunning(true);
+    try {
+      await api.department.seed(workspaceId, { welcomeTasks: false }).catch(() => undefined);
+      await store.bootstrap().catch(() => undefined);
+      await briefLead(CONSOLE.firstRun.autoLead, CONSOLE.firstRun.autoGoal);
+    } catch {
+      /* silent — #299: first-run failures degrade to the warming-up state, never a raw error */
+    } finally {
+      autoRunInFlight.current = false;
+      if (mounted.current) setAutoRunning(false);
+    }
+  }
+
   // --- peek drawer data ----------------------------------------------------------------------------
   const transcript: readonly PeekTranscriptLine[] = useMemo(() => {
     if (!peek || !peek.item.channelId) return [];
@@ -469,27 +545,33 @@ export function ConsoleView(): React.JSX.Element {
           )}
         </header>
 
-        {/* #230: the "why is nothing running?" diagnostic — server-classified (spawn-and-die / no work /
-            idle) so the console NEVER sits silently on "clocking in". Shows on the clocking-in panel AND the
-            board (it sits above both), with the classified exit reason of recent failures so a dead fleet is
-            visible, not swallowed. "running" (board is filling) and "no_venture" (the first-run pitch already
-            speaks for itself) render nothing here. Copy is server-sourced data, not chrome literals. */}
-        {mc?.diagnostic && mc.diagnostic.state !== "running" && mc.diagnostic.state !== "no_venture" && (
-          <div className={`consolediag consolediag--${mc.diagnostic.state}`} role="status">
-            <p className="consolediag__headline">{mc.diagnostic.headline}</p>
-            <p className="consolediag__detail">{mc.diagnostic.detail}</p>
-            {mc.recentFailures && mc.recentFailures.length > 0 && (
-              <ul className="consolediag__failures">
-                {mc.recentFailures.slice(0, 3).map((f) => (
-                  <li key={f.id} className="consolediag__failure">
-                    {f.headline}{" "}
-                    <code className="consolediag__exit">{`${f.failureClass} · exit ${f.exitCode ?? "n/a"}`}</code>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {/* #299/#301: the console NEVER renders raw runner / exit-code errors. While the first deliverable
+            is being produced — or while a transient runner/spawn failure is being silently retried — it
+            shows the calm, branded "warming up" panel (NO exit codes, NO internal failure-class names, no
+            recent-failure list). A genuine no_work / idle lull keeps the server's calm, exit-code-free line.
+            "running" (the board is filling) and "no_venture" (the first-run pitch speaks for itself) render
+            nothing here. The root-cause runner/model fixes are owner-gated prod work (#292/#293); this is the
+            graceful UI degrade that keeps a brand-new workspace from ever seeing a raw error. */}
+        {(() => {
+          const panel = firstRunPanel({ autoRunning, diagnosticState: mc?.diagnostic?.state ?? null });
+          if (panel === "warming") {
+            return (
+              <div className="consolediag consolediag--warming" role="status">
+                <p className="consolediag__headline">{CONSOLE.warmingUp.headline}</p>
+                <p className="consolediag__detail">{CONSOLE.warmingUp.sub}</p>
+              </div>
+            );
+          }
+          if (panel === "diagnostic" && mc?.diagnostic) {
+            return (
+              <div className={`consolediag consolediag--${mc.diagnostic.state}`} role="status">
+                <p className="consolediag__headline">{mc.diagnostic.headline}</p>
+                <p className="consolediag__detail">{mc.diagnostic.detail}</p>
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* #226: the empty desk is driven strictly off "the workspace has a venture", never the session
             count or a seed flag. A workspace with a venture always renders its board/PROJECTS — even with
