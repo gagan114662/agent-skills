@@ -1069,6 +1069,25 @@ export const reachSchema = z.object({
 });
 
 /**
+ * SEO rank-tracking policy (#294, ADR-0294). Governs the proactive provider FETCH only — recording an
+ * external rank receipt that arrives from outside (a webhook / GSC export / owner paste) is always
+ * allowed. Default OFF + `dryrun` provider, so an un-configured workspace fetches nothing and the SEO
+ * proof tile stays "not connected" rather than showing a self-reported rank (premortem #200 §2).
+ */
+export const seoSchema = z.object({
+  /** Master flag for the proactive rank FETCH — default OFF (a real provider costs a credential / money). */
+  enabled: z.boolean().optional(),
+  /** Rank-data provider: `dryrun` (default, reports nothing) | `search_console` | `serpapi` | `dataforseo`. */
+  provider: z.string().optional(),
+  /** Default search market/country code when an observation omits it (e.g. 'us'). */
+  defaultCountry: z.string().optional(),
+  /** The target keywords to track (structural data — never instructions). */
+  targetKeywords: z.array(z.string()).optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
  * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
  * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
@@ -1267,6 +1286,8 @@ export const settingsSchema = z.object({
   discovery: discoverySchema.optional(),
   /** Reach outbound demand-gen policy (#280): pluggable prospect sources + autonomous capped sends (default OFF). */
   reach: reachSchema.optional(),
+  /** SEO rank-tracking policy (#294): externally-grounded rank receipts feeding the SEO proof tile (default OFF). */
+  seo: seoSchema.optional(),
   /** Agent Registry + A2A policy (#282): department-fleet contracts + governed agent-to-agent calls (default OFF). */
   agentRegistry: agentRegistrySchema.optional(),
 });
@@ -1329,6 +1350,7 @@ export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
+export type SeoConfig = z.infer<typeof seoSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 
 /**
@@ -1448,6 +1470,8 @@ export interface ResolvedConfig {
   discovery: DiscoveryConfig;
   /** Reach outbound demand-gen policy (#280). A partial whose hard defaults `resolveReachCaps` fills. */
   reach: ReachConfig;
+  /** SEO rank-tracking policy (#294). A partial whose hard defaults `resolveSeoCaps` fills. */
+  seo: SeoConfig;
   /** Agent Registry + A2A policy (#282). A partial whose hard defaults `resolveAgentRegistryCaps` fills. */
   agentRegistry: AgentRegistryConfig;
 }
@@ -1511,5 +1535,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   monetization: {},
   discovery: {},
   reach: {},
+  seo: {},
   agentRegistry: {},
 };
