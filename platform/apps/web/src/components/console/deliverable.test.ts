@@ -128,6 +128,12 @@ describe("stripHarnessNoise (stdin-warning leak)", () => {
     expect(stripHarnessNoise(raw)).toBe(raw);
   });
 
+  it("leaves a Markdown table that starts with a pipe untouched (patterns are anchored)", () => {
+    // Regression: an un-anchored `| claude` pattern wrongly stripped this real-content first line.
+    const table = "| Claude | OpenAI |\n| --- | --- |\n| fast & cheap | slower |";
+    expect(stripHarnessNoise(table)).toBe(table);
+  });
+
   it("handles empty / nullish input", () => {
     expect(stripHarnessNoise("")).toBe("");
     expect(stripHarnessNoise(null)).toBe("");
