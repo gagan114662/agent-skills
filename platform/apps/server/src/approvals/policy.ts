@@ -85,6 +85,17 @@ export const VENTURE_DEPLOY_ACTION = "venture.deploy" as const;
 export const REALWORLD_PUBLISH_ACTION = "realworld.publish" as const;
 
 /**
+ * #266 ipop hosted publishing — taking a customer's blog article / landing page LIVE on their own domain.
+ * Unlike most #243 money-free actions, this ALWAYS pauses for an explicit owner approval (the issue's hard
+ * constraint: nothing is published live without owner approval). It is never submitted through the #13
+ * action route; the hosted service parks a PENDING request against the same workspace `approval_policies`,
+ * and the page only reaches `published` through the post-approval executor. Reversible (a page can be
+ * unpublished) so it is NOT in `IRREVERSIBLE_ACTIONS`; the always-gate is enforced structurally by the
+ * service (it has no autonomous publish path), not by the money predicate.
+ */
+export const HOSTED_PUBLISH_ACTION = "hosted.publish" as const;
+
+/**
  * #225 the outreach engine SEND — composing a message is free, but pushing it to a real prospect on a
  * real channel (email/LinkedIn/X) is an outward, IRREVERSIBLE brand surface (premortem #200: a sent
  * message cannot be unsent; deliverability + brand are at stake). It is sensitive by default AND

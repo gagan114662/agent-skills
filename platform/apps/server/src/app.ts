@@ -145,6 +145,7 @@ import { createDefaultDnsManager } from "./onboarding/dns/default.js";
 import type { DnsManager } from "./onboarding/dns/manager.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
+import { hostedRoutes } from "./routes/hosted.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
@@ -803,6 +804,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(onboardingRoutes, { service: onboarding, dnsManager });
   const realworld = opts.realworld ?? createDefaultRealworldActuatorService();
   app.register(realworldRoutes, { service: realworld });
+  // #266 ipop hosted publishing: customer blogs + landing pages, zero repo, zero deploy. `/me/hosted/*`
+  // drafts + parks a #13 approval (nothing goes live without the owner approving); the public serve route
+  // returns only `published` pages. Default-OFF, owner-workspace-first.
+  app.register(hostedRoutes);
   // #258 connect-once integrations: the OAuth-first "connect once, the agents do the rest" surface.
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.

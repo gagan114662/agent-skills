@@ -22,6 +22,7 @@ import {
   validateBrowserAction,
   validateChatPostMessage,
   validateExternalSend,
+  validateHostedPublish,
   validateFinanceDisbursement,
   validateMonetizationActivatePrice,
   validateMonetizationPayoutSettings,
@@ -35,6 +36,8 @@ import {
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
 import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
+import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
+import { buildHostedPublishDispatcher } from "../hosted/default.js";
 import { markMessageSent } from "../db/repositories/outreach.js";
 import {
   FINANCE_DISBURSEMENT_ACTION,
@@ -175,6 +178,35 @@ function makeAgentDeliverable(delivery?: DeliveryDispatcher): ActionExecutor {
       const ack = { acknowledged: true, sessionId: String(payload.sessionId) };
       if (delivery) {
         const shipped = await delivery.ship(payload, {
+          workspaceId: ctx.workspaceId,
+          approvalRequestId: ctx.requestId ?? "",
+        });
+        if (shipped) return { ...ack, ...shipped };
+      }
+      return ack;
+    },
+  };
+}
+
+/**
+ * `hosted.publish` (#266): take a customer's drafted blog article / landing page LIVE on their own domain
+ * (zero repo, zero deploy). The OWNER's #13 approval IS the publish trigger — the hard constraint that
+ * nothing goes live without owner approval. Without a {@link HostedPublishDispatcher} injected the executor
+ * is a pure acknowledgement (no side effect). With one (the production default), approval ships the page:
+ * the dispatcher re-renders the page bound to its canonical URL, flips it to `published`, and ties the live
+ * URL back to THIS approval. The dispatcher returns `null` (→ pure ack) whenever hosting is OFF for the
+ * workspace or the approval id is missing, so nothing ever publishes without an explicit owner approval.
+ * Routing is structural — the page id comes off the approval payload, never the content (#200 §6).
+ */
+function makeHostedPublish(hosted?: HostedPublishDispatcher): ActionExecutor {
+  return {
+    actionType: "hosted.publish",
+    validate: validateHostedPublish,
+    summarize: (p) => `publish hosted page ${String(p.slug ?? p.pageId).slice(0, 60)}`,
+    async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+      const ack = { acknowledged: true, pageId: String(payload.pageId) };
+      if (hosted) {
+        const shipped = await hosted.ship(payload, {
           workspaceId: ctx.workspaceId,
           approvalRequestId: ctx.requestId ?? "",
         });
@@ -469,10 +501,12 @@ export function buildDefaultRegistry(
   compliance: ComplianceEnforcer = noopComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
   delivery?: DeliveryDispatcher,
+  hosted?: HostedPublishDispatcher,
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
     makeAgentDeliverable(delivery),
+    makeHostedPublish(hosted),
     makeExternalSend(egress, compliance, dispatcher),
     billingRefund,
     browserAction,
@@ -491,4 +525,7 @@ export function buildDefaultRegistry(
 export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry(
   defaultEgressEnforcer,
   defaultComplianceEnforcer,
+  undefined,
+  undefined,
+  buildHostedPublishDispatcher(),
 );

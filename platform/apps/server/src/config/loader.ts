@@ -176,6 +176,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (skilloptOwner) skillopt.ownerWorkspaceId = skilloptOwner;
     raw.skillopt = skillopt;
   }
+  // #266 hosted publishing: let the deployment env turn customer hosting on without a managed.toml — the
+  // owner workspace opts in first (owner marker reuses the established #258 RELOAD_MARKETING_OWNER_WORKSPACE_ID;
+  // a dedicated RELOAD_HOSTEDSITES_OWNER_WORKSPACE_ID overrides it). Hard default stays OFF (vars unset → no
+  // block ⇒ no hosting). A managed layer still wins as the lock. The HARD constraint (owner approval before
+  // any page goes live) is enforced in the service, not here.
+  const hostedEnabled = env.RELOAD_HOSTEDSITES_ENABLED;
+  const hostedOwner = env.RELOAD_HOSTEDSITES_OWNER_WORKSPACE_ID ?? mktOwner;
+  const hostedBaseHost = env.RELOAD_HOSTEDSITES_BASE_HOST;
+  if (hostedEnabled !== undefined || hostedOwner || hostedBaseHost !== undefined) {
+    const hostedSites: Record<string, unknown> = {};
+    if (hostedEnabled !== undefined) hostedSites.enabled = hostedEnabled === "true" || hostedEnabled === "1";
+    if (hostedOwner) hostedSites.ownerWorkspaceId = hostedOwner;
+    if (hostedBaseHost !== undefined) hostedSites.baseHost = hostedBaseHost;
+    raw.hostedSites = hostedSites;
+  }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
   // without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still
   // wins as the lock. The per-agent credential matrix is config-file only (it is a nested map).

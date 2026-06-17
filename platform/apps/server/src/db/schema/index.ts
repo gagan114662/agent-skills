@@ -68,3 +68,4 @@ export * from "./reach.js";
 export * from "./seo.js";
 export * from "./delivery.js";
 export * from "./provisioning.js";
+export * from "./hosted.js";
