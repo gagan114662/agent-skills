@@ -152,6 +152,18 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (mktOwner) marketing.ownerWorkspaceId = mktOwner;
     raw.marketing = marketing;
   }
+  // #228: let the deployment env turn the YC-fundability admission gate (#96) on owner-workspace-first
+  // without baking a managed.toml. Hard default stays OFF (var unset → no block, today's behavior). The
+  // owner workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated
+  // RELOAD_VENTURE_OWNER_WORKSPACE_ID overrides it. Enabling without naming an owner enforces on nobody.
+  const ventureEnabled = env.RELOAD_VENTURE_ENABLED;
+  const ventureOwner = env.RELOAD_VENTURE_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (ventureEnabled !== undefined || ventureOwner) {
+    const venture: Record<string, unknown> = {};
+    if (ventureEnabled !== undefined) venture.enabled = ventureEnabled === "true" || ventureEnabled === "1";
+    if (ventureOwner) venture.ownerWorkspaceId = ventureOwner;
+    raw.venture = venture;
+  }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
   // without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still
   // wins as the lock. The per-agent credential matrix is config-file only (it is a nested map).

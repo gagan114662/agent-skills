@@ -50,6 +50,12 @@ export interface VentureEvalSnapshot {
   terminalVerdict: Verdict | null;
   /** The most recent adversarially-weighted score, if any pass has run. */
   lastScore: number | null;
+  /**
+   * Does this venture hold a passing (FUND + funded), unexpired #96 scorecard (#228)? A founding venture
+   * funded by owner-activation (#230) reaches terminalVerdict `FUND` *without* one — that is a zero-budget
+   * **scaffold**, not a cleared venture. `undefined` = unknown (older callers) → counted as before.
+   */
+  hasPassingScorecard?: boolean;
 }
 
 /** Revenue rollup (#98) — totals + the willingness-to-pay evidence count. */
@@ -437,10 +443,17 @@ export interface FleetView {
 export interface VenturePipelineView {
   total: number;
   active: number;
+  /** Ventures that have truly cleared the #96 bar (terminal FUND **with** a passing, unexpired scorecard). */
   funded: number;
   killed: number;
   /** Borderline calls awaiting human judgment (terminal verdict ESCALATE). */
   escalated: number;
+  /**
+   * Zero-budget scaffolds (#228): terminal-FUND ventures that were owner-activated (#230) into a build epic
+   * but have NOT earned a passing #96 scorecard. They get zero autonomy budget (the admission gate keeps
+   * blocking) until they clear the bar — surfaced separately so the console never shows them as "funded".
+   */
+  scaffolds: number;
 }
 
 export interface RevenueView {
@@ -753,12 +766,18 @@ function pluralize(n: number, noun: string): string {
 export function aggregateFounderConsole(input: FounderConsoleInput): FounderConsole {
   const { fleet, ventures, revenue, budget, approvals, switches, gateBoundaries } = input;
 
+  // #228: a terminal-FUND venture is a zero-budget SCAFFOLD until it earns a passing #96 scorecard. Only
+  // ventures explicitly known to lack one (`hasPassingScorecard === false`) are split out of `funded` — an
+  // `undefined` flag (older callers that don't supply it) keeps the prior behavior (counted as funded).
+  const isScaffold = (v: VentureEvalSnapshot): boolean =>
+    v.terminalVerdict === "FUND" && v.hasPassingScorecard === false;
   const venturePipeline: VenturePipelineView = {
     total: ventures.length,
     active: ventures.filter((v) => v.status === "active").length,
-    funded: ventures.filter((v) => v.terminalVerdict === "FUND").length,
+    funded: ventures.filter((v) => v.terminalVerdict === "FUND" && !isScaffold(v)).length,
     killed: ventures.filter((v) => v.terminalVerdict === "KILL").length,
     escalated: ventures.filter((v) => v.terminalVerdict === "ESCALATE").length,
+    scaffolds: ventures.filter(isScaffold).length,
   };
 
   const overBudget = budgetExceeded(budget.estimatedCostCents, budget.budgetCents);

@@ -60,7 +60,41 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
       funded: 1,
       killed: 1,
       escalated: 2,
+      scaffolds: 0,
     });
+  });
+
+  it("counts a terminal-FUND venture WITHOUT a passing scorecard as a zero-budget scaffold, not funded (#228)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        ventures: [
+          // Cleared the #96 bar — real funded venture.
+          { ideaId: "cleared", status: "terminal", terminalVerdict: "FUND", lastScore: 82, hasPassingScorecard: true },
+          // Owner-activated (#230) into a build epic but never earned a passing scorecard — a scaffold.
+          { ideaId: "stub", status: "terminal", terminalVerdict: "FUND", lastScore: 20, hasPassingScorecard: false },
+        ],
+      }),
+    );
+    expect(out.venturePipeline).toEqual({
+      total: 2,
+      active: 0,
+      funded: 1, // only the cleared venture
+      killed: 0,
+      escalated: 0,
+      scaffolds: 1, // the owner-activated stub
+    });
+  });
+
+  it("treats an unknown passing-scorecard flag as funded (backward compatible — older callers)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        ventures: [
+          { ideaId: "b", status: "terminal", terminalVerdict: "FUND", lastScore: 82 }, // no hasPassingScorecard
+        ],
+      }),
+    );
+    expect(out.venturePipeline.funded).toBe(1);
+    expect(out.venturePipeline.scaffolds).toBe(0);
   });
 
   it("surfaces willingness-to-pay evidence as the fundability signal", () => {

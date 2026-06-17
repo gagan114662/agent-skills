@@ -99,7 +99,9 @@ async function founderConsole(owner: { cookie: string; workspaceId: string }) {
       url: `/workspaces/${owner.workspaceId}/founder-console`,
       cookies: { rid: owner.cookie },
     })
-  ).json() as { venturePipeline: { total: number; active: number; funded: number } };
+  ).json() as {
+    venturePipeline: { total: number; active: number; funded: number; scaffolds: number };
+  };
 }
 
 async function missionControl(owner: { cookie: string; workspaceId: string }) {
@@ -131,10 +133,13 @@ describe("#221 activation produces a running venture (real Postgres)", () => {
     // The pipeline is no longer an empty desk — total ≥ 1 (the founder-console roll-up the console reads).
     const fc = await founderConsole(owner);
     expect(fc.venturePipeline.total).toBeGreaterThanOrEqual(1);
-    // #230: activation now drives the founding venture through the #96 loop and FUNDs it (epic + first
-    // tasks), so its evaluation is terminal-FUND — it lands in the `funded` bucket, not `active`. Before
-    // #230 the venture was created but never evaluated, so it sat in `active`; that inert row was the bug.
-    expect(fc.venturePipeline.funded).toBeGreaterThanOrEqual(1);
+    // #230 drives the founding venture through the #96 loop (epic + first tasks), so its evaluation is
+    // terminal-FUND — it leaves the empty desk and is no longer an inert `active` row. #228: it has NOT
+    // earned a passing #96 scorecard (kickoff never marks the scorecard `funded`), so it is a clearly-marked
+    // zero-budget SCAFFOLD, not a cleared `funded` venture — exactly what stops an unscored stub from
+    // masquerading as a real company while still giving the founder a board with work.
+    expect(fc.venturePipeline.scaffolds).toBeGreaterThanOrEqual(1);
+    expect(fc.venturePipeline.funded).toBe(0);
 
     // A real session actually spawned — mission-control is non-empty (the "watch the board fill up" loop).
     const mc = await missionControl(owner);

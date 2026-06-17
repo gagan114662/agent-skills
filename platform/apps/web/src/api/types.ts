@@ -324,6 +324,8 @@ export interface FounderConsoleDto {
     killed: number;
     /** Borderline calls awaiting human judgment (terminal verdict ESCALATE). */
     escalated: number;
+    /** Zero-budget scaffolds (#228): owner-activated ventures that haven't cleared the #96 fundability bar. */
+    scaffolds?: number;
   };
   revenue: {
     currency: string;

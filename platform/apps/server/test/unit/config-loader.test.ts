@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { loadConfig, mergeLayers, type ConfigSources } from "../../src/config/loader.js";
 import { CONFIG_DEFAULTS } from "../../src/config/schema.js";
 import { resolveScaleCaps } from "../../src/scale/caps.js";
+import { resolveVentureCaps } from "../../src/venture/caps.js";
 
 /**
  * File-backed config layering (#58). Precedence is **env < user < repo < managed** (managed is the
@@ -350,6 +351,40 @@ describe("run command config (#56)", () => {
 
   it("rejects an invalid run command (missing command field)", () => {
     expect(() => loadConfig(undefined, sources({ repo: `[run]\nport = 3000` }))).toThrow();
+  });
+});
+
+describe("#228 venture gate env wiring (RELOAD_VENTURE_*)", () => {
+  it("defaults the venture gate OFF (empty block) when no env/config sets it", () => {
+    const cfg = loadConfig(undefined, sources({}));
+    expect(cfg.venture).toEqual({});
+    expect(resolveVentureCaps(cfg.venture).enabled).toBe(false);
+  });
+
+  it("turns the gate on owner-first, reusing the marketing owner workspace marker", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_VENTURE_ENABLED: "true", RELOAD_MARKETING_OWNER_WORKSPACE_ID: "ws-owner" },
+      ),
+    );
+    expect(cfg.venture).toEqual({ enabled: true, ownerWorkspaceId: "ws-owner" });
+  });
+
+  it("a dedicated RELOAD_VENTURE_OWNER_WORKSPACE_ID overrides the marketing marker", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        {
+          RELOAD_VENTURE_ENABLED: "1",
+          RELOAD_MARKETING_OWNER_WORKSPACE_ID: "ws-mkt",
+          RELOAD_VENTURE_OWNER_WORKSPACE_ID: "ws-venture",
+        },
+      ),
+    );
+    expect(cfg.venture).toEqual({ enabled: true, ownerWorkspaceId: "ws-venture" });
   });
 });
 

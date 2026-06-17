@@ -9,6 +9,14 @@ import type { VentureThresholds } from "./types.js";
 export interface VentureCaps {
   /** The anti-demo gate flag. OFF by default. */
   enabled: boolean;
+  /**
+   * Roll the gate out owner-workspace-first (#228): when true (the default), the gate only enforces on
+   * `ownerWorkspaceId` even if `enabled` is on — every other tenant keeps today's unblocked behavior.
+   * Set false to enforce on all tenants. Mirrors `delivery`/`monetization`'s two-pronged gate.
+   */
+  ownerWorkspaceOnly: boolean;
+  /** The owner's own workspace id — the gate dogfoods enforcement here first. */
+  ownerWorkspaceId: string | undefined;
   fund: number;
   kill: number;
   escalateBand: number;
@@ -23,6 +31,8 @@ export interface VentureCaps {
 
 export const VENTURE_DEFAULTS: VentureCaps = {
   enabled: false,
+  ownerWorkspaceOnly: true,
+  ownerWorkspaceId: undefined,
   fund: 70,
   kill: 35,
   escalateBand: 10,
@@ -35,6 +45,8 @@ export const VENTURE_DEFAULTS: VentureCaps = {
 export function resolveVentureCaps(cfg: VentureConfig | undefined): VentureCaps {
   return {
     enabled: cfg?.enabled ?? VENTURE_DEFAULTS.enabled,
+    ownerWorkspaceOnly: cfg?.ownerWorkspaceOnly ?? VENTURE_DEFAULTS.ownerWorkspaceOnly,
+    ownerWorkspaceId: cfg?.ownerWorkspaceId ?? VENTURE_DEFAULTS.ownerWorkspaceId,
     fund: cfg?.fundThreshold ?? VENTURE_DEFAULTS.fund,
     kill: cfg?.killThreshold ?? VENTURE_DEFAULTS.kill,
     escalateBand: cfg?.escalateBand ?? VENTURE_DEFAULTS.escalateBand,
@@ -43,6 +55,19 @@ export function resolveVentureCaps(cfg: VentureConfig | undefined): VentureCaps 
     scorecardTtlMinutes: cfg?.scorecardTtlMinutes ?? VENTURE_DEFAULTS.scorecardTtlMinutes,
     evaluationCostCents: cfg?.evaluationCostCents ?? VENTURE_DEFAULTS.evaluationCostCents,
   };
+}
+
+/**
+ * Pure: is the #96 admission gate ENFORCED for this specific workspace (#228)? The gate rolls out
+ * owner-workspace-first — so even when the master `enabled` flag is on, an `ownerWorkspaceOnly` deployment
+ * (the default) only enforces on the named owner workspace, and every other tenant keeps today's unblocked
+ * behavior. Turning `enabled` on WITHOUT naming the owner workspace enforces on nobody (the safest default,
+ * matching `delivery`/`monetization`). Set `ownerWorkspaceOnly` false to enforce on all tenants.
+ */
+export function isVentureGateEnabledForWorkspace(caps: VentureCaps, workspaceId: string): boolean {
+  if (!caps.enabled) return false;
+  if (!caps.ownerWorkspaceOnly) return true;
+  return caps.ownerWorkspaceId !== undefined && caps.ownerWorkspaceId === workspaceId;
 }
 
 /** Project the decision thresholds out of the resolved caps. */
