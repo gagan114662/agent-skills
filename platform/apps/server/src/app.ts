@@ -172,6 +172,7 @@ import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
 import { analyticsRoutes } from "./routes/analytics.js";
+import { workspaceContextRoutes } from "./routes/workspace-context.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { seoRoutes } from "./routes/seo.js";
@@ -845,6 +846,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // code work, and read the externally-grounded metrics so Lens can report. Default-OFF, owner-first; the
   // read provider (`dryrun` default) decides whether real numbers flow. No #13 gate (not money).
   app.register(analyticsRoutes);
+  app.register(workspaceContextRoutes);
   // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });
