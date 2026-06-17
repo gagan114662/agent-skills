@@ -50,6 +50,13 @@ ENV HOME=/home/reload
 # (#69) now probes this path's writability, and the post-deploy smoke provisions through it, so a
 # non-writable root can never silently ship again.
 ENV RELOAD_WORKSPACE_ROOT=/home/reload/agent-workspaces
+# #292: stamp the git SHA of the build into the running image. `GET /version` returns this, which lets the
+# deploy pipeline externally verify the running release actually ADVANCED — a no-op deploy leaves the OLD
+# sha live, and `/readyz` (deps only) cannot detect that (the "stuck on v80 while CI is green" blocker).
+# CI passes `--build-arg GIT_SHA=${{ github.sha }}`; defaults to "" for local/dev builds (treated as
+# "unknown", never a confirmed match). ARG is per-stage, so it must be (re)declared in the runtime stage.
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
 WORKDIR /app
 
 # #174: bake the agent browser (Playwright + Chromium) into the image only when a deployment opts in.

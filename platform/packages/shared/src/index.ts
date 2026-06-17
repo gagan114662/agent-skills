@@ -28,6 +28,18 @@ export interface ReadinessResponse {
   redis: DependencyState;
 }
 
+/**
+ * Build/version probe response (`GET /version`, #292) — the git SHA baked into the running image.
+ * This is what lets a deploy externally verify the running release actually ADVANCED: a no-op deploy
+ * (path-filter miss, unset deploy-token guard, or a release that never cut over) leaves the OLD image
+ * live, which `/readyz` (dependency reachability only) cannot detect — exactly the "stuck on v80 while
+ * CI is green" failure (#292). `version` is `""` when the image was built without a `GIT_SHA` build-arg
+ * (local/dev), so consumers MUST treat an empty value as "unknown" and never as a confirmed match.
+ */
+export interface VersionResponse {
+  version: string;
+}
+
 // ---- approval gates (#13) ---------------------------------------------------
 
 /** Lifecycle of an approval request (#13). `approved` is transient between decision and execution. */

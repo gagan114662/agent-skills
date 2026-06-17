@@ -37,3 +37,33 @@ describe("GET /healthz", () => {
     await app.close();
   });
 });
+
+// #292 — the build-version probe the deploy version-advance gate reads. `/readyz` (deps only) passes on
+// the OLD image too, so it cannot catch a deploy that silently stayed on the previous version (the v80
+// blocker). `/version` exposes the git SHA baked into the running image so the deploy can confirm the
+// running release advanced to the deployed commit.
+describe("GET /version", () => {
+  beforeEach(() => {
+    pingDb.mockReset();
+    pingRedis.mockReset();
+    delete process.env.GIT_SHA;
+    delete process.env.GITHUB_SHA;
+  });
+
+  it("returns the git SHA stamped into the running image (GIT_SHA)", async () => {
+    process.env.GIT_SHA = "0123456789abcdef0123456789abcdef01234567";
+    const app = buildApp();
+    const res = await app.inject({ method: "GET", url: "/version" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ version: "0123456789abcdef0123456789abcdef01234567" });
+    await app.close();
+  });
+
+  it("returns an empty version for an un-stamped build (consumers treat as unknown, never a match)", async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: "GET", url: "/version" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ version: "" });
+    await app.close();
+  });
+});
