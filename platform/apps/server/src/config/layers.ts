@@ -188,6 +188,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #262 connect-Claude policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // managed one-click flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.connectClaude !== undefined) out.connectClaude = { ...layer.connectClaude };
+    // #258 Stage 2 connect-once policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // live-flow flag + owner-first restriction cannot be loosened by a lower layer.
+    if (layer.connectOnce !== undefined) out.connectOnce = { ...layer.connectOnce };
     // #283 SkillOpt-Sleep policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // self-improvement flag + owner-first restriction + gate bounds cannot be loosened by a lower layer.
     if (layer.skillopt !== undefined) out.skillopt = { ...layer.skillopt };
@@ -267,6 +270,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     analytics: merged.analytics ?? { ...CONFIG_DEFAULTS.analytics },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
+    connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
   };

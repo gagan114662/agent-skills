@@ -44,11 +44,15 @@ const NON_MONEY = [
   "autonomy.complete",
   "browser.action",
   "chat.post_message",
+  // #258 Stage 2: connecting an outside account is a CONSENT, not money — the connect-once service
+  // structurally always-gates it (parks a PENDING request), so it is NOT in MONEY_ACTIONS.
+  "connection.connect_account",
 ];
 import {
   buildRegistry,
   validateChatPostMessage,
   validateExternalSend,
+  validateConnectAccount,
   type ActionExecutor,
 } from "../../src/approvals/executor.js";
 
@@ -234,6 +238,13 @@ describe("payload validators", () => {
     expect(validateExternalSend({ summary: "ping", target: "ops@x.com" })).toEqual({ ok: true });
     expect(validateExternalSend({ target: "ops@x.com" }).ok).toBe(false);
     expect(validateExternalSend({ summary: "ping", target: 42 }).ok).toBe(false);
+  });
+
+  it("connection.connect_account requires connectionId + provider (#258 Stage 2)", () => {
+    expect(validateConnectAccount({ connectionId: "google", provider: "google" })).toEqual({ ok: true });
+    expect(validateConnectAccount({ provider: "google" }).ok).toBe(false);
+    expect(validateConnectAccount({ connectionId: "google" }).ok).toBe(false);
+    expect(validateConnectAccount(null).ok).toBe(false);
   });
 });
 

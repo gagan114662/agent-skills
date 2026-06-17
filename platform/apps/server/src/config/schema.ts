@@ -538,6 +538,27 @@ export const connectClaudeSchema = z.object({
 });
 
 /**
+ * Connect-once LIVE-flow policy (#258 Stage 2, ADR-0258). Non-secret knobs for the shared connect-once
+ * seam — the live customer-OAuth connect flow that actually mints a real credential (Search Console for
+ * Scout, an ESP for Postmark, social for Echo, an ad account for Bid) and seals it into the #192 vault.
+ * Every field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
+ * (`ownerWorkspaceOnly: true`, mirrors `connectClaude`/`delivery`/`skillopt`): a deployment that sets nothing
+ * keeps the #258 Stage 1 behavior — every customer connector renders the honest `coming_soon`. The OAuth
+ * clients themselves are env-driven (never in this non-secret config) and unwired in this slice, so even
+ * with `enabled: true` the flow stays `coming_soon` until a per-department follow-up wires a live client.
+ * Enabling does NOT bypass the per-connect approval: the live connect ALWAYS pauses for the owner (a
+ * structural #13 always-gate). `ownerWorkspaceId` marks the owner's own workspace for the owner-first rollout.
+ */
+export const connectOnceSchema = z.object({
+  /** The live customer-OAuth connect flag — default OFF (the #258 Stage 1 `coming_soon` stub stays). */
+  enabled: z.boolean().optional(),
+  /** Restrict the live flow to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Low-commitment signup-entry policy (#300, ADR-0300). Non-secret knobs for the front-door alternatives to
  * the broad-scope Google OAuth wall: a read-only **sample workspace** a prospect can explore before signing
  * up, and **progressive Google scopes** that request only identity at signup and defer Search Console /
@@ -1463,6 +1484,8 @@ export const settingsSchema = z.object({
   agentRegistry: agentRegistrySchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
+  /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
+  connectOnce: connectOnceSchema.optional(),
   /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
   skillopt: skilloptSchema.optional(),
   /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
@@ -1534,6 +1557,7 @@ export type SeoConfig = z.infer<typeof seoSchema>;
 export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
+export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 
@@ -1668,6 +1692,8 @@ export interface ResolvedConfig {
   agentRegistry: AgentRegistryConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
+  /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
+  connectOnce: ConnectOnceConfig;
   /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
   skillopt: SkillOptConfig;
   /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
@@ -1740,6 +1766,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   analytics: {},
   agentRegistry: {},
   connectClaude: {},
+  connectOnce: {},
   skillopt: {},
   signupEntry: {},
 };
