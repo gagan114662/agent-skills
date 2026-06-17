@@ -310,6 +310,23 @@ export const ONBOARDING = {
     google_unavailable: "Google sign-in isn't switched on for this deployment yet.",
     generic: "That didn't pop. Give it another go.",
   },
+  /** #300 low-commitment entry: the divider + link to the read-only sample workspace (no account needed). */
+  sampleDivider: "Just want to look around?",
+  sampleCta: "Explore a sample workspace",
+} as const;
+
+/**
+ * Copy for the #300 read-only sample workspace — the low-commitment front door a prospect can explore
+ * before granting any Google data scope. Centralised here so the screen reads the brand, not inline copy.
+ */
+export const SAMPLE = {
+  title: "A sample workspace",
+  sub: "This is what your agents hand you — a real deliverable, ready to review. Nothing here is live.",
+  badge: "Read-only demo",
+  back: "Sign in to get your own",
+  empty: "The sample workspace isn't switched on for this deployment yet.",
+  loading: "Loading the sample…",
+  consequence: "Sign in and Scout produces this for your site — you approve anything before it ships.",
 } as const;
 
 /**

@@ -13,10 +13,19 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export interface OAuthStatePayload {
   domain: string;
   nonce: string;
+  /**
+   * Progressive-consent intent (#300): `"seo"` marks the deferred Search Console / Analytics grant; absent
+   * (or `"signup"`) is the identity-step default. Optional + omitted from the signed body when unset, so a
+   * #260 state stays byte-for-byte identical and round-trips to exactly `{ domain, nonce }`.
+   */
+  intent?: "signup" | "seo";
 }
 
-interface SignedState extends OAuthStatePayload {
+interface SignedState {
+  domain: string;
+  nonce: string;
   ts: number;
+  intent?: "signup" | "seo";
 }
 
 function b64url(buf: Buffer): string {
@@ -39,6 +48,8 @@ export function signState(
   now: number = Date.now(),
 ): string {
   const signed: SignedState = { domain: payload.domain, nonce: payload.nonce, ts: now };
+  // Only carry `intent` when explicitly "seo" — so a #260 signup state is byte-for-byte unchanged.
+  if (payload.intent === "seo") signed.intent = "seo";
   const body = b64url(Buffer.from(JSON.stringify(signed), "utf8"));
   return `${body}.${sign(body, secret)}`;
 }
@@ -72,7 +83,10 @@ export function verifyState(
   if (typeof parsed.ts !== "number" || now - parsed.ts > maxAgeMs || parsed.ts > now + 60_000) {
     return null;
   }
-  return { domain: parsed.domain, nonce: parsed.nonce };
+  // Only surface a recognised intent ("seo"); anything else (incl. absent) round-trips to {domain, nonce}.
+  return parsed.intent === "seo"
+    ? { domain: parsed.domain, nonce: parsed.nonce, intent: "seo" }
+    : { domain: parsed.domain, nonce: parsed.nonce };
 }
 
 /**

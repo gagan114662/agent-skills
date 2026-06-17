@@ -17,10 +17,17 @@ import {
   loadGoogleOAuthConfig,
   buildGoogleAuthorizeUrl,
   googleConnectionSecrets,
+  resolveOnboardingScopes,
+  capabilitiesForScopes,
   GOOGLE_CONNECTION_SERVICE_KEY,
-  GOOGLE_CONNECTION_CAPABILITIES,
   type GoogleOAuthConfig,
+  type OnboardingIntent,
 } from "../auth/google-oauth.js";
+import {
+  resolveSignupEntryCaps,
+  type SignupEntryCaps,
+} from "../onboarding/signup-entry.js";
+import { loadConfig } from "../config/loader.js";
 import { createGoogleOAuthClient, type GoogleOAuthClient } from "../auth/google-client.js";
 import type { SessionManager } from "../runtime/manager.js";
 import { makeDefaultOnboardingBootstrap } from "../auth/onboarding-bootstrap-default.js";
@@ -59,6 +66,11 @@ export interface GoogleAuthRoutesOptions {
   stateSecret?: string;
   /** Injectable clock for deterministic state expiry (tests). */
   now?: () => number;
+  /**
+   * Progressive-consent caps (#300). `undefined` ⇒ read live from the layered config; explicit caps let
+   * tests pin the behavior. Default OFF ⇒ today's single full-scope #260 consent at signup.
+   */
+  signupEntry?: SignupEntryCaps;
 }
 
 /**
@@ -95,6 +107,15 @@ export async function googleAuthRoutes(
   }
   function stateSecret(): string {
     return opts.stateSecret ?? loadStateSecret();
+  }
+  /** Progressive-consent caps: injected for tests, else read live from the layered config (default OFF). */
+  function signupEntryCaps(): SignupEntryCaps {
+    return opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
+  }
+  /** Read the consent intent off the query (`?intent=seo` ⇒ the deferred GSC/Analytics grant). */
+  function intentFromQuery(req: { query: unknown }): OnboardingIntent {
+    const raw = (req.query as { intent?: unknown }).intent;
+    return raw === "seo" ? "seo" : "signup";
   }
   function redirectError(reply: FastifyReply, code: string): FastifyReply {
     return reply.redirect(`${ONBOARDING_PATH}?error=${encodeURIComponent(code)}`);
@@ -136,8 +157,14 @@ export async function googleAuthRoutes(
     const domainParam = (req.query as { domain?: unknown }).domain;
     const result = normalizeDomain(typeof domainParam === "string" ? domainParam : "");
     if (!result.ok) return redirectError(reply, "invalid_domain");
-    const state = signState({ domain: result.domain, nonce: newStateNonce() }, stateSecret(), now());
-    return reply.redirect(buildGoogleAuthorizeUrl({ config, state }));
+    // #300 progressive consent: request identity-only at signup when enabled, the full set at the deferred
+    // SEO step. Default OFF ⇒ the full set at every step (today's #260 single consent). The intent rides in
+    // the signed state so the callback records the matching connection capabilities.
+    const intent = intentFromQuery(req);
+    const progressive = signupEntryCaps().progressiveScopes;
+    const scopes = resolveOnboardingScopes({ progressive, intent });
+    const state = signState({ domain: result.domain, nonce: newStateNonce(), intent }, stateSecret(), now());
+    return reply.redirect(buildGoogleAuthorizeUrl({ config, state, scopes }));
   });
 
   // Step 2 — Google redirects back here with the code; finish sign-in + bootstrap.
@@ -192,11 +219,18 @@ export async function googleAuthRoutes(
 
     // Seal the Google tokens into the encrypted per-workspace connection (#192 vault, service_key `google`).
     // This is the connection the GSC/Analytics connector (#258) reads — the live flow and the model reconcile.
+    // #300: record the capabilities matching what THIS consent requested — the full set today (progressive
+    // OFF), or just identity at a progressive signup, with GSC/Analytics added only at the deferred SEO step.
+    const intent: OnboardingIntent = payload.intent === "seo" ? "seo" : "signup";
+    const grantedScopes = resolveOnboardingScopes({
+      progressive: signupEntryCaps().progressiveScopes,
+      intent,
+    });
     await setServiceCredentials({
       workspaceId,
       serviceKey: GOOGLE_CONNECTION_SERVICE_KEY,
       secrets: googleConnectionSecrets(tokens, { sub: user.sub, email: user.email }, now()),
-      scopes: [...GOOGLE_CONNECTION_CAPABILITIES],
+      scopes: capabilitiesForScopes(grantedScopes),
       connectedByMemberId: memberId,
     });
 

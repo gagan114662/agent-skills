@@ -191,6 +191,18 @@ describe("real-world tool surface config (#231)", () => {
     );
     expect(cfg.connectClaude).toEqual({ enabled: true, ownerWorkspaceId: "ws_owner" });
   });
+
+  it("#300 signup-entry defaults OFF, and env opts both flags in (RELOAD_SIGNUP_*)", () => {
+    expect(loadConfig(undefined, sources({})).signupEntry).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_SIGNUP_SAMPLE_WORKSPACE: "true", RELOAD_SIGNUP_PROGRESSIVE_SCOPES: "1" },
+      ),
+    );
+    expect(cfg.signupEntry).toEqual({ sampleWorkspace: true, progressiveScopes: true });
+  });
 });
 
 describe("validation & resilience (#58)", () => {

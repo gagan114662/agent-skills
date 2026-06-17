@@ -10,6 +10,7 @@ import { siteRoutes } from "./routes/site.js";
 import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
 import { googleAuthRoutes, type GoogleAuthRoutesOptions } from "./routes/google-auth.js";
+import { sampleRoutes, type SampleRoutesOptions } from "./routes/sample.js";
 import { meRoutes } from "./routes/me.js";
 import { claudeConnectRoutes, type ClaudeConnectRoutesOptions } from "./routes/claude-connect.js";
 import { agentInterfaceRoutes } from "./routes/agent-interface.js";
@@ -436,6 +437,11 @@ export interface BuildAppOptions {
    * flow stays an honest `coming_soon` until wired.
    */
   claudeConnect?: ClaudeConnectRoutesOptions;
+  /**
+   * #300 low-commitment front door. Tests inject `signupEntry` caps so the read-only sample workspace can
+   * be exercised without a config file. Default reads the layered config (sample workspace OFF).
+   */
+  sample?: SampleRoutesOptions;
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -504,6 +510,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(healthRoutes);
   // #153 public marketing-site content API (CMS-lite over repo markdown) — unauthenticated, published-only.
   app.register(siteRoutes, { contentSource: opts.contentSource });
+  // #300 low-commitment front door: the read-only sample workspace (unauthenticated, read-only). Default
+  // OFF — answers `{ offered: false }` until the deployment turns on `signupEntry.sampleWorkspace`.
+  app.register(sampleRoutes, { ...opts.sample });
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
   // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered

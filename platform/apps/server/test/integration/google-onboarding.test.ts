@@ -192,4 +192,85 @@ describe("Google onboarding (#260, real Postgres)", () => {
       await off.close();
     }
   });
+
+  it("#300 progressive scopes: signup requests identity-only; the connection records identity only", async () => {
+    const progressive = buildApp({
+      googleAuth: {
+        config: CONFIG,
+        client: fakeClient,
+        stateSecret: SECRET,
+        signupEntry: { sampleWorkspace: false, progressiveScopes: true },
+        bootstrap: async () => {},
+      },
+    });
+    await progressive.ready();
+    try {
+      // The signup consent must NOT include Search Console / Analytics — only identity.
+      const start = await progressive.inject({ method: "GET", url: "/auth/google/start?domain=acme.com" });
+      const scope = new URL(start.headers.location as string).searchParams.get("scope")!;
+      expect(scope).toContain("openid");
+      expect(scope).not.toContain("https://www.googleapis.com/auth/webmasters");
+      expect(scope).not.toContain("https://www.googleapis.com/auth/analytics.readonly");
+
+      const email = `prog-${newId()}@acme-${newId()}.com`;
+      createdEmails.push(email);
+      currentUser = { sub: `sub-${newId()}`, email, emailVerified: true, name: "Pro" };
+      // The callback must run on THIS app (progressive on), not the module-level shared `app`.
+      const cb = await progressive.inject({
+        method: "GET",
+        url: `/auth/google/callback?code=auth-code&state=${stateFrom(start.headers.location as string)}`,
+      });
+      const cookie = cb.cookies.find((c) => c.name === "rid")!;
+      const me = await progressive.inject({ method: "GET", url: "/me", cookies: { rid: cookie.value } });
+      const workspaceId = me.json().workspaceId as string;
+      createdWorkspaceIds.push(workspaceId);
+
+      // The connection honestly records ONLY identity — GSC/Analytics are deferred to the SEO step.
+      const statuses = await listServiceStatuses(workspaceId);
+      const google = statuses.find((s) => s.serviceKey === "google");
+      expect(google?.scopes).toEqual(["identity"]);
+
+      // The deferred SEO grant (?intent=seo) DOES request the broad data scopes.
+      const seo = await progressive.inject({
+        method: "GET",
+        url: "/auth/google/start?domain=acme.com&intent=seo",
+      });
+      const seoScope = new URL(seo.headers.location as string).searchParams.get("scope")!;
+      expect(seoScope).toContain("https://www.googleapis.com/auth/webmasters");
+      expect(seoScope).toContain("https://www.googleapis.com/auth/analytics.readonly");
+    } finally {
+      await progressive.close();
+    }
+  });
+});
+
+describe("Sample workspace front door (#300, real Postgres)", () => {
+  it("default OFF: GET /sample/console answers honestly with no demo", async () => {
+    const off = buildApp({});
+    await off.ready();
+    try {
+      const res = await off.inject({ method: "GET", url: "/sample/console" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ offered: false, console: null });
+    } finally {
+      await off.close();
+    }
+  });
+
+  it("when enabled: a prospect sees a real agent deliverable with NO auth and NO Google scope (AC)", async () => {
+    const on = buildApp({ sample: { signupEntry: { sampleWorkspace: true, progressiveScopes: false } } });
+    await on.ready();
+    try {
+      // No session cookie is sent — the sample console is reachable unauthenticated.
+      const res = await on.inject({ method: "GET", url: "/sample/console" });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.offered).toBe(true);
+      expect(body.console.readOnly).toBe(true);
+      expect(body.console.deliverables.length).toBeGreaterThanOrEqual(1);
+      expect(body.console.deliverables[0].body.length).toBeGreaterThan(200);
+    } finally {
+      await on.close();
+    }
+  });
 });

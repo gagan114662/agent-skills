@@ -538,6 +538,25 @@ export const connectClaudeSchema = z.object({
 });
 
 /**
+ * Low-commitment signup-entry policy (#300, ADR-0300). Non-secret knobs for the front-door alternatives to
+ * the broad-scope Google OAuth wall: a read-only **sample workspace** a prospect can explore before signing
+ * up, and **progressive Google scopes** that request only identity at signup and defer Search Console /
+ * Analytics to the moment SEO work is actually initiated. Both fields are optional and default **OFF** so a
+ * deployment that sets nothing keeps today's #260 behavior exactly (Google-only entry, single full-scope
+ * consent). These are anonymous front-door features (no workspace exists yet), so the deployment flag IS the
+ * owner-first control — the owner turns it on for their own deployment first (see ADR-0300).
+ */
+export const signupEntrySchema = z.object({
+  /** Offer the read-only sample/demo workspace from `/start` — default OFF. */
+  sampleWorkspace: z.boolean().optional(),
+  /**
+   * Request identity-only Google scopes at signup, deferring GSC/Analytics until SEO work is initiated
+   * (progressive consent) — default OFF (the single #260 full-scope consent at signup).
+   */
+  progressiveScopes: z.boolean().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1377,6 +1396,8 @@ export const settingsSchema = z.object({
   connectClaude: connectClaudeSchema.optional(),
   /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
   skillopt: skilloptSchema.optional(),
+  /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
+  signupEntry: signupEntrySchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1442,6 +1463,7 @@ export type SeoConfig = z.infer<typeof seoSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
+export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1570,6 +1592,8 @@ export interface ResolvedConfig {
   connectClaude: ConnectClaudeConfig;
   /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
   skillopt: SkillOptConfig;
+  /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
+  signupEntry: SignupEntryConfig;
 }
 
 /**
@@ -1636,4 +1660,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   agentRegistry: {},
   connectClaude: {},
   skillopt: {},
+  signupEntry: {},
 };

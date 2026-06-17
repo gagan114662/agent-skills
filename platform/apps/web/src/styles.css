@@ -404,6 +404,90 @@ select:focus-visible {
   color: var(--text-dim);
   text-align: center;
 }
+/* #300 low-commitment entry: the "explore a sample workspace" alternative under the Google button. */
+.auth__alt {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+/* #300 read-only sample workspace page. */
+.sample {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+.sample__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.sample__badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.sample__back {
+  margin-left: auto;
+}
+.sample__intro h1 {
+  margin: 0 0 6px;
+}
+.sample__intro p {
+  margin: 0 0 24px;
+  color: var(--text-dim);
+}
+.sample__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sample__card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+.sample__card-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.sample__card-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sample__card-preview {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+}
+.sample__card-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.sample__card-consequence {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sample__empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 32px 0;
+}
 .field {
   display: flex;
   flex-direction: column;
