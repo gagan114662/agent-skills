@@ -222,6 +222,23 @@ export function validateReachDataCreditSpend(payload: unknown): ValidationResult
 }
 
 /**
+ * Validate a SkillOpt-Sleep skill-edit adoption (#283) — a recorded-only, behavior-altering decision the
+ * owner gates. Needs the agent `handle`, the `skillId` the edit targets, the `currentDocSha` it was
+ * validated against (so adoption is reversible + applies only to the exact doc), and a non-empty
+ * `appendText` (the bounded edit shown on the card). Recorded-only on approval; applying the edit to the
+ * versioned skill doc is a deliberate follow-up — the executor never writes a file or makes a network call.
+ */
+export function validateSkillOptAdoptEdit(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.handle)) return { ok: false, error: "handle required" };
+  if (!nonEmptyString(p.skillId)) return { ok: false, error: "skillId required" };
+  if (!nonEmptyString(p.currentDocSha)) return { ok: false, error: "currentDocSha required" };
+  if (!nonEmptyString(p.appendText)) return { ok: false, error: "appendText required" };
+  return { ok: true };
+}
+
+/**
  * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
  * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
  * change in the venture's own Stripe dashboard (no autonomous payout re-routing).

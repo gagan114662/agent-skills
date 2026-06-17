@@ -1191,6 +1191,31 @@ export const deliverySchema = z.object({
 });
 
 /**
+ * SkillOpt-Sleep self-improvement policy (#283, ADR-0283). The flags behind the offline cycle that lets a
+ * department agent mine its own recurring tasks and PROPOSE a bounded edit to its skill doc. Default OFF,
+ * owner-workspace-first: a deployment that sets nothing runs no cycle and stages nothing. Even when
+ * `enabled`, an `ownerWorkspaceOnly` deployment (the default) only runs for the named owner workspace. No
+ * credentials/money here — a proposal is staged in the #13 queue and adopted only by the owner; the loop
+ * never edits a doc. The numeric knobs tune mining/gate/proposal bounds (`skillopt/caps.ts` fills defaults).
+ */
+export const skilloptSchema = z.object({
+  /** Master flag for the offline self-improvement cycle — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the loop to the owner workspace (default true). Set false to run for all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the loop rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Minimum occurrences for a task to count as recurring (default 3). */
+  minRecurrence: z.number().int().positive().optional(),
+  /** Minimum held-out replay size for a validation reading to count (default 5). */
+  minSampleSize: z.number().int().positive().optional(),
+  /** Minimum relative improvement over baseline to stage a proposal (default 0.05). */
+  minImprovementRatio: z.number().nonnegative().optional(),
+  /** Max chars for a single bounded skill-doc append (default 600). */
+  maxAppendChars: z.number().int().positive().optional(),
+});
+
+/**
  * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
  * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
  * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
@@ -1350,6 +1375,8 @@ export const settingsSchema = z.object({
   agentRegistry: agentRegistrySchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
+  /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
+  skillopt: skilloptSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1414,6 +1441,7 @@ export type ReachConfig = z.infer<typeof reachSchema>;
 export type SeoConfig = z.infer<typeof seoSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
+export type SkillOptConfig = z.infer<typeof skilloptSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1540,6 +1568,8 @@ export interface ResolvedConfig {
   agentRegistry: AgentRegistryConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
+  /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
+  skillopt: SkillOptConfig;
 }
 
 /**
@@ -1605,4 +1635,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   seo: {},
   agentRegistry: {},
   connectClaude: {},
+  skillopt: {},
 };

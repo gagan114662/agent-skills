@@ -108,6 +108,18 @@ export const OUTREACH_SEND_ACTION = "outreach.send" as const;
 export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
 
 /**
+ * #283 SkillOpt-Sleep adopts a bounded edit to a department agent's skill doc. Adopting an edit CHANGES how
+ * that agent behaves in the workspace — a behavior-altering, owner-only decision (premortem #200 §4: never
+ * post-hoc, always a human's call) — so the self-improvement loop ALWAYS parks a PENDING request; there is
+ * no autonomous-adopt path. Like `outreach.send` it is NOT a money action and is never submitted through
+ * the #13 action route — the SkillOpt service parks it directly against the same workspace
+ * `approval_policies`. The executor is recorded-only (approving records the owner's go; applying the edit
+ * to the versioned skill doc is a deliberate follow-up). It is reversible (a doc append can be reverted),
+ * so it is NOT in `IRREVERSIBLE_ACTIONS`.
+ */
+export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
