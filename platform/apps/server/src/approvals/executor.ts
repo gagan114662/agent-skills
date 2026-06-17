@@ -17,6 +17,13 @@ export interface ExecutorContext {
   workspaceId: string;
   requesterMemberId: string;
   log: FastifyBaseLogger;
+  /**
+   * The #13 approval request id this execution belongs to, when run through the approve path (#295). It
+   * lets a post-approval executor tie a production-grounded receipt back to the approval that authorized
+   * it (the proof nothing ships without an approval record). Absent on the auto-approve path (the request
+   * row is created AFTER execution there) — executors that need it MUST fail closed when it is missing.
+   */
+  requestId?: string;
 }
 
 /** Result of validating a submitted payload. `ok:false` → a 400 at submit time (ADR-0013 §2). */

@@ -21,6 +21,7 @@ import type { ExecutorRegistry } from "../approvals/executor.js";
 import { resolveAcquisitionCaps, type AcquisitionCaps } from "./caps.js";
 import { createAcquisitionProviders } from "./providers.js";
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
+import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { buildAcquisitionBriefView, type AcquisitionBriefView } from "./cac.js";
 import type { FooterInfo } from "./compliance.js";
 import {
@@ -65,11 +66,19 @@ export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
 }
 
 /**
- * The #13 executor registry with the acquisition dispatcher wired into `external.send`. Safe to use
- * everywhere the default registry was used — default-OFF keeps it recorded-only.
+ * The #13 executor registry with the acquisition dispatcher wired into `external.send` (#189) AND the
+ * delivery dispatcher wired into `agent.deliverable` (#295). Safe to use everywhere the default registry
+ * was used — both are default-OFF: with the acquisition flag off the `external.send` executor stays
+ * recorded-only, and with the delivery flag off the `agent.deliverable` executor stays a pure
+ * acknowledgement.
  */
 export function buildAcquisitionRegistry(): ExecutorRegistry {
-  return buildDefaultRegistry(defaultEgressEnforcer, defaultComplianceEnforcer, buildAcquisitionDispatcher());
+  return buildDefaultRegistry(
+    defaultEgressEnforcer,
+    defaultComplianceEnforcer,
+    buildAcquisitionDispatcher(),
+    buildDeliveryDispatcher(),
+  );
 }
 
 /**
