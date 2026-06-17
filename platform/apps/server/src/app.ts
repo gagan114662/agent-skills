@@ -171,6 +171,7 @@ import type { DiscoveryService } from "./discovery/service.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
+import { analyticsRoutes } from "./routes/analytics.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { seoRoutes } from "./routes/seo.js";
@@ -840,6 +841,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // record external engagement receipts, and read the proof summary. Default-OFF (caps gate the batch); a
   // paid data source money-gates its search. No #13 gate on the send (autonomous under the caps).
   app.register(reachRoutes, { service: reachService });
+  // #270 analytics auto-install + read: install the analytics tag on the workspace's site with no owner
+  // code work, and read the externally-grounded metrics so Lens can report. Default-OFF, owner-first; the
+  // read provider (`dryrun` default) decides whether real numbers flow. No #13 gate (not money).
+  app.register(analyticsRoutes);
   // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });

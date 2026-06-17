@@ -904,8 +904,9 @@ export const CONSOLE = {
    * The owner BRIEF composer (#235): a real input that turns the passive "@mention a lead to kick off the
    * next piece of work" into a working control. Pick a department lead, hand them a goal, and they clock in
    * on a real, approval-gated task — the board fills as they go. Generic by design (it serves every
-   * workspace); the concrete venture #1 brief is seeded server-side. The `leads` are the five acquisition
-   * leads (their @handles are the named department agents, not brand strings).
+   * workspace); the concrete venture #1 brief is seeded server-side. The `leads` are the seven department
+   * leads (their @handles are the named department agents, not brand strings) — the five acquisition leads
+   * plus Lens (analytics) and Mark (brand), so every department agent is briefable (#288).
    */
   brief: {
     eyebrow: "Brief the fleet",
@@ -918,6 +919,8 @@ export const CONSOLE = {
       { handle: "quill", name: "Quill", dept: "Content", blurb: "drafts + long-form" },
       { handle: "postmark", name: "Postmark", dept: "Email", blurb: "sequences" },
       { handle: "bid", name: "Bid", dept: "Ads", blurb: "campaigns + budget" },
+      { handle: "lens", name: "Lens", dept: "Analytics", blurb: "traffic + conversions to track" },
+      { handle: "mark", name: "Mark", dept: "Brand", blurb: "voice + naming + positioning" },
     ],
     placeholder: "What should they go do? e.g. get us our first paying customers",
     submit: "Send the brief",

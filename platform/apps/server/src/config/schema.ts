@@ -1133,6 +1133,27 @@ export const seoSchema = z.object({
 });
 
 /**
+ * Analytics auto-install + read policy (#270, ADR-0270). Lens (the analytics department, #123) can't report
+ * a real number until an analytics tag is on the site. This block lets ipop auto-install the tag and read
+ * the metrics so the owner does ZERO tag/code work. Default OFF + `dryrun` provider, owner-workspace-first
+ * (mirrors `seo`/`delivery`): an un-configured workspace installs nothing and reads nothing — the founder
+ * console keeps reading the internal #102 funnel exactly as today. A real GA4/Plausible read is selected by
+ * `provider`; the vendor credential lives in the #192 / #267 vault, never here.
+ */
+export const analyticsSchema = z.object({
+  /** Master flag for the auto-install + read layer — default OFF (the funnel-only tile stays the behavior). */
+  enabled: z.boolean().optional(),
+  /** Restrict the layer to the owner workspace (default true). Set false to broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the layer rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Read provider: `dryrun` (default, reports nothing) | `ga4` | `plausible`. */
+  provider: z.string().optional(),
+  /** The GA4 measurement id / Plausible domain to inject (empty ⇒ a documented placeholder, never a live tag). */
+  measurementId: z.string().optional(),
+});
+
+/**
  * Acquisition execution policy (#189, ADR-0189). The flags that turn the marketing fleet's queued,
  * recorded-only `external.send` actions into REAL campaigns — ads spend, email sends, social posts,
  * SEO publishing. Every field is optional and defaults to **off**: a deployment that sets nothing keeps
@@ -1436,6 +1457,8 @@ export const settingsSchema = z.object({
   reach: reachSchema.optional(),
   /** SEO rank-tracking policy (#294): externally-grounded rank receipts feeding the SEO proof tile (default OFF). */
   seo: seoSchema.optional(),
+  /** Analytics auto-install + read policy (#270): ipop installs the tag + reads metrics so Lens can report (default OFF). */
+  analytics: analyticsSchema.optional(),
   /** Agent Registry + A2A policy (#282): department-fleet contracts + governed agent-to-agent calls (default OFF). */
   agentRegistry: agentRegistrySchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
@@ -1508,6 +1531,7 @@ export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
 export type SeoConfig = z.infer<typeof seoSchema>;
+export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
@@ -1638,6 +1662,8 @@ export interface ResolvedConfig {
   reach: ReachConfig;
   /** SEO rank-tracking policy (#294). A partial whose hard defaults `resolveSeoCaps` fills. */
   seo: SeoConfig;
+  /** Analytics auto-install + read policy (#270). A partial resolved by `resolveAnalyticsFlags`. */
+  analytics: AnalyticsConfig;
   /** Agent Registry + A2A policy (#282). A partial whose hard defaults `resolveAgentRegistryCaps` fills. */
   agentRegistry: AgentRegistryConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
@@ -1711,6 +1737,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   discovery: {},
   reach: {},
   seo: {},
+  analytics: {},
   agentRegistry: {},
   connectClaude: {},
   skillopt: {},
