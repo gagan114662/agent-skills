@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { createHmac } from "node:crypto";
 import {
   CLAUDE_CONNECT_SERVICE_KEY,
   CONNECT_CLAUDE_DEFAULTS,
@@ -140,6 +141,16 @@ describe("connect OAuth state (#262) — HMAC, no DB, tenant-bound", () => {
   it("rejects malformed input", () => {
     expect(verifyConnectState("", SECRET)).toBeNull();
     expect(verifyConnectState("nodot", SECRET)).toBeNull();
+  });
+
+  it("returns null (never throws) for a correctly-signed payload that decodes to JSON null or a non-object", () => {
+    // An attacker who can sign a body (only with the secret) still can't crash the callback: a payload
+    // that parses to `null`, a primitive, or an array must be rejected, not dereferenced.
+    for (const literal of ["null", "42", '"a string"', "[1,2,3]", "true"]) {
+      const body = Buffer.from(literal, "utf8").toString("base64url");
+      const signed = `${body}.${createHmac("sha256", SECRET).update(body).digest("base64url")}`;
+      expect(verifyConnectState(signed, SECRET, { now: 1000 })).toBeNull();
+    }
   });
 });
 

@@ -193,6 +193,9 @@ export function verifyConnectState(
   } catch {
     return null;
   }
+  // A correctly-signed body can still decode to `null`, a primitive, or an array — guard BEFORE any
+  // property access so an attacker-crafted payload returns null instead of throwing (crashing the callback).
+  if (parsed === null || typeof parsed !== "object") return null;
   if (typeof parsed.workspaceId !== "string" || typeof parsed.nonce !== "string") return null;
   if (typeof parsed.ts !== "number" || now - parsed.ts > maxAgeMs || parsed.ts > now + 60_000) {
     return null;
