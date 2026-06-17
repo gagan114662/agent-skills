@@ -29,6 +29,7 @@ const MONEY = [
   "monetization.payout_settings",
   "setup.external_account",
   "reach.data_credit_spend",
+  "provisioning.customer_spend",
 ];
 const NON_MONEY = [
   "external.send",

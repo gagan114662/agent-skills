@@ -120,6 +120,18 @@ export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
 export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
 
 /**
+ * #267 the customer's OWN spend through a centrally-provisioned API. ipop holds the paid data/posting/ads
+ * API keys CENTRALLY and bills the cost of goods into the plan, so using those APIs is autonomous (a
+ * `platform_cost` capability — never gated). But the customer's own money — releasing real AD BUDGET or
+ * upgrading their EMAIL-SENDING tier (a `customer_spend` capability) — is real spend, irreversible
+ * (premortem #200 §4), so it ALWAYS pauses for the owner with the exact amount shown. Like
+ * `venture.ad_spend` it is never submitted through the #13 action route; the provisioning service parks a
+ * PENDING request against the same workspace `approval_policies`. The executor is recorded-only (a live
+ * budget release behind the gate is the per-department PR's job, never an autonomous spend). ADR-0267.
+ */
+export const PROVISIONING_CUSTOMER_SPEND_ACTION = "provisioning.customer_spend" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
@@ -179,6 +191,9 @@ export const MONEY_ACTIONS: readonly string[] = [
   // #280 buying paid prospect-data credits (Clay/Lusha/Vibe) — real spend, exact amount shown. The
   // marketing SEND it enables stays autonomous; only the data purchase is money. ADR-0280.
   REACH_DATA_CREDIT_ACTION,
+  // #267 the customer's own spend through a centrally-provisioned API (ad budget release, email-sending
+  // tier). ipop's billed-in API cost (`platform_cost`) is autonomous; only the customer's money gates. ADR-0267.
+  PROVISIONING_CUSTOMER_SPEND_ACTION,
 ];
 
 /** True iff `actionType` moves or commits real money — the single predicate that drives approval (#243). */
@@ -210,6 +225,7 @@ export const IRREVERSIBLE_ACTIONS: readonly string[] = [
   VENTURE_AD_SPEND_ACTION, // paid acquisition spend (#187)
   VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
   REACH_DATA_CREDIT_ACTION, // paid prospect-data credits, consumed on the API call (#280)
+  PROVISIONING_CUSTOMER_SPEND_ACTION, // the customer's own ad budget / email tier — real spend (#267)
 ];
 
 /** True iff `actionType` is in the irreversible money class (premortem #200 FM#4). Pure + total. */

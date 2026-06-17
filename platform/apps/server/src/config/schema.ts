@@ -1216,6 +1216,29 @@ export const skilloptSchema = z.object({
 });
 
 /**
+ * Central provisioning policy (#267, ADR-0267). ipop holds the paid data/posting/ads API keys CENTRALLY
+ * and bills the cost into the plan, so a customer never provisions or sees a key. Every field is optional
+ * and defaults to **off, owner-workspace-first** (mirrors `delivery`): a deployment that sets nothing
+ * provisions nothing — every capability resolves to the free mock path and no central vault is read.
+ * Turning `enabled` on WITHOUT naming the owner workspace provisions to NObody (the safest default).
+ *
+ * No credential lives here — the central keys live in the OWNER workspace's #192 vault under
+ * `central:<provider>`. `providerByCapability` maps a capability id → a provider id (NAME only, never a
+ * key), so a per-department PR activates a real provider without a code change. The customer's OWN spend
+ * (ad budget, email tier) is NOT controlled here — it stays a #13 money-gated `provisioning.customer_spend`.
+ */
+export const provisioningSchema = z.object({
+  /** Master switch for central provisioning — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict provisioning to the owner workspace (default true). False ⇒ broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — ALSO the vault tenant the `central:<provider>` keys are read from. */
+  ownerWorkspaceId: z.string().optional(),
+  /** capability id → provider id (name only, never a key), e.g. `{ keyword_data: "dataforseo" }`. */
+  providerByCapability: z.record(z.string()).optional(),
+});
+
+/**
  * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
  * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
  * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
@@ -1361,6 +1384,8 @@ export const settingsSchema = z.object({
   acquisition: acquisitionSchema.optional(),
   /** Deliverable delivery policy (#295): approve→publish ship of `agent.deliverable` drafts (default OFF). */
   delivery: deliverySchema.optional(),
+  /** Central provisioning policy (#267): ipop-held paid data/posting/ads keys billed into the plan (default OFF). */
+  provisioning: provisioningSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
@@ -1434,6 +1459,7 @@ export type RealworldConfig = z.infer<typeof realworldSchema>;
 export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
+export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
@@ -1554,6 +1580,8 @@ export interface ResolvedConfig {
   acquisition: AcquisitionConfig;
   /** Deliverable delivery policy (#295). A partial resolved by `resolveDeliveryFlags`. */
   delivery: DeliveryConfig;
+  /** Central provisioning policy (#267). A partial whose hard defaults `resolveProvisioningCaps` fills. */
+  provisioning: ProvisioningConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
@@ -1628,6 +1656,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   outreach: {},
   acquisition: {},
   delivery: {},
+  provisioning: {},
   finance: {},
   monetization: {},
   discovery: {},

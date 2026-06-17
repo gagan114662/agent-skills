@@ -169,6 +169,8 @@ import type { DiscoveryService } from "./discovery/service.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
+import { provisioningRoutes } from "./routes/provisioning.js";
+import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { seoRoutes } from "./routes/seo.js";
 import { createDefaultSeoRankService } from "./seo/default.js";
 import { createDefaultOutreachService } from "./outreach/default.js";
@@ -697,6 +699,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #294 SEO rank tracking: externally-grounded rank receipts feeding the SEO proof tile. Default-OFF +
   // dry-run provider, so it fetches nothing and records nothing until an owner connects a real rank source.
   const seoRankService = createDefaultSeoRankService(app.log);
+  // #267 central provisioning: the SHARED seam the per-department adapters resolve paid-API credentials
+  // through. Default-OFF + owner-workspace-first: with no `provisioning.enabled` set every capability
+  // resolves to the free mock path and no central vault is read.
+  const provisioningService = createDefaultProvisioningService();
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -820,6 +826,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // record external engagement receipts, and read the proof summary. Default-OFF (caps gate the batch); a
   // paid data source money-gates its search. No #13 gate on the send (autonomous under the caps).
   app.register(reachRoutes, { service: reachService });
+  // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
+  // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
+  app.register(provisioningRoutes, { service: provisioningService });
   app.register(seoRoutes, { service: seoRankService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });

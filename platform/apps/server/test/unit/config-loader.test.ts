@@ -398,6 +398,37 @@ describe("#228 venture gate env wiring (RELOAD_VENTURE_*)", () => {
     );
     expect(cfg.venture).toEqual({ enabled: true, ownerWorkspaceId: "ws-venture" });
   });
+
+  it("#267 central provisioning is OFF with no env var (no block)", () => {
+    const cfg = loadConfig(undefined, sources({}, {}));
+    expect(cfg.provisioning).toEqual({});
+  });
+
+  it("#267 RELOAD_PROVISIONING_ENABLED + the #258 marketing owner marker opt provisioning in", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_PROVISIONING_ENABLED: "true", RELOAD_MARKETING_OWNER_WORKSPACE_ID: "ws-owner" },
+      ),
+    );
+    expect(cfg.provisioning).toEqual({ enabled: true, ownerWorkspaceId: "ws-owner" });
+  });
+
+  it("#267 a dedicated RELOAD_PROVISIONING_OWNER_WORKSPACE_ID overrides the marketing marker", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        {
+          RELOAD_PROVISIONING_ENABLED: "1",
+          RELOAD_MARKETING_OWNER_WORKSPACE_ID: "ws-mkt",
+          RELOAD_PROVISIONING_OWNER_WORKSPACE_ID: "ws-prov",
+        },
+      ),
+    );
+    expect(cfg.provisioning).toEqual({ enabled: true, ownerWorkspaceId: "ws-prov" });
+  });
 });
 
 describe("mergeLayers (pure precedence helper)", () => {
