@@ -2,7 +2,7 @@
  * The console — the product's one and only authed surface (console v5). The whole app is two panes:
  *
  *   · LEFT  (StandupPanel)  ← projects → sessions, the Conductor anatomy + account utilities
- *   · CENTER (this board)   ← one kanban: Work in progress / Approval needed / Done
+ *   · CENTER (this board)   ← one kanban: Work in progress / Spend approval / Done
  *   · DRAWER (PeekDrawer)   ← dive into any card or session row: steps, the "why?" audit, a composer to
  *                             steer, and (for approval-needed work) Approve / Not yet
  *

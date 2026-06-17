@@ -12,7 +12,8 @@ import {
   markSessionRunning,
 } from "../db/repositories/agent-sessions.js";
 import { postMessage } from "../db/repositories/messages.js";
-import { createRequest } from "../db/repositories/approvals.js";
+import { createRequest, listPolicyRules } from "../db/repositories/approvals.js";
+import { evaluatePolicy } from "../approvals/policy.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
@@ -318,16 +319,22 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         logger.error({ err }, "model-incident resolution failed");
       }
     },
-    // #248: a clean completion with real output SURFACES the deliverable as a board artifact — a pending
-    // #13 review card (APPROVAL NEEDED) carrying the draft — so a briefed task never "vanishes" (its
-    // result previously lived only as a channel message + `agent_sessions.result` row the owner never
-    // saw). `agent.deliverable` is NOT a money action (#243 money-only intact) and grants no new
-    // authority: the executor is a pure acknowledgement, publishing stays autonomous. The recipient/
-    // payload is STRUCTURAL data (#223 injection-safe — no agent-controlled action type or amount).
-    // Best-effort: a surfacing error never affects the already-finalized session.
+    // #248: a clean completion with real output SURFACES the deliverable as a board artifact so a briefed
+    // task never "vanishes" (its result previously lived only as a channel message + `agent_sessions.result`
+    // row the owner never saw). #243 single source of truth: the deliverable only PAUSES for the owner if it
+    // spends money — a content draft debits nothing, so `requiresHumanApproval` is false and we surface it as
+    // a DONE artifact (recorded `executed`) rather than parking it in the spend-approval lane awaiting a
+    // needless yes. `agent.deliverable` grants no new authority: the executor is a pure acknowledgement and
+    // publishing stays autonomous. The payload is STRUCTURAL data (#223 injection-safe — no agent-controlled
+    // action type or amount). Best-effort: a surfacing error never affects the already-finalized session.
     onSessionCompleted: async (e) => {
       const task = e.task.trim();
       const headline = task.length > 80 ? `${task.slice(0, 79)}…` : task || "deliverable";
+      // Rule-aware single source of truth: a content draft spends no money → autonomous by default, but a
+      // cautious workspace can still opt `agent.deliverable` back into the spend-approval lane with a policy
+      // rule. `evaluatePolicy` honors both the money predicate and any workspace rule (#243 / ADR-0013).
+      const rules = await listPolicyRules(e.workspaceId);
+      const gated = evaluatePolicy({ actionType: "agent.deliverable", amount: null }, rules).requiresApproval;
       await createRequest({
         workspaceId: e.workspaceId,
         requesterMemberId: e.agentMemberId,
@@ -336,15 +343,22 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
           sessionId: e.sessionId,
           channelId: e.channelId,
           task,
-          // The draft is already redacted + bounded (the result tail). Stored so the review drawer can
-          // show what the agent produced without re-reading the channel.
+          // The draft is already redacted + bounded (the result tail). Stored so the drawer can show
+          // what the agent produced without re-reading the channel.
           draft: e.result.slice(0, 4000),
         },
         amount: null,
         summary: `Deliverable ready for review: ${headline}`,
-        status: "pending",
+        // Non-money → autonomous: land it in Done (executed). Money (a future priced deliverable) → pending.
+        status: gated ? "pending" : "executed",
         expiresAt: null,
-        events: [{ type: "requested", detail: { sessionId: e.sessionId } }],
+        result: gated ? undefined : { acknowledged: true, sessionId: e.sessionId, autonomous: true },
+        events: gated
+          ? [{ type: "requested", detail: { sessionId: e.sessionId } }]
+          : [
+              { type: "requested", detail: { sessionId: e.sessionId } },
+              { type: "executed", detail: { acknowledged: true, autonomous: true } },
+            ],
       });
     },
   });

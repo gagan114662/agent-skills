@@ -28,7 +28,8 @@ import {
 } from "../../src/self-healing/model-incident.js";
 import type { ResourceCaps } from "../../src/db/repositories/agent-sessions.js";
 import { createAgentSession, markSessionRunning, getAgentSessionById } from "../../src/db/repositories/agent-sessions.js";
-import { createRequest, listRequests } from "../../src/db/repositories/approvals.js";
+import { createRequest, listRequests, listPolicyRules, upsertPolicy } from "../../src/db/repositories/approvals.js";
+import { evaluatePolicy } from "../../src/approvals/policy.js";
 
 /** A no-op logger so the manager's internal logging doesn't spam the test output. */
 const silentLogger: SessionLogger = {
@@ -107,9 +108,13 @@ async function startApp(
     ...(decode ? { decodeOutput: decode } : {}),
     ...(surface
       ? {
-          // Mirror production wiring (runtime/default.ts): a clean completion with output surfaces a
-          // pending `agent.deliverable` review card so a briefed task never vanishes (#248).
+          // Mirror production wiring (runtime/default.ts): a clean completion with output surfaces the
+          // `agent.deliverable` so a briefed task never vanishes (#248). #243 single source of truth — a
+          // content draft spends no money, so it lands in Done (executed), not the spend-approval lane.
           onSessionCompleted: async (e) => {
+            const rules = await listPolicyRules(e.workspaceId);
+            const gated = evaluatePolicy({ actionType: "agent.deliverable", amount: null }, rules)
+              .requiresApproval;
             await createRequest({
               workspaceId: e.workspaceId,
               requesterMemberId: e.agentMemberId,
@@ -117,9 +122,15 @@ async function startApp(
               payload: { sessionId: e.sessionId, channelId: e.channelId, task: e.task, draft: e.result.slice(0, 4000) },
               amount: null,
               summary: `Deliverable ready for review: ${e.task.slice(0, 80)}`,
-              status: "pending",
+              status: gated ? "pending" : "executed",
               expiresAt: null,
-              events: [{ type: "requested", detail: { sessionId: e.sessionId } }],
+              result: gated ? undefined : { acknowledged: true, sessionId: e.sessionId, autonomous: true },
+              events: gated
+                ? [{ type: "requested", detail: { sessionId: e.sessionId } }]
+                : [
+                    { type: "requested", detail: { sessionId: e.sessionId } },
+                    { type: "executed", detail: { acknowledged: true, autonomous: true } },
+                  ],
             });
           },
         }
@@ -477,10 +488,11 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     expect(session.endedAt).toBeTruthy();
   });
 
-  it("a completed task SURFACES its draft as a pending review card — never vanishes (#248)", async () => {
+  it("a completed task SURFACES its draft autonomously into Done — never vanishes, never parks (#248/#243)", async () => {
     // The prod bug: an @mention-briefed session completed with a real draft in agent_sessions.result +
-    // a channel post, but created NO approval_request → it "vanished" from the board. With the
-    // deliverable sink wired, a clean completion lands a pending `agent.deliverable` review card.
+    // a channel post, but created NO approval_request → it "vanished" from the board. With the deliverable
+    // sink wired, a clean completion surfaces an `agent.deliverable`. #243: a content draft spends no money,
+    // so it lands DONE (executed) — visible on the board, never parking in the spend-approval lane.
     const { app } = await startApp(
       COMPLETING_HARNESS,
       { wallClockMs: 20_000, idleMs: 8_000 },
@@ -490,7 +502,7 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
       true, // surface deliverables
     );
     const w = await seed(app);
-    expect(await listRequests(w.workspaceId, { status: "pending" })).toHaveLength(0);
+    expect(await listRequests(w.workspaceId, { status: "executed" })).toHaveLength(0);
 
     const launch = await app.inject({
       method: "POST",
@@ -501,7 +513,54 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     const session = await pollStatus(app, w, launch.json().id, (s) => s === "completed" || s === "failed");
     expect(session.status).toBe("completed");
 
-    // Poll the queue: the deliverable card is created best-effort just after finalize.
+    // Poll the queue: the deliverable is surfaced best-effort just after finalize — as a DONE (executed)
+    // artifact, not a pending approval (a draft is not money, so it never needs a yes).
+    let shipped: Awaited<ReturnType<typeof listRequests>> = [];
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      shipped = await listRequests(w.workspaceId, { status: "executed" });
+      if (shipped.length > 0 || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(shipped).toHaveLength(1);
+    expect(shipped[0]!.actionType).toBe("agent.deliverable");
+    expect(shipped[0]!.amount).toBeNull(); // NOT a money action (#243 intact)
+    expect(shipped[0]!.summary).toContain("draft 3 tweets");
+    expect((shipped[0]!.payload as { sessionId: string }).sessionId).toBe(launch.json().id);
+    // It never parked in the spend-approval lane.
+    expect(await listRequests(w.workspaceId, { status: "pending" })).toHaveLength(0);
+  });
+
+  it("a cautious workspace can still re-gate the deliverable with a policy rule (#243 rule-aware sink)", async () => {
+    // gemini #316: the sink honors workspace rules, not just the money predicate. A workspace that opts
+    // `agent.deliverable` back into the gate parks the draft PENDING (the spend-approval lane) instead of
+    // auto-shipping it to Done — the documented "a workspace can re-gate any action" guarantee.
+    const { app } = await startApp(
+      COMPLETING_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      false,
+      undefined,
+      true, // surface deliverables
+    );
+    const w = await seed(app);
+    await upsertPolicy({
+      workspaceId: w.workspaceId,
+      actionType: "agent.deliverable",
+      requireApproval: true,
+      maxAutoAmount: null,
+      createdByMemberId: null,
+    });
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft 3 tweets" },
+    });
+    const session = await pollStatus(app, w, launch.json().id, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("completed");
+
     let pending: Awaited<ReturnType<typeof listRequests>> = [];
     const deadline = Date.now() + 5_000;
     for (;;) {
@@ -511,9 +570,8 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     }
     expect(pending).toHaveLength(1);
     expect(pending[0]!.actionType).toBe("agent.deliverable");
-    expect(pending[0]!.amount).toBeNull(); // NOT a money action (#243 intact)
-    expect(pending[0]!.summary).toContain("draft 3 tweets");
-    expect((pending[0]!.payload as { sessionId: string }).sessionId).toBe(launch.json().id);
+    // ...and it did NOT auto-ship to Done.
+    expect(await listRequests(w.workspaceId, { status: "executed" })).toHaveLength(0);
   });
 
   it("a run that exits 0 but reports an error NEVER surfaces a deliverable card — it lands Failed (#251)", async () => {
