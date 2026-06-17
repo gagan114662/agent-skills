@@ -93,9 +93,17 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
   // so the chosen model is explicit/overridable per session; when ANTHROPIC_MODEL is unset the flag
   // vanishes and Claude Code falls back to its own default — unchanged behavior.
   const model = ` \${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"}`;
+  // Redirect the CLI's own stdin from /dev/null. The runtime spawns the harness with a connected stdin
+  // PIPE (kept open for live steering, #53), but `claude -p` takes its prompt from argv and never reads
+  // that pipe — so the CLI sees a connected-but-empty stdin, waits 3s, then prints "Warning: no stdin
+  // data received in 3s, proceeding without it…" to stderr. The runtime captures stderr into the result
+  // tail, so that warning leaks in as the FIRST line of every deliverable (the board bug). Pointing the
+  // CLI at /dev/null gives it immediate EOF, so the warning is never produced or captured; bash's own
+  // stdin stays the steerable pipe (the warning's source was the CLI, not the shell).
   const cmd =
     `${shellQuote(bin)} -p "$AGENT_TASK" ` +
-    `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}`;
+    `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}` +
+    ` < /dev/null`;
 
   return { command: "bash", args: ["-lc", cmd] };
 }
@@ -125,7 +133,10 @@ function codexSpec(opts: HarnessOptions): HarnessSpec {
       ? " " + opts.codexExtraArgs.map(shellQuote).join(" ")
       : "";
   const model = ` \${CODEX_MODEL:+--model "$CODEX_MODEL"}`;
-  const cmd = `${shellQuote(bin)} exec "$AGENT_TASK" --json --full-auto${model}${extra}`;
+  // Same stdin-warning defense as claude-code: `codex exec` reads its prompt from argv, so redirect its
+  // own stdin from /dev/null (immediate EOF) — the connected-but-empty steering pipe would otherwise
+  // make the CLI emit a stdin warning that the runtime captures into the deliverable tail.
+  const cmd = `${shellQuote(bin)} exec "$AGENT_TASK" --json --full-auto${model}${extra} < /dev/null`;
   return { command: "bash", args: ["-lc", cmd] };
 }
 
