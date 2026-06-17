@@ -13,7 +13,7 @@ import type { OutreachService } from "../outreach/service.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
-import { listEvaluations } from "../db/repositories/venture.js";
+import { listEvaluations, passingScorecardIdeaIds } from "../db/repositories/venture.js";
 import { listWorkspaceLiveSessions } from "../db/repositories/agent-sessions.js";
 import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
@@ -89,13 +89,18 @@ export function createDefaultFounderConsoleService(deps: {
       globalInFlight: () => scale.admission.snapshot("").global,
     },
     venture: {
-      evaluations: async (workspaceId) =>
-        (await listEvaluations(workspaceId)).map((e) => ({
+      evaluations: async (workspaceId) => {
+        // #228: tag each venture with whether it holds a passing #96 scorecard so the pipeline view can
+        // split owner-activated "scaffolds" (zero autonomy budget until cleared) out of `funded`.
+        const passing = new Set(await passingScorecardIdeaIds(workspaceId, new Date()));
+        return (await listEvaluations(workspaceId)).map((e) => ({
           ideaId: e.ideaId,
           status: e.status,
           terminalVerdict: e.terminalVerdict as Verdict | null,
           lastScore: e.lastScore,
-        })),
+          hasPassingScorecard: passing.has(e.ideaId),
+        }));
+      },
     },
     revenue: {
       summary: async (workspaceId) => {

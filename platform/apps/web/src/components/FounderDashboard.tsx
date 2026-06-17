@@ -137,6 +137,12 @@ export function FounderDashboard({
               <dt>Funded</dt>
               <dd>{venturePipeline.funded}</dd>
             </div>
+            {venturePipeline.scaffolds ? (
+              <div title="Owner-activated ventures with zero autonomy budget until they clear the fundability gate">
+                <dt>Scaffolds</dt>
+                <dd>{venturePipeline.scaffolds}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>Killed</dt>
               <dd>{venturePipeline.killed}</dd>

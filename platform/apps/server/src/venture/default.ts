@@ -1,5 +1,5 @@
 import { loadConfig } from "../config/loader.js";
-import { resolveVentureCaps } from "./caps.js";
+import { resolveVentureCaps, isVentureGateEnabledForWorkspace } from "./caps.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { VentureAdmission } from "./admission.js";
 import { VentureEngine } from "./engine.js";
@@ -296,7 +296,14 @@ export function createVentureAdmission(
   ) => loadConfig(workspaceId),
 ): VentureAdmission {
   return new VentureAdmission({
-    config: (workspaceId) => ({ enabled: resolveVentureCaps(configLoader(workspaceId).venture).enabled }),
+    config: (workspaceId) => ({
+      // #228: the gate enforces owner-workspace-first — even when `enabled`, an ownerWorkspaceOnly
+      // deployment only blocks the named owner workspace. Every other tenant keeps today's behavior.
+      enabled: isVentureGateEnabledForWorkspace(
+        resolveVentureCaps(configLoader(workspaceId).venture),
+        workspaceId,
+      ),
+    }),
     hasPassingUnexpired: (workspaceId, now) =>
       ventureRepo.hasPassingUnexpiredScorecard(workspaceId, now),
   });

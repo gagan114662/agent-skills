@@ -189,6 +189,14 @@ export const scaleSchema = z.object({
 export const ventureSchema = z.object({
   /** The anti-demo admission gate flag — default OFF. */
   enabled: z.boolean().optional(),
+  /**
+   * Roll the gate out owner-workspace-first (#228, default true): even when `enabled`, enforce only on
+   * `ownerWorkspaceId`. Set false to enforce on every tenant. Turning `enabled` on without naming the owner
+   * workspace enforces on nobody — the safest default, mirroring `delivery`/`monetization`.
+   */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the gate dogfoods enforcement here first (falls back to marketing's). */
+  ownerWorkspaceId: z.string().optional(),
   /** Score (0–100) at/above which an idea is FUNDed. */
   fundThreshold: z.number().int().min(0).max(100).optional(),
   /** Score (0–100) at/below which an idea is KILLed. */

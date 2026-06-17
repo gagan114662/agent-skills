@@ -166,6 +166,27 @@ export async function setScorecardVerdict(
     .where(and(eq(ventureScorecards.id, scorecardId), eq(ventureScorecards.workspaceId, workspaceId)));
 }
 
+/**
+ * The set of idea ids in this workspace that hold a passing (FUND + funded), unexpired scorecard (#228).
+ * The founder console uses this to tell a venture that has truly *cleared* the #96 bar apart from one that
+ * was only owner-activated (#230) into a build epic — the latter is a **zero-budget scaffold**, never an
+ * "active funded venture", until it earns a passing scorecard.
+ */
+export async function passingScorecardIdeaIds(workspaceId: string, now: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ ideaId: ventureScorecards.ideaId })
+    .from(ventureScorecards)
+    .where(
+      and(
+        eq(ventureScorecards.workspaceId, workspaceId),
+        eq(ventureScorecards.funded, true),
+        eq(ventureScorecards.verdict, "FUND"),
+        gt(ventureScorecards.expiresAt, now),
+      ),
+    );
+  return rows.map((r) => r.ideaId);
+}
+
 /** True iff the workspace holds a passing (FUND + funded) scorecard that has not yet expired. */
 export async function hasPassingUnexpiredScorecard(
   workspaceId: string,
