@@ -96,6 +96,20 @@ export function validateAgentDeliverable(payload: unknown): ValidationResult {
   return { ok: true };
 }
 
+/**
+ * `hosted.publish` payload (#266): `{ pageId, slug? }`. Only the structural page id is load-bearing — the
+ * post-approval executor publishes that exact page; content is never in the payload (injection defense).
+ */
+export function validateHostedPublish(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.pageId)) return { ok: false, error: "pageId required" };
+  if (p.slug !== undefined && typeof p.slug !== "string") {
+    return { ok: false, error: "slug must be a string" };
+  }
+  return { ok: true };
+}
+
 /** `external.send` payload: `{ summary, target? }` — `summary` is required, `target` optional. */
 export function validateExternalSend(payload: unknown): ValidationResult {
   const p = asRecord(payload);

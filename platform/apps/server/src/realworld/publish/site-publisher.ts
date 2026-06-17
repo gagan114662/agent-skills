@@ -94,16 +94,22 @@ export class GitHubSitePublisher implements SitePublisher {
 }
 
 /**
- * The customer default to come (#258 follow-up): multi-tenant pages on the customer's own domain, zero
- * repo, zero setup. Stubbed so the abstraction provably supports a second first-class impl; until the
- * hosted backend + the "Connect your website" OAuth flow ship, it reports not-connected.
+ * The customer-facing hosted publisher placeholder on the GitHub-PR-shaped {@link SitePublisher} seam.
+ *
+ * The REAL ipop-hosted publishing (#266, ADR-0266) — multi-tenant customer blogs + landing pages on the
+ * customer's own domain, zero repo, zero deploy — ships as its OWN module (`src/hosted/`) and surface
+ * (`/me/hosted/*`), because its flow does NOT fit this seam: a hosted page is DRAFTED, then PARKED behind a
+ * #13 owner approval (nothing goes live without owner approval), then served — whereas this seam models
+ * ipop.ai's autonomous internal GitHub-PR mechanism (it carries no requester/approval context). So this
+ * publisher stays a not-connected placeholder here; customer hosting is reached through the hosted module,
+ * which reuses the #13 queue + an injection-safe server renderer + the #264 DNS-verify seam.
  */
 export class IpopHostedSitePublisher implements SitePublisher {
   readonly kind = "ipop_hosted" as const;
   async publish(_req: SitePublishRequest): Promise<SitePublishResult> {
     return {
       status: "not_connected",
-      reason: "ipop-hosted publishing is coming soon — connect your website to publish to your own domain.",
+      reason: "ipop-hosted publishing is served by the hosted module (/me/hosted) — see ADR-0266.",
     };
   }
 }

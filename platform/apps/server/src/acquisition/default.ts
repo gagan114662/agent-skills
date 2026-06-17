@@ -22,6 +22,7 @@ import { resolveAcquisitionCaps, type AcquisitionCaps } from "./caps.js";
 import { createAcquisitionProviders } from "./providers.js";
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
+import { buildHostedPublishDispatcher } from "../hosted/default.js";
 import { buildAcquisitionBriefView, type AcquisitionBriefView } from "./cac.js";
 import type { FooterInfo } from "./compliance.js";
 import {
@@ -78,6 +79,7 @@ export function buildAcquisitionRegistry(): ExecutorRegistry {
     defaultComplianceEnforcer,
     buildAcquisitionDispatcher(),
     buildDeliveryDispatcher(),
+    buildHostedPublishDispatcher(),
   );
 }
 

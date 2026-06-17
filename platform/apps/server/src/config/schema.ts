@@ -1258,6 +1258,25 @@ export const provisioningSchema = z.object({
 });
 
 /**
+ * ipop hosted publishing policy (#266, ADR-0266). The non-secret knobs for the multi-tenant customer blog +
+ * landing pages ipop hosts (zero repo, zero deploy the customer sees). DEFAULT-OFF, owner-workspace-first —
+ * exactly like {@link deliverySchema}: `enabled` must be on AND the workspace in scope (`ownerWorkspaceOnly`
+ * defaults true ⇒ only `ownerWorkspaceId` hosts). The HARD constraint (nothing goes live without an explicit
+ * owner approval) is enforced structurally in the service, not by a flag here. No credentials/Stripe — a free
+ * ipop subdomain hosts immediately; a custom domain is served only once the #264 DNS flow verifies it.
+ */
+export const hostedSitesSchema = z.object({
+  /** Master flag for hosted publishing — default OFF (the feature is fully dark until an owner opts in). */
+  enabled: z.boolean().optional(),
+  /** Restrict hosting to the owner workspace (default true). Set false to broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — hosting rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Base host for free ipop subdomains (`<sub>.<baseHost>`); defaults to `sites.ipop.app`. */
+  baseHost: z.string().optional(),
+});
+
+/**
  * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
  * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
  * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
@@ -1405,6 +1424,8 @@ export const settingsSchema = z.object({
   delivery: deliverySchema.optional(),
   /** Central provisioning policy (#267): ipop-held paid data/posting/ads keys billed into the plan (default OFF). */
   provisioning: provisioningSchema.optional(),
+  /** ipop hosted publishing policy (#266): multi-tenant customer blogs + landing pages (default OFF). */
+  hostedSites: hostedSitesSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
@@ -1481,6 +1502,7 @@ export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
+export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
@@ -1604,6 +1626,8 @@ export interface ResolvedConfig {
   delivery: DeliveryConfig;
   /** Central provisioning policy (#267). A partial whose hard defaults `resolveProvisioningCaps` fills. */
   provisioning: ProvisioningConfig;
+  /** ipop hosted publishing policy (#266). A partial resolved by `resolveHostedSitesFlags`. */
+  hostedSites: HostedSitesConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
@@ -1681,6 +1705,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   acquisition: {},
   delivery: {},
   provisioning: {},
+  hostedSites: {},
   finance: {},
   monetization: {},
   discovery: {},
