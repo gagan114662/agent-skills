@@ -67,3 +67,46 @@ ipop's customers are **non-technical**. They must never see GitHub, repos, PRs, 
   `/oauth/start` seam) are already in place so they are incremental.
 - Default-OFF / back-compat preserved: with no connection and no GitHub config, `publish_site` resolves to
   the dry-run publisher exactly as before (no network).
+
+## Stage 2 — the shared, gated live connect-once seam
+
+Stage 1 left the customer-OAuth connectors as an honest `coming_soon` stub. Stage 2 builds the **reusable
+connect-once seam** the per-department follow-ups depend on (Google Search Console for Scout **#265**, an ESP
+for Postmark **#268**, social for Echo **#269**, an ad account for Bid **#272**). Each follow-up registers
+ONE provider behind this seam and the gated flow, vault seal, and capability resolution work unchanged.
+
+**Hard boundary (this PR):** no real provider account is connected and no credential is entered. We build the
+flow, the adapters, the mocks, and the tests; the live OAuth/connect action stays **gated, default OFF, owner
+-workspace-first** so only the owner can ever turn it on and only with an explicit per-connect approval.
+
+1. **Pure seam (`connections/`):**
+   - `caps.ts` — `ConnectOnceCaps` + `isConnectOnceLiveInScope`: default OFF, owner-workspace-first (mirrors
+     `connectClaude`/`delivery`/`skillopt`). Fail-closed: `enabled` without naming the owner lets nobody in.
+   - `state.ts` — HMAC `state` binding `{workspaceId, connectionId, nonce}` (CSRF + anti-tenant-cross +
+     connection binding), no DB row (generalises the #260/#262 state).
+   - `provider.ts` — the `ConnectProvider` adapter seam (`authorizeUrl` + `exchange` → granted capabilities +
+     secrets). `DryRunConnectProvider` never mints (premortem §3 — an unwired deployment degrades to an honest
+     `coming_soon`, never a fake connected); `MockConnectProvider` is a TEST/DEMO double returning a clearly
+     synthetic, non-secret placeholder (no real credential, no network); `OAuthConnectProvider` is the generic
+     live authorization-code adapter a follow-up constructs; `isValidAuthCode` is the §6 injection screen.
+   - `connect.ts` — `decideConnectStart` (the offer/gate decision) and `mapExchangeToSeal` (the never-seal-a
+     -blank rule: an exchange with no usable credential can never mark a connection connected).
+   - `capabilities.ts` — `decideConnectedCapabilities`: the read side the follow-ups gate on ("is
+     `search_console` connected before Scout verifies the domain?", #265).
+
+2. **Always-gate (`connection.connect_account`).** Connecting is a CONSENT, not money (ADR-0243), so it is
+   NOT in `MONEY_ACTIONS`. But it touches a real external surface (premortem §4), so the connect-once service
+   ALWAYS parks a PENDING `connection.connect_account` #13 request — a structural always-gate (no autonomous
+   -connect path), exactly like `hosted.publish`/`skillopt.adopt_skill_edit`. The executor is **recorded-only**:
+   approving records the owner's go; the live redirect + token exchange + vault seal behind the gate is the
+   per-department follow-up, never an autonomous mint in this slice.
+
+3. **Config + route.** New `connectOnce` config block (`RELOAD_CONNECT_ONCE_ENABLED` /
+   `RELOAD_CONNECT_ONCE_OWNER_WORKSPACE_ID`, default OFF). `POST /me/connections/:id/oauth/start` now routes
+   through `ConnectOnceService`: out of scope (flag off / not the owner / no live provider wired) ⇒ the honest
+   `501 coming_soon` (Stage 1 behavior, unchanged); in scope + live ⇒ `202` with the parked approval id. With
+   no live provider wired in this slice, every deployment still resolves to `coming_soon` — the seam is in
+   place, the live connect is one provider registration away, and it is owner-gated the whole way.
+
+- No migration (config-resolved + the existing #192 vault + #13 `approval_requests`). Back-compat preserved:
+  with `connectOnce` unset, the connect surface behaves byte-for-byte like Stage 1.

@@ -6,6 +6,7 @@ import {
   getConnectionDescriptor,
 } from "../connections/registry.js";
 import { decideConnectionView, decideInternalConnect } from "../connections/view.js";
+import { createDefaultConnectOnceService } from "../connections/default.js";
 import {
   listServiceStatuses,
   setServiceCredentials,
@@ -85,7 +86,13 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return { connected: true, id: decision.serviceKey, connections };
   });
 
-  // Consumer-OAuth seam — the live redirect is a follow-up; today it's an honest "coming soon".
+  // Consumer-OAuth seam (#258 Stage 2) — the shared connect-once flow. When the live flow is OUT of scope
+  // for this workspace (flag OFF / not the owner workspace / no live provider wired) it stays the honest
+  // `coming_soon` (501, today's behavior). When it IS in scope, connecting an outside account ALWAYS pauses
+  // for an explicit owner approval: the service parks a PENDING `connection.connect_account` #13 request and
+  // we return its id — the live redirect + token exchange + vault seal behind that gate is the per-department
+  // follow-up (#265/#268/#269/#272), so nothing is connected without the owner's yes.
+  const connectOnce = createDefaultConnectOnceService();
   app.post("/me/connections/:id/oauth/start", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
@@ -94,11 +101,24 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (!descriptor || descriptor.auth !== "oauth") {
       return reply.code(400).send({ error: "not an OAuth connection" });
     }
+    const result = await connectOnce.startConnect(
+      { workspaceId: identity.workspaceId, requesterMemberId: identity.memberId },
+      descriptor,
+    );
+    if (result.status === "pending_approval") {
+      return reply.code(202).send({
+        status: "pending_approval",
+        requestId: result.requestId,
+        provider: descriptor.provider,
+        scopes: descriptor.oauthScopes,
+        message: `Connecting ${descriptor.label} needs your approval — it's waiting in your decision queue.`,
+      });
+    }
     return reply.code(501).send({
       status: "coming_soon",
       provider: descriptor.provider,
       scopes: descriptor.oauthScopes,
-      message: `Connecting ${descriptor.label} is coming soon.`,
+      message: result.reason,
     });
   });
 

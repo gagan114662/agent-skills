@@ -131,6 +131,22 @@ export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
 export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
 
 /**
+ * #258 Stage 2 the connect-once LIVE connect — granting the fleet access to an outside account (Google
+ * Search Console for Scout, an ESP for Postmark, a social account for Echo, an ad account for Bid). Per
+ * ADR-0258 connecting is a one-time CONSENT, not money — so it is NOT in {@link MONEY_ACTIONS}. But the live
+ * connect touches a real external surface and binds a credential to the workspace (premortem #200 §4: an
+ * external grant is not cheaply reversible post-hoc), so the connect-once seam ALWAYS pauses for an explicit
+ * owner approval before any credential is minted/sealed — a structural always-gate enforced by the service
+ * (it has no autonomous-connect path), exactly like `hosted.publish`/`skillopt.adopt_skill_edit`. Like those
+ * it is never submitted through the #13 action route; the connect service parks a PENDING request against
+ * the same workspace `approval_policies`. The executor is recorded-only (approving records the owner's go;
+ * the live redirect + token exchange + vault seal behind the gate is the per-department follow-up —
+ * #265/#268/#269/#272 — never an autonomous mint in this slice). Reversible (disconnect clears the vault),
+ * so it is NOT in {@link IRREVERSIBLE_ACTIONS}.
+ */
+export const CONNECTION_CONNECT_ACCOUNT_ACTION = "connection.connect_account" as const;
+
+/**
  * #267 the customer's OWN spend through a centrally-provisioned API. ipop holds the paid data/posting/ads
  * API keys CENTRALLY and bills the cost of goods into the plan, so using those APIs is autonomous (a
  * `platform_cost` capability — never gated). But the customer's own money — releasing real AD BUDGET or

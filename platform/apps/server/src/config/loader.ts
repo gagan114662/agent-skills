@@ -350,6 +350,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (connectClaudeOwner) connectClaude.ownerWorkspaceId = connectClaudeOwner;
     raw.connectClaude = connectClaude;
   }
+  // #258 Stage 2 connect-once: let the deployment env turn the live customer-OAuth connect flow on + pick
+  // the owner workspace without a managed.toml (the owner dogfoods the real connect first). Hard default
+  // stays OFF (vars unset → no block ⇒ today's #258 Stage 1 `coming_soon`). Even enabled, the flow stays a
+  // `coming_soon` until a per-department live OAuth client is wired, and the per-connect #13 approval always
+  // applies. A managed layer still wins as the lock.
+  const connectOnceEnabled = env.RELOAD_CONNECT_ONCE_ENABLED;
+  const connectOnceOwner = env.RELOAD_CONNECT_ONCE_OWNER_WORKSPACE_ID;
+  if (connectOnceEnabled !== undefined || connectOnceOwner) {
+    const connectOnce: Record<string, unknown> = {};
+    if (connectOnceEnabled !== undefined) {
+      connectOnce.enabled = connectOnceEnabled === "true" || connectOnceEnabled === "1";
+    }
+    if (connectOnceOwner) connectOnce.ownerWorkspaceId = connectOnceOwner;
+    raw.connectOnce = connectOnce;
+  }
   // #300 signup entry: let the deployment env offer the read-only sample workspace + turn on progressive
   // Google scopes (identity-only at signup, GSC/Analytics deferred to SEO) without a managed.toml. Hard
   // default stays OFF (vars unset → no block ⇒ today's #260 Google-only, single full-scope consent). A

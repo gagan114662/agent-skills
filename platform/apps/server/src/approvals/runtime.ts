@@ -29,6 +29,7 @@ import {
   validateOutreachSend,
   validateReachDataCreditSpend,
   validateSkillOptAdoptEdit,
+  validateConnectAccount,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
@@ -46,6 +47,7 @@ import {
   OUTREACH_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
+  CONNECTION_CONNECT_ACCOUNT_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -490,6 +492,29 @@ const skillOptAdoptEdit: ActionExecutor = {
 };
 
 /**
+ * Connect-once LIVE connect (#258 Stage 2) — a recorded-only CONSENT decision the owner gates. Connecting an
+ * outside account is not money (ADR-0243) but touches a real external surface, so the connect-once seam
+ * ALWAYS parks this PENDING request; there is no autonomous-connect path. Approving RECORDS the owner's go
+ * (the audit trail proves no account was connected without a human yes); the live redirect + token exchange
+ * + vault seal behind the gate is the per-department follow-up (#265/#268/#269/#272), so the executor mints
+ * no credential and makes no network call.
+ */
+const connectAccount: ActionExecutor = {
+  actionType: CONNECTION_CONNECT_ACCOUNT_ACTION,
+  validate: validateConnectAccount,
+  summarize: (p) =>
+    `connect ${String(p.connectionId ?? "?")} (${String(p.provider ?? "?")})`.slice(0, 140),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // the live redirect + token exchange + vault seal is a per-department follow-up ADR.
+      connectionId: typeof payload.connectionId === "string" ? payload.connectionId : null,
+      provider: typeof payload.provider === "string" ? payload.provider : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), an optional acquisition dispatcher (#189), and an optional delivery dispatcher (#295). The
  * compliance default is a no-op and both dispatchers are absent by default, so the `external.send` executor
@@ -517,6 +542,7 @@ export function buildDefaultRegistry(
     outreachSend,
     reachDataCreditSpend,
     skillOptAdoptEdit,
+    connectAccount,
   ]);
 }
 

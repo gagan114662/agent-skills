@@ -253,6 +253,21 @@ export function validateSkillOptAdoptEdit(payload: unknown): ValidationResult {
 }
 
 /**
+ * Validate a connect-once LIVE connect (#258 Stage 2) — a recorded-only CONSENT decision the owner gates.
+ * Needs the `connectionId` (which connector is being connected, e.g. `google`/`x`/`linkedin`) and the
+ * `provider` (the external provider the consent is for). Recorded-only on approval; the live redirect +
+ * token exchange + vault seal behind the gate is the per-department follow-up — the executor mints nothing
+ * and makes no network call in this slice.
+ */
+export function validateConnectAccount(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.connectionId)) return { ok: false, error: "connectionId required" };
+  if (!nonEmptyString(p.provider)) return { ok: false, error: "provider required" };
+  return { ok: true };
+}
+
+/**
  * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
  * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
  * change in the venture's own Stripe dashboard (no autonomous payout re-routing).
