@@ -242,6 +242,55 @@ describe("Google onboarding (#260, real Postgres)", () => {
       await progressive.close();
     }
   });
+
+  it("#300 a returning broad-scope user is NEVER downgraded by an identity-only signup re-login", async () => {
+    const progressive = buildApp({
+      googleAuth: {
+        config: CONFIG,
+        client: fakeClient,
+        stateSecret: SECRET,
+        signupEntry: { sampleWorkspace: false, progressiveScopes: true },
+        bootstrap: async () => {},
+      },
+    });
+    await progressive.ready();
+    const start = (url: string) => progressive.inject({ method: "GET", url });
+    const cb = (state: string) =>
+      progressive.inject({ method: "GET", url: `/auth/google/callback?code=c&state=${state}` });
+    try {
+      const email = `merge-${newId()}@acme-${newId()}.com`;
+      createdEmails.push(email);
+      currentUser = { sub: `sub-${newId()}`, email, emailVerified: true, name: "Merge" };
+
+      // 1) Identity-only signup → connection records ["identity"].
+      const s1 = await start("/auth/google/start?domain=acme.com");
+      const first = await cb(stateFrom(s1.headers.location as string));
+      const workspaceId = (
+        await progressive.inject({
+          method: "GET",
+          url: "/me",
+          cookies: { rid: first.cookies.find((c) => c.name === "rid")!.value },
+        })
+      ).json().workspaceId as string;
+      createdWorkspaceIds.push(workspaceId);
+      const after1 = (await listServiceStatuses(workspaceId)).find((s) => s.serviceKey === "google");
+      expect(after1?.scopes).toEqual(["identity"]);
+
+      // 2) The user initiates SEO work → the deferred consent upgrades the connection to the full set.
+      const s2 = await start("/auth/google/start?domain=acme.com&intent=seo");
+      await cb(stateFrom(s2.headers.location as string));
+      const after2 = (await listServiceStatuses(workspaceId)).find((s) => s.serviceKey === "google");
+      expect(after2?.scopes).toEqual(expect.arrayContaining(["identity", "search_console", "analytics"]));
+
+      // 3) A later plain signup re-login (identity-only request) must NOT downgrade — broad scopes persist.
+      const s3 = await start("/auth/google/start?domain=acme.com");
+      await cb(stateFrom(s3.headers.location as string));
+      const after3 = (await listServiceStatuses(workspaceId)).find((s) => s.serviceKey === "google");
+      expect(after3?.scopes).toEqual(expect.arrayContaining(["identity", "search_console", "analytics"]));
+    } finally {
+      await progressive.close();
+    }
+  });
 });
 
 describe("Sample workspace front door (#300, real Postgres)", () => {

@@ -9,7 +9,7 @@ import {
   createSession,
 } from "../db/repositories/auth.js";
 import { getWorkspaceBySlug, createWorkspace } from "../db/repositories/workspaces.js";
-import { setServiceCredentials } from "../db/repositories/external-credentials.js";
+import { setServiceCredentials, listServiceStatuses } from "../db/repositories/external-credentials.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { normalizeDomain } from "../auth/onboarding-domain.js";
 import { signState, verifyState, newStateNonce, loadStateSecret } from "../auth/oauth-state.js";
@@ -19,6 +19,7 @@ import {
   googleConnectionSecrets,
   resolveOnboardingScopes,
   capabilitiesForScopes,
+  mergeGrantedCapabilities,
   GOOGLE_CONNECTION_SERVICE_KEY,
   type GoogleOAuthConfig,
   type OnboardingIntent,
@@ -108,10 +109,11 @@ export async function googleAuthRoutes(
   function stateSecret(): string {
     return opts.stateSecret ?? loadStateSecret();
   }
-  /** Progressive-consent caps: injected for tests, else read live from the layered config (default OFF). */
-  function signupEntryCaps(): SignupEntryCaps {
-    return opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
-  }
+  // Progressive-consent caps: injected for tests, else resolved ONCE at registration. Resolving per request
+  // would call `loadConfig()` (synchronous `readFileSync` of the layered TOML) on every hit — a needless
+  // event-loop block on the deployment-level signup flags (and a DoS lever on the public sample route).
+  const signupEntryCaps: SignupEntryCaps =
+    opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
   /** Read the consent intent off the query (`?intent=seo` ⇒ the deferred GSC/Analytics grant). */
   function intentFromQuery(req: { query: unknown }): OnboardingIntent {
     const raw = (req.query as { intent?: unknown }).intent;
@@ -161,7 +163,7 @@ export async function googleAuthRoutes(
     // SEO step. Default OFF ⇒ the full set at every step (today's #260 single consent). The intent rides in
     // the signed state so the callback records the matching connection capabilities.
     const intent = intentFromQuery(req);
-    const progressive = signupEntryCaps().progressiveScopes;
+    const progressive = signupEntryCaps.progressiveScopes;
     const scopes = resolveOnboardingScopes({ progressive, intent });
     const state = signState({ domain: result.domain, nonce: newStateNonce(), intent }, stateSecret(), now());
     return reply.redirect(buildGoogleAuthorizeUrl({ config, state, scopes }));
@@ -223,14 +225,25 @@ export async function googleAuthRoutes(
     // OFF), or just identity at a progressive signup, with GSC/Analytics added only at the deferred SEO step.
     const intent: OnboardingIntent = payload.intent === "seo" ? "seo" : "signup";
     const grantedScopes = resolveOnboardingScopes({
-      progressive: signupEntryCaps().progressiveScopes,
+      progressive: signupEntryCaps.progressiveScopes,
       intent,
     });
+    let scopes = capabilitiesForScopes(grantedScopes);
+    // #300 fix: never DOWNGRADE a returning user. An identity-only progressive signup re-login must not
+    // overwrite a workspace that already granted Search Console / Analytics — union the existing connection's
+    // recorded capabilities with the freshly requested ones so a broad grant is preserved across logins.
+    if (existing) {
+      const statuses = await listServiceStatuses(workspaceId);
+      const googleConn = statuses.find((s) => s.serviceKey === GOOGLE_CONNECTION_SERVICE_KEY);
+      if (googleConn?.scopes?.length) {
+        scopes = mergeGrantedCapabilities(googleConn.scopes, scopes);
+      }
+    }
     await setServiceCredentials({
       workspaceId,
       serviceKey: GOOGLE_CONNECTION_SERVICE_KEY,
       secrets: googleConnectionSecrets(tokens, { sub: user.sub, email: user.email }, now()),
-      scopes: capabilitiesForScopes(grantedScopes),
+      scopes,
       connectedByMemberId: memberId,
     });
 

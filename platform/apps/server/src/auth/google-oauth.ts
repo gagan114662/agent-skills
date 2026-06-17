@@ -112,6 +112,19 @@ export function capabilitiesForScopes(scopes: readonly string[]): string[] {
   return caps;
 }
 
+/**
+ * Union an existing connection's recorded capabilities with the freshly-requested ones, existing-first and
+ * de-duplicated. Pure + total. This is the anti-downgrade rule (#300): a returning user whose workspace
+ * already granted Search Console / Analytics must keep them even when this login only requested identity —
+ * progressive consent can only ever ADD capabilities, never silently remove one.
+ */
+export function mergeGrantedCapabilities(
+  existing: readonly string[],
+  requested: readonly string[],
+): string[] {
+  return Array.from(new Set([...existing, ...requested]));
+}
+
 /** A Google token response (the fields we keep). */
 export interface GoogleTokens {
   accessToken: string;

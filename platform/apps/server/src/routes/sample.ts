@@ -30,12 +30,13 @@ export interface SampleConsoleResponse {
 }
 
 export async function sampleRoutes(app: FastifyInstance, opts: SampleRoutesOptions = {}): Promise<void> {
-  function caps(): SignupEntryCaps {
-    return opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
-  }
+  // Resolve caps ONCE at registration. This endpoint is public + unauthenticated, so calling `loadConfig()`
+  // (synchronous `readFileSync` of the layered TOML) per request would be a needless event-loop block and a
+  // DoS lever. The flag is deployment-level, so a restart-boundary read is the right granularity.
+  const caps: SignupEntryCaps = opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
 
   app.get("/sample/console", async (): Promise<SampleConsoleResponse> => {
-    if (!isSampleWorkspaceOffered(caps())) return { offered: false, console: null };
+    if (!isSampleWorkspaceOffered(caps)) return { offered: false, console: null };
     return { offered: true, console: buildSampleConsole() };
   });
 }
