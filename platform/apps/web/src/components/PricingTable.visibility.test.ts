@@ -50,6 +50,23 @@ describe("pricing card visibility (#234/#287 — every tier must render)", () =>
       .toMatch(/\b(backwards|both)\b/);
   });
 
+  it("#321: the pop entrance never drives opacity — a card stays visible even if the animation is dropped", () => {
+    // #234/#287 stopped a card RESTING at opacity:0, but left the deeper hole that #321 fell into:
+    // cards 2 and 3 carry a staggered `animation-delay` (90ms/180ms). With `fill-mode: both`, the
+    // *backwards* fill applies the keyframe's `0% { opacity: 0 }` during that delay window — and if the
+    // entrance animation is dropped on the modal's async / mid-transition mount (a real browser behavior
+    // for freshly-inserted offscreen nodes), those cards stick at opacity:0 forever while Starter
+    // (delay 0, no backwards window) shows alone. The durable fix: the pop must be a pure *transform*
+    // (scale/translate) so opacity is never a function of the animation at all. Pin that invariant: the
+    // `pricing-pop` keyframes must not declare opacity.
+    const kf = /@keyframes\s+pricing-pop\s*\{([\s\S]*?)\}\s*\}/.exec(css);
+    expect(kf, "the @keyframes pricing-pop rule must exist").not.toBeNull();
+    expect(
+      kf?.[1] ?? "",
+      "the pop keyframes must not touch opacity — visibility must never depend on the entrance animation",
+    ).not.toMatch(/opacity\s*:/);
+  });
+
   it("reduced-motion users also see every card (no animation, full opacity)", () => {
     // The reduced-motion override must keep cards visible (it disables the animation entirely).
     const rm = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.pricing-card--pop\s*\{([\s\S]*?)\}/.exec(
