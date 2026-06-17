@@ -7,5 +7,6 @@ DROP INDEX IF EXISTS hosted_pages_site_slug_uq;
 DROP TABLE IF EXISTS hosted_pages;
 
 DROP INDEX IF EXISTS hosted_sites_workspace_idx;
+DROP INDEX IF EXISTS hosted_sites_custom_domain_uq;
 DROP INDEX IF EXISTS hosted_sites_subdomain_uq;
 DROP TABLE IF EXISTS hosted_sites;

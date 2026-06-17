@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS hosted_sites (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS hosted_sites_subdomain_uq ON hosted_sites (subdomain);
+-- A real custom domain is GLOBALLY unique: a partial unique index enforces one-tenant-per-domain (prevents
+-- domain hijacking / multi-tenant routing collisions) while the WHERE clause still allows many sites to have
+-- NO custom domain yet (NULL). Without this, two tenants could claim the same domain and serve-by-host is
+-- ambiguous (Gemini security review on #266/#312).
+CREATE UNIQUE INDEX IF NOT EXISTS hosted_sites_custom_domain_uq
+  ON hosted_sites (custom_domain) WHERE custom_domain IS NOT NULL;
 CREATE INDEX IF NOT EXISTS hosted_sites_workspace_idx ON hosted_sites (workspace_id);
 
 CREATE TABLE IF NOT EXISTS hosted_pages (

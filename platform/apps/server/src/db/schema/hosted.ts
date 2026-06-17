@@ -40,6 +40,11 @@ export const hostedSites = pgTable(
   },
   (t) => ({
     bySubdomain: uniqueIndex("hosted_sites_subdomain_uq").on(t.subdomain),
+    // A real custom domain is globally unique (one tenant per domain — no hijacking / routing collision);
+    // the partial WHERE still lets many sites have no custom domain yet (NULL). Mirrors migration 0266.
+    byCustomDomain: uniqueIndex("hosted_sites_custom_domain_uq")
+      .on(t.customDomain)
+      .where(sql`${t.customDomain} IS NOT NULL`),
     byWorkspace: index("hosted_sites_workspace_idx").on(t.workspaceId),
   }),
 );
