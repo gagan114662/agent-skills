@@ -9,7 +9,7 @@
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, LANDING, PRICING, VOICE } from "../brand.js";
-import { Link, useRoute } from "../routing.js";
+import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 import { Onboarding } from "./Onboarding.js";
@@ -42,6 +42,18 @@ function isBlogPath(path: string): boolean {
   return path === "/blog" || path.startsWith("/blog/");
 }
 
+/** The query key carrying where a logged-out deep link wanted to land, set on the `/start` redirect. */
+const RETURN_KEY = "return";
+
+/**
+ * A safe same-origin return path, or null. Only a single leading slash is allowed, so a crafted
+ * `?return=//evil.com` or `?return=https://evil.com` can never turn into an open redirect off-site
+ * (#200 premortem) — we follow internal app paths only.
+ */
+function safeReturnPath(raw: string | null): string | null {
+  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
+}
+
 export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
   const store = useStore();
   const { phase } = useAppState();
@@ -50,6 +62,16 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   useEffect(() => {
     void store.bootstrap();
   }, [store]);
+
+  // #304: once signed in, honour the `?return=<path>` set when a logged-out visitor deep-linked into
+  // an app route — land them on the page they originally wanted, not the generic app root. We REPLACE
+  // (not push) so the `/start?return=…` entry leaves the back-stack: otherwise Back lands on it and this
+  // very effect re-fires, shoving the visitor forward again — an inescapable back-button trap.
+  useEffect(() => {
+    if (phase !== "ready" || typeof window === "undefined") return;
+    const ret = safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_KEY));
+    if (ret) replace(ret);
+  }, [phase]);
 
   // #151: the trust page is public and works at every phase (before login, while loading, after login),
   // so it is checked ahead of the phase gates — a logged-in user can open it from the footer too.
@@ -103,11 +125,34 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   if (path === "/start") return <Onboarding />;
   if (path === "/login") return <AuthForm initialMode="login" />;
   if (path === "/signup") return <AuthForm initialMode="signup" />;
+  // The marketing landing lives at `/` only. Every other path is a deep link into the authed app
+  // (e.g. a bookmarked `/app/...`), so a logged-out hit must route to sign-in rather than silently
+  // serving the marketing page (#304) — preserving the destination so we can land them there after.
+  if (path !== "/") return <RedirectToSignIn from={requestedPath()} />;
   return (
     <Suspense fallback={<Splash />}>
       <Landing />
     </Suspense>
   );
+}
+
+/** The full path the visitor asked for — pathname + query + hash — so the return is faithful. */
+function requestedPath(): string {
+  if (typeof window === "undefined") return "/";
+  return window.location.pathname + window.location.search + window.location.hash;
+}
+
+/**
+ * A logged-out visitor hit an app route. Send them to the `/start` sign-in screen, preserving where
+ * they were headed in `?return=` (#304). The navigation runs in an effect (never during render); a
+ * brand splash covers the brief moment before the route changes. We REPLACE the app-route entry rather
+ * than pushing, so the unauthorized URL never enters the back-stack for the visitor to bounce off of.
+ */
+function RedirectToSignIn({ from }: { from: string }): React.JSX.Element {
+  useEffect(() => {
+    replace(`/start?${RETURN_KEY}=${encodeURIComponent(from)}`);
+  }, [from]);
+  return <Splash />;
 }
 
 /** The brand splash, shown while the session bootstraps (and as the lazy-landing fallback). */

@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Landing } from "./Landing.js";
+import { navigate } from "../../routing.js";
 import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING } from "../../brand.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  act(() => navigate("/")); // reset the route between click tests
 });
 
 /** jsdom has no matchMedia; stub one that reports the given reduced-motion preference. */
@@ -41,6 +44,20 @@ describe("Landing", () => {
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaSecondary, "i") }),
     ).toHaveAttribute("href", "/login");
+  });
+
+  it("actually navigates to /start when the hero 'Start free' CTA is clicked (#305)", async () => {
+    act(() => navigate("/")); // start on the landing, as a visitor would
+    render(<Landing />);
+    const hero = screen.getByRole("region", { name: BRAND.tagline });
+    const cta = within(hero).getByRole("link", {
+      name: new RegExp(LANDING.hero.ctaPrimary, "i"),
+    });
+
+    expect(window.location.pathname).toBe("/");
+    await userEvent.click(cta);
+    // A plain left-click must client-navigate to the sign-in entry — not a no-op that stays on `/`.
+    expect(window.location.pathname).toBe("/start");
   });
 
   it("renders the full workspace simulation: the complete sidebar and the active channel", () => {

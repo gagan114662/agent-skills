@@ -2,7 +2,7 @@
  * The product-true section visuals (#165) that sit beside the numbered story sections — each a small,
  * faithful slice of the console rather than a stock illustration:
  *
- *  - {@link DepartmentChips}  (story 01) — the seven specialists as spectrum-coloured chips.
+ *  - {@link DepartmentChips}  (story 01) — the eight specialists as spectrum-coloured chips.
  *  - {@link MissionControl}   (story 02) — the #147 mission-control strip: live sessions + running spend.
  *  - {@link ApprovalsDrawer}  (story 03) — a staged approvals drawer that flips pending → approved with
  *                                          the confetti micro-burst, then loops.
