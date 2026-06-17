@@ -793,6 +793,39 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
     expect(completed).toHaveLength(1);
     expect(completed[0]!.result).toContain("3 tweets");
   });
+
+  it("surfaces the agent's FINAL ANSWER as the deliverable — not the narration/tool transcript", async () => {
+    // The live bug: cards showed the transcript head — narration ("I'll start by…") or a tool trace
+    // ("🔧 Bash …"). The deliverable must be the produced artifact: the terminal success `result` text.
+    const transcript =
+      [
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "text", text: "I'll start by reviewing the homepage." }] },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "tool_use", name: "Bash", input: { command: "ls -la" } }] },
+        }),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "SEO findings: add a meta description to /pricing.",
+        }),
+      ].join("\n") + "\n";
+    const runtime = new CompletingRuntime([transcript], 0);
+    const { manager, completed } = makeManager251(runtime);
+
+    const session = await manager.launch({ ...launch, task: "audit homepage SEO" });
+    await manager.join(session.id);
+
+    expect(completed).toHaveLength(1);
+    // The deliverable is the final answer verbatim — no narration, no tool trace.
+    expect(completed[0]!.result).toBe("SEO findings: add a meta description to /pricing.");
+    expect(completed[0]!.result).not.toContain("I'll start");
+    expect(completed[0]!.result).not.toContain("🔧");
+  });
 });
 
 describe("SessionManager — owner can ALWAYS stop a runaway (#248)", () => {

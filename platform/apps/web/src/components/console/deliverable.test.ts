@@ -8,6 +8,8 @@ import { CONSOLE } from "../../brand.js";
 import {
   cleanDeliverableTitle,
   deliverablePreview,
+  extractDeliverable,
+  hasDeliverable,
   humanActionLabel,
   isInternalDeliverableTask,
   stripHarnessNoise,
@@ -138,6 +140,66 @@ describe("stripHarnessNoise (stdin-warning leak)", () => {
     expect(stripHarnessNoise("")).toBe("");
     expect(stripHarnessNoise(null)).toBe("");
     expect(stripHarnessNoise(undefined)).toBe("");
+  });
+});
+
+describe("extractDeliverable (work product, not transcript head)", () => {
+  it("returns the deliverable from a transcript of tool traces + preamble (summary == the deliverable)", () => {
+    // The live bug: cards showed narration ("I'll start by…") or a tool trace ("🔧 Bash ls -la …").
+    const transcript = [
+      "I'll start by figuring out what our homepage actually is.",
+      "🔧 Bash ls -la /home/reload/agent-workspaces/019ed6f5-abc",
+      "🔧 Read index.html",
+      "Let me see what we've got.",
+      "Here's a draft: Ship calm, ship daily. 🚀",
+    ].join("\n");
+    const deliverable = "Ship calm, ship daily. 🚀";
+    expect(extractDeliverable(transcript)).toBe(deliverable);
+    // The card SUMMARY equals the deliverable (single-line work product).
+    expect(deliverablePreview(transcript)).toBe(deliverable);
+    expect(hasDeliverable(transcript)).toBe(true);
+  });
+
+  it("keeps a multi-line work product, dropping only the leading process + tool noise", () => {
+    const transcript = [
+      "Let me audit the homepage SEO.",
+      "🔧 WebFetch https://ipop.ai",
+      "Here's the SEO audit:",
+      "1) Add a meta description to /pricing",
+      "2) Compress the hero image (1.8MB → ~200KB)",
+    ].join("\n");
+    expect(extractDeliverable(transcript)).toBe(
+      "1) Add a meta description to /pricing\n2) Compress the hero image (1.8MB → ~200KB)",
+    );
+    expect(deliverablePreview(transcript)).toBe("1) Add a meta description to /pricing");
+  });
+
+  it("returns '' (no deliverable yet) when the agent only explored / narrated", () => {
+    const narrationOnly = [
+      "I'll start by figuring out what our homepage actually is.",
+      "🔧 Bash ls -la /home/reload/agent-workspaces/019ed6f5-abc",
+      "Let me see what we've got.",
+      "Happy to draft it but I need to look around first.",
+    ].join("\n");
+    expect(extractDeliverable(narrationOnly)).toBe("");
+    expect(hasDeliverable(narrationOnly)).toBe(false);
+    expect(deliverablePreview(narrationOnly)).toBe("");
+  });
+
+  it("does NOT strip a genuine deliverable line that merely contains a tool-ish word mid-text", () => {
+    const real = "Read our latest guide on shipping calm — it pairs with this tweet.";
+    expect(extractDeliverable(real)).toBe(real);
+  });
+
+  it("leaves a Markdown table (pipe-leading work product) intact — tool/noise patterns are anchored", () => {
+    const table = "| Claude | OpenAI |\n| --- | --- |\n| fast & cheap | slower |";
+    expect(extractDeliverable(table)).toBe(table);
+  });
+
+  it("handles empty / nullish input", () => {
+    expect(extractDeliverable("")).toBe("");
+    expect(extractDeliverable(null)).toBe("");
+    expect(extractDeliverable(undefined)).toBe("");
   });
 });
 

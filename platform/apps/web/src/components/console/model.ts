@@ -207,6 +207,11 @@ function approvalItem(
   if (r.actionType === DELIVERABLE_ACTION) {
     const draft = typeof r.payload?.draft === "string" ? r.payload.draft : "";
     const title = cleanDeliverableTitle(deliverableTask(r)) || CONSOLE.deliverable.untitled;
+    // The preview is the agent's actual work product (extracted from the transcript). When it's empty the
+    // session completed without producing anything reviewable (only explored/narrated): show a clear "no
+    // deliverable yet" state — never process noise as a preview, and never a misleading "approve this draft".
+    const preview = deliverablePreview(draft);
+    const hasWork = preview.length > 0;
     return {
       key: r.id,
       kind,
@@ -215,12 +220,18 @@ function approvalItem(
       channelId: channel?.id ?? null,
       channelName: channel?.name ?? null,
       title,
-      meta: kind === "shipped" ? CONSOLE.deliverable.shipped : CONSOLE.deliverable.review,
+      meta:
+        kind === "shipped"
+          ? CONSOLE.deliverable.shipped
+          : hasWork
+            ? CONSOLE.deliverable.review
+            : CONSOLE.deliverable.noDeliverable,
       amount: r.amount,
       requestId: r.id,
       actionType: r.actionType,
-      preview: deliverablePreview(draft),
-      consequence: kind === "waiting" ? CONSOLE.deliverable.consequence : undefined,
+      preview: hasWork ? preview : undefined,
+      // Only promise "approve to accept this draft" when there IS a draft to accept.
+      consequence: kind === "waiting" && hasWork ? CONSOLE.deliverable.consequence : undefined,
     };
   }
 
