@@ -27,6 +27,7 @@ import {
   validateMonetizationPayoutSettings,
   validateOutreachSend,
   validateReachDataCreditSpend,
+  validateSkillOptAdoptEdit,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
@@ -41,6 +42,7 @@ import {
   MONETIZATION_PAYOUT_SETTINGS_ACTION,
   OUTREACH_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
+  SKILLOPT_ADOPT_EDIT_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -430,6 +432,32 @@ const reachDataCreditSpend: ActionExecutor = {
 };
 
 /**
+ * SkillOpt-Sleep skill-edit adoption (#283) — a recorded-only, behavior-altering decision the owner gates.
+ * The self-improvement loop never adopts an edit itself; it parks this PENDING request and the owner
+ * decides. Approving RECORDS the owner's go (the audit trail proves nothing changed an agent without a
+ * human yes); actually applying the bounded append to the versioned skill doc is a deliberate follow-up, so
+ * the executor writes no file and makes no network call.
+ */
+const skillOptAdoptEdit: ActionExecutor = {
+  actionType: SKILLOPT_ADOPT_EDIT_ACTION,
+  validate: validateSkillOptAdoptEdit,
+  summarize: (p) =>
+    (
+      `adopt @${String(p.handle ?? "?")} skill edit (${String(p.skillId ?? "?")}): ` +
+      `${String(p.appendText ?? "").slice(0, 80)}`
+    ).slice(0, 160),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // applying the edit to the versioned skill doc is a deliberate follow-up ADR.
+      handle: typeof payload.handle === "string" ? payload.handle : null,
+      skillId: typeof payload.skillId === "string" ? payload.skillId : null,
+      currentDocSha: typeof payload.currentDocSha === "string" ? payload.currentDocSha : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), an optional acquisition dispatcher (#189), and an optional delivery dispatcher (#295). The
  * compliance default is a no-op and both dispatchers are absent by default, so the `external.send` executor
@@ -454,6 +482,7 @@ export function buildDefaultRegistry(
     monetizationPayoutSettings,
     outreachSend,
     reachDataCreditSpend,
+    skillOptAdoptEdit,
   ]);
 }
 

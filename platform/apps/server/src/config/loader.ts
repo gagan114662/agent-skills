@@ -164,6 +164,18 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (ventureOwner) venture.ownerWorkspaceId = ventureOwner;
     raw.venture = venture;
   }
+  // #283: let the deployment env turn the SkillOpt-Sleep self-improvement loop on owner-workspace-first
+  // without baking a managed.toml. Hard default stays OFF (var unset → no block, today's behavior). The
+  // owner workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated
+  // RELOAD_SKILLOPT_OWNER_WORKSPACE_ID overrides it. Enabling without naming an owner runs for nobody.
+  const skilloptEnabled = env.RELOAD_SKILLOPT_ENABLED;
+  const skilloptOwner = env.RELOAD_SKILLOPT_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (skilloptEnabled !== undefined || skilloptOwner) {
+    const skillopt: Record<string, unknown> = {};
+    if (skilloptEnabled !== undefined) skillopt.enabled = skilloptEnabled === "true" || skilloptEnabled === "1";
+    if (skilloptOwner) skillopt.ownerWorkspaceId = skilloptOwner;
+    raw.skillopt = skillopt;
+  }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
   // without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still
   // wins as the lock. The per-agent credential matrix is config-file only (it is a nested map).

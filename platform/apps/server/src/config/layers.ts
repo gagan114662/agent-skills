@@ -178,6 +178,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #262 connect-Claude policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // managed one-click flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.connectClaude !== undefined) out.connectClaude = { ...layer.connectClaude };
+    // #283 SkillOpt-Sleep policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // self-improvement flag + owner-first restriction + gate bounds cannot be loosened by a lower layer.
+    if (layer.skillopt !== undefined) out.skillopt = { ...layer.skillopt };
   }
   return out;
 }
@@ -248,5 +251,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     seo: merged.seo ?? { ...CONFIG_DEFAULTS.seo },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
+    skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
   };
 }
