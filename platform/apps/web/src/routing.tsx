@@ -32,6 +32,20 @@ export function navigate(to: string): void {
   for (const l of listeners) l();
 }
 
+/**
+ * Replace the current path *in place* — no new history entry — then notify subscribers. Use this for
+ * a redirect through an intermediate/transient route (e.g. the logged-out → /start → app-destination
+ * hop in AuthGate): replacing the entry instead of pushing keeps the unauthorized/intermediate URL out
+ * of the back-stack, so Back can't return the visitor to a dead route that immediately bounces forward.
+ */
+export function replace(to: string): void {
+  if (to === path()) return;
+  window.history.replaceState({}, "", to);
+  // PopStateEvent is the same signal browser back/forward emits, so every useRoute() subscriber re-reads
+  // the (replaced) location — no separate notify path that could drift from real navigation.
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 /** The current pathname, kept in sync with navigate() and browser back/forward. */
 export function useRoute(): string {
   return useSyncExternalStore(subscribe, path, () => "/");

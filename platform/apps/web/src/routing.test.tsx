@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, navigate, useRoute } from "./routing.js";
+import { Link, navigate, replace, useRoute } from "./routing.js";
 
 function Probe(): React.JSX.Element {
   const path = useRoute();
@@ -28,6 +28,19 @@ describe("routing", () => {
     act(() => navigate("/login"));
     const before = window.history.length;
     act(() => navigate("/login"));
+    expect(window.history.length).toBe(before);
+  });
+
+  it("replace() swaps the current entry in place (no new back-stack entry) and re-renders", () => {
+    render(<Probe />);
+    act(() => navigate("/start")); // land on an intermediate route, as the AuthGate redirect does
+    const before = window.history.length;
+
+    act(() => replace("/app/reports"));
+    // The location moved and useRoute re-read it…
+    expect(screen.getByTestId("path")).toHaveTextContent("/app/reports");
+    expect(window.location.pathname).toBe("/app/reports");
+    // …but no history entry was added — the intermediate /start is gone, so Back can't return to it.
     expect(window.history.length).toBe(before);
   });
 

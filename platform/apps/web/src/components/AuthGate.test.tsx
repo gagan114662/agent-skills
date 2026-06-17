@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "./AuthGate.js";
@@ -11,6 +11,7 @@ const unauthorized = () => {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   act(() => navigate("/")); // reset the route (and clear ?plan) between tests
   window.sessionStorage.clear();
 });
@@ -169,6 +170,60 @@ describe("AuthGate routing", () => {
     // …and the page they wanted is preserved so we can return them there after they sign in.
     expect(new URLSearchParams(window.location.search).get("return")).toBe("/app/reports");
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("REPLACES the app-route entry on the sign-in redirect — no back-stack trap (#304)", async () => {
+    act(() => navigate("/app/reports"));
+    const lenAtAppRoute = window.history.length;
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    await screen.findByRole("button", { name: /sign in with google/i });
+    expect(window.location.pathname).toBe("/start");
+    // The redirect replaced the /app entry instead of pushing a new one, so Back can't return to the
+    // dead route (which would just bounce forward again).
+    expect(replaceSpy).toHaveBeenCalled();
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(window.history.length).toBe(lenAtAppRoute);
+  });
+
+  it("REPLACES /start?return on the post-sign-in hop, and Back from the destination does not loop (#304)", async () => {
+    act(() => navigate("/start?return=%2Fapp%2Freports"));
+    const lenAtStart = window.history.length;
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    await waitFor(() => expect(window.location.pathname).toBe("/app/reports"));
+    // The /start?return=… entry was replaced, not pushed: no extra back-stack entry, and the ?return is
+    // gone so nothing can re-trigger the hop.
+    expect(replaceSpy).toHaveBeenCalledWith({}, "", "/app/reports");
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(window.history.length).toBe(lenAtStart);
+    expect(window.location.search).toBe("");
+
+    // Simulate the visitor pressing Back to arrive at the destination: re-emitting popstate must NOT
+    // push them forward again (the trap Gemini flagged).
+    pushSpy.mockClear();
+    replaceSpy.mockClear();
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/app/reports");
   });
 
   it("lands a signed-in visitor on the preserved return path after sign-in (#304)", async () => {
