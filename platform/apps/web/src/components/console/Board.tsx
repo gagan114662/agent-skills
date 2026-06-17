@@ -1,8 +1,9 @@
 /**
- * The kanban — exactly three columns (console v5): Work in progress / Approval needed / Done. Each card
+ * The kanban — exactly three columns (console v5): Work in progress / Spend approval / Done. Each card
  * wears its department hue as a 3px left edge (the only place the hue ever appears; never a filled shape).
- * Every card opens the drawer to dive in. The Approval-needed lane is the "different room" — it lights
- * vermilion when live and shows the approvals-clear moment when empty; its cards carry the ask line and
+ * Every card opens the drawer to dive in. The Spend-approval lane is the "different room" — it holds only
+ * money decisions (#243), lights vermilion when live, shows the approvals-clear moment when empty; its
+ * cards carry the ask line and
  * open into the drawer, where Approve / Not yet decide through the real #13 gate. This component only
  * renders + raises intent (onPeek / onWhy / onStop), so no gate is weakened here. The running card
  * carries a Stop control (#248) so the owner can kill a runaway agent without leaving the board.

@@ -796,9 +796,11 @@ export const CONSOLE = {
     /** Fallback action label for any unmapped type — still human, never the raw id. */
     actionFallback: "Action",
   },
-  /** The three board lanes (console v5). A card runs left→right: Work in progress → Approval needed →
-   * Done. These are the only column titles — the whole product is one board. */
-  columns: { running: "Work in progress", waiting: "Approval needed", shipped: "Done" },
+  /** The three board lanes (console v5). A card runs left→right: Work in progress → Spend approval →
+   * Done. The middle lane holds ONLY money decisions (#243): a human approves what spends money; every
+   * non-money item (drafts, posts, publishes, sends) flows straight to Done on its own. These are the
+   * only column titles — the whole product is one board. */
+  columns: { running: "Work in progress", waiting: "Spend approval", shipped: "Done" },
   /** The one quiet legend line under the header: department = the 3px card edge. */
   legend: { caption: "edge colour = department" },
   /** Fleet-health dot copy (header). */

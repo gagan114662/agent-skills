@@ -6,6 +6,8 @@ import {
   isApprovalStatus,
   isIrreversibleAction,
   isMoneyAction,
+  spendsMoney,
+  requiresHumanApproval,
   MONEY_ACTIONS,
   DEFAULT_SENSITIVE_ACTIONS,
   IRREVERSIBLE_ACTIONS,
@@ -96,6 +98,82 @@ describe("evaluatePolicy (gating engine)", () => {
       expect(DEFAULT_SENSITIVE_ACTIONS, a).not.toContain(a);
       expect(evaluatePolicy({ actionType: a }, []).requiresApproval, a).toBe(false);
     }
+  });
+
+  // --- the single source of truth: requiresHumanApproval(action) === spendsMoney(action) (#243) ---
+  // Approval is required IFF the action debits the owner. The money gate is CONSERVATIVE: if the cost
+  // cannot be determined, default to REQUIRING approval — never auto-spend on uncertainty.
+
+  it("a budgeted ad-spend action requires approval (money — exact amount carried)", () => {
+    // A dedicated money action type.
+    expect(spendsMoney({ actionType: "venture.ad_spend" })).toBe("yes");
+    expect(requiresHumanApproval({ actionType: "venture.ad_spend" })).toBe(true);
+    expect(evaluatePolicy({ actionType: "venture.ad_spend" }, []).requiresApproval).toBe(true);
+    // A real budget riding a generic action type (the marketing `ad.spend` pattern: amount IS the debit).
+    expect(spendsMoney({ actionType: "external.send", amount: 5000 })).toBe("yes");
+    expect(requiresHumanApproval({ actionType: "external.send", amount: 5000 })).toBe(true);
+    const d = evaluatePolicy({ actionType: "external.send", amount: 5000 }, []);
+    expect(d.requiresApproval).toBe(true);
+    expect(d.reason).toMatch(/spend|money/i);
+  });
+
+  it("publish / post / send / draft actions auto-execute with zero approvals (no money)", () => {
+    // Publishing a page, posting to social, sending (non-paid) email, accepting a content draft — none
+    // debits the owner, so every one runs autonomously with no owner prompt.
+    for (const a of [
+      "realworld.publish", // SEO / hosted-page publishing
+      "chat.post_message", // posting to social / a channel
+      "external.send", // sending email (non-paid)
+      "outreach.send", // outbound message
+      "agent.deliverable", // accepting a content draft
+    ]) {
+      expect(spendsMoney({ actionType: a }), a).toBe("no");
+      expect(requiresHumanApproval({ actionType: a }), a).toBe(false);
+      expect(evaluatePolicy({ actionType: a }, []).requiresApproval, a).toBe(false);
+    }
+    // An explicit zero cost is still free — no debit, no gate.
+    expect(spendsMoney({ actionType: "external.send", amount: 0 })).toBe("no");
+    expect(requiresHumanApproval({ actionType: "external.send", amount: 0 })).toBe(false);
+  });
+
+  it("an action of unknown cost requires approval (conservative — never auto-spend on uncertainty)", () => {
+    // The system was handed a cost it cannot interpret (NaN / non-finite). It cannot determine whether
+    // the action debits the owner, so it defaults to REQUIRING approval rather than spending blindly.
+    expect(spendsMoney({ actionType: "external.send", amount: Number.NaN })).toBe("unknown");
+    expect(requiresHumanApproval({ actionType: "external.send", amount: Number.NaN })).toBe(true);
+    const nan = evaluatePolicy({ actionType: "external.send", amount: Number.NaN }, []);
+    expect(nan.requiresApproval).toBe(true);
+    expect(nan.reason).toMatch(/cost|uncertain|determine/i);
+    // An infinite "cost" is equally indeterminate → gated.
+    expect(spendsMoney({ actionType: "realworld.publish", amount: Number.POSITIVE_INFINITY })).toBe(
+      "unknown",
+    );
+    expect(
+      evaluatePolicy({ actionType: "realworld.publish", amount: Number.POSITIVE_INFINITY }, [])
+        .requiresApproval,
+    ).toBe(true);
+  });
+
+  it("a spend-capped auto-approve rule still gates an UNDETERMINED cost (conservative, even under a rule)", () => {
+    // gemini #316: a matching `requiresApproval:false` rule with a `maxAutoAmount` must not let a
+    // non-finite amount slip through — `NaN > limit` is false, which would auto-approve an indeterminate
+    // spend. Never auto-spend on uncertainty applies inside the rule branch too.
+    const rules: PolicyRule[] = [
+      { actionType: "external.send", requiresApproval: false, maxAutoAmount: 100 },
+    ];
+    const nan = evaluatePolicy({ actionType: "external.send", amount: Number.NaN }, rules);
+    expect(nan.requiresApproval).toBe(true);
+    expect(nan.reason).toMatch(/cost|uncertain|determine/i);
+    // A finite spend under the cap is still auto-approved (the cap behavior is unchanged).
+    expect(evaluatePolicy({ actionType: "external.send", amount: 50 }, rules).requiresApproval).toBe(false);
+    // ...and an infinite cost under an auto-approve rule with no cap also gates (indeterminate).
+    const noCap: PolicyRule[] = [
+      { actionType: "external.send", requiresApproval: false, maxAutoAmount: null },
+    ];
+    expect(
+      evaluatePolicy({ actionType: "external.send", amount: Number.POSITIVE_INFINITY }, noCap)
+        .requiresApproval,
+    ).toBe(true);
   });
 
   it("a workspace rule can still opt a non-money action back into a gate (#243)", () => {

@@ -360,9 +360,10 @@ describe("marketing-site machine copy (#153)", () => {
 });
 
 describe("console redesign copy (board + standup)", () => {
-  it("names the three v5 board lanes exactly: Work in progress / Approval needed / Done", () => {
+  it("names the three v5 board lanes exactly: Work in progress / Spend approval / Done", () => {
     expect(CONSOLE.columns.running).toBe("Work in progress");
-    expect(CONSOLE.columns.waiting).toBe("Approval needed");
+    // #243: the middle lane holds ONLY money decisions; non-money work flows straight to Done.
+    expect(CONSOLE.columns.waiting).toBe("Spend approval");
     expect(CONSOLE.columns.shipped).toBe("Done");
     // The five per-project settings tabs the mockup defines.
     for (const k of ["general", "models", "agents", "budget", "approvals"] as const) {

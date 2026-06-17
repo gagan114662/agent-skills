@@ -213,6 +213,43 @@ export function isMoneyAction(actionType: string): boolean {
 }
 
 /**
+ * Whether an action debits the owner — a three-state verdict because the money gate is CONSERVATIVE:
+ *   - `"yes"`     — it moves money: a {@link isMoneyAction} type, OR a positive `amount` (real spend
+ *                   committed through any action type — the marketing `ad.spend` rides `external.send`
+ *                   with the budget in `amount`);
+ *   - `"no"`      — no debit: no `amount` attached (the vast majority of fleet work — drafts, posts,
+ *                   publishes, non-paid sends), or a determinate `amount` of zero / no positive cost;
+ *   - `"unknown"` — a cost arrived we cannot interpret (a non-finite `amount`: NaN / ±Infinity). The
+ *                   system cannot determine whether it spends money, so it must NOT auto-spend.
+ *
+ * This is the single source of truth {@link requiresHumanApproval} reads. Total and pure.
+ */
+export type MoneyVerdict = "yes" | "no" | "unknown";
+
+export function spendsMoney(action: ActionDescriptor): MoneyVerdict {
+  if (isMoneyAction(action.actionType)) return "yes";
+  const { amount } = action;
+  // No cost attached → no debit. This keeps every non-money fleet action (drafts, posts, publishes,
+  // sends, deploys, sunsets, internal escalations) autonomous, exactly as today.
+  if (amount === null || amount === undefined) return "no";
+  // A determinate cost: a positive number is real spend; anything ≤ 0 carries no debit to the owner.
+  if (Number.isFinite(amount)) return amount > 0 ? "yes" : "no";
+  // A cost field arrived that we cannot interpret (NaN / ±Infinity). Never auto-spend on uncertainty.
+  return "unknown";
+}
+
+/**
+ * The single source of truth for the #13 gate: an action pauses for a human IFF it spends money — i.e.
+ * iff {@link spendsMoney} is not `"no"`. A `"yes"` (real money) and an `"unknown"` (indeterminate cost)
+ * both gate; only a determinate non-spend runs autonomously. `requiresHumanApproval(action) ===
+ * spendsMoney(action) !== "no"` (#243, owner decision — only money needs the owner's yes). This is the
+ * type-level predicate; {@link evaluatePolicy} layers workspace rules on top.
+ */
+export function requiresHumanApproval(action: ActionDescriptor): boolean {
+  return spendsMoney(action) !== "no";
+}
+
+/**
  * The set of actions {@link evaluatePolicy} gates when no workspace rule matches. Under #243 this IS the
  * money set — there is exactly one source ({@link MONEY_ACTIONS}). The name is retained because the #119
  * Evidence-Priced Autonomy invariants derive from it (a money action can never auto-relax) and a few
@@ -294,16 +331,27 @@ export interface PolicyDecision {
  *   - a matching rule with `requiresApproval` → gated;
  *   - else a matching rule whose `maxAutoAmount` is exceeded by `amount` → gated (the spend cap);
  *   - else a matching rule → auto-approved;
- *   - else, no rule → gated iff the action moves money ({@link isMoneyAction}).
- * Under #243 (owner decision 2026-06-14) approval is driven by a single MONEY predicate: only money
- * actions pause for the owner; everything else the fleet ships autonomously. Total and pure — the single
- * source of truth for gating (ADR-0013 §1, ADR-0243).
+ *   - else, no rule → `requiresHumanApproval(action)` — gated iff the action spends money, OR its cost
+ *     cannot be determined (conservative: never auto-spend on uncertainty).
+ * Under #243 (owner decision 2026-06-14) approval is driven by a single MONEY predicate:
+ * `requiresHumanApproval(action) === spendsMoney(action) !== "no"`. Only money (and indeterminate cost)
+ * pauses for the owner; everything else the fleet ships autonomously. Total and pure — the single source
+ * of truth for gating (ADR-0013 §1, ADR-0243).
  */
 export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): PolicyDecision {
   const rule = rules.find((r) => r.actionType === action.actionType);
   if (rule) {
     if (rule.requiresApproval) {
       return { requiresApproval: true, reason: `policy: ${action.actionType} requires approval` };
+    }
+    // Conservative even under an auto-approve rule: a provided cost we cannot interpret (NaN / ±Infinity)
+    // must NOT slip through — `NaN > maxAutoAmount` is false, which would auto-approve an indeterminate
+    // spend. Never auto-spend on uncertainty (#243). A determinate spend over the cap re-gates as before.
+    if (action.amount !== null && action.amount !== undefined && !Number.isFinite(action.amount)) {
+      return {
+        requiresApproval: true,
+        reason: `${action.actionType} has an undetermined cost — owner approval required (never auto-spend on uncertainty)`,
+      };
     }
     if (
       rule.maxAutoAmount !== null &&
@@ -318,18 +366,24 @@ export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): P
     }
     return { requiresApproval: false, reason: "auto-approved by policy" };
   }
-  // No workspace rule → gate iff money. The MONEY predicate is two-pronged (#243): a money action TYPE,
-  // OR any real spend — a positive `amount` committed through a generic action type (e.g. a marketing
-  // `ad.spend` that rides `external.send` and carries the budget as `amount`). "Any real spend (ad
-  // budgets, paid tools/APIs)" is money even when it isn't a dedicated money action type. A workspace
-  // rule's `maxAutoAmount` is the spend cap that auto-approves small spends under its ceiling.
-  if (isMoneyAction(action.actionType)) {
-    return { requiresApproval: true, reason: `${action.actionType} moves money — owner approval required` };
+  // No workspace rule → the single MONEY predicate decides (#243). `spendsMoney` is two-pronged: a money
+  // action TYPE, OR any real spend (a positive `amount` committed through a generic action type — e.g. a
+  // marketing `ad.spend` that rides `external.send` and carries the budget as `amount`). It is also
+  // CONSERVATIVE: a cost it cannot interpret (`"unknown"`) gates rather than spending blindly. A workspace
+  // rule's `maxAutoAmount` (above) is the spend cap that auto-approves small spends under its ceiling.
+  const verdict = spendsMoney(action);
+  if (verdict === "yes") {
+    return isMoneyAction(action.actionType)
+      ? { requiresApproval: true, reason: `${action.actionType} moves money — owner approval required` }
+      : {
+          requiresApproval: true,
+          reason: `commits real spend (${action.amount}) — owner approval required`,
+        };
   }
-  if (action.amount !== null && action.amount !== undefined && action.amount > 0) {
+  if (verdict === "unknown") {
     return {
       requiresApproval: true,
-      reason: `commits real spend (${action.amount}) — owner approval required`,
+      reason: `${action.actionType} has an undetermined cost — owner approval required (never auto-spend on uncertainty)`,
     };
   }
   return { requiresApproval: false, reason: "autonomous: only money needs approval (#243)" };
