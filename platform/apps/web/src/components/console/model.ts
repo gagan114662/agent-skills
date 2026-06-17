@@ -15,7 +15,14 @@
  */
 import type { ApprovalRequestDto } from "@reload/shared";
 import type { Channel, LiveSessionDto } from "../../api/types.js";
-import { agentColor, departmentColor, AGENT_DEPARTMENT } from "../../brand.js";
+import { agentColor, departmentColor, AGENT_DEPARTMENT, CONSOLE } from "../../brand.js";
+import {
+  DELIVERABLE_ACTION,
+  cleanDeliverableTitle,
+  deliverablePreview,
+  humanActionLabel,
+  isInternalDeliverableTask,
+} from "./deliverable.js";
 
 // The braille status glyph is a brand-defined grammar; re-export it from brand so the one source of
 // truth is `brand.ts` while callers (and tests) can keep importing the model.
@@ -44,9 +51,9 @@ export interface ConsoleItem {
   readonly hue: string | undefined;
   readonly channelId: string | null;
   readonly channelName: string | null;
-  /** Card/row headline. */
+  /** Card/row headline — a HUMAN title (never the raw agent prompt or a `Deliverable ready for review:` line). */
   readonly title: string;
-  /** Sub-line (status, step, action type). */
+  /** Sub-line (status, step) — a HUMAN action label for approvals, never a raw `x.y` type id (#302). */
   readonly meta: string;
   readonly elapsedMs?: number;
   readonly costCents?: number;
@@ -54,6 +61,10 @@ export interface ConsoleItem {
   /** Present on `waiting` items — the #13 request id to approve/reject (the gate is never bypassed). */
   readonly requestId?: string;
   readonly actionType?: string;
+  /** Deliverable preview — the first line of what the agent produced (#302). Present on deliverable cards. */
+  readonly preview?: string;
+  /** The plain "what happens if I approve" line shown on a deliverable awaiting review (#302). */
+  readonly consequence?: string;
 }
 
 /** A standup project lane (a department channel) with its items and a per-status tally. */
@@ -174,6 +185,12 @@ function runningItem(
   };
 }
 
+/** The agent's original task prompt off a deliverable payload, if present (#248 stores it as `task`). */
+function deliverableTask(r: ApprovalRequestDto): string {
+  const task = r.payload?.task;
+  return typeof task === "string" ? task : "";
+}
+
 function approvalItem(
   r: ApprovalRequestDto,
   kind: "waiting" | "shipped",
@@ -182,6 +199,31 @@ function approvalItem(
 ): ConsoleItem {
   const agentLabel = memberLabel(directory, r.requesterMemberId);
   const channel = departmentChannel(channels, agentLabel);
+
+  // #302: a completed-session deliverable card. The server summary is "Deliverable ready for review: <raw
+  // prompt>" and the action type id is `agent.deliverable` — both leak internals. Re-derive a human title
+  // (the work itself, distinct per item so the sidebar isn't a wall of "Deliverable rea…"), a preview of
+  // what the agent produced, the consequence line, and a human action label. The raw type id never shows.
+  if (r.actionType === DELIVERABLE_ACTION) {
+    const draft = typeof r.payload?.draft === "string" ? r.payload.draft : "";
+    const title = cleanDeliverableTitle(deliverableTask(r)) || CONSOLE.deliverable.untitled;
+    return {
+      key: r.id,
+      kind,
+      agentLabel,
+      hue: agentColor(agentLabel),
+      channelId: channel?.id ?? null,
+      channelName: channel?.name ?? null,
+      title,
+      meta: kind === "shipped" ? CONSOLE.deliverable.shipped : CONSOLE.deliverable.review,
+      amount: r.amount,
+      requestId: r.id,
+      actionType: r.actionType,
+      preview: deliverablePreview(draft),
+      consequence: kind === "waiting" ? CONSOLE.deliverable.consequence : undefined,
+    };
+  }
+
   return {
     key: r.id,
     kind,
@@ -190,11 +232,18 @@ function approvalItem(
     channelId: channel?.id ?? null,
     channelName: channel?.name ?? null,
     title: r.summary,
-    meta: r.actionType,
+    // Humanise the action so a raw `x.y` type id never renders (#302), even for money actions.
+    meta: humanActionLabel(r.actionType),
     amount: r.amount,
     requestId: r.id,
     actionType: r.actionType,
   };
+}
+
+/** Drop internal/test/dogfood deliverables (#302) so a real customer workspace never sees a QA probe. */
+function visibleApproval(r: ApprovalRequestDto): boolean {
+  if (r.actionType !== DELIVERABLE_ACTION) return true;
+  return !isInternalDeliverableTask(deliverableTask(r) || r.summary);
 }
 
 /** Build the full console model (board columns + standup projects) from the live seams. */
@@ -203,8 +252,8 @@ export function buildConsole(input: BuildConsoleInput): ConsoleModel {
 
   const items: ConsoleItem[] = [
     ...liveSessions.map((s) => runningItem(s, channels, directory)),
-    ...pending.map((r) => approvalItem(r, "waiting", channels, directory)),
-    ...shipped.map((r) => approvalItem(r, "shipped", channels, directory)),
+    ...pending.filter(visibleApproval).map((r) => approvalItem(r, "waiting", channels, directory)),
+    ...shipped.filter(visibleApproval).map((r) => approvalItem(r, "shipped", channels, directory)),
   ];
 
   const columns: Record<ItemKind, ConsoleItem[]> = { running: [], waiting: [], shipped: [] };
