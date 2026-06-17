@@ -10,7 +10,12 @@ import {
   deliverablePreview,
   humanActionLabel,
   isInternalDeliverableTask,
+  stripHarnessNoise,
 } from "./deliverable.js";
+
+/** The exact warning the agent CLI prints to stderr when launched with a connected-but-empty stdin. */
+const STDIN_WARNING =
+  "Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly:";
 
 /** True if a UTF-16 string contains an unpaired surrogate — i.e. a code point was split mid-character. */
 function hasLoneSurrogate(s: string): boolean {
@@ -101,11 +106,52 @@ describe("humanActionLabel (#302)", () => {
   });
 });
 
+describe("stripHarnessNoise (stdin-warning leak)", () => {
+  it("removes the leading stdin warning so only the real content remains", () => {
+    const real = "Here's a tweet draft: Ship calm, ship daily. 🚀";
+    expect(stripHarnessNoise(`${STDIN_WARNING}\n${real}`)).toBe(real);
+  });
+
+  it("removes the warning plus its blank gap and redirect-example continuation", () => {
+    const real = "Line one of the deliverable.\nLine two stays intact.";
+    const raw = `${STDIN_WARNING}\n\n  cat input.txt | claude -p\n${real}`;
+    expect(stripHarnessNoise(raw)).toBe(real);
+  });
+
+  it("leaves a clean draft untouched", () => {
+    const real = "A perfectly clean deliverable.\nWith two lines.";
+    expect(stripHarnessNoise(real)).toBe(real);
+  });
+
+  it("only strips LEADING noise — a later line that resembles noise is preserved", () => {
+    const raw = "Real first line.\nWarning: no stdin data received in 3s (quoted in the body).";
+    expect(stripHarnessNoise(raw)).toBe(raw);
+  });
+
+  it("leaves a Markdown table that starts with a pipe untouched (patterns are anchored)", () => {
+    // Regression: an un-anchored `| claude` pattern wrongly stripped this real-content first line.
+    const table = "| Claude | OpenAI |\n| --- | --- |\n| fast & cheap | slower |";
+    expect(stripHarnessNoise(table)).toBe(table);
+  });
+
+  it("handles empty / nullish input", () => {
+    expect(stripHarnessNoise("")).toBe("");
+    expect(stripHarnessNoise(null)).toBe("");
+    expect(stripHarnessNoise(undefined)).toBe("");
+  });
+});
+
 describe("deliverablePreview (#302)", () => {
   it("takes the first non-empty line, trimmed and truncated", () => {
     expect(deliverablePreview("\n\n  Found 3 quick wins  \nmore detail")).toBe("Found 3 quick wins");
     expect(deliverablePreview("")).toBe("");
     expect(deliverablePreview(null)).toBe("");
+  });
+
+  it("skips the leading stdin warning and previews the real content", () => {
+    const draft = `${STDIN_WARNING}\nShip calm, ship daily.\nmore detail`;
+    expect(deliverablePreview(draft)).toBe("Ship calm, ship daily.");
+    expect(deliverablePreview(draft)).not.toMatch(/no stdin data received/i);
   });
 
   it("truncates a very long first line", () => {

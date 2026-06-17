@@ -29,6 +29,15 @@ describe("harness selection (#50)", () => {
     expect(cmd).toContain("--permission-mode acceptEdits");
   });
 
+  it("redirects the CLI's stdin from /dev/null so the 'no stdin data received in 3s' warning never fires", () => {
+    // The runtime spawns the harness with a connected stdin pipe (kept for steering). With nothing
+    // written, the claude CLI waits 3s then prints a stderr warning that the runtime captures into the
+    // result tail — leaking into every deliverable card. Redirecting the CLI's own stdin to /dev/null
+    // makes it see EOF immediately, so the warning is never produced or captured.
+    const cmd = harnessSpec("claude-code").args[1];
+    expect(cmd).toContain("< /dev/null");
+  });
+
   it("honors a custom binary path", () => {
     const cmd = harnessSpec("claude-code", { claudeBin: "/opt/bin/claude" }).args[1];
     expect(cmd).toContain("'/opt/bin/claude' -p \"$AGENT_TASK\"");
@@ -109,6 +118,11 @@ describe("codex harness (#50)", () => {
     expect(cmd).toContain("'codex' exec \"$AGENT_TASK\"");
     expect(cmd).toContain("--json");
     expect(cmd).toContain("--full-auto");
+  });
+
+  it("redirects the CLI's stdin from /dev/null so the empty-pipe stdin warning never fires", () => {
+    const cmd = harnessSpec("codex").args[1];
+    expect(cmd).toContain("< /dev/null");
   });
 
   it("honors a custom codex binary path", () => {
