@@ -59,13 +59,20 @@ function stripReviewPrefix(text: string): string {
  * The runtime captures stderr into the result tail, so that warning becomes the first line of the stored
  * draft and renders as the card summary. The invocation is fixed at the source (the CLI's stdin is now
  * redirected from /dev/null), but these patterns let the renderer also clean drafts captured BEFORE that
- * fix, so historical cards show real content with no data migration. Matched narrowly so a genuine
- * deliverable line is never mistaken for noise.
+ * fix, so historical cards show real content with no data migration.
+ *
+ * Every pattern is ANCHORED to the start of the (trimmed) line and matches only the exact CLI warning
+ * lines — never a substring mid-line. An earlier un-anchored `| claude` pattern wrongly matched a genuine
+ * Markdown table row such as `| Claude | OpenAI |`, corrupting real content; anchoring fixes that.
  */
 const HARNESS_NOISE_PATTERNS: readonly RegExp[] = [
-  /no stdin data received/i,
-  /redirect stdin explicitly/i,
-  /\|\s*(?:claude|codex)\b/i, // the piping example the warning prints, e.g. "cat input.txt | claude -p"
+  // The stdin warning itself (one line): "Warning: no stdin data received in 3s, proceeding without it…".
+  /^warning: no stdin data received\b/i,
+  // Its redirect-instruction continuation, when the CLI prints it on its own line.
+  /^(?:if piping from a slow command, )?redirect stdin explicitly:?\s*$/i,
+  // The piping EXAMPLE the warning prints, e.g. "cat input.txt | claude -p" — anchored to a leading
+  // shell command so a Markdown table row ("| Claude | OpenAI |") is never mistaken for it.
+  /^(?:cat|echo|printf)\b.*\|\s*(?:claude|codex)\b/i,
 ];
 
 /** True when a single line reads as captured harness/CLI noise (never genuine deliverable content). */
