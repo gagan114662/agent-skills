@@ -397,14 +397,15 @@ describe("console redesign copy (board + standup)", () => {
   });
 
   // #235: the owner brief composer copy — the working control that replaces the passive board.
-  it("carries the brief composer: five acquisition leads + the launched/connect confirmations", () => {
+  it("carries the brief composer: every department lead + the launched/connect confirmations", () => {
     expect(CONSOLE.brief.title).toBeTruthy();
     expect(CONSOLE.brief.sub).toBeTruthy();
     expect(CONSOLE.brief.submit).toBeTruthy();
     expect(CONSOLE.brief.placeholder).toBeTruthy();
-    // The five acquisition leads named in #235 (seo/social/content/email/ads), each a real @handle.
+    // The five acquisition leads (#235) plus Lens (analytics) and Mark (brand) (#288) — every
+    // department agent is briefable, each a real @handle.
     const handles = CONSOLE.brief.leads.map((l) => l.handle);
-    expect(handles).toEqual(["scout", "echo", "quill", "postmark", "bid"]);
+    expect(handles).toEqual(["scout", "echo", "quill", "postmark", "bid", "lens", "mark"]);
     for (const l of CONSOLE.brief.leads) {
       expect(l.name, l.handle).toBeTruthy();
       expect(l.dept, l.handle).toBeTruthy();

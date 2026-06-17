@@ -381,6 +381,29 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (seoOwner) seo.ownerWorkspaceId = seoOwner;
     raw.seo = seo;
   }
+  // #270 analytics auto-install + read: let the deployment env turn the auto-install + read layer on, pick
+  // a read provider, name the owner workspace, and set the measurement id without a managed.toml (the owner
+  // workspace opts in first, reusing the #258 marker). Hard default stays OFF (vars unset → no block ⇒
+  // provider stays `dryrun`, reports nothing, no install written). A managed layer still wins as the lock.
+  const analyticsEnabled = env.RELOAD_ANALYTICS_ENABLED;
+  const analyticsProvider = env.RELOAD_ANALYTICS_PROVIDER;
+  const analyticsOwner = env.RELOAD_ANALYTICS_OWNER_WORKSPACE_ID ?? mktOwner;
+  const analyticsMeasurementId = env.RELOAD_ANALYTICS_MEASUREMENT_ID;
+  if (
+    analyticsEnabled !== undefined ||
+    analyticsProvider !== undefined ||
+    analyticsMeasurementId !== undefined ||
+    analyticsOwner
+  ) {
+    const analytics: Record<string, unknown> = {};
+    if (analyticsEnabled !== undefined) {
+      analytics.enabled = analyticsEnabled === "true" || analyticsEnabled === "1";
+    }
+    if (analyticsProvider !== undefined) analytics.provider = analyticsProvider;
+    if (analyticsMeasurementId !== undefined) analytics.measurementId = analyticsMeasurementId;
+    if (analyticsOwner) analytics.ownerWorkspaceId = analyticsOwner;
+    raw.analytics = analytics;
+  }
   // #267 central provisioning: let the deployment env turn central provisioning on + name the owner
   // workspace without a managed.toml (the owner workspace opts in first, reusing the #258 marker). Hard
   // default stays OFF (vars unset → no block ⇒ every capability resolves to the free mock path, no vault

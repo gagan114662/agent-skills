@@ -178,6 +178,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #294 SEO rank-tracking policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // proactive-fetch flag + provider + target keywords cannot be loosened by a lower layer.
     if (layer.seo !== undefined) out.seo = { ...layer.seo };
+    // #270 analytics auto-install + read policy: a higher (managed/owner) layer fully owns the block
+    // (replace) so the auto-install flag + read provider + owner-workspace scope cannot be loosened by a
+    // lower layer.
+    if (layer.analytics !== undefined) out.analytics = { ...layer.analytics };
     // #282 agent registry + A2A policy: a higher (managed/owner) layer fully owns the block (replace) so
     // the A2A flag + owner-first restriction + depth cap cannot be loosened by a lower layer.
     if (layer.agentRegistry !== undefined) out.agentRegistry = { ...layer.agentRegistry };
@@ -260,6 +264,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
     reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },
     seo: merged.seo ?? { ...CONFIG_DEFAULTS.seo },
+    analytics: merged.analytics ?? { ...CONFIG_DEFAULTS.analytics },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },

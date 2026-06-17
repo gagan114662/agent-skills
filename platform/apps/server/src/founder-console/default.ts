@@ -32,6 +32,7 @@ import { buildLoopRunStore } from "../db/repositories/build-loop.js";
 import { listEvents, listExperiments } from "../db/repositories/growth.js";
 import { resolveGrowthCaps } from "../growth/caps.js";
 import { funnelFromEvents, scoreGrowth } from "../growth/score.js";
+import { analyticsTileReading } from "../analytics/default.js";
 import { listBacklogItems } from "../db/repositories/planning.js";
 import { resolvePlanningCaps } from "../planning/caps.js";
 import { rankBacklog } from "../planning/rice.js";
@@ -560,23 +561,31 @@ export function createDefaultFounderConsoleService(deps: {
               },
         );
 
-        // analytics (Lens): trial conversions (signups) off the #102 growth funnel, with sessions/activations
-        // in the note. The funnel sums the same events the growth routes read (so the console matches the API).
+        // analytics (Lens): prefer the externally-grounded site reading from the #270 auto-install layer
+        // (real sessions/signups/conversions off the auto-installed tag) when it is connected; otherwise
+        // fall back to trial conversions (signups) off the #102 growth funnel, with sessions/activations in
+        // the note. The funnel sums the same events the growth routes read (so the console matches the API).
+        // The #270 layer is default-OFF, so an un-configured deployment keeps the funnel reading exactly.
         const events = await listEvents(workspaceId);
         const funnel = funnelFromEvents(events);
-        const conv7 = funnelFromEvents(
-          events.filter((e) => e.occurredAt.getTime() >= since7.getTime()),
-        ).conversion;
-        readings.push({
-          department: "analytics",
-          connected: true,
-          current: funnel.conversion,
-          prior: funnel.conversion - conv7,
-          unit: "count",
-          metricLabel: "Trial conversions (signups)",
-          source: "Growth events (#102)",
-          note: `${funnel.acquisition} sessions · ${funnel.activation} activations tracked`,
-        });
+        const analyticsReading = await analyticsTileReading(workspaceId).catch(() => null);
+        if (analyticsReading) {
+          readings.push(analyticsReading);
+        } else {
+          const conv7 = funnelFromEvents(
+            events.filter((e) => e.occurredAt.getTime() >= since7.getTime()),
+          ).conversion;
+          readings.push({
+            department: "analytics",
+            connected: true,
+            current: funnel.conversion,
+            prior: funnel.conversion - conv7,
+            unit: "count",
+            metricLabel: "Trial conversions (signups)",
+            source: "Growth events (#102)",
+            note: `${funnel.acquisition} sessions · ${funnel.activation} activations tracked`,
+          });
+        }
 
         // seo (Scout): externally-grounded rankings off the #294 rank-observation receipts. Connected only
         // when a real provider/webhook has reported at least one observation; otherwise "not connected"
