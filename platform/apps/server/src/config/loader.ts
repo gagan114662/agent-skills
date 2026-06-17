@@ -145,11 +145,17 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // #258: designate ipop.ai's OWN workspace from the deployment env (no managed.toml needed) so the
   // internal-only connectors (the GitHub site-publish paste) are admin-gated to exactly that workspace.
   const mktOwner = env.RELOAD_MARKETING_OWNER_WORKSPACE_ID;
-  if (mktEnabled !== undefined || mktWelcome !== undefined || mktOwner) {
+  // #320: inject a workspace-context preamble (site URL + product context + brand voice) into briefed
+  // agent tasks. Hard default OFF; gated owner-workspace-first against RELOAD_MARKETING_OWNER_WORKSPACE_ID.
+  const mktInjectContext = env.RELOAD_MARKETING_INJECT_WORKSPACE_CONTEXT;
+  if (mktEnabled !== undefined || mktWelcome !== undefined || mktOwner || mktInjectContext !== undefined) {
     const marketing: Record<string, unknown> = {};
     if (mktEnabled !== undefined) marketing.enabled = mktEnabled === "true" || mktEnabled === "1";
     if (mktWelcome !== undefined) marketing.seedWelcomeTasks = mktWelcome === "true" || mktWelcome === "1";
     if (mktOwner) marketing.ownerWorkspaceId = mktOwner;
+    if (mktInjectContext !== undefined) {
+      marketing.injectWorkspaceContext = mktInjectContext === "true" || mktInjectContext === "1";
+    }
     raw.marketing = marketing;
   }
   // #228: let the deployment env turn the YC-fundability admission gate (#96) on owner-workspace-first

@@ -35,6 +35,13 @@ import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.j
 import { MarketingMentionService } from "./mention.js";
 import { MarketingBriefService } from "./brief.js";
 import { resolveDedupeEnabled } from "./dedup.js";
+import {
+  resolveWorkspaceFacts,
+  enrichTaskWithContext,
+  shouldInjectWorkspaceContext,
+  BRAND_VOICE_LINE,
+} from "./workspace-context.js";
+import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 
@@ -252,6 +259,25 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         name: p.name,
       })),
     invoke: (identity, input) => subagents.invoke(identity, input),
+    // #320: enrich the launched task with the workspace-context preamble so a briefed agent has the real
+    // site URL + product context + brand voice on file instead of returning a placeholder. Default OFF and
+    // owner-workspace-first (`shouldInjectWorkspaceContext`): a deployment that hasn't opted in returns the
+    // task unchanged, so every existing launch is byte-for-byte the same. Facts are read from the existing
+    // `workspace_onboarding` row + `marketing.*` config — no new authority, no send/spend reachable.
+    enrichTask: async (workspaceId, task) => {
+      const marketing = loadConfig(workspaceId).marketing;
+      if (!shouldInjectWorkspaceContext(marketing, workspaceId)) return task;
+      const onboarding = await getWorkspaceOnboarding(workspaceId);
+      const facts = resolveWorkspaceFacts({
+        workspaceId,
+        ownerWorkspaceId: marketing.ownerWorkspaceId,
+        configuredSiteUrl: marketing.siteUrl,
+        domain: onboarding?.domain ?? null,
+        productContext: onboarding?.productContext ?? null,
+        brandVoice: BRAND_VOICE_LINE,
+      });
+      return enrichTaskWithContext(task, facts);
+    },
     // #68 subscription-first auth gate: when the deployment runs a REAL harness (claude-code/codex) and
     // a workspace hasn't connected a Claude account, the persona posts a friendly connect prompt
     // instead of launching — no session, no admission slot, no budget. For the default demo harness

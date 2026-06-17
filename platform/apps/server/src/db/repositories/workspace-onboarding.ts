@@ -9,6 +9,8 @@ import { workspaceOnboarding } from "../schema/index.js";
 
 export interface WorkspaceOnboarding {
   domain: string | null;
+  /** Owner-typed product context (#320), surfaced to briefed agents as DATA; null until captured. */
+  productContext: string | null;
   bootstrapped: boolean;
   bootstrappedAtMs: number | null;
 }
@@ -22,6 +24,24 @@ export async function setWorkspaceDomain(workspaceId: string, domain: string): P
     .onConflictDoUpdate({
       target: workspaceOnboarding.workspaceId,
       set: { domain, updatedAt: now },
+    });
+}
+
+/**
+ * Persist the workspace's product context (#320, idempotent upsert). Owner-typed free text — the read
+ * seam (`marketing/workspace-context.ts`) sanitizes + bounds it before it ever reaches an agent prompt.
+ */
+export async function setWorkspaceProductContext(
+  workspaceId: string,
+  productContext: string,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(workspaceOnboarding)
+    .values({ workspaceId, productContext, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: workspaceOnboarding.workspaceId,
+      set: { productContext, updatedAt: now },
     });
 }
 
@@ -44,6 +64,7 @@ export async function getWorkspaceOnboarding(
   const [row] = await db
     .select({
       domain: workspaceOnboarding.domain,
+      productContext: workspaceOnboarding.productContext,
       bootstrappedAt: workspaceOnboarding.bootstrappedAt,
     })
     .from(workspaceOnboarding)
@@ -52,6 +73,7 @@ export async function getWorkspaceOnboarding(
   if (!row) return null;
   return {
     domain: row.domain,
+    productContext: row.productContext,
     bootstrapped: row.bootstrappedAt !== null,
     bootstrappedAtMs: row.bootstrappedAt ? row.bootstrappedAt.getTime() : null,
   };

@@ -461,6 +461,15 @@ export const marketingSchema = z.object({
    * `dedupeTasks` on without naming the owner workspace dedups for NObody (the safest default).
    */
   dedupeOwnerWorkspaceOnly: z.boolean().optional(),
+  /**
+   * Inject a workspace-context preamble (resolved site URL + owner-typed product context + brand voice)
+   * into every briefed/@mentioned agent task (#320) so Scout/Lens/… act on real facts instead of
+   * returning placeholder drafts. Default OFF and gated owner-workspace-first (see
+   * `shouldInjectWorkspaceContext`): active only for the `ownerWorkspaceId` workspace until rolled out
+   * wider, so an unconfigured deployment changes no briefed task. The facts are sanitized + framed as DATA
+   * (#200 FM#6 injection defense) — never run as instructions.
+   */
+  injectWorkspaceContext: z.boolean().optional(),
 });
 
 /**

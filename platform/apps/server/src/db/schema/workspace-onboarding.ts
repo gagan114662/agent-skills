@@ -21,6 +21,13 @@ export const workspaceOnboarding = pgTable("workspace_onboarding", {
     .references(() => workspaces.id, { onDelete: "cascade" }),
   /** The bare host the user typed (e.g. `acme.com`); null until they enter one. */
   domain: text("domain"),
+  /**
+   * Owner-typed product context (#320): a short paragraph describing what the company does, surfaced as
+   * reference DATA in every briefed agent's task preamble so Scout/Lens/… act on real facts instead of a
+   * placeholder. Null until captured. Sanitized + length-bounded at the read seam (never run as
+   * instructions — see `marketing/workspace-context.ts`).
+   */
+  productContext: text("product_context"),
   /** Set once the post-signin bootstrap (seed + Scout brief) has run; null = not yet bootstrapped. */
   bootstrappedAt: timestamp("bootstrapped_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

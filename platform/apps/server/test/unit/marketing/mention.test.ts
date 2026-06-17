@@ -54,6 +54,30 @@ describe("#123 MarketingMentionService", () => {
     );
   });
 
+  it("#320 enriches the LAUNCHED task via enrichTask but records the ORIGINAL goal", async () => {
+    const enrichTask = vi.fn(async (_ws: string, task: string) => `CONTEXT\n\nTask: ${task}`);
+    const { deps, recordTask, invoke } = baseDeps({ enrichTask });
+    const svc = new MarketingMentionService(deps);
+
+    const res = await svc.launch(identity, { channelId: "c-seo", messageId: "m-1", task: "audit homepage" });
+
+    expect(res.ok).toBe(true);
+    expect(enrichTask).toHaveBeenCalledWith("ws-1", "audit homepage");
+    // the agent receives the enriched task (with the workspace-context preamble) ...
+    expect(invoke).toHaveBeenCalledWith(
+      identity,
+      expect.objectContaining({ task: "CONTEXT\n\nTask: audit homepage" }),
+    );
+    // ... but the durable board record keeps the clean human goal.
+    expect(recordTask).toHaveBeenCalledWith(expect.objectContaining({ task: "audit homepage" }));
+  });
+
+  it("#320 with no enrichTask dep the launched task is the raw goal (default posture unchanged)", async () => {
+    const { deps, invoke } = baseDeps();
+    await new MarketingMentionService(deps).launch(identity, { channelId: "c-seo", messageId: "m-1", task: "go" });
+    expect(invoke).toHaveBeenCalledWith(identity, expect.objectContaining({ task: "go" }));
+  });
+
   it("404s a channel from another workspace (IDOR)", async () => {
     const { deps, invoke } = baseDeps({ getChannel: async (id) => ({ id, workspaceId: "other", name: "seo" }) });
     const res = await new MarketingMentionService(deps).launch(identity, { channelId: "c", messageId: "m" });

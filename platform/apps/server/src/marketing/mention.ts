@@ -125,6 +125,14 @@ export interface MarketingMentionDeps {
     messageId: string;
   }): Promise<{ id: string }>;
   departmentForHandle(handle: string): string | undefined;
+  /**
+   * #320: optional task enrichment. Given the workspace + the raw task, return the task with a
+   * workspace-context preamble (site URL + product context + brand voice) prepended — or the task
+   * unchanged when context injection is OFF / no facts are on file. Absent → no enrichment (the default
+   * posture and every existing launch test), so a briefed agent gets exactly the raw task as before.
+   * Only the LAUNCHED task is enriched; the durable `marketing_tasks` row keeps the original goal.
+   */
+  enrichTask?(workspaceId: string, task: string): Promise<string>;
   /** #68: optional subscription-first auth gate. Absent → no gate (demo/local default). */
   auth?: MarketingAuthGate;
   /** #246: optional model preflight gate. Absent → no gate (demo/local default). */
@@ -243,7 +251,8 @@ export class MarketingMentionService {
       // #322 idempotent task creation: if this objective already has an OPEN task in this department, the
       // fleet is already on it — reuse it instead of opening a duplicate. No invoke, no admission slot, no
       // second `marketing_tasks` row, no duplicate Spend-Approval draft. Pure-decided; injection-safe (the
-      // objective is compared as opaque data, never interpreted).
+      // objective is compared as opaque data, never interpreted). Runs BEFORE #320 enrichment so the dedup
+      // key is the raw human objective, not the context-augmented launch text.
       if (dedupeEnabled) {
         const dup = findDuplicateOpenTask({ department, objective: task, openTasks });
         if (dup) {
@@ -252,11 +261,18 @@ export class MarketingMentionService {
         }
       }
 
+      // #320: enrich the LAUNCHED task with the workspace-context preamble (site URL + product context +
+      // brand voice) so the agent has real facts to act on instead of returning a placeholder. The raw
+      // task is preserved for the durable `marketing_tasks` record below. Enrichment is a no-op when
+      // injection is OFF / nothing is on file (the default posture), so this never changes today's behavior.
+      const launchTask = this.deps.enrichTask
+        ? await this.deps.enrichTask(identity.workspaceId, task)
+        : task;
       // A denial (kill switch / budget) throws out of `invoke` and propagates — no task is recorded.
       const result = await this.deps.invoke(identity, {
         personaId: persona.id,
         channelId: input.channelId,
-        task: input.task ?? task,
+        task: launchTask,
         messageId: input.messageId,
       });
       if (!result.ok) return { ok: false, code: result.code, error: result.error };
