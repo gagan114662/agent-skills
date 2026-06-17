@@ -157,6 +157,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #295 delivery policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // approve→publish ship flags + owner-workspace scope cannot be loosened by a lower layer.
     if (layer.delivery !== undefined) out.delivery = { ...layer.delivery };
+    // #267 central provisioning policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // provisioning flag + owner-workspace scope + provider map cannot be flipped on by a lower layer.
+    if (layer.provisioning !== undefined) out.provisioning = { ...layer.provisioning };
     // #194 finance policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // ledger/close tick + the read surface cannot be flipped on by a lower layer — owner-workspace-first.
     if (layer.finance !== undefined) out.finance = { ...layer.finance };
@@ -244,6 +247,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     outreach: merged.outreach ?? { ...CONFIG_DEFAULTS.outreach },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     delivery: merged.delivery ?? { ...CONFIG_DEFAULTS.delivery },
+    provisioning: merged.provisioning ?? { ...CONFIG_DEFAULTS.provisioning },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },

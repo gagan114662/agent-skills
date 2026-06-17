@@ -349,6 +349,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (seoOwner) seo.ownerWorkspaceId = seoOwner;
     raw.seo = seo;
   }
+  // #267 central provisioning: let the deployment env turn central provisioning on + name the owner
+  // workspace without a managed.toml (the owner workspace opts in first, reusing the #258 marker). Hard
+  // default stays OFF (vars unset → no block ⇒ every capability resolves to the free mock path, no vault
+  // read). A managed layer still wins as the lock. The central provider KEYS are NEVER env/config — they
+  // live in the #192 sealed vault under `central:<provider>` in the owner workspace.
+  const provisioningEnabled = env.RELOAD_PROVISIONING_ENABLED;
+  const provisioningOwner = env.RELOAD_PROVISIONING_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (provisioningEnabled !== undefined || provisioningOwner) {
+    const provisioning: Record<string, unknown> = {};
+    if (provisioningEnabled !== undefined) {
+      provisioning.enabled = provisioningEnabled === "true" || provisioningEnabled === "1";
+    }
+    if (provisioningOwner) provisioning.ownerWorkspaceId = provisioningOwner;
+    raw.provisioning = provisioning;
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).
