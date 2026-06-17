@@ -785,6 +785,9 @@ export const CONSOLE = {
     shipped: "Accepted",
     /** The "what happens if I approve" line under a deliverable awaiting review. */
     consequence: "Approve to accept this draft — nothing is sent or charged.",
+    /** Shown when a completed session produced no work product (only explored/narrated) — never a
+     * misleading "approve this draft" on a card that has nothing to review. */
+    noDeliverable: "No deliverable yet — still working",
     /** Human labels for the action types that reach the board, so a raw `x.y` id never renders. */
     actionLabels: {
       "agent.deliverable": "Deliverable",

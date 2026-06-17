@@ -4,6 +4,7 @@ import {
   decodeCodexLine,
   harnessLineDecoder,
   harnessEventReportsError,
+  finalAnswerFromEvent,
 } from "../../src/runtime/stream-json.js";
 
 describe("claude-code stream-json decoder (#81)", () => {
@@ -208,5 +209,45 @@ describe("harnessEventReportsError — terminal agent-run failure detector (#251
     expect(harnessEventReportsError(null)).toBe(false);
     expect(harnessEventReportsError("plain line")).toBe(false);
     expect(harnessEventReportsError({ type: "system", subtype: "init" })).toBe(false);
+  });
+});
+
+describe("finalAnswerFromEvent — the produced artifact, not the transcript", () => {
+  it("returns the claude-code success result text (the agent's complete final answer)", () => {
+    const event = decodeClaudeCodeLine(
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Here are 3 tweets." }),
+    ).raw;
+    expect(finalAnswerFromEvent(event)).toBe("Here are 3 tweets.");
+  });
+
+  it("does NOT treat narration or tool calls as the final answer", () => {
+    const assistant = decodeClaudeCodeLine(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "I'll start by…" }] } }),
+    ).raw;
+    expect(finalAnswerFromEvent(assistant)).toBeNull();
+    const tool = decodeClaudeCodeLine(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: {} }] } }),
+    ).raw;
+    expect(finalAnswerFromEvent(tool)).toBeNull();
+  });
+
+  it("does NOT return an is_error result as a deliverable (that's a failed run)", () => {
+    const event = decodeClaudeCodeLine(
+      JSON.stringify({ type: "result", subtype: "error", is_error: true, result: "missing a tool" }),
+    ).raw;
+    expect(finalAnswerFromEvent(event)).toBeNull();
+  });
+
+  it("returns the codex agent_message item text", () => {
+    const event = decodeCodexLine(
+      JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "Final copy." } }),
+    ).raw;
+    expect(finalAnswerFromEvent(event)).toBe("Final copy.");
+  });
+
+  it("returns null for non-answer events (system/null/plain)", () => {
+    expect(finalAnswerFromEvent({ type: "system", subtype: "init" })).toBeNull();
+    expect(finalAnswerFromEvent(null)).toBeNull();
+    expect(finalAnswerFromEvent("plain line")).toBeNull();
   });
 });

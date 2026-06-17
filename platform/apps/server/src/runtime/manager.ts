@@ -13,7 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
-import { harnessEventReportsError, type LineDecoder } from "./stream-json.js";
+import { harnessEventReportsError, finalAnswerFromEvent, type LineDecoder } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
@@ -689,6 +689,11 @@ export class SessionManager {
     // PROCESS succeeded but the RUN failed with no artifact. Watch the decoded events for that signal so
     // the run is finalized as a failure (not surfaced as a green check / "deliverable ready for review").
     let harnessReportedError = false;
+    // The agent's final substantive answer (the produced artifact), tracked separately from the rolling
+    // channel tail so a deliverable card shows the WORK PRODUCT, not the transcript head (narration +
+    // tool-call traces). Updated from the harness's structured final-answer event; the last value wins
+    // (codex emits several; claude-code emits one terminal `result`). Redacted like every other surface.
+    let finalAnswer = "";
     const emitLine = (line: string): void => {
       const decoded = decode(line);
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
@@ -696,6 +701,8 @@ export class SessionManager {
       if (decoded.raw !== null) {
         log.info({ event: redact(JSON.stringify(decoded.raw)) }, "agent stream event");
         if (harnessEventReportsError(decoded.raw)) harnessReportedError = true;
+        const answer = finalAnswerFromEvent(decoded.raw);
+        if (answer !== null) finalAnswer = redact(answer);
       }
       for (const text of decoded.display) {
         const clean = redact(text).trimEnd();
@@ -874,6 +881,11 @@ export class SessionManager {
       opts.surfaceDeliverable !== false &&
       resultText.trim()
     ) {
+      // The deliverable is the agent's final answer (the produced artifact) when the harness marked one;
+      // otherwise the rolling tail (the demo / plain-text harness has no structured final event). Either
+      // way the renderer still strips residual narration/tool noise and shows a "no deliverable yet" state
+      // if nothing substantive was produced — so a card never surfaces process noise as a draft.
+      const deliverable = (finalAnswer.trim() ? finalAnswer : resultText).slice(0, RESULT_MAX_CHARS);
       await this.deps
         .onSessionCompleted({
           workspaceId: session.workspaceId,
@@ -881,7 +893,7 @@ export class SessionManager {
           channelId: session.channelId,
           agentMemberId: session.agentMemberId,
           task,
-          result: resultText,
+          result: deliverable,
         })
         .catch((err: unknown) => log.error({ err }, "session deliverable surfacing failed"));
     }

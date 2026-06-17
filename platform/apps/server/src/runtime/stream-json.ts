@@ -77,6 +77,37 @@ export function harnessEventReportsError(raw: unknown): boolean {
   return false;
 }
 
+/**
+ * Extract the agent's FINAL SUBSTANTIVE ANSWER from a decoded harness event — the produced artifact, not
+ * the transcript (#card-deliverable). A fleet session streams narration ("I'll start by…") and tool-call
+ * traces (`🔧 Bash …`) before it produces anything; the rolling output tail therefore leads with process
+ * noise, and a card derived from the head of that tail shows narration/tool calls instead of the work
+ * product. The harness already marks the agent's complete final message structurally, so the manager
+ * tracks the latest value this returns and surfaces THAT as the deliverable:
+ *   - claude-code: the terminal success `result` event carries the whole final answer in `result`.
+ *     (An `is_error` result is NOT a deliverable — handled by {@link harnessEventReportsError}.)
+ *   - codex: each `item.completed` + `agent_message` is a substantive assistant message; the last wins.
+ * Returns `null` for anything that is not a final-answer event (system/tool/assistant-chunk/unknown), so
+ * the caller keeps its prior value. Pure.
+ */
+export function finalAnswerFromEvent(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+  // claude-code: the complete final answer rides on the success `result` event.
+  if (raw.type === "result" && raw.is_error !== true && typeof raw.result === "string") {
+    return raw.result;
+  }
+  // codex: the agent's substantive message item (lifecycle/reasoning items are not answers).
+  if (
+    raw.type === "item.completed" &&
+    isRecord(raw.item) &&
+    raw.item.type === "agent_message" &&
+    typeof raw.item.text === "string"
+  ) {
+    return raw.item.text;
+  }
+  return null;
+}
+
 const TOOL = "🔧";
 const ERROR = "⚠️";
 const INPUT_MAX = 200;

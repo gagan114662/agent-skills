@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ApprovalRequestDto } from "@reload/shared";
 import type { Channel, LiveSessionDto } from "../../api/types.js";
-import { departmentColor } from "../../brand.js";
+import { departmentColor, CONSOLE } from "../../brand.js";
 import {
   buildConsole,
   brailleFrame,
@@ -246,6 +246,30 @@ describe("buildConsole — deliverable cards are human, never raw (#302)", () =>
     });
     const card = model.columns.shipped[0]!;
     expect(card.meta).not.toMatch(/ready for review/i);
+    expect(card.consequence).toBeUndefined();
+  });
+
+  it("shows a 'no deliverable yet' state (no preview, no 'approve this draft') when the agent only narrated", () => {
+    // The session completed but produced only process narration + tool traces — nothing reviewable.
+    const model = buildConsole({
+      liveSessions: [],
+      pending: [
+        deliverable({
+          id: "d-narration",
+          payload: {
+            task: "Write a launch tweet",
+            draft: "I'll start by reviewing the brand voice.\n🔧 Read brand.md\nLet me see what we've got.",
+          },
+        }),
+      ],
+      shipped: [],
+      channels,
+      directory,
+    });
+    const card = model.columns.waiting[0]!;
+    expect(card.preview).toBeUndefined();
+    expect(card.meta).toBe(CONSOLE.deliverable.noDeliverable);
+    // Never a misleading "approve this draft" line when there is no draft.
     expect(card.consequence).toBeUndefined();
   });
 

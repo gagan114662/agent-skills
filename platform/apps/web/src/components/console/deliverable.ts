@@ -99,6 +99,103 @@ export function stripHarnessNoise(text: string | undefined | null): string {
   return lines.slice(i).join("\n");
 }
 
+/**
+ * A harness tool-invocation trace, never work product. The stream decoder renders every tool call with a
+ * leading 🔧 glyph (`🔧 Bash …`, `🔧 Read …`), so that prefix is the reliable signal — matched anywhere in
+ * the text, since tool calls interleave with assistant chatter.
+ */
+function isToolTraceLine(line: string): boolean {
+  return line.trim().startsWith("🔧");
+}
+
+/**
+ * Leading PROCESS lines that precede the actual deliverable — agent narration ("I'll start by…", "Let me…",
+ * "Happy to draft it but…") and raw tool-name traces. Anchored to the start of the trimmed line and matched
+ * only in the LEADING region (see {@link extractDeliverable}), so a genuine deliverable line that merely
+ * contains one of these words mid-text is never dropped.
+ */
+const NARRATION_PATTERNS: readonly RegExp[] = [
+  /^i'?ll\b/i,
+  /^i will\b/i,
+  /^i'?m (?:going to|about to|going|now|gonna)\b/i,
+  /^i'?m happy to\b/i,
+  /^i'?ve (?:reviewed|looked|checked|examined|explored|read|gone through|started|pulled|taken)\b/i,
+  /^i'?d be happy to\b/i,
+  /^i need to\b/i,
+  /^i'?m going to\b/i,
+  /^let me\b/i,
+  /^let'?s\b/i,
+  /^first,?\s+(?:i|let|i'?ll)\b/i,
+  /^to (?:start|begin)\b/i,
+  /^okay[,!.\s]/i,
+  /^ok[,!.\s]/i,
+  /^sure[,!.\s]/i,
+  /^alright[,!.\s]/i,
+  /^now (?:i'?ll|let me)\b/i,
+  /^happy to\b/i,
+];
+
+/**
+ * Raw (non-🔧) file-op trace, e.g. "Read index.html", "Edit src/app.ts", "Bash /usr/bin/foo". The tool name
+ * must be IMMEDIATELY followed by a path/flag/file token, so genuine prose that merely opens with a tool
+ * word ("Read our latest guide…") is not mistaken for a trace. The canonical traces are 🔧-prefixed and
+ * caught by {@link isToolTraceLine}; this is a narrow safety net for un-prefixed file-op lines.
+ */
+const RAW_TOOL_TRACE_RE =
+  /^(?:bash|read|write|edit|multiedit|grep|glob|ls|cat|view|webfetch|websearch)\s+(?:[./~-]|https?:\/\/|["']?\/|\S+\.\w{1,4}\b)/i;
+
+/** True when a line is leading process noise: blank, agent narration, or a raw tool-name trace. */
+function isLeadingProcessLine(line: string): boolean {
+  const t = line.trim();
+  if (t === "") return true;
+  if (RAW_TOOL_TRACE_RE.test(t)) return true;
+  return NARRATION_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * A "here's the thing:" lead-in. When the agent prefaces the artifact ("Here's a draft: <tweet>", "Here's
+ * the SEO audit:"), the deliverable is what follows the colon — not the lead-in. Captures the inline tail.
+ */
+const LEAD_IN_RE =
+  /^(?:here'?s|here is|here you go|below is|the following is|i'?ve drafted|i drafted|draft)\b[^:]*:\s*(.*)$/i;
+
+/** Strip a leading "Here's …:" lead-in: keep the inline tail, or drop the line when the content follows. */
+function unwrapLeadIn(body: string): string {
+  if (!body) return "";
+  const nl = body.indexOf("\n");
+  const first = nl >= 0 ? body.slice(0, nl) : body;
+  const rest = nl >= 0 ? body.slice(nl + 1) : "";
+  const m = first.match(LEAD_IN_RE);
+  if (!m) return body;
+  const after = (m[1] ?? "").trim();
+  if (after) return rest ? `${after}\n${rest}` : after;
+  // Lead-in line with nothing after the colon → the artifact is on the following line(s).
+  return rest.trim();
+}
+
+/**
+ * Extract the agent's actual WORK PRODUCT from captured output — its final substantive answer, not the
+ * transcript head. Drops harness noise (the stdin warning), tool-invocation traces (🔧 lines) anywhere, and
+ * the LEADING run of process narration / raw tool traces; then unwraps a "Here's a draft:" lead-in. Returns
+ * `""` when nothing substantive remains (the agent only explored/narrated) so the caller can render a clear
+ * "no deliverable yet" state instead of process noise or a misleading "approve this draft". Pure.
+ */
+export function extractDeliverable(text: string | undefined | null): string {
+  if (!text) return "";
+  const lines = stripHarnessNoise(text)
+    .split(/\r?\n/)
+    .filter((l) => !isToolTraceLine(l));
+  let i = 0;
+  while (i < lines.length && isLeadingProcessLine(lines[i] ?? "")) i++;
+  const body = lines.slice(i).join("\n").trim();
+  return unwrapLeadIn(body).trim();
+}
+
+/** Whether captured output contains a real deliverable (a work product), vs. only process/narration. */
+export function hasDeliverable(text: string | undefined | null): boolean {
+  return extractDeliverable(text).length > 0;
+}
+
 /** True when this deliverable's task text reads as an internal / test / dogfood probe (#302). */
 export function isInternalDeliverableTask(task: string | undefined | null): boolean {
   if (!task) return false;
@@ -138,13 +235,13 @@ function truncateByCodePoints(s: string, max: number): string {
 }
 
 /**
- * First non-empty line of the draft, trimmed + truncated, for the card preview. Leading harness/CLI noise
- * (the captured stdin warning) is stripped first so the preview is the agent's real output, not a log
- * line. `""` when no draft (or nothing but noise).
+ * Card preview — the first line of the agent's actual WORK PRODUCT, trimmed + truncated. The draft is run
+ * through {@link extractDeliverable} first, so process narration, tool-call traces, and the captured stdin
+ * warning are stripped and the preview is the deliverable itself (e.g. the tweet text / the SEO finding),
+ * never the transcript head. `""` when there is no work product (the card then shows "no deliverable yet").
  */
 export function deliverablePreview(draft: string | undefined | null): string {
-  if (!draft) return "";
-  const firstLine = stripHarnessNoise(draft)
+  const firstLine = extractDeliverable(draft)
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l.length > 0);
