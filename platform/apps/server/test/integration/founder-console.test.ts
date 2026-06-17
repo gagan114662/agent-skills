@@ -46,7 +46,7 @@ describe("founder console route (integration, real Postgres)", () => {
     expect(body.workspaceId).toBe(workspaceId);
     expect(typeof body.generatedAtMs).toBe("number");
     expect(body.fleet).toEqual({ activeSessions: 0, sessionsThisWindow: 0, globalInFlight: 0 });
-    expect(body.venturePipeline).toEqual({ total: 0, active: 0, funded: 0, killed: 0, escalated: 0 });
+    expect(body.venturePipeline).toEqual({ total: 0, active: 0, funded: 0, killed: 0, escalated: 0, scaffolds: 0 });
     expect(body.revenue.hasWillingnessToPay).toBe(false);
     expect(body.budget.overBudget).toBe(false);
     expect(body.pendingApprovals).toEqual([]);
