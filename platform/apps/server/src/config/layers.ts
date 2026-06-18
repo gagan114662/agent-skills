@@ -157,6 +157,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #295 delivery policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // approve→publish ship flags + owner-workspace scope cannot be loosened by a lower layer.
     if (layer.delivery !== undefined) out.delivery = { ...layer.delivery };
+    // #337 action contract policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // contract master flag + owner-workspace scope + the irreversible-apply switch cannot be loosened by a
+    // lower layer.
+    if (layer.actionContract !== undefined) out.actionContract = { ...layer.actionContract };
     // #267 central provisioning policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // provisioning flag + owner-workspace scope + provider map cannot be flipped on by a lower layer.
     if (layer.provisioning !== undefined) out.provisioning = { ...layer.provisioning };
@@ -269,6 +273,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     outreach: merged.outreach ?? { ...CONFIG_DEFAULTS.outreach },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     delivery: merged.delivery ?? { ...CONFIG_DEFAULTS.delivery },
+    actionContract: merged.actionContract ?? { ...CONFIG_DEFAULTS.actionContract },
     provisioning: merged.provisioning ?? { ...CONFIG_DEFAULTS.provisioning },
     hostedSites: merged.hostedSites ?? { ...CONFIG_DEFAULTS.hostedSites },
     social: merged.social ?? { ...CONFIG_DEFAULTS.social },
