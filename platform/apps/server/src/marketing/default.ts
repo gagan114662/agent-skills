@@ -42,6 +42,9 @@ import {
   shouldInjectWorkspaceContext,
   BRAND_VOICE_LINE,
 } from "./workspace-context.js";
+import { composeSiteFactsBlock } from "./site-reader/distill.js";
+import { LiveSiteReaderProvider } from "./site-reader/provider.js";
+import { createSiteReader, shouldReadSiteContent } from "./site-reader/service.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
@@ -238,6 +241,10 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
 /** Build the @mention → real session trigger over the audited #59 gate + venture-gated launcher. */
 export function createMarketingMentionService(sessionManager: SessionManager): MarketingMentionService {
   const authResolver = createAgentAuthResolver();
+  // #363: a process-local, TTL-cached reader of the owner's OWN public site (the lowest-friction real data
+  // source — no OAuth/secret). Only ever consulted behind `shouldReadSiteContent` (default OFF, owner-first,
+  // and only when the #320 preamble is on), so the default deployment never crawls anything.
+  const siteReader = createSiteReader({ provider: new LiveSiteReaderProvider() });
   const subagents = new SubagentService({
     getPersona,
     getChannelWorkspace: async (channelId) => (await getChannel(channelId))?.workspaceId,
@@ -278,6 +285,20 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         productContext: onboarding?.productContext ?? null,
         brandVoice: BRAND_VOICE_LINE,
       });
+      // #363: connect the real public-site data source. Behind a second default-OFF, owner-first gate
+      // (`shouldReadSiteContent`), crawl the resolved site read-only and append the distilled pages as a
+      // sanitized, DATA-framed block — so a briefed SEO audit cites real ipop.ai content. Never throws:
+      // a crawl failure just yields no block (the preamble degrades to the typed facts). The fetched
+      // bytes are untrusted DATA, sanitized by the distill core — never instructions (#200 FM#6).
+      if (facts.siteUrl && shouldReadSiteContent(marketing, workspaceId)) {
+        try {
+          const siteFacts = await siteReader.read(facts.siteUrl);
+          const block = composeSiteFactsBlock(siteFacts);
+          if (block) facts.siteContentBlock = block;
+        } catch {
+          // read() is defensive, but belt-and-suspenders: a briefed launch never fails on a crawl error.
+        }
+      }
       return enrichTaskWithContext(task, facts);
     },
     // #68 subscription-first auth gate: when the deployment runs a REAL harness (claude-code/codex) and
