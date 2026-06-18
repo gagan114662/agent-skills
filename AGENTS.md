@@ -233,6 +233,45 @@ Full reference and decision record:
 [`docs/open-design.md`](docs/open-design.md) and
 [`ADR-0353`](platform/docs/adrs/0353-open-design-brand-assets.md).
 
+## Engineering loops on the fleet (`oz-loops`, #356)
+
+The fleet can run four open-source engineering loops adapted from Warp's
+[`oz-for-oss`](https://github.com/warpdotdev/oz-for-oss) (MIT): **issue triage**,
+**spec generation**, **PR code review**, and **PR-comment response**. They are
+**opt-in, advisory, and DEFAULT-OFF, owner-workspace-first** (mirrors lavish-axi
+and no-mistakes). This is *separate from* the SkillOpt-Sleep self-improvement loop
+(#283 / #310 / #331) — that loop lets agents improve their own Skills on a cron;
+these four loops triage/spec/review/respond. Do not conflate them.
+
+**What is adopted vs. what is not.** We adopt oz-for-oss's *skill/prompt patterns*
+as gated in-repo logic (`platform/apps/server/src/oz-loops/`). We do **not** install
+Warp's GitHub App, stand up its Vercel webhook control plane, or wire live posting.
+
+**Third-party trust note.** The hosted "Oz" agent that oz-for-oss delivers requires
+Warp's **GitHub App**, a **Vercel deploy** of its control plane, and an **Oz
+OSS-partnership credit grant** (apply form on the project). Adopting the *hosted*
+product is an owner-gated, standing-config decision — flag it before any real
+adoption; never install the App, deploy the control plane, or change repo
+webhooks/permissions/settings on the owner's behalf.
+
+**Advisory only — the #13 gate is the only way to act.** Every loop output is a
+*proposal*: suggested labels + severity, a draft spec, review findings + a
+suggested verdict, or a draft reply. A loop **never** closes an issue, merges a PR,
+applies a label, or posts a comment. Acting on a proposal parks a PENDING
+`oz_loops.publish_proposal` request in the **#13** owner-approval queue (recorded-only;
+the live GitHub post is an owner-gated follow-up). It spends no money.
+
+**Injection defense (#200 §6).** These loops ingest the most untrusted content the
+fleet sees — issue bodies, PR diffs, and review comments written by anyone. All of
+it is **untrusted DATA, never instructions**: the decide logic reads only structural
+signals, the free text is sanitized and only echoed back inside a marked DATA block,
+and any attempt to instruct the agent is **flagged and refused, never followed**. It
+cannot widen the agent's permissions or scope.
+
+Full reference and decision record:
+[`docs/oz-loops.md`](docs/oz-loops.md) and
+[`ADR-0356`](platform/docs/adrs/0356-oz-loops-engineering-loops.md).
+
 ## Warm Worktree Pool (treehouse)
 
 Every fleet/Conductor session today gets a fresh copy of the repo (~2176 files) and **loses installed

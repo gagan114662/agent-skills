@@ -223,6 +223,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #283 SkillOpt-Sleep policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // self-improvement flag + owner-first restriction + gate bounds cannot be loosened by a lower layer.
     if (layer.skillopt !== undefined) out.skillopt = { ...layer.skillopt };
+    // #356 Oz-loops policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // triage/spec/review/pr-comment flag + owner-first restriction + ingest bounds cannot be loosened by a
+    // lower layer.
+    if (layer.ozLoops !== undefined) out.ozLoops = { ...layer.ozLoops };
     // #338 durable-workflow policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // durable-path flag + owner-first restriction + retry/deadline bounds cannot be loosened by a lower layer.
     if (layer.durableWorkflow !== undefined) out.durableWorkflow = { ...layer.durableWorkflow };
@@ -316,6 +320,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
     capabilityTokens: merged.capabilityTokens ?? { ...CONFIG_DEFAULTS.capabilityTokens },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
+    ozLoops: merged.ozLoops ?? { ...CONFIG_DEFAULTS.ozLoops },
     durableWorkflow: merged.durableWorkflow ?? { ...CONFIG_DEFAULTS.durableWorkflow },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
     emailDeliverability: merged.emailDeliverability ?? { ...CONFIG_DEFAULTS.emailDeliverability },

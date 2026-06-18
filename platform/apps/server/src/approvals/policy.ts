@@ -160,6 +160,19 @@ export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
 export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
 
 /**
+ * #356 the Oz-loops (triage/spec/review/pr-comment) produce ADVISORY proposals only. Acting on one — posting
+ * a comment, applying labels, closing an issue, opening a spec issue, or merging a PR — is an OUTWARD action
+ * directed at a real repo, so the loop ALWAYS parks a PENDING request; there is no autonomous post/close/
+ * merge path (premortem #200: untrusted issue/PR/comment content can never trigger an action). Like
+ * `outreach.send`/`skillopt.adopt_skill_edit` it is NOT a money action (it spends nothing — ADR-0243) and is
+ * never submitted through the #13 action route; the Oz-loops service parks it directly against the same
+ * workspace `approval_policies`. The executor is recorded-only: approving records the owner's go; the actual
+ * GitHub post requires the `gh`/GitHub-App surface and stays an owner-gated follow-up (ADR-0356). It is not
+ * a committed money exposure, so it is NOT in `IRREVERSIBLE_ACTIONS`.
+ */
+export const OZ_LOOPS_PUBLISH_PROPOSAL_ACTION = "oz_loops.publish_proposal" as const;
+
+/**
  * #258 Stage 2 the connect-once LIVE connect — granting the fleet access to an outside account (Google
  * Search Console for Scout, an ESP for Postmark, a social account for Echo, an ad account for Bid). Per
  * ADR-0258 connecting is a one-time CONSENT, not money — so it is NOT in {@link MONEY_ACTIONS}. But the live

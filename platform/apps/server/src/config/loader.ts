@@ -194,6 +194,18 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (skilloptOwner) skillopt.ownerWorkspaceId = skilloptOwner;
     raw.skillopt = skillopt;
   }
+  // #356: let the deployment env turn the Oz-loops (triage/spec/review/pr-comment) on owner-workspace-first
+  // without baking a managed.toml. Hard default stays OFF (var unset → no block, today's behavior). The
+  // owner workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated
+  // RELOAD_OZ_LOOPS_OWNER_WORKSPACE_ID overrides it. Enabling without naming an owner runs for nobody.
+  const ozLoopsEnabled = env.RELOAD_OZ_LOOPS_ENABLED;
+  const ozLoopsOwner = env.RELOAD_OZ_LOOPS_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (ozLoopsEnabled !== undefined || ozLoopsOwner) {
+    const ozLoops: Record<string, unknown> = {};
+    if (ozLoopsEnabled !== undefined) ozLoops.enabled = ozLoopsEnabled === "true" || ozLoopsEnabled === "1";
+    if (ozLoopsOwner) ozLoops.ownerWorkspaceId = ozLoopsOwner;
+    raw.ozLoops = ozLoops;
+  }
   // #338: let the deployment env route long waits through the durable-workflow engine owner-workspace-first
   // without baking a managed.toml. Hard default stays OFF (var unset → no block ⇒ the legacy in-process poll
   // runs unchanged). The owner workspace reuses the established #258 marker
