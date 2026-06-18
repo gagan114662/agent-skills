@@ -15,9 +15,11 @@
  */
 import { createHash } from "node:crypto";
 import { createRequest } from "../db/repositories/approvals.js";
+import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketing-tasks.js";
 import { loadConfig } from "../config/loader.js";
 import { SKILLOPT_ADOPT_EDIT_ACTION } from "../approvals/policy.js";
-import { agentContracts } from "../agent-registry/contract.js";
+import { agentContracts, contractForHandle } from "../agent-registry/contract.js";
+import { reduceMarketingTasksToSamples } from "./harvest.js";
 import { resolveSkillOptCaps } from "./caps.js";
 import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./service.js";
 
@@ -31,9 +33,20 @@ export function createDefaultSkillOptService(): SkillOptService {
   const deps: SkillOptDeps = {
     caps: (workspaceId) => resolveSkillOptCaps(loadConfig(workspaceId).skillopt),
     agents: () => skillOptAgentTargets(),
-    // The real transcript-harvest + replay-against-receipts engine is the deliberate next slice (#283
-    // follow-up). Until then the loop sources no candidates, so it never stages a self-reported edit.
-    harvest: () => Promise.resolve([]),
+    // Harvest (ADR-0283 Follow-up #1): read the agent's REAL, audited briefs from `marketing_tasks` (the
+    // record of every welcome/@mention session it ran) and reduce them to sanitized DATA samples. Resolving
+    // the department from the registry contract keeps the agent source of truth in one place (#282). A
+    // non-fleet handle harvests nothing (fail-closed). Quality is NOT inferred here — `succeeded` is only a
+    // mining weight; nothing stages until the replay seam supplies an externally-verified reading.
+    harvest: async (workspaceId, agentHandle) => {
+      const department = contractForHandle(agentHandle)?.department;
+      if (!department) return [];
+      const rows = await listRecentMarketingTasksByDepartment(workspaceId, department);
+      return reduceMarketingTasksToSamples(rows, agentHandle, department);
+    },
+    // The replay-against-receipts engine is still the deliberate next slice (real spawns → external
+    // receipts → `ValidationReading`). Until it lands the loop sources no candidates, so even with real
+    // harvested data it stages NOTHING — the safest honest default (#200 §2/§3).
     replay: () => Promise.resolve([]),
     loadSkillDoc: (skillId) =>
       Promise.resolve({ sha: createHash("sha256").update(skillId).digest("hex").slice(0, 16), text: "" }),

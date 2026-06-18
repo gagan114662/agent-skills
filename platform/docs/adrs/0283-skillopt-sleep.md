@@ -1,6 +1,7 @@
 # ADR-0283: SkillOpt-Sleep — a self-improvement loop for department agents (foundational slice)
 
-- **Status:** Accepted (foundational slice shipped in PR for #283; the epic continues — see Follow-ups)
+- **Status:** Accepted (foundational slice + transcript-harvest slice shipped for #283; the epic continues —
+  see Follow-ups). Slice 2 (transcript harvest) is documented below.
 - **Date:** 2026-06-17
 - **Context issue:** [#283](https://github.com/gagan114662/agent-skills/issues/283) — give each department
   agent (scout/echo/quill/postmark/bid/lens/mark/comet) a nightly offline cycle that harvests its own
@@ -130,11 +131,40 @@ that runs the cycle for one agent as a single deterministic decision and stages 
   one change. This slice lands the safe scaffold + one measurable cycle; the replay engine and edit-apply
   are scoped as follow-ups on the issue.
 
+## Slice 2 — Transcript harvest (this PR; Follow-up #1)
+
+The foundational slice left `harvest` a no-op (`[]`), so even when enabled the loop mined nothing real. This
+slice makes the **harvest** real — the loop now reads what each department agent **actually kept being asked
+to do** — while changing nothing about the safety posture.
+
+**Source of truth: `marketing_tasks` (#123), not a self-report.** Every welcome/@mention brief a department
+agent runs is already recorded there with its objective text and terminal status. That audited, workspace-
+scoped table *is* the agent's "session transcript" surface, so the harvest reuses it rather than inventing a
+new transcript store. The department key on each row maps to the agent via the #282 registry contract (one
+source of truth for the fleet), so the loop only ever reads the briefs **that** agent ran.
+
+- **`skillopt/harvest.ts` (pure).** `reduceMarketingTasksToSamples(rows, handle, department)` filters a batch
+  to one department, sanitizes each objective to DATA (`sanitizeForData` — control chars stripped, whitespace
+  collapsed, length capped, #200 §6), drops anything that sanitizes to empty, and caps the batch
+  (`maxSamples`, bounded blast radius). `succeeded` is derived from the terminal status (`done`) — and, as
+  before, is **only a mining weight, never a quality metric** (#200 §2).
+- **`listRecentMarketingTasksByDepartment(workspaceId, department, limit)`** — a bounded, workspace+department
+  scoped read on the existing table (the #3 IDOR boundary); the only IO this slice adds.
+- **`default.ts` harvest seam** now resolves the department from the handle via `contractForHandle`, reads the
+  bounded batch, and reduces it. A non-fleet handle harvests nothing (fail-closed).
+
+**Crucially, this slice stages nothing new.** `replay` still returns `[]`, so even with real harvested data no
+candidate exists, no `ValidationReading` is produced, and the gate never runs. Mining is now real; *adoption*
+remains impossible until the production-grounded replay (Slice 3) supplies an externally-verified reading. The
+"no self-reported signal can ever move a doc" invariant (#200 §2/§3) is preserved by construction.
+
 ## Follow-ups (the rest of the epic, tracked on #283)
 
-1. **Transcript harvest** — a real `harvest` seam reading recent sessions per agent (DATA, sanitized).
+1. ✅ **Transcript harvest** — a real `harvest` seam reading recent briefs per agent (DATA, sanitized).
+   *Delivered in this PR (Slice 2 above).*
 2. **Production-grounded replay** — replay mined tasks under the candidate doc with **real spawns** and
-   measure **external receipts** to fill `ValidationReading` (#200 §3); until then `replay` returns `[]`.
+   measure **external receipts** to fill `ValidationReading` (#200 §3); until then `replay` returns `[]`. This
+   is the slice that first makes a staged proposal possible.
 3. **Edit apply** — on owner adoption, apply the bounded append to the versioned skill doc + bump the #155
    manifest version (the recorded-only executor becomes an applying one), with a one-click revert.
 4. **Scheduler** — a nightly cron tick that calls `SkillOptService.runWorkspace` for in-scope workspaces.

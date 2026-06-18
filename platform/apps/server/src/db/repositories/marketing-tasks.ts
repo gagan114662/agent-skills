@@ -66,6 +66,25 @@ export async function listMarketingTasks(workspaceId: string): Promise<Marketing
   return rows as MarketingTask[];
 }
 
+/**
+ * The most recent task records for one department in a workspace, newest first, bounded — the SkillOpt-Sleep
+ * harvest surface (#283, ADR-0283 Follow-up #1). Workspace + department scoped (the #3 IDOR boundary), so the
+ * loop only ever reads the real briefs THAT agent ran. Bounded by `limit` to cap the harvested batch size.
+ */
+export async function listRecentMarketingTasksByDepartment(
+  workspaceId: string,
+  department: string,
+  limit = 200,
+): Promise<MarketingTask[]> {
+  const rows = await db
+    .select()
+    .from(marketingTasks)
+    .where(and(eq(marketingTasks.workspaceId, workspaceId), eq(marketingTasks.department, department)))
+    .orderBy(desc(marketingTasks.createdAt))
+    .limit(limit);
+  return rows as MarketingTask[];
+}
+
 /** Update a record's status (workspace-scoped). */
 export async function updateMarketingTaskStatus(
   id: string,
