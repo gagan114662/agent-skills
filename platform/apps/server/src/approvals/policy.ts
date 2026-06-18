@@ -96,6 +96,21 @@ export const REALWORLD_PUBLISH_ACTION = "realworld.publish" as const;
 export const HOSTED_PUBLISH_ACTION = "hosted.publish" as const;
 
 /**
+ * #269 Echo social posting via the connect-once aggregator bridge — fanning a post OUT to the customer's
+ * connected networks (X, LinkedIn, Instagram, TikTok, Facebook) through one connection. Publishing a post
+ * is IRREVERSIBLE (a sent post cannot be un-sent — premortem #200 §4), so it ALWAYS pauses for an explicit
+ * owner approval before the fan-out runs: the required pre-commitment for an irreversible action, exactly
+ * like `hosted.publish`. It is NOT money (no spend — connecting/using the aggregator is a CONSENT, the
+ * customer's own ad budget stays the separate `provisioning.customer_spend` money gate), so it is NOT in
+ * {@link MONEY_ACTIONS}. It is never submitted through the #13 action route; the social service parks a
+ * PENDING request against the same workspace `approval_policies`, and a post only fans out through the
+ * post-approval executor (the service has no autonomous publish path). It is NOT in
+ * {@link IRREVERSIBLE_ACTIONS} — that list is the MONEY-exposure metric source (money out the door); the
+ * irreversibility of a post is enforced by the structural always-gate here, not the money predicate. ADR-0269.
+ */
+export const SOCIAL_PUBLISH_POST_ACTION = "social.publish_post" as const;
+
+/**
  * #225 the outreach engine SEND — composing a message is free, but pushing it to a real prospect on a
  * real channel (email/LinkedIn/X) is an outward, IRREVERSIBLE brand surface (premortem #200: a sent
  * message cannot be unsent; deliverability + brand are at stake). It is sensitive by default AND

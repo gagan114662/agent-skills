@@ -50,6 +50,9 @@ export interface ConnectionDescriptor {
 /** The internal GitHub site-publish connection id (ipop.ai's own mechanism — admin only). */
 export const SITE_PUBLISH_GITHUB_ID = "site_publish_github";
 
+/** The connect-once SOCIAL AGGREGATOR connection id (#269 — one consent fans out to every network). */
+export const SOCIAL_AGGREGATOR_ID = "social_aggregator";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -127,6 +130,23 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     status: "coming_soon",
     capabilities: ["post_social"],
     oauthScopes: ["w_member_social"],
+    envKeys: [],
+  },
+  {
+    // #269 the connect-once SOCIAL AGGREGATOR bridge: ONE consent fans Echo's posts out to every network
+    // (X, LinkedIn, Instagram, TikTok, Facebook) — the customer never touches a per-platform developer
+    // portal. Every post stays behind the #13 owner approval (a post is irreversible).
+    id: SOCIAL_AGGREGATOR_ID,
+    label: "Connect your social accounts",
+    summary:
+      "One consent lets Echo post to X, LinkedIn, Instagram & TikTok — no developer portal, every post owner-approved.",
+    provider: "social_aggregator",
+    kind: "ad_account",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["post_social"],
+    oauthScopes: ["social.post"],
     envKeys: [],
   },
 ];
