@@ -5,6 +5,8 @@ import { createTask, getTask, updateStatus } from "../db/repositories/tasks.js";
 import { canTransition } from "../tasks/status.js";
 import { newId } from "../db/id.js";
 import { buildAgentCard, toA2ATask, a2aMessage, partsToText } from "../protocols/a2a/map.js";
+import { departmentForHandle } from "../marketing/blueprint.js";
+import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import {
   JSONRPC_ERRORS,
   type A2AMessage,
@@ -39,6 +41,9 @@ const fail = (id: JsonRpcError["id"], code: number, message: string): JsonRpcErr
 });
 
 export async function a2aRoutes(app: FastifyInstance): Promise<void> {
+  // #370: narrate A2A handoffs into chat channels (best-effort, gated default-OFF + owner-first). Posts
+  // nothing unless agent→channel posting is enabled for the workspace — prod channels stay quiet.
+  const coordinationBridge = createCoordinationChannelBridge();
   // The AgentCard for a registered agent — the A2A capability handshake. Workspace-scoped: a card
   // for another workspace's agent is a 404 (no cross-tenant discovery).
   app.get("/a2a/agents/:agentId/agent-card.json", async (req, reply: FastifyReply) => {
@@ -90,6 +95,29 @@ export async function a2aRoutes(app: FastifyInstance): Promise<void> {
           createdByMemberId: identity.memberId,
           assigneeMemberId: receiver.id,
         });
+        // #370: narrate the handoff + the resulting task into the receiver's department channel — the
+        // delegating agent posts the handoff line, the assignee posts the inline task card. Authored as the
+        // respective (kind="agent") member rows; content is DATA, text-only. Best-effort: the bridge never
+        // throws and no-ops entirely unless posting is enabled for this workspace, so the handoff write is
+        // unaffected (the task is already created above — this only narrates it).
+        const receiverDept = departmentForHandle(receiver.displayName.toLowerCase());
+        if (receiverDept) {
+          await coordinationBridge.post(identity.workspaceId, {
+            kind: "handoff",
+            channel: receiverDept.channel,
+            agentHandle: identity.displayName,
+            toHandle: receiver.displayName,
+            task: text,
+          });
+          await coordinationBridge.post(identity.workspaceId, {
+            kind: "task_created",
+            channel: receiverDept.channel,
+            agentHandle: receiver.displayName,
+            taskId: task.id,
+            title,
+            assigneeHandle: receiver.displayName,
+          });
+        }
         const history = [
           a2aMessage({
             messageId: message.messageId || newId(),

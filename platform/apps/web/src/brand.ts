@@ -894,8 +894,13 @@ export const CONSOLE = {
    * behind the default-OFF, owner-workspace-first coordination flag. Read + steer only; no new action path.
    */
   coordination: {
-    /** Header button that opens the coordination overlay (shown only for the named owner workspace). */
+    /**
+     * The chat-first surface tab (#372) — for the named owner workspace the coordination view is the LANDING
+     * surface and this labels the tab that returns to it. (Pre-#372 it labelled the header overlay button.)
+     */
     open: "Coordination",
+    /** #372: the secondary tab that switches the owner from the chat-first surface to the board. */
+    boardTab: "Board",
     /** Overlay + view title. */
     title: "Team coordination",
     /** One-line framing under the title. */

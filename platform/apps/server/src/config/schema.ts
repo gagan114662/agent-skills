@@ -570,6 +570,26 @@ export const agentCollaborationSchema = z.object({
 });
 
 /**
+ * Agent→channel posting policy (#370, ADR-0370). Whether agent coordination output (a lead's plan on
+ * kickoff, an A2A handoff status line, an inline task card, an @mention surfacing the #13 gate) is routed
+ * into chat-channel messages so the coordination view (#354) fills like reload.chat. Every field is
+ * optional and the master `enabled` defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly:
+ * true`, mirrors `agentRegistry`/`durableWorkflow`) — a deployment that sets nothing keeps today's channels
+ * byte-for-byte quiet (agents post nothing), so behavior is unchanged. Turning it on without naming
+ * `ownerWorkspaceId` posts for nobody (the safest default). The bridge adds NO money/irreversible action
+ * path: the @mention only surfaces the EXISTING #13 approval gate, and message content is DATA, not
+ * instructions. `ownerWorkspaceId` marks the owner's own workspace for the owner-first rollout.
+ */
+export const agentChannelPostingSchema = z.object({
+  /** Route agent coordination output into channel messages — default OFF (quiet channels otherwise). */
+  enabled: z.boolean().optional(),
+  /** Restrict posting to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Agent Garden policy (#284, ADR-0284). Non-secret knobs for the customer-facing console surface that
  * browses the department-fleet agents (reading the #282 registry) and enables/disables each per workspace.
  * Every field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
@@ -1832,6 +1852,8 @@ export const settingsSchema = z.object({
   agentRegistry: agentRegistrySchema.optional(),
   /** Agent collaboration policy (#319): provision the subagent-spawn tool so leads can delegate (default OFF, owner-first). */
   agentCollaboration: agentCollaborationSchema.optional(),
+  /** Agent→channel posting policy (#370): route agent coordination output into chat channels (default OFF, owner-first). */
+  agentChannelPosting: agentChannelPostingSchema.optional(),
   /** Agent Garden policy (#284): browse the department fleet + enable/disable agents per workspace (default OFF, owner-first). */
   garden: gardenSchema.optional(),
   /** Worktree-pool policy (#343): hand fleet sessions a warm reusable worktree instead of a fresh checkout (default OFF, owner-first). */
@@ -1927,6 +1949,7 @@ export type SeoConfig = z.infer<typeof seoSchema>;
 export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
+export type AgentChannelPostingConfig = z.infer<typeof agentChannelPostingSchema>;
 export type GardenConfig = z.infer<typeof gardenSchema>;
 export type WorktreePoolConfig = z.infer<typeof worktreePoolSchema>;
 export type OpenDesignConfig = z.infer<typeof openDesignSchema>;
@@ -2079,6 +2102,8 @@ export interface ResolvedConfig {
   agentRegistry: AgentRegistryConfig;
   /** Agent collaboration policy (#319). A partial whose hard defaults `resolveAgentCollaborationCaps` fills. */
   agentCollaboration: AgentCollaborationConfig;
+  /** Agent→channel posting policy (#370). A partial whose hard defaults `resolveAgentChannelPostingCaps` fills. */
+  agentChannelPosting: AgentChannelPostingConfig;
   /** Agent Garden policy (#284). A partial whose hard defaults `resolveGardenCaps` fills. */
   garden: GardenConfig;
   /** Worktree-pool policy (#343). A partial whose hard defaults `resolveWorktreePoolCaps` fills. */
@@ -2175,6 +2200,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   analytics: {},
   agentRegistry: {},
   agentCollaboration: {},
+  agentChannelPosting: {},
   garden: {},
   worktreePool: {},
   openDesign: {},

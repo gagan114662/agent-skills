@@ -49,6 +49,17 @@ export interface MarketingBriefDeps {
     identity: { workspaceId: string; memberId: string },
     input: { channelId: string; messageId: string; task: string },
   ): Promise<MarketingMentionResult>;
+  /**
+   * #370 (optional): narrate the lead's kickoff into its department channel — the lead posts its plan AS
+   * the agent member so the coordination view fills like reload.chat. Default-absent ⇒ today's behavior
+   * (no agent post). Best-effort and self-gating (default-OFF, owner-first); never affects the launch.
+   */
+  notifyKickoff?(input: {
+    workspaceId: string;
+    agentHandle: string;
+    channel: string;
+    goal: string;
+  }): Promise<void>;
 }
 
 export type MarketingBriefResult =
@@ -110,6 +121,20 @@ export class MarketingBriefService {
       task: goal,
     });
     if (!result.ok) return result;
+    // #370: the lead posts its plan into the department channel on kickoff (best-effort, self-gating). The
+    // launch already succeeded and is on the record; narration must never fail the brief, so it is wrapped.
+    if (this.deps.notifyKickoff) {
+      try {
+        await this.deps.notifyKickoff({
+          workspaceId: identity.workspaceId,
+          agentHandle: lead.handle,
+          channel: lead.channel,
+          goal,
+        });
+      } catch {
+        // best-effort narration — the audited launch path is unaffected
+      }
+    }
     return {
       ok: true,
       lead: lead.handle,

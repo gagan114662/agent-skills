@@ -236,6 +236,22 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (durableOwner) durableWorkflow.ownerWorkspaceId = durableOwner;
     raw.durableWorkflow = durableWorkflow;
   }
+  // #370: let the deployment env route agent coordination output into chat channels owner-workspace-first
+  // without baking a managed.toml. Hard default stays OFF (var unset → no block ⇒ channels stay quiet, no
+  // agent posts). The owner workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID);
+  // a dedicated RELOAD_AGENT_CHANNEL_POSTING_OWNER_WORKSPACE_ID overrides it. Enabling without naming an owner
+  // posts for nobody.
+  const agentChannelPostingEnabled = env.RELOAD_AGENT_CHANNEL_POSTING_ENABLED;
+  const agentChannelPostingOwner = env.RELOAD_AGENT_CHANNEL_POSTING_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (agentChannelPostingEnabled !== undefined || agentChannelPostingOwner) {
+    const agentChannelPosting: Record<string, unknown> = {};
+    if (agentChannelPostingEnabled !== undefined) {
+      agentChannelPosting.enabled =
+        agentChannelPostingEnabled === "true" || agentChannelPostingEnabled === "1";
+    }
+    if (agentChannelPostingOwner) agentChannelPosting.ownerWorkspaceId = agentChannelPostingOwner;
+    raw.agentChannelPosting = agentChannelPosting;
+  }
   // #343: let the deployment env turn the treehouse warm worktree pool on owner-workspace-first without a
   // managed.toml. Hard default stays OFF (vars unset → no block, today's per-session checkout). The owner
   // workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated

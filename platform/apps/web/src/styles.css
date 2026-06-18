@@ -4755,6 +4755,15 @@ select:focus-visible {
 .coordchip { border: 1px solid var(--line); background: var(--bg-1); color: var(--text);
   font: inherit; font-weight: 700; font-size: 12px; border-radius: 99px; padding: 5px 13px; cursor: pointer; }
 .coordchip:hover { background: var(--bg-2); }
+/* #372: the chat-first surface switch (owner workspace only) — a two-tab segmented control that picks the
+   landing surface (Coordination ⇆ Board). Shown only for the named owner; invisible in production. */
+.surfacetabs { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line);
+  background: var(--bg-1); border-radius: 99px; }
+.surfacetab { border: none; background: transparent; color: var(--text-dim); font: inherit; font-weight: 700;
+  font-size: 12px; border-radius: 99px; padding: 4px 13px; cursor: pointer;
+  transition: background 0.15s var(--pop-ease), color 0.15s var(--pop-ease); }
+.surfacetab:hover { color: var(--text); }
+.surfacetab--on { background: var(--bg-2); color: var(--text); }
 .coord { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .coord__head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); flex: none; }
 .coord__title { margin: 0; font-size: 16px; font-weight: 700; }
