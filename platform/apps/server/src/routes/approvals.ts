@@ -10,6 +10,8 @@ import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
 import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
+import { departmentForHandle } from "../marketing/blueprint.js";
+import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
 import { executeApprovedRequest } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
@@ -58,6 +60,10 @@ export async function approvalRoutes(
   const registry = opts.registry ?? defaultRegistry;
   const rbacEnabled = opts.rbacEnabled ?? ((wid: string) => resolveRbacConfig(loadConfig(wid).rbac).enabled);
   const loadMemberRole = opts.loadMemberRole ?? getMemberRole;
+  // #370: when an AGENT's action pauses for a human, the agent @mentions the owner in-channel to surface
+  // this pending #13 gate. Best-effort, gated default-OFF + owner-first — this only NARRATES the existing
+  // gate; it adds no action path and the gate itself is unchanged. Posts nothing unless posting is enabled.
+  const coordinationBridge = createCoordinationChannelBridge();
 
   /**
    * #151: gate clearing an approval on the caller's workspace role when RBAC is enabled. Additive on top
@@ -227,6 +233,20 @@ export async function approvalRoutes(
     // #170: also DM the owner the Approve/Reject buttons in Slack, if connected (best-effort; the hook
     // is a no-op when no Slack bridge is registered, so the #13 gate is unchanged).
     await fireApprovalPending(req.log, request);
+    // #370: if the requester is an agent in a department channel, it @mentions the owner in-channel so the
+    // pending gate is visible in the coordination view (best-effort; no-op unless posting is enabled).
+    if (id.kind === "agent") {
+      const dept = departmentForHandle(id.displayName.toLowerCase());
+      if (dept) {
+        await coordinationBridge.post(wid, {
+          kind: "approval_required",
+          channel: dept.channel,
+          agentHandle: id.displayName,
+          approvalRequestId: request.id,
+          summary,
+        });
+      }
+    }
     return reply.code(202).send({ status: "pending", reason: decision.reason, request });
   });
 

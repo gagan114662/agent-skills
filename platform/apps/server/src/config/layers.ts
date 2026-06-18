@@ -202,6 +202,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #319 agent collaboration policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // spawn-provisioning flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.agentCollaboration !== undefined) out.agentCollaboration = { ...layer.agentCollaboration };
+    // #370 agent→channel posting policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // posting flag + owner-first restriction cannot be loosened by a lower layer.
+    if (layer.agentChannelPosting !== undefined) out.agentChannelPosting = { ...layer.agentChannelPosting };
     // #284 agent Garden policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // manage flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.garden !== undefined) out.garden = { ...layer.garden };
@@ -313,6 +316,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     analytics: merged.analytics ?? { ...CONFIG_DEFAULTS.analytics },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     agentCollaboration: merged.agentCollaboration ?? { ...CONFIG_DEFAULTS.agentCollaboration },
+    agentChannelPosting: merged.agentChannelPosting ?? { ...CONFIG_DEFAULTS.agentChannelPosting },
     garden: merged.garden ?? { ...CONFIG_DEFAULTS.garden },
     worktreePool: merged.worktreePool ?? { ...CONFIG_DEFAULTS.worktreePool },
     openDesign: merged.openDesign ?? { ...CONFIG_DEFAULTS.openDesign },
