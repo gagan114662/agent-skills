@@ -197,6 +197,19 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (hostedBaseHost !== undefined) hostedSites.baseHost = hostedBaseHost;
     raw.hostedSites = hostedSites;
   }
+  // #269 Echo social posting: let the deployment env turn the connect-once aggregator bridge on without a
+  // managed.toml — the owner workspace opts in first (owner marker reuses the established #258
+  // RELOAD_MARKETING_OWNER_WORKSPACE_ID; a dedicated RELOAD_SOCIAL_OWNER_WORKSPACE_ID overrides it). Hard
+  // default stays OFF (vars unset → no block ⇒ no posting). A managed layer still wins as the lock. The HARD
+  // constraint (owner approval before any post fans out — a post is irreversible) is enforced in the service.
+  const socialEnabled = env.RELOAD_SOCIAL_ENABLED;
+  const socialOwner = env.RELOAD_SOCIAL_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (socialEnabled !== undefined || socialOwner) {
+    const social: Record<string, unknown> = {};
+    if (socialEnabled !== undefined) social.enabled = socialEnabled === "true" || socialEnabled === "1";
+    if (socialOwner) social.ownerWorkspaceId = socialOwner;
+    raw.social = social;
+  }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
   // without baking a managed.toml. Hard default stays OFF (vars unset → no block); a managed layer still
   // wins as the lock. The per-agent credential matrix is config-file only (it is a nested map).

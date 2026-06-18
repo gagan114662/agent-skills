@@ -1391,6 +1391,25 @@ export const hostedSitesSchema = z.object({
 });
 
 /**
+ * Echo social-posting policy (#269, ADR-0269). The non-secret knobs for the connect-once aggregator bridge:
+ * the customer connects ONCE and Echo fans a post out to every connected network. DEFAULT-OFF,
+ * owner-workspace-first — exactly like {@link hostedSitesSchema}: `enabled` must be on AND the workspace in
+ * scope (`ownerWorkspaceOnly` defaults true ⇒ only `ownerWorkspaceId` posts). The HARD constraint (a post —
+ * irreversible — ALWAYS pauses for an explicit owner approval) is enforced structurally in the service, not
+ * by a flag here. No credentials live here: the aggregator credential seals into the #192 vault through the
+ * #258 connect-once flow; no live aggregator client is wired in this slice, so the bridge posts nothing real
+ * (dry-run) until an owner connects one.
+ */
+export const socialSchema = z.object({
+  /** Master flag for social posting — default OFF (the feature is fully dark until an owner opts in). */
+  enabled: z.boolean().optional(),
+  /** Restrict posting to the owner workspace (default true). Set false to broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — social posting rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Finance Ledger policy (#194, ADR-0194). All **non-secret** knobs for the accounting layer that posts
  * external receipts into a per-venture ledger, closes the monthly books, and forecasts runway. Every
  * field is optional and defaults to **off** (`enabled: false`), owner-workspace-first: a deployment that
@@ -1540,6 +1559,8 @@ export const settingsSchema = z.object({
   provisioning: provisioningSchema.optional(),
   /** ipop hosted publishing policy (#266): multi-tenant customer blogs + landing pages (default OFF). */
   hostedSites: hostedSitesSchema.optional(),
+  /** Echo social-posting policy (#269): connect-once aggregator bridge, multi-network fan-out (default OFF). */
+  social: socialSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
@@ -1625,6 +1646,7 @@ export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
 export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
+export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
@@ -1754,6 +1776,8 @@ export interface ResolvedConfig {
   provisioning: ProvisioningConfig;
   /** ipop hosted publishing policy (#266). A partial resolved by `resolveHostedSitesFlags`. */
   hostedSites: HostedSitesConfig;
+  /** Echo social-posting policy (#269). A partial resolved by `resolveSocialFlags`. */
+  social: SocialConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
@@ -1840,6 +1864,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   delivery: {},
   provisioning: {},
   hostedSites: {},
+  social: {},
   finance: {},
   monetization: {},
   discovery: {},

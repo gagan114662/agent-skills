@@ -61,6 +61,15 @@ describe("connection registry (#258)", () => {
     }
   });
 
+  it("models the #269 connect-once social AGGREGATOR as one customer OAuth consent (multi-network fan-out)", () => {
+    const d = getConnectionDescriptor("social_aggregator");
+    expect(d?.audience).toBe("customer");
+    expect(d?.auth).toBe("oauth");
+    expect(d?.capabilities).toContain("post_social");
+    // a customer never sees a per-platform developer-portal token
+    expect(d?.envKeys).toEqual([]);
+  });
+
   it("listConnectionDescriptors filters by audience", () => {
     const internal = listConnectionDescriptors({ audience: "internal" });
     expect(internal.every((d) => d.audience === "internal")).toBe(true);

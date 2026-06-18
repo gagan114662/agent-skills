@@ -146,6 +146,7 @@ import type { DnsManager } from "./onboarding/dns/manager.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
 import { hostedRoutes } from "./routes/hosted.js";
+import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
@@ -817,6 +818,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // drafts + parks a #13 approval (nothing goes live without the owner approving); the public serve route
   // returns only `published` pages. Default-OFF, owner-workspace-first.
   app.register(hostedRoutes);
+  // #269 Echo social posting: the connect-once aggregator bridge. `/me/social/*` drafts a post + parks a
+  // #13 approval (a post is irreversible — nothing fans out to a network without the owner approving).
+  // The aggregator is dry-run by default, so nothing posts for real until an owner connects a live one.
+  app.register(socialRoutes);
   // #258 connect-once integrations: the OAuth-first "connect once, the agents do the rest" surface.
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
