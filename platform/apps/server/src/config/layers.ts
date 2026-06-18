@@ -201,6 +201,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #258 Stage 2 connect-once policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // live-flow flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.connectOnce !== undefined) out.connectOnce = { ...layer.connectOnce };
+    // #336 capability-token mint policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // live-mint flag + owner-first restriction + TTL bounds cannot be loosened by a lower layer.
+    if (layer.capabilityTokens !== undefined) out.capabilityTokens = { ...layer.capabilityTokens };
     // #283 SkillOpt-Sleep policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // self-improvement flag + owner-first restriction + gate bounds cannot be loosened by a lower layer.
     if (layer.skillopt !== undefined) out.skillopt = { ...layer.skillopt };
@@ -290,6 +293,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     agentCollaboration: merged.agentCollaboration ?? { ...CONFIG_DEFAULTS.agentCollaboration },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
     connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
+    capabilityTokens: merged.capabilityTokens ?? { ...CONFIG_DEFAULTS.capabilityTokens },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
     durableWorkflow: merged.durableWorkflow ?? { ...CONFIG_DEFAULTS.durableWorkflow },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },

@@ -599,6 +599,30 @@ export const connectOnceSchema = z.object({
 });
 
 /**
+ * Connect-once CAPABILITY-TOKEN mint policy (#336, ADR-0336 — extends #258). Non-secret knobs for the Vercel
+ * "Connect" credential model: agents request a scoped, short-lived, delegated token per action instead of
+ * holding a standing provider secret. `liveMintEnabled` gates whether a real token is ever minted; it
+ * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`, mirrors `connectOnce`): a
+ * deployment that sets nothing mints nothing (every request degrades to the honest `disabled`). Enabling does
+ * NOT bypass the per-action constraints — a `write` (send/post/spend) token still requires a prior owner #13
+ * approval (premortem #200 §4), and the verify provider is dry-run by default (a token reads back as
+ * `unverified` until a live provider is wired). The signing secret is env/#192-vault driven, never here.
+ * `defaultTtlSeconds`/`maxTtlSeconds` bound how short-lived a token is (clamped to a hard [30s, 1h] range).
+ */
+export const capabilityTokensSchema = z.object({
+  /** Whether a real capability token may be minted — default OFF (nothing is minted). */
+  liveMintEnabled: z.boolean().optional(),
+  /** Restrict minting to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Default token TTL (seconds) when a request omits one; clamped to [30s, maxTtlSeconds]. */
+  defaultTtlSeconds: z.number().optional(),
+  /** Maximum token TTL (seconds) a request may ask for; clamped to [30s, 1h]. */
+  maxTtlSeconds: z.number().optional(),
+});
+
+/**
  * Low-commitment signup-entry policy (#300, ADR-0300). Non-secret knobs for the front-door alternatives to
  * the broad-scope Google OAuth wall: a read-only **sample workspace** a prospect can explore before signing
  * up, and **progressive Google scopes** that request only identity at signup and defer Search Console /
@@ -1635,6 +1659,8 @@ export const settingsSchema = z.object({
   connectClaude: connectClaudeSchema.optional(),
   /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
   connectOnce: connectOnceSchema.optional(),
+  /** Capability-token mint policy (#336): scoped, short-lived, delegated per-action tokens (default OFF). */
+  capabilityTokens: capabilityTokensSchema.optional(),
   /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
   skillopt: skilloptSchema.optional(),
   /** Durable-workflow policy (#338): suspend/resume/retry/persist long waits instead of blocking (default OFF, owner-first). */
@@ -1714,6 +1740,7 @@ export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
+export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
 export type DurableWorkflowConfig = z.infer<typeof durableWorkflowSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
@@ -1858,6 +1885,8 @@ export interface ResolvedConfig {
   connectClaude: ConnectClaudeConfig;
   /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
   connectOnce: ConnectOnceConfig;
+  /** Capability-token mint policy (#336). A partial whose hard defaults `resolveCapabilityTokenCaps` fills. */
+  capabilityTokens: CapabilityTokensConfig;
   /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
   skillopt: SkillOptConfig;
   /** Durable-workflow policy (#338). A partial whose hard defaults `resolveDurableWorkflowCaps` fills. */
@@ -1938,6 +1967,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   agentCollaboration: {},
   connectClaude: {},
   connectOnce: {},
+  capabilityTokens: {},
   skillopt: {},
   durableWorkflow: {},
   signupEntry: {},
