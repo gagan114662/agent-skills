@@ -14,7 +14,11 @@ export async function createPublishProvider(
   if (override) return override;
   if (kind === "github_pages") {
     const { GitHubPagesPublishProvider } = await import("./github-pages-provider.js");
-    return new GitHubPagesPublishProvider();
+    // #338: route the post-publish build-wait poll through the durable engine when enabled (owner-first);
+    // default OFF ⇒ the provider's legacy in-process poll runs unchanged. Lazy so the DB store stays off
+    // the default dry-run path.
+    const { defaultPublishBuildWait } = await import("./durable-build-wait.js");
+    return new GitHubPagesPublishProvider(defaultPublishBuildWait());
   }
   return new DryRunPublishProvider();
 }

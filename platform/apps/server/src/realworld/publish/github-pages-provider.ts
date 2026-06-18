@@ -1,4 +1,5 @@
 import type { PublishInput, PublishOutcome, PublishProvider } from "./provider.js";
+import type { PublishBuildWait } from "../../durable-workflow/publish-wait.js";
 
 /**
  * Real publish provider (#231): publishes a self-contained HTML page to **GitHub Pages** and returns a
@@ -14,6 +15,14 @@ import type { PublishInput, PublishOutcome, PublishProvider } from "./provider.j
  */
 export class GitHubPagesPublishProvider implements PublishProvider {
   readonly kind = "github_pages" as const;
+
+  /**
+   * Optional durable build-wait (#338). When injected AND enabled for the publishing workspace (owner-first
+   * flag), the post-publish "wait for the Pages build" poll runs through the durable engine — suspending +
+   * backing off + persisting state across ticks/restarts — instead of the legacy 120s in-process blocking
+   * poll. Absent or flag-OFF ⇒ the legacy loop runs byte-for-byte (today's behavior is unchanged).
+   */
+  constructor(private readonly buildWait?: PublishBuildWait) {}
 
   private readonly api = "https://api.github.com";
   private readonly headers = (token: string): Record<string, string> => ({
@@ -46,7 +55,7 @@ export class GitHubPagesPublishProvider implements PublishProvider {
       await this.ensureRepo(headers, repo, input.onLog);
       await this.putIndex(headers, owner, repo, input.html, input.onLog);
       await this.enablePages(headers, owner, repo, input.onLog);
-      const url = await this.waitForBuild(headers, owner, repo, input.onLog);
+      const url = await this.waitForBuild(headers, owner, repo, input.onLog, input.workspaceId);
 
       input.onLog(`✓ [github_pages] live at ${url}`);
       return { status: "ready", url, providerId: `${owner}/${repo}` };
@@ -145,28 +154,76 @@ export class GitHubPagesPublishProvider implements PublishProvider {
     throw new Error(`github enable pages failed: ${res.status} ${await safeBody(res)}`);
   }
 
+  /**
+   * Wait for the GitHub Pages build to go live and return the URL. Routes through the durable engine (#338)
+   * when an injected {@link PublishBuildWait} is enabled for this workspace (owner-first flag) — the poll
+   * then suspends/backs-off/persists across attempts; otherwise the legacy 120s in-process loop runs
+   * byte-for-byte. Both share {@link pollPagesStatus}, so the externally-observed behavior (log lines,
+   * built URL, deterministic fallback) is identical — only the WAITING mechanism changes behind the flag.
+   */
   private async waitForBuild(
     headers: Record<string, string>,
     owner: string,
     repo: string,
     onLog: (l: string) => void,
+    workspaceId: string,
+  ): Promise<string> {
+    const fallbackUrl = `https://${owner}.github.io/${repo}/`;
+    if (this.buildWait && this.buildWait.enabledFor(workspaceId)) {
+      let lastStatus = "";
+      return this.buildWait.run({
+        workspaceId,
+        key: `${owner}/${repo}`,
+        fallbackUrl,
+        onLog,
+        poll: async () => {
+          const r = await this.pollPagesStatus(headers, owner, repo);
+          if (r.status && r.status !== lastStatus) {
+            lastStatus = r.status;
+            onLog(`  [github_pages] build status: ${r.status}`);
+          }
+          return r.url;
+        },
+      });
+    }
+    return this.legacyWaitForBuild(headers, owner, repo, onLog, fallbackUrl);
+  }
+
+  /** ONE poll of the Pages build status. Returns the live URL when built, else null (still building). */
+  private async pollPagesStatus(
+    headers: Record<string, string>,
+    owner: string,
+    repo: string,
+  ): Promise<{ url: string | null; status: string }> {
+    const res = await fetch(`${this.api}/repos/${owner}/${repo}/pages`, { headers });
+    if (!res.ok) return { url: null, status: "" };
+    const body = (await res.json()) as { status?: string; html_url?: string };
+    const status = body.status ?? "";
+    if (status === "built" && body.html_url) return { url: normalizeUrl(body.html_url), status };
+    return { url: null, status };
+  }
+
+  /** The original in-process blocking poll — preserved as the flag-OFF default (today's behavior). */
+  private async legacyWaitForBuild(
+    headers: Record<string, string>,
+    owner: string,
+    repo: string,
+    onLog: (l: string) => void,
+    fallbackUrl: string,
   ): Promise<string> {
     const deadline = Date.now() + 120_000; // Pages builds can take ~30–90s on first publish.
     let lastStatus = "";
     while (Date.now() < deadline) {
-      const res = await fetch(`${this.api}/repos/${owner}/${repo}/pages`, { headers });
-      if (res.ok) {
-        const body = (await res.json()) as { status?: string; html_url?: string };
-        if (body.status && body.status !== lastStatus) {
-          lastStatus = body.status;
-          onLog(`  [github_pages] build status: ${body.status}`);
-        }
-        if (body.status === "built" && body.html_url) return normalizeUrl(body.html_url);
+      const r = await this.pollPagesStatus(headers, owner, repo);
+      if (r.status && r.status !== lastStatus) {
+        lastStatus = r.status;
+        onLog(`  [github_pages] build status: ${r.status}`);
       }
+      if (r.url) return r.url;
       await sleep(3000);
     }
     // Fall back to the deterministic Pages URL — the page is committed even if the build poll timed out.
-    return `https://${owner}.github.io/${repo}/`;
+    return fallbackUrl;
   }
 }
 

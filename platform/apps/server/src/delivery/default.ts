@@ -18,6 +18,7 @@ import { dbDeliveryReceiptStore } from "../db/repositories/delivery.js";
 import { dryRunSocialProvider, dryRunEspProvider } from "../acquisition/providers.js";
 import { DryRunPublishProvider } from "../realworld/publish/dry-run-provider.js";
 import { GitHubPagesPublishProvider } from "../realworld/publish/github-pages-provider.js";
+import { defaultPublishBuildWait } from "../realworld/publish/durable-build-wait.js";
 import type { PublishProvider } from "../realworld/publish/provider.js";
 import {
   departmentForDeliverableChannel,
@@ -58,7 +59,9 @@ export async function resolveDeliveryDepartment(
  */
 function resolvePublishProvider(): PublishProvider {
   const kind = loadConfig().delivery.publishProvider;
-  return kind === "github_pages" ? new GitHubPagesPublishProvider() : new DryRunPublishProvider();
+  return kind === "github_pages"
+    ? new GitHubPagesPublishProvider(defaultPublishBuildWait())
+    : new DryRunPublishProvider();
 }
 
 /** Build the production delivery dispatcher over the real repos + providers. */

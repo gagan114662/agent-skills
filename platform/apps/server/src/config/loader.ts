@@ -182,6 +182,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (skilloptOwner) skillopt.ownerWorkspaceId = skilloptOwner;
     raw.skillopt = skillopt;
   }
+  // #338: let the deployment env route long waits through the durable-workflow engine owner-workspace-first
+  // without baking a managed.toml. Hard default stays OFF (var unset → no block ⇒ the legacy in-process poll
+  // runs unchanged). The owner workspace reuses the established #258 marker
+  // (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated RELOAD_DURABLE_WORKFLOW_OWNER_WORKSPACE_ID overrides it.
+  // Enabling without naming an owner routes nobody.
+  const durableEnabled = env.RELOAD_DURABLE_WORKFLOW_ENABLED;
+  const durableOwner = env.RELOAD_DURABLE_WORKFLOW_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (durableEnabled !== undefined || durableOwner) {
+    const durableWorkflow: Record<string, unknown> = {};
+    if (durableEnabled !== undefined) {
+      durableWorkflow.enabled = durableEnabled === "true" || durableEnabled === "1";
+    }
+    if (durableOwner) durableWorkflow.ownerWorkspaceId = durableOwner;
+    raw.durableWorkflow = durableWorkflow;
+  }
   // #266 hosted publishing: let the deployment env turn customer hosting on without a managed.toml — the
   // owner workspace opts in first (owner marker reuses the established #258 RELOAD_MARKETING_OWNER_WORKSPACE_ID;
   // a dedicated RELOAD_HOSTEDSITES_OWNER_WORKSPACE_ID overrides it). Hard default stays OFF (vars unset → no
