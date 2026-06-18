@@ -108,6 +108,20 @@ export const HOSTED_PUBLISH_ACTION = "hosted.publish" as const;
 export const OUTREACH_SEND_ACTION = "outreach.send" as const;
 
 /**
+ * #268 a real Postmark email send. Composing an email is free, but pushing it to a real inbox is the most
+ * IRREVERSIBLE acquisition surface (premortem #200 §4: a sent email is in a stranger's inbox forever and burns
+ * sender reputation). So — exactly like `outreach.send` — a live send is sensitive AND irreversible: it ALWAYS
+ * pauses for the owner with the exact recipients + content shown, and is never agent-initiated. It is NOT a
+ * money action; the always-gate is enforced STRUCTURALLY by the email deliverability service (it has no
+ * autonomous send path — `decidePostmarkLiveSend` never returns `proceed:true` without an owner approval id),
+ * not by the money predicate, so it is not in {@link MONEY_ACTIONS}. Like `outreach.send` it is never submitted
+ * through the #13 action route; the email service parks a PENDING request against the same workspace
+ * `approval_policies`. The whole feature is also flag-gated OFF + owner-workspace-first, and the default sender
+ * is dry-run — so a real send requires the flag, a connected Postmark token, AND the owner's per-send yes.
+ */
+export const EMAIL_LIVE_SEND_ACTION = "email.live_send" as const;
+
+/**
  * #280 Reach buys prospect DATA credits. Sending a Reach message is autonomous (not money) — but spending
  * real money on a paid data provider (Clay/Lusha/Vibe) to FIND prospects is a money action: it commits
  * real spend, irreversibly (the credits are consumed on the API call). So Reach money-gates the paid

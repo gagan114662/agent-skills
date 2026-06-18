@@ -14,6 +14,7 @@ import {
 } from "../db/repositories/acquisition.js";
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { SUPPRESSION_REASONS, type SuppressionReason } from "../acquisition/compliance.js";
+import { decideOneClickUnsubscribe } from "../email/one-click-unsubscribe.js";
 
 /**
  * Acquisition execution routes (#189, ADR-0189).
@@ -71,6 +72,14 @@ export async function acquisitionRoutes(app: FastifyInstance): Promise<void> {
       { parseAs: "buffer" },
       (_req, body, done) => done(null, body),
     );
+    // The RFC 8058 one-click unsubscribe POST arrives as `application/x-www-form-urlencoded` (body
+    // `List-Unsubscribe=One-Click`). Its handler reads the recipient + token from the query string, not the
+    // body, so a catch-all buffer passthrough lets any/no body through without a 415.
+    webhookScope.addContentTypeParser(
+      "*",
+      { parseAs: "buffer" },
+      (_req, body, done) => done(null, body),
+    );
     webhookScope.post("/acquisition/esp/webhook/:wid", async (req, reply) => {
       const { wid } = req.params as { wid: string };
       const c = caps(wid);
@@ -100,6 +109,35 @@ export async function acquisitionRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       return reply.code(200).send({ received: true, suppressed: suppressions.length });
+    });
+
+    // The RFC 8058 one-click unsubscribe receiver (#268). The mailbox provider POSTs the `List-Unsubscribe`
+    // URL on the recipient's behalf with body `List-Unsubscribe=One-Click`; the recipient + HMAC token ride
+    // the query string (`?e=<recipient>&u=<token>`). Unauthenticated (it is invoked by a mail client, not a
+    // logged-in user) but UNFORGEABLE: the token must verify for that recipient — so only links we actually
+    // issued work. A verified click adds an `unsubscribe` suppression (reused #189 list). The one-click POST
+    // carries a urlencoded body, hence this scope's buffer passthrough parser.
+    webhookScope.post("/email/unsubscribe/:wid", async (req, reply) => {
+      const { wid } = req.params as { wid: string };
+      const q = (req.query ?? {}) as { e?: string; u?: string };
+      // The unsubscribe HMAC secret lives in the #192 vault under the configured ESP service key.
+      const secrets = await resolveServiceSecrets(wid, caps(wid).espProvider);
+      const secret = secrets.EMAIL_UNSUBSCRIBE_SECRET ?? "";
+      const decision = decideOneClickUnsubscribe({
+        recipient: typeof q.e === "string" ? q.e : "",
+        token: typeof q.u === "string" ? q.u : "",
+        secret,
+      });
+      if (!decision.ok || !decision.recipient) {
+        return reply.code(400).send({ error: "invalid unsubscribe link" });
+      }
+      await addSuppression({
+        workspaceId: wid,
+        recipient: decision.recipient,
+        reason: "unsubscribe",
+        source: "one-click",
+      });
+      return reply.code(200).send({ unsubscribed: true });
     });
   });
 }
