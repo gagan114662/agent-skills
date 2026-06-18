@@ -268,6 +268,22 @@ export function validateConnectAccount(payload: unknown): ValidationResult {
 }
 
 /**
+ * Validate a provisioning customer-spend (#267/#272) — the customer's own money (an ad budget release / email
+ * tier upgrade). A recorded-only MONEY decision the owner gates with the EXACT amount shown. Needs the
+ * `capabilityId` it spends through (e.g. `ads_spend`) and a positive-integer `amountCents`. Recorded-only on
+ * approval; a live spend behind the gate is a deliberate follow-up — the executor never moves money.
+ */
+export function validateProvisioningCustomerSpend(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.capabilityId)) return { ok: false, error: "capabilityId required" };
+  if (typeof p.amountCents !== "number" || !Number.isInteger(p.amountCents) || p.amountCents <= 0) {
+    return { ok: false, error: "amountCents must be a positive integer" };
+  }
+  return { ok: true };
+}
+
+/**
  * Validate a venture payout-settings change (#188) — a recorded-only MONEY decision. Needs a `ventureId`
  * and a non-empty `destination` (where money will route). Recorded-only on approval; the owner makes the
  * change in the venture's own Stripe dashboard (no autonomous payout re-routing).

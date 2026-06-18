@@ -30,6 +30,7 @@ import {
   validateReachDataCreditSpend,
   validateSkillOptAdoptEdit,
   validateConnectAccount,
+  validateProvisioningCustomerSpend,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
@@ -48,6 +49,7 @@ import {
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
+  PROVISIONING_CUSTOMER_SPEND_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -515,6 +517,32 @@ const connectAccount: ActionExecutor = {
 };
 
 /**
+ * Provisioning customer-spend (#267/#272) — the customer's OWN money (an ad budget release for Bid, an email
+ * tier upgrade). A MONEY decision the owner gates with the EXACT amount shown, and IRREVERSIBLE. **Recorded
+ * -only** on approval (`{recorded:true, executed:false}`): approving records the owner's go on the #13 audit
+ * trail; a live ad-API spend behind the gate is a deliberate follow-up, never an autonomous spend. ipop's
+ * billed-in API access (`platform_cost`) is autonomous — only the customer's money reaches this gate.
+ */
+const provisioningCustomerSpend: ActionExecutor = {
+  actionType: PROVISIONING_CUSTOMER_SPEND_ACTION,
+  validate: validateProvisioningCustomerSpend,
+  summarize: (p) =>
+    (
+      `${typeof p.summary === "string" && p.summary ? String(p.summary) : `spend via ${String(p.capabilityId ?? "?")}`}: ` +
+      `${typeof p.amountCents === "number" ? `$${(p.amountCents / 100).toFixed(2)}` : "?"}`
+    ).slice(0, 140),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // a live ad-API / paid spend behind this gate is a deliberate follow-up ADR.
+      capabilityId: typeof payload.capabilityId === "string" ? payload.capabilityId : null,
+      amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+      campaignRef: typeof payload.campaignRef === "string" ? payload.campaignRef : null,
+    });
+  },
+};
+
+/**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), an optional acquisition dispatcher (#189), and an optional delivery dispatcher (#295). The
  * compliance default is a no-op and both dispatchers are absent by default, so the `external.send` executor
@@ -543,6 +571,7 @@ export function buildDefaultRegistry(
     reachDataCreditSpend,
     skillOptAdoptEdit,
     connectAccount,
+    provisioningCustomerSpend,
   ]);
 }
 

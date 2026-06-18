@@ -1372,6 +1372,24 @@ export const provisioningSchema = z.object({
 });
 
 /**
+ * Ads spend policy (#272, ADR-0272). The non-secret knobs for Bid's money-gated ad spend. DEFAULT-OFF,
+ * owner-workspace-first (like {@link provisioningSchema}/{@link connectOnceSchema}). Every ad spend stays a
+ * #13 money-gated `provisioning.customer_spend` (exact amount shown) — this block never bypasses that gate;
+ * it only decides whether the path is OFFERED and the HARD per-action cap. `perActionCapCents` is the
+ * explicit ceiling the system never crosses (default 0 ⇒ no spend approvable until the owner raises it).
+ */
+export const adsSchema = z.object({
+  /** Master switch for the money-gated ad-spend path — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the spend path to the owner workspace (default true). False ⇒ broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the spend path dogfoods here first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** The HARD per-action money cap in cents the system never crosses (default 0 ⇒ fail-closed). */
+  perActionCapCents: z.number().int().nonnegative().optional(),
+});
+
+/**
  * ipop hosted publishing policy (#266, ADR-0266). The non-secret knobs for the multi-tenant customer blog +
  * landing pages ipop hosts (zero repo, zero deploy the customer sees). DEFAULT-OFF, owner-workspace-first —
  * exactly like {@link deliverySchema}: `enabled` must be on AND the workspace in scope (`ownerWorkspaceOnly`
@@ -1557,6 +1575,8 @@ export const settingsSchema = z.object({
   delivery: deliverySchema.optional(),
   /** Central provisioning policy (#267): ipop-held paid data/posting/ads keys billed into the plan (default OFF). */
   provisioning: provisioningSchema.optional(),
+  /** Ads spend policy (#272): Bid's money-gated ad spend path + hard per-action cap (default OFF, owner-first). */
+  ads: adsSchema.optional(),
   /** ipop hosted publishing policy (#266): multi-tenant customer blogs + landing pages (default OFF). */
   hostedSites: hostedSitesSchema.optional(),
   /** Echo social-posting policy (#269): connect-once aggregator bridge, multi-network fan-out (default OFF). */
@@ -1645,6 +1665,7 @@ export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
+export type AdsConfig = z.infer<typeof adsSchema>;
 export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
@@ -1774,6 +1795,8 @@ export interface ResolvedConfig {
   delivery: DeliveryConfig;
   /** Central provisioning policy (#267). A partial whose hard defaults `resolveProvisioningCaps` fills. */
   provisioning: ProvisioningConfig;
+  /** Ads spend policy (#272). A partial whose hard defaults `resolveAdsCaps` fills. */
+  ads: AdsConfig;
   /** ipop hosted publishing policy (#266). A partial resolved by `resolveHostedSitesFlags`. */
   hostedSites: HostedSitesConfig;
   /** Echo social-posting policy (#269). A partial resolved by `resolveSocialFlags`. */
@@ -1863,6 +1886,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   acquisition: {},
   delivery: {},
   provisioning: {},
+  ads: {},
   hostedSites: {},
   social: {},
   finance: {},

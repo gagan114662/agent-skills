@@ -160,6 +160,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #267 central provisioning policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // provisioning flag + owner-workspace scope + provider map cannot be flipped on by a lower layer.
     if (layer.provisioning !== undefined) out.provisioning = { ...layer.provisioning };
+    // #272 ads spend policy: a higher (managed/owner) layer fully owns the block (replace) so the ad-spend
+    // flag + owner-workspace scope + hard per-action cap cannot be flipped on / loosened by a lower layer.
+    if (layer.ads !== undefined) out.ads = { ...layer.ads };
     // #266 hosted publishing: a higher (managed/owner) layer fully owns the block (replace) so the
     // hosting master flag + owner-workspace scope cannot be loosened by a lower layer.
     if (layer.hostedSites !== undefined) out.hostedSites = { ...layer.hostedSites };
@@ -270,6 +273,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     delivery: merged.delivery ?? { ...CONFIG_DEFAULTS.delivery },
     provisioning: merged.provisioning ?? { ...CONFIG_DEFAULTS.provisioning },
+    ads: merged.ads ?? { ...CONFIG_DEFAULTS.ads },
     hostedSites: merged.hostedSites ?? { ...CONFIG_DEFAULTS.hostedSites },
     social: merged.social ?? { ...CONFIG_DEFAULTS.social },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
