@@ -51,6 +51,12 @@ import {
   firstRunPanel,
   shouldAutoRunFirstRun,
 } from "./firstrun.js";
+import {
+  COORDINATION_OWNER_WORKSPACE_ID,
+  COORDINATION_UI_ENABLED,
+  shouldShowCoordination,
+} from "./coordination-flag.js";
+import { CoordinationView } from "./CoordinationView.js";
 
 interface PeekTarget {
   item: ConsoleItem;
@@ -118,6 +124,11 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  // #352: the agent-coordination overlay (reload.chat-style channels/threads/members + live sessions),
+  // gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment names the
+  // owner workspace AND this is that workspace. No new backend: it re-mounts the existing coordination
+  // components which self-wire to the channels/messages/directory store and the #147 mission-control seam.
+  const [coordinationOpen, setCoordinationOpen] = useState(false);
   // Set when the customer lands back from a completed hosted checkout (`?checkout=success`).
   const [checkoutReturned, setCheckoutReturned] = useState(false);
 
@@ -309,6 +320,14 @@ export function ConsoleView(): React.JSX.Element {
 
   const pendingCount = pending.length;
   const forecast = fc ? spendForecast(fc.budget) : null;
+  // #352: the coordination surface shows only when the deployment flag is on AND this is the named owner
+  // workspace (fail-closed — default OFF, named-nobody = nobody). When off, the button never renders and the
+  // overlay can never open, so prod (which sets no coordination env) is byte-for-byte the board it is today.
+  const coordinationEnabled = shouldShowCoordination({
+    flagOn: COORDINATION_UI_ENABLED,
+    ownerWorkspaceId: COORDINATION_OWNER_WORKSPACE_ID,
+    workspaceId,
+  });
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
   const headerTitle = activeProject ? `#${activeProject.name}` : BRAND.name;
 
@@ -538,6 +557,13 @@ export function ConsoleView(): React.JSX.Element {
             </span>
           )}
           <span className="console__sp" />
+          {/* #352: the coordination surface — only ever rendered for the named owner workspace (the gate is
+              fail-closed default-OFF), so it is invisible in production until explicitly enabled. */}
+          {coordinationEnabled && (
+            <button className="coordchip" onClick={() => setCoordinationOpen(true)}>
+              {CONSOLE.coordination.open}
+            </button>
+          )}
           {pendingCount > 0 && (
             <button className="waitchip" onClick={openFirstWaiting}>
               <span className="glyph-dot glyph-dot--wait" aria-hidden="true" />
@@ -659,6 +685,14 @@ export function ConsoleView(): React.JSX.Element {
       {pricingOpen && (
         <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setPricingOpen(false)}>
           <PricingPanel />
+        </ShellOverlay>
+      )}
+
+      {/* #352: the coordination overlay. Guarded by `coordinationEnabled` as well as the open flag so even a
+          stale `coordinationOpen=true` can never reveal the surface once the gate is off. */}
+      {coordinationOpen && coordinationEnabled && (
+        <ShellOverlay title={CONSOLE.coordination.title} onClose={() => setCoordinationOpen(false)}>
+          <CoordinationView />
         </ShellOverlay>
       )}
     </div>

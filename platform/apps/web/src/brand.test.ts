@@ -454,6 +454,9 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/console/ReportsView.tsx",
     "components/console/ProjectSettingsSheet.tsx",
     "components/console/StatusGlyph.tsx",
+    // The agent-coordination surface (#352): the overlay wrapper reads its copy from CONSOLE.coordination
+    // (the orphaned panels it mounts carry their own VOICE copy and are not scanned here).
+    "components/console/CoordinationView.tsx",
     // Settings → Connect external accounts (#192/#231): every word comes from EXTERNAL_ACCOUNTS.
     "components/ExternalAccounts.tsx",
     "components/ExternalAccountsPanel.tsx",
