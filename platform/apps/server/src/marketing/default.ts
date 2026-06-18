@@ -31,6 +31,7 @@ import { buildConnectPrompt, buildModelPrompt } from "./connect-prompt.js";
 import type { MarketingMentionTrigger } from "../messaging/delivery.js";
 import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
+import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
@@ -379,6 +380,9 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
  */
 export function createMarketingBriefService(sessionManager: SessionManager): MarketingBriefService {
   const mention = createMarketingMentionService(sessionManager);
+  // #370: the bridge narrates the lead's kickoff into its channel. Self-gating (default-OFF, owner-first):
+  // posts nothing unless agent→channel posting is enabled for the workspace, so prod channels stay quiet.
+  const coordinationBridge = createCoordinationChannelBridge();
   return new MarketingBriefService({
     resolveLead: (handle) => {
       const d = departmentForHandle(handle);
@@ -404,6 +408,14 @@ export function createMarketingBriefService(sessionManager: SessionManager): Mar
         messageId: input.messageId,
         task: input.task,
       }),
+    notifyKickoff: async (input) => {
+      await coordinationBridge.post(input.workspaceId, {
+        kind: "lead_plan",
+        channel: input.channel,
+        agentHandle: input.agentHandle,
+        goal: input.goal,
+      });
+    },
   });
 }
 
