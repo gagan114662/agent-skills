@@ -34,6 +34,7 @@ import type {
   CredentialStatus,
   AgentModels,
   ClaudeConnectOffer,
+  ClaudeConnectionHealth,
   DepartmentBriefResult,
   DepartmentSeedResult,
   EffortLevel,
@@ -311,6 +312,10 @@ export const api = {
   },
   startClaudeConnect(): Promise<{ authorizeUrl: string }> {
     return request<{ authorizeUrl: string }>("/me/claude/connect/start", { method: "POST" });
+  },
+  // #365: the connection-health signal — connected / not connected / token expired — for the at-a-glance chip.
+  getClaudeHealth(): Promise<{ health: ClaudeConnectionHealth }> {
+    return request<{ health: ClaudeConnectionHealth }>("/me/claude/health");
   },
   // #246: the owner model picker — list the selectable models + set/clear the workspace's fleet model.
   getAgentModels(): Promise<AgentModels> {

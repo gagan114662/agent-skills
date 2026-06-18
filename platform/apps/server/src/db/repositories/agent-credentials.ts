@@ -4,6 +4,10 @@ import { workspaceAgentCredentials } from "../schema/index.js";
 import { seal, open, tokenFingerprint, loadEncKey } from "../../crypto/secretbox.js";
 import { assertModelLaunchable } from "../../runtime/models.js";
 import type { WorkspaceModelRow } from "../../runtime/model-backfill.js";
+import {
+  deriveClaudeConnectionHealth,
+  type ClaudeConnectionHealthResult,
+} from "../../auth/claude-connect-health.js";
 
 /**
  * Per-tenant Claude subscription credentials vault (#68, ADR-0068).
@@ -22,6 +26,11 @@ export interface CredentialStatus {
   connectedAt: Date | null;
   /** The owner-picked fleet model for this workspace (#246); null ⇒ the deployment default. */
   model: string | null;
+  /**
+   * When a real agent launch last OBSERVED this workspace's stored credential as unusable (#365), or null
+   * when none observed. Drives the `expired` connection-health state. Never a token — only a timestamp.
+   */
+  lastAuthFailureAt: Date | null;
 }
 
 /** Connect (or re-connect) a workspace's Claude subscription token. Last write wins. */
@@ -52,6 +61,9 @@ export async function setWorkspaceClaudeToken(input: {
         connectedByMemberId: input.connectedByMemberId ?? null,
         connectedAt: now,
         updatedAt: now,
+        // #365: a (re)connect clears any prior observed auth failure (last write wins) so the health
+        // signal flips back to `connected` immediately — reversible, never a sticky false "expired".
+        lastAuthFailureAt: null,
         // #246: deliberately NOT in the conflict SET — reconnecting a token preserves the owner's model pick.
       },
     });
@@ -139,12 +151,52 @@ export async function getCredentialStatus(workspaceId: string): Promise<Credenti
       fingerprint: workspaceAgentCredentials.tokenFingerprint,
       connectedAt: workspaceAgentCredentials.connectedAt,
       model: workspaceAgentCredentials.model,
+      lastAuthFailureAt: workspaceAgentCredentials.lastAuthFailureAt,
     })
     .from(workspaceAgentCredentials)
     .where(eq(workspaceAgentCredentials.workspaceId, workspaceId))
     .limit(1);
-  if (!row) return { connected: false, fingerprint: null, connectedAt: null, model: null };
-  return { connected: true, fingerprint: row.fingerprint, connectedAt: row.connectedAt, model: row.model };
+  if (!row) {
+    return { connected: false, fingerprint: null, connectedAt: null, model: null, lastAuthFailureAt: null };
+  }
+  return {
+    connected: true,
+    fingerprint: row.fingerprint,
+    connectedAt: row.connectedAt,
+    model: row.model,
+    lastAuthFailureAt: row.lastAuthFailureAt,
+  };
+}
+
+/**
+ * The owner-facing connection health (#365) — connected / not connected / token expired — derived purely
+ * from the vault, with NO live call and NO token access. The single source of truth the `/me/claude/health`
+ * route and the console chip read, so what the owner sees can never disagree with what the runtime would do.
+ */
+export async function getClaudeConnectionHealth(
+  workspaceId: string,
+): Promise<ClaudeConnectionHealthResult> {
+  const status = await getCredentialStatus(workspaceId);
+  return deriveClaudeConnectionHealth({
+    connected: status.connected,
+    connectedAt: status.connectedAt,
+    lastAuthFailureAt: status.lastAuthFailureAt,
+  });
+}
+
+/**
+ * Record that a real agent launch OBSERVED this workspace's stored credential as unusable (#365) — a
+ * removed/blanked/undecryptable token despite a connected row. Stamps `last_auth_failure_at`, which flips
+ * the health signal to `expired` (reconnect clears it). A pure UPDATE scoped to an EXISTING row: it never
+ * inserts, so an unconnected workspace stays `not_connected` and this never fabricates a credential. Never
+ * touches the token. Idempotent — re-stamping is harmless.
+ */
+export async function recordClaudeAuthFailure(workspaceId: string): Promise<void> {
+  const now = new Date();
+  await db
+    .update(workspaceAgentCredentials)
+    .set({ lastAuthFailureAt: now, updatedAt: now })
+    .where(eq(workspaceAgentCredentials.workspaceId, workspaceId));
 }
 
 /** Disconnect a workspace's subscription (idempotent). */

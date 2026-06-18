@@ -160,3 +160,48 @@ describe("claude-connect (#262) — owner workspace, managed flow enabled", () =
     }
   });
 });
+
+describe("claude-connect health (#365) — GET /me/claude/health", () => {
+  it("requires auth (401 without a session)", async () => {
+    const app = buildApp();
+    try {
+      const res = await app.inject({ method: "GET", url: "/me/claude/health" });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("reports not_connected for a fresh workspace, then connected after a paste, scoped to the caller", async () => {
+    const app = buildApp();
+    try {
+      const { cookie, workspaceId } = await seed(app);
+
+      const before = (
+        await app.inject({ method: "GET", url: "/me/claude/health", cookies: { rid: cookie } })
+      ).json();
+      expect(before.health.state).toBe("not_connected");
+      expect(before.health.reason).toMatch(/connect/i);
+
+      // Connect via the manual paste path (PUT /me/agent-credentials) — the robust, always-available path.
+      const put = await app.inject({
+        method: "PUT",
+        url: "/me/agent-credentials",
+        cookies: { rid: cookie },
+        payload: { token: "sk-ant-oat-health" },
+      });
+      expect(put.statusCode).toBe(200);
+      void workspaceId;
+
+      const after = (
+        await app.inject({ method: "GET", url: "/me/claude/health", cookies: { rid: cookie } })
+      ).json();
+      expect(after.health.state).toBe("connected");
+      expect(after.health.reason).toBeNull();
+      // Never leaks the token through the health surface.
+      expect(JSON.stringify(after)).not.toContain("sk-ant-oat-health");
+    } finally {
+      await app.close();
+    }
+  });
+});

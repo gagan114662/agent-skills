@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
-import type { CredentialStatus, ClaudeConnectOffer } from "../api/types.js";
+import type { CredentialStatus, ClaudeConnectOffer, ClaudeConnectionHealth } from "../api/types.js";
 import { ConnectClaude } from "./ConnectClaude.js";
 
 /** Advanced model override is dev/admin only — never in the normal production user flow. */
@@ -20,6 +20,7 @@ const ADVANCED_MODEL_OVERRIDE = import.meta.env.DEV;
 export function ConnectClaudePanel(): React.JSX.Element {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
   const [offer, setOffer] = useState<ClaudeConnectOffer | undefined>(undefined);
+  const [health, setHealth] = useState<ClaudeConnectionHealth | undefined>(undefined);
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -31,6 +32,15 @@ export function ConnectClaudePanel(): React.JSX.Element {
       .getAgentCredentials()
       .then((s) => live && setStatus(s))
       .catch(() => live && setStatus({ connected: false, fingerprint: null }));
+    // #365: the connection-health signal (connected / not connected / token expired). Surfaced so an
+    // expired token shows "reconnect" instead of a misleading "✅ Connected". A failed fetch just leaves
+    // health undefined → today's connected/not-connected behavior.
+    void api
+      .getClaudeHealth()
+      .then((r) => live && setHealth(r.health))
+      .catch(() => {
+        /* leave health undefined → no expired override */
+      });
     // #262: which connect method to feature (managed one-click vs the Advanced paste). The paste path
     // always works regardless, so a failed offer fetch just leaves the panel on today's behavior.
     void api
@@ -62,6 +72,12 @@ export function ConnectClaudePanel(): React.JSX.Element {
     setError(null);
     try {
       setStatus(await action());
+      // #365: a (re)connect/disconnect changes health (a reconnect clears `expired`); refresh so the
+      // panel's warning is never stale. Best-effort — a failed refresh just leaves the prior signal.
+      await api
+        .getClaudeHealth()
+        .then((r) => setHealth(r.health))
+        .catch(() => undefined);
     } catch {
       setError("Couldn't update your Claude connection. Please try again.");
     } finally {
@@ -90,6 +106,7 @@ export function ConnectClaudePanel(): React.JSX.Element {
         busy={busy}
         error={error}
         offer={offer}
+        health={health}
         advanced={ADVANCED_MODEL_OVERRIDE}
         models={models}
         defaultModel={defaultModel}

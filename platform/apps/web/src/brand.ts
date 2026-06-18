@@ -833,6 +833,19 @@ export const CONSOLE = {
   legend: { caption: "edge colour = department" },
   /** Fleet-health dot copy (header). */
   health: { healthy: "fleet healthy", attention: "needs a human" },
+  /**
+   * Connection-health chip (#365) — the at-a-glance "is the fleet actually able to run?" signal in the
+   * header. Shown only for the named owner workspace (default-OFF, owner-first via `connect-health-flag`).
+   * `connected` is a quiet confirmation; `notConnected`/`expired` are a button that opens Settings →
+   * Connect Claude — the one owner action that unlocks real agent runs on the subscription token.
+   */
+  connectHealth: {
+    /** Accessible label for the chip. */
+    label: "Claude connection",
+    connected: "Claude connected",
+    notConnected: "Connect Claude to run your fleet",
+    expired: "Reconnect Claude — token stopped working",
+  },
   /** Spend-gauge forecast labels + the inline upgrade CTA (the in-header path to a paid plan). */
   gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set", upgrade: "Upgrade" },
   /** Confirmation banner shown when a customer lands back in the app from a completed checkout. */

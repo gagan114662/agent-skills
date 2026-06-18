@@ -4733,6 +4733,17 @@ select:focus-visible {
 .waitchip:hover { background: #ffcdc0; }
 .waitchip .glyph-dot { width: 6px; height: 6px; }
 
+/* #365: the connection-health chip — connected (quiet) / not connected / token expired (actionable). */
+.connhealth { display: inline-flex; align-items: center; gap: 6px; font-family: var(--console-mono);
+  font-size: 9.5px; font-weight: 700; border-radius: 99px; padding: 4px 11px; border: 1px solid transparent; }
+.connhealth i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.connhealth--ok { color: var(--text-dim); background: transparent; }
+.connhealth--ok i { background: var(--online); }
+.connhealth--off, .connhealth--expired { cursor: pointer; font: inherit; font-weight: 700; font-size: 12px;
+  padding: 5px 13px; background: var(--accent-dim); color: var(--accent-press); border: none; }
+.connhealth--off:hover, .connhealth--expired:hover { background: #ffcdc0; }
+.connhealth--expired i, .connhealth--off i { background: var(--accent-press); }
+
 /* #352: the coordination header chip + the coordination overlay surface. */
 .coordchip { border: 1px solid var(--line); background: var(--bg-1); color: var(--text);
   font: inherit; font-weight: 700; font-size: 12px; border-radius: 99px; padding: 5px 13px; cursor: pointer; }
