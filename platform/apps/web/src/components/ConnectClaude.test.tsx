@@ -134,4 +134,35 @@ describe("ConnectClaude (#68)", () => {
     expect(screen.getByText(/rolling out/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
   });
+
+  it("#365: an expired token shows a reconnect warning and the connect path — never a false ✅ Connected", () => {
+    render(
+      <ConnectClaude
+        // The row still exists (connected:true), but the stored token stopped working.
+        status={{ connected: true, fingerprint: "fp" }}
+        health={{ state: "expired", reason: "your token stopped working" }}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+      />,
+    );
+    // No misleading "✅ Connected" / Disconnect; instead the honest reconnect warning + the connect path.
+    expect(screen.getByRole("alert").textContent).toMatch(/stopped working/i);
+    expect(screen.queryByRole("button", { name: /disconnect/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/not connected/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/token/i)).toBeInTheDocument();
+  });
+
+  it("#365: a healthy connected token is unaffected — still shows Connected + Disconnect", () => {
+    render(
+      <ConnectClaude
+        status={{ connected: true, fingerprint: "fp" }}
+        health={{ state: "connected", reason: null }}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+      />,
+    );
+    expect(screen.getByText(/connected/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /disconnect/i })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

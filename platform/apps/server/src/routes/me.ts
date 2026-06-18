@@ -65,7 +65,7 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     await clearWorkspaceClaudeToken(identity.workspaceId);
-    return { connected: false, fingerprint: null, connectedAt: null, model: null };
+    return { connected: false, fingerprint: null, connectedAt: null, model: null, lastAuthFailureAt: null };
   });
 
   // The set of models the owner picker may select — those known to resolve on the subscription (#246),

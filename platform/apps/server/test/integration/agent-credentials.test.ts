@@ -9,6 +9,8 @@ import {
   getWorkspaceClaudeToken,
   getCredentialStatus,
   clearWorkspaceClaudeToken,
+  recordClaudeAuthFailure,
+  getClaudeConnectionHealth,
 } from "../../src/db/repositories/agent-credentials.js";
 
 /**
@@ -77,5 +79,38 @@ describe("agent-credentials vault (#68)", () => {
     await clearWorkspaceClaudeToken(ws);
     expect(await getWorkspaceClaudeToken(ws)).toBeNull();
     expect((await getCredentialStatus(ws)).connected).toBe(false);
+  });
+
+  // #365 — connection-health signal: connected / not connected / token expired.
+  it("reports not_connected for a workspace that never connected", async () => {
+    const ws = await freshWorkspace();
+    expect((await getClaudeConnectionHealth(ws)).state).toBe("not_connected");
+  });
+
+  it("reports connected once a token is in the vault, with no observed failure", async () => {
+    const ws = await freshWorkspace();
+    await setWorkspaceClaudeToken({ workspaceId: ws, token: "live-token" });
+    expect((await getClaudeConnectionHealth(ws)).state).toBe("connected");
+    expect((await getCredentialStatus(ws)).lastAuthFailureAt).toBeNull();
+  });
+
+  it("flips to expired after an observed auth failure, and back to connected on re-connect", async () => {
+    const ws = await freshWorkspace();
+    await setWorkspaceClaudeToken({ workspaceId: ws, token: "stale-token" });
+    await recordClaudeAuthFailure(ws);
+    const expired = await getClaudeConnectionHealth(ws);
+    expect(expired.state).toBe("expired");
+    expect(expired.reason).toMatch(/reconnect/i);
+    // Reconnecting clears the failure marker (last write wins) → healthy again.
+    await setWorkspaceClaudeToken({ workspaceId: ws, token: "fresh-token" });
+    expect((await getCredentialStatus(ws)).lastAuthFailureAt).toBeNull();
+    expect((await getClaudeConnectionHealth(ws)).state).toBe("connected");
+  });
+
+  it("recording a failure for a never-connected workspace is a no-op (never fabricates a credential)", async () => {
+    const ws = await freshWorkspace();
+    await recordClaudeAuthFailure(ws);
+    expect((await getCredentialStatus(ws)).connected).toBe(false);
+    expect((await getClaudeConnectionHealth(ws)).state).toBe("not_connected");
   });
 });

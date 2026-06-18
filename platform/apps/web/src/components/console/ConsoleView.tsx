@@ -20,7 +20,7 @@ import type { ApprovalRequestDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { api, ApiError, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
-import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import type { ClaudeConnectionHealth, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
 import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
@@ -57,6 +57,12 @@ import {
   shouldShowCoordination,
 } from "./coordination-flag.js";
 import { CoordinationView } from "./CoordinationView.js";
+import { ConnectHealthChip } from "./ConnectHealthChip.js";
+import {
+  CONNECT_HEALTH_OWNER_WORKSPACE_ID,
+  CONNECT_HEALTH_UI_ENABLED,
+  shouldShowConnectHealth,
+} from "./connect-health-flag.js";
 
 interface PeekTarget {
   item: ConsoleItem;
@@ -109,6 +115,14 @@ export function ConsoleView(): React.JSX.Element {
   const { identity, channels, directory, messagesByChannel, paywall } = useAppState();
   const store = useStore();
   const workspaceId = identity?.workspaceId;
+  // #365: the connection-health chip shows only for the named owner workspace (fail-closed default-OFF), so
+  // prod (which sets no env) is byte-for-byte the board it is today. Declared here so the health-fetch
+  // effect below can gate on it.
+  const connectHealthEnabled = shouldShowConnectHealth({
+    flagOn: CONNECT_HEALTH_UI_ENABLED,
+    ownerWorkspaceId: CONNECT_HEALTH_OWNER_WORKSPACE_ID,
+    workspaceId,
+  });
 
   const [mc, setMc] = useState<MissionControlDto | null>(null);
   const [fc, setFc] = useState<FounderConsoleDto | null>(null);
@@ -129,6 +143,9 @@ export function ConsoleView(): React.JSX.Element {
   // owner workspace AND this is that workspace. No new backend: it re-mounts the existing coordination
   // components which self-wire to the channels/messages/directory store and the #147 mission-control seam.
   const [coordinationOpen, setCoordinationOpen] = useState(false);
+  // #365: the owner's Claude connection-health signal (connected / not connected / token expired), shown
+  // as a header chip ONLY for the named owner workspace (default-OFF, owner-first via connect-health-flag).
+  const [claudeHealth, setClaudeHealth] = useState<ClaudeConnectionHealth | null>(null);
   // Set when the customer lands back from a completed hosted checkout (`?checkout=success`).
   const [checkoutReturned, setCheckoutReturned] = useState(false);
 
@@ -239,6 +256,23 @@ export function ConsoleView(): React.JSX.Element {
     const timer = window.setInterval(() => void tick(), 4000);
     return () => window.clearInterval(timer);
   }, [workspaceId]);
+
+  // #365: refresh the connection-health chip on mount and whenever Settings closes (so reconnecting in the
+  // Connect-Claude panel updates the chip immediately, not on a later poll). Only fetches for the named
+  // owner workspace; a transient failure leaves the prior snapshot (or null → the chip renders nothing).
+  useEffect(() => {
+    if (!connectHealthEnabled || !workspaceId) return;
+    let live = true;
+    void api
+      .getClaudeHealth()
+      .then((r) => live && mounted.current && setClaudeHealth(r.health))
+      .catch(() => {
+        /* leave prior snapshot; the chip never shows a wrong/faked state */
+      });
+    return () => {
+      live = false;
+    };
+  }, [connectHealthEnabled, workspaceId, shellSettingsOpen]);
 
   // #248: the owner can stop a runaway agent straight from the board. The backend cancel works even
   // for an orphaned/stuck session (it force-finalizes the row), so the WIP card always clears. Refresh
@@ -555,6 +589,12 @@ export function ConsoleView(): React.JSX.Element {
                 <span className="fleet-health__reason"> — {fc.attention.reasons[0]}</span>
               )}
             </span>
+          )}
+          {/* #365: the connection-health chip — connected / not connected / token expired. Owner-first +
+              default-OFF, so it is invisible in production until the owner opts in. When the fleet can't run
+              it IS the button to Connect Claude (the one action that unlocks real agent runs). */}
+          {connectHealthEnabled && (
+            <ConnectHealthChip health={claudeHealth} onConnect={() => setShellSettingsOpen(true)} />
           )}
           <span className="console__sp" />
           {/* #352: the coordination surface — only ever rendered for the named owner workspace (the gate is

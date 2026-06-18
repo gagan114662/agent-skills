@@ -22,6 +22,12 @@ export interface ConnectClaudeOffer {
   reason: string | null;
 }
 
+/** The connection-health signal (#365): the tri-state the panel surfaces where the owner fixes it. */
+export interface ConnectClaudeHealth {
+  state: "not_connected" | "connected" | "expired";
+  reason: string | null;
+}
+
 export interface ConnectClaudeProps {
   /** Current credential state, or null while loading. */
   status: ConnectClaudeStatus | null;
@@ -38,6 +44,12 @@ export interface ConnectClaudeProps {
    * never left unable to connect.
    */
   offer?: ConnectClaudeOffer;
+  /**
+   * The connection-health signal (#365). When `expired` (the stored token stopped working) the panel shows
+   * a prominent "reconnect" warning and the connect affordances INSTEAD of a misleading "✅ Connected", so
+   * the owner is never told the fleet is live when it isn't. Undefined ⇒ today's connected/not-connected.
+   */
+  health?: ConnectClaudeHealth;
   /** Begin the managed one-click flow (redirects to consent). Required for the managed button to act. */
   onStartManagedConnect?: () => void;
   /**
@@ -55,10 +67,15 @@ export interface ConnectClaudeProps {
 }
 
 export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
-  const { status, busy, error, onConnect, onDisconnect, advanced, models, defaultModel, onSelectModel, offer, onStartManagedConnect } = props;
+  const { status, busy, error, onConnect, onDisconnect, advanced, models, defaultModel, onSelectModel, offer, health, onStartManagedConnect } = props;
   const [token, setToken] = useState("");
   const managedAvailable = offer?.managed === true && offer.status === "available" && !!onStartManagedConnect;
   const managedComingSoon = offer?.managed === true && offer.status === "coming_soon";
+  // #365: an expired credential still has a row (status.connected === true), so without this the panel would
+  // claim "✅ Connected" while the fleet can't run. Treat expired as "needs reconnect": show the warning +
+  // the connect affordances, never the connected confirmation.
+  const expired = health?.state === "expired";
+  const showConnected = status?.connected === true && !expired;
 
   return (
     <div className="connect-claude">
@@ -68,9 +85,17 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
         stored encrypted and never shown again.
       </p>
 
+      {/* #365: when the connected token has stopped working, lead with an honest, actionable warning — the
+          owner sees "reconnect", never a false "all good". */}
+      {expired ? (
+        <p className="connect-claude__error" role="alert">
+          ⚠️ {health?.reason ?? "Your connected Claude token stopped working — reconnect to bring your fleet back online."}
+        </p>
+      ) : null}
+
       {status === null ? (
         <p className="connect-claude__status">Loading…</p>
-      ) : status.connected ? (
+      ) : showConnected ? (
         <div className="connect-claude__connected">
           <p className="connect-claude__status" role="status">
             ✅ Connected{status.fingerprint ? ` · ${status.fingerprint}` : ""}

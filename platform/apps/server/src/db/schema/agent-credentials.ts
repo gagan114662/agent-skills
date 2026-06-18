@@ -36,4 +36,11 @@ export const workspaceAgentCredentials = pgTable("workspace_agent_credentials", 
   }),
   connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * When a real agent launch last found this workspace's stored credential UNUSABLE despite a connected
+   * row (#365) — a removed/blanked/undecryptable token. NULL ⇒ no failure observed. Drives the `expired`
+   * connection-health state (`auth/claude-connect-health.ts`); cleared on every (re)connect (last write
+   * wins). NEVER a token — only a timestamp, so the #365 "build the flow, not the secret" boundary holds.
+   */
+  lastAuthFailureAt: timestamp("last_auth_failure_at", { withTimezone: true }),
 });

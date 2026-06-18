@@ -12,7 +12,10 @@ import {
   type ClaudeConnectProvider,
   type ConnectClaudeCaps,
 } from "../auth/claude-connect.js";
-import { setWorkspaceClaudeToken } from "../db/repositories/agent-credentials.js";
+import {
+  setWorkspaceClaudeToken,
+  getClaudeConnectionHealth,
+} from "../db/repositories/agent-credentials.js";
 
 /**
  * Connect Claude without a CLI token (#262, ADR-0262) — the in-app, one-click replacement for pasting a
@@ -64,6 +67,16 @@ export async function claudeConnectRoutes(
       liveProviderConfigured: provider.live,
     });
     return { offer };
+  });
+
+  // #365: the owner's connection-health signal — connected / not connected / token expired — so they can
+  // see at a glance whether the fleet can actually run on the subscription token (#246). Derived purely
+  // from the per-tenant vault; NEVER returns the token. `/me/*`-scoped to the caller's own workspace (#3).
+  app.get("/me/claude/health", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const health = await getClaudeConnectionHealth(identity.workspaceId);
+    return { health };
   });
 
   app.post("/me/claude/connect/start", async (req, reply) => {

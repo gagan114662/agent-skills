@@ -25,7 +25,7 @@ import { loadConfig } from "../config/loader.js";
 import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
 import { createAgentAuthResolver } from "../runtime/auth-default.js";
-import { getWorkspaceClaudeModel } from "../db/repositories/agent-credentials.js";
+import { getWorkspaceClaudeModel, recordClaudeAuthFailure } from "../db/repositories/agent-credentials.js";
 import { effectiveModel, isKnownModel } from "../runtime/models.js";
 import { buildConnectPrompt, buildModelPrompt } from "./connect-prompt.js";
 import type { MarketingMentionTrigger } from "../messaging/delivery.js";
@@ -288,6 +288,10 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
     auth: {
       required: harnessRequiresAuth(loadEnv().agent.harness),
       hasAuth: async (workspaceId) => (await authResolver.resolve(workspaceId)).mode !== "none",
+      // #365: when a launch is denied for missing auth, stamp the connection-health signal. Row-scoped, so
+      // it is a no-op for a never-connected workspace and only flips a CONNECTED workspace whose stored
+      // token no longer resolves to `expired` (→ "reconnect"). Never changes the gate's decision.
+      onAuthUnavailable: async (workspaceId) => recordClaudeAuthFailure(workspaceId),
       postConnectPrompt: async (input) =>
         channelPoster.post({
           workspaceId: input.workspaceId,

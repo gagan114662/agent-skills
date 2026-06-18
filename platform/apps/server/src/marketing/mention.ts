@@ -38,6 +38,13 @@ export interface MarketingAuthGate {
     personaName: string;
     parentMessageId: string;
   }): Promise<{ id: string }>;
+  /**
+   * Optional (#365): record that a real launch found this workspace's auth UNUSABLE. Best-effort and
+   * side-effect-only — it NEVER changes the gate's launch/no-launch decision. The recorder is a row-scoped
+   * UPDATE, so it is a no-op for a never-connected workspace (no row) and stamps the `expired` health
+   * signal only for a workspace that HAS a connected credential whose stored token no longer works.
+   */
+  onAuthUnavailable?(workspaceId: string): Promise<void>;
 }
 
 /** A persona that was @mentioned but couldn't run because the workspace has no Claude connected. */
@@ -204,6 +211,16 @@ export class MarketingMentionService {
       // for the default posture and every existing test.
       const gate = this.deps.auth;
       if (gate?.required && !(await gate.hasAuth(identity.workspaceId))) {
+        // #365: observe the unusable-auth event so the owner's connection-health signal can flip to
+        // `expired` (no-op for a never-connected workspace). Best-effort — a recorder failure must never
+        // block the connect prompt, which is the user-facing point of this branch.
+        if (gate.onAuthUnavailable) {
+          try {
+            await gate.onAuthUnavailable(identity.workspaceId);
+          } catch {
+            /* best-effort health signal; never blocks the connect prompt */
+          }
+        }
         const posted = await gate.postConnectPrompt({
           workspaceId: identity.workspaceId,
           channelId: input.channelId,

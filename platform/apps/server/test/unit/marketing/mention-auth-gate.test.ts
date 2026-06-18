@@ -103,4 +103,35 @@ describe("#68 mention auth gate", () => {
     await new MarketingMentionService(d).launch(identity, { channelId: "c-seo", messageId: "m-1" });
     expect(hasAuth).toHaveBeenCalledWith("ws-1");
   });
+
+  it("#365: records the unusable-auth observation (scoped to the caller) when auth is missing", async () => {
+    const { deps: d, postConnectPrompt } = deps();
+    const onAuthUnavailable = vi.fn(async () => {});
+    d.auth = gate({ required: true, hasAuth: async () => false, onAuthUnavailable }, postConnectPrompt);
+
+    await new MarketingMentionService(d).launch(identity, { channelId: "c-seo", messageId: "m-1" });
+    expect(onAuthUnavailable).toHaveBeenCalledWith("ws-1");
+  });
+
+  it("#365: a failing observation recorder NEVER blocks the connect prompt (best-effort)", async () => {
+    const { deps: d, postConnectPrompt } = deps();
+    const onAuthUnavailable = vi.fn(async () => {
+      throw new Error("db blip");
+    });
+    d.auth = gate({ required: true, hasAuth: async () => false, onAuthUnavailable }, postConnectPrompt);
+
+    const res = await new MarketingMentionService(d).launch(identity, { channelId: "c-seo", messageId: "m-1" });
+    expect(res.ok).toBe(true);
+    // The user-facing connect prompt still posts despite the recorder throwing.
+    expect(postConnectPrompt).toHaveBeenCalledOnce();
+  });
+
+  it("#365: does NOT record an observation when auth is present (a healthy launch)", async () => {
+    const { deps: d, postConnectPrompt } = deps();
+    const onAuthUnavailable = vi.fn(async () => {});
+    d.auth = gate({ required: true, hasAuth: async () => true, onAuthUnavailable }, postConnectPrompt);
+
+    await new MarketingMentionService(d).launch(identity, { channelId: "c-seo", messageId: "m-1" });
+    expect(onAuthUnavailable).not.toHaveBeenCalled();
+  });
 });

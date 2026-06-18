@@ -23,6 +23,18 @@ export interface CredentialStatus {
   connectedAt?: string | null;
   /** The owner-picked fleet model (#246); null ⇒ the deployment default. */
   model?: string | null;
+  /** When the stored credential was last observed unusable (#365); null ⇒ none observed. */
+  lastAuthFailureAt?: string | null;
+}
+
+/** Connection-health state (#365): the tri-state the owner sees at a glance. */
+export type ClaudeConnectionHealthState = "not_connected" | "connected" | "expired";
+
+/** The connection-health signal (#365), from `GET /me/claude/health`. Derived purely; never a token. */
+export interface ClaudeConnectionHealth {
+  state: ClaudeConnectionHealthState;
+  /** A short, owner-facing reason; present only when the connection needs the owner's attention. */
+  reason: string | null;
 }
 
 /** The selectable fleet models (#246), from `GET /me/agent-models`. */
