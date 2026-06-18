@@ -179,6 +179,9 @@ import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
 import { createDefaultAdsService } from "./ads/default.js";
+import { enterpriseRoutes } from "./routes/enterprise.js";
+import { createDefaultEnterpriseService, enterpriseCapsFor } from "./enterprise/default.js";
+import { createEnterprisePassportHook } from "./enterprise/passport-gate.js";
 import { seoRoutes } from "./routes/seo.js";
 import { createDefaultSeoRankService } from "./seo/default.js";
 import { searchConsoleRoutes } from "./routes/search-console.js";
@@ -727,6 +730,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // resolves to the free mock path and no central vault is read.
   const provisioningService = createDefaultProvisioningService();
   const adsService = createDefaultAdsService();
+  // #340 enterprise layer: per-agent + per-customer usage metering, hard budget caps (also backing bid's money
+  // caps), and the Passport IdP/SSO gate. Default-OFF + owner-workspace-first: with no `enterprise.enabled` set
+  // it meters nothing live, enforces no cap, and the Passport gate is open (existing auth unchanged).
+  const enterpriseService = createDefaultEnterpriseService();
+  // Register the Passport IdP/SSO gate as an onRequest hook BEFORE the routes it protects. It is a no-op
+  // unless `enterprise.passportEnabled` is on for the caller's workspace (default-OFF, owner-first), so it
+  // never weakens existing auth; when enabled it refuses any internal request lacking a verified, allow-listed
+  // IdP assertion. The default resolver returns no assertion (fail-closed) until a real IdP resolver is wired.
+  app.addHook("onRequest", createEnterprisePassportHook({ loadCaps: enterpriseCapsFor }));
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -871,6 +883,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });
   app.register(adsRoutes, { service: adsService });
+  // #340 enterprise layer read surface: metered usage per agent + per customer, and the budget caps. The
+  // Passport gate (a default-OFF onRequest hook) is registered above — a no-op unless an owner enables it.
+  app.register(enterpriseRoutes, { service: enterpriseService });
   app.register(seoRoutes, { service: seoRankService });
   app.register(searchConsoleRoutes, { service: searchConsoleService });
   app.register(semanticRoutes, { service: semanticService });

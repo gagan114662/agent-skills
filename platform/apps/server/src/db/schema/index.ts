@@ -70,6 +70,7 @@ export * from "./seo.js";
 export * from "./search-console.js";
 export * from "./delivery.js";
 export * from "./provisioning.js";
+export * from "./enterprise.js";
 export * from "./hosted.js";
 export * from "./social.js";
 export * from "./analytics.js";

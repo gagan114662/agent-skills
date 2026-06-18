@@ -528,6 +528,24 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     }
     raw.ads = ads;
   }
+  // #340 enterprise layer: let the deployment env turn the metering+caps layer on + name the owner workspace
+  // (and optionally enforce the Passport gate) without a managed.toml — the owner workspace opts in first,
+  // reusing the #258 marker. Hard default stays OFF (vars unset → no block ⇒ no live metering, no enforced
+  // cap, Passport open). A managed layer still wins as the lock. No credential is ever env/config here.
+  const enterpriseEnabled = env.RELOAD_ENTERPRISE_ENABLED;
+  const enterprisePassport = env.RELOAD_ENTERPRISE_PASSPORT_ENABLED;
+  const enterpriseOwner = env.RELOAD_ENTERPRISE_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (enterpriseEnabled !== undefined || enterprisePassport !== undefined || enterpriseOwner) {
+    const enterprise: Record<string, unknown> = {};
+    if (enterpriseEnabled !== undefined) {
+      enterprise.enabled = enterpriseEnabled === "true" || enterpriseEnabled === "1";
+    }
+    if (enterprisePassport !== undefined) {
+      enterprise.passportEnabled = enterprisePassport === "true" || enterprisePassport === "1";
+    }
+    if (enterpriseOwner) enterprise.ownerWorkspaceId = enterpriseOwner;
+    raw.enterprise = enterprise;
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).

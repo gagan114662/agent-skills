@@ -32,6 +32,7 @@ const MONEY = [
   "setup.external_account",
   "reach.data_credit_spend",
   "provisioning.customer_spend",
+  "enterprise.budget_breach",
 ];
 const NON_MONEY = [
   "external.send",

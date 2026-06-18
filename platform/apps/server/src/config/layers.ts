@@ -167,6 +167,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #272 ads spend policy: a higher (managed/owner) layer fully owns the block (replace) so the ad-spend
     // flag + owner-workspace scope + hard per-action cap cannot be flipped on / loosened by a lower layer.
     if (layer.ads !== undefined) out.ads = { ...layer.ads };
+    // #340 enterprise layer: a higher (managed/owner) layer fully owns the block (replace) so the metering /
+    // cap-enforcement / passport flags + owner-workspace scope cannot be loosened by a lower layer (e.g. a
+    // tenant turning off its own budget cap or the Passport gate).
+    if (layer.enterprise !== undefined) out.enterprise = { ...layer.enterprise };
     // #266 hosted publishing: a higher (managed/owner) layer fully owns the block (replace) so the
     // hosting master flag + owner-workspace scope cannot be loosened by a lower layer.
     if (layer.hostedSites !== undefined) out.hostedSites = { ...layer.hostedSites };
@@ -288,6 +292,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     actionContract: merged.actionContract ?? { ...CONFIG_DEFAULTS.actionContract },
     provisioning: merged.provisioning ?? { ...CONFIG_DEFAULTS.provisioning },
     ads: merged.ads ?? { ...CONFIG_DEFAULTS.ads },
+    enterprise: merged.enterprise ?? { ...CONFIG_DEFAULTS.enterprise },
     hostedSites: merged.hostedSites ?? { ...CONFIG_DEFAULTS.hostedSites },
     social: merged.social ?? { ...CONFIG_DEFAULTS.social },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
