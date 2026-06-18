@@ -1,0 +1,45 @@
+{
+  "benchmark": "worktree-pool-spinup",
+  "issue": 343,
+  "generatedBy": "scripts/worktree-pool-benchmark.mjs",
+  "methodology": "Cold = `git worktree add` + materialize a node_modules/build-cache fixture (a fresh checkout has none). Warm = `git reset --hard` + `git clean -fd` (no -x) of a pooled worktree, deps preserved. Deps modeled as a file-count fixture; real `pnpm install` is strictly costlier, so cold is a lower bound.",
+  "params": {
+    "trackedFiles": 2176,
+    "depFiles": 6000,
+    "iterations": 5
+  },
+  "gitVersion": "git version 2.39.5 (Apple Git-154)",
+  "platform": "darwin arm64 node v25.8.2",
+  "cold": {
+    "meanMs": 1582,
+    "medianMs": 1522,
+    "minMs": 1212,
+    "maxMs": 1964,
+    "samples": [
+      1964,
+      1522,
+      1810,
+      1212,
+      1400
+    ]
+  },
+  "warm": {
+    "meanMs": 99,
+    "medianMs": 60,
+    "minMs": 53,
+    "maxMs": 265,
+    "samples": [
+      265,
+      53,
+      60,
+      56,
+      60
+    ]
+  },
+  "speedupMedian": 25.4,
+  "savedMsMedian": 1462,
+  "cacheReuse": {
+    "primedDepFiles": 6000,
+    "depsPreservedEveryReuse": true
+  }
+}

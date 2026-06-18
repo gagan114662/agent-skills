@@ -197,6 +197,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (durableOwner) durableWorkflow.ownerWorkspaceId = durableOwner;
     raw.durableWorkflow = durableWorkflow;
   }
+  // #343: let the deployment env turn the treehouse warm worktree pool on owner-workspace-first without a
+  // managed.toml. Hard default stays OFF (vars unset → no block, today's per-session checkout). The owner
+  // workspace reuses the established #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated
+  // RELOAD_WORKTREE_POOL_OWNER_WORKSPACE_ID overrides it. RELOAD_WORKTREE_POOL_SIZE tunes the pool cap.
+  const worktreePoolEnabled = env.RELOAD_WORKTREE_POOL_ENABLED;
+  const worktreePoolOwner = env.RELOAD_WORKTREE_POOL_OWNER_WORKSPACE_ID ?? mktOwner;
+  const worktreePoolSize = env.RELOAD_WORKTREE_POOL_SIZE;
+  if (worktreePoolEnabled !== undefined || worktreePoolOwner || worktreePoolSize !== undefined) {
+    const worktreePool: Record<string, unknown> = {};
+    if (worktreePoolEnabled !== undefined)
+      worktreePool.enabled = worktreePoolEnabled === "true" || worktreePoolEnabled === "1";
+    if (worktreePoolOwner) worktreePool.ownerWorkspaceId = worktreePoolOwner;
+    if (worktreePoolSize !== undefined) worktreePool.size = envInt(worktreePoolSize, 4);
+    raw.worktreePool = worktreePool;
+  }
   // #266 hosted publishing: let the deployment env turn customer hosting on without a managed.toml — the
   // owner workspace opts in first (owner marker reuses the established #258 RELOAD_MARKETING_OWNER_WORKSPACE_ID;
   // a dedicated RELOAD_HOSTEDSITES_OWNER_WORKSPACE_ID overrides it). Hard default stays OFF (vars unset → no

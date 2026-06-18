@@ -1,0 +1,19 @@
+# treehouse.toml — warm worktree pool config for the agent fleet (#343, see docs/adrs/0343).
+#
+# treehouse (https://github.com/kunchenguid/treehouse, Go CLI, MIT) keeps a per-repo pool of reusable,
+# isolated git worktrees under ~/.treehouse/ so an agent gets a clean worktree INSTANTLY with installed
+# deps + build cache intact (detached HEAD, in-use detection, no daemon). This file declares the pool the
+# fleet should keep warm for THIS repo.
+#
+# Adoption is OPT-IN and owner-gated: the treehouse binary is NOT installed on the owner's machine,
+# shared infra, or CI by this change — see the ADR's go/no-go. The platform's own opt-in acquire path
+# (apps/server/src/worktree-pool) is gated by the `worktreePool` config block (default OFF, owner-first)
+# and does NOT require the treehouse binary; it implements the same pool semantics over plain git.
+
+# How many warm worktrees to keep in the pool for this repo. Sized for the typical concurrent
+# department-agent session count; raise it if the fleet runs more sessions in parallel than this.
+pool_size = 4
+
+# The ref every pooled worktree is reset to between leases (tracked files only — gitignored
+# node_modules / build cache survive, which is what makes a reuse warm).
+base = "main"
