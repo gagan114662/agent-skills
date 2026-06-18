@@ -263,11 +263,28 @@ Every deployment needs a rollback plan before it happens:
 - Redeploy previous version: < 5 minutes
 - Database rollback: < 15 minutes
 ```
+## Optional: gate the PR before it lands (no-mistakes)
+
+The Code Quality checks above (tests, build, lint, types, review) can be enforced
+*before* a PR is ever opened. If the **repo owner has opted in**, route the push
+through the [`no-mistakes`](https://github.com/kunchenguid/no-mistakes) gate (MIT):
+push to a gate remote instead of `origin` and it runs review → test → docs → lint →
+push → PR → CI in a disposable worktree, auto-fixes safe issues, **escalates the
+rest to a human**, and opens the PR only once every check is green — so the PR
+arrives clean and pre-validated.
+
+**Opt-in, advisory, DEFAULT-OFF.** It is a third-party binary, owner-gated (never on
+shared/CI infra without approval), never auto-run for every task. A green pipeline
+is a quality signal, **not** authorization — irreversible/money deploy steps still
+go through the owner-approval gate, and the human owns every escalation. See
+[`docs/no-mistakes.md`](../../docs/no-mistakes.md).
+
 ## See Also
 
 - For security pre-launch checks, see `${CLAUDE_PLUGIN_ROOT}/references/security-checklist.md`
 - For performance pre-launch checklist, see `${CLAUDE_PLUGIN_ROOT}/references/performance-checklist.md`
 - For accessibility verification before launch, see `${CLAUDE_PLUGIN_ROOT}/references/accessibility-checklist.md`
+- For the optional pre-PR validation gate, see [`docs/no-mistakes.md`](../../docs/no-mistakes.md)
 
 ## Common Rationalizations
 

@@ -20,6 +20,9 @@ jobs:
       - name: Validate all skills
         run: node scripts/validate-skills.js
 
+      - name: Validate no-mistakes guidance (#350)
+        run: node scripts/validate-no-mistakes-guidance.js
+
       - name: Run hook tests
         run: |
           bash hooks/session-start-test.sh
