@@ -1495,6 +1495,31 @@ export const skilloptSchema = z.object({
 });
 
 /**
+ * Oz-loops policy (#356, ADR-0356). The flags behind the four engineering loops adopted from
+ * warpdotdev/oz-for-oss (MIT) — issue triage, spec generation, PR review, and PR-comment response. Every
+ * field is optional and defaults **OFF, owner-workspace-first** (mirrors `skillopt`/`delivery`): a
+ * deployment that sets nothing runs no loop and produces nothing. Even when `enabled`, an
+ * `ownerWorkspaceOnly` deployment (the default) only runs for the named owner workspace; enabling WITHOUT
+ * naming the owner runs for nobody. No credentials/money here — every loop output is an ADVISORY proposal
+ * and any outward action (post/label/close/merge) is parked in the #13 queue. The numeric knobs bound how
+ * much untrusted ingested content the loops process (`oz-loops/caps.ts` fills defaults).
+ */
+export const ozLoopsSchema = z.object({
+  /** Master flag for the triage/spec/review/pr-comment loops — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the loops to the owner workspace (default true). Set false to run for all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the loops roll out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Max chars of an ingested free-text field (issue/comment body) processed (default 4000). */
+  maxFieldChars: z.number().int().positive().optional(),
+  /** Max chars of a diff scanned by the review loop (default 200000). */
+  maxDiffChars: z.number().int().positive().optional(),
+  /** Max findings emitted by the review loop (default 25). */
+  maxFindings: z.number().int().positive().optional(),
+});
+
+/**
  * Central provisioning policy (#267, ADR-0267). ipop holds the paid data/posting/ads API keys CENTRALLY
  * and bills the cost into the plan, so a customer never provisions or sees a key. Every field is optional
  * and defaults to **off, owner-workspace-first** (mirrors `delivery`): a deployment that sets nothing
@@ -1788,6 +1813,8 @@ export const settingsSchema = z.object({
   capabilityTokens: capabilityTokensSchema.optional(),
   /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
   skillopt: skilloptSchema.optional(),
+  /** Oz-loops policy (#356): issue triage / spec / PR review / PR-comment engineering loops (default OFF, owner-first). */
+  ozLoops: ozLoopsSchema.optional(),
   /** Durable-workflow policy (#338): suspend/resume/retry/persist long waits instead of blocking (default OFF, owner-first). */
   durableWorkflow: durableWorkflowSchema.optional(),
   /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
@@ -1872,6 +1899,7 @@ export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
+export type OzLoopsConfig = z.infer<typeof ozLoopsSchema>;
 export type DurableWorkflowConfig = z.infer<typeof durableWorkflowSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 export type EmailDeliverabilityConfig = z.infer<typeof emailDeliverabilitySchema>;
@@ -2029,6 +2057,8 @@ export interface ResolvedConfig {
   capabilityTokens: CapabilityTokensConfig;
   /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
   skillopt: SkillOptConfig;
+  /** Oz-loops policy (#356). A partial whose hard defaults `resolveOzLoopsCaps` fills. */
+  ozLoops: OzLoopsConfig;
   /** Durable-workflow policy (#338). A partial whose hard defaults `resolveDurableWorkflowCaps` fills. */
   durableWorkflow: DurableWorkflowConfig;
   /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
@@ -2114,6 +2144,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   connectOnce: {},
   capabilityTokens: {},
   skillopt: {},
+  ozLoops: {},
   durableWorkflow: {},
   signupEntry: {},
   emailDeliverability: {},

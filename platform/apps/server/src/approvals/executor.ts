@@ -267,6 +267,26 @@ export function validateConnectAccount(payload: unknown): ValidationResult {
   return { ok: true };
 }
 
+/** The four Oz-loops a publish proposal can come from (#356). */
+const OZ_LOOP_KINDS = new Set(["triage", "spec", "review", "pr_comment"]);
+
+/**
+ * Validate an Oz-loops publish proposal (#356) — a recorded-only, OUTWARD decision the owner gates (post a
+ * comment / apply labels / open a spec issue / merge). Needs the `loop` (one of triage/spec/review/
+ * pr_comment) and a non-empty `summary` (the advisory text shown on the card). Recorded-only on approval;
+ * the actual GitHub post requires the `gh`/GitHub-App surface and is a deliberate owner-gated follow-up — the
+ * executor writes no file and makes no network call.
+ */
+export function validateOzLoopsPublish(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.loop) || !OZ_LOOP_KINDS.has(p.loop)) {
+    return { ok: false, error: "loop must be one of triage|spec|review|pr_comment" };
+  }
+  if (!nonEmptyString(p.summary)) return { ok: false, error: "summary required" };
+  return { ok: true };
+}
+
 /**
  * Validate a provisioning customer-spend (#267/#272) — the customer's own money (an ad budget release / email
  * tier upgrade). A recorded-only MONEY decision the owner gates with the EXACT amount shown. Needs the

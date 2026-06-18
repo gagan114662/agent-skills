@@ -51,12 +51,16 @@ const NON_MONEY = [
   // #265: submitting the sitemap / requesting indexing is an outward live action against Google, not money
   // — the Search Console service structurally always-gates it (parks a PENDING request), NOT in MONEY_ACTIONS.
   "searchconsole.submit",
+  // #356: publishing an Oz-loops triage/spec/review/pr-comment proposal is an outward action (post/label/
+  // close/merge), not money — the Oz-loops service structurally always-gates it (parks a PENDING request).
+  "oz_loops.publish_proposal",
 ];
 import {
   buildRegistry,
   validateChatPostMessage,
   validateExternalSend,
   validateConnectAccount,
+  validateOzLoopsPublish,
   type ActionExecutor,
 } from "../../src/approvals/executor.js";
 
@@ -249,6 +253,14 @@ describe("payload validators", () => {
     expect(validateConnectAccount({ provider: "google" }).ok).toBe(false);
     expect(validateConnectAccount({ connectionId: "google" }).ok).toBe(false);
     expect(validateConnectAccount(null).ok).toBe(false);
+  });
+
+  it("oz_loops.publish_proposal requires a known loop + non-empty summary (#356)", () => {
+    expect(validateOzLoopsPublish({ loop: "triage", summary: "triage #1" })).toEqual({ ok: true });
+    expect(validateOzLoopsPublish({ loop: "review", summary: "review PR #2" })).toEqual({ ok: true });
+    expect(validateOzLoopsPublish({ loop: "bogus", summary: "x" }).ok).toBe(false);
+    expect(validateOzLoopsPublish({ loop: "triage" }).ok).toBe(false);
+    expect(validateOzLoopsPublish(null).ok).toBe(false);
   });
 });
 

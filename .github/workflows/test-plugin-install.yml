@@ -26,6 +26,9 @@ jobs:
       - name: Validate open-design guidance (#353)
         run: node scripts/validate-open-design-guidance.js
 
+      - name: Validate oz-loops guidance (#356)
+        run: node scripts/validate-oz-guidance.js
+
       - name: Run hook tests
         run: |
           bash hooks/session-start-test.sh

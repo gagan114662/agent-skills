@@ -29,6 +29,7 @@ import {
   validateOutreachSend,
   validateReachDataCreditSpend,
   validateSkillOptAdoptEdit,
+  validateOzLoopsPublish,
   validateConnectAccount,
   validateProvisioningCustomerSpend,
   type ActionExecutor,
@@ -48,6 +49,7 @@ import {
   OUTREACH_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
+  OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
   PROVISIONING_CUSTOMER_SPEND_ACTION,
 } from "./policy.js";
@@ -494,6 +496,29 @@ const skillOptAdoptEdit: ActionExecutor = {
 };
 
 /**
+ * Oz-loops publish proposal (#356) — a recorded-only, OUTWARD decision the owner gates. The triage/spec/
+ * review/pr-comment loops produce ADVISORY proposals only; acting on one (post a comment / apply labels /
+ * open a spec issue / merge) ALWAYS parks this PENDING request — there is no autonomous post path, and
+ * untrusted issue/PR/comment content can never trigger it. Approving RECORDS the owner's go (the audit trail
+ * proves nothing was posted to a repo without a human yes); the live GitHub post requires the `gh`/GitHub-App
+ * surface and is a deliberate owner-gated follow-up (ADR-0356), so the executor writes no file and makes no
+ * network call.
+ */
+const ozLoopsPublishProposal: ActionExecutor = {
+  actionType: OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
+  validate: validateOzLoopsPublish,
+  summarize: (p) =>
+    `publish ${String(p.loop ?? "?")} proposal: ${String(p.summary ?? "").slice(0, 100)}`.slice(0, 160),
+  execute(payload): Promise<Record<string, unknown>> {
+    return Promise.resolve({
+      recorded: true,
+      executed: false, // the live GitHub post (comment/label/close/merge) is a deliberate owner-gated follow-up.
+      loop: typeof payload.loop === "string" ? payload.loop : null,
+    });
+  },
+};
+
+/**
  * Connect-once LIVE connect (#258 Stage 2) — a recorded-only CONSENT decision the owner gates. Connecting an
  * outside account is not money (ADR-0243) but touches a real external surface, so the connect-once seam
  * ALWAYS parks this PENDING request; there is no autonomous-connect path. Approving RECORDS the owner's go
@@ -570,6 +595,7 @@ export function buildDefaultRegistry(
     outreachSend,
     reachDataCreditSpend,
     skillOptAdoptEdit,
+    ozLoopsPublishProposal,
     connectAccount,
     provisioningCustomerSpend,
   ]);
