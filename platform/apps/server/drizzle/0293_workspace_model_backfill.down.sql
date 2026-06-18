@@ -1,0 +1,13 @@
+-- Down for #293 — intentionally a NO-OP (documented rollback).
+--
+-- This migration is a pure DATA repair: it rewrote unservable model overrides (the fable class) to the
+-- servable managed default. Reverting that would mean restoring ids that 403 on the plan and crash every
+-- `claude -p` session — a regression, not a rollback (the same stance 0246's down takes:
+-- "restoring an unservable model that crashes every session would be a regression"). The original bad
+-- values are also not recoverable from this migration (no audit column was added), so there is nothing to
+-- restore to.
+--
+-- Operational rollback, if ever needed, is at the schema layer not the data layer: 0246's down drops the
+-- `model` column entirely, which removes every override and falls all workspaces back to the deployment
+-- default. This file deliberately leaves the repaired data in place.
+SELECT 1; -- no-op so the runner's paired-down-file contract is satisfied
