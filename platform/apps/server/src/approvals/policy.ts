@@ -176,6 +176,21 @@ export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
 export const CONNECTION_CONNECT_ACCOUNT_ACTION = "connection.connect_account" as const;
 
 /**
+ * #336 the connect-once CAPABILITY-TOKEN mint — issuing a scoped, short-lived, delegated token off an
+ * existing connection grant so an agent can perform ONE action through an outside account without holding a
+ * standing secret (the Vercel "Connect" credential model on top of the #258 seam). Minting a token is a
+ * recorded-only CONSENT-class trace, NOT money (ADR-0243) — so it is NOT in {@link MONEY_ACTIONS} and never
+ * counted in {@link IRREVERSIBLE_ACTIONS}. It is never submitted through the #13 action route; the
+ * capability-token service writes it directly into the same workspace `approval_requests` audit trail as a
+ * terminal `executed` row capturing the user→agent→service delegation chain (the token is already signed —
+ * this row is the trace, not a gate). The irreversibility of a `write` (send/post/spend) is enforced upstream:
+ * the mint refuses a write token unless a prior owner #13 approval id is supplied (premortem #200 §4), so the
+ * mint is never the gate for an outward mutation. The whole capability is flag-gated OFF + owner-workspace
+ * -first, and the verify provider is dry-run by default. ADR-0336.
+ */
+export const CAPABILITY_MINT_ACTION = "capability.mint" as const;
+
+/**
  * #265 Scout submits the sitemap + requests indexing to Google Search Console. The submit is an outward
  * LIVE action against Google's production crawl surface (premortem #200 §4: an external submit / indexing
  * request is not cheaply reversible post-hoc, and indexing requests are quota-limited), so it ALWAYS pauses

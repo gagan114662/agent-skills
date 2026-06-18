@@ -384,6 +384,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (connectOnceOwner) connectOnce.ownerWorkspaceId = connectOnceOwner;
     raw.connectOnce = connectOnce;
   }
+  // #336 capability-token mint: let the deployment env turn the live per-action token mint on + pick the
+  // owner workspace without a managed.toml (the owner dogfoods the Connect credential model first). Hard
+  // default stays OFF (vars unset → no block ⇒ no token is ever minted). Even enabled, a `write` token still
+  // requires a prior owner #13 approval and the verify provider stays dry-run. A managed layer wins as the lock.
+  const capabilityMintEnabled = env.RELOAD_CAPABILITY_TOKENS_LIVE_MINT;
+  const capabilityMintOwner = env.RELOAD_CAPABILITY_TOKENS_OWNER_WORKSPACE_ID;
+  if (capabilityMintEnabled !== undefined || capabilityMintOwner) {
+    const capabilityTokens: Record<string, unknown> = {};
+    if (capabilityMintEnabled !== undefined) {
+      capabilityTokens.liveMintEnabled = capabilityMintEnabled === "true" || capabilityMintEnabled === "1";
+    }
+    if (capabilityMintOwner) capabilityTokens.ownerWorkspaceId = capabilityMintOwner;
+    raw.capabilityTokens = capabilityTokens;
+  }
   // #300 signup entry: let the deployment env offer the read-only sample workspace + turn on progressive
   // Google scopes (identity-only at signup, GSC/Analytics deferred to SEO) without a managed.toml. Hard
   // default stays OFF (vars unset → no block ⇒ today's #260 Google-only, single full-scope consent). A
