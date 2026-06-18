@@ -235,6 +235,20 @@ export const GARDEN_ENABLE_AGENT_ACTION = "garden.enable_agent" as const;
 export const PROVISIONING_CUSTOMER_SPEND_ACTION = "provisioning.customer_spend" as const;
 
 /**
+ * #340 the enterprise budget-cap BREACH — a request to spend OVER a pre-committed per-agent / per-customer
+ * budget cap. The enterprise metering+caps layer (ADR-0340) enforces a HARD never-exceed cap the system never
+ * crosses on its own: a spend that fits proceeds autonomously, but a spend that would exceed the cap is
+ * BLOCKED and parked here for the owner — raising/over-spending a money budget is itself a money decision
+ * (premortem #200 §4: irreversible spend is never post-hoc), so it ALWAYS pauses with the exact amount + the
+ * breaching scope shown. This is the gate that BACKS bid's hard ad-spend caps. Like `venture.ad_spend` it is
+ * a MONEY action (in {@link MONEY_ACTIONS} + {@link IRREVERSIBLE_ACTIONS}) and is never submitted through the
+ * #13 action route; the enterprise service parks a PENDING request against the same workspace
+ * `approval_policies`. The executor is recorded-only (approving records the owner's go to raise/allow the
+ * spend; the actual spend behind the gate is the calling department's job, never an autonomous over-spend).
+ */
+export const ENTERPRISE_BUDGET_BREACH_ACTION = "enterprise.budget_breach" as const;
+
+/**
  * The venture monetization MONEY-boundary action kinds (#188, ADR-0188). Like `venture.bootstrap` they are
  * never submitted through the #13 action route; the monetization service evaluates them against the same
  * workspace `approval_policies`. Activating a pricing draft (or re-pricing it) lets a venture's customers
@@ -297,6 +311,9 @@ export const MONEY_ACTIONS: readonly string[] = [
   // #267 the customer's own spend through a centrally-provisioned API (ad budget release, email-sending
   // tier). ipop's billed-in API cost (`platform_cost`) is autonomous; only the customer's money gates. ADR-0267.
   PROVISIONING_CUSTOMER_SPEND_ACTION,
+  // #340 spending OVER a pre-committed enterprise budget cap — a money decision (raise/allow the over-spend),
+  // exact amount + breaching scope shown. The cap itself is never crossed autonomously. ADR-0340.
+  ENTERPRISE_BUDGET_BREACH_ACTION,
 ];
 
 /** True iff `actionType` moves or commits real money — the single predicate that drives approval (#243). */
@@ -366,6 +383,7 @@ export const IRREVERSIBLE_ACTIONS: readonly string[] = [
   VENTURE_PAYMENT_METHOD_ACTION, // attaching a real payment method (#187)
   REACH_DATA_CREDIT_ACTION, // paid prospect-data credits, consumed on the API call (#280)
   PROVISIONING_CUSTOMER_SPEND_ACTION, // the customer's own ad budget / email tier — real spend (#267)
+  ENTERPRISE_BUDGET_BREACH_ACTION, // spending over a pre-committed per-agent/per-customer budget cap (#340)
 ];
 
 /** True iff `actionType` is in the irreversible money class (premortem #200 FM#4). Pure + total. */

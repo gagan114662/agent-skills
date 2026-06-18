@@ -1485,6 +1485,33 @@ export const adsSchema = z.object({
 });
 
 /**
+ * Enterprise layer policy (#340, ADR-0340). The non-secret knobs for the governance + cost-control layer that
+ * lets ipop sell the fleet: per-agent + per-customer usage metering, hard budget caps the system never
+ * crosses (also backing bid's money caps), and a Passport-style IdP/SSO gate for the v5 console + department
+ * agents. DEFAULT-OFF, owner-workspace-first (like {@link provisioningSchema}): a deployment that sets nothing
+ * meters nothing live, enforces no cap, and leaves the Passport gate open (existing auth unchanged). No
+ * credential lives here. Live billing is a separate, owner-gated step (this slice moves no money).
+ */
+export const enterpriseSchema = z.object({
+  /** Master switch for live metering + cap enforcement + the read surface — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the enterprise layer to the owner workspace (default true). False ⇒ broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the enterprise layer rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Enforce the Passport IdP/SSO gate in addition to the master flag (default OFF). */
+  passportEnabled: z.boolean().optional(),
+  /** IdP providers the Passport gate trusts (e.g. `["google"]`). Normalized (trim/lower/de-blank) on resolve. */
+  allowedIdpProviders: z.array(z.string()).optional(),
+  /** Default per-customer budget cap (cents) when none is explicitly provisioned; omit/≤0 ⇒ no default cap. */
+  defaultCustomerCapCents: z.number().int().optional(),
+  /** Default per-agent budget cap (cents) when none is explicitly provisioned; omit/≤0 ⇒ no default cap. */
+  defaultAgentCapCents: z.number().int().optional(),
+  /** Max usage rows a single read returns (default 200). */
+  usageListLimit: z.number().int().positive().optional(),
+});
+
+/**
  * ipop hosted publishing policy (#266, ADR-0266). The non-secret knobs for the multi-tenant customer blog +
  * landing pages ipop hosts (zero repo, zero deploy the customer sees). DEFAULT-OFF, owner-workspace-first —
  * exactly like {@link deliverySchema}: `enabled` must be on AND the workspace in scope (`ownerWorkspaceOnly`
@@ -1674,6 +1701,8 @@ export const settingsSchema = z.object({
   provisioning: provisioningSchema.optional(),
   /** Ads spend policy (#272): Bid's money-gated ad spend path + hard per-action cap (default OFF, owner-first). */
   ads: adsSchema.optional(),
+  /** Enterprise layer policy (#340): per-agent/per-customer metering + budget caps + Passport gate (default OFF). */
+  enterprise: enterpriseSchema.optional(),
   /** ipop hosted publishing policy (#266): multi-tenant customer blogs + landing pages (default OFF). */
   hostedSites: hostedSitesSchema.optional(),
   /** Echo social-posting policy (#269): connect-once aggregator bridge, multi-network fan-out (default OFF). */
@@ -1770,6 +1799,7 @@ export type DeliveryConfig = z.infer<typeof deliverySchema>;
 export type ActionContractConfig = z.infer<typeof actionContractSchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
 export type AdsConfig = z.infer<typeof adsSchema>;
+export type EnterpriseConfig = z.infer<typeof enterpriseSchema>;
 export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
@@ -1906,6 +1936,8 @@ export interface ResolvedConfig {
   provisioning: ProvisioningConfig;
   /** Ads spend policy (#272). A partial whose hard defaults `resolveAdsCaps` fills. */
   ads: AdsConfig;
+  /** Enterprise layer policy (#340). A partial whose hard defaults `resolveEnterpriseCaps` fills. */
+  enterprise: EnterpriseConfig;
   /** ipop hosted publishing policy (#266). A partial resolved by `resolveHostedSitesFlags`. */
   hostedSites: HostedSitesConfig;
   /** Echo social-posting policy (#269). A partial resolved by `resolveSocialFlags`. */
@@ -2003,6 +2035,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   actionContract: {},
   provisioning: {},
   ads: {},
+  enterprise: {},
   hostedSites: {},
   social: {},
   finance: {},
