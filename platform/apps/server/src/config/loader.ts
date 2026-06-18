@@ -497,6 +497,23 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (provisioningOwner) provisioning.ownerWorkspaceId = provisioningOwner;
     raw.provisioning = provisioning;
   }
+  // #272 ads spend: let the deployment env offer Bid's money-gated ad-spend path + set the HARD per-action
+  // cap, owner-workspace-first (owner marker reuses the #258 RELOAD_MARKETING_OWNER_WORKSPACE_ID). Hard
+  // default stays OFF and the cap 0 (vars unset → no block ⇒ no ad-spend path is offered at all). Every
+  // spend still pauses for the owner (#13/#243); this only controls offer + ceiling, never the gate.
+  const adsEnabled = env.RELOAD_ADS_ENABLED;
+  const adsOwner = env.RELOAD_ADS_OWNER_WORKSPACE_ID ?? mktOwner;
+  const adsCap = env.RELOAD_ADS_PER_ACTION_CAP_CENTS;
+  if (adsEnabled !== undefined || adsOwner || adsCap !== undefined) {
+    const ads: Record<string, unknown> = {};
+    if (adsEnabled !== undefined) ads.enabled = adsEnabled === "true" || adsEnabled === "1";
+    if (adsOwner) ads.ownerWorkspaceId = adsOwner;
+    if (adsCap !== undefined) {
+      const cents = Number.parseInt(adsCap, 10);
+      if (Number.isInteger(cents) && cents >= 0) ads.perActionCapCents = cents;
+    }
+    raw.ads = ads;
+  }
   // #194 finance ledger: let the deployment env opt the accounting layer in without a managed.toml.
   // Hard default stays OFF (var unset → no block); a managed layer still wins as the lock. The posting/
   // close timer is separate (FINANCE_INTERVAL_MS).

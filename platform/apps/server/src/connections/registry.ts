@@ -149,6 +149,22 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     oauthScopes: ["social.post"],
     envKeys: [],
   },
+  {
+    // #272 — Bid's one-click ad account connect. One OAuth consent connects Google Ads (with billing in
+    // place on the customer's own account); Bid manages campaigns through it, but EVERY real spend stays a
+    // #13 money-gated owner yes (ADR-0272). The live redirect is a follow-up, so it renders `coming_soon`.
+    id: "google_ads",
+    label: "Connect Google Ads",
+    summary: "One consent lets Bid run campaigns on your ad account — every spend stays your money-gated yes.",
+    provider: "google",
+    kind: "ad_account",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["ads"],
+    oauthScopes: ["https://www.googleapis.com/auth/adwords"],
+    envKeys: [],
+  },
 ];
 
 const BY_ID: ReadonlyMap<string, ConnectionDescriptor> = new Map(

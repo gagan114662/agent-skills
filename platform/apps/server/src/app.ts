@@ -176,6 +176,8 @@ import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
+import { adsRoutes } from "./routes/ads.js";
+import { createDefaultAdsService } from "./ads/default.js";
 import { seoRoutes } from "./routes/seo.js";
 import { createDefaultSeoRankService } from "./seo/default.js";
 import { searchConsoleRoutes } from "./routes/search-console.js";
@@ -723,6 +725,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // through. Default-OFF + owner-workspace-first: with no `provisioning.enabled` set every capability
   // resolves to the free mock path and no central vault is read.
   const provisioningService = createDefaultProvisioningService();
+  const adsService = createDefaultAdsService();
   const semanticService = opts.semantic ?? createDefaultSemanticLayerService();
   // #107 portfolio lifecycle loop: kill discipline for LAUNCHED ventures (not just ideas). Reviews each
   // funded venture on growth (#102) / moat (#103) / demand (#101) / revenue (#98) / infra burn (#71),
@@ -862,6 +865,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });
+  app.register(adsRoutes, { service: adsService });
   app.register(seoRoutes, { service: seoRankService });
   app.register(searchConsoleRoutes, { service: searchConsoleService });
   app.register(semanticRoutes, { service: semanticService });
