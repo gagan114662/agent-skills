@@ -200,6 +200,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #300 signup-entry policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // sample-workspace + progressive-scopes flags cannot be loosened by a lower layer.
     if (layer.signupEntry !== undefined) out.signupEntry = { ...layer.signupEntry };
+    // #268 email deliverability policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // live-send flag + owner-first restriction + rate cap cannot be loosened by a lower layer.
+    if (layer.emailDeliverability !== undefined) out.emailDeliverability = { ...layer.emailDeliverability };
   }
   return out;
 }
@@ -277,5 +280,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
+    emailDeliverability: merged.emailDeliverability ?? { ...CONFIG_DEFAULTS.emailDeliverability },
   };
 }

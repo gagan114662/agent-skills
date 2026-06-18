@@ -203,6 +203,18 @@ describe("real-world tool surface config (#231)", () => {
     );
     expect(cfg.signupEntry).toEqual({ sampleWorkspace: true, progressiveScopes: true });
   });
+
+  it("#268 email deliverability defaults OFF, and env opts the owner workspace in (RELOAD_EMAIL_*)", () => {
+    expect(loadConfig(undefined, sources({})).emailDeliverability).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_EMAIL_LIVE_SEND_ENABLED: "true", RELOAD_EMAIL_OWNER_WORKSPACE_ID: "ws_owner" },
+      ),
+    );
+    expect(cfg.emailDeliverability).toEqual({ liveSendEnabled: true, ownerWorkspaceId: "ws_owner" });
+  });
 });
 
 describe("validation & resilience (#58)", () => {

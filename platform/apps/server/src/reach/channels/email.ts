@@ -19,9 +19,18 @@ import type { ReachMessage, ReachSendOutcome } from "../types.js";
 
 /** The ESP send seam. A real ESP adapter (SendGrid/Postmark/SES) implements this behind the #192 vault. */
 export interface EspSender {
-  /** The sender kind, for the outcome detail (e.g. "dryrun", "sendgrid"). */
+  /** The sender kind, for the outcome detail (e.g. "dryrun", "sendgrid", "postmark"). */
   readonly kind: string;
-  send(input: { to: string; subject: string; body: string }): Promise<{ externalId: string }>;
+  /**
+   * Send one email. `headers` is an optional bag of extra MIME headers (e.g. the RFC 8058 one-click
+   * `List-Unsubscribe` / `List-Unsubscribe-Post`, #268); senders that don't support custom headers ignore it.
+   */
+  send(input: {
+    to: string;
+    subject: string;
+    body: string;
+    headers?: Record<string, string>;
+  }): Promise<{ externalId: string }>;
 }
 
 /** FNV-1a → hex, for a deterministic per-recipient unsubscribe token (no PII in the token). */

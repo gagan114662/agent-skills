@@ -388,6 +388,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     }
     raw.signupEntry = signupEntry;
   }
+  // #268 email deliverability: let the deployment env turn live Postmark sending ON + pick the owner
+  // workspace without a managed.toml (the owner dogfoods real sending first). Hard default stays OFF (vars
+  // unset → no block ⇒ the dry-run sender is the byte-for-byte default, no real email ever leaves). Even
+  // enabled, every real send is the #13 `email.live_send` always-gate (owner-approved per send). A managed
+  // layer still wins as the lock.
+  const emailLiveSend = env.RELOAD_EMAIL_LIVE_SEND_ENABLED;
+  const emailOwner = env.RELOAD_EMAIL_OWNER_WORKSPACE_ID;
+  if (emailLiveSend !== undefined || emailOwner) {
+    const emailDeliverability: Record<string, unknown> = {};
+    if (emailLiveSend !== undefined) {
+      emailDeliverability.liveSendEnabled = emailLiveSend === "true" || emailLiveSend === "1";
+    }
+    if (emailOwner) emailDeliverability.ownerWorkspaceId = emailOwner;
+    raw.emailDeliverability = emailDeliverability;
+  }
   // #294 SEO rank tracking: let the deployment env turn the proactive rank FETCH on + pick a provider +
   // owner workspace without a managed.toml (owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ provider stays `dryrun`, reports nothing). Recording an external receipt is always

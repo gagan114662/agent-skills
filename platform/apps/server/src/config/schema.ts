@@ -618,6 +618,31 @@ export const signupEntrySchema = z.object({
 });
 
 /**
+ * Email deliverability + compliance pipeline policy (#268, ADR-0268). Non-secret knobs for the Postmark
+ * deliverability lane — SPF/DKIM/DMARC verification, RFC 8058 one-click unsubscribe, suppression, and send
+ * rate caps (all reused from the #189/#264 seams). The one knob that matters for safety is `liveSendEnabled`:
+ * it gates whether a *real* Postmark send is even eligible to be proposed. It defaults **OFF** AND
+ * **owner-workspace-first** (`ownerWorkspaceOnly: true`, mirrors `connectOnce`/`delivery`): a deployment that
+ * sets nothing never sends a real email — the dry-run sender stays the byte-for-byte default. Even with
+ * `liveSendEnabled: true` a real send is NEVER autonomous: it is the structural #13 always-gate
+ * (`email.live_send`) the owner must approve per send (premortem #200 §4 — sending real email is
+ * irreversible). The Postmark server token + unsubscribe HMAC secret are env/#192-vault driven, never in this
+ * non-secret config, so enabling alone wires nothing live. `ratePerMinute` is the rolling-window send cap.
+ */
+export const emailDeliverabilitySchema = z.object({
+  /** Whether a real Postmark send is eligible to be proposed (still owner-approved per send) — default OFF. */
+  liveSendEnabled: z.boolean().optional(),
+  /** Restrict live-send eligibility to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** The rolling-window (per-minute) send rate cap; the warmup per-day schedule still applies on top. */
+  ratePerMinute: z.number().int().positive().optional(),
+  /** Optional mailto fallback added to the RFC 8058 `List-Unsubscribe` header. */
+  unsubscribeMailto: z.string().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1539,6 +1564,8 @@ export const settingsSchema = z.object({
   skillopt: skilloptSchema.optional(),
   /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
   signupEntry: signupEntrySchema.optional(),
+  /** Email deliverability + compliance pipeline (#268): Postmark live-send eligibility + rate caps (default OFF). */
+  emailDeliverability: emailDeliverabilitySchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -1610,6 +1637,7 @@ export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
+export type EmailDeliverabilityConfig = z.infer<typeof emailDeliverabilitySchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -1750,6 +1778,8 @@ export interface ResolvedConfig {
   skillopt: SkillOptConfig;
   /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
   signupEntry: SignupEntryConfig;
+  /** Email deliverability + compliance pipeline (#268). A partial resolved by `isLiveSendEnabledForWorkspace`. */
+  emailDeliverability: EmailDeliverabilityConfig;
 }
 
 /**
@@ -1822,4 +1852,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   connectOnce: {},
   skillopt: {},
   signupEntry: {},
+  emailDeliverability: {},
 };
