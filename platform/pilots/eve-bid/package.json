@@ -1,0 +1,29 @@
+{
+  "name": "eve-bid-pilot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "#339 spike: @bid scaffolded on Vercel's eve framework. Parallel pilot — NOT in the pnpm workspace, NOT wired to production. See README.md.",
+  "imports": {
+    "#*": "./agent/*"
+  },
+  "scripts": {
+    "build": "eve build",
+    "dev": "eve dev",
+    "start": "eve start",
+    "typecheck": "tsgo"
+  },
+  "dependencies": {
+    "@vercel/connect": "0.2.2",
+    "ai": "7.0.0-beta.178",
+    "eve": "^0.11.5",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "@typescript/native-preview": "7.0.0-dev.20260523.1"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}
