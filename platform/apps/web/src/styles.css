@@ -1078,6 +1078,13 @@ select:focus-visible {
 .members__group {
   margin-bottom: 16px;
 }
+.members__footer {
+  margin-top: auto;
+  padding: 10px 6px 4px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-dim);
+}
 .members__grouphead {
   font-size: 11px;
   text-transform: uppercase;

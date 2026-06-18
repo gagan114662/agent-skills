@@ -149,6 +149,7 @@ import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { gardenRoutes } from "./routes/garden.js";
+import { departmentRoutes } from "./routes/department.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
@@ -846,6 +847,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.
   app.register(gardenRoutes);
+  // #371 named-department roster: the reload.chat "team" — named personas (roles + handles + colors), their
+  // #282 registry presence, and the members-rail footer. Default OFF, owner-workspace-first; the roster is
+  // read-only/always listable and seeding mints identity personas only (no new action path — #200).
+  app.register(departmentRoutes);
   // #271 brand kit + asset store: the owner sets their brand identity once (logo/colours/voice); Mark
   // enforces it and the fleet draws from it to generate on-brand images into the per-workspace asset
   // store. Setting a kit is what connects the founder-console brand proof tile. Image generation is a

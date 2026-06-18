@@ -230,6 +230,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // triage/spec/review/pr-comment flag + owner-first restriction + ingest bounds cannot be loosened by a
     // lower layer.
     if (layer.ozLoops !== undefined) out.ozLoops = { ...layer.ozLoops };
+    // #371 named-department policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // seed flag + owner-first restriction + roster overrides cannot be loosened/redirected by a lower layer.
+    if (layer.department !== undefined) out.department = { ...layer.department };
     // #338 durable-workflow policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // durable-path flag + owner-first restriction + retry/deadline bounds cannot be loosened by a lower layer.
     if (layer.durableWorkflow !== undefined) out.durableWorkflow = { ...layer.durableWorkflow };
@@ -325,6 +328,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     capabilityTokens: merged.capabilityTokens ?? { ...CONFIG_DEFAULTS.capabilityTokens },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },
     ozLoops: merged.ozLoops ?? { ...CONFIG_DEFAULTS.ozLoops },
+    department: merged.department ?? { ...CONFIG_DEFAULTS.department },
     durableWorkflow: merged.durableWorkflow ?? { ...CONFIG_DEFAULTS.durableWorkflow },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
     emailDeliverability: merged.emailDeliverability ?? { ...CONFIG_DEFAULTS.emailDeliverability },
