@@ -5,6 +5,7 @@ import {
   departmentForDeliverableChannel,
   resolveDeliveryFlags,
   reversibilityForChannel,
+  routeDeliveryChannel,
   DELIVERY_FLAGS_OFF,
   type DeliveryFlags,
 } from "../../src/delivery/decide.js";
@@ -16,7 +17,7 @@ import {
  *  - classify reversibility so the receipt/audit reflects an irreversible send.
  */
 describe("delivery routing (#295)", () => {
-  const ON: DeliveryFlags = { enabled: true, publish: true, social: true, email: true };
+  const ON: DeliveryFlags = { enabled: true, publish: true, site_pr: false, social: true, email: true };
 
   describe("channelForDepartment — structural mapping", () => {
     it("maps the shippable marketing departments to their channel", () => {
@@ -47,10 +48,28 @@ describe("delivery routing (#295)", () => {
   });
 
   describe("reversibilityForChannel — premortem #200 §4", () => {
-    it("a published page is reversible; a sent post/email is irreversible", () => {
+    it("a published page and a site PR are reversible; a sent post/email is irreversible", () => {
       expect(reversibilityForChannel("publish")).toBe("reversible");
+      expect(reversibilityForChannel("site_pr")).toBe("reversible"); // a PR can be closed/reverted
       expect(reversibilityForChannel("social")).toBe("irreversible");
       expect(reversibilityForChannel("email")).toBe("irreversible");
+    });
+  });
+
+  describe("routeDeliveryChannel — owner-first on-site PR redirect (#364)", () => {
+    const OFF: DeliveryFlags = { ...DELIVERY_FLAGS_OFF, enabled: true, publish: true };
+    const SITE_PR: DeliveryFlags = { ...OFF, site_pr: true };
+    it("redirects content/SEO publishes to a real on-site PR ONLY when the site_pr flag is on", () => {
+      expect(routeDeliveryChannel("seo", OFF)).toBe("publish");
+      expect(routeDeliveryChannel("content", OFF)).toBe("publish");
+      expect(routeDeliveryChannel("seo", SITE_PR)).toBe("site_pr");
+      expect(routeDeliveryChannel("content", SITE_PR)).toBe("site_pr");
+    });
+    it("never redirects social/email/non-shippable departments (only the publish channel)", () => {
+      expect(routeDeliveryChannel("social", SITE_PR)).toBe("social");
+      expect(routeDeliveryChannel("email", SITE_PR)).toBe("email");
+      expect(routeDeliveryChannel("ads", SITE_PR)).toBeNull();
+      expect(routeDeliveryChannel(null, SITE_PR)).toBeNull();
     });
   });
 
@@ -67,6 +86,7 @@ describe("delivery routing (#295)", () => {
       expect(resolveDeliveryFlags(cfg, "owner-ws")).toEqual({
         enabled: true,
         publish: true,
+        site_pr: false,
         social: true,
         email: false,
       });
@@ -78,9 +98,15 @@ describe("delivery routing (#295)", () => {
       expect(resolveDeliveryFlags(cfg, "any-ws")).toEqual({
         enabled: true,
         publish: false,
+        site_pr: false,
         social: false,
         email: true,
       });
+    });
+    it("resolves the site_pr flag owner-workspace-first (#364)", () => {
+      const cfg = { enabled: true, sitePr: true, ownerWorkspaceId: "owner-ws" };
+      expect(resolveDeliveryFlags(cfg, "owner-ws")).toMatchObject({ enabled: true, site_pr: true });
+      expect(resolveDeliveryFlags(cfg, "other-ws")).toEqual(DELIVERY_FLAGS_OFF);
     });
   });
 
@@ -94,7 +120,7 @@ describe("delivery routing (#295)", () => {
       expect(d).toEqual({ ship: false, reason: expect.stringContaining("not shippable") });
     });
     it("does not ship when the resolved channel's flag is off", () => {
-      const flags: DeliveryFlags = { enabled: true, publish: false, social: true, email: true };
+      const flags: DeliveryFlags = { enabled: true, publish: false, site_pr: false, social: true, email: true };
       const d = decideDelivery({ department: "content", flags, draft: "a blog post" });
       expect(d).toEqual({ ship: false, reason: expect.stringContaining("publish") });
     });
@@ -112,6 +138,24 @@ describe("delivery routing (#295)", () => {
         ship: true,
         channel: "publish",
         reversibility: "reversible",
+      });
+    });
+    it("ships content/seo as a real on-site PR (reversible) when site_pr is on (#364)", () => {
+      const flags: DeliveryFlags = { enabled: true, publish: true, site_pr: true, social: true, email: true };
+      expect(decideDelivery({ department: "seo", flags, draft: "homepage meta tags" })).toEqual({
+        ship: true,
+        channel: "site_pr",
+        reversibility: "reversible",
+      });
+      expect(decideDelivery({ department: "content", flags, draft: "a blog post" })).toMatchObject({
+        ship: true,
+        channel: "site_pr",
+      });
+      // site_pr supersedes the standalone page even when `publish` itself is off.
+      const onlySitePr: DeliveryFlags = { ...flags, publish: false };
+      expect(decideDelivery({ department: "seo", flags: onlySitePr, draft: "x" })).toMatchObject({
+        ship: true,
+        channel: "site_pr",
       });
     });
     it("ships social and email as irreversible sends", () => {

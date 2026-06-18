@@ -20,7 +20,7 @@ import { workspaces } from "./workspaces.js";
  * governed metric surface.
  */
 
-export const DELIVERY_CHANNELS = ["publish", "social", "email"] as const;
+export const DELIVERY_CHANNELS = ["publish", "site_pr", "social", "email"] as const;
 export const DELIVERY_REVERSIBILITIES = ["reversible", "irreversible"] as const;
 export const DELIVERY_STATUSES = ["shipped", "failed"] as const;
 
@@ -48,7 +48,7 @@ export const deliveryReceipts = pgTable(
     byApproval: index("delivery_receipts_approval_idx").on(t.approvalRequestId),
     channelCk: check(
       "delivery_receipts_channel_ck",
-      sql`${t.channel} IN ('publish','social','email')`,
+      sql`${t.channel} IN ('publish','site_pr','social','email')`,
     ),
     reversibilityCk: check(
       "delivery_receipts_reversibility_ck",

@@ -27,11 +27,13 @@ import { departmentForChannel } from "../marketing/blueprint.js";
 
 /**
  * The delivery channels a deliverable can ship through. `publish` is a live, reachable public page
- * (reversible — a page can be taken down). `social`/`email` are IRREVERSIBLE outward sends
- * (deliverability + brand cannot be un-rung). Ads is deliberately absent: an ads deliverable is a SPEND
- * PLAN, and real ad spend is money-gated separately (#189/#187), never shipped through this content path.
+ * (reversible — a page can be taken down). `site_pr` is a REAL on-site SEO/content change to ipop's OWN
+ * site repo, shipped as a pull request (reversible — a PR is a review surface; merge/deploy stays a human
+ * action — #250/#364). `social`/`email` are IRREVERSIBLE outward sends (deliverability + brand cannot be
+ * un-rung). Ads is deliberately absent: an ads deliverable is a SPEND PLAN, and real ad spend is
+ * money-gated separately (#189/#187), never shipped through this content path.
  */
-export const DELIVERY_CHANNELS = ["publish", "social", "email"] as const;
+export const DELIVERY_CHANNELS = ["publish", "site_pr", "social", "email"] as const;
 export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
 
 /** Reversibility class (premortem #200 §4) carried on the decision so the receipt/audit reflects it. */
@@ -62,9 +64,12 @@ export function departmentForDeliverableChannel(channelName: string | null): str
   return departmentForChannel(channelName)?.key ?? null;
 }
 
-/** Reversibility of a channel: a published page can be taken down; a sent post/email cannot be unsent. */
+/**
+ * Reversibility of a channel: a published page can be taken down, and a site PR can be closed/reverted
+ * before it is ever merged — both reversible. A sent post/email cannot be unsent — irreversible.
+ */
 export function reversibilityForChannel(channel: DeliveryChannel): DeliveryReversibility {
-  return channel === "publish" ? "reversible" : "irreversible";
+  return channel === "publish" || channel === "site_pr" ? "reversible" : "irreversible";
 }
 
 /** The resolved per-channel ship flags for a workspace. Every channel defaults OFF. */
@@ -72,6 +77,8 @@ export interface DeliveryFlags {
   /** Master switch — when false every channel is off regardless of the per-channel flags. */
   enabled: boolean;
   publish: boolean;
+  /** Ship content/SEO deliverables as a real on-site content PR (#364) instead of a standalone page. */
+  site_pr: boolean;
   social: boolean;
   email: boolean;
 }
@@ -80,6 +87,7 @@ export interface DeliveryFlags {
 export const DELIVERY_FLAGS_OFF: DeliveryFlags = {
   enabled: false,
   publish: false,
+  site_pr: false,
   social: false,
   email: false,
 };
@@ -88,6 +96,8 @@ export const DELIVERY_FLAGS_OFF: DeliveryFlags = {
 export interface DeliveryConfigInput {
   enabled?: boolean;
   publish?: boolean;
+  /** Route content/SEO deliverables to a real on-site content PR (#364) instead of a standalone page. */
+  sitePr?: boolean;
   social?: boolean;
   email?: boolean;
   /** The owner's own workspace id — delivery rolls out owner-workspace-first. */
@@ -118,9 +128,27 @@ export function resolveDeliveryFlags(
   return {
     enabled: true,
     publish: config.publish === true,
+    site_pr: config.sitePr === true,
     social: config.social === true,
     email: config.email === true,
   };
+}
+
+/**
+ * Resolve the EFFECTIVE channel a deliverable ships through. Structural by default
+ * ({@link channelForDepartment}), but a content/SEO deliverable (which maps to `publish`) is redirected to
+ * the real on-site `site_pr` channel when the owner-first `site_pr` flag is on (#364) — shipping a genuine
+ * SEO/content pull request against ipop's own site repo instead of a standalone published page. With the
+ * flag OFF (the default, and every other tenant) routing is byte-for-byte the structural mapping. The
+ * redirect is a function of (department, flags) ONLY — never of the draft (injection defense, #200 §6).
+ */
+export function routeDeliveryChannel(
+  department: string | null,
+  flags: DeliveryFlags,
+): DeliveryChannel | null {
+  const base = channelForDepartment(department);
+  if (base === "publish" && flags.site_pr) return "site_pr";
+  return base;
 }
 
 /** Everything the pure classifier needs. `draft` is read ONLY for emptiness — never for routing. */
@@ -144,16 +172,18 @@ export type DeliveryDecision =
  *   2. department not shippable            → no ship (ads/analytics/brand/reach/shared/unknown)
  *   3. that channel's flag off             → no ship
  *   4. empty draft                         → no ship (nothing to publish)
- *   5. otherwise                           → ship via the structural channel, carrying its reversibility.
+ *   5. otherwise                           → ship via the effective channel, carrying its reversibility.
  *
- * The decision is a PURE function of structural inputs (department + flags) and `draft` emptiness — never
- * of the draft's CONTENT (injection defense, premortem #200 §6).
+ * The effective channel is the structural mapping, with an owner-first redirect of content/SEO publishes
+ * to the real on-site `site_pr` channel ({@link routeDeliveryChannel}, #364). The decision is a PURE
+ * function of structural inputs (department + flags) and `draft` emptiness — never of the draft's CONTENT
+ * (injection defense, premortem #200 §6).
  */
 export function decideDelivery(input: DeliveryDecisionInput): DeliveryDecision {
   if (!input.flags.enabled) {
     return { ship: false, reason: "delivery disabled for this workspace" };
   }
-  const channel = channelForDepartment(input.department);
+  const channel = routeDeliveryChannel(input.department, input.flags);
   if (!channel) {
     return {
       ship: false,

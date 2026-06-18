@@ -30,4 +30,21 @@ describe("delivery config flag (#295)", () => {
     // a different workspace, same config → still off (owner-workspace-first)
     expect(resolveDeliveryFlags(cfg.delivery, "someone-else")).toEqual(DELIVERY_FLAGS_OFF);
   });
+
+  it("parses the site_pr channel flag owner-workspace-first (#364)", () => {
+    const toml = [
+      "[delivery]",
+      "enabled = true",
+      "sitePr = true",
+      'ownerWorkspaceId = "owner-ws"',
+      "",
+    ].join("\n");
+    const cfg = loadConfig("owner-ws", {
+      env: {},
+      readFile: (p) => (p.endsWith("settings.toml") ? toml : undefined),
+      repoPath: "/x/.reload/settings.toml",
+    });
+    expect(resolveDeliveryFlags(cfg.delivery, "owner-ws")).toMatchObject({ enabled: true, site_pr: true });
+    expect(resolveDeliveryFlags(cfg.delivery, "someone-else")).toEqual(DELIVERY_FLAGS_OFF);
+  });
 });

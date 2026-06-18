@@ -9,8 +9,16 @@ import { createChannel } from "../../src/db/repositories/channels.js";
 import { createRequest } from "../../src/db/repositories/approvals.js";
 import { resolveDeliveryDepartment } from "../../src/delivery/default.js";
 import { createDeliveryDispatcher } from "../../src/delivery/dispatcher.js";
-import { PublishChannelAdapter, SocialChannelAdapter, EmailChannelAdapter } from "../../src/delivery/adapters.js";
+import {
+  PublishChannelAdapter,
+  SitePrChannelAdapter,
+  SocialChannelAdapter,
+  EmailChannelAdapter,
+} from "../../src/delivery/adapters.js";
 import { DryRunPublishProvider } from "../../src/realworld/publish/dry-run-provider.js";
+import { GitHubSitePublisher } from "../../src/realworld/publish/site-publisher.js";
+import { DryRunSitePrProvider } from "../../src/realworld/publish/site-pr-provider.js";
+import { IpopSitePublishService } from "../../src/realworld/service.js";
 import { dryRunSocialProvider, dryRunEspProvider } from "../../src/acquisition/providers.js";
 import { dbDeliveryReceiptStore, listDeliveryReceipts, countLiveDeliveries } from "../../src/db/repositories/delivery.js";
 import type { DeliveryFlags } from "../../src/delivery/decide.js";
@@ -52,7 +60,16 @@ async function newWorkspace(): Promise<{ cookie: string; workspaceId: string; me
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
-const ALL_ON: DeliveryFlags = { enabled: true, publish: true, social: true, email: true };
+const ALL_ON: DeliveryFlags = { enabled: true, publish: true, site_pr: false, social: true, email: true };
+
+/** A dry-run site-PR publisher (opens no real PR — exercises the wiring without a token/network). */
+function dryRunSitePrAdapter(): SitePrChannelAdapter {
+  return new SitePrChannelAdapter(
+    new GitHubSitePublisher(
+      new IpopSitePublishService({ provider: new DryRunSitePrProvider(), contentDir: "content/blog" }),
+    ),
+  );
+}
 
 /** A dispatcher over the REAL channel resolver + REAL receipt store, with flags forced on. */
 function dispatcher(flags: DeliveryFlags = ALL_ON) {
@@ -61,6 +78,7 @@ function dispatcher(flags: DeliveryFlags = ALL_ON) {
     resolveFlags: () => flags,
     adapters: {
       publish: new PublishChannelAdapter(new DryRunPublishProvider()),
+      site_pr: dryRunSitePrAdapter(),
       social: new SocialChannelAdapter(dryRunSocialProvider),
       email: new EmailChannelAdapter(dryRunEspProvider),
     },
@@ -102,6 +120,39 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       live: false, // dry-run URL is not reachable — honestly recorded, never overclaimed
     });
     expect(receipts[0]?.externalRef).toContain("dryrun.reload.app");
+  });
+
+  it("ships a content/SEO deliverable as a site PR when site_pr is on, recording a reversible receipt (#364)", async () => {
+    const ws = await newWorkspace();
+    const channel = await createChannel({ workspaceId: ws.workspaceId, kind: "public", name: "content" });
+    const req = await createRequest({
+      workspaceId: ws.workspaceId,
+      requesterMemberId: ws.memberId,
+      actionType: "agent.deliverable",
+      payload: { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# new copy" },
+      amount: null,
+      summary: "Deliverable ready for review",
+      status: "pending",
+      expiresAt: null,
+      events: [{ type: "requested", detail: {} }],
+    });
+
+    const result = await dispatcher({ ...ALL_ON, site_pr: true }).ship(
+      { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# new copy" },
+      { workspaceId: ws.workspaceId, approvalRequestId: req.id },
+    );
+    // dry-run publisher: a deterministic fake PR url, opened nowhere real → honestly live:false.
+    expect(result).toMatchObject({ shipped: true, channel: "site_pr", reversibility: "reversible", live: false });
+
+    const receipts = await listDeliveryReceipts(ws.workspaceId);
+    expect(receipts[0]).toMatchObject({
+      approvalRequestId: req.id,
+      channel: "site_pr",
+      reversibility: "reversible",
+      status: "shipped",
+      live: false,
+    });
+    expect(receipts[0]?.externalRef).toContain("/pull/");
   });
 
   it("does not ship a deliverable from a non-department channel (shared room → not shippable)", async () => {

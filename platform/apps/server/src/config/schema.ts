@@ -1457,6 +1457,13 @@ export const deliverySchema = z.object({
   ownerWorkspaceId: z.string().optional(),
   /** Ship content/SEO deliverables as a live published page. Default OFF. */
   publish: z.boolean().optional(),
+  /**
+   * Redirect content/SEO deliverables to a REAL on-site content PR against ipop's own site repo (#364)
+   * instead of a standalone published page. Default OFF. Reversible (a PR is a review surface; merge/deploy
+   * stays a human action) + money-free. The live site-PR provider is selected by `realworld.sitePrProvider`
+   * + `siteRepo`; with that unset the ship is a dry-run (no real PR, recorded `live:false`).
+   */
+  sitePr: z.boolean().optional(),
   /** Ship social deliverables as a post (dry-run until a real adapter is connected). Default OFF. */
   social: z.boolean().optional(),
   /** Ship email deliverables (dry-run, no recipients, until a real ESP adapter is connected). Default OFF. */

@@ -8,6 +8,7 @@ import { CONFIG_DEFAULTS, type ResolvedConfig } from "../../src/config/schema.js
 import { resolveVentureCaps, isVentureGateEnabledForWorkspace } from "../../src/venture/caps.js";
 import { isLiveSendEnabledForWorkspace } from "../../src/email/live-send.js";
 import { resolveConnectOnceCaps, isConnectOnceLiveInScope } from "../../src/connections/caps.js";
+import { resolveDeliveryFlags, DELIVERY_FLAGS_OFF } from "../../src/delivery/decide.js";
 
 /**
  * Owner-workspace full-activation profile (issue #357, ADR-0357).
@@ -92,7 +93,7 @@ describe("owner-activation profile — FULL ACTIVATION for the owner workspace (
       // phase 2
       "venture", "ventureFactory", "monetization", "analytics", "seo", "legal", "supportDesk",
       // phase 3
-      "onboarding", "provisioning", "connectOnce", "connectClaude", "realworld", "outreach",
+      "onboarding", "provisioning", "connectOnce", "connectClaude", "realworld", "delivery", "outreach",
       "acquisition", "ads", "hostedSites", "social", "reach", "ventureDeploys",
     ];
     for (const key of enabledFlags) {
@@ -113,6 +114,11 @@ describe("owner-activation profile — FULL ACTIVATION for the owner workspace (
     expect(isVentureGateEnabledForWorkspace(resolveVentureCaps(cfg.venture), OWNER)).toBe(true);
     expect(isLiveSendEnabledForWorkspace(cfg.emailDeliverability, OWNER)).toBe(true);
     expect(isConnectOnceLiveInScope(resolveConnectOnceCaps(cfg.connectOnce), OWNER)).toBe(true);
+    // #364 — the one real marketing action: an SEO/content deliverable ships as a real on-site PR for the
+    // owner workspace (site_pr ON, owner-scoped) and the other delivery channels stay OFF (in isolation).
+    const deliveryFlags = resolveDeliveryFlags(cfg.delivery, OWNER);
+    expect(deliveryFlags).toMatchObject({ enabled: true, site_pr: true, publish: false, social: false, email: false });
+    expect(resolveDeliveryFlags(cfg.delivery, "some-other-tenant")).toEqual(DELIVERY_FLAGS_OFF);
   });
 
   it("names the owner workspace on the owner-first blocks (so the resolvers gate correctly)", () => {
