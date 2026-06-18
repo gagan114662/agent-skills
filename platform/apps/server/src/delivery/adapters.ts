@@ -19,6 +19,7 @@
 
 import { ActionExecutionError } from "../approvals/executor.js";
 import type { PublishProvider } from "../realworld/publish/provider.js";
+import type { SitePublisher } from "../realworld/publish/site-publisher.js";
 import type { EspProvider, SocialProvider } from "../acquisition/providers.js";
 import type { ChannelAdapter, ChannelShipInput, ChannelShipOutcome } from "./dispatcher.js";
 
@@ -81,6 +82,68 @@ export class PublishChannelAdapter implements ChannelAdapter {
       live: health.ok,
       externalRef: outcome.url,
       detail: { slug, providerId: outcome.providerId ?? null, healthStatus: health.status },
+    };
+  }
+}
+
+/** A reachability check (HEAD/GET) used to PROVE the opened PR url answers — injected only for a live provider. */
+export type SitePrHeadCheck = (url: string) => Promise<{ ok: boolean; status: number }>;
+
+/**
+ * Ship an approved content/SEO deliverable as a REAL on-site change to ipop's OWN site repo — a pull
+ * request — through the existing {@link SitePublisher} seam (#250/#364). This is the single lowest-risk
+ * real marketing action: a PR is a REVIEW surface (it changes nothing on the live site; merge/deploy stays
+ * a human action on GitHub), it is reversible (close/revert), money-free, and authenticated by ipop's own
+ * server token (no third-party OAuth, no per-customer credential).
+ *
+ * The deliverable's draft is opaque DATA: it is committed verbatim as a content FILE; the file's slug/path
+ * and branch are derived STRUCTURALLY from the task title by `decidePublishToIpop` (traversal-proof,
+ * `[a-z0-9-]` only) — injected instructions in the draft can never escape the content dir, retarget the
+ * repo, or redirect the ship (#200 §6).
+ *
+ * Production-grounded verification (#200 §3): `live` is true ONLY when an injected {@link SitePrHeadCheck}
+ * confirms the PR url answers 2xx. The readback is injected ONLY when a live provider is configured; the
+ * default dry-run path passes no readback (no network egress) and is honestly recorded `live:false`.
+ */
+export class SitePrChannelAdapter implements ChannelAdapter {
+  readonly channel = "site_pr" as const;
+  readonly providerKind: string;
+  constructor(
+    private readonly publisher: SitePublisher,
+    private readonly headCheck?: SitePrHeadCheck,
+  ) {
+    this.providerKind = publisher.kind;
+  }
+  async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
+    const result = await this.publisher.publish({
+      workspaceId: input.workspaceId,
+      title: input.task || "ipop on-site content",
+      // The draft is the file body — opaque DATA. The slug/path/branch are derived from the title only.
+      content: input.draft,
+      body: "On-site content drafted by the ipop fleet, approved by the owner at the #13 gate (#364).",
+    });
+    if (result.status !== "published") {
+      const reason =
+        result.status === "not_connected" || result.status === "rejected"
+          ? result.reason
+          : result.error;
+      throw new ActionExecutionError(`site PR not opened (${result.status}): ${reason}`);
+    }
+    // Only an answering PR url is "live". Dry-run (no headCheck) never claims a live PR.
+    const health = this.headCheck
+      ? await this.headCheck(result.url)
+      : { ok: false, status: 0 };
+    return {
+      provider: this.publisher.kind,
+      live: health.ok,
+      externalRef: result.url,
+      detail: {
+        prUrl: result.prUrl ?? result.url,
+        branch: result.branch ?? null,
+        path: result.path ?? null,
+        providerId: result.providerId ?? null,
+        headStatus: health.status,
+      },
     };
   }
 }

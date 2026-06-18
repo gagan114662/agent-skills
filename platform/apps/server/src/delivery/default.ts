@@ -20,6 +20,9 @@ import { DryRunPublishProvider } from "../realworld/publish/dry-run-provider.js"
 import { GitHubPagesPublishProvider } from "../realworld/publish/github-pages-provider.js";
 import { defaultPublishBuildWait } from "../realworld/publish/durable-build-wait.js";
 import type { PublishProvider } from "../realworld/publish/provider.js";
+import { GitHubSitePrProvider, DryRunSitePrProvider } from "../realworld/publish/site-pr-provider.js";
+import { GitHubSitePublisher, type SitePublisher } from "../realworld/publish/site-publisher.js";
+import { IpopSitePublishService } from "../realworld/service.js";
 import {
   departmentForDeliverableChannel,
   resolveDeliveryFlags,
@@ -28,7 +31,9 @@ import {
 import {
   EmailChannelAdapter,
   PublishChannelAdapter,
+  SitePrChannelAdapter,
   SocialChannelAdapter,
+  type SitePrHeadCheck,
 } from "./adapters.js";
 import { createDeliveryDispatcher, type DeliveryDispatcher } from "./dispatcher.js";
 
@@ -64,13 +69,45 @@ function resolvePublishProvider(): PublishProvider {
     : new DryRunPublishProvider();
 }
 
+/**
+ * The deployment-level site-PR delivery actuator (#250/#364). Mirrors {@link resolvePublishProvider}: the
+ * live provider is selected from the workspace-agnostic base config (`realworld.sitePrProvider` +
+ * `siteRepo`) so a deployment opts into a real on-site PR once; the GitHub token is read from the secret
+ * env at publish time by {@link GitHubSitePrProvider}, never from config. When live, a `GET` readback proves
+ * the opened PR url answers (#200 §3); the default dry-run provider opens NO real PR and gets no readback
+ * (no network egress), so a dry-run ship is honestly recorded `live:false`.
+ */
+function resolveSitePrDelivery(): { publisher: SitePublisher; headCheck?: SitePrHeadCheck } {
+  const rw = loadConfig().realworld;
+  const repo = rw.siteRepo?.trim();
+  const live = rw.sitePrProvider === "github" && Boolean(repo);
+  const contentDir = rw.siteContentDir ?? "content/blog";
+  const provider = live
+    ? new GitHubSitePrProvider({ repo: repo as string, baseBranch: rw.siteBaseBranch })
+    : new DryRunSitePrProvider(repo);
+  const publisher = new GitHubSitePublisher(new IpopSitePublishService({ provider, contentDir }));
+  const headCheck: SitePrHeadCheck | undefined = live
+    ? async (url) => {
+        try {
+          const res = await fetch(url, { method: "GET", redirect: "follow" });
+          return { ok: res.ok, status: res.status };
+        } catch {
+          return { ok: false, status: 0 };
+        }
+      }
+    : undefined;
+  return { publisher, headCheck };
+}
+
 /** Build the production delivery dispatcher over the real repos + providers. */
 export function buildDeliveryDispatcher(): DeliveryDispatcher {
+  const sitePr = resolveSitePrDelivery();
   return createDeliveryDispatcher({
     resolveDepartment: resolveDeliveryDepartment,
     resolveFlags: deliveryFlagsFor,
     adapters: {
       publish: new PublishChannelAdapter(resolvePublishProvider()),
+      site_pr: new SitePrChannelAdapter(sitePr.publisher, sitePr.headCheck),
       social: new SocialChannelAdapter(dryRunSocialProvider),
       email: new EmailChannelAdapter(dryRunEspProvider),
     },

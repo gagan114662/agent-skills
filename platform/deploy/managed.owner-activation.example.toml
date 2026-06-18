@@ -367,9 +367,32 @@ ownerWorkspaceId = "OWNER_WORKSPACE_ID"
 
 # Real-world tool surface (#231/#250) — gated publish/send/post + self-publish
 # site PR. GitHub token is read from the secret env at publish time, never here.
+# To take the #364 deliverable->site-PR path LIVE, set sitePrProvider = "github"
+# AND siteRepo = "owner/repo" (uncomment below) — until siteRepo is named, the
+# site-PR delivery ships a DRY-RUN PR (opens nothing real, recorded live:false).
 [workspace."OWNER_WORKSPACE_ID".realworld]
 enabled = true
 publishProvider = "github_pages"
+# sitePrProvider = "github"
+# siteRepo = "OWNER/SITE_REPO"
+# siteBaseBranch = "main"
+# siteContentDir = "content/blog"
+
+# Deliverable delivery (#295) + ONE real marketing action: an SEO/content
+# deliverable, once approved by the owner at the #13 gate, ships as a REAL on-site
+# content PR against ipop's own site repo (#364). Default OFF, owner-first. Only
+# `sitePr` is on — the standalone-page / social / email channels stay OFF here so
+# the one lowest-risk live path is exercised in isolation. A PR is reversible
+# (close/revert; merge stays a human action) and money-free, so there is NO new
+# autonomous action — the owner's deliverable approval IS the trigger to open it.
+[workspace."OWNER_WORKSPACE_ID".delivery]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+sitePr = true
+publish = false
+social = false
+email = false
 
 # Outreach engine (#225) — signal-triggered, owner-gated, externally-measured
 # sends. Sender stays dryrun (recorded-only, no egress) until you set a real one.
