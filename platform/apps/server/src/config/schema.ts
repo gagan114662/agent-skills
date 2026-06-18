@@ -598,6 +598,28 @@ export const worktreePoolSchema = z.object({
 });
 
 /**
+ * Open-Design policy (#353, ADR-0353). Non-secret knobs for the OPT-IN / advisory adoption of the
+ * third-party, Apache-2.0, local-first `open-design` desktop app + `od` CLI (a "Claude Design
+ * alternative") so the brand department (@mark) and the other creative leads can render REAL brand
+ * assets (logo / brand-kit, social + ad creative, slide decks) instead of text-only drafts. Every
+ * field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
+ * (`ownerWorkspaceOnly: true`) — a deployment that sets nothing keeps today's draft-only behavior, so
+ * behavior is unchanged. open-design is a HEAVYWEIGHT third-party desktop app the owner installs by
+ * hand; this flag never installs anything and is purely a permission marker for which workspace may
+ * *offer* the tool. Even enabled, every irreversible / publish action still routes through the #13
+ * approval gate, and any generated asset/metadata is untrusted DATA (#200). `ownerWorkspaceId` marks
+ * the owner's own workspace for the owner-first rollout.
+ */
+export const openDesignSchema = z.object({
+  /** Allow the brand/creative leads to offer open-design for real-asset generation — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the offer to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Connect-Claude policy (#262, ADR-0262). Non-secret knobs for the in-app one-click "Connect Claude"
  * flow that replaces the `claude setup-token` CLI step. Every field is optional and the master `enabled`
  * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets
@@ -1746,6 +1768,8 @@ export const settingsSchema = z.object({
   garden: gardenSchema.optional(),
   /** Worktree-pool policy (#343): hand fleet sessions a warm reusable worktree instead of a fresh checkout (default OFF, owner-first). */
   worktreePool: worktreePoolSchema.optional(),
+  /** Open-Design policy (#353): opt-in offer of the third-party open-design app for real brand-asset generation (default OFF, owner-first). */
+  openDesign: openDesignSchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
   /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
@@ -1833,6 +1857,7 @@ export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
 export type GardenConfig = z.infer<typeof gardenSchema>;
 export type WorktreePoolConfig = z.infer<typeof worktreePoolSchema>;
+export type OpenDesignConfig = z.infer<typeof openDesignSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
@@ -1984,6 +2009,8 @@ export interface ResolvedConfig {
   garden: GardenConfig;
   /** Worktree-pool policy (#343). A partial whose hard defaults `resolveWorktreePoolCaps` fills. */
   worktreePool: WorktreePoolConfig;
+  /** Open-Design policy (#353). A partial whose hard defaults `resolveOpenDesignCaps` fills. */
+  openDesign: OpenDesignConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
   /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
@@ -2072,6 +2099,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   agentCollaboration: {},
   garden: {},
   worktreePool: {},
+  openDesign: {},
   connectClaude: {},
   connectOnce: {},
   capabilityTokens: {},

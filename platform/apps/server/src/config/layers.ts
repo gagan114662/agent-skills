@@ -208,6 +208,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #343 worktree-pool policy: a higher (managed/owner) layer fully owns the block (replace) so the warm-pool
     // flag + owner-first restriction + size cap cannot be loosened by a lower layer.
     if (layer.worktreePool !== undefined) out.worktreePool = { ...layer.worktreePool };
+    // #353 open-design policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // offer flag + owner-first restriction cannot be loosened by a lower layer.
+    if (layer.openDesign !== undefined) out.openDesign = { ...layer.openDesign };
     // #262 connect-Claude policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // managed one-click flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.connectClaude !== undefined) out.connectClaude = { ...layer.connectClaude };
@@ -308,6 +311,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     agentCollaboration: merged.agentCollaboration ?? { ...CONFIG_DEFAULTS.agentCollaboration },
     garden: merged.garden ?? { ...CONFIG_DEFAULTS.garden },
     worktreePool: merged.worktreePool ?? { ...CONFIG_DEFAULTS.worktreePool },
+    openDesign: merged.openDesign ?? { ...CONFIG_DEFAULTS.openDesign },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
     connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
     capabilityTokens: merged.capabilityTokens ?? { ...CONFIG_DEFAULTS.capabilityTokens },

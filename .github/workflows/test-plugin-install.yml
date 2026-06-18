@@ -23,6 +23,9 @@ jobs:
       - name: Validate no-mistakes guidance (#350)
         run: node scripts/validate-no-mistakes-guidance.js
 
+      - name: Validate open-design guidance (#353)
+        run: node scripts/validate-open-design-guidance.js
+
       - name: Run hook tests
         run: |
           bash hooks/session-start-test.sh
