@@ -370,6 +370,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (agentRegistryOwner) agentRegistry.ownerWorkspaceId = agentRegistryOwner;
     raw.agentRegistry = agentRegistry;
   }
+  // #284 agent Garden: let the deployment env turn the per-workspace enable/disable surface on + pick the
+  // owner workspace without a managed.toml (the owner workspace opts in first). Hard default stays OFF (vars
+  // unset → no block ⇒ a read-only catalog, no toggles take effect). Enabling an `external_send` agent stays
+  // #13-gated regardless. A managed layer still wins as the lock.
+  const gardenEnabled = env.RELOAD_GARDEN_ENABLED;
+  const gardenOwner = env.RELOAD_GARDEN_OWNER_WORKSPACE_ID;
+  if (gardenEnabled !== undefined || gardenOwner) {
+    const garden: Record<string, unknown> = {};
+    if (gardenEnabled !== undefined) {
+      garden.enabled = gardenEnabled === "true" || gardenEnabled === "1";
+    }
+    if (gardenOwner) garden.ownerWorkspaceId = gardenOwner;
+    raw.garden = garden;
+  }
   // #262 connect-Claude: let the deployment env turn the in-app one-click Connect flow on + pick the owner
   // workspace without a managed.toml (the owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ today's manual paste path). Even enabled, the flow stays an honest `coming_soon`

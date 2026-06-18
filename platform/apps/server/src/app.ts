@@ -148,6 +148,7 @@ import { realworldRoutes } from "./routes/realworld.js";
 import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
+import { gardenRoutes } from "./routes/garden.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
@@ -829,6 +830,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
   app.register(connectionsRoutes);
+  // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each
+  // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
+  // approval. The catalog is read-only and always listable.
+  app.register(gardenRoutes);
   // #271 brand kit + asset store: the owner sets their brand identity once (logo/colours/voice); Mark
   // enforces it and the fleet draws from it to generate on-brand images into the per-workspace asset
   // store. Setting a kit is what connects the founder-console brand proof tile. Image generation is a

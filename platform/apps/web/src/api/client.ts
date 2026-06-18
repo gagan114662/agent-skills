@@ -59,6 +59,7 @@ import type {
   BrandKitInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  GardenResponse,
   SampleConsoleResponse,
   StatusPageDto,
   TaskTemplateDto,
@@ -385,6 +386,21 @@ export const api = {
   // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
   startConnectionOAuth(id: string): Promise<unknown> {
     return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+
+  // --- Agent Garden (#284): browse the department fleet + enable/disable each agent per workspace ---
+  getGarden(): Promise<GardenResponse> {
+    return request<GardenResponse>("/me/garden");
+  },
+  // Switch an agent on. An external-send agent parks an owner approval (202) instead of enabling directly;
+  // either way the server returns the refreshed surface in `garden`, which we hand back to the panel.
+  async enableGardenAgent(handle: string): Promise<GardenResponse> {
+    const res = await post(`/me/garden/${encodeURIComponent(handle)}/enable`);
+    return (res as { garden: GardenResponse }).garden;
+  },
+  async disableGardenAgent(handle: string): Promise<GardenResponse> {
+    const res = await post(`/me/garden/${encodeURIComponent(handle)}/disable`);
+    return (res as { garden: GardenResponse }).garden;
   },
 
   // --- brand kit (#271): the owner's one-time brand identity the fleet draws from ---

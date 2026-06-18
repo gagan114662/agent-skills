@@ -560,6 +560,25 @@ export const agentCollaborationSchema = z.object({
 });
 
 /**
+ * Agent Garden policy (#284, ADR-0284). Non-secret knobs for the customer-facing console surface that
+ * browses the department-fleet agents (reading the #282 registry) and enables/disables each per workspace.
+ * Every field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
+ * (`ownerWorkspaceOnly: true`) — a deployment that sets nothing exposes a read-only catalog (browse is
+ * harmless) and enables NO toggle in any workspace, so today's behavior is unchanged. Enabling an
+ * `external_send` (irreversible-action) agent is human-gated behind the #13 queue regardless of this flag;
+ * the flag only controls whether the surface can manage at all. `ownerWorkspaceId` marks the owner's own
+ * workspace for the owner-first rollout.
+ */
+export const gardenSchema = z.object({
+  /** The Garden management flag — the catalog lists regardless; enable/disable is OFF unless this is true. */
+  enabled: z.boolean().optional(),
+  /** Restrict managing the Garden to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
+/**
  * Connect-Claude policy (#262, ADR-0262). Non-secret knobs for the in-app one-click "Connect Claude"
  * flow that replaces the `claude setup-token` CLI step. Every field is optional and the master `enabled`
  * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets
@@ -1675,6 +1694,8 @@ export const settingsSchema = z.object({
   agentRegistry: agentRegistrySchema.optional(),
   /** Agent collaboration policy (#319): provision the subagent-spawn tool so leads can delegate (default OFF, owner-first). */
   agentCollaboration: agentCollaborationSchema.optional(),
+  /** Agent Garden policy (#284): browse the department fleet + enable/disable agents per workspace (default OFF, owner-first). */
+  garden: gardenSchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
   /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
@@ -1759,6 +1780,7 @@ export type SeoConfig = z.infer<typeof seoSchema>;
 export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
+export type GardenConfig = z.infer<typeof gardenSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
@@ -1904,6 +1926,8 @@ export interface ResolvedConfig {
   agentRegistry: AgentRegistryConfig;
   /** Agent collaboration policy (#319). A partial whose hard defaults `resolveAgentCollaborationCaps` fills. */
   agentCollaboration: AgentCollaborationConfig;
+  /** Agent Garden policy (#284). A partial whose hard defaults `resolveGardenCaps` fills. */
+  garden: GardenConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
   /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
@@ -1989,6 +2013,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   analytics: {},
   agentRegistry: {},
   agentCollaboration: {},
+  garden: {},
   connectClaude: {},
   connectOnce: {},
   capabilityTokens: {},

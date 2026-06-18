@@ -182,6 +182,31 @@ export const CONNECTIONS = {
 } as const;
 
 /**
+ * Settings → Agent Garden (#284): browse the department fleet and switch each agent on/off per workspace.
+ * Every word lives here so the panel carries no hardcoded brand copy (enforced by brand.test.ts). The agent
+ * names, summaries and capabilities come from the server (the #282 contract, sanitized) — only the chrome
+ * copy is here.
+ */
+export const GARDEN = {
+  title: "Agent Garden",
+  hint:
+    "Your department agents. Switch on the ones you want working for you. " +
+    "Outbound agents need your approval before they can act — nothing leaves the building without your yes.",
+  loading: "Loading your agents…",
+  empty: "No agents to show yet.",
+  rollout: "The Agent Garden is rolling out for your workspace.",
+  on: "On",
+  enable: "Switch on",
+  disable: "Switch off",
+  pending: "Awaiting your approval",
+  needsApproval: "Needs your approval",
+  riskReadOnly: "Reads only",
+  riskInternalDraft: "Drafts for review",
+  riskExternalSend: "Acts outside",
+  error: "Couldn't update that agent.",
+} as const;
+
+/**
  * Settings → Brand kit (#271): the one-time brand identity the owner sets (logo, colours, voice). Mark
  * enforces it and the fleet draws from it to generate on-brand images. Every word lives here so the
  * panel carries no hardcoded brand copy (enforced by brand.test.ts).

@@ -27,6 +27,7 @@ import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
 import { SlackConnectPanel } from "../SlackConnectPanel.js";
 import { ExternalAccountsPanel } from "../ExternalAccountsPanel.js";
 import { ConnectionsPanel } from "../ConnectionsPanel.js";
+import { GardenPanel } from "../GardenPanel.js";
 import { BrandKitPanel } from "../BrandKitPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
@@ -648,6 +649,7 @@ export function ConsoleView(): React.JSX.Element {
           <ConnectClaudePanel />
           <SlackConnectPanel />
           <ConnectionsPanel />
+          <GardenPanel />
           <ExternalAccountsPanel />
           <BrandKitPanel />
           <BillingSettingsPanel />
