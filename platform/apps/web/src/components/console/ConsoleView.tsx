@@ -138,11 +138,17 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
-  // #352: the agent-coordination overlay (reload.chat-style channels/threads/members + live sessions),
+  // #352/#372: the agent-coordination surface (reload.chat-style channels/threads/members + live sessions),
   // gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment names the
   // owner workspace AND this is that workspace. No new backend: it re-mounts the existing coordination
   // components which self-wire to the channels/messages/directory store and the #147 mission-control seam.
-  const [coordinationOpen, setCoordinationOpen] = useState(false);
+  //
+  // #372 makes it CHAT-FIRST: for the named owner the coordination view is the LANDING surface, with the
+  // board reachable via a secondary tab. `surfaceChoice` is the owner's explicit tab pick; `null` means
+  // "no pick yet" so the default follows the gate reactively (coordination when on, board when off). It can
+  // NEVER reveal coordination when the gate is off — `primarySurface` below collapses to "board" in that
+  // case, so prod (no coordination env) stays byte-for-byte the board.
+  const [surfaceChoice, setSurfaceChoice] = useState<"coordination" | "board" | null>(null);
   // #365: the owner's Claude connection-health signal (connected / not connected / token expired), shown
   // as a header chip ONLY for the named owner workspace (default-OFF, owner-first via connect-health-flag).
   const [claudeHealth, setClaudeHealth] = useState<ClaudeConnectionHealth | null>(null);
@@ -362,6 +368,14 @@ export function ConsoleView(): React.JSX.Element {
     ownerWorkspaceId: COORDINATION_OWNER_WORKSPACE_ID,
     workspaceId,
   });
+  // #372: which surface the owner sees. Fail-closed — when coordination is NOT enabled this is ALWAYS the
+  // board (a stale `surfaceChoice` can never resurrect the surface once the gate is off), so production is
+  // byte-for-byte the board it is today. When enabled, the default (no explicit pick) is the chat-first
+  // coordination view; an explicit tap of the Board tab sticks until the owner taps back.
+  const primarySurface: "coordination" | "board" = coordinationEnabled
+    ? (surfaceChoice ?? "coordination")
+    : "board";
+  const showCoordinationSurface = coordinationEnabled && primarySurface === "coordination";
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
   const headerTitle = activeProject ? `#${activeProject.name}` : BRAND.name;
 
@@ -597,12 +611,30 @@ export function ConsoleView(): React.JSX.Element {
             <ConnectHealthChip health={claudeHealth} onConnect={() => setShellSettingsOpen(true)} />
           )}
           <span className="console__sp" />
-          {/* #352: the coordination surface — only ever rendered for the named owner workspace (the gate is
-              fail-closed default-OFF), so it is invisible in production until explicitly enabled. */}
+          {/* #352/#372: the chat-first surface switch — only ever rendered for the named owner workspace (the
+              gate is fail-closed default-OFF), so it is invisible in production until explicitly enabled. The
+              owner lands in Coordination (the team channel as home); the Board tab keeps the board reachable. */}
           {coordinationEnabled && (
-            <button className="coordchip" onClick={() => setCoordinationOpen(true)}>
-              {CONSOLE.coordination.open}
-            </button>
+            <div className="surfacetabs" role="tablist" aria-label={CONSOLE.coordination.title}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={primarySurface === "coordination"}
+                className={`surfacetab${primarySurface === "coordination" ? " surfacetab--on" : ""}`}
+                onClick={() => setSurfaceChoice("coordination")}
+              >
+                {CONSOLE.coordination.open}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={primarySurface === "board"}
+                className={`surfacetab${primarySurface === "board" ? " surfacetab--on" : ""}`}
+                onClick={() => setSurfaceChoice("board")}
+              >
+                {CONSOLE.coordination.boardTab}
+              </button>
+            </div>
           )}
           {pendingCount > 0 && (
             <button className="waitchip" onClick={openFirstWaiting}>
@@ -612,6 +644,15 @@ export function ConsoleView(): React.JSX.Element {
           )}
         </header>
 
+        {/* #372: chat-first landing for the named owner workspace. When coordination is the chosen surface
+            the owner lands directly in the reload.chat-style view (the team channel IS the home screen); the
+            board — with all its #299/#301/#226 first-run behaviour — is the Board tab, unchanged. When the
+            gate is off, `showCoordinationSurface` is always false, so this whole branch is dead in production
+            and the board below is byte-for-byte what ships today. */}
+        {showCoordinationSurface ? (
+          <CoordinationView />
+        ) : (
+          <>
         {/* #299/#301: the console NEVER renders raw runner / exit-code errors. While the first deliverable
             is being produced — or while a transient runner/spawn failure is being silently retried — it
             shows the calm, branded "warming up" panel (NO exit codes, NO internal failure-class names, no
@@ -664,6 +705,8 @@ export function ConsoleView(): React.JSX.Element {
               onWhy={(item) => dive(item, "audit")}
               onStop={(item) => void stopSession(item.key)}
             />
+          </>
+        )}
           </>
         )}
       </main>
@@ -728,13 +771,6 @@ export function ConsoleView(): React.JSX.Element {
         </ShellOverlay>
       )}
 
-      {/* #352: the coordination overlay. Guarded by `coordinationEnabled` as well as the open flag so even a
-          stale `coordinationOpen=true` can never reveal the surface once the gate is off. */}
-      {coordinationOpen && coordinationEnabled && (
-        <ShellOverlay title={CONSOLE.coordination.title} onClose={() => setCoordinationOpen(false)}>
-          <CoordinationView />
-        </ShellOverlay>
-      )}
     </div>
   );
 }
