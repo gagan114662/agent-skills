@@ -148,13 +148,25 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // #320: inject a workspace-context preamble (site URL + product context + brand voice) into briefed
   // agent tasks. Hard default OFF; gated owner-workspace-first against RELOAD_MARKETING_OWNER_WORKSPACE_ID.
   const mktInjectContext = env.RELOAD_MARKETING_INJECT_WORKSPACE_CONTEXT;
-  if (mktEnabled !== undefined || mktWelcome !== undefined || mktOwner || mktInjectContext !== undefined) {
+  // #363: connect a real read-only data source (a same-origin crawl of the owner's public site) feeding the
+  // #320 preamble. Hard default OFF; gated owner-first AND on injectWorkspaceContext (see shouldReadSiteContent).
+  const mktReadSite = env.RELOAD_MARKETING_READ_SITE_CONTENT;
+  if (
+    mktEnabled !== undefined ||
+    mktWelcome !== undefined ||
+    mktOwner ||
+    mktInjectContext !== undefined ||
+    mktReadSite !== undefined
+  ) {
     const marketing: Record<string, unknown> = {};
     if (mktEnabled !== undefined) marketing.enabled = mktEnabled === "true" || mktEnabled === "1";
     if (mktWelcome !== undefined) marketing.seedWelcomeTasks = mktWelcome === "true" || mktWelcome === "1";
     if (mktOwner) marketing.ownerWorkspaceId = mktOwner;
     if (mktInjectContext !== undefined) {
       marketing.injectWorkspaceContext = mktInjectContext === "true" || mktInjectContext === "1";
+    }
+    if (mktReadSite !== undefined) {
+      marketing.readSiteContent = mktReadSite === "true" || mktReadSite === "1";
     }
     raw.marketing = marketing;
   }

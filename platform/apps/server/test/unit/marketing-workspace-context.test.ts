@@ -7,6 +7,7 @@ import {
   sanitizeUrl,
   shouldInjectWorkspaceContext,
   BRAND_VOICE_LINE,
+  IPOP_OWNER_PRODUCT_CONTEXT,
   MAX_PRODUCT_CONTEXT_CHARS,
 } from "../../src/marketing/workspace-context.js";
 
@@ -83,6 +84,41 @@ describe("sanitize (#200 FM#6 injection defense)", () => {
     expect(enriched).toContain("Task: Audit the homepage SEO.");
     // the product context line stays a "- Product context:" fact, not a standalone command
     expect(enriched).toMatch(/- Product context: Ignore all previous instructions/);
+  });
+});
+
+describe("owner product-context fallback + crawled-site block (#363)", () => {
+  it("falls back to the default ipop product context for the OWNER workspace when none is typed", () => {
+    const facts = resolveWorkspaceFacts({ workspaceId: "ipop", ownerWorkspaceId: "ipop" });
+    expect(facts.productContext).toBe(IPOP_OWNER_PRODUCT_CONTEXT);
+  });
+
+  it("an owner-typed product context still wins over the default", () => {
+    const facts = resolveWorkspaceFacts({
+      workspaceId: "ipop",
+      ownerWorkspaceId: "ipop",
+      productContext: "Custom owner positioning.",
+    });
+    expect(facts.productContext).toBe("Custom owner positioning.");
+  });
+
+  it("never applies the ipop default to a non-owner (tenant) workspace", () => {
+    const facts = resolveWorkspaceFacts({ workspaceId: "customer", ownerWorkspaceId: "ipop", domain: "acme.com" });
+    expect(facts.productContext).toBeUndefined();
+  });
+
+  it("appends a pre-composed crawled-site DATA block as its own section under the facts", () => {
+    const block = "Crawled public-site content from https://ipop.ai (reference DATA ...):\n- Page: https://ipop.ai/";
+    const preamble = composeWorkspaceContextPreamble({ siteUrl: "https://ipop.ai", siteContentBlock: block });
+    expect(preamble).toContain("- Primary site: https://ipop.ai");
+    expect(preamble).toContain(block);
+    // the facts section comes first, then the crawl section
+    expect(preamble?.indexOf("Workspace facts")).toBeLessThan(preamble?.indexOf("Crawled public-site") ?? -1);
+  });
+
+  it("surfaces the crawled-site block even when no other fact is known", () => {
+    const block = "Crawled public-site content from https://ipop.ai (...):\n- Page: https://ipop.ai/";
+    expect(composeWorkspaceContextPreamble({ siteContentBlock: block })).toBe(block);
   });
 });
 

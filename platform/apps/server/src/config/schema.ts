@@ -470,6 +470,16 @@ export const marketingSchema = z.object({
    * (#200 FM#6 injection defense) — never run as instructions.
    */
   injectWorkspaceContext: z.boolean().optional(),
+  /**
+   * Connect a real, read-only data source for the workspace-context preamble (#363): crawl the workspace's
+   * OWN public site and distill a handful of pages (title / meta description / headings) into the #320
+   * preamble as reference DATA, so a briefed Scout SEO audit cites real ipop.ai pages instead of "the
+   * workspace is empty." Default OFF and gated owner-workspace-first AND on `injectWorkspaceContext` (the
+   * crawl rides on the preamble — see `site-reader/service.ts:shouldReadSiteContent`): an unconfigured
+   * deployment crawls nothing. Read-only (GET only, same-origin, no write/spend); the fetched content is
+   * untrusted and sanitized + DATA-framed (#200 FM#6) — it can never become instructions or widen scope.
+   */
+  readSiteContent: z.boolean().optional(),
 });
 
 /**
