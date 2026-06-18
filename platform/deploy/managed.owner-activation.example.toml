@@ -1,0 +1,448 @@
+# =============================================================================
+# Owner-workspace full-activation profile (issue #357, ADR-0357)
+# =============================================================================
+# A managed-layer profile that turns the ENTIRE product ON for ONE workspace —
+# the owner's own — so the owner can dogfood every surface and loop end-to-end
+# in production with REAL actions, while every other tenant stays byte-for-byte
+# unchanged and every irreversible action still stops at the #13 approval gate.
+#
+# This file is an EXAMPLE. It is NOT live. To use it (see
+# docs/runbooks/owner-activation.md for the exact, ordered steps):
+#
+#   1. Replace EVERY occurrence of OWNER_WORKSPACE_ID below with your REAL
+#      workspace id (keep the surrounding double quotes — a workspace id with
+#      hyphens/UUID is a valid quoted TOML key).
+#   2. Set the live provider secrets via `fly secrets set ...` (placeholders
+#      only in the runbook — never commit a real secret).
+#   3. Install this file at the managed-config path and deploy:
+#        cp managed.owner-activation.example.toml /etc/reload/managed.toml
+#      (or set RELOAD_MANAGED_CONFIG to point at it).
+#   4. REVERT by deleting that one file (or unsetting RELOAD_MANAGED_CONFIG)
+#      and redeploying — activation vanishes, the deployment returns to today.
+#
+# -----------------------------------------------------------------------------
+# WHY EVERYTHING IS SCOPED UNDER [workspace."OWNER_WORKSPACE_ID".*]
+# -----------------------------------------------------------------------------
+# The loader (apps/server/src/config/loader.ts `managedLayer`) merges the global
+# `[settings]` table for ALL tenants, then a per-tenant `[workspace.<id>]` table
+# for that tenant only. By placing 100% of the activation under
+# `[workspace."OWNER_WORKSPACE_ID".*]` and leaving `[settings]` EMPTY:
+#
+#   * loadConfig("OWNER_WORKSPACE_ID")  -> fully activated.
+#   * loadConfig(<any other id>)        -> CONFIG_DEFAULTS, byte-for-byte.
+#   * loadConfig(undefined)  (server-wide reads) -> CONFIG_DEFAULTS.
+#
+# That is the tenant-isolation guarantee, provable at the LAYER level (other
+# tenants never even parse these values). We ALSO set the owner-workspace-first
+# trio on each feature that supports it (enabled + ownerWorkspaceOnly = true +
+# ownerWorkspaceId) as defense-in-depth: even if an operator later copies a
+# block into the global `[settings]` table by mistake, the resolution helpers
+# (isVentureGateEnabledForWorkspace / isLiveSendEnabledForWorkspace /
+# isConnectOnceLiveInScope / ...) still gate it to the owner workspace.
+#
+# -----------------------------------------------------------------------------
+# THE CRITICAL INVARIANT: real actions are POSSIBLE, but never AUTONOMOUS.
+# -----------------------------------------------------------------------------
+# Enabling a feature + wiring a live provider makes a real action POSSIBLE. It
+# never makes it autonomous. Every "auto-do-without-a-human" switch below is set
+# to its SAFE value EXPLICITLY (not left to default) so the invariant is visible
+# here, locked by the managed layer, and asserted in the loader unit test:
+#
+#   selfHealing.autoRemediate          = false   # breaches escalate, never self-act
+#   selfHealing.allowRollback          = false   # destructive rollback stays #13-gated
+#   selfHealing.allowScale             = false   # destructive (money) scale stays #13-gated
+#   selfHealing.preCommitRollback      = false   # no pre-committed bypass of the gate
+#   selfHealing.preCommitScale         = false   # no pre-committed bypass of the gate
+#   selfHealing.requireApprovalForDestructive = true
+#   supportDesk.autoSend               = false   # every support reply is a #13 human gate
+#   voice.autoTriageDraft              = false   # tickets land open, no proactive draft
+#   verification.autoSendReversible    = false   # a verified deliverable still waits for a human
+#   verification.requireProductionGrounding = true
+#   acquisition.autoSend               = false   # real sends never bypass the human
+#   ventureDeploys.preCommitProdPromote = false  # the customer-facing cutover stays #13-gated
+#   ventureDeploys.requireApprovalForProdPromote = true
+#   skillopt (no auto-adopt knob exists) -> only STAGES #13 proposals, never self-edits
+#
+# Money/irreversible actions (email.live_send, social.publish_post,
+# provisioning.customer_spend / ads spend, connection.connect_account,
+# hosted publish, prod promote, capabilityTokens write mint) remain structural
+# #13 always-gates regardless of any flag in this file. This profile only makes
+# the path REACHABLE; the human still approves each one.
+#
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Global settings — DELIBERATELY EMPTY.
+# Nothing here applies to all tenants. Tenant isolation depends on it.
+# -----------------------------------------------------------------------------
+[settings]
+
+
+# =============================================================================
+# PHASE 1 — coordination + UI + observability-read loops.
+# Safe to bring up first: no outbound real action, no money. Pure
+# coordination, internal fleet behavior, read/measure/escalate loops.
+# =============================================================================
+
+# Marketing department fleet (#123/#235/#320) — seed the 8-department fleet on
+# the owner workspace + inject real workspace context into briefed tasks.
+[workspace."OWNER_WORKSPACE_ID".marketing]
+enabled = true
+seedWelcomeTasks = true
+injectWorkspaceContext = true
+dedupeTasks = true
+dedupeOwnerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+# siteUrl = "https://your-domain.example"   # set to your real public site
+
+# Agent Registry + A2A (#282) — governed agent-to-agent calls within the fleet.
+[workspace."OWNER_WORKSPACE_ID".agentRegistry]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Agent collaboration (#319) — provision the subagent-spawn tool so a lead can
+# delegate. Spend amplifier, but model-spend only; money still #13-gated.
+[workspace."OWNER_WORKSPACE_ID".agentCollaboration]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Agent Garden (#284) — browse + enable/disable agents per workspace.
+[workspace."OWNER_WORKSPACE_ID".garden]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Worktree pool (#343) — warm reusable worktrees for fleet sessions.
+[workspace."OWNER_WORKSPACE_ID".worktreePool]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+size = 4
+
+# Durable-workflow primitive (#338) — suspend/resume/retry long waits.
+[workspace."OWNER_WORKSPACE_ID".durableWorkflow]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Customer discovery (#222) — READ-ONLY signal layer + ranked queue. Never sends.
+[workspace."OWNER_WORKSPACE_ID".discovery]
+enabled = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Growth-loop instrumentation (#102) — funnel scoring surface.
+[workspace."OWNER_WORKSPACE_ID".growth]
+enabled = true
+
+# Decision-maker resolver (#223) — account -> buyer brief from public text.
+[workspace."OWNER_WORKSPACE_ID".decisionMaker]
+enabled = true
+
+# Catalog (#152) + visual workflows (#152).
+[workspace."OWNER_WORKSPACE_ID".catalog]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".workflows]
+enabled = true
+
+# Founder briefings (#173) — daily brief + weekly P&L delivery surface.
+[workspace."OWNER_WORKSPACE_ID".briefings]
+enabled = true
+
+# Slack-native surface (#170) — digest tick. The bot token + signing secret are
+# NEVER config; they live in the #68 sealed vault, so this stays coming_soon
+# until you connect Slack. See the coming_soon list in the runbook.
+[workspace."OWNER_WORKSPACE_ID".slack]
+enabled = true
+digestEnabled = true
+
+# Finance ledger (#194) — posting/close tick + runway forecast. Cannot move
+# money (finance.disbursement stays human-gated + recorded-only).
+[workspace."OWNER_WORKSPACE_ID".finance]
+enabled = true
+
+# Moat accrual (#103), insight miner (#100), portfolio (#107), planning (#115),
+# venture memory (#197) — analysis/read loops.
+[workspace."OWNER_WORKSPACE_ID".moat]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".insight]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".portfolio]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".planning]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".ventureMemory]
+enabled = true
+
+# Reliability surface (#148) — owner paging + chat-native incidents + public
+# status page. Email paging needs an SMTP URL var (vault/env), so paging stays
+# coming_soon until that is set; the status page + incidents work without it.
+[workspace."OWNER_WORKSPACE_ID".reliability]
+enabled = true
+statusPageEnabled = true
+
+# SRE loop (#112) — SLO evaluation. Add `services` targets to evaluate against.
+[workspace."OWNER_WORKSPACE_ID".sre]
+enabled = true
+
+# Fleet watchdog (#105) — stalled-session supervisor + bounded restart.
+[workspace."OWNER_WORKSPACE_ID".watchdog]
+enabled = true
+
+# Self-healing flywheel (#117) — failure -> deduped GitHub issue -> fix. Filing
+# issues needs a GitHub token (env/vault); coming_soon until that is wired.
+[workspace."OWNER_WORKSPACE_ID".flywheel]
+enabled = true
+
+# Outcome verifiers (#106) — measured gates. Never silently pass.
+[workspace."OWNER_WORKSPACE_ID".verifiers]
+enabled = true
+escalateOnFailure = true
+
+# Deliverable verification layer (#191) — independent verifier on deliverables.
+# CRITICAL: autoSendReversible stays OFF (a verified deliverable still waits for
+# a human) and requireProductionGrounding stays ON.
+[workspace."OWNER_WORKSPACE_ID".verification]
+enabled = true
+autoSendReversible = false
+requireProductionGrounding = true
+
+# Evidence-priced autonomy (#119) — the gate pricer (relax/re-tighten on
+# measured error). Bounded by hysteresis; it tunes #95 rules, never #13 money.
+[workspace."OWNER_WORKSPACE_ID".gatePricing]
+enabled = true
+
+# Customer voice loop (#114) — ingest/classify/read. CRITICAL: autoTriageDraft
+# stays OFF (tickets land open; no proactive agent draft).
+[workspace."OWNER_WORKSPACE_ID".voice]
+enabled = true
+autoTriageDraft = false
+
+# Constitution (#146) + fleet skills/eval (#155) + automations (#147).
+[workspace."OWNER_WORKSPACE_ID".constitution]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".fleet]
+enabled = true
+[workspace."OWNER_WORKSPACE_ID".automations]
+enabled = true
+
+# SkillOpt-Sleep self-improvement (#283) — mines recurring tasks and STAGES
+# bounded skill-doc edits in the #13 queue. There is NO auto-adopt knob: a
+# proposal is never applied without an owner approval (by design).
+[workspace."OWNER_WORKSPACE_ID".skillopt]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Self-QA loop (#171) — synthetic-user E2E pass against a RESERVED synthetic
+# workspace only (never a real tenant). Set its dedicated slug before enabling.
+[workspace."OWNER_WORKSPACE_ID".selfqa]
+enabled = true
+workspaceSlug = "owner-selfqa-synthetic"
+
+# Self-shipping build loop (#172) — build -> review -> auto-merge WITHIN tight
+# guardrails. Auto-merge is reversible (git revert) and bounded; protected
+# paths force a human. Caps kept small for the dogfood; raise deliberately.
+[workspace."OWNER_WORKSPACE_ID".buildLoop]
+enabled = true
+maxConcurrentBuilds = 1
+maxReviewRounds = 2
+maxDiffFiles = 5
+maxDiffLines = 150
+
+
+# =============================================================================
+# PHASE 2 — growth read/proactive + venture pipeline.
+# Bring up after Phase 1 is verified. Proactive posture + drafting; money and
+# irreversible sends remain #13-gated.
+# =============================================================================
+
+# Venture loop (#96) — the YC-fundability admission gate.
+[workspace."OWNER_WORKSPACE_ID".venture]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Venture factory (#187) — opportunity scan -> validate -> bootstrap.
+[workspace."OWNER_WORKSPACE_ID".ventureFactory]
+enabled = true
+
+# Monetization rails (#188) — drafting plans is free; activation / re-pricing /
+# payout changes ALWAYS queue as #13 MONEY decisions. A venture can only charge
+# once the owner connects its OWN Stripe account in the #192 vault.
+[workspace."OWNER_WORKSPACE_ID".monetization]
+enabled = true
+ownerWorkspaceOnly = true
+
+# Analytics auto-install + read (#270) — pick a read provider + measurement id.
+# Provider stays dryrun (reports nothing) until you set provider + creds.
+[workspace."OWNER_WORKSPACE_ID".analytics]
+enabled = true
+provider = "ga4"
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+# measurementId = "G-XXXXXXXXXX"
+
+# SEO rank tracking (#294) — externally-grounded rank receipts. Provider stays
+# dryrun until you set a real one (search_console / serpapi / dataforseo) + key.
+[workspace."OWNER_WORKSPACE_ID".seo]
+enabled = true
+provider = "dryrun"
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Legal & compliance pack (#196) — send-layer enforcement. autoRegenerate OFF
+# (regeneration opens an owner-review approval, never silently rewrites).
+[workspace."OWNER_WORKSPACE_ID".legal]
+enabled = true
+autoRegenerate = false
+
+# Support desk (#190) — KB reads, SLA, receipts, recurring-issue filing.
+# CRITICAL: autoSend OFF — every reply is a #13 human gate. Refunds never auto.
+[workspace."OWNER_WORKSPACE_ID".supportDesk]
+enabled = true
+autoSend = false
+ownerWorkspaceOnly = true
+
+
+# =============================================================================
+# PHASE 3 — real-action connectors (LAST).
+# Each of these makes a REAL outbound / money / irreversible action POSSIBLE.
+# Bring them up one at a time, only after the live provider secret is set, and
+# only after Phases 1-2 are verified. Every action below remains a #13 gate.
+# =============================================================================
+
+# Billing (#98) — live Stripe revenue rails. Provider VALUE mirrors the
+# deployment env BILLING_PROVIDER; the Stripe keys live ONLY on the secrets
+# path (STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET). Setting provider here opens
+# the checkout gate for the owner workspace.
+[workspace."OWNER_WORKSPACE_ID".billing]
+provider = "stripe"
+currency = "usd"
+
+# External account onboarding (#192) — human-once setup + agent credential
+# injection. Per-service keys live in the #192 sealed vault, never config.
+[workspace."OWNER_WORKSPACE_ID".onboarding]
+enabled = true
+
+# Central provisioning (#267) — ipop-held paid data/posting/ads keys billed into
+# the plan. Customer spend gates as provisioning.customer_spend (#13 money).
+# Central keys live SERVER-SIDE in the #192 vault under central:<provider>.
+[workspace."OWNER_WORKSPACE_ID".provisioning]
+enabled = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Connect-once live OAuth (#258 Stage 2) — the shared connect-once seam. Stays
+# coming_soon until a per-department live OAuth client is wired; the per-connect
+# #13 approval (connection.connect_account) ALWAYS applies.
+[workspace."OWNER_WORKSPACE_ID".connectOnce]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Connect-Claude one-click (#262) — replaces the `claude setup-token` CLI step.
+# Stays coming_soon until a live OAuth client (CLAUDE_OAUTH_*) is configured.
+[workspace."OWNER_WORKSPACE_ID".connectClaude]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Capability-token mint (#336) — scoped, short-lived, delegated per-action
+# tokens. A `write` (send/post/spend) token requires a prior owner #13 approval;
+# the verify provider is dry-run, so tokens read back `unverified` (coming_soon)
+# until a live verify provider is wired. Signing secret is env/#192-vault driven.
+[workspace."OWNER_WORKSPACE_ID".capabilityTokens]
+liveMintEnabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Email deliverability + live send (#268) — make a REAL Postmark send eligible.
+# CRITICAL: even eligible, every real send is the structural #13 always-gate
+# email.live_send (owner-approved per send). Postmark token + unsubscribe HMAC
+# live on the secrets path, never config.
+[workspace."OWNER_WORKSPACE_ID".emailDeliverability]
+liveSendEnabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Real-world tool surface (#231/#250) — gated publish/send/post + self-publish
+# site PR. GitHub token is read from the secret env at publish time, never here.
+[workspace."OWNER_WORKSPACE_ID".realworld]
+enabled = true
+publishProvider = "github_pages"
+
+# Outreach engine (#225) — signal-triggered, owner-gated, externally-measured
+# sends. Sender stays dryrun (recorded-only, no egress) until you set a real one.
+[workspace."OWNER_WORKSPACE_ID".outreach]
+enabled = true
+sendProvider = "dryrun"
+
+# Acquisition execution (#189) — real ads/email/social/SEO channel execution.
+# CRITICAL: autoSend OFF — a real send NEVER bypasses the human. Each per-channel
+# real send ALSO requires the owner to connect the provider in the #192 vault.
+[workspace."OWNER_WORKSPACE_ID".acquisition]
+enabled = true
+ads = true
+email = true
+social = true
+seo = true
+autoSend = false
+
+# Ads spend (#272) — Bid's money-gated ad-spend path. Every spend pauses for the
+# owner as provisioning.customer_spend (#13, exact amount). perActionCapCents is
+# the HARD ceiling the system never crosses — start small and raise deliberately.
+[workspace."OWNER_WORKSPACE_ID".ads]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+perActionCapCents = 5000
+
+# Hosted publishing (#266) — multi-tenant customer blogs + landing pages. Nothing
+# goes live without an explicit owner approval (enforced structurally in the
+# service). A free ipop subdomain hosts immediately; custom domains wait on #264.
+[workspace."OWNER_WORKSPACE_ID".hostedSites]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Echo social posting (#269) — connect-once aggregator bridge, multi-network
+# fan-out. A post (irreversible) ALWAYS pauses for an explicit owner approval
+# (social.publish_post). Posts nothing real until you connect an aggregator.
+[workspace."OWNER_WORKSPACE_ID".social]
+enabled = true
+ownerWorkspaceOnly = true
+ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+
+# Reach outbound demand-gen (#280) — the 8th department. Outbound email
+# auto-sends WITHIN per-channel daily caps (its design); LinkedIn is queue-only;
+# paid prospect-data credits are #13 money-gated (reach.data_credit_spend). Keep
+# caps conservative for the dogfood. Set a paid `source` only when you intend to
+# spend on data credits.
+[workspace."OWNER_WORKSPACE_ID".reach]
+enabled = true
+
+# Venture deploys (#195) — per-venture provisioning + release pipeline on Vercel.
+# CRITICAL: preCommitProdPromote OFF + requireApprovalForProdPromote ON — the
+# customer-facing prod cutover stays a #13 gate. autoRollbackOnSmokeFail stays ON
+# (the pre-committed SAFETY action: roll a broken venture image back). The Vercel
+# token lives on the secrets path, never here.
+[workspace."OWNER_WORKSPACE_ID".ventureDeploys]
+enabled = true
+ownerWorkspaceOnly = true
+provider = "vercel"
+preCommitProdPromote = false
+requireApprovalForProdPromote = true
+autoRollbackOnSmokeFail = true
+
+# Self-healing ops (#193) — per-venture monitoring + escalation. CRITICAL: every
+# auto-act switch OFF. Breaches ESCALATE; they never self-remediate, roll back,
+# or scale without a #13 approval. (Placed here because it observes the Phase-3
+# real deploys, but it takes no autonomous action.)
+[workspace."OWNER_WORKSPACE_ID".selfHealing]
+enabled = true
+autoRemediate = false
+allowRollback = false
+allowScale = false
+preCommitRollback = false
+preCommitScale = false
+requireApprovalForDestructive = true
