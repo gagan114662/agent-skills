@@ -63,6 +63,15 @@ import {
   CONNECT_HEALTH_UI_ENABLED,
   shouldShowConnectHealth,
 } from "./connect-health-flag.js";
+import { VersionMismatchBanner } from "./VersionMismatchBanner.js";
+import {
+  decideVersionParity,
+  shouldShowVersionCheck,
+  VERSION_CHECK_OWNER_WORKSPACE_ID,
+  VERSION_CHECK_UI_ENABLED,
+  WEB_BUILD_SHA,
+  type VersionParityVerdict,
+} from "./version-check.js";
 
 interface PeekTarget {
   item: ConsoleItem;
@@ -123,6 +132,13 @@ export function ConsoleView(): React.JSX.Element {
     ownerWorkspaceId: CONNECT_HEALTH_OWNER_WORKSPACE_ID,
     workspaceId,
   });
+  // #366 deploy freshness: surface a stale-bundle vs newer-API divergence (preview-vs-prod confusion) for
+  // the named owner workspace only (fail-closed default-OFF), so prod with no env is byte-for-byte today.
+  const versionCheckEnabled = shouldShowVersionCheck({
+    flagOn: VERSION_CHECK_UI_ENABLED,
+    ownerWorkspaceId: VERSION_CHECK_OWNER_WORKSPACE_ID,
+    workspaceId,
+  });
 
   const [mc, setMc] = useState<MissionControlDto | null>(null);
   const [fc, setFc] = useState<FounderConsoleDto | null>(null);
@@ -152,6 +168,9 @@ export function ConsoleView(): React.JSX.Element {
   // #365: the owner's Claude connection-health signal (connected / not connected / token expired), shown
   // as a header chip ONLY for the named owner workspace (default-OFF, owner-first via connect-health-flag).
   const [claudeHealth, setClaudeHealth] = useState<ClaudeConnectionHealth | null>(null);
+  // #366: the web↔API build-parity verdict (null until the API /version is fetched). Only a CONFIRMED
+  // mismatch ever renders a banner; match/unknown stay silent.
+  const [versionParity, setVersionParity] = useState<VersionParityVerdict | null>(null);
   // Set when the customer lands back from a completed hosted checkout (`?checkout=success`).
   const [checkoutReturned, setCheckoutReturned] = useState(false);
 
@@ -279,6 +298,26 @@ export function ConsoleView(): React.JSX.Element {
       live = false;
     };
   }, [connectHealthEnabled, workspaceId, shellSettingsOpen]);
+
+  // #366: fetch the API's running build SHA once (owner workspace only) and compare it to this bundle's
+  // build stamp. A transient failure or an unstamped side resolves to "unknown" → the banner stays silent;
+  // only a confirmed divergence raises it. No polling — a deploy mismatch is steady-state, not a blip.
+  useEffect(() => {
+    if (!versionCheckEnabled) return;
+    let live = true;
+    void api
+      .getVersion()
+      .then((r) => {
+        if (!live || !mounted.current) return;
+        setVersionParity(decideVersionParity({ webSha: WEB_BUILD_SHA, apiSha: r.version }));
+      })
+      .catch(() => {
+        /* unreachable/old API → leave silent; we never fabricate a freshness claim (#200 FM#2) */
+      });
+    return () => {
+      live = false;
+    };
+  }, [versionCheckEnabled]);
 
   // #248: the owner can stop a runaway agent straight from the board. The backend cancel works even
   // for an orphaned/stuck session (it force-finalizes the row), so the WIP card always clears. Refresh
@@ -551,6 +590,9 @@ export function ConsoleView(): React.JSX.Element {
       />
 
       <main className="console__main">
+        {/* #366: a deploy-freshness strip — renders only on a CONFIRMED web↔API build mismatch (owner-first,
+            default-OFF), so prod is byte-for-byte today until the owner opts in. */}
+        {versionCheckEnabled && <VersionMismatchBanner verdict={versionParity} />}
         {checkoutReturned && (
           <div className="checkout-banner" role="status">
             <span>{CONSOLE.checkoutReturn.success}</span>

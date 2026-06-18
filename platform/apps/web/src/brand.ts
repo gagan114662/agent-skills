@@ -846,6 +846,18 @@ export const CONSOLE = {
     notConnected: "Connect Claude to run your fleet",
     expired: "Reconnect Claude — token stopped working",
   },
+  /**
+   * Deploy-freshness banner (#366) — shown ONLY when the web bundle and the API report different build
+   * SHAs (a stale Vercel deploy vs a newer api.ipop.ai, or a preview bundle hitting prod). Gated default-OFF
+   * + owner-first; renders nothing on a match or when either side is unstamped (unknown), so it never
+   * false-alarms. This is the front-end half of the #292 version-advance discipline.
+   */
+  versionCheck: {
+    label: "Build version mismatch",
+    title: "This page is out of sync with the API",
+    body: "The web app and the API are running different builds — what you see may lag the live fleet. Refresh; if it persists, the stale side needs a redeploy.",
+    refresh: "Reload page",
+  },
   /** Spend-gauge forecast labels + the inline upgrade CTA (the in-header path to a paid plan). */
   gauge: { onTrack: "on track", atRisk: "at risk", noCap: "no cap set", upgrade: "Upgrade" },
   /** Confirmation banner shown when a customer lands back in the app from a completed checkout. */
