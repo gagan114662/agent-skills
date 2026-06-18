@@ -48,6 +48,7 @@ import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realw
 import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import { reachProofReading } from "../db/repositories/reach.js";
 import { dbSeoRankStore } from "../db/repositories/seo-ranks.js";
+import { dbSearchConsoleSubmissionStore } from "../db/repositories/search-console.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -592,6 +593,11 @@ export function createDefaultFounderConsoleService(deps: {
         // with the reason — never a fabricated rank (premortem #200 §2). The headline is target keywords
         // sitting on page 1 (positions 1–10) as of each keyword's latest external reading.
         const seoTotal = await dbSeoRankStore.count(workspaceId);
+        // #265: the latest EXTERNALLY-VERIFIED indexed-page count from a Search Console submission, or null
+        // (never fabricated). Folded into the SEO tile so indexed-page numbers surface automatically once a
+        // real provider confirms a submission — the write-side half of the SEO proof.
+        const indexedPages = await dbSearchConsoleSubmissionStore.latestVerifiedIndexedPages(workspaceId);
+        const indexedNote = indexedPages !== null ? ` · ${indexedPages} pages indexed (Search Console)` : "";
         if (seoTotal > 0) {
           const onPageOne = await dbSeoRankStore.countKeywordsOnPageOne(workspaceId);
           readings.push({
@@ -601,7 +607,19 @@ export function createDefaultFounderConsoleService(deps: {
             unit: "count",
             metricLabel: "Target keywords on page 1",
             source: "External rank receipts (#294)",
-            note: `${seoTotal} rank observations recorded`,
+            note: `${seoTotal} rank observations recorded${indexedNote}`,
+          });
+        } else if (indexedPages !== null) {
+          // No rankings yet, but Search Console has confirmed indexed pages (#265) — still a real, external
+          // SEO proof, so the tile is connected on the indexed-page count.
+          readings.push({
+            department: "seo",
+            connected: true,
+            current: indexedPages,
+            unit: "count",
+            metricLabel: "Pages indexed (Search Console)",
+            source: "Verified Search Console submission (#265)",
+            note: "sitemap submitted + verified; rankings appear once a rank source reports",
           });
         } else {
           readings.push({

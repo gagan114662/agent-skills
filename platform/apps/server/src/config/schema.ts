@@ -1189,8 +1189,15 @@ export const seoSchema = z.object({
   defaultCountry: z.string().optional(),
   /** The target keywords to track (structural data — never instructions). */
   targetKeywords: z.array(z.string()).optional(),
-  /** The owner's own workspace id (the owner-first rollout marker). */
+  /** The owner's own workspace id (the owner-first rollout marker; shared by #294 + #265). */
   ownerWorkspaceId: z.string().optional(),
+  /**
+   * #265 master flag for Scout's auto-submit of the sitemap + indexing requests — default OFF. With it on,
+   * the live submit is STILL #13-gated and the provider is STILL dry-run (three independent safety layers).
+   */
+  autoSubmitSitemap: z.boolean().optional(),
+  /** #265 Search Console submit/verify provider: `dryrun` (default, no network) | `search_console`. */
+  searchConsoleProvider: z.string().optional(),
 });
 
 /**
