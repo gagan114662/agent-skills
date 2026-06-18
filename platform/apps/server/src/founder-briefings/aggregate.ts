@@ -630,6 +630,14 @@ export interface PremortemPanelInput {
   approvalsRubberStamped: number;
   /** Owner overrides of an agent recommendation — the taste gap (FM#7). */
   ownerOverrides: number;
+  /**
+   * #337 governance (FM#3 — verification must touch reality). Optional/additive: risky actions that APPLIED
+   * under the shared agent-action contract in the window, and how many of those reached `verified` with a
+   * production-grounded external receipt. When omitted the panel renders byte-for-byte as before and
+   * `contractReceiptCoveragePct` is null. Both are counts, never estimates.
+   */
+  contractGovernedApplies?: number;
+  contractVerifiedWithReceipt?: number;
 }
 
 /** The weekly premortem panel (#200 AC2): the five standing failure-mode gauges + warning flags. */
@@ -646,6 +654,12 @@ export interface PremortemPanel {
   rubberStampRatePct: number;
   /** % of decisions the owner overrode — the taste gap (FM#7). */
   overrideRatePct: number;
+  /**
+   * #337 (FM#3) — % of risky actions that APPLIED under the agent-action contract and reached `verified`
+   * with a production-grounded external receipt. `null` when no contract action applied in the window (the
+   * gauge has nothing to report). 100 ⇒ every applied action proved success against reality.
+   */
+  contractReceiptCoveragePct: number | null;
   /** Human-readable warnings (empty when every gauge is healthy). */
   flags: string[];
 }
@@ -682,6 +696,18 @@ export function composePremortemPanel(input: PremortemPanelInput): PremortemPane
     flags.push(`${rubberStampRatePct}% of approvals rubber-stamped — the gate may be theater (FM#5)`);
   }
 
+  // #337 governance (FM#3): of the risky actions APPLIED under the contract, how many proved success with a
+  // production-grounded receipt? `null` when nothing applied (no gauge to show). A gap means an applied
+  // action was marked done WITHOUT touching reality — the exact #200 §3 failure the contract exists to stop.
+  const applies = Math.max(0, input.contractGovernedApplies ?? 0);
+  const verified = Math.max(0, input.contractVerifiedWithReceipt ?? 0);
+  const contractReceiptCoveragePct = applies > 0 ? pct(verified, applies) : null;
+  if (contractReceiptCoveragePct !== null && contractReceiptCoveragePct < 100) {
+    flags.push(
+      `${applies - Math.min(verified, applies)} applied action(s) lack a production receipt — success unproven (FM#3)`,
+    );
+  }
+
   return {
     edgeCoveragePct,
     externallyVerifiedPct,
@@ -689,6 +715,7 @@ export function composePremortemPanel(input: PremortemPanelInput): PremortemPane
     attentionSpend: { presented: input.decisionsPresented, budget: input.attentionBudget, overBudget },
     rubberStampRatePct,
     overrideRatePct,
+    contractReceiptCoveragePct,
     flags,
   };
 }

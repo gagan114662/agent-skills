@@ -1352,6 +1352,30 @@ export const deliverySchema = z.object({
 });
 
 /**
+ * Shared agent-action contract policy (#337, ADR-0337). The flags that decide whether the
+ * observe→investigate→propose→#13-approve→apply→verify→rollback contract may APPLY a change for a workspace.
+ * Every field is optional and defaults **OFF, owner-workspace-first** (mirrors `delivery`/`skillopt`): a
+ * deployment that sets nothing applies nothing — the contract is inert and today's behavior is unchanged.
+ * The master `enabled` flag must be on AND the workspace in scope (`ownerWorkspaceOnly` defaults true ⇒ only
+ * `ownerWorkspaceId` is enabled; turning `enabled` on WITHOUT naming the owner workspace enables nobody —
+ * the safest default). `applyIrreversible` is a SECOND switch, also default OFF even when `enabled`: an
+ * irreversible apply (deploy/brand/legal/money) is the most dangerous step, so it stays gated behind its own
+ * flag AND the owner's per-action #13 approval until proven. No credentials/money here — a proposal is a
+ * PR/diff parked in the #13 queue and applied only after the owner's yes; resolved by
+ * `resolveActionContractFlags`.
+ */
+export const actionContractSchema = z.object({
+  /** Master flag for the action contract — default OFF (the contract applies nothing). */
+  enabled: z.boolean().optional(),
+  /** Restrict the contract to the owner workspace (default true). Set false to enable for all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the contract rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Allow IRREVERSIBLE capabilities to apply (deploy/brand/legal/money). Default OFF even when enabled. */
+  applyIrreversible: z.boolean().optional(),
+});
+
+/**
  * SkillOpt-Sleep self-improvement policy (#283, ADR-0283). The flags behind the offline cycle that lets a
  * department agent mine its own recurring tasks and PROPOSE a bounded edit to its skill doc. Default OFF,
  * owner-workspace-first: a deployment that sets nothing runs no cycle and stages nothing. Even when
@@ -1583,6 +1607,8 @@ export const settingsSchema = z.object({
   acquisition: acquisitionSchema.optional(),
   /** Deliverable delivery policy (#295): approve→publish ship of `agent.deliverable` drafts (default OFF). */
   delivery: deliverySchema.optional(),
+  /** Shared agent-action contract policy (#337): propose→#13-approve→apply→verify→rollback gating (default OFF). */
+  actionContract: actionContractSchema.optional(),
   /** Central provisioning policy (#267): ipop-held paid data/posting/ads keys billed into the plan (default OFF). */
   provisioning: provisioningSchema.optional(),
   /** ipop hosted publishing policy (#266): multi-tenant customer blogs + landing pages (default OFF). */
@@ -1674,6 +1700,7 @@ export type RealworldConfig = z.infer<typeof realworldSchema>;
 export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
+export type ActionContractConfig = z.infer<typeof actionContractSchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
 export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
@@ -1803,6 +1830,8 @@ export interface ResolvedConfig {
   acquisition: AcquisitionConfig;
   /** Deliverable delivery policy (#295). A partial resolved by `resolveDeliveryFlags`. */
   delivery: DeliveryConfig;
+  /** Shared agent-action contract policy (#337). A partial resolved by `resolveActionContractFlags`. */
+  actionContract: ActionContractConfig;
   /** Central provisioning policy (#267). A partial whose hard defaults `resolveProvisioningCaps` fills. */
   provisioning: ProvisioningConfig;
   /** ipop hosted publishing policy (#266). A partial resolved by `resolveHostedSitesFlags`. */
@@ -1895,6 +1924,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   outreach: {},
   acquisition: {},
   delivery: {},
+  actionContract: {},
   provisioning: {},
   hostedSites: {},
   social: {},
