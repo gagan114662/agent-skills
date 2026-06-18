@@ -147,6 +147,21 @@ export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
 export const CONNECTION_CONNECT_ACCOUNT_ACTION = "connection.connect_account" as const;
 
 /**
+ * #265 Scout submits the sitemap + requests indexing to Google Search Console. The submit is an outward
+ * LIVE action against Google's production crawl surface (premortem #200 §4: an external submit / indexing
+ * request is not cheaply reversible post-hoc, and indexing requests are quota-limited), so it ALWAYS pauses
+ * for an explicit owner approval before anything is submitted — a structural always-gate enforced by the
+ * service (`SearchConsoleService.submitSitemap` has NO autonomous submit path; it can only park a PENDING
+ * request), exactly like `connection.connect_account` / `hosted.publish`. Per ADR-0243 it is NOT money, so
+ * it is NOT in {@link MONEY_ACTIONS}; it is reversible (a sitemap can be resubmitted / removed), so it is NOT
+ * in {@link IRREVERSIBLE_ACTIONS}. Like those it is never submitted through the #13 action route; the
+ * Search Console service parks it directly against the same workspace `approval_policies`. The executor is
+ * recorded-only by default (the live submit only runs through the post-approval executor with a real
+ * provider wired behind the #192 vault — a deliberate follow-up; this change submits nothing live). ADR-0265.
+ */
+export const SEARCH_CONSOLE_SUBMIT_ACTION = "searchconsole.submit" as const;
+
+/**
  * #267 the customer's OWN spend through a centrally-provisioned API. ipop holds the paid data/posting/ads
  * API keys CENTRALLY and bills the cost of goods into the plan, so using those APIs is autonomous (a
  * `platform_cost` capability — never gated). But the customer's own money — releasing real AD BUDGET or

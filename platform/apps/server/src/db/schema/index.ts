@@ -66,6 +66,7 @@ export * from "./workspace-onboarding.js";
 export * from "./assets.js";
 export * from "./reach.js";
 export * from "./seo.js";
+export * from "./search-console.js";
 export * from "./delivery.js";
 export * from "./provisioning.js";
 export * from "./hosted.js";

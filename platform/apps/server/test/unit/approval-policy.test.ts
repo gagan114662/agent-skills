@@ -47,6 +47,9 @@ const NON_MONEY = [
   // #258 Stage 2: connecting an outside account is a CONSENT, not money — the connect-once service
   // structurally always-gates it (parks a PENDING request), so it is NOT in MONEY_ACTIONS.
   "connection.connect_account",
+  // #265: submitting the sitemap / requesting indexing is an outward live action against Google, not money
+  // — the Search Console service structurally always-gates it (parks a PENDING request), NOT in MONEY_ACTIONS.
+  "searchconsole.submit",
 ];
 import {
   buildRegistry,

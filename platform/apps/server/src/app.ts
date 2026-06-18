@@ -177,6 +177,8 @@ import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { seoRoutes } from "./routes/seo.js";
 import { createDefaultSeoRankService } from "./seo/default.js";
+import { searchConsoleRoutes } from "./routes/search-console.js";
+import { createDefaultSearchConsoleService } from "./search-console/default.js";
 import { createDefaultOutreachService } from "./outreach/default.js";
 import type { OutreachService } from "./outreach/service.js";
 import { semanticRoutes } from "./routes/semantic.js";
@@ -711,6 +713,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #294 SEO rank tracking: externally-grounded rank receipts feeding the SEO proof tile. Default-OFF +
   // dry-run provider, so it fetches nothing and records nothing until an owner connects a real rank source.
   const seoRankService = createDefaultSeoRankService(app.log);
+  // #265 Search Console auto-submit: Scout submits the sitemap + requests indexing after the Google connect.
+  // Default-OFF (owner-first) + dry-run provider + structural #13 always-gate — three independent layers, so
+  // nothing is submitted live until an owner enables the flag, approves the submit, and a real provider is
+  // wired behind the vault.
+  const searchConsoleService = createDefaultSearchConsoleService(app.log);
   // #267 central provisioning: the SHARED seam the per-department adapters resolve paid-API credentials
   // through. Default-OFF + owner-workspace-first: with no `provisioning.enabled` set every capability
   // resolves to the free mock path and no central vault is read.
@@ -851,6 +858,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });
   app.register(seoRoutes, { service: seoRankService });
+  app.register(searchConsoleRoutes, { service: searchConsoleService });
   app.register(semanticRoutes, { service: semanticService });
   app.register(portfolioRoutes, { service: portfolioService });
   // #115 product planning loop: feedback + metrics → RICE-ranked backlog → specs → proposed build
