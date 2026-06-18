@@ -1,0 +1,152 @@
+/**
+ * Chat-first primary surface for the owner workspace (#372). Proves the last reload.chat parity gap:
+ * when the coordination gate (#352) is on for the named owner workspace, the owner LANDS directly in the
+ * coordination view (the team channel IS the home screen), with the board reachable via a secondary tab —
+ * and that when the flag is OFF or this is NOT the owner, the surface is byte-for-byte the board it is today
+ * (fail-closed, owner-first, default-OFF).
+ *
+ * The two env-derived constants (`COORDINATION_UI_ENABLED` / `COORDINATION_OWNER_WORKSPACE_ID`) are mocked
+ * via a hoisted holder so each case can flip the gate; the REAL `shouldShowCoordination` is kept, so the
+ * owner-first contract itself is exercised (owner id == the test workspace ⇒ on; a different owner ⇒ off).
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import { api } from "../../api/client.js";
+import { CONSOLE } from "../../brand.js";
+import { renderWithStore } from "../../test/utils.js";
+
+// The test identity's workspace (utils.TEST_IDENTITY) — naming THIS workspace as the owner turns the gate on.
+const OWNER_WS = "w1";
+
+// Mutable gate inputs, hoisted so the module mock below can read them lazily (per render, per test). The
+// owner literal is inlined here because `vi.hoisted` runs before module-level `const`s are initialized.
+const gate = vi.hoisted(() => ({ flagOn: true, owner: "w1" as string | undefined }));
+
+// Mock ONLY the two env-derived constants; keep the real `shouldShowCoordination` so the owner-first gate is
+// genuinely exercised. Getters mean a test can flip `gate.*` before mounting and the next render sees it.
+vi.mock("./coordination-flag.js", async (orig) => {
+  const actual = await orig<typeof import("./coordination-flag.js")>();
+  return {
+    ...actual,
+    get COORDINATION_UI_ENABLED() {
+      return gate.flagOn;
+    },
+    get COORDINATION_OWNER_WORKSPACE_ID() {
+      return gate.owner;
+    },
+  };
+});
+
+// Imported AFTER the mock is declared so ConsoleView binds the mocked flag module.
+const { ConsoleView } = await import("./ConsoleView.js");
+
+const mcDto = (): MissionControlDto => ({
+  sessions: [],
+  count: 0,
+  totalEstimatedCostCents: 0,
+  rateCentsPerMinute: 0,
+  costIsEstimate: true,
+});
+
+const fcDto = (): FounderConsoleDto => ({
+  workspaceId: OWNER_WS,
+  generatedAtMs: 1_700_000_000_000,
+  fleet: { activeSessions: 0, sessionsThisWindow: 0, globalInFlight: 0 },
+  venturePipeline: { total: 2, active: 1, funded: 1, killed: 0, escalated: 0 },
+  revenue: { currency: "usd", totalCents: 0, paymentCount: 0, willingnessToPayCount: 0, hasWillingnessToPay: false },
+  budget: { window: "2026-06", estimatedCostCents: 0, budgetCents: 100000, overBudget: false, utilization: 0 },
+  pendingApprovals: [],
+  switches: { killSwitch: false, maintenance: { enabled: false } },
+  attention: { required: false, reasons: [] },
+});
+
+function mockSeams(): void {
+  vi.spyOn(api.missionControl, "get").mockResolvedValue(mcDto());
+  vi.spyOn(api, "getFounderConsole").mockResolvedValue(fcDto());
+  vi.spyOn(api.approvals, "list").mockResolvedValue([]);
+  // The #301 first-run auto-run can fire on this ready board; stub its seams so nothing hits a real fetch.
+  vi.spyOn(api.department, "seed").mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+  vi.spyOn(api.department, "brief").mockResolvedValue({
+    lead: "scout",
+    department: "seo",
+    channelId: "c-seo",
+    messageId: "m1",
+    launched: [],
+    connectPrompted: [],
+  });
+}
+
+async function mount() {
+  mockSeams();
+  const utils = renderWithStore(<ConsoleView />);
+  await act(async () => {
+    await utils.store.bootstrap();
+  });
+  return utils;
+}
+
+/** The coordination view's own h2 title — present iff the coordination surface is mounted. */
+const COORD_TITLE = CONSOLE.coordination.title;
+/** Any board lane — present iff the board surface is mounted. */
+const BOARD_LANE = { name: CONSOLE.columns.running } as const;
+
+beforeEach(() => {
+  gate.flagOn = true;
+  gate.owner = OWNER_WS;
+});
+afterEach(() => vi.restoreAllMocks());
+
+describe("ConsoleView chat-first primary surface (#372)", () => {
+  it("owner + flag ON ⇒ coordination is the LANDING surface, board reachable via a tab", async () => {
+    await mount();
+
+    // The owner lands directly in the coordination view (the team channel is the home screen)…
+    expect(await screen.findByText(COORD_TITLE)).toBeInTheDocument();
+    // …and the board is NOT the landing surface (its lanes are not mounted yet).
+    expect(screen.queryByRole("listitem", BOARD_LANE)).toBeNull();
+
+    // The board stays reachable via a secondary tab (it is not removed).
+    const boardTab = screen.getByRole("tab", { name: CONSOLE.coordination.boardTab });
+    await userEvent.click(boardTab);
+
+    // Switching to the Board tab shows the board lanes and drops the coordination surface.
+    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
+    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+  });
+
+  it("flag OFF ⇒ board is the landing surface, byte-for-byte (no coordination, no tabs)", async () => {
+    gate.flagOn = false;
+    await mount();
+
+    // The board lanes render as the landing surface…
+    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
+    // …and the coordination surface + the surface-switch tabs are absent entirely.
+    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.open })).toBeNull();
+    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.boardTab })).toBeNull();
+  });
+
+  it("non-owner workspace + flag ON ⇒ board unchanged (owner-first, fail-closed)", async () => {
+    gate.owner = "ws_someone_else"; // a named owner that is NOT this workspace → the real gate returns false
+    await mount();
+
+    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
+    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.boardTab })).toBeNull();
+  });
+
+  it("keeps a Coordination tab so the owner can return to the chat-first surface", async () => {
+    await mount();
+    // Start on coordination, switch to board, then back to coordination via its tab.
+    await userEvent.click(screen.getByRole("tab", { name: CONSOLE.coordination.boardTab }));
+    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
+
+    const coordTab = screen.getByRole("tab", { name: CONSOLE.coordination.open });
+    await userEvent.click(coordTab);
+    expect(await screen.findByText(COORD_TITLE)).toBeInTheDocument();
+    // Use `within` to keep the lane assertion unambiguous if the title ever appears elsewhere.
+    expect(within(document.body).queryByRole("listitem", BOARD_LANE)).toBeNull();
+  });
+});
