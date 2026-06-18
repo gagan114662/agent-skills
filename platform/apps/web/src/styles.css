@@ -4733,6 +4733,20 @@ select:focus-visible {
 .waitchip:hover { background: #ffcdc0; }
 .waitchip .glyph-dot { width: 6px; height: 6px; }
 
+/* #352: the coordination header chip + the coordination overlay surface. */
+.coordchip { border: 1px solid var(--line); background: var(--bg-1); color: var(--text);
+  font: inherit; font-weight: 700; font-size: 12px; border-radius: 99px; padding: 5px 13px; cursor: pointer; }
+.coordchip:hover { background: var(--bg-2); }
+.coord { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.coord__head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.coord__title { margin: 0; font-size: 16px; font-weight: 700; }
+.coord__sub { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
+.coord__live { flex: none; max-height: 38%; overflow-y: auto; border-bottom: 1px solid var(--line); }
+/* The reload.chat four-column grid the orphaned components were built against: channels · messages ·
+   thread · members. The trailing `auto` columns collapse when ThreadPanel renders null / there are no
+   members to show. */
+.coord__body { flex: 1; display: grid; grid-template-columns: 240px minmax(0, 1fr) auto auto; min-height: 0; }
+
 /* In-header upgrade CTA (#215): the one-click conversion path from the spend gauge. */
 .gauge-upgrade { border: 1px solid var(--accent); background: transparent; color: var(--accent-press);
   font: inherit; font-weight: 700; font-size: 11px; border-radius: 99px; padding: 4px 11px; cursor: pointer;

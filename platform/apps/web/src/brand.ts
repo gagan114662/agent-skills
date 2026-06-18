@@ -876,6 +876,20 @@ export const CONSOLE = {
     mentions: "Mentions",
     closeSettings: "Close",
   },
+  /**
+   * The agent-coordination surface (#352) — the reload.chat-style channels/messages/members view, re-mounted
+   * behind the default-OFF, owner-workspace-first coordination flag. Read + steer only; no new action path.
+   */
+  coordination: {
+    /** Header button that opens the coordination overlay (shown only for the named owner workspace). */
+    open: "Coordination",
+    /** Overlay + view title. */
+    title: "Team coordination",
+    /** One-line framing under the title. */
+    sub: "Channels, threads, and live sessions — watch the fleet work together and steer in the open.",
+    /** Accessible label for the live mission-control strip (#147). */
+    liveLabel: "Live sessions",
+  },
   /** Reports view sections. */
   reports: {
     overnightTitle: "While you were out",
