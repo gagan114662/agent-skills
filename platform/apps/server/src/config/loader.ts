@@ -413,6 +413,20 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (connectClaudeOwner) connectClaude.ownerWorkspaceId = connectClaudeOwner;
     raw.connectClaude = connectClaude;
   }
+  // #353 open-design: let the deployment env turn the OPT-IN brand-asset offer on + pick the owner
+  // workspace without a managed.toml (the owner dogfoods the heavyweight third-party app first). Hard
+  // default stays OFF (vars unset → no block ⇒ today's draft-only behavior). This flag never installs
+  // anything; it only marks which workspace may *offer* open-design. A managed layer still wins as the lock.
+  const openDesignEnabled = env.RELOAD_OPEN_DESIGN_ENABLED;
+  const openDesignOwner = env.RELOAD_OPEN_DESIGN_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (openDesignEnabled !== undefined || openDesignOwner) {
+    const openDesign: Record<string, unknown> = {};
+    if (openDesignEnabled !== undefined) {
+      openDesign.enabled = openDesignEnabled === "true" || openDesignEnabled === "1";
+    }
+    if (openDesignOwner) openDesign.ownerWorkspaceId = openDesignOwner;
+    raw.openDesign = openDesign;
+  }
   // #258 Stage 2 connect-once: let the deployment env turn the live customer-OAuth connect flow on + pick
   // the owner workspace without a managed.toml (the owner dogfoods the real connect first). Hard default
   // stays OFF (vars unset → no block ⇒ today's #258 Stage 1 `coming_soon`). Even enabled, the flow stays a

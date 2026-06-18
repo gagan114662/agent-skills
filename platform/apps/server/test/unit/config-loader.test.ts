@@ -192,6 +192,18 @@ describe("real-world tool surface config (#231)", () => {
     expect(cfg.connectClaude).toEqual({ enabled: true, ownerWorkspaceId: "ws_owner" });
   });
 
+  it("#353 open-design defaults OFF, and env opts the owner workspace in (RELOAD_OPEN_DESIGN_*)", () => {
+    expect(loadConfig(undefined, sources({})).openDesign).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        { RELOAD_OPEN_DESIGN_ENABLED: "true", RELOAD_OPEN_DESIGN_OWNER_WORKSPACE_ID: "ws_owner" },
+      ),
+    );
+    expect(cfg.openDesign).toEqual({ enabled: true, ownerWorkspaceId: "ws_owner" });
+  });
+
   it("#300 signup-entry defaults OFF, and env opts both flags in (RELOAD_SIGNUP_*)", () => {
     expect(loadConfig(undefined, sources({})).signupEntry).toEqual({});
     const cfg = loadConfig(
