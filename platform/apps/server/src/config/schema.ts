@@ -643,6 +643,34 @@ export const emailDeliverabilitySchema = z.object({
 });
 
 /**
+ * Durable-workflow policy (#338, ADR-0338). Non-secret knobs for the durable-execution primitive that lets
+ * a long-running step **suspend / resume / retry-with-backoff / persist state** instead of blocking the
+ * event loop on a hand-rolled `while (Date.now() < deadline) { …; await sleep }` poll. Every field is
+ * optional and the master `enabled` defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly:
+ * true`, mirrors `skillopt`/`venture`/`delivery`): a deployment that sets nothing keeps the legacy
+ * in-process poll byte-for-byte, so behavior is unchanged. Even with `enabled: true`, turning it on without
+ * naming `ownerWorkspaceId` routes nobody (the safest default). The numeric knobs bound the retry schedule
+ * (`maxAttempts`, `backoffBaseMs`→`backoffCapMs`) and the wall-clock deadline (`defaultTimeoutMs`, the
+ * no-hang budget). No secrets here — the durable runs persist to a workspace-scoped table, not config.
+ */
+export const durableWorkflowSchema = z.object({
+  /** Route long waits through the durable engine — default OFF (the legacy in-process poll otherwise). */
+  enabled: z.boolean().optional(),
+  /** Restrict the durable path to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Hard cap on attempts per step (bounded retries). */
+  maxAttempts: z.number().int().positive().optional(),
+  /** First backoff delay (ms); doubles each attempt up to `backoffCapMs`. */
+  backoffBaseMs: z.number().int().positive().optional(),
+  /** Backoff ceiling (ms). */
+  backoffCapMs: z.number().int().positive().optional(),
+  /** Default wall-clock budget (ms) for a run with no explicit timeout (the no-hang deadline). */
+  defaultTimeoutMs: z.number().int().positive().optional(),
+});
+
+/**
  * Insight Miner policy (#100, ADR-0100). All **non-secret** knobs for the evidence-mining loop that
  * feeds the Venture Loop (#96) SOURCE stage. Every field is optional and defaults to **off**
  * (`enabled: false`) so a deployment that sets nothing mines nothing and spends nothing. Only the
@@ -1583,6 +1611,8 @@ export const settingsSchema = z.object({
   connectOnce: connectOnceSchema.optional(),
   /** SkillOpt-Sleep policy (#283): per-agent offline self-improvement cycle staging #13 proposals (default OFF). */
   skillopt: skilloptSchema.optional(),
+  /** Durable-workflow policy (#338): suspend/resume/retry/persist long waits instead of blocking (default OFF, owner-first). */
+  durableWorkflow: durableWorkflowSchema.optional(),
   /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
   signupEntry: signupEntrySchema.optional(),
   /** Email deliverability + compliance pipeline (#268): Postmark live-send eligibility + rate caps (default OFF). */
@@ -1658,6 +1688,7 @@ export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
+export type DurableWorkflowConfig = z.infer<typeof durableWorkflowSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 export type EmailDeliverabilityConfig = z.infer<typeof emailDeliverabilitySchema>;
 
@@ -1800,6 +1831,8 @@ export interface ResolvedConfig {
   connectOnce: ConnectOnceConfig;
   /** SkillOpt-Sleep policy (#283). A partial whose hard defaults `resolveSkillOptCaps` fills. */
   skillopt: SkillOptConfig;
+  /** Durable-workflow policy (#338). A partial whose hard defaults `resolveDurableWorkflowCaps` fills. */
+  durableWorkflow: DurableWorkflowConfig;
   /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
   signupEntry: SignupEntryConfig;
   /** Email deliverability + compliance pipeline (#268). A partial resolved by `isLiveSendEnabledForWorkspace`. */
@@ -1876,6 +1909,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   connectClaude: {},
   connectOnce: {},
   skillopt: {},
+  durableWorkflow: {},
   signupEntry: {},
   emailDeliverability: {},
 };
