@@ -460,6 +460,9 @@ describe("no hardcoded brand strings in product chrome", () => {
     // Settings → Connections (#258): every word comes from CONNECTIONS (connector labels come from data).
     "components/Connections.tsx",
     "components/ConnectionsPanel.tsx",
+    // Settings → Agent Garden (#284): every word comes from GARDEN (agent names/summaries come from data).
+    "components/Garden.tsx",
+    "components/GardenPanel.tsx",
     // Settings → Brand kit (#271): every word comes from BRAND_KIT.
     "components/BrandKitPanel.tsx",
   ];

@@ -191,6 +191,23 @@ export const CONNECTION_CONNECT_ACCOUNT_ACTION = "connection.connect_account" as
 export const SEARCH_CONSOLE_SUBMIT_ACTION = "searchconsole.submit" as const;
 
 /**
+ * #284 the Agent Garden ENABLE of an `external_send` (irreversible-action) department agent — turning on
+ * Echo/Postmark/Bid/Comet, whose whole purpose is work that, once approved, leaves the building (premortem
+ * #200 FM#4: deliverability, brand, money are irreversible). Per ADR-0284 enabling an agent moves no money
+ * (it is NOT in {@link MONEY_ACTIONS}), so it is a CONSENT/behavior decision — but switching such an agent ON
+ * is exactly the "never post-hoc, always the human's call" decision the premortem reserves for the owner, so
+ * the Garden ALWAYS pauses for an explicit owner approval before an `external_send` agent is enabled — a
+ * structural always-gate enforced by the service (it has no autonomous-enable path for that tier), exactly
+ * like `connection.connect_account`/`hosted.publish`/`skillopt.adopt_skill_edit`. Read-only / internal-draft
+ * agents carry no irreversible blast radius and enable directly (gating them would be approval theater,
+ * #200 FM#5). Like its siblings it is never submitted through the #13 action route; the Garden service parks
+ * a PENDING request against the same workspace `approval_policies`. The executor is recorded-only (approving
+ * records the owner's go; flipping the persisted enable state is the post-approval follow-up — ADR-0284
+ * slice 2). Reversible (disable clears it), so it is NOT in {@link IRREVERSIBLE_ACTIONS}.
+ */
+export const GARDEN_ENABLE_AGENT_ACTION = "garden.enable_agent" as const;
+
+/**
  * #267 the customer's OWN spend through a centrally-provisioned API. ipop holds the paid data/posting/ads
  * API keys CENTRALLY and bills the cost of goods into the plan, so using those APIs is autonomous (a
  * `platform_cost` capability — never gated). But the customer's own money — releasing real AD BUDGET or

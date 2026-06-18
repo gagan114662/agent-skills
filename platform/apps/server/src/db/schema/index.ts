@@ -72,3 +72,4 @@ export * from "./provisioning.js";
 export * from "./hosted.js";
 export * from "./social.js";
 export * from "./analytics.js";
+export * from "./garden.js";

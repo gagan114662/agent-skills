@@ -191,6 +191,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #319 agent collaboration policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // spawn-provisioning flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.agentCollaboration !== undefined) out.agentCollaboration = { ...layer.agentCollaboration };
+    // #284 agent Garden policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // manage flag + owner-first restriction cannot be loosened by a lower layer.
+    if (layer.garden !== undefined) out.garden = { ...layer.garden };
     // #262 connect-Claude policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // managed one-click flag + owner-first restriction cannot be loosened by a lower layer.
     if (layer.connectClaude !== undefined) out.connectClaude = { ...layer.connectClaude };
@@ -280,6 +283,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     analytics: merged.analytics ?? { ...CONFIG_DEFAULTS.analytics },
     agentRegistry: merged.agentRegistry ?? { ...CONFIG_DEFAULTS.agentRegistry },
     agentCollaboration: merged.agentCollaboration ?? { ...CONFIG_DEFAULTS.agentCollaboration },
+    garden: merged.garden ?? { ...CONFIG_DEFAULTS.garden },
     connectClaude: merged.connectClaude ?? { ...CONFIG_DEFAULTS.connectClaude },
     connectOnce: merged.connectOnce ?? { ...CONFIG_DEFAULTS.connectOnce },
     skillopt: merged.skillopt ?? { ...CONFIG_DEFAULTS.skillopt },

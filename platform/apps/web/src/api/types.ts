@@ -103,6 +103,39 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+/**
+ * One department agent as the Agent Garden shows it (#284, `GET /me/garden`) — the sanitized contract
+ * projection + this workspace's enable state + the production-grounded `active` flag. Never a secret; every
+ * free-text field has already been sanitized server-side (injection defense).
+ */
+export interface GardenAgentView {
+  handle: string;
+  displayName: string;
+  title: string;
+  summary: string;
+  capabilities: string[];
+  costTier: "low" | "medium" | "high";
+  riskTier: "read_only" | "internal_draft" | "external_send";
+  /** A coarse pricing label derived from the cost tier (no fabricated number). */
+  priceLabel: string;
+  /** Whether switching this agent on requires owner approval (the external-send tier). */
+  requiresApprovalToEnable: boolean;
+  /** Whether the persona is actually seeded in this workspace (the production-grounded fact). */
+  present: boolean;
+  state: "enabled" | "pending_approval" | "disabled";
+  /** The reconciled, real on/off: flag on AND state enabled AND present. */
+  active: boolean;
+  /** When not active, the honest reason; otherwise null. */
+  inactiveReason: string | null;
+}
+
+/** The Agent Garden surface (#284, `GET /me/garden`): whether it can be managed + every agent's view. */
+export interface GardenResponse {
+  /** True iff this workspace may enable/disable (flag on + owner-first satisfied). Catalog lists regardless. */
+  canManage: boolean;
+  agents: GardenAgentView[];
+}
+
 /** The brand kit (#271) — the owner's one-time brand identity the fleet draws from. */
 export interface BrandKitDto {
   id: string;
