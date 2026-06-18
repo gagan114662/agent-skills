@@ -15,6 +15,8 @@ export default defineConfig({
       "/healthz": API_ORIGIN,
       "/livez": API_ORIGIN,
       "/readyz": API_ORIGIN,
+      // #366: the build-SHA probe the deploy-freshness check reads (same-origin dev parity).
+      "/version": API_ORIGIN,
       "/auth": API_ORIGIN,
       "/me": API_ORIGIN,
       // #153 public marketing-site content API (CMS-lite). Proxied so the dev site fetches real content.

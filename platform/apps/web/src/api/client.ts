@@ -19,6 +19,7 @@ import type {
   RunState,
   SessionDiff,
   SubmitActionResponse,
+  VersionResponse,
 } from "@reload/shared";
 import type {
   AgentProfile,
@@ -286,6 +287,12 @@ export const api = {
   },
   me(): Promise<Identity> {
     return request<Identity>("/me");
+  },
+  // #366 deploy freshness: the git SHA baked into the running API image (`GET /version`, #292). The web
+  // compares it against its own build stamp (VITE_RELOAD_BUILD_SHA) so a stale bundle vs a newer API (or
+  // vice-versa) is detectable. Unauthenticated + tenant-agnostic — safe to call before/without a session.
+  getVersion(): Promise<VersionResponse> {
+    return request<VersionResponse>("/version");
   },
   // #300 low-commitment front door: the read-only sample workspace. UNauthenticated; `offered:false` when
   // the deployment hasn't turned the flag on (default), so the web hides the entry honestly.

@@ -4744,6 +4744,21 @@ select:focus-visible {
 .connhealth--off:hover, .connhealth--expired:hover { background: #ffcdc0; }
 .connhealth--expired i, .connhealth--off i { background: var(--accent-press); }
 
+/* #366: deploy-freshness banner — only ever rendered for a CONFIRMED web↔API build mismatch (owner-first,
+   default-OFF). A full-width strip under the header so the owner can't miss that the page lags the API. */
+.versionmismatch { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  background: var(--accent-dim); color: var(--accent-press); border-bottom: 1px solid var(--line);
+  font-family: var(--console-mono); font-size: 11px; line-height: 1.4; }
+.versionmismatch i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  animation: console-pulse 1.2s infinite; }
+.versionmismatch__text { flex: 1 1 auto; }
+.versionmismatch__text strong { font-weight: 700; }
+.versionmismatch__shas { color: var(--text-dim); white-space: nowrap; }
+.versionmismatch__reload { flex: none; cursor: pointer; font: inherit; font-weight: 700;
+  border: 1px solid var(--accent-press); background: transparent; color: var(--accent-press);
+  border-radius: 99px; padding: 4px 12px; }
+.versionmismatch__reload:hover { background: var(--accent-press); color: var(--bg-1); }
+
 /* #352: the coordination header chip + the coordination overlay surface. */
 .coordchip { border: 1px solid var(--line); background: var(--bg-1); color: var(--text);
   font: inherit; font-weight: 700; font-size: 12px; border-radius: 99px; padding: 5px 13px; cursor: pointer; }
