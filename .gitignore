@@ -17,6 +17,9 @@ coverage/
 .conductor/
 .gstack/
 
+# Lavish Editor (#344): local HTML-artifact review session state
+.lavish-axi/
+
 # Reload (#58): active file-backed config + provisioned per-session workspaces (examples are tracked)
 .reload/settings.toml
 .reload/managed.toml

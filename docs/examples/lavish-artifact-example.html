@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  Minimal lavish-axi artifact example.
+
+  Open it for review with:
+      npx -y lavish-axi docs/examples/lavish-artifact-example.html
+  Then read the human's feedback with:
+      npx -y lavish-axi poll docs/examples/lavish-artifact-example.html --agent-reply "..."
+
+  Conventions shown below:
+    - Native controls (<button>, radios) are interactive automatically — no marking needed.
+    - Custom (non-native) clickable elements get `data-lavish-action`.
+    - window.lavish.queuePrompt(...) stages a reversible choice;
+      window.lavish.sendQueuedPrompts() sends the staged batch.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Optional: reload when assets change -->
+    <meta name="lavish-live-reload" content="root" />
+    <title>Launch plan — review draft</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 40rem; }
+      h1 { font-size: 1.4rem; }
+      .card {
+        border: 1px solid #ddd; border-radius: 8px; padding: 1rem;
+        margin: 0.75rem 0; cursor: pointer;
+      }
+      .card[aria-pressed="true"] { border-color: #2563eb; background: #eff6ff; }
+      button { font: inherit; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Launch plan — pick a wedge</h1>
+    <p>Annotate anything below, or use the controls to send a structured choice.</p>
+
+    <!--
+      Custom clickable cards: NOT native controls, so they need data-lavish-action.
+      Clicking one queues a reversible choice (it is not sent until you confirm).
+    -->
+    <div
+      class="card"
+      data-lavish-action
+      role="button"
+      tabindex="0"
+      aria-pressed="false"
+      data-wedge="self-serve"
+    >
+      <strong>Wedge A — self-serve</strong>
+      <div>Land via a free tier, expand by usage.</div>
+    </div>
+
+    <div
+      class="card"
+      data-lavish-action
+      role="button"
+      tabindex="0"
+      aria-pressed="false"
+      data-wedge="design-partner"
+    >
+      <strong>Wedge B — design partners</strong>
+      <div>Three hand-picked accounts, white-glove onboarding.</div>
+    </div>
+
+    <!-- Native button: interactive automatically, no data-lavish-action needed. -->
+    <p><button type="button" id="send">Send my choice</button></p>
+
+    <script>
+      // Guard for plain-browser opens where window.lavish is absent.
+      const lavish = window.lavish || { queuePrompt() {}, sendQueuedPrompts() {} };
+      let selected = null;
+
+      for (const card of document.querySelectorAll(".card[data-lavish-action]")) {
+        card.addEventListener("click", () => {
+          for (const c of document.querySelectorAll(".card")) {
+            c.setAttribute("aria-pressed", "false");
+          }
+          card.setAttribute("aria-pressed", "true");
+          selected = card.dataset.wedge;
+          // Stage a reversible prompt; nothing is sent to the agent yet.
+          lavish.queuePrompt("Selected wedge: " + selected);
+        });
+      }
+
+      document.getElementById("send").addEventListener("click", () => {
+        if (!selected) return;
+        // Send the staged batch back to the agent's poll.
+        lavish.sendQueuedPrompts();
+      });
+    </script>
+  </body>
+</html>
