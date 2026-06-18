@@ -206,6 +206,21 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (ozLoopsOwner) ozLoops.ownerWorkspaceId = ozLoopsOwner;
     raw.ozLoops = ozLoops;
   }
+  // #371: let the deployment env seed the named-department "team" owner-workspace-first without baking a
+  // managed.toml. Hard default stays OFF (var unset → no block, today's behavior); the roster is always
+  // listable regardless. The owner workspace reuses the established #258 marker
+  // (RELOAD_MARKETING_OWNER_WORKSPACE_ID); a dedicated RELOAD_DEPARTMENT_OWNER_WORKSPACE_ID overrides it.
+  // Enabling without naming an owner seeds nobody.
+  const departmentEnabled = env.RELOAD_DEPARTMENT_ENABLED;
+  const departmentOwner = env.RELOAD_DEPARTMENT_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (departmentEnabled !== undefined || departmentOwner) {
+    const department: Record<string, unknown> = {};
+    if (departmentEnabled !== undefined) {
+      department.enabled = departmentEnabled === "true" || departmentEnabled === "1";
+    }
+    if (departmentOwner) department.ownerWorkspaceId = departmentOwner;
+    raw.department = department;
+  }
   // #338: let the deployment env route long waits through the durable-workflow engine owner-workspace-first
   // without baking a managed.toml. Hard default stays OFF (var unset → no block ⇒ the legacy in-process poll
   // runs unchanged). The owner workspace reuses the established #258 marker

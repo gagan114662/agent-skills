@@ -1470,6 +1470,39 @@ export const actionContractSchema = z.object({
 });
 
 /**
+ * Named-department roster policy (#371, ADR-0371). The flags behind seeding the reload.chat "team" — the
+ * named agent personas (Product owner/lead, SEO, Design, Developer, QA, DevOps) the owner workspace lands
+ * inside. Every field is optional and defaults **OFF, owner-workspace-first** (mirrors `agentRegistry` /
+ * `garden`): a deployment that sets nothing seeds the team for nobody, so today's behavior is byte-for-byte
+ * unchanged. Even when `enabled`, an `ownerWorkspaceOnly` deployment (the default) only seeds the named
+ * owner workspace; enabling WITHOUT naming the owner seeds nobody — the safest default. No credentials /
+ * money / new action path here — seeding mints identity/display personas only (draft-only tools, every real
+ * action stays #13-gated). `roster` lets a deployment rename/recolor/relabel a teammate (configurable
+ * names/roles); resolved by `resolveDepartmentCaps`.
+ */
+export const departmentPersonaOverrideSchema = z.object({
+  /** Which default teammate to override, matched by @handle (case-insensitive). */
+  handle: z.string().min(1),
+  /** Override the display name (e.g. "Hermes"). */
+  displayName: z.string().optional(),
+  /** Override the role label shown in the rail (e.g. "Product owner"). */
+  role: z.string().optional(),
+  /** Override the accent color (7-char hex `#RRGGBB`); an invalid value is ignored. */
+  color: z.string().optional(),
+});
+
+export const departmentSchema = z.object({
+  /** Master flag for seeding the named team — default OFF (the roster lists, but seeds nobody). */
+  enabled: z.boolean().optional(),
+  /** Restrict seeding to the owner workspace (default true). Set false to seed every tenant. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the team rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** Per-teammate name/role/color overrides (configurable roster). Empty/unset ⇒ the default team. */
+  roster: z.array(departmentPersonaOverrideSchema).optional(),
+});
+
+/**
  * SkillOpt-Sleep self-improvement policy (#283, ADR-0283). The flags behind the offline cycle that lets a
  * department agent mine its own recurring tasks and PROPOSE a bounded edit to its skill doc. Default OFF,
  * owner-workspace-first: a deployment that sets nothing runs no cycle and stages nothing. Even when
@@ -1815,6 +1848,8 @@ export const settingsSchema = z.object({
   skillopt: skilloptSchema.optional(),
   /** Oz-loops policy (#356): issue triage / spec / PR review / PR-comment engineering loops (default OFF, owner-first). */
   ozLoops: ozLoopsSchema.optional(),
+  /** Named-department roster policy (#371): seed the reload.chat "team" of named personas (default OFF, owner-first). */
+  department: departmentSchema.optional(),
   /** Durable-workflow policy (#338): suspend/resume/retry/persist long waits instead of blocking (default OFF, owner-first). */
   durableWorkflow: durableWorkflowSchema.optional(),
   /** Low-commitment signup-entry policy (#300): sample workspace + progressive Google scopes (default OFF). */
@@ -1900,6 +1935,7 @@ export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
 export type SkillOptConfig = z.infer<typeof skilloptSchema>;
 export type OzLoopsConfig = z.infer<typeof ozLoopsSchema>;
+export type DepartmentConfig = z.infer<typeof departmentSchema>;
 export type DurableWorkflowConfig = z.infer<typeof durableWorkflowSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 export type EmailDeliverabilityConfig = z.infer<typeof emailDeliverabilitySchema>;
@@ -2059,6 +2095,8 @@ export interface ResolvedConfig {
   skillopt: SkillOptConfig;
   /** Oz-loops policy (#356). A partial whose hard defaults `resolveOzLoopsCaps` fills. */
   ozLoops: OzLoopsConfig;
+  /** Named-department roster policy (#371). A partial whose hard defaults `resolveDepartmentCaps` fills. */
+  department: DepartmentConfig;
   /** Durable-workflow policy (#338). A partial whose hard defaults `resolveDurableWorkflowCaps` fills. */
   durableWorkflow: DurableWorkflowConfig;
   /** Low-commitment signup-entry policy (#300). A partial whose hard defaults `resolveSignupEntryCaps` fills. */
@@ -2145,6 +2183,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   capabilityTokens: {},
   skillopt: {},
   ozLoops: {},
+  department: {},
   durableWorkflow: {},
   signupEntry: {},
   emailDeliverability: {},

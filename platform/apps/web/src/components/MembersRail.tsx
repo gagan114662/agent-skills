@@ -23,8 +23,22 @@ function presenceFor(
   return m.kind === "agent" ? "online" : undefined;
 }
 
+/**
+ * The reload.chat members-rail footer (#371): "{n} humans · {n} agents · {n} decisions captured". Pure +
+ * total — humans/agents pluralize; decisions is grounded in the #13 gate (the captured-decision count).
+ * Mirrors the server's `buildMembersRail` so the rail reads identically whether rendered from live
+ * directory counts or the server view.
+ */
+export function membersRailSummary(humans: number, agents: number, decisionsCaptured: number): string {
+  const h = Math.max(0, Math.trunc(humans) || 0);
+  const a = Math.max(0, Math.trunc(agents) || 0);
+  const d = Math.max(0, Math.trunc(decisionsCaptured) || 0);
+  const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return `${plural(h, "human")} · ${plural(a, "agent")} · ${d} decisions captured`;
+}
+
 export function MembersRail(): React.JSX.Element {
-  const { directory, presence, identity } = useAppState();
+  const { directory, presence, identity, decisionsCaptured } = useAppState();
   const members = Object.values(directory);
   const humans = members.filter((m) => m.kind === "human");
   const agents = members.filter((m) => m.kind === "agent");
@@ -34,6 +48,9 @@ export function MembersRail(): React.JSX.Element {
       <header className="members__head">Members</header>
       <Group label={`Agents · ${agents.length}`} members={agents} presence={presence} selfId={identity?.memberId} />
       <Group label={`People · ${humans.length}`} members={humans} presence={presence} selfId={identity?.memberId} />
+      <footer className="members__footer" aria-label="Team summary">
+        {membersRailSummary(humans.length, agents.length, decisionsCaptured)}
+      </footer>
     </aside>
   );
 }

@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { MembersRail } from "./MembersRail.js";
+import { MembersRail, membersRailSummary } from "./MembersRail.js";
 import { renderWithStore } from "../test/utils.js";
 
+describe("membersRailSummary (#371 footer)", () => {
+  it("renders the reload.chat footer with pluralization", () => {
+    expect(membersRailSummary(6, 7, 247)).toBe("6 humans · 7 agents · 247 decisions captured");
+    expect(membersRailSummary(1, 1, 0)).toBe("1 human · 1 agent · 0 decisions captured");
+  });
+  it("clamps bad counts to non-negative integers", () => {
+    expect(membersRailSummary(-2, 3.7, Number.NaN)).toBe("0 humans · 3 agents · 0 decisions captured");
+  });
+});
+
 describe("MembersRail", () => {
+  it("renders the team-summary footer (#371): humans · agents · decisions captured", async () => {
+    const { store } = renderWithStore(<MembersRail />);
+    await store.bootstrap();
+    const footer = await screen.findByLabelText("Team summary");
+    expect(footer).toHaveTextContent("1 human · 1 agent · 0 decisions captured");
+  });
+
   it("lists humans and agents as members", async () => {
     const { store } = renderWithStore(<MembersRail />);
     await store.bootstrap();

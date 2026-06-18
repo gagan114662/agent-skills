@@ -81,6 +81,14 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
     searchMembers: vi.fn(async () => []),
     listAgents: vi.fn(async () => []),
     listMyMentions: vi.fn(async () => []),
+    department: {
+      view: vi.fn(async () => ({
+        enabled: false,
+        canManage: false,
+        roster: [],
+        rail: { humanCount: 1, agentCount: 1, decisionsCaptured: 0, summary: "1 human · 1 agent · 0 decisions captured" },
+      })),
+    },
     approvals: {
       list: vi.fn(async () => []),
       get: vi.fn(async (rid: string) => req({ id: rid })),

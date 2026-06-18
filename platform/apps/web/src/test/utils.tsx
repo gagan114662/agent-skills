@@ -133,6 +133,19 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       { id: "ag1", name: "Atlas", framework: "claude", ownerUserId: null, deactivatedAt: null, createdAt: "2026-01-01T00:00:00Z" },
     ]),
     listMyMentions: vi.fn(async () => []),
+    department: {
+      view: vi.fn(async () => ({
+        enabled: false,
+        canManage: false,
+        roster: [],
+        rail: {
+          humanCount: 1,
+          agentCount: 1,
+          decisionsCaptured: 0,
+          summary: "1 human · 1 agent · 0 decisions captured",
+        },
+      })),
+    },
     approvals: {
       list: vi.fn(async () => [] as ApprovalRequestDto[]),
       get: vi.fn(async () => STUB_REQUEST),

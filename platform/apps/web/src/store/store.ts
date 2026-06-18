@@ -136,6 +136,11 @@ export interface AppState {
   error: string | null;
   /** #153 trial funnel: true when a tenant cap was hit (#71 402/429) → show the soft paywall nudge. */
   paywall: boolean;
+  /**
+   * #371 members-rail footer: how many #13 approval requests reached a human decision. Loaded best-effort
+   * from `GET /me/department` on workspace load; 0 until then (humans/agents come from the directory).
+   */
+  decisionsCaptured: number;
 }
 
 /** Re-export so consumers (components) get the queue types from the store barrel. */
@@ -162,7 +167,10 @@ export interface StoreDeps {
     | "review"
     | "run"
     | "deploy"
-  >;
+  > & {
+    /** #371 members-rail footer — only the read-only `view` is needed (the team roster + the rail). */
+    department: Pick<typeof realApi.department, "view">;
+  };
   realtime: Realtime;
 }
 
@@ -255,6 +263,7 @@ const INITIAL: AppState = {
   queues: {},
   error: null,
   paywall: false,
+  decisionsCaptured: 0,
 };
 
 export interface Store {
@@ -573,6 +582,12 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     api
       .listMyMentions()
       .then((items) => set({ unreadMentions: items.length }))
+      .catch(() => undefined);
+    // #371 members-rail footer: load the captured-decision count best-effort (humans/agents come from the
+    // directory). A miss only leaves the footer's decisions count at 0 — never breaks the rail.
+    api.department
+      .view()
+      .then((view) => set({ decisionsCaptured: view.rail.decisionsCaptured }))
       .catch(() => undefined);
     await refreshPending();
 

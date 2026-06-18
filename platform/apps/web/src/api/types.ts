@@ -271,6 +271,37 @@ export interface AgentProfile {
 }
 
 /**
+ * The members-rail footer (#371): humans · agents · decisions captured, from `GET /me/department`.
+ * `summary` is the server-rendered line; the counts are exposed for the client to re-render if needed.
+ */
+export interface MembersRailDto {
+  humanCount: number;
+  agentCount: number;
+  decisionsCaptured: number;
+  summary: string;
+}
+
+/** One teammate in the named-department roster (#371): identity (role + color) + #282 registry presence. */
+export interface DepartmentTeammateDto {
+  handle: string;
+  displayName: string;
+  role: string;
+  color: string;
+  lead: boolean;
+  summary: string;
+  present: boolean;
+  enabled: boolean;
+}
+
+/** The named-department view (#371), from `GET /me/department`. The roster, the rail footer + enable flags. */
+export interface DepartmentViewDto {
+  enabled: boolean;
+  canManage: boolean;
+  roster: DepartmentTeammateDto[];
+  rail: MembersRailDto;
+}
+
+/**
  * A summary of an agent session for the review surface (#51), from `GET /channels/:cid/agent-sessions`.
  * The git refs are set once the session has run in a worktree (null otherwise).
  */

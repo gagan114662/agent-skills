@@ -23,6 +23,7 @@ import type {
 import type {
   AgentProfile,
   AgentSessionSummary,
+  DepartmentViewDto,
   AuditEventDto,
   AutomationDto,
   AutomationRunDto,
@@ -803,6 +804,13 @@ export const api = {
      */
     brief(workspaceId: string, input: { lead: string; goal: string }): Promise<DepartmentBriefResult> {
       return post(`/workspaces/${workspaceId}/department/brief`, input) as Promise<DepartmentBriefResult>;
+    },
+    /**
+     * #371 named-department roster: the reload.chat "team" view — the members-rail footer
+     * ("{n} humans · {n} agents · {n} decisions captured") + the per-teammate enable flags. Read-only.
+     */
+    view(): Promise<DepartmentViewDto> {
+      return request<DepartmentViewDto>("/me/department");
     },
   },
   missionControl: {
