@@ -4,6 +4,7 @@ import { loadConfig } from "../config/loader.js";
 import { FileConfigWorkspaceProvisioner, type WorkspaceProvisioner } from "../config/workspace.js";
 import { createGitWorkspaceFromEnv } from "../git/default.js";
 import { GitWorkspaceProvisioner } from "../git/provisioner.js";
+import { maybePooledWorktreeProvisioner } from "../worktree-pool/provisioner.js";
 import {
   createAgentSession,
   finalizeSession,
@@ -165,9 +166,19 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
   // #51: when a git repo is configured, each session runs in a git worktree on branch agent/<id> so
   // its edits become a reviewable diff/PR. Otherwise keep the #58 file-copy provisioner.
   const gitWorkspace = createGitWorkspaceFromEnv();
-  const workspace: WorkspaceProvisioner = gitWorkspace
+  const baseWorkspace: WorkspaceProvisioner = gitWorkspace
     ? new GitWorkspaceProvisioner(gitWorkspace)
     : new FileConfigWorkspaceProvisioner({ logger });
+  // #343 opt-in treehouse worktree pool: when enabled (default OFF, owner-workspace-first) a session is
+  // handed a warm reusable worktree (deps/build cache intact) instead of a fresh checkout. Additive —
+  // with the flag off `maybePooledWorktreeProvisioner` returns `baseWorkspace` unchanged, and even when
+  // wrapped the per-workspace gate falls back to a fresh checkout for every non-owner launch.
+  const { provisioner: workspace } = maybePooledWorktreeProvisioner({
+    fallback: baseWorkspace,
+    gitWorkspace,
+    loadConfig: (workspaceId?: string) => loadConfig(workspaceId),
+    logger,
+  });
   // #71: the warm pool is sized by the managed-global `[scale]` block. With size 0 (the default)
   // the factory returns a plain runtime (cold) — today's #25 behavior. Admission + usage are wired
   // unconditionally: with all caps 0 they admit everything (unchanged), but the #17 kill switch now

@@ -175,6 +175,44 @@ Full reference and decision record:
 [`docs/no-mistakes.md`](docs/no-mistakes.md) and
 [`ADR-0350`](platform/docs/adrs/0350-no-mistakes-git-gate.md).
 
+## Warm Worktree Pool (treehouse)
+
+Every fleet/Conductor session today gets a fresh copy of the repo (~2176 files) and **loses installed
+deps + build cache each time**, so spin-up is slow. [treehouse](https://github.com/kunchenguid/treehouse)
+(Go CLI, MIT) fixes this with a per-repo pool of **reusable, isolated git worktrees** kept under
+`~/.treehouse/`: each agent gets a clean worktree instantly with `node_modules`/build cache intact
+(detached HEAD, in-use detection, no daemon). The repo's pool is declared in [`treehouse.toml`](treehouse.toml).
+
+Measured on this repo (`platform/scripts/worktree-pool-benchmark.mjs`, real git, fully offline): a warm
+pool reuse is **~25× faster** than a fresh checkout + dep materialization and **0 reinstalls** (deps are
+preserved across reuses). See [docs/adrs/0343-treehouse-worktree-pool.md](platform/docs/adrs/0343-treehouse-worktree-pool.md)
+for the receipt and the go/no-go.
+
+### Status & gating
+
+- **Adoption is OPT-IN and owner-gated.** Installing the treehouse binary (a `curl | sh` script) on the
+  owner's machine / shared infra / CI is **out of scope** here — that install stays owner-gated.
+- The platform ships an **opt-in acquire path** (`platform/apps/server/src/worktree-pool/`) implementing
+  the same pool semantics over plain `git`, gated by the `worktreePool` config block — **default OFF,
+  owner-workspace-first**. It does **not** require the treehouse binary. With the flag off (the default)
+  every session keeps today's fresh-checkout path, byte-for-byte.
+
+### Fleet workflow (once an owner has installed treehouse)
+
+```bash
+treehouse            # initialize the pool for this repo from treehouse.toml (pool_size, base)
+treehouse get        # lease a clean, deps-warm worktree (detached HEAD); prints its path → use as cwd
+treehouse status     # list pool worktrees: free / in-use / dirty
+treehouse return     # hand a worktree back to the pool (resets tracked files, keeps deps) for reuse
+treehouse destroy    # remove a worktree entirely; a DIRTY worktree requires --force (never auto-destroyed)
+```
+
+**Safety rules (premortem #200):**
+- `get` never hands out an in-use worktree — concurrent sessions each get a distinct one (conflict-free).
+- `return` resets tracked files only; gitignored `node_modules`/build cache survive (warm reuse).
+- `destroy` on a worktree with uncommitted work **requires `--force`** — destroying uncommitted work is
+  irreversible (#200 §4), so it is never automatic.
+
 ## Creating a New Skill
 
 ### Directory Structure

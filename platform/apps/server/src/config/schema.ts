@@ -579,6 +579,25 @@ export const gardenSchema = z.object({
 });
 
 /**
+ * Worktree-pool policy (#343, ADR-0343). Non-secret knobs for the treehouse-style warm worktree pool
+ * that hands a fleet session a reusable, deps-warm git worktree instead of a fresh per-session checkout.
+ * Every field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
+ * (`ownerWorkspaceOnly: true`) — a deployment that sets nothing keeps today's per-session checkout, so
+ * behavior is unchanged. `size` is the hard cap on pool growth (treehouse.toml `pool_size`); enabling
+ * without naming `ownerWorkspaceId` pools nobody (the safest default, matching `agentCollaboration`).
+ */
+export const worktreePoolSchema = z.object({
+  /** Acquire sessions from the warm pool instead of a fresh checkout — default OFF (fresh-checkout otherwise). */
+  enabled: z.boolean().optional(),
+  /** Restrict pooling to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Hard cap on pool size (worktrees kept warm). Default 4; `0` disables growth. */
+  size: z.number().int().nonnegative().optional(),
+});
+
+/**
  * Connect-Claude policy (#262, ADR-0262). Non-secret knobs for the in-app one-click "Connect Claude"
  * flow that replaces the `claude setup-token` CLI step. Every field is optional and the master `enabled`
  * defaults **OFF** AND **owner-workspace-first** (`ownerWorkspaceOnly: true`) — a deployment that sets
@@ -1696,6 +1715,8 @@ export const settingsSchema = z.object({
   agentCollaboration: agentCollaborationSchema.optional(),
   /** Agent Garden policy (#284): browse the department fleet + enable/disable agents per workspace (default OFF, owner-first). */
   garden: gardenSchema.optional(),
+  /** Worktree-pool policy (#343): hand fleet sessions a warm reusable worktree instead of a fresh checkout (default OFF, owner-first). */
+  worktreePool: worktreePoolSchema.optional(),
   /** Connect-Claude policy (#262): in-app one-click Connect replacing the `claude setup-token` CLI (default OFF). */
   connectClaude: connectClaudeSchema.optional(),
   /** Connect-once live-flow policy (#258 Stage 2): the gated live customer-OAuth connect seam (default OFF). */
@@ -1781,6 +1802,7 @@ export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
 export type GardenConfig = z.infer<typeof gardenSchema>;
+export type WorktreePoolConfig = z.infer<typeof worktreePoolSchema>;
 export type ConnectClaudeConfig = z.infer<typeof connectClaudeSchema>;
 export type ConnectOnceConfig = z.infer<typeof connectOnceSchema>;
 export type CapabilityTokensConfig = z.infer<typeof capabilityTokensSchema>;
@@ -1928,6 +1950,8 @@ export interface ResolvedConfig {
   agentCollaboration: AgentCollaborationConfig;
   /** Agent Garden policy (#284). A partial whose hard defaults `resolveGardenCaps` fills. */
   garden: GardenConfig;
+  /** Worktree-pool policy (#343). A partial whose hard defaults `resolveWorktreePoolCaps` fills. */
+  worktreePool: WorktreePoolConfig;
   /** Connect-Claude policy (#262). A partial whose hard defaults `resolveConnectClaudeCaps` fills. */
   connectClaude: ConnectClaudeConfig;
   /** Connect-once live-flow policy (#258 Stage 2). A partial whose hard defaults `resolveConnectOnceCaps` fills. */
@@ -2014,6 +2038,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   agentRegistry: {},
   agentCollaboration: {},
   garden: {},
+  worktreePool: {},
   connectClaude: {},
   connectOnce: {},
   capabilityTokens: {},
