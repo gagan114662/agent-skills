@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, screen } from "@testing-library/react";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { api } from "../../api/client.js";
-import { CONSOLE } from "../../brand.js";
+import { CONSOLE, consoleRunningPill } from "../../brand.js";
 import { renderWithStore } from "../../test/utils.js";
 
 // The test identity's workspace (utils.TEST_IDENTITY) — naming THIS workspace as the owner turns the gate on.
@@ -86,8 +86,9 @@ async function mount() {
   return utils;
 }
 
-/** The coordination view's own h2 title — present iff the coordination surface is mounted. */
-const COORD_TITLE = CONSOLE.coordination.title;
+/** The coordination region's accessible label — present iff the coordination surface is mounted. #384 removed
+ *  the visible "Team coordination" heading, but the string survives as the region's `aria-label`. */
+const COORD_LABEL = CONSOLE.coordination.title;
 /** Any board lane — present iff the board surface is mounted. */
 const BOARD_LANE = { name: CONSOLE.columns.running } as const;
 
@@ -102,7 +103,7 @@ describe("ConsoleView reload.chat whole-app surface (#378)", () => {
     await mount();
 
     // The owner lands directly in the coordination view (the team channel is the home screen)…
-    expect(await screen.findByText(COORD_TITLE)).toBeInTheDocument();
+    expect(await screen.findByLabelText(COORD_LABEL)).toBeInTheDocument();
     // …the kanban board is gone entirely (no lanes anywhere)…
     expect(screen.queryByRole("listitem", BOARD_LANE)).toBeNull();
     // …the Coordination/Board toggle is removed…
@@ -122,7 +123,7 @@ describe("ConsoleView reload.chat whole-app surface (#378)", () => {
   it("owner + flag ON ⇒ no stray project-settings / peek overlay is mounted on the coordination landing", async () => {
     const { container } = await mount();
 
-    await screen.findByText(COORD_TITLE);
+    await screen.findByLabelText(COORD_LABEL);
     // The fixed full-screen overlays that belong to the board (project settings sheet, peek drawer) are not
     // rendered on the chat-first landing — they can only be opened from board affordances that aren't here.
     expect(container.querySelector(".sheet"), "the project-settings sheet must not be mounted here").toBeNull();
@@ -146,7 +147,7 @@ describe("ConsoleView reload.chat whole-app surface (#378)", () => {
     expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.projects.label)).toBeInTheDocument();
     // …and the coordination surface is absent entirely.
-    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+    expect(screen.queryByLabelText(COORD_LABEL)).toBeNull();
   });
 
   it("non-owner workspace + flag ON ⇒ board unchanged (owner-first, fail-closed)", async () => {
@@ -155,6 +156,53 @@ describe("ConsoleView reload.chat whole-app surface (#378)", () => {
 
     expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.projects.label)).toBeInTheDocument();
-    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+    expect(screen.queryByLabelText(COORD_LABEL)).toBeNull();
+  });
+});
+
+// #384: the reload.chat top bar is slim — channel name + a small "N running" pill + an unobtrusive
+// "N waiting on you" chip + gear/sign-out. The budget gauge, the Upgrade button, and the fleet-health
+// banner do NOT sit over the chat (they live in Settings → Billing). The board (gate OFF) keeps them.
+describe("ConsoleView slim reload.chat header (#384)", () => {
+  it("owner + flag ON ⇒ the budget gauge / Upgrade / fleet-health banner are NOT in the header", async () => {
+    const { container } = await mount();
+
+    await screen.findByLabelText(COORD_LABEL);
+    expect(container.querySelector(".gauge"), "no budget banner over the chat").toBeNull();
+    expect(container.querySelector(".gauge-upgrade"), "no Upgrade button over the chat").toBeNull();
+    expect(container.querySelector(".fleet-health"), "no fleet-health banner over the chat").toBeNull();
+    // The gear (Settings) — where budget/Upgrade now live — stays reachable.
+    expect(screen.getByRole("button", { name: CONSOLE.coordination.shell.settings })).toBeInTheDocument();
+  });
+
+  it("owner + flag ON + running sessions ⇒ a small 'N running' pill (not a table) shows in the header", async () => {
+    mockSeams();
+    // Two live sessions — the poll resolves to them on the immediate tick.
+    vi.spyOn(api.missionControl, "get").mockResolvedValue({
+      ...mcDto(),
+      count: 2,
+      sessions: [
+        { id: "s1", channelId: "c-seo", agentMemberId: "ag1", status: "running", elapsedMs: 1000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
+        { id: "s2", channelId: "c-seo", agentMemberId: "ag1", status: "running", elapsedMs: 2000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
+      ],
+    });
+    const utils = renderWithStore(<ConsoleView />);
+    await act(async () => {
+      await utils.store.bootstrap();
+    });
+
+    // The calm pill, never the old sessions table.
+    expect(await screen.findByText(consoleRunningPill(2))).toBeInTheDocument();
+    expect(utils.container.querySelector(".runpill")).not.toBeNull();
+    expect(utils.container.querySelector(".mission__table"), "no mission-control table above the feed").toBeNull();
+  });
+
+  it("flag OFF ⇒ the board keeps its budget gauge + Upgrade button (byte-for-byte)", async () => {
+    gate.flagOn = false;
+    const { container } = await mount();
+
+    await screen.findByRole("listitem", BOARD_LANE);
+    expect(container.querySelector(".gauge"), "the board keeps its budget gauge").not.toBeNull();
+    expect(container.querySelector(".gauge-upgrade"), "the board keeps its Upgrade button").not.toBeNull();
   });
 });

@@ -1,14 +1,20 @@
 /**
- * The agent-coordination surface (#352/#378) — the reload.chat-style chat app: a left rail (search · pinned ·
- * channels · DMs), a centre message feed + composer, and a right members rail, over a live mission-control
- * strip (#147). For the named owner workspace this is the WHOLE app (#378): ConsoleView mounts it in place
- * of the board, so there is no kanban and no projects/task sidebar — chat is the product.
+ * The agent-coordination surface (#352/#378/#384) — the reload.chat-style chat app: a left rail (search ·
+ * pinned · channels · DMs), a centre message feed + composer, and a right members rail. For the named owner
+ * workspace this is the WHOLE app (#378): ConsoleView mounts it in place of the board, so there is no kanban
+ * and no projects/task sidebar — chat is the product.
+ *
+ * #384: the surface is now ONLY header + feed + composer + members — matching reload.team. The old
+ * "Team coordination" preamble and the Mission-control running-sessions TABLE are gone: they were ipop-only
+ * chrome that pushed the feed down and broke the clean look. Running-session status already arrives as
+ * in-channel agent messages (the #370 bridge: "✅ session completed (exit 0)"); the live indicator survives
+ * only as a small "N running" pill in the app header (ConsoleView), never a table above the feed. The
+ * accessible region label is preserved so the surface stays nameable to assistive tech and tests.
  *
  * It adds NO new backend: every panel self-wires to the EXISTING channels / messagesByChannel / directory
- * store, and the live strip reads the #147 mission-control seam through {@link MissionControlPanel}. Flat
- * navigation is owned here: this view holds the one selection (a channel, or a DM peer) and threads it to the
- * sidebar (highlight) and the message pane (1:1 framing). Selecting a DM resolves to that member's EXISTING
- * 1:1 channel (an agent → its department channel) — never a fabricated one.
+ * store. Flat navigation is owned here: this view holds the one selection (a channel, or a DM peer) and
+ * threads it to the sidebar (highlight) and the message pane (1:1 framing). Selecting a DM resolves to that
+ * member's EXISTING 1:1 channel (an agent → its department channel) — never a fabricated one.
  *
  * SAFETY (#200): every channel / message / agent string rendered here is DATA — React text only, never
  * `dangerouslySetInnerHTML` — so agent-authored content can never become markup or instructions. The surface
@@ -22,7 +28,6 @@ import { ChannelSidebar } from "../ChannelSidebar.js";
 import { MessagePane } from "../MessagePane.js";
 import { ThreadPanel } from "../ThreadPanel.js";
 import { MembersRail } from "../MembersRail.js";
-import { MissionControlPanel } from "../MissionControlPanel.js";
 import { CONSOLE } from "../../brand.js";
 
 export function CoordinationView(): React.JSX.Element {
@@ -49,13 +54,9 @@ export function CoordinationView(): React.JSX.Element {
 
   return (
     <div className="coord" aria-label={CONSOLE.coordination.title}>
-      <header className="coord__head">
-        <h2 className="coord__title">{CONSOLE.coordination.title}</h2>
-        <p className="coord__sub">{CONSOLE.coordination.sub}</p>
-      </header>
-      <section className="coord__live" aria-label={CONSOLE.coordination.liveLabel}>
-        <MissionControlPanel />
-      </section>
+      {/* #384: header + feed + composer + members ONLY. No preamble, no mission-control table — the channel
+          header (MessagePane), feed, and composer fill the surface; running status lives in-channel + a small
+          header pill (ConsoleView). The `aria-label` above keeps the region nameable without visible chrome. */}
       <div className="coord__body">
         <ChannelSidebar
           onSelectDm={handleSelectDm}
