@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { decideSkillOptCycle, type ClusterCandidate, type SkillOptCycleInput } from "../../src/skillopt/cycle.js";
 import type { TranscriptSample, ValidationReading } from "../../src/skillopt/contract.js";
+import { revenueRewardByChannel } from "../../src/attribution/reward.js";
+import type { AttributedRevenueEvent } from "../../src/attribution/chain.js";
 
 function sample(id: string, taskText: string): TranscriptSample {
   return { sampleId: id, workspaceId: "ws-1", agentHandle: "scout", taskText, succeeded: true };
@@ -97,5 +99,68 @@ describe("skillopt/cycle — decideSkillOptCycle", () => {
     expect(res.status).toBe("skipped");
     if (res.status !== "skipped") return;
     expect(res.reason).toMatch(/proposal:.*weaken|inject/);
+  });
+});
+
+describe("skillopt/cycle — #390 revenue learning signal (more of what earns)", () => {
+  // Two recurring clusters; frequency picks SEO first (3 samples) over email (2 — but minRecurrence 2).
+  const seoSamples = [
+    sample("s1", "Audit the homepage for top 5 SEO issues"),
+    sample("s2", "Audit the homepage for top 9 SEO issues"),
+  ];
+  const emailSamples = [
+    sample("e1", "Draft the weekly email newsletter"),
+    sample("e2", "Draft the weekly email newsletter"),
+  ];
+  const seoKey = "audit the homepage for top seo issues";
+  const emailKey = "draft the weekly email newsletter";
+
+  const revEvent = (channel: string, amountCents: number): AttributedRevenueEvent => ({
+    providerEventId: "evt",
+    artifactId: "a",
+    artifactKind: "k",
+    channel,
+    trackingRef: "ref",
+    amountCents,
+    currency: "usd",
+    exposureAtMs: 0,
+    paidAtMs: 0,
+  });
+
+  function twoClusterInput(over: Partial<SkillOptCycleInput> = {}): SkillOptCycleInput {
+    return {
+      enabled: true,
+      agentHandle: "scout",
+      skillId: "scout/runbook",
+      currentDocSha: "sha-1",
+      samples: [...seoSamples, ...emailSamples],
+      mine: { minRecurrence: 2 },
+      // a candidate for whichever cluster ends up on top
+      candidates: [candidate({ clusterKey: seoKey }), candidate({ clusterKey: emailKey })],
+      ...over,
+    };
+  }
+
+  it("FLAG OFF (no revenueReweight) ⇒ frequency order unchanged: SEO cluster is improved", () => {
+    const res = decideSkillOptCycle(twoClusterInput());
+    expect(res.status).toBe("staged");
+    if (res.status !== "staged") return;
+    expect(res.proposal.clusterKey).toBe(seoKey);
+  });
+
+  it("revenue reweight shifts the top to the higher-earning channel (email > seo)", () => {
+    const reward = revenueRewardByChannel([revEvent("email", 9900), revEvent("seo", 100)]);
+    const res = decideSkillOptCycle(twoClusterInput({ revenueReweight: { reward } }));
+    expect(res.status).toBe("staged");
+    if (res.status !== "staged") return;
+    expect(res.proposal.clusterKey).toBe(emailKey);
+  });
+
+  it("ZERO RECEIPTS ⇒ no reweight: an empty reward leaves the frequency order (SEO) unchanged", () => {
+    const empty = revenueRewardByChannel([]);
+    const res = decideSkillOptCycle(twoClusterInput({ revenueReweight: { reward: empty } }));
+    expect(res.status).toBe("staged");
+    if (res.status !== "staged") return;
+    expect(res.proposal.clusterKey).toBe(seoKey);
   });
 });

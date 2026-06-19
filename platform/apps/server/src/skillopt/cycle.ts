@@ -14,6 +14,25 @@ import type { SkillOptCycleResult, TaskCluster, TranscriptSample, ValidationRead
 import { mineRecurringTasks, type MineOptions } from "./mine.js";
 import { decideAdoption, type AdoptionGateOptions } from "./gate.js";
 import { buildSkillEditProposal } from "./propose.js";
+import {
+  reweightClustersByRevenue,
+  type RevenueReward,
+  type ReweightOptions,
+} from "../attribution/reward.js";
+
+/**
+ * The OPTIONAL revenue learning signal (#390, ADR-0390) — the "learn" step of the autonomous loop. When
+ * supplied, the cycle reweights its mined recurring-task clusters by #386 attributed revenue BEFORE picking
+ * the one cluster to improve, so the fleet invests its self-improvement cycle on revenue-producing work
+ * ("more of what earns"). Absent (the caller leaves it unset when the `attribution` flag is OFF, or the
+ * projection yields no receipts) ⇒ the cycle ranks by frequency exactly as before (byte-for-byte). The
+ * "no receipts ⇒ no learning" dependency is enforced inside {@link reweightClustersByRevenue}: an empty
+ * reward returns the frequency order unchanged.
+ */
+export interface RevenueReweight {
+  reward: RevenueReward;
+  options?: ReweightOptions;
+}
 
 /**
  * The per-cluster candidate the replay/draft step produced for a recurring task: the held-out external
@@ -45,6 +64,11 @@ export interface SkillOptCycleInput {
   gate?: AdoptionGateOptions;
   /** Max chars for the bounded append (forwarded to the proposal builder). */
   maxAppendChars?: number;
+  /**
+   * OPTIONAL #390 revenue learning signal. When set, the mined clusters are reweighted by attributed
+   * revenue (the #386 receipts) before the top is chosen. Unset ⇒ today's frequency ordering, unchanged.
+   */
+  revenueReweight?: RevenueReweight;
 }
 
 /**
@@ -62,7 +86,19 @@ export function decideSkillOptCycle(input: SkillOptCycleInput): SkillOptCycleRes
     return { status: "skipped", reason: "no recurring tasks in the harvested transcripts" };
   }
 
-  const top = clusters[0]!;
+  // #390: when a revenue learning signal is supplied, reweight the frequency-ranked clusters by attributed
+  // revenue so the cycle improves revenue-producing work first ("more of what earns"). With no signal — or
+  // an empty reward (no receipts) — the order is unchanged, so the default (flag OFF) path is byte-for-byte
+  // identical to frequency-only ranking.
+  const orderedClusters: TaskCluster[] = input.revenueReweight
+    ? reweightClustersByRevenue(
+        clusters,
+        input.revenueReweight.reward,
+        input.revenueReweight.options,
+      ).map((r) => r.cluster)
+    : clusters;
+
+  const top = orderedClusters[0]!;
   const candidate = input.candidates.find((c) => c.clusterKey === top.key);
   if (!candidate) {
     return { status: "skipped", reason: `no replay candidate for the top recurring task "${top.key}"` };
