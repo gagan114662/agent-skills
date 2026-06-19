@@ -108,6 +108,15 @@ export interface DeliveryDispatcher {
   ship(payload: DeliverablePayload, ctx: DeliveryShipContext): Promise<DeliveryShipResult | null>;
 }
 
+/** A real, live ship — the head of the #386 attribution chain (artifact → exposure → …). */
+export interface LiveShipEvent {
+  workspaceId: string;
+  /** The production-grounded external reference of the live ship (a live URL, a PR url, a post id). */
+  externalRef: string;
+  channel: DeliveryChannel;
+  sessionId: string | null;
+}
+
 export interface DeliveryDispatcherDeps {
   /** Structural channel→department resolver (channelId → department key). Never reads the draft. */
   resolveDepartment(workspaceId: string, channelId: string | null): Promise<string | null>;
@@ -116,6 +125,13 @@ export interface DeliveryDispatcherDeps {
   /** One adapter per channel. */
   adapters: Record<DeliveryChannel, ChannelAdapter>;
   receipts: DeliveryReceiptStore;
+  /**
+   * OPTIONAL best-effort attribution hook (#386, ADR-0386): called AFTER a real live ship to record the
+   * exposure (the head of the causal chain). It is wrapped in a try/catch that SWALLOWS errors — attribution
+   * is observation, never on the critical path, and must NEVER break or fail a real ship. Undefined (the
+   * default, attribution flag off) = prod byte-for-byte unchanged.
+   */
+  onLiveShip?: (e: LiveShipEvent) => Promise<void>;
 }
 
 function str(v: unknown): string | null {
@@ -180,6 +196,22 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
         status: "shipped",
         detail: outcome.detail ?? {},
       });
+
+      // #386: a REAL live ship is the head of the attribution chain. Best-effort, AFTER the receipt — a
+      // dry-run (live:false) or a ship with no externalRef records no exposure, and a throwing hook is
+      // swallowed so attribution can NEVER break or fail a real ship.
+      if (outcome.live && outcome.externalRef) {
+        try {
+          await deps.onLiveShip?.({
+            workspaceId: ctx.workspaceId,
+            externalRef: outcome.externalRef,
+            channel: decision.channel,
+            sessionId: input.sessionId,
+          });
+        } catch {
+          // swallow — attribution is observation, never on the ship's critical path.
+        }
+      }
 
       return {
         shipped: true,

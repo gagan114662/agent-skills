@@ -155,6 +155,7 @@ import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
 import { financeRoutes } from "./routes/finance.js";
 import { createDefaultFinanceService, createDefaultFinanceEngine } from "./finance/default.js";
+import { attributionRoutes } from "./routes/attribution.js";
 import type { FinanceService } from "./finance/service.js";
 import type { FinanceLedgerEngine } from "./finance/engine.js";
 import {
@@ -776,6 +777,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // movements stay human-gated + recorded-only in the #13 queue. Config default-OFF (`finance.enabled`).
   const finance = opts.finance ?? createDefaultFinanceService();
   app.register(financeRoutes, { service: finance });
+  // #386 attributed-revenue ledger read surface: the projection joining fleet exposures to Stripe receipts
+  // by happened-before causality. Default OFF, owner-workspace-first (409 until the workspace opts in).
+  app.register(attributionRoutes);
   const financeEngine = opts.financeEngine ?? createDefaultFinanceEngine(app.log, finance);
   app.addHook("onClose", async () => {
     financeEngine.stop();

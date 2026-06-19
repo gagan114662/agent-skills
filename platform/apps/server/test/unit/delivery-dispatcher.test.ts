@@ -5,6 +5,7 @@ import {
   type ChannelAdapter,
   type DeliveryDispatcherDeps,
   type DeliveryReceiptInput,
+  type LiveShipEvent,
 } from "../../src/delivery/dispatcher.js";
 import {
   PublishChannelAdapter,
@@ -183,6 +184,53 @@ describe("delivery dispatcher (#295)", () => {
     );
     expect(result).toMatchObject({ channel: "email", live: false });
     expect(receipts[0]).toMatchObject({ channel: "email", status: "shipped", live: false, reversibility: "irreversible" });
+  });
+
+  it("calls onLiveShip after a real live ship (#386 attribution exposure capture)", async () => {
+    const events: LiveShipEvent[] = [];
+    const { deps, adapters } = buildDeps({ onLiveShip: (e) => (events.push(e), Promise.resolve()) });
+    const dispatcher = createDeliveryDispatcher(deps);
+    await dispatcher.ship(
+      { sessionId: "s1", channelId: "c1", task: "Launch post", draft: "Hello world" },
+      { workspaceId: "ws1", approvalRequestId: "req-42" },
+    );
+    expect(adapters.publish.calls).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      workspaceId: "ws1",
+      externalRef: "publish-ref",
+      channel: "publish",
+      sessionId: "s1",
+    });
+  });
+
+  it("does NOT call onLiveShip for a dry-run (live:false) ship — no exposure for what never went live", async () => {
+    const events: LiveShipEvent[] = [];
+    // email department → email channel → dry-run adapter (live:false).
+    const { deps } = buildDeps({
+      resolveDepartment: () => Promise.resolve("email"),
+      onLiveShip: (e) => (events.push(e), Promise.resolve()),
+    });
+    const dispatcher = createDeliveryDispatcher(deps);
+    const result = await dispatcher.ship(
+      { channelId: "c1", task: "welcome", draft: "Welcome!" },
+      { workspaceId: "ws1", approvalRequestId: "req-9" },
+    );
+    expect(result).toMatchObject({ channel: "email", live: false });
+    expect(events).toHaveLength(0);
+  });
+
+  it("a throwing onLiveShip never breaks or fails a real ship (best-effort, swallowed)", async () => {
+    const { deps } = buildDeps({
+      onLiveShip: () => Promise.reject(new Error("attribution store down")),
+    });
+    const dispatcher = createDeliveryDispatcher(deps);
+    const result = await dispatcher.ship(
+      { sessionId: "s1", channelId: "c1", task: "Launch post", draft: "Hello world" },
+      { workspaceId: "ws1", approvalRequestId: "req-42" },
+    );
+    // The ship still succeeds with a real receipt despite the hook throwing.
+    expect(result).toMatchObject({ shipped: true, channel: "publish", live: true });
   });
 
   it("records a FAILED receipt and throws when the adapter fails (never a silent success)", async () => {
