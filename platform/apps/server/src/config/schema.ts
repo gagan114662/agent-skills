@@ -1746,21 +1746,6 @@ export const attributionSchema = z.object({
   listLimit: z.number().int().positive().optional(),
 });
 
-/**
- * Venture-intake surface (#387, ADR-0387). Default OFF, owner-workspace-first. Surfaces the
- * already-built #96 venture loop intake so the owner can brief ANY company idea (not just marketing)
- * from the console and run it through the existing engine. Adds NO new pipeline and NO money/irreversible
- * action — submit + heuristic score + epic emission are existing non-money paths; the funded build work
- * still flows through the existing #13 gate. The master switch only un-gates the owner-facing brief
- * submit route + the web brief surface; prod with the block unset is byte-for-byte unchanged.
- */
-export const ventureIntakeSchema = z.object({
-  /** Master switch for the owner-facing venture-brief submit route + web surface — default OFF. */
-  enabled: z.boolean().optional(),
-  /** Restrict the brief surface to this owner workspace (fail-closed: unset ⇒ nobody). */
-  ownerWorkspaceId: z.string().optional(),
-});
-
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -1882,8 +1867,6 @@ export const settingsSchema = z.object({
   finance: financeSchema.optional(),
   /** Attributed-revenue ledger (#386): artifact→exposure→signup→payment credit by causality (default OFF). */
   attribution: attributionSchema.optional(),
-  /** Venture-intake surface (#387): brief ANY company idea into the existing #96 venture loop (default OFF). */
-  ventureIntake: ventureIntakeSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
   monetization: monetizationSchema.optional(),
   /** Customer Discovery Engine policy (#222): per-venture signal layer + ranked prospect queue (default OFF). */
@@ -1989,7 +1972,6 @@ export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type AttributionConfig = z.infer<typeof attributionSchema>;
-export type VentureIntakeConfig = z.infer<typeof ventureIntakeSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
@@ -2138,8 +2120,6 @@ export interface ResolvedConfig {
   finance: FinanceConfig;
   /** Attributed-revenue ledger policy (#386). A partial whose hard defaults `resolveAttributionCaps` fills. */
   attribution: AttributionConfig;
-  /** Venture-intake surface policy (#387). A partial whose hard defaults `resolveVentureIntakeCaps` fills. */
-  ventureIntake: VentureIntakeConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
   monetization: MonetizationConfig;
   /** Customer Discovery Engine policy (#222). A partial whose hard defaults `resolveDiscoveryCaps` fills. */
@@ -2246,7 +2226,6 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   social: {},
   finance: {},
   attribution: {},
-  ventureIntake: {},
   monetization: {},
   discovery: {},
   reach: {},

@@ -2,8 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { VentureService, VentureNotFoundError } from "../venture/service.js";
 import type { IdeaInput } from "../venture/types.js";
-import { loadConfig } from "../config/loader.js";
-import { resolveVentureIntakeCaps, ventureIntakeActive } from "../venture-intake/caps.js";
 
 /**
  * Venture Loop routes (#96): submit / score / decide / get under `/workspaces/:wid/ventures`. Thin
@@ -21,28 +19,12 @@ export async function ventureRoutes(
 ): Promise<void> {
   const { service } = opts;
 
-  /**
-   * #96 step 1 SOURCE: submit the typed intake artifact.
-   *
-   * #387 venture-intake gate (default OFF, owner-workspace-first): this is the owner-facing brief submit
-   * path that lets the owner brief ANY company idea into the existing venture loop. When `ventureIntake`
-   * is NOT active for the workspace the route answers 409 (the surface is opt-in, mirroring the finance /
-   * attribution routes). With the flag unset (default / prod non-owner) the brief path is closed, so prod
-   * is byte-for-byte unchanged. The score/decide/advance/get routes below keep their existing behavior.
-   * Adds NO money path — submit + heuristic score + epic emission are existing non-money paths.
-   */
+  /** #96 step 1 SOURCE: submit the typed intake artifact. */
   app.post("/workspaces/:wid/ventures", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-
-    const intakeCaps = resolveVentureIntakeCaps(loadConfig(wid).ventureIntake);
-    if (!ventureIntakeActive(intakeCaps, wid)) {
-      return reply
-        .code(409)
-        .send({ error: "venture intake is not enabled for this workspace" });
-    }
 
     const body = (req.body ?? {}) as Partial<IdeaInput>;
     const { problem, targetUser, insight, wedge, marketPath, segment } = body;

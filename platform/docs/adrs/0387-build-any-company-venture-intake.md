@@ -1,6 +1,6 @@
 # ADR-0387: Build & run ANY company — surface the dormant venture-loop intake behind a gated brief
 
-- **Status:** Accepted (slice 1 — server gate + web brief surface — shipped in PR for #387)
+- **Status:** Accepted (slice 1 — web brief surface over the existing venture route — shipped in PR for #387)
 - **Date:** 2026-06-19
 - **Context issue:** [#387](https://github.com/gagan114662/agent-skills/issues/387) — ipop should start &
   run its OWN profitable companies / build ANY company, not just market itself. Today ipop only ever seeds a
@@ -36,22 +36,13 @@ existing intake — let the owner brief ANY company idea from the console and ru
 
 ## Decision
 
-Add a new **`ventureIntake`** config block (the standard 5 schema + 2 layer + 1 loader pattern, default-OFF,
-owner-workspace-first, fail-closed: enabled-without-an-owner = nobody) and use it to gate the owner-facing
-**brief submit** path, plus a matching web brief surface gated the same way.
-
-**Server.**
-- `config/schema.ts` — `ventureIntakeSchema` (`enabled?`, `ownerWorkspaceId?`), registered on the root
-  schema, `ResolvedConfig`, `CONFIG_DEFAULTS`, and a `VentureIntakeConfig` type export. `config/layers.ts`
-  — replace-merge of the block (a higher managed/owner layer fully owns it) + the resolved default.
-  `config/loader.ts` — `RELOAD_VENTURE_INTAKE_ENABLED` / `RELOAD_VENTURE_INTAKE_OWNER_WORKSPACE_ID`
-  (owner falls back to the marketing owner), mirroring `attribution`.
-- `venture-intake/caps.ts` — `resolveVentureIntakeCaps`, `isOwnerWorkspace`, `ventureIntakeActive(caps,
-  wid)`, identical in shape to `attribution/caps.ts`.
-- `routes/venture.ts` — the existing `POST /workspaces/:wid/ventures` (the owner-facing brief submit path)
-  now returns **409** when `ventureIntake` is not active for the workspace, mirroring the finance /
-  attribution routes. The score / decide / advance / get routes are **unchanged**. With the flag unset
-  (default / prod non-owner) the brief path is closed, so production is **byte-for-byte unchanged**.
+Surface the dormant intake as a **web-only opt-in**: mount a "Brief a venture" panel behind a pure
+default-OFF, owner-workspace-first web flag. The `POST /ventures` route already exists, is auth-gated
+(identity + workspace membership), creates a money-free idea record + heuristic score, and is the **shared
+venture-loop seam** that several internal flows (demand-validation, portfolio, moat, customer-voice, …)
+submit through — so the opt-in lives on the surface, NOT as a new route gate. (An earlier draft added a
+server-side 409 gate on that shared route; it broke those internal flows' integration tests and was the
+wrong layer — reverted. The route stays exactly as it was.)
 
 **Web.**
 - `api/types.ts` + `api/client.ts` — a `submitVenture(wid, VentureIdeaInput)` method hitting the live route,
@@ -70,8 +61,9 @@ owner-workspace-first, fail-closed: enabled-without-an-owner = nobody) and use i
 - **No new pipeline.** Submit + the heuristic score + the FUND epic emission are all existing, non-money
   paths. The funded build work (domain / payment / ad-spend in the venture-factory bootstrap) still routes
   through the **existing #13 owner approval gate** — this slice adds **no new money or irreversible action**.
-- **Fail-closed on both sides.** The server route is gated independently of the web flag, so even a web flag
-  flipped on without the server flag answers 409.
+- **Fail-closed surface.** The web flag is default-OFF and owner-first (enabled-without-an-owner = nobody);
+  with `VITE_RELOAD_VENTURE_INTAKE` unset the panel renders for nobody and prod is byte-for-byte unchanged.
+  The route is unchanged from before this slice.
 - **#200 rails.** The five fields are untrusted owner input — sent only as JSON DATA to the submit route and
   rendered back as plain text (no markup execution). Annotations / metadata can never widen scope or
   authorize an irreversible action.

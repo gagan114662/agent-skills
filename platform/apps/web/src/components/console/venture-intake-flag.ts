@@ -3,10 +3,12 @@
  * mirrors the BACKEND `ventureIntake` config shape (and the #352 coordination flag) entirely on the web.
  *
  * Why a web flag: the #96 venture loop intake (submit → score → fund → epic) is already built and live on
- * the server, but there is no console surface to brief a company idea into it. This flag lets us mount the
- * "Brief a venture" panel for ONE named workspace (the owner's), to validate the surface before any broad
- * rollout. The SERVER also gates the submit route behind its own default-OFF `ventureIntake` flag, so even
- * if this web flag were on without the server flag, the POST answers 409 — fail-closed on both sides.
+ * the server (the `POST /ventures` route is auth-gated — identity + workspace membership — and creates a
+ * money-free idea record + heuristic score), but there is no console surface to brief a company idea into
+ * it. This flag is the owner-first OPT-IN: it mounts the "Brief a venture" panel for ONE named workspace
+ * (the owner's) to validate the surface before any broad rollout. The route is the existing shared
+ * venture-loop seam (many internal flows submit through it), so the opt-in lives here on the surface, not
+ * as a new route gate.
  *
  * Two invariants, both matching the backend's safest default:
  *   - DEFAULT-OFF  — env unset ⇒ flag off ⇒ the panel renders for nobody.
