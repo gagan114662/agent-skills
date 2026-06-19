@@ -266,6 +266,35 @@ describe("store bootstrap + realtime", () => {
     expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1", "m2"]);
   });
 
+  it("fans realtime events out to onRealtimeEvent subscribers and stops on unsubscribe (#362)", async () => {
+    const store = createStore(env.deps);
+    const seen: ServerEvent[] = [];
+    const off = store.onRealtimeEvent((e) => seen.push(e));
+    await store.bootstrap();
+
+    env.rt.fire({ type: "run_status", sessionId: "s1", channelId: "c1", status: "running" });
+    env.rt.fire({ type: "message", message: msg({ id: "m2", channelId: "c1" }) });
+    expect(seen.map((e) => e.type)).toEqual(["run_status", "message"]);
+    // The store still applied the events to its own state (fan-out is in addition, not instead).
+    expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1", "m2"]);
+
+    off();
+    env.rt.fire({ type: "run_status", sessionId: "s2", channelId: "c1", status: "running" });
+    expect(seen).toHaveLength(2); // no further delivery after unsubscribe
+  });
+
+  it("a throwing onRealtimeEvent subscriber never breaks store state application (#362)", async () => {
+    const store = createStore(env.deps);
+    store.onRealtimeEvent(() => {
+      throw new Error("subscriber blew up");
+    });
+    await store.bootstrap();
+
+    env.rt.fire({ type: "message", message: msg({ id: "m2", channelId: "c1" }) });
+    // Despite the throwing subscriber, the store still applied the message.
+    expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1", "m2"]);
+  });
+
   it("records mention events into the inbox with an unread count", async () => {
     const store = createStore(env.deps);
     await store.bootstrap();
