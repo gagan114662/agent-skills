@@ -13,6 +13,10 @@
  */
 
 import { loadConfig } from "../config/loader.js";
+import { attributionActive, maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { recordLiveShipExposure, type AttributionServiceDeps } from "../attribution/service.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { dbRevenueReader } from "../finance/default.js";
 import { getChannel } from "../db/repositories/channels.js";
 import { dbDeliveryReceiptStore } from "../db/repositories/delivery.js";
 import { dryRunSocialProvider, dryRunEspProvider } from "../acquisition/providers.js";
@@ -35,7 +39,12 @@ import {
   SocialChannelAdapter,
   type SitePrHeadCheck,
 } from "./adapters.js";
-import { createDeliveryDispatcher, type DeliveryDispatcher } from "./dispatcher.js";
+import type { DeliveryChannel } from "./decide.js";
+import {
+  createDeliveryDispatcher,
+  type DeliveryDispatcher,
+  type LiveShipEvent,
+} from "./dispatcher.js";
 
 /** Resolve the ship flags for a workspace from the layered config (#58) — default-OFF, owner-first. */
 export function deliveryFlagsFor(workspaceId: string): DeliveryFlags {
@@ -99,6 +108,49 @@ function resolveSitePrDelivery(): { publisher: SitePublisher; headCheck?: SitePr
   return { publisher, headCheck };
 }
 
+/**
+ * Map a delivery channel to the #386 attribution (exposure channel, artifact kind). The delivery channel
+ * is the structural surface the deliverable shipped through; the attribution channel/kind is how the
+ * exposure is bucketed in the ledger. `publish`/`site_pr` are SEO/content surfaces; social/email are their
+ * own channels.
+ */
+function attributionFacetsFor(channel: DeliveryChannel): { channel: string; artifactKind: string } {
+  switch (channel) {
+    case "publish":
+      return { channel: "seo", artifactKind: "published_page" };
+    case "site_pr":
+      return { channel: "seo", artifactKind: "site_pr" };
+    case "social":
+      return { channel: "social", artifactKind: "social_post" };
+    case "email":
+      return { channel: "email", artifactKind: "email" };
+  }
+}
+
+/**
+ * The best-effort #386 attribution hook (ADR-0386): records the exposure for a REAL live ship. ONLY when
+ * attribution is active for the workspace (enabled AND owner-workspace-first, fail-closed) — when the flag
+ * is off this records nothing, so prod is byte-for-byte unchanged. Errors are swallowed by the dispatcher,
+ * but we also fail-closed here: an inactive workspace never touches the store.
+ */
+async function recordAttributionExposure(e: LiveShipEvent): Promise<void> {
+  const caps = resolveAttributionCaps(loadConfig(e.workspaceId).attribution);
+  if (!attributionActive(caps, e.workspaceId)) return;
+  const facets = attributionFacetsFor(e.channel);
+  const deps: AttributionServiceDeps = {
+    store: dbAttributionExposureStore,
+    revenue: dbRevenueReader,
+    maxChainAgeMs: maxChainAgeMs(caps),
+    now: () => Date.now(),
+  };
+  await recordLiveShipExposure(deps, {
+    workspaceId: e.workspaceId,
+    externalRef: e.externalRef,
+    channel: facets.channel,
+    artifactKind: facets.artifactKind,
+  });
+}
+
 /** Build the production delivery dispatcher over the real repos + providers. */
 export function buildDeliveryDispatcher(): DeliveryDispatcher {
   const sitePr = resolveSitePrDelivery();
@@ -112,5 +164,7 @@ export function buildDeliveryDispatcher(): DeliveryDispatcher {
       email: new EmailChannelAdapter(dryRunEspProvider),
     },
     receipts: dbDeliveryReceiptStore,
+    // #386 attribution exposure capture — gated active-check inside, so it is safe to wire unconditionally.
+    onLiveShip: recordAttributionExposure,
   });
 }

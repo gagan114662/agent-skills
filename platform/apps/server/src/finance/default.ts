@@ -29,7 +29,7 @@ import { FinanceLedgerEngine } from "./engine.js";
  * P&L). The two are disjoint — a venture charges through its OWN Stripe account, never ipop's — so there
  * is no double count. With monetization OFF the venture source is simply empty (unchanged behavior).
  */
-const dbRevenueReader: RevenueEventReader = {
+export const dbRevenueReader: RevenueEventReader = {
   async listReceipts(workspaceId: string, sinceMs?: number): Promise<RevenueReceipt[]> {
     const conds = [eq(revenueEvents.workspaceId, workspaceId), gt(revenueEvents.amountCents, 0)];
     if (sinceMs !== undefined) conds.push(gt(revenueEvents.createdAt, new Date(sinceMs)));
