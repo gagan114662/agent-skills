@@ -667,6 +667,19 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(attributionOwner ? { ownerWorkspaceId: attributionOwner } : {}),
     };
   }
+  // #388 browser session-injection: let the deployment env opt the owner workspace into injecting a
+  // per-workspace logged-in browser session into the #174 browser, without a managed.toml. Hard default
+  // stays OFF (var unset → no block → every context is authless). Owner-workspace-first: the optional
+  // owner-id var names the only workspace it activates for. The session blob is NOT here — it lives
+  // sealed in the #192 vault; this only flips WHETHER the manager resolves + injects it.
+  const sessionInjectionEnabled = env.RELOAD_BROWSER_SESSION_INJECTION_ENABLED;
+  if (sessionInjectionEnabled !== undefined) {
+    const sessionInjectionOwner = env.RELOAD_BROWSER_SESSION_INJECTION_OWNER_WORKSPACE_ID?.trim();
+    raw.sessionInjection = {
+      enabled: sessionInjectionEnabled === "true" || sessionInjectionEnabled === "1",
+      ...(sessionInjectionOwner ? { ownerWorkspaceId: sessionInjectionOwner } : {}),
+    };
+  }
   // #195 venture deploys: let the deployment env opt the per-venture provisioning + release pipeline in
   // without a managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no
   // block); a managed layer still wins as the lock. The infra backend is selectable via env too.

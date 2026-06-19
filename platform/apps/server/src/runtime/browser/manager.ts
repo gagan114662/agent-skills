@@ -17,6 +17,8 @@ import { inMemoryReceiptRecorder } from "./receipts.js";
 import type { ScreenshotStore } from "./screenshots.js";
 import { inMemoryScreenshotStore } from "./screenshots.js";
 import { BrowserSession } from "./session.js";
+import type { BrowserSessionResolver, BrowserStorageState } from "./session-store.js";
+import { sessionInjectionActive, type SessionInjectionCaps } from "./session-injection-caps.js";
 
 /** Thrown when a workspace whose browser policy is OFF tries to open a session. */
 export class BrowserDisabledError extends Error {
@@ -34,6 +36,15 @@ export interface BrowserSessionManagerDeps {
   receipts?: BrowserReceiptRecorder;
   screenshots?: ScreenshotStore;
   now?: () => number;
+  /**
+   * Session-injection seam (#388, ADR-0388) — OPTIONAL. When both `loadSessionInjectionCaps` (resolving
+   * the default-OFF, owner-first flag) AND `sessionResolver` (the vault-backed lookup) are provided AND
+   * the flag is active for the workspace AND a `target` is supplied to `open`, the manager resolves the
+   * per-workspace logged-in `storageState` and opens the context WITH it. Omit either (or leave the flag
+   * OFF) and every context is authless — byte-for-byte today's behavior.
+   */
+  loadSessionInjectionCaps?: (workspaceId: string) => SessionInjectionCaps;
+  sessionResolver?: BrowserSessionResolver;
 }
 
 interface Entry {
@@ -57,15 +68,29 @@ export class BrowserSessionManager {
    * Open a browser for one session. Refuses when the workspace's policy is OFF, or when a browser is
    * already open for this `sessionId`. Allocates a fresh isolated context + page (the tenant boundary).
    */
-  async open(input: { sessionId: string; workspaceId: string }): Promise<BrowserSession> {
+  async open(input: {
+    sessionId: string;
+    workspaceId: string;
+    /** The site the agent will operate (#388) — used to resolve a stored logged-in session when active. */
+    target?: string;
+  }): Promise<BrowserSession> {
     const caps = this.deps.loadCaps(input.workspaceId);
     if (!caps.enabled) throw new BrowserDisabledError(input.workspaceId);
     if (this.sessions.has(input.sessionId)) {
       throw new Error(`a browser is already open for session ${input.sessionId}`);
     }
+    // #388: resolve the per-workspace logged-in session ONLY when the default-OFF, owner-first flag is
+    // active for this workspace AND a resolver + target are present. Otherwise `storageState` stays
+    // undefined and the context is authless — today's byte-for-byte behavior. The blob is a secret; it
+    // is never logged here (it flows straight into the driver and never into a receipt).
+    const storageState = await this.resolveStorageState(input.workspaceId, input.target);
     // Allocate the isolated context + page. If `newPage` (or the session build) throws after the
     // context exists, close the context first so a failed open never leaks a live browser context.
-    const context = await this.deps.driver.newContext(input);
+    const context = await this.deps.driver.newContext({
+      sessionId: input.sessionId,
+      workspaceId: input.workspaceId,
+      ...(storageState ? { storageState } : {}),
+    });
     let session: BrowserSession;
     try {
       const page = await context.newPage();
@@ -86,6 +111,27 @@ export class BrowserSessionManager {
     }
     this.sessions.set(input.sessionId, { session, context });
     return session;
+  }
+
+  /**
+   * Resolve the injected logged-in session for this open, fail-closed (#388). Returns `undefined`
+   * (→ authless context) unless the injection flag is wired AND active for the workspace AND a resolver
+   * and `target` are present. A resolver that throws or finds nothing also yields `undefined`, so a
+   * lookup failure can never block an open — it just degrades to today's authless behavior.
+   */
+  private async resolveStorageState(
+    workspaceId: string,
+    target: string | undefined,
+  ): Promise<BrowserStorageState | undefined> {
+    const loadInjection = this.deps.loadSessionInjectionCaps;
+    const resolver = this.deps.sessionResolver;
+    if (!loadInjection || !resolver || !target) return undefined;
+    if (!sessionInjectionActive(loadInjection(workspaceId), workspaceId)) return undefined;
+    try {
+      return (await resolver.resolve(workspaceId, target)) ?? undefined;
+    } catch {
+      return undefined; // fail-closed: a vault/parse failure degrades to an authless context
+    }
   }
 
   get(sessionId: string): BrowserSession | undefined {

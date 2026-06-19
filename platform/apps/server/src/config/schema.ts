@@ -1746,6 +1746,22 @@ export const attributionSchema = z.object({
   listLimit: z.number().int().positive().optional(),
 });
 
+/**
+ * Browser session-injection policy (#388, ADR-0388). Default OFF, owner-workspace-first. The seam that
+ * injects a per-workspace, logged-in browser session (Playwright `storageState`: cookies + localStorage)
+ * into the #174 agent browser, so an agent can operate a site the OWNER is already logged into — with NO
+ * API, NO OAuth, NO in-agent login. This block carries NO secret: the session blob lives SEALED in the
+ * #192 vault (`browser_session:<target>`); this flag only decides WHETHER the manager resolves + injects
+ * it. The SUBMIT/post action it enables stays #13-gated (ADR-0174 unchanged). Unset ⇒ every context is
+ * authless (today's byte-for-byte behavior).
+ */
+export const sessionInjectionSchema = z.object({
+  /** Master switch for resolving + injecting a stored logged-in browser session — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict session injection to this owner workspace (fail-closed: unset ⇒ nobody). */
+  ownerWorkspaceId: z.string().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -1841,6 +1857,8 @@ export const settingsSchema = z.object({
   briefings: briefingsSchema.optional(),
   /** Agent browser runtime policy (#174): Playwright sessions + per-session caps + domain lists (default OFF). */
   browser: browserSchema.optional(),
+  /** Browser session-injection policy (#388): per-workspace logged-in session into the #174 browser (default OFF). */
+  sessionInjection: sessionInjectionSchema.optional(),
   /** External account onboarding policy (#192): human-once setup + agent credential injection (default OFF). */
   onboarding: onboardingSchema.optional(),
   /** Real-world tool surface policy (#231): gated publish/send/post + publish provider (default OFF). */
@@ -1972,6 +1990,7 @@ export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type AttributionConfig = z.infer<typeof attributionSchema>;
+export type SessionInjectionConfig = z.infer<typeof sessionInjectionSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
@@ -2095,6 +2114,8 @@ export interface ResolvedConfig {
   briefings: BriefingsConfig;
   /** Agent browser runtime policy (#174). A partial whose hard defaults `resolveBrowserCaps` fills. */
   browser: BrowserConfig;
+  /** Browser session-injection policy (#388). A partial whose hard defaults `resolveSessionInjectionCaps` fills. */
+  sessionInjection: SessionInjectionConfig;
   /** External account onboarding policy (#192). A partial whose hard defaults `resolveOnboardingCaps` fills. */
   onboarding: OnboardingConfig;
   /** Real-world tool surface policy (#231). A partial whose hard defaults `resolveRealworldCaps` fills. */
@@ -2213,6 +2234,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   slack: {},
   briefings: {},
   browser: {},
+  sessionInjection: {},
   onboarding: {},
   realworld: {},
   outreach: {},
