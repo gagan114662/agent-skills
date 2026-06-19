@@ -183,6 +183,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #386 attributed-revenue ledger: a higher (managed/owner) layer fully owns the block (replace) so
     // tracking-id stamping + the attribution projection cannot be flipped on by a lower layer.
     if (layer.attribution !== undefined) out.attribution = { ...layer.attribution };
+    // #388 browser session-injection: a higher (managed/owner) layer fully owns the block (replace) so
+    // injecting a per-workspace logged-in session cannot be flipped on by a lower layer — owner-first.
+    if (layer.sessionInjection !== undefined) out.sessionInjection = { ...layer.sessionInjection };
     // #188 monetization policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // money-gated activation + per-venture revenue ingestion cannot be flipped on by a lower layer.
     if (layer.monetization !== undefined) out.monetization = { ...layer.monetization };
@@ -316,6 +319,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     social: merged.social ?? { ...CONFIG_DEFAULTS.social },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     attribution: merged.attribution ?? { ...CONFIG_DEFAULTS.attribution },
+    sessionInjection: merged.sessionInjection ?? { ...CONFIG_DEFAULTS.sessionInjection },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
     reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },

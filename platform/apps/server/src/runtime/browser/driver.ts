@@ -12,6 +12,7 @@
  * that is torn down with the session and never bleeds state across tenants.
  */
 import type { BrowserToolName } from "./tools.js";
+import type { BrowserStorageState } from "./session-store.js";
 
 /** The result of a navigation: the HTTP status, the bytes transferred (for the bandwidth cap), final URL. */
 export interface BrowserNavResult {
@@ -58,9 +59,21 @@ export interface BrowserContextHandle {
   close(): Promise<void>;
 }
 
+/**
+ * Options for allocating a session context. `storageState` (#388, ADR-0388) is OPTIONAL: when present
+ * the context is created LOGGED-IN by seeding Playwright with the per-workspace stored cookies +
+ * localStorage; when absent the context is fresh + authless (today's byte-for-byte behavior). The blob
+ * is a secret resolved from the vault — it is passed structurally and never logged.
+ */
+export interface NewContextOptions {
+  sessionId: string;
+  workspaceId: string;
+  storageState?: BrowserStorageState;
+}
+
 export interface BrowserDriver {
-  /** Allocate a fresh, profile-isolated context (no shared cookies/storage) for one session. */
-  newContext(opts: { sessionId: string; workspaceId: string }): Promise<BrowserContextHandle>;
+  /** Allocate a profile-isolated context for one session. With `storageState` it is logged-in; without it, authless. */
+  newContext(opts: NewContextOptions): Promise<BrowserContextHandle>;
 }
 
 // ---- the lazily-imported real Playwright driver -------------------------------------------------
@@ -75,7 +88,7 @@ interface PlaywrightLike {
   };
 }
 interface PwBrowser {
-  newContext(): Promise<PwContext>;
+  newContext(opts?: { storageState?: BrowserStorageState }): Promise<PwContext>;
   close(): Promise<void>;
 }
 interface PwContext {
@@ -120,8 +133,12 @@ export async function createPlaywrightDriver(): Promise<BrowserDriver & { shutdo
   }
   const browser = await pw.chromium.launch({ headless: true });
   return {
-    async newContext(): Promise<BrowserContextHandle> {
-      const ctx = await browser.newContext();
+    async newContext(opts: NewContextOptions): Promise<BrowserContextHandle> {
+      // #388: when a stored session is supplied, seed Playwright with it (logged-in context). With no
+      // `storageState` the call is `browser.newContext()` exactly as before — authless, byte-for-byte.
+      const ctx = await (opts.storageState
+        ? browser.newContext({ storageState: opts.storageState })
+        : browser.newContext());
       return {
         async newPage(): Promise<BrowserPageHandle> {
           const page = await ctx.newPage();
@@ -180,6 +197,8 @@ export interface FakeBrowserContext extends BrowserContextHandle {
   readonly sessionId: string;
   readonly workspaceId: string;
   readonly cookies: Map<string, string>;
+  /** The injected logged-in session, if any (#388) — `null` when the context was opened authless. */
+  readonly storageState: BrowserStorageState | null;
   closed: boolean;
   setCookie(name: string, value: string): void;
 }
@@ -248,6 +267,7 @@ export function createFakeBrowserDriver(opts?: {
         sessionId: o.sessionId,
         workspaceId: o.workspaceId,
         cookies,
+        storageState: o.storageState ?? null,
         closed: false,
         setCookie: (name, value) => cookies.set(name, value),
         async newPage(): Promise<BrowserPageHandle> {
