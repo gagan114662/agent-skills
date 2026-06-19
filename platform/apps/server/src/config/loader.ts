@@ -667,6 +667,19 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(attributionOwner ? { ownerWorkspaceId: attributionOwner } : {}),
     };
   }
+  // #387 venture-intake surface: let the deployment env opt the owner workspace into the venture-brief
+  // submit route + web surface without a managed.toml. Hard default stays OFF (var unset → no block).
+  // Owner-workspace-first: the optional owner-id var (fallback to the marketing owner) names the only
+  // workspace the brief surface activates for. Adds no new pipeline/money path — it surfaces the existing
+  // #96 venture loop intake; funded build work still flows through the existing #13 gate.
+  const ventureIntakeEnabled = env.RELOAD_VENTURE_INTAKE_ENABLED;
+  if (ventureIntakeEnabled !== undefined) {
+    const ventureIntakeOwner = env.RELOAD_VENTURE_INTAKE_OWNER_WORKSPACE_ID?.trim() || mktOwner;
+    raw.ventureIntake = {
+      enabled: ventureIntakeEnabled === "true" || ventureIntakeEnabled === "1",
+      ...(ventureIntakeOwner ? { ownerWorkspaceId: ventureIntakeOwner } : {}),
+    };
+  }
   // #195 venture deploys: let the deployment env opt the per-venture provisioning + release pipeline in
   // without a managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no
   // block); a managed layer still wins as the lock. The infra backend is selectable via env too.

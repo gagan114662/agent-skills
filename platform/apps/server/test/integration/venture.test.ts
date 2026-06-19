@@ -1,5 +1,15 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import { eq } from "drizzle-orm";
+
+// #387: these tests exercise the underlying #96 venture routes (submit/score/decide/advance/get), not the
+// new default-OFF owner-first ventureIntake gate that fronts the submit path. Force the intake gate active
+// for every workspace here so the #96 route behavior is asserted directly; the gate's OWN OFF/ON behavior
+// is covered by the dedicated unit test (`venture-intake-caps.test.ts`).
+vi.mock("../../src/venture-intake/caps.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/venture-intake/caps.js")>();
+  return { ...actual, ventureIntakeActive: () => true };
+});
+
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";

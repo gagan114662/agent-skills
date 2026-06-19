@@ -32,7 +32,10 @@ export const BRAND: Brand = {
   // The Pop Mark: a single vermilion dot — the popped i-dot, standing alone (splash + favicon).
   mark: env.VITE_BRAND_MARK ?? "●",
   title: env.VITE_BRAND_TITLE ?? "ipop — your marketing agency of AI agents",
-  tagline: env.VITE_BRAND_TAGLINE ?? "The marketing agency of AI agents — you steer, they ship.",
+  // #387: ipop builds & runs companies, not just marketing — the tagline nods to that while keeping the
+  // house voice. Still env-overridable (VITE_BRAND_TAGLINE) so a deployment can narrow it back.
+  tagline:
+    env.VITE_BRAND_TAGLINE ?? "An AI agency that builds & runs companies — you steer, they ship.",
   // Pop Vermilion — the one loud colour. See docs/brand/ipop-brand-identity.html.
   accent: env.VITE_BRAND_ACCENT ?? "#ff4524",
 };
@@ -1031,6 +1034,28 @@ export const CONSOLE = {
     /** Outcome suffixes — the lead's name is prefixed by the helpers below. */
     launchedSuffix: "is on it — watch Work in progress.",
     connectSuffix: "is ready, but the team can't run yet — connect Claude in Settings.",
+    error: "That didn't take — give it another go.",
+  },
+  /**
+   * Brief a venture (#387) — the owner-facing surface that runs ANY company idea through the already-built
+   * #96 venture loop (not just marketing). Default-OFF, owner-workspace-first. Submitting only sources the
+   * idea + scores it; the funded build work still flows through the existing money/approval gates.
+   */
+  ventureBrief: {
+    eyebrow: "Build a company",
+    title: "Brief a venture",
+    sub: "ipop doesn't just market itself — it can start and run any company you brief. Describe the idea and it enters the venture loop: scored against the bar, and if it clears, funded into a real build epic. Money still needs your yes.",
+    fields: {
+      name: { label: "Idea", placeholder: "What are we building? e.g. a payroll tool for clinics" },
+      pitch: { label: "One-line pitch", placeholder: "The wedge in a sentence" },
+      targetUser: { label: "Target customer", placeholder: "Who is it for? e.g. solo clinic owners" },
+      problem: { label: "Problem", placeholder: "What painful thing does it fix?" },
+      whyNow: { label: "Why now", placeholder: "The insight that makes this the moment" },
+    },
+    submit: "Brief the venture",
+    submitting: "Briefing…",
+    required: "Fill in every field so the loop has enough to score.",
+    successPrefix: "Venture briefed —",
     error: "That didn't take — give it another go.",
   },
 } as const;

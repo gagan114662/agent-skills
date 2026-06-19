@@ -183,6 +183,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #386 attributed-revenue ledger: a higher (managed/owner) layer fully owns the block (replace) so
     // tracking-id stamping + the attribution projection cannot be flipped on by a lower layer.
     if (layer.attribution !== undefined) out.attribution = { ...layer.attribution };
+    // #387 venture-intake surface: a higher (managed/owner) layer fully owns the block (replace) so the
+    // owner-facing brief submit route + web surface cannot be flipped on by a lower layer — owner-first.
+    if (layer.ventureIntake !== undefined) out.ventureIntake = { ...layer.ventureIntake };
     // #188 monetization policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // money-gated activation + per-venture revenue ingestion cannot be flipped on by a lower layer.
     if (layer.monetization !== undefined) out.monetization = { ...layer.monetization };
@@ -316,6 +319,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     social: merged.social ?? { ...CONFIG_DEFAULTS.social },
     finance: merged.finance ?? { ...CONFIG_DEFAULTS.finance },
     attribution: merged.attribution ?? { ...CONFIG_DEFAULTS.attribution },
+    ventureIntake: merged.ventureIntake ?? { ...CONFIG_DEFAULTS.ventureIntake },
     monetization: merged.monetization ?? { ...CONFIG_DEFAULTS.monetization },
     discovery: merged.discovery ?? { ...CONFIG_DEFAULTS.discovery },
     reach: merged.reach ?? { ...CONFIG_DEFAULTS.reach },

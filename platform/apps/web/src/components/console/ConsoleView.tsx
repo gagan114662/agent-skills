@@ -57,6 +57,12 @@ import {
   shouldShowCoordination,
 } from "./coordination-flag.js";
 import { CoordinationView } from "./CoordinationView.js";
+import {
+  VENTURE_INTAKE_ENABLED,
+  VENTURE_INTAKE_OWNER_WORKSPACE_ID,
+  shouldShowVentureIntake,
+} from "./venture-intake-flag.js";
+import { VentureBriefPanel } from "./VentureBriefPanel.js";
 import { ConnectHealthChip } from "./ConnectHealthChip.js";
 import {
   CONNECT_HEALTH_OWNER_WORKSPACE_ID,
@@ -412,6 +418,15 @@ export function ConsoleView(): React.JSX.Element {
   // toggle, no board, no projects/task sidebar. Fail-closed: when the gate is off this is always false, so
   // production (no coordination env) is byte-for-byte the board it is today.
   const showCoordinationSurface = coordinationEnabled;
+  // #387 venture-intake surface: the owner-facing "Brief a venture" panel mounts only when the default-OFF,
+  // owner-workspace-first venture-intake web flag resolves on for this workspace (fail-closed — named-nobody
+  // = nobody). The server submit route is also gated (409 when off), so prod (which sets no venture-intake
+  // env) is byte-for-byte the board it is today.
+  const ventureIntakeEnabled = shouldShowVentureIntake({
+    flagOn: VENTURE_INTAKE_ENABLED,
+    ownerWorkspaceId: VENTURE_INTAKE_OWNER_WORKSPACE_ID,
+    workspaceId,
+  });
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
   const headerTitle = activeProject ? `#${activeProject.name}` : BRAND.name;
 
@@ -743,6 +758,11 @@ export function ConsoleView(): React.JSX.Element {
             {/* #235: the owner's always-present brief composer — point a lead at a goal and the board fills.
                 Replaces the passive "between tasks — @mention a lead" board with a real working control. */}
             <BriefComposer leads={CONSOLE.brief.leads} onBrief={briefLead} />
+            {/* #387: brief ANY company idea into the #96 venture loop. Gated default-OFF owner-first — when
+                off (prod / non-owner) this never renders, so the board is byte-for-byte unchanged. */}
+            {ventureIntakeEnabled && workspaceId && (
+              <VentureBriefPanel workspaceId={workspaceId} />
+            )}
             <Board
               columns={model.columns}
               onPeek={(item) => dive(item, "transcript")}
