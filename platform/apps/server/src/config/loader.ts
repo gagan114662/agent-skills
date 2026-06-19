@@ -656,6 +656,17 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   if (financeEnabled !== undefined) {
     raw.finance = { enabled: financeEnabled === "true" || financeEnabled === "1" };
   }
+  // #386 attributed-revenue ledger: let the deployment env opt the owner workspace into tracking-id
+  // stamping + the attribution projection without a managed.toml. Hard default stays OFF (var unset → no
+  // block). Owner-workspace-first: the optional owner-id var names the only workspace it activates for.
+  const attributionEnabled = env.RELOAD_ATTRIBUTION_ENABLED;
+  if (attributionEnabled !== undefined) {
+    const attributionOwner = env.RELOAD_ATTRIBUTION_OWNER_WORKSPACE_ID?.trim();
+    raw.attribution = {
+      enabled: attributionEnabled === "true" || attributionEnabled === "1",
+      ...(attributionOwner ? { ownerWorkspaceId: attributionOwner } : {}),
+    };
+  }
   // #195 venture deploys: let the deployment env opt the per-venture provisioning + release pipeline in
   // without a managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no
   // block); a managed layer still wins as the lock. The infra backend is selectable via env too.

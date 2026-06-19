@@ -1726,6 +1726,26 @@ export const monetizationSchema = z.object({
   listLimit: z.number().int().positive().optional(),
 });
 
+/**
+ * Attributed-revenue ledger (#386, ADR-0386). Default OFF, owner-workspace-first. The attribution edge
+ * graph that ties a fleet artifact to the Stripe receipt it caused (artifact → exposure → signup →
+ * payment), so revenue is credited by happened-before causality (L2) and every credited dollar is backed
+ * by an external receipt (L1). Adds NO money path — it only projects credit over receipts that already
+ * exist (the #98 Stripe webhook → `revenue_events`); flipping it live is owner-gated.
+ */
+export const attributionSchema = z.object({
+  /** Master switch for tracking-id stamping + the attribution projection/read surface — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict attribution to this owner workspace (fail-closed: unset ⇒ nobody). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Max age (days) between an exposure and a payment for credit to flow (default 90). */
+  maxChainAgeDays: z.number().int().positive().optional(),
+  /** Default UTM source stamped when an artifact channel doesn't override it (default "ipop"). */
+  defaultUtmSource: z.string().optional(),
+  /** Max rows an attribution read returns (default 500). */
+  listLimit: z.number().int().positive().optional(),
+});
+
 export const settingsSchema = z.object({
   /** Enterprise data-privacy mode: when on, off-platform data egress is disabled (#58). */
   dataPrivacyMode: z.boolean().optional(),
@@ -1845,6 +1865,8 @@ export const settingsSchema = z.object({
   social: socialSchema.optional(),
   /** Finance Ledger policy (#194): per-venture ledger + monthly close + runway forecast (default OFF). */
   finance: financeSchema.optional(),
+  /** Attributed-revenue ledger (#386): artifact→exposure→signup→payment credit by causality (default OFF). */
+  attribution: attributionSchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
   monetization: monetizationSchema.optional(),
   /** Customer Discovery Engine policy (#222): per-venture signal layer + ranked prospect queue (default OFF). */
@@ -1949,6 +1971,7 @@ export type EnterpriseConfig = z.infer<typeof enterpriseSchema>;
 export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
+export type AttributionConfig = z.infer<typeof attributionSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
 export type ReachConfig = z.infer<typeof reachSchema>;
@@ -2095,6 +2118,8 @@ export interface ResolvedConfig {
   social: SocialConfig;
   /** Finance Ledger policy (#194). A partial whose hard defaults `resolveFinanceCaps` fills. */
   finance: FinanceConfig;
+  /** Attributed-revenue ledger policy (#386). A partial whose hard defaults `resolveAttributionCaps` fills. */
+  attribution: AttributionConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
   monetization: MonetizationConfig;
   /** Customer Discovery Engine policy (#222). A partial whose hard defaults `resolveDiscoveryCaps` fills. */
@@ -2200,6 +2225,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   hostedSites: {},
   social: {},
   finance: {},
+  attribution: {},
   monetization: {},
   discovery: {},
   reach: {},
