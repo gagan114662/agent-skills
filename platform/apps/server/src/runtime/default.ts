@@ -31,6 +31,11 @@ import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import { resolveAllServiceSecrets } from "../db/repositories/external-credentials.js";
 import { createAgentAuthResolver } from "./auth-default.js";
 import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
+import { formatDeliverableMessage } from "./outcome.js";
+import {
+  isAgentChannelPostingEnabledForWorkspace,
+  resolveAgentChannelPostingCaps,
+} from "../agent-channel-bridge/caps.js";
 import { AutoModelResolver } from "./auto-model.js";
 import { HttpGatewayRoutingClient } from "./gateway-client.js";
 import { usageStore } from "../db/repositories/tenant-usage.js";
@@ -370,6 +375,25 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
               { type: "requested", detail: { sessionId: e.sessionId } },
               { type: "executed", detail: { acknowledged: true, autonomous: true } },
             ],
+      });
+    },
+    // #393: post the agent's real deliverable as a chat MESSAGE into its own channel — the fleet's
+    // visible reply — so a completed run isn't read as "no response" (it previously lived only as a
+    // board card + result row). Gated by the EXISTING agent-channel-posting capability (#370, default-OFF,
+    // owner-workspace-first, already ON for the owner workspace in prod): a non-owner / unset deployment
+    // is a no-op and byte-for-byte unchanged. Authored as the agent member via the SAME `channelPoster`
+    // the streamed output uses. Best-effort: a post error never affects the already-finalized session.
+    postDeliverableMessage: async (e) => {
+      if (!e.channelId) return;
+      const caps = resolveAgentChannelPostingCaps(loadConfig(e.workspaceId).agentChannelPosting);
+      if (!isAgentChannelPostingEnabledForWorkspace(caps, e.workspaceId)) return;
+      const body = formatDeliverableMessage(e.task, e.result);
+      if (!body) return;
+      await channelPoster.post({
+        workspaceId: e.workspaceId,
+        channelId: e.channelId,
+        agentMemberId: e.agentMemberId,
+        body,
       });
     },
   });

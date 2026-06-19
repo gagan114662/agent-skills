@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   classifyFailure,
   decideSessionDisposition,
+  formatDeliverableMessage,
   looksLikeStartupFailure,
+  MAX_REPLY_CHARS,
   renderSessionOutcome,
   type SessionOutcome,
 } from "../../src/runtime/outcome.js";
@@ -255,5 +257,40 @@ describe("renderSessionOutcome (#166)", () => {
       outputTail: `auth error token=${secret}`,
     });
     expect(msg).not.toContain(secret);
+  });
+});
+
+/**
+ * #393 — the agent's deliverable, formatted as the chat reply it posts back into its channel. Without
+ * this the work landed only on a board card and the owner read the channel as "no response". The pure
+ * formatter trims, strips control chars (keeping newlines/tabs — a deliverable is multi-line), and caps
+ * the length; a blank deliverable returns "" so the caller skips posting.
+ */
+describe("formatDeliverableMessage (#393)", () => {
+  it("returns the trimmed deliverable as the reply body", () => {
+    expect(formatDeliverableMessage("audit homepage SEO", "  add a meta description to /pricing.  ")).toBe(
+      "add a meta description to /pricing.",
+    );
+  });
+
+  it("returns '' for a blank deliverable so the caller skips posting", () => {
+    expect(formatDeliverableMessage("any task", "")).toBe("");
+    expect(formatDeliverableMessage("any task", "   \n\t  ")).toBe("");
+  });
+
+  it("PRESERVES newlines and tabs (a deliverable is multi-line — never collapsed)", () => {
+    const multiline = "Line one\nLine two\n\t- bullet";
+    expect(formatDeliverableMessage("task", multiline)).toBe(multiline);
+  });
+
+  it("strips C0/C1 control characters but keeps the readable text", () => {
+    const withControls = `hello${String.fromCharCode(0)}${String.fromCharCode(7)}${String.fromCharCode(0x9b)}world`;
+    expect(formatDeliverableMessage("task", withControls)).toBe("helloworld");
+  });
+
+  it("caps the body at MAX_REPLY_CHARS", () => {
+    const long = "x".repeat(MAX_REPLY_CHARS + 500);
+    const out = formatDeliverableMessage("task", long);
+    expect(out).toHaveLength(MAX_REPLY_CHARS);
   });
 });

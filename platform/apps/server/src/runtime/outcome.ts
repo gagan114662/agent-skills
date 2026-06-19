@@ -253,3 +253,40 @@ export function renderSessionOutcome(o: SessionOutcome): string {
     `\`session ${o.status} · exit ${o.exitCode ?? "n/a"}\``
   );
 }
+
+/** Upper bound on the agent's posted chat reply (#393), matching the deliverable card's draft cap. */
+export const MAX_REPLY_CHARS = 4000;
+
+/**
+ * Strip C0/C1 control characters from a deliverable about to be posted as a chat message (#393), but
+ * PRESERVE newlines and tabs — a real deliverable is multi-line, and unlike the agent→channel bridge's
+ * `sanitizeData` (which collapses whitespace for a one-line status), this keeps the body's shape intact.
+ * Pure: removes only U+0000–U+001F (except `\n`/`\t`) and U+007F–U+009F.
+ */
+function stripControlChars(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    const isC0 = code <= 0x1f && code !== 0x0a && code !== 0x09;
+    const isC1 = code >= 0x7f && code <= 0x9f;
+    if (isC0 || isC1) continue;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * #393: build the agent's actual chat reply from a completed session's deliverable. The fleet ran and
+ * produced real work; without posting it as a MESSAGE the owner only ever sees a board card and reads
+ * the channel as "no response". The body is the deliverable text, trimmed, control-chars stripped
+ * (newlines/tabs preserved — a deliverable is multi-line), and length-capped. A blank deliverable
+ * returns `""` so the caller skips posting. Pure (no clock/IO) ⇒ unit-tested.
+ */
+export function formatDeliverableMessage(task: string, deliverable: string): string {
+  const body = stripControlChars(deliverable).trim();
+  if (!body) return "";
+  // `task` is accepted for parity with the surfacing sink (and a possible future context line); the
+  // deliverable text already stands on its own as the reply, so we post it verbatim.
+  void task;
+  return body.length > MAX_REPLY_CHARS ? body.slice(0, MAX_REPLY_CHARS) : body;
+}

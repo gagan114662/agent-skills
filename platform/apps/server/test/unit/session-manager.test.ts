@@ -858,6 +858,83 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
   });
 });
 
+// --- #393: a completed deliverable is posted as the agent's chat reply -----------------------------
+
+describe("SessionManager — deliverable posted as a chat message (#393)", () => {
+  type PostEvent = Parameters<
+    NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["postDeliverableMessage"]>
+  >[0];
+
+  function makePostingManager(runtime: AgentRuntime) {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const posts: PostEvent[] = [];
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      harnessKind: "claude-code",
+      decodeOutput: harnessLineDecoder("claude-code"),
+      caps: caps(),
+      logger: silentLogger,
+      postDeliverableMessage: async (e) => {
+        posts.push(e);
+      },
+    });
+    return { manager, store, posts };
+  }
+
+  it("posts the deliverable as a message when the run completes done with a real artifact", async () => {
+    const ok =
+      JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Here are 3 tweets." }) + "\n";
+    const runtime = new CompletingRuntime([ok], 0);
+    const { manager, posts } = makePostingManager(runtime);
+
+    const session = await manager.launch({ ...launch, task: "draft 3 tweets" });
+    await manager.join(session.id);
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.sessionId).toBe(session.id);
+    expect(posts[0]!.channelId).toBe("ch_1");
+    expect(posts[0]!.agentMemberId).toBe("mem_agent");
+    expect(posts[0]!.task).toBe("draft 3 tweets");
+    expect(posts[0]!.result).toContain("3 tweets");
+  });
+
+  it("does NOT post for a failed (non-done) session", async () => {
+    const runtime = new CompletingRuntime(["boom\n"], 1);
+    const { manager, posts } = makePostingManager(runtime);
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(posts).toHaveLength(0);
+  });
+
+  it("does NOT post when an exit-0 run self-reports a startup failure (#319 disposition not done)", async () => {
+    const startupFailure =
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "I couldn't start up — my runtime is missing a tool I need (spawn).",
+      }) + "\n";
+    const runtime = new CompletingRuntime([startupFailure], 0);
+    const { manager, posts } = makePostingManager(runtime);
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(posts).toHaveLength(0);
+  });
+
+  it("does NOT post when the run produced no output (completed but not done)", async () => {
+    const runtime = new CompletingRuntime([], 0);
+    const { manager, posts } = makePostingManager(runtime);
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+    expect(posts).toHaveLength(0);
+  });
+});
+
 describe("SessionManager — owner can ALWAYS stop a runaway (#248)", () => {
   it("force-finalizes an orphaned (not-in-memory) session to canceled — kills the stuck Scout", async () => {
     // The 30-min stuck session is orphaned: no child on this process, frozen `running` in the DB.
