@@ -739,35 +739,44 @@ export function ConsoleView(): React.JSX.Element {
         )}
       </main>
 
-      <PeekDrawer
-        open={!!peek}
-        title={peekItem?.title ?? ""}
-        dept={peekItem?.channelName ?? null}
-        agent={peekItem?.agentLabel ?? ""}
-        hue={peekItem?.hue}
-        kind={peekItem?.kind ?? null}
-        initialMode={peek?.mode === "audit" ? "audit" : "steps"}
-        transcript={transcript}
-        audit={peekItem ? auditLines(peekItem) : []}
-        askLine={canApprove && peekItem ? askLineOf(peekItem) : null}
-        canCompose={canCompose}
-        canApprove={canApprove}
-        deciding={!!peekItem?.requestId && deciding === peekItem.requestId}
-        onApprove={(e) => void (peekItem?.requestId && approveById(peekItem.requestId, e))}
-        onReject={() => peekItem && void rejectItem(peekItem)}
-        onClose={() => setPeek(null)}
-        onSend={sendSteer}
-      />
+      {/* #381: the peek drawer and the per-project settings sheet are BOARD surfaces — they're opened only by
+          board/standup affordances, none of which render on the chat-first coordination landing. Both are
+          fixed, full-screen elements; leaving them mounted (even closed) put a stray overlay over the chat on
+          landing. Don't render them when the reload.chat surface is the whole app. When the gate is OFF
+          (production), `showCoordinationSurface` is always false, so the board renders them exactly as today. */}
+      {!showCoordinationSurface && (
+        <PeekDrawer
+          open={!!peek}
+          title={peekItem?.title ?? ""}
+          dept={peekItem?.channelName ?? null}
+          agent={peekItem?.agentLabel ?? ""}
+          hue={peekItem?.hue}
+          kind={peekItem?.kind ?? null}
+          initialMode={peek?.mode === "audit" ? "audit" : "steps"}
+          transcript={transcript}
+          audit={peekItem ? auditLines(peekItem) : []}
+          askLine={canApprove && peekItem ? askLineOf(peekItem) : null}
+          canCompose={canCompose}
+          canApprove={canApprove}
+          deciding={!!peekItem?.requestId && deciding === peekItem.requestId}
+          onApprove={(e) => void (peekItem?.requestId && approveById(peekItem.requestId, e))}
+          onReject={() => peekItem && void rejectItem(peekItem)}
+          onClose={() => setPeek(null)}
+          onSend={sendSteer}
+        />
+      )}
 
-      <ProjectSettingsSheet
-        open={settingsOpen}
-        project={settingsProject}
-        budgetWindow={fc?.budget.window}
-        spentCents={fc?.budget.estimatedCostCents}
-        budgetCents={fc?.budget.budgetCents}
-        approverEmail={identity?.kind === "human" ? identity.displayName : null}
-        onClose={() => setSettingsOpen(false)}
-      />
+      {!showCoordinationSurface && (
+        <ProjectSettingsSheet
+          open={settingsOpen}
+          project={settingsProject}
+          budgetWindow={fc?.budget.window}
+          spentCents={fc?.budget.estimatedCostCents}
+          budgetCents={fc?.budget.budgetCents}
+          approverEmail={identity?.kind === "human" ? identity.displayName : null}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {/* #153 trial funnel: a hit cap surfaces the soft paywall nudge → the pricing overlay. */}
       {paywall && identity && (
