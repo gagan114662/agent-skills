@@ -1059,6 +1059,12 @@ export function consoleWaitingChip(n: number): string {
   return `${n} waiting on you`;
 }
 
+/** "N running" header pill (#384) — the calm live indicator that replaced the mission-control table; caller
+ *  hides it at zero. */
+export function consoleRunningPill(n: number): string {
+  return `${n} running`;
+}
+
 /** Approval-empty "next likely ask" line. */
 export function consoleNextAsk(hint: string = CONSOLE.approvalsClear.nextDefault): string {
   return `Next likely ask: ${hint}.`;

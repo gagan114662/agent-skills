@@ -21,7 +21,7 @@ import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { api, ApiError, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
 import type { ClaudeConnectionHealth, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
-import { BRAND, CONSOLE, agentColor, consoleWaitingChip } from "../../brand.js";
+import { BRAND, CONSOLE, agentColor, consoleRunningPill, consoleWaitingChip } from "../../brand.js";
 import { popConfettiFromEvent } from "../../lib/confetti.js";
 import { ConnectClaudePanel } from "../ConnectClaudePanel.js";
 import { SlackConnectPanel } from "../SlackConnectPanel.js";
@@ -396,6 +396,9 @@ export function ConsoleView(): React.JSX.Element {
   ]);
 
   const pendingCount = pending.length;
+  // #384: the live indicator reduced to a small "N running" pill (never a table above the feed). Reads the
+  // mission-control snapshot ConsoleView already polls (#147) — no extra fetch, no new seam.
+  const runningCount = mc?.sessions.length ?? 0;
   const forecast = fc ? spendForecast(fc.budget) : null;
   // #352: the coordination surface shows only when the deployment flag is on AND this is the named owner
   // workspace (fail-closed — default OFF, named-nobody = nobody). When off, the button never renders and the
@@ -601,7 +604,12 @@ export function ConsoleView(): React.JSX.Element {
         )}
         <header className="console__head">
           <h1 className="console__title">{headerTitle}</h1>
-          {forecast && fc && (
+          {/* #384: on the reload.chat surface the header is slim — the budget gauge, the Upgrade button, and
+              the fleet-health banner are NOT shown here (they're reachable, unobtrusively, in Settings →
+              Billing, which embeds the spend summary + the upgrade path). The board (gate OFF) keeps them
+              exactly as today. Running status reduces to a small "N running" pill below; approvals stay a
+              small "N waiting on you" chip. */}
+          {!showCoordinationSurface && forecast && fc && (
             <span
               className="gauge"
               title={`${fc.budget.window} · ${fmtCents(fc.budget.estimatedCostCents)}${
@@ -624,7 +632,7 @@ export function ConsoleView(): React.JSX.Element {
             </span>
           )}
           {/* The in-app conversion path (#215): a trial user approaching the cap upgrades in one click. */}
-          {fc && (
+          {!showCoordinationSurface && fc && (
             <button
               className={`gauge-upgrade${forecast?.atRisk ? " gauge-upgrade--risk" : ""}`}
               onClick={() => setPricingOpen(true)}
@@ -632,7 +640,7 @@ export function ConsoleView(): React.JSX.Element {
               {CONSOLE.gauge.upgrade}
             </button>
           )}
-          {fc && (
+          {!showCoordinationSurface && fc && (
             <span
               className={`fleet-health${fc.attention.required ? " fleet-health--err" : ""}`}
               title={fc.attention.required ? fc.attention.reasons.join(" · ") : undefined}
@@ -651,6 +659,14 @@ export function ConsoleView(): React.JSX.Element {
             <ConnectHealthChip health={claudeHealth} onConnect={() => setShellSettingsOpen(true)} />
           )}
           <span className="console__sp" />
+          {/* #384: the live indicator — a small, calm pill, not a sessions table. Shows only on the
+              reload.chat surface and only when something is actually running. */}
+          {showCoordinationSurface && runningCount > 0 && (
+            <span className="runpill" title={CONSOLE.coordination.liveLabel}>
+              <span className="runpill__dot" aria-hidden="true" />
+              {consoleRunningPill(runningCount)}
+            </span>
+          )}
           {/* #378: the reload.chat surface is the whole app — the Coordination/Board toggle is gone. Approvals
               stay reachable via the "waiting on you" chip below; Settings + Sign out move into this header
               because the projects/task sidebar that used to host them isn't rendered here. */}
