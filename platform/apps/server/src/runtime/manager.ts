@@ -252,6 +252,21 @@ export interface SessionManagerDeps {
     /** The already-redacted, bounded result tail (the deliverable/draft). */
     result: string;
   }): Promise<void>;
+  /**
+   * Optional deliverable-message sink (#393): called best-effort when a session COMPLETES cleanly with a
+   * real artifact — so the agent's actual work is posted as a CHAT MESSAGE into its own channel (the
+   * fleet's visible reply), not left only on a board card the owner reads as "no response". Gated in the
+   * wiring (the agent-channel-posting capability, owner-workspace-first); absent → no posting (today's
+   * behavior). A sink error never affects the already-finalized session.
+   */
+  postDeliverableMessage?(input: {
+    workspaceId: string;
+    sessionId: string;
+    channelId: string | null;
+    agentMemberId: string;
+    task: string;
+    result: string;
+  }): Promise<void>;
 }
 
 export interface LaunchInput {
@@ -909,6 +924,22 @@ export class SessionManager {
           result: deliverable,
         })
         .catch((err: unknown) => log.error({ err }, "session deliverable surfacing failed"));
+    }
+    // #393: post the agent's actual deliverable as a chat MESSAGE into its channel — the fleet's visible
+    // reply. Without this the work lands only on a board card and the owner sees "no response". Gated in
+    // the wiring; best-effort (never affects the finalized session); only on disposition.done so narration
+    // or a failed boot (#319) never posts.
+    if (this.deps.postDeliverableMessage && disposition.done) {
+      await this.deps
+        .postDeliverableMessage({
+          workspaceId: session.workspaceId,
+          sessionId: session.id,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          task,
+          result: artifact,
+        })
+        .catch((err: unknown) => log.error({ err }, "session deliverable message post failed"));
     }
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.
