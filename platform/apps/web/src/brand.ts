@@ -907,18 +907,46 @@ export const CONSOLE = {
    */
   coordination: {
     /**
-     * The chat-first surface tab (#372) — for the named owner workspace the coordination view is the LANDING
-     * surface and this labels the tab that returns to it. (Pre-#372 it labelled the header overlay button.)
+     * The chat-first surface label (#372/#378) — for the named owner workspace the coordination view is the
+     * WHOLE app (the team channel IS the home screen). Kept as the accessible region label.
      */
     open: "Coordination",
-    /** #372: the secondary tab that switches the owner from the chat-first surface to the board. */
-    boardTab: "Board",
     /** Overlay + view title. */
     title: "Team coordination",
     /** One-line framing under the title. */
     sub: "Channels, threads, and live sessions — watch the fleet work together and steer in the open.",
     /** Accessible label for the live mission-control strip (#147). */
     liveLabel: "Live sessions",
+    /**
+     * Left-panel (reload.chat sidebar) copy (#378): the search box, the three section headers (PINNED /
+     * CHANNELS / DIRECT MESSAGES), and the DM affordances. Centralised here so the rebuilt sidebar carries
+     * no hardcoded brand copy. The channel/member names themselves are DATA (from the store), not copy.
+     */
+    sidebar: {
+      searchPlaceholder: "Search channels…",
+      searchHint: "⌘K",
+      searchLabel: "Search channels and people",
+      pinned: "Pinned",
+      channels: "Channels",
+      directMessages: "Direct messages",
+      addChannel: "Add channel",
+      newChannelPlaceholder: "New channel name",
+      create: "Create",
+      you: "you",
+      /** No-results line under the search box when a query matches nothing. */
+      noMatches: "Nothing matches that — try another search.",
+    },
+    /** Center-pane header for a DM (#378): a 1:1 with an agent/teammate, framed as a direct message. */
+    dm: {
+      title: "Direct message",
+      /** Prefix before the peer's name in the pane header ("with Scout"). */
+      withPrefix: "with",
+    },
+    /** Whole-app shell utilities for the chat-first surface (#378): the account row + approvals control. */
+    shell: {
+      settings: "Settings",
+      signOut: "Sign out",
+    },
   },
   /** Reports view sections. */
   reports: {

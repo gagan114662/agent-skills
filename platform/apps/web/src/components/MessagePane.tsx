@@ -1,13 +1,22 @@
 /** Center column: the active channel header, its message list, and the composer. */
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { VOICE, agentColor } from "../brand.js";
-import { authorLabel, type AppState } from "../store/store.js";
+import { CONSOLE, VOICE, agentColor } from "../brand.js";
+import { authorLabel, type AppState, type DirectoryEntry } from "../store/store.js";
 import { Avatar, KindBadge } from "./Primitives.js";
 import { EmptyState } from "./EmptyState.js";
 import { Composer } from "./Composer.js";
 import type { Message } from "../api/types.js";
 
-export function MessagePane(): React.JSX.Element {
+export interface MessagePaneProps {
+  /**
+   * When set (#378), the pane is framed as a 1:1 DIRECT MESSAGE with this member — the header reads "Direct
+   * message with {name}" instead of the channel hash. The message stream itself is still the resolved
+   * channel's (an agent's 1:1 is its department channel), so the history is real, not invented.
+   */
+  dmPeer?: DirectoryEntry | null;
+}
+
+export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Element {
   const state = useAppState();
   const { channels, activeChannelId, messagesByChannel } = state;
   const channel = channels.find((c) => c.id === activeChannelId);
@@ -27,12 +36,20 @@ export function MessagePane(): React.JSX.Element {
     );
   }
 
-  const title = channel.kind === "dm" ? "Direct message" : `# ${channel.name ?? "channel"}`;
+  // #378: a DM peer reframes the header as a 1:1 ("Direct message with Scout"); otherwise the channel hash.
+  const dmColor = dmPeer?.kind === "agent" ? agentColor(dmPeer.displayName) : undefined;
+  const title = dmPeer
+    ? `${CONSOLE.coordination.dm.title} ${CONSOLE.coordination.dm.withPrefix} ${dmPeer.displayName}`
+    : channel.kind === "dm"
+      ? CONSOLE.coordination.dm.title
+      : `# ${channel.name ?? "channel"}`;
 
   return (
     <section className="pane" aria-label={`Messages in ${title}`}>
       <header className="pane__head">
-        <h2 className="pane__title">{title}</h2>
+        <h2 className="pane__title" style={dmColor ? { color: dmColor } : undefined}>
+          {title}
+        </h2>
         <span className="pane__sub">{messages.length} messages</span>
       </header>
 
