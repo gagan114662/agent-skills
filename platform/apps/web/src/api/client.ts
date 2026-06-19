@@ -43,6 +43,8 @@ import type {
   FounderConsoleDto,
   DailyBriefDto,
   WeeklyReportDto,
+  VentureIdeaInput,
+  VentureIdeaDto,
   DecisionQueueDto,
   Identity,
   KillSwitchState,
@@ -414,6 +416,14 @@ export const api = {
   async disableGardenAgent(handle: string): Promise<GardenResponse> {
     const res = await post(`/me/garden/${encodeURIComponent(handle)}/disable`);
     return (res as { garden: GardenResponse }).garden;
+  },
+
+  // --- venture intake (#387): brief ANY company idea into the already-built #96 venture loop ---
+  // POSTs the typed intake to the live `POST /workspaces/:wid/ventures` (201 → the persisted idea). The
+  // route is gated server-side behind the default-OFF owner-first `ventureIntake` flag (409 when off); the
+  // web only surfaces this when its own VITE flag resolves on for the workspace. No money path is added.
+  submitVenture(workspaceId: string, input: VentureIdeaInput): Promise<VentureIdeaDto> {
+    return post(`/workspaces/${encodeURIComponent(workspaceId)}/ventures`, input) as Promise<VentureIdeaDto>;
   },
 
   // --- brand kit (#271): the owner's one-time brand identity the fleet draws from ---

@@ -553,6 +553,35 @@ export interface DailyBriefDto {
   wordCount: number;
 }
 
+/**
+ * The intake artifact the owner briefs to start ANY company (#387) — POSTed to the already-built #96
+ * venture loop's `POST /workspaces/:wid/ventures`. Product-agnostic: nothing marketing-specific. All five
+ * core fields are required by the server; `segment` is the optional #146 go-to-market signal.
+ */
+export interface VentureIdeaInput {
+  problem: string;
+  targetUser: string;
+  insight: string;
+  wedge: string;
+  marketPath: string;
+  segment?: "b2b" | "b2c" | null;
+}
+
+/** The persisted idea the venture submit route returns (201). The web shows its id + status on success. */
+export interface VentureIdeaDto {
+  id: string;
+  workspaceId: string;
+  problem: string;
+  targetUser: string;
+  insight: string;
+  wedge: string;
+  marketPath: string;
+  segment: "b2b" | "b2c" | null;
+  status: string;
+  epicTaskId: string | null;
+  createdByMemberId: string | null;
+}
+
 /** One per-venture P&L row in the weekly founder report (#173). */
 export interface VenturePnLDto {
   ideaId: string;
