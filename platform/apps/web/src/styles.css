@@ -630,6 +630,9 @@ select:focus-visible {
   border-right: 1px solid var(--line);
   padding: 14px 10px;
   overflow-y: auto;
+  /* #381: as a grid item in the constrained coordination row, allow the rail to shrink so its own
+     overflow-y scroll engages rather than stretching the row to its channel list. */
+  min-height: 0;
 }
 .sidebar__head {
   padding: 0 6px 12px;
@@ -678,11 +681,12 @@ select:focus-visible {
   border: none;
   background: transparent;
   color: var(--text-dim);
-  padding: 6px 8px;
-  border-radius: 6px;
+  /* #381 polish: calmer, roomier rows in the reload.team rhythm. */
+  padding: 7px 10px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .channelrow:hover {
   background: var(--bg-3);
@@ -717,6 +721,11 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* #381: a grid item defaults to `min-height: auto`, which refuses to shrink below its content — that is
+     exactly what let the pane grow to fit all 93 messages and pushed the composer off-screen. `min-height: 0`
+     lets the pane shrink to its constrained grid row so `.messagelist` (flex:1, overflow-y:auto) takes the
+     overflow and becomes the single scroll region, with the composer pinned beneath it. */
+  min-height: 0;
   background: var(--bg);
 }
 .pane--empty {
@@ -725,12 +734,13 @@ select:focus-visible {
   color: var(--text-faint);
 }
 .pane__head {
-  height: 52px;
-  flex: 0 0 52px;
+  height: 56px;
+  flex: 0 0 56px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 18px;
+  /* #381 polish: align the header gutter with the feed (22px) and give the chat a calmer header band. */
+  padding: 0 22px;
   border-bottom: 1px solid var(--line);
 }
 .pane__title {
@@ -744,10 +754,13 @@ select:focus-visible {
 .messagelist {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 18px;
+  /* #381 polish: a calm, generously-spaced reload.team feed — more air around the column and between rows.
+     Top-aligned on purpose: `justify-content: flex-end` on an overflowing flex scroller clips the top rows in
+     several engines, which would re-break the very scroll this fix restores. */
+  padding: 18px 22px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .messagelist__empty {
   color: var(--text-faint);
@@ -756,9 +769,10 @@ select:focus-visible {
 
 .message {
   display: flex;
-  gap: 10px;
-  padding: 7px 8px;
-  border-radius: 8px;
+  gap: 12px;
+  /* #381 polish: roomier rows with a softer hit area, the calm reload.team rhythm. */
+  padding: 9px 11px;
+  border-radius: 10px;
   /* New messages enter with a swell-pop (#145 criterion #4) — they arrive, they don't just appear. */
   animation: msg-pop 0.26s var(--pop-ease);
 }
@@ -782,6 +796,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 2px;
 }
 .message__author {
   font-weight: 600;
@@ -796,6 +811,7 @@ select:focus-visible {
 .message__text {
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.5;
 }
 .message__thread {
   margin-top: 4px;
@@ -876,8 +892,12 @@ select:focus-visible {
 /* --- composer --- */
 .composer {
   position: relative;
-  padding: 12px 18px 16px;
+  /* #381 polish: the composer is pinned to the bottom of the pane (a `.pane` flex child after the scroll
+     region) and is always visible. A touch more padding gives it the calm reload.team footing. */
+  padding: 14px 22px 18px;
   border-top: 1px solid var(--line);
+  flex: none;
+  background: var(--bg);
 }
 .composer--compact {
   padding: 8px 0 0;
@@ -895,8 +915,9 @@ select:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--text);
-  padding: 10px 12px;
+  padding: 11px 14px;
   font: inherit;
+  line-height: 1.45;
 }
 .composer__input:focus {
   outline: none;
@@ -1100,9 +1121,10 @@ select:focus-visible {
 .memberrow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 6px;
+  gap: 9px;
+  /* #381 polish: roomier member rows, matching the calm reload.team rail. */
+  padding: 6px 8px;
+  border-radius: 8px;
 }
 .memberrow:hover {
   background: var(--bg-3);
@@ -4779,15 +4801,26 @@ select:focus-visible {
   transition: background 0.15s var(--pop-ease), color 0.15s var(--pop-ease); }
 .surfacetab:hover { color: var(--text); }
 .surfacetab--on { background: var(--bg-2); color: var(--text); }
-.coord { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.coord__head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); flex: none; }
+/* #381: the coordination surface must FILL the viewport, not grow to its content. It is a flex child of
+   `.console__main` (a definite-height grid item), so `flex: 1; min-height: 0` makes it take exactly the
+   space left under the header — never taller. `height: 100%` is kept as a fallback for the few contexts that
+   mount `.coord` inside a plain definite-height block rather than a flex column. */
+.coord { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; height: 100%; }
+.coord__head { padding: 16px 22px 12px; border-bottom: 1px solid var(--line); flex: none; }
 .coord__title { margin: 0; font-size: 16px; font-weight: 700; }
 .coord__sub { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
-.coord__live { flex: none; max-height: 38%; overflow-y: auto; border-bottom: 1px solid var(--line); }
+/* The live mission-control strip is a calm, capped header band — never more than a slice of the surface, and
+   it scrolls within itself so it can never push the conversation (the point of the screen) off-frame (#381). */
+.coord__live { flex: none; max-height: 200px; overflow-y: auto; border-bottom: 1px solid var(--line); }
 /* The reload.chat four-column grid the orphaned components were built against: channels · messages ·
    thread · members. The trailing `auto` columns collapse when ThreadPanel renders null / there are no
-   members to show. */
-.coord__body { flex: 1; display: grid; grid-template-columns: 240px minmax(0, 1fr) auto auto; min-height: 0; }
+   members to show.
+   #381: a constrained ROW track (`minmax(0, 1fr)`) is the crux of the scroll fix — without it the single
+   implicit row sizes to CONTENT (all ~93 messages, ~10000px), so `.pane` grows to fit every message and its
+   `.messagelist` never becomes a scroll region, carrying the composer off-screen. `minmax(0, 1fr)` caps the
+   row at the available height (min 0), so each column's own `overflow-y: auto` engages and the feed scrolls. */
+.coord__body { flex: 1; display: grid; grid-template-columns: 240px minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr); min-height: 0; }
 
 /* In-header upgrade CTA (#215): the one-click conversion path from the spend gauge. */
 .gauge-upgrade { border: 1px solid var(--accent); background: transparent; color: var(--accent-press);
