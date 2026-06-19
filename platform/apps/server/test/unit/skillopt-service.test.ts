@@ -3,6 +3,8 @@ import { SkillOptService, type SkillOptDeps } from "../../src/skillopt/service.j
 import { SKILLOPT_DEFAULTS, type SkillOptCaps } from "../../src/skillopt/caps.js";
 import type { ClusterCandidate } from "../../src/skillopt/cycle.js";
 import type { TranscriptSample, ValidationReading } from "../../src/skillopt/contract.js";
+import { revenueRewardByChannel } from "../../src/attribution/reward.js";
+import type { AttributedRevenueEvent } from "../../src/attribution/chain.js";
 
 const reading: ValidationReading = {
   metric: "seo.click_through",
@@ -109,5 +111,118 @@ describe("skillopt/service — SkillOptService.runWorkspace", () => {
     });
     expect(res.agents[0]!.result.status).toBe("skipped");
     expect(staged).toHaveLength(0);
+  });
+});
+
+describe("skillopt/service — #390 revenue learning seam (ADR-0390)", () => {
+  // Two recurring tasks for one agent: SEO recurs more (frequency-top), email recurs less (frequency-second).
+  // A revenue reward that weights `email` heavily must flip the picked cluster to the email one.
+  function twoChannelSamples(): TranscriptSample[] {
+    const seo = Array.from({ length: 4 }, (_, i) => ({
+      sampleId: `seo-${i}`,
+      workspaceId: "ws-owner",
+      agentHandle: "scout",
+      taskText: "Audit the homepage for SEO",
+      succeeded: true,
+    }));
+    const email = Array.from({ length: 3 }, (_, i) => ({
+      sampleId: `email-${i}`,
+      workspaceId: "ws-owner",
+      agentHandle: "scout",
+      taskText: "Write the weekly newsletter email",
+      succeeded: true,
+    }));
+    return [...seo, ...email];
+  }
+
+  const seoCandidate: ClusterCandidate = {
+    clusterKey: "audit the homepage for seo",
+    validation: reading,
+    proposedAppendText: "## SEO cluster picked\nbody",
+  };
+  const emailCandidate: ClusterCandidate = {
+    clusterKey: "write the weekly newsletter email",
+    validation: reading,
+    proposedAppendText: "## EMAIL cluster picked\nbody",
+  };
+
+  function emailHeavyReward() {
+    const events: AttributedRevenueEvent[] = [
+      {
+        providerEventId: "p1",
+        artifactId: "a1",
+        artifactKind: "email",
+        channel: "email",
+        trackingRef: "t1",
+        amountCents: 100_000,
+        currency: "usd",
+        exposureAtMs: 0,
+        paidAtMs: 1,
+      },
+    ];
+    return revenueRewardByChannel(events);
+  }
+
+  it("reweights toward the revenue channel: an email-heavy reward picks the email cluster over the frequency-top SEO one", async () => {
+    const { deps, staged } = makeDeps({
+      harvest: () => Promise.resolve(twoChannelSamples()),
+      replay: () => Promise.resolve([seoCandidate, emailCandidate]),
+    });
+    deps.revenueRewardFor = () => Promise.resolve(emailHeavyReward());
+
+    const res = await new SkillOptService(deps).runWorkspace({
+      workspaceId: "ws-owner",
+      requesterMemberId: "owner",
+    });
+    expect(res.agents[0]!.result.status).toBe("staged");
+    expect(staged).toHaveLength(1);
+    expect(staged[0]!.proposal.appendText).toContain("EMAIL cluster picked");
+  });
+
+  it("frequency-only (no reweight) when the seam is ABSENT: picks the frequency-top SEO cluster", async () => {
+    const { deps, staged } = makeDeps({
+      harvest: () => Promise.resolve(twoChannelSamples()),
+      replay: () => Promise.resolve([seoCandidate, emailCandidate]),
+    });
+    // No revenueRewardFor seam set at all.
+    expect(deps.revenueRewardFor).toBeUndefined();
+
+    const res = await new SkillOptService(deps).runWorkspace({
+      workspaceId: "ws-owner",
+      requesterMemberId: "owner",
+    });
+    expect(res.agents[0]!.result.status).toBe("staged");
+    expect(staged[0]!.proposal.appendText).toContain("SEO cluster picked");
+  });
+
+  it("frequency-only when the seam returns null (attribution OFF): picks the frequency-top SEO cluster", async () => {
+    const { deps, staged } = makeDeps({
+      harvest: () => Promise.resolve(twoChannelSamples()),
+      replay: () => Promise.resolve([seoCandidate, emailCandidate]),
+    });
+    deps.revenueRewardFor = () => Promise.resolve(null);
+
+    const res = await new SkillOptService(deps).runWorkspace({
+      workspaceId: "ws-owner",
+      requesterMemberId: "owner",
+    });
+    expect(res.agents[0]!.result.status).toBe("staged");
+    expect(staged[0]!.proposal.appendText).toContain("SEO cluster picked");
+  });
+
+  it("frequency-only when attribution is on but ZERO receipts attributed (empty reward ⇒ no reweight)", async () => {
+    const { deps, staged } = makeDeps({
+      harvest: () => Promise.resolve(twoChannelSamples()),
+      replay: () => Promise.resolve([seoCandidate, emailCandidate]),
+    });
+    // Active attribution but no attributed events ⇒ empty reward (the "no receipts ⇒ no learning" dependency).
+    deps.revenueRewardFor = () => Promise.resolve(revenueRewardByChannel([]));
+
+    const res = await new SkillOptService(deps).runWorkspace({
+      workspaceId: "ws-owner",
+      requesterMemberId: "owner",
+    });
+    expect(res.agents[0]!.result.status).toBe("staged");
+    expect(staged[0]!.proposal.appendText).toContain("SEO cluster picked");
   });
 });

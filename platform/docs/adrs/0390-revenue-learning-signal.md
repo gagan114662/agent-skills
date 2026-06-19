@@ -1,6 +1,6 @@
 # ADR-0390: Revenue as the learning signal — the fleet learns to do more of what earns
 
-- **Status:** Accepted (slice 1 — pure reward + skillopt reweight seam, gated default-OFF — shipped in PR for #390)
+- **Status:** Accepted (slice 1 — pure reward + skillopt reweight seam; slice 2 — live service wiring, gated default-OFF)
 - **Date:** 2026-06-19
 - **Context issue:** [#390](https://github.com/gagan114662/agent-skills/issues/390) — wire the #386
   attributed revenue as the LEARNING SIGNAL so the fleet learns to do more of what earns and less of what
@@ -86,3 +86,23 @@ learn from until attribution is projecting.)
   so the live loop builds the reward from `projectAttributedRevenue` per run; this slice ships the pure
   reward + the cycle seam + tests.
 - No migration. No new config block. No new #13 action.
+
+## Live wiring (slice 2 — done)
+
+The follow-up above is now done. `SkillOptDeps` gains an OPTIONAL `revenueRewardFor(workspaceId):
+Promise<RevenueReward | null>` seam. `SkillOptService.runWorkspace` resolves it ONCE per workspace and
+passes `{ reward }` as `revenueReweight` to `decideSkillOptCycle` only when the reward exists and is
+non-empty; otherwise it passes `undefined` (frequency-only). The default wiring (`default.ts`) implements
+the seam against the same attribution stack as the `/me/attribution` route (`dbAttributionExposureStore` +
+`dbRevenueReader` → `projectAttributedRevenue` → `revenueRewardByChannel(attributed)`), gated by
+`attributionActive` (default-OFF, owner-first):
+
+- attribution OFF for the workspace ⇒ seam returns `null` ⇒ no reweight;
+- attribution ON but zero attributed receipts ⇒ empty reward ⇒ no reweight (the "no receipts ⇒ no learning"
+  dependency, now enforced on the live path too);
+- attribution ON with attributed receipts ⇒ the cycle reweights toward the earning channel.
+
+The pure `decideSkillOptCycle` / `reward.ts` are unchanged. No money / no irreversible action — a read +
+ranking. Default behavior (attribution off / seam absent) is byte-for-byte unchanged. No migration, no new
+config block, no new #13 action. Service unit tests cover: reward flips the picked cluster; seam absent /
+null / empty ⇒ frequency-only.
