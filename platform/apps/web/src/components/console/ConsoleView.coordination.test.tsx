@@ -116,6 +116,28 @@ describe("ConsoleView reload.chat whole-app surface (#378)", () => {
     expect(screen.getByRole("button", { name: CONSOLE.coordination.shell.signOut })).toBeInTheDocument();
   });
 
+  // #381: the coordination landing must be CLEAN — the per-project settings sheet (and the peek drawer) are
+  // board-only surfaces with no trigger here, so they must not be mounted over the chat at all. The live bug
+  // showed a stray settings/project overlay auto-open on landing; this pins the element out of the DOM.
+  it("owner + flag ON ⇒ no stray project-settings / peek overlay is mounted on the coordination landing", async () => {
+    const { container } = await mount();
+
+    await screen.findByText(COORD_TITLE);
+    // The fixed full-screen overlays that belong to the board (project settings sheet, peek drawer) are not
+    // rendered on the chat-first landing — they can only be opened from board affordances that aren't here.
+    expect(container.querySelector(".sheet"), "the project-settings sheet must not be mounted here").toBeNull();
+    expect(container.querySelector(".peek"), "the peek drawer must not be mounted here").toBeNull();
+  });
+
+  it("flag OFF ⇒ the board surface still mounts its project-settings sheet (closed, board-only)", async () => {
+    gate.flagOn = false;
+    const { container } = await mount();
+
+    // On the board, the sheet exists (closed) so a project row can open it — coordination removal is scoped.
+    await screen.findByRole("listitem", BOARD_LANE);
+    expect(container.querySelector(".sheet"), "the board keeps its (closed) project-settings sheet").not.toBeNull();
+  });
+
   it("flag OFF ⇒ board is the landing surface, byte-for-byte (board + projects sidebar, no coordination)", async () => {
     gate.flagOn = false;
     await mount();
