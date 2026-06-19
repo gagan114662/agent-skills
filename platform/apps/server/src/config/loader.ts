@@ -440,6 +440,25 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (agentRegistryOwner) agentRegistry.ownerWorkspaceId = agentRegistryOwner;
     raw.agentRegistry = agentRegistry;
   }
+  // #319 agent collaboration (subagent-spawn): let the deployment env provision the spawn tool so a
+  // department lead can delegate to a teammate ("collaborate") owner-workspace-first, without baking a
+  // managed.toml — closing the env gap ADR-0352 §2 flagged (previously this block could only be set via
+  // the config/managed layer, unlike agentRegistry/durableWorkflow). Hard default stays OFF (vars unset →
+  // no block ⇒ today's drafts-only tool surface, no spawn). The owner workspace reuses the established
+  // #258 marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID, matching durableWorkflow); a dedicated
+  // RELOAD_AGENT_COLLABORATION_OWNER_WORKSPACE_ID overrides it. Spawn is a model-spend amplifier, so it
+  // stays owner-first — enabling without naming an owner provisions nobody. A managed layer wins as the lock.
+  const agentCollaborationEnabled = env.RELOAD_AGENT_COLLABORATION_ENABLED;
+  const agentCollaborationOwner = env.RELOAD_AGENT_COLLABORATION_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (agentCollaborationEnabled !== undefined || agentCollaborationOwner) {
+    const agentCollaboration: Record<string, unknown> = {};
+    if (agentCollaborationEnabled !== undefined) {
+      agentCollaboration.enabled =
+        agentCollaborationEnabled === "true" || agentCollaborationEnabled === "1";
+    }
+    if (agentCollaborationOwner) agentCollaboration.ownerWorkspaceId = agentCollaborationOwner;
+    raw.agentCollaboration = agentCollaboration;
+  }
   // #284 agent Garden: let the deployment env turn the per-workspace enable/disable surface on + pick the
   // owner workspace without a managed.toml (the owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ a read-only catalog, no toggles take effect). Enabling an `external_send` agent stays

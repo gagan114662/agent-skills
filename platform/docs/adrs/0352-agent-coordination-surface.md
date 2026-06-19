@@ -80,10 +80,16 @@ owner-gated work. The exact keys (server config block → env override):
    - `agentRegistry.ownerWorkspaceId = <owner ws>` · env `RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID`
    - keep `agentRegistry.ownerWorkspaceOnly = true` (default); `maxCallDepth` bounds autonomy (#200 §5).
 2. **Collaboration (`agentCollaboration`, #319)** — a lead may spawn a subagent to delegate.
-   - `agentCollaboration.enabled = true` · `agentCollaboration.ownerWorkspaceId = <owner ws>`
-   - keep `agentCollaboration.ownerWorkspaceOnly = true` (default). **No env override exists today** — this
-     block is set via the config layer (profile/managed override), not an env var. Spawn is a model-spend
-     amplifier, so it stays owner-first until proven.
+   - `agentCollaboration.enabled = true` · env `RELOAD_AGENT_COLLABORATION_ENABLED=true`
+   - `agentCollaboration.ownerWorkspaceId = <owner ws>` · env `RELOAD_AGENT_COLLABORATION_OWNER_WORKSPACE_ID`
+     (falls back to `RELOAD_MARKETING_OWNER_WORKSPACE_ID` when unset, matching `durableWorkflow`)
+   - keep `agentCollaboration.ownerWorkspaceOnly = true` (default). Spawn is a model-spend amplifier, so it
+     stays owner-first until proven.
+   - **(#361, closes the gap this ADR flagged):** the env override above was added in `config/loader.ts`
+     mirroring `agentRegistry`/`durableWorkflow`. Previously this block could only be set via the
+     config/managed layer; now the owner can enable collaboration the same way as the other two layers,
+     keeping default-OFF + `ownerWorkspaceOnly: true`. The schema (`config/schema.ts:agentCollaborationSchema`)
+     already carried the shape, so no schema change was needed.
 3. **Durable (`durableWorkflow`, #338)** — long waits/retries route through the durable engine.
    - `durableWorkflow.enabled = true` · env `RELOAD_DURABLE_WORKFLOW_ENABLED=true`
    - `durableWorkflow.ownerWorkspaceId = <owner ws>` · env `RELOAD_DURABLE_WORKFLOW_OWNER_WORKSPACE_ID`
@@ -111,4 +117,11 @@ durabilize.
   `fly.toml`; it does not enable `agentRegistry`/`agentCollaboration`/`durableWorkflow` in production; it adds
   no migration and no new money/irreversible action.
 - Follow-up (owner-gated, operational): run the §2 sequence on the owner workspace, observe, then decide on
-  broadening (`ownerWorkspaceOnly: false`) and on adding an env override for `agentCollaboration`.
+  broadening (`ownerWorkspaceOnly: false`). The `agentCollaboration` env override is now in place (#361),
+  so all three layers enable via env identically; flipping the prod env remains owner-gated operational work.
+- **#361 update:** the missing `agentCollaboration` env override is added (`RELOAD_AGENT_COLLABORATION_ENABLED`
+  / `RELOAD_AGENT_COLLABORATION_OWNER_WORKSPACE_ID`, owner-first, default-OFF), and the coordination path is
+  exercised end-to-end by `test/integration/coordination-handoff.test.ts`: with the layers enabled for the
+  owner workspace, a delegating lead's A2A handoff posts a status line + inline task card into the department
+  channel via the #370 bridge; with the env unset (or named for another workspace) the channel stays quiet.
+  No prod flag is flipped here and the change is reversible (unset the env).
