@@ -84,8 +84,41 @@ for a workspace and a target site is supplied, the manager resolves the per-work
    and read back only by `resolveServiceSecrets` (never pooled), so an injected session never bleeds across
    tenants.
 
+## Slice 2 — the agent→browser tool bridge (this PR)
+
+**Mechanism chosen.** The real, existing transport for exposing a server-side capability to a fleet agent
+is the **Reload MCP server** (`mcp/server.ts`, `createReloadMcpServer(identity, deps)`): thin tool adapters
+over server logic, each scoped to `identity.workspaceId`. (The harness only passes Claude Code's *built-in*
+tool **names** via `--allowedTools` — it cannot reach an in-process server object — so MCP is the only seam
+that can hand an agent a server-driven browser. We do NOT invent a new transport.)
+
+`runtime/browser/agent-bridge.ts` (`createBrowserAgentBridge`) builds the seven browser tools as
+MCP-shaped `BrowserBridgeTool[]`, each routing through `BrowserSessionManager` → `BrowserSession.step()`:
+
+- **Gated, default-OFF, owner-first.** The whole bridge is gated on the workspace `[browser]` `enabled`
+  flag (via the resolved `BrowserCaps`). Disabled ⇒ `{ tools: [] }` ⇒ the bridge is not offered, so a
+  flag-off deployment is **byte-for-byte today's behavior**. Owner-first injection is inherited from
+  slice 1 (the manager only injects `storageState` when the session-injection flag is active for the ws).
+- **Session injection.** The session is opened with the `target`, so the slice-1 manager loads the
+  per-workspace logged-in `storageState` (when its flag is active) — else authless. The session is opened
+  LAZILY on the first tool call and reused (one browser per session, the manager's invariant).
+- **No bypass.** The bridge adds no policy of its own: every call (read OR side-effect) funnels through the
+  single `step()` path that enforces caps + domain lists + the side-effect classification, asks the #13
+  approval gate for `click`/`type`, hard-forbids `credentialEntry`, and records a receipt + screenshot.
+- **SUBMIT stays #13-gated.** There is NO autonomous post path. An unapproved side-effectful tool call
+  (the SUBMIT click / a form `type`) returns `ok:false` with the pending approval id — the driver is never
+  touched — exactly the smoke-test posture. A later slice may add an owner-overridable autonomous mode.
+
+**Honest seam boundary.** The bridge is wired as a pure factory + unit-tested end-to-end against a real
+`BrowserSession` (over the fake driver), but it is **not yet registered into the live `createReloadMcpServer`**.
+What remains to make a live agent drive the browser: (a) register the `BrowserBridgeTool[]` as MCP tools in
+`mcp/server.ts` (map each to a `mcp.registerTool` adapter, zod input schema per tool), constructing the
+bridge from the request's `identity.workspaceId` + the agent's session id + a per-agent `target`; (b) own
+the session lifecycle across the MCP connection (open lazily, `manager.close` on disconnect); (c) the
+standing prod blockers from slice 1 (build the browser image, flip `RELOAD_AGENT_BROWSER_ENABLED` +
+`RELOAD_BROWSER_SESSION_INJECTION_ENABLED`, capture a fresh `storageState`, stealth for bot-detection).
+
 ## Follow-ups
 
-- The **agent→browser tool bridge** (expose navigate/click/type to the LLM harness) — the larger second
-  slice; without it the runtime stays orphaned from the agents.
+- Register the bridge tools into the live MCP server (slice 3) — the wiring described above.
 - Per-target playbooks (the X-post / Gmail-compose selector flows) and a session-capture flow.
