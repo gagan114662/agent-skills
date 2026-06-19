@@ -21,7 +21,22 @@ import { ActionExecutionError } from "../approvals/executor.js";
 import type { PublishProvider } from "../realworld/publish/provider.js";
 import type { SitePublisher } from "../realworld/publish/site-publisher.js";
 import type { EspProvider, SocialProvider } from "../acquisition/providers.js";
+import { appendBadge } from "../attribution/badge.js";
+import type { BadgeFormat } from "../attribution/badge.js";
 import type { ChannelAdapter, ChannelShipInput, ChannelShipOutcome } from "./dispatcher.js";
+
+/**
+ * The "Built with ipop" badge seam (#399, ADR-0399). An adapter asks for the badge snippet to append to the
+ * artifact it is about to ship; the IMPLEMENTATION gates on the attribution flag (default-OFF, owner-first)
+ * so a workspace without attribution active gets `null` and the artifact is byte-for-byte unchanged. Keeping
+ * the gate behind this seam (resolved in the production wiring) keeps the adapters + `draftToHtml` pure.
+ */
+export type AttributionBadgeFor = (input: {
+  workspaceId: string;
+  /** The artifact a click is attributed back to (content path / page slug / PR title). */
+  artifactId: string;
+  format: BadgeFormat;
+}) => string | null;
 
 /** A DNS/URL-safe slug derived from the task (or a fallback), bounded so it is always a valid repo/path part. */
 export function slugify(task: string, fallback = "deliverable"): string {
@@ -60,12 +75,21 @@ export function draftToHtml(title: string, draft: string): string {
 export class PublishChannelAdapter implements ChannelAdapter {
   readonly channel = "publish" as const;
   readonly providerKind: string;
-  constructor(private readonly provider: PublishProvider) {
+  constructor(
+    private readonly provider: PublishProvider,
+    /** Optional #399 badge seam — gated; undefined / null ⇒ no badge, page unchanged. */
+    private readonly badgeFor?: AttributionBadgeFor,
+  ) {
     this.providerKind = provider.kind;
   }
   async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
     const slug = slugify(input.task);
-    const html = draftToHtml(input.task, input.draft);
+    // #399: when attribution is active, append a tracked "Built with ipop" footer before </body>. The gate
+    // lives behind badgeFor — inactive ⇒ null ⇒ the published HTML is byte-for-byte unchanged.
+    const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: slug, format: "html" });
+    const html = badge
+      ? appendBadge(draftToHtml(input.task, input.draft), badge, "html")
+      : draftToHtml(input.task, input.draft);
     const outcome = await this.provider.publish({
       workspaceId: input.workspaceId,
       slug,
@@ -111,15 +135,23 @@ export class SitePrChannelAdapter implements ChannelAdapter {
   constructor(
     private readonly publisher: SitePublisher,
     private readonly headCheck?: SitePrHeadCheck,
+    /** Optional #399 badge seam — gated; undefined / null ⇒ no badge, content unchanged. */
+    private readonly badgeFor?: AttributionBadgeFor,
   ) {
     this.providerKind = publisher.kind;
   }
   async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
+    const title = input.task || "ipop on-site content";
+    // #399: when attribution is active, append a tracked "Built with ipop" footer to the committed file. The
+    // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
+    // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
+    const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: title, format: "markdown" });
+    const content = badge ? appendBadge(input.draft, badge, "markdown") : input.draft;
     const result = await this.publisher.publish({
       workspaceId: input.workspaceId,
-      title: input.task || "ipop on-site content",
+      title,
       // The draft is the file body — opaque DATA. The slug/path/branch are derived from the title only.
-      content: input.draft,
+      content,
       body: "On-site content drafted by the ipop fleet, approved by the owner at the #13 gate (#364).",
     });
     if (result.status !== "published") {
