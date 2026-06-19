@@ -14,6 +14,7 @@
 
 import { loadConfig } from "../config/loader.js";
 import { attributionActive, maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { buildAttributionBadge } from "../attribution/badge.js";
 import { recordLiveShipExposure, type AttributionServiceDeps } from "../attribution/service.js";
 import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
 import { dbRevenueReader } from "../finance/default.js";
@@ -37,6 +38,7 @@ import {
   PublishChannelAdapter,
   SitePrChannelAdapter,
   SocialChannelAdapter,
+  type AttributionBadgeFor,
   type SitePrHeadCheck,
 } from "./adapters.js";
 import type { DeliveryChannel } from "./decide.js";
@@ -151,6 +153,26 @@ async function recordAttributionExposure(e: LiveShipEvent): Promise<void> {
   });
 }
 
+/**
+ * The gated #399 "Built with ipop" badge seam (ADR-0399). Returns a tracked badge snippet ONLY when
+ * attribution is active for the workspace (enabled AND owner-workspace-first, fail-closed) — when the flag is
+ * off (the default, current prod state) this returns `null` and the shipped artifact is byte-for-byte
+ * unchanged. The link carries the #386 tracking ref + UTM provenance so an inbound click is attributable to
+ * the exact artifact that produced it. No money/irreversible action — it only appends our own footer to
+ * artifacts the fleet already ships through the existing gated paths.
+ */
+const resolveBuiltWithBadge: AttributionBadgeFor = ({ workspaceId, artifactId, format }) => {
+  const caps = resolveAttributionCaps(loadConfig(workspaceId).attribution);
+  if (!attributionActive(caps, workspaceId)) return null;
+  return buildAttributionBadge({
+    workspaceId,
+    artifactId,
+    channel: "builtwith",
+    format,
+    utmSource: caps.defaultUtmSource,
+  });
+};
+
 /** Build the production delivery dispatcher over the real repos + providers. */
 export function buildDeliveryDispatcher(): DeliveryDispatcher {
   const sitePr = resolveSitePrDelivery();
@@ -158,8 +180,8 @@ export function buildDeliveryDispatcher(): DeliveryDispatcher {
     resolveDepartment: resolveDeliveryDepartment,
     resolveFlags: deliveryFlagsFor,
     adapters: {
-      publish: new PublishChannelAdapter(resolvePublishProvider()),
-      site_pr: new SitePrChannelAdapter(sitePr.publisher, sitePr.headCheck),
+      publish: new PublishChannelAdapter(resolvePublishProvider(), resolveBuiltWithBadge),
+      site_pr: new SitePrChannelAdapter(sitePr.publisher, sitePr.headCheck, resolveBuiltWithBadge),
       social: new SocialChannelAdapter(dryRunSocialProvider),
       email: new EmailChannelAdapter(dryRunEspProvider),
     },
