@@ -154,17 +154,15 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
-  // #352/#372: the agent-coordination surface (reload.chat-style channels/threads/members + live sessions),
-  // gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment names the
-  // owner workspace AND this is that workspace. No new backend: it re-mounts the existing coordination
-  // components which self-wire to the channels/messages/directory store and the #147 mission-control seam.
+  // #352/#372/#378: the agent-coordination surface (reload.chat-style channels/threads/members + live
+  // sessions), gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment
+  // names the owner workspace AND this is that workspace. No new backend: it re-mounts the existing
+  // coordination components which self-wire to the channels/messages/directory store and the #147
+  // mission-control seam.
   //
-  // #372 makes it CHAT-FIRST: for the named owner the coordination view is the LANDING surface, with the
-  // board reachable via a secondary tab. `surfaceChoice` is the owner's explicit tab pick; `null` means
-  // "no pick yet" so the default follows the gate reactively (coordination when on, board when off). It can
-  // NEVER reveal coordination when the gate is off — `primarySurface` below collapses to "board" in that
-  // case, so prod (no coordination env) stays byte-for-byte the board.
-  const [surfaceChoice, setSurfaceChoice] = useState<"coordination" | "board" | null>(null);
+  // #378 makes the reload.chat surface the WHOLE app for the named owner: there is no Coordination/Board
+  // toggle and no projects/task sidebar — chat IS the product. When the gate is off (prod sets no
+  // coordination env) the board renders byte-for-byte as it does today, so there is no behaviour to choose.
   // #365: the owner's Claude connection-health signal (connected / not connected / token expired), shown
   // as a header chip ONLY for the named owner workspace (default-OFF, owner-first via connect-health-flag).
   const [claudeHealth, setClaudeHealth] = useState<ClaudeConnectionHealth | null>(null);
@@ -407,14 +405,10 @@ export function ConsoleView(): React.JSX.Element {
     ownerWorkspaceId: COORDINATION_OWNER_WORKSPACE_ID,
     workspaceId,
   });
-  // #372: which surface the owner sees. Fail-closed — when coordination is NOT enabled this is ALWAYS the
-  // board (a stale `surfaceChoice` can never resurrect the surface once the gate is off), so production is
-  // byte-for-byte the board it is today. When enabled, the default (no explicit pick) is the chat-first
-  // coordination view; an explicit tap of the Board tab sticks until the owner taps back.
-  const primarySurface: "coordination" | "board" = coordinationEnabled
-    ? (surfaceChoice ?? "coordination")
-    : "board";
-  const showCoordinationSurface = coordinationEnabled && primarySurface === "coordination";
+  // #378: when coordination is enabled for the named owner, the reload.chat surface is the WHOLE app — no
+  // toggle, no board, no projects/task sidebar. Fail-closed: when the gate is off this is always false, so
+  // production (no coordination env) is byte-for-byte the board it is today.
+  const showCoordinationSurface = coordinationEnabled;
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
   const headerTitle = activeProject ? `#${activeProject.name}` : BRAND.name;
 
@@ -571,23 +565,27 @@ export function ConsoleView(): React.JSX.Element {
   const canApprove = peekItem?.kind === "waiting" && !!peekItem.requestId;
 
   return (
-    <div className="console">
-      <StandupPanel
-        projects={model.projects}
-        activeProjectId={activeProjectId}
-        openProjectIds={openProjectIds}
-        onToggleProject={toggleProject}
-        onSelectProject={(p) => setActiveProjectId(p.id)}
-        onOpenSettings={openSettings}
-        onPeek={(item) => dive(item, "transcript")}
-        filterNeedsYou={filterNeedsYou}
-        onToggleFilter={() => setFilterNeedsYou((v) => !v)}
-        activeItemKey={peek?.item.key ?? null}
-        onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
-        onSignOut={() => void store.logout()}
-        onNewProject={() => void startVenture()}
-        newProjectBusy={seeding || seedHeld}
-      />
+    <div className={`console${showCoordinationSurface ? " console--coord" : ""}`}>
+      {/* #378: the reload.chat surface is the whole app — the projects/task sidebar (StandupPanel) is NOT
+          rendered for the flagged owner. When the gate is off it renders exactly as today. */}
+      {!showCoordinationSurface && (
+        <StandupPanel
+          projects={model.projects}
+          activeProjectId={activeProjectId}
+          openProjectIds={openProjectIds}
+          onToggleProject={toggleProject}
+          onSelectProject={(p) => setActiveProjectId(p.id)}
+          onOpenSettings={openSettings}
+          onPeek={(item) => dive(item, "transcript")}
+          filterNeedsYou={filterNeedsYou}
+          onToggleFilter={() => setFilterNeedsYou((v) => !v)}
+          activeItemKey={peek?.item.key ?? null}
+          onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
+          onSignOut={() => void store.logout()}
+          onNewProject={() => void startVenture()}
+          newProjectBusy={seeding || seedHeld}
+        />
+      )}
 
       <main className="console__main">
         {/* #366: a deploy-freshness strip — renders only on a CONFIRMED web↔API build mismatch (owner-first,
@@ -653,36 +651,24 @@ export function ConsoleView(): React.JSX.Element {
             <ConnectHealthChip health={claudeHealth} onConnect={() => setShellSettingsOpen(true)} />
           )}
           <span className="console__sp" />
-          {/* #352/#372: the chat-first surface switch — only ever rendered for the named owner workspace (the
-              gate is fail-closed default-OFF), so it is invisible in production until explicitly enabled. The
-              owner lands in Coordination (the team channel as home); the Board tab keeps the board reachable. */}
-          {coordinationEnabled && (
-            <div className="surfacetabs" role="tablist" aria-label={CONSOLE.coordination.title}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={primarySurface === "coordination"}
-                className={`surfacetab${primarySurface === "coordination" ? " surfacetab--on" : ""}`}
-                onClick={() => setSurfaceChoice("coordination")}
-              >
-                {CONSOLE.coordination.open}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={primarySurface === "board"}
-                className={`surfacetab${primarySurface === "board" ? " surfacetab--on" : ""}`}
-                onClick={() => setSurfaceChoice("board")}
-              >
-                {CONSOLE.coordination.boardTab}
-              </button>
-            </div>
-          )}
+          {/* #378: the reload.chat surface is the whole app — the Coordination/Board toggle is gone. Approvals
+              stay reachable via the "waiting on you" chip below; Settings + Sign out move into this header
+              because the projects/task sidebar that used to host them isn't rendered here. */}
           {pendingCount > 0 && (
             <button className="waitchip" onClick={openFirstWaiting}>
               <span className="glyph-dot glyph-dot--wait" aria-hidden="true" />
               {consoleWaitingChip(pendingCount)}
             </button>
+          )}
+          {showCoordinationSurface && (
+            <>
+              <button className="btn btn--ghost btn--small" onClick={() => setShellSettingsOpen(true)}>
+                {CONSOLE.coordination.shell.settings}
+              </button>
+              <button className="btn btn--ghost btn--small" onClick={() => void store.logout()}>
+                {CONSOLE.coordination.shell.signOut}
+              </button>
+            </>
           )}
         </header>
 

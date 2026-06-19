@@ -5063,3 +5063,71 @@ select:focus-visible {
   .proj__chev, .proj__sessions, .gauge__fill, .peek, .peek-veil, .sheet__panel, .card__why { transition: none; }
   .fleet-health--err i, .board__pulse { animation: none; }
 }
+
+/* ============================================================================================
+   #378 — reload.chat as the whole app: the dark theme + the chat-first layout.
+
+   Gated: theme.ts sets <html data-theme="reload-dark"> ONLY when the coordination flag is on for
+   this deployment (VITE_RELOAD_COORDINATION_UI). Production sets no such env → no attribute → the
+   default paper palette below is untouched, so prod/other tenants are byte-for-byte today's app.
+   The whole app keys off the brand tokens, so overriding them flips login + landing + console dark
+   in one place — no per-component dark CSS, fully reversible (unset the env, the override is gone).
+   ============================================================================================ */
+:root[data-theme="reload-dark"] {
+  --paper: #0d0d11;
+  --ink: #f3f3f6;
+  --bg: #0d0d11;       /* app background — near-black */
+  --bg-1: #15151b;     /* sidebar / raised cards */
+  --bg-2: #1d1d25;     /* hover */
+  --bg-3: #272730;     /* pressed / chips / search field */
+  --line: #26262f;     /* hairlines */
+  --border: #26262f;
+  --text: #f3f3f6;
+  --text-dim: #a3a3b0;
+  --text-faint: #6f6f7c;
+  --accent: #ff5a3c;       /* Pop Vermilion, lifted for contrast on black */
+  --accent-press: #ff7559;
+  --accent-dim: #2a1812;   /* dark vermilion wash — selected rows / badges */
+  --agent: #c39bff;
+  --agent-dim: #241a33;
+  --online: #34c27a;
+  --away: #e0a82e;
+  --offline: #4a4a55;
+  --danger: #ff5a3c;
+}
+/* Kill the light radial glow on the login/splash so it reads as one dark surface (#378). */
+:root[data-theme="reload-dark"] .auth {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #16131a 0%, var(--bg) 55%),
+    radial-gradient(700px 380px at 50% 0%, rgba(255, 90, 60, 0.10), transparent 60%);
+}
+
+/* The reload.chat surface is the whole app: with no projects/task sidebar (StandupPanel) the console
+   collapses from two columns to one — the coordination view fills the frame. */
+.console--coord { grid-template-columns: minmax(0, 1fr); }
+
+/* ---- left rail: search box (#378) ---- */
+.sidebar__search { position: relative; display: flex; align-items: center; padding: 0 6px 12px; }
+.sidebar__searchinput {
+  width: 100%; background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); padding: 7px 34px 7px 10px; font: inherit; font-size: 12.5px;
+}
+.sidebar__searchinput::placeholder { color: var(--text-faint); }
+.sidebar__searchinput:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sidebar__searchhint {
+  position: absolute; right: 12px; font-size: 10px; color: var(--text-faint);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  pointer-events: none; font-family: var(--console-mono, monospace);
+}
+.sidebar__empty { padding: 8px 10px; font-size: 12px; color: var(--text-faint); }
+
+/* ---- left rail: direct-message rows (#378) — a person you can message, with a presence/accent dot ---- */
+.dmrow { gap: 8px; }
+.dmrow__dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--dot, var(--offline));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dot, var(--offline)) 22%, transparent);
+}
+.dmrow__dot--agent { background: var(--dot, var(--agent)); }
+.dmrow__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dmrow__you { color: var(--text-faint); font-weight: 600; }

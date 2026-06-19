@@ -1,18 +1,49 @@
-/** Left rail: workspace identity, channel list (public + DMs), and a create-channel control. */
-import { useEffect, useState, type FormEvent } from "react";
+/**
+ * Left rail (#378) — the reload.chat sidebar: a top search box, then PINNED, CHANNELS, and DIRECT MESSAGES
+ * (humans AND the seeded agent personas, each a DM target). Selecting a channel switches the centre feed;
+ * selecting a DM opens the 1:1 with that member (an agent → its department channel, via
+ * {@link resolveDmChannelId}). ⌘K focuses the search. The structure is a pure projection of the existing
+ * store ({@link buildSidebarModel}) — no new backend, no new state on the wire.
+ *
+ * SAFETY (#200): channel + member names are DATA, rendered as React text only (never markup); selecting a
+ * DM only ever resolves to an EXISTING channel id, never creates one. Copy comes from brand.ts.
+ */
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { departmentColor } from "../brand.js";
+import { CONSOLE } from "../brand.js";
 import { Wordmark } from "./Wordmark.js";
-import type { Channel } from "../api/types.js";
+import type { DirectoryEntry } from "../store/store.js";
+import {
+  buildSidebarModel,
+  resolveDmChannelId,
+  type SidebarChannel,
+  type SidebarDm,
+} from "./console/coordination-nav.js";
 
-export function ChannelSidebar(): React.JSX.Element {
-  const { channels, activeChannelId, identity } = useAppState();
+const COPY = CONSOLE.coordination.sidebar;
+
+export interface ChannelSidebarProps {
+  /** When provided, a DM click delegates to the parent (so it can reframe the centre pane as a 1:1). */
+  onSelectDm?: (member: DirectoryEntry, channelId: string | null) => void;
+  /** Notified after a channel row is picked (so the parent can drop any DM framing). */
+  onSelectChannel?: (channelId: string) => void;
+  /** The member id of the active DM, so its row highlights even when several DMs map to one channel. */
+  activeDmMemberId?: string | null;
+}
+
+export function ChannelSidebar({
+  onSelectDm,
+  onSelectChannel,
+  activeDmMemberId,
+}: ChannelSidebarProps = {}): React.JSX.Element {
+  const { channels, activeChannelId, directory, identity } = useAppState();
   const store = useStore();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const publicChannels = channels.filter((c) => c.kind === "public");
-  const dms = channels.filter((c) => c.kind === "dm");
+  const model = buildSidebarModel(channels, directory, identity?.memberId, query);
 
   // Navigating to another channel dismisses an open add-channel field (#168) so a half-typed name
   // never lingers across conversations. (Opening the field doesn't change the active channel.)
@@ -20,6 +51,18 @@ export function ChannelSidebar(): React.JSX.Element {
     setAdding(false);
     setName("");
   }, [activeChannelId]);
+
+  // ⌘K / Ctrl-K focuses the search box (the reload.chat omni-jump). Scoped to this rail's lifetime.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function closeAdd(): void {
     setAdding(false);
@@ -34,8 +77,25 @@ export function ChannelSidebar(): React.JSX.Element {
     await store.createChannel(trimmed);
   }
 
+  function selectChannel(channelId: string): void {
+    onSelectChannel?.(channelId);
+    void store.selectChannel(channelId);
+  }
+
+  function selectDm(member: DirectoryEntry): void {
+    const channelId = resolveDmChannelId(member, channels);
+    if (onSelectDm) {
+      onSelectDm(member, channelId);
+      return;
+    }
+    // Standalone (no parent): open the resolved 1:1 channel; a null resolution is a safe no-op (#200).
+    if (channelId) void store.selectChannel(channelId);
+  }
+
+  const hasResults = model.pinned.length > 0 || model.channels.length > 0 || model.dms.length > 0;
+
   return (
-    <nav className="sidebar" aria-label="Channels">
+    <nav className="sidebar" aria-label={CONSOLE.coordination.open}>
       <header className="sidebar__head">
         <div className="sidebar__brand">
           <Wordmark />
@@ -43,26 +103,44 @@ export function ChannelSidebar(): React.JSX.Element {
         {identity && <div className="sidebar__ws">workspace · {identity.workspaceId.slice(0, 8)}</div>}
       </header>
 
-      <div className="sidebar__section">
-        <div className="sidebar__sectionhead">
-          <span>Channels</span>
-          <button
-            className="iconbtn"
-            aria-label="Add channel"
-            title="Add channel"
-            onClick={() => setAdding((v) => !v)}
-          >
+      <div className="sidebar__search">
+        <input
+          ref={searchRef}
+          className="sidebar__searchinput"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={COPY.searchPlaceholder}
+          aria-label={COPY.searchLabel}
+        />
+        <kbd className="sidebar__searchhint" aria-hidden="true">
+          {COPY.searchHint}
+        </kbd>
+      </div>
+
+      {model.pinned.length > 0 && (
+        <Section title={COPY.pinned}>
+          <ul className="channellist">
+            {model.pinned.map((c) => (
+              <ChannelRow key={c.id} channel={c} active={c.id === activeChannelId} onSelect={selectChannel} />
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      <Section
+        title={COPY.channels}
+        action={
+          <button className="iconbtn" aria-label={COPY.addChannel} title={COPY.addChannel} onClick={() => setAdding((v) => !v)}>
             +
           </button>
-        </div>
-
+        }
+      >
         {adding && (
           <form
             className="sidebar__addform"
             onSubmit={onCreate}
             onBlur={(e) => {
-              // Focus moving to the Create button stays inside the form (so Enter/click can submit);
-              // focus leaving the form entirely (blur/navigation) dismisses the field (#168).
               if (!e.currentTarget.contains(e.relatedTarget as Node | null)) closeAdd();
             }}
           >
@@ -70,39 +148,57 @@ export function ChannelSidebar(): React.JSX.Element {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="New channel name"
+              placeholder={COPY.newChannelPlaceholder}
             />
             <button className="btn btn--small" type="submit">
-              Create
+              {COPY.create}
             </button>
           </form>
         )}
-
         <ul className="channellist">
-          {publicChannels.map((c) => (
-            <ChannelRow key={c.id} channel={c} active={c.id === activeChannelId} onSelect={store.selectChannel} />
+          {model.channels.map((c) => (
+            <ChannelRow key={c.id} channel={c} active={c.id === activeChannelId} onSelect={selectChannel} />
           ))}
         </ul>
-      </div>
+      </Section>
 
-      {dms.length > 0 && (
-        <div className="sidebar__section">
-          <div className="sidebar__sectionhead">
-            <span>Direct messages</span>
-          </div>
+      {model.dms.length > 0 && (
+        <Section title={COPY.directMessages}>
           <ul className="channellist">
-            {dms.map((c) => (
-              <ChannelRow
-                key={c.id}
-                channel={c}
-                active={c.id === activeChannelId}
-                onSelect={store.selectChannel}
+            {model.dms.map((d) => (
+              <DmRow
+                key={d.memberId}
+                dm={d}
+                active={activeDmMemberId === d.memberId}
+                onSelect={() => selectDm(directory[d.memberId] ?? { id: d.memberId, kind: d.kind, displayName: d.displayName })}
               />
             ))}
           </ul>
-        </div>
+        </Section>
       )}
+
+      {query.trim() !== "" && !hasResults && <p className="sidebar__empty">{COPY.noMatches}</p>}
     </nav>
+  );
+}
+
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="sidebar__section">
+      <div className="sidebar__sectionhead">
+        <span>{title}</span>
+        {action}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -111,13 +207,11 @@ function ChannelRow({
   active,
   onSelect,
 }: {
-  channel: Channel;
+  channel: SidebarChannel;
   active: boolean;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
-  const label = channel.kind === "dm" ? "direct message" : (channel.name ?? "channel");
-  // Department channels (#123 fleet) wear their spectrum hue on the hash glyph (#138 pop identity).
-  const dept = channel.kind === "dm" ? undefined : departmentColor(channel.name);
+  const dept = channel.color;
   return (
     <li>
       <button
@@ -126,8 +220,36 @@ function ChannelRow({
         aria-current={active ? "true" : undefined}
         style={dept ? ({ "--dept": dept } as React.CSSProperties) : undefined}
       >
-        <span className="channelrow__hash">{channel.kind === "dm" ? "@" : "#"}</span>
-        {label}
+        <span className="channelrow__hash">#</span>
+        {channel.name}
+      </button>
+    </li>
+  );
+}
+
+function DmRow({
+  dm,
+  active,
+  onSelect,
+}: {
+  dm: SidebarDm;
+  active: boolean;
+  onSelect: () => void;
+}): React.JSX.Element {
+  return (
+    <li>
+      <button
+        className={`channelrow dmrow${active ? " channelrow--active" : ""}`}
+        onClick={onSelect}
+        aria-current={active ? "true" : undefined}
+      >
+        <span
+          className={`dmrow__dot${dm.kind === "agent" ? " dmrow__dot--agent" : ""}`}
+          style={dm.color ? ({ "--dot": dm.color } as React.CSSProperties) : undefined}
+          aria-hidden="true"
+        />
+        <span className="dmrow__name">{dm.displayName}</span>
+        {dm.self && <span className="dmrow__you"> ({COPY.you})</span>}
       </button>
     </li>
   );

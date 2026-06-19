@@ -6,10 +6,14 @@ import { createRealtime } from "./api/realtime.js";
 import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
 import { applyBrand } from "./brand.js";
+import { applyReloadTheme } from "./theme.js";
 import "./styles.css";
 
 // Stamp brand-driven document title + accent before first paint (env-resolved at build time).
 applyBrand();
+// #378: flip the whole app (login + landing + console) to the reload.chat dark palette when the
+// coordination flag is on for this deployment. Default-OFF: prod sets no env → no attribute → light app.
+applyReloadTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root not found");

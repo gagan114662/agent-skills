@@ -81,4 +81,16 @@ describe("MessagePane", () => {
     });
     expect(composer()).toHaveValue("draft for general");
   });
+
+  // #378: a DM peer reframes the header as a 1:1 over the resolved channel's real message stream.
+  it("frames the header as a direct message when a dmPeer is given", async () => {
+    const { store } = renderWithStore(
+      <MessagePane dmPeer={{ id: "sc", kind: "agent", displayName: "Scout" }} />,
+    );
+    await store.bootstrap();
+
+    expect(await screen.findByRole("heading", { name: /direct message with scout/i })).toBeInTheDocument();
+    // The channel's real history is still shown (the 1:1 is the agent's department channel, not invented).
+    expect(screen.getByText("first post")).toBeInTheDocument();
+  });
 });

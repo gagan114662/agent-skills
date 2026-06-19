@@ -1,17 +1,16 @@
 /**
- * Chat-first primary surface for the owner workspace (#372). Proves the last reload.chat parity gap:
- * when the coordination gate (#352) is on for the named owner workspace, the owner LANDS directly in the
- * coordination view (the team channel IS the home screen), with the board reachable via a secondary tab —
- * and that when the flag is OFF or this is NOT the owner, the surface is byte-for-byte the board it is today
- * (fail-closed, owner-first, default-OFF).
+ * Reload.chat as the whole app for the owner workspace (#378). Proves the final parity step: when the
+ * coordination gate (#352) is on for the named owner workspace, the reload.chat surface IS the entire app —
+ * the owner lands in `CoordinationView`, and the kanban board, the Coordination/Board toggle, and the
+ * projects/task sidebar (StandupPanel) are all gone from the rendered surface. When the gate is OFF or this
+ * is NOT the owner, the surface is byte-for-byte the board it is today (fail-closed, owner-first, default-OFF).
  *
  * The two env-derived constants (`COORDINATION_UI_ENABLED` / `COORDINATION_OWNER_WORKSPACE_ID`) are mocked
  * via a hoisted holder so each case can flip the gate; the REAL `shouldShowCoordination` is kept, so the
  * owner-first contract itself is exercised (owner id == the test workspace ⇒ on; a different owner ⇒ off).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, screen } from "@testing-library/react";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { api } from "../../api/client.js";
 import { CONSOLE } from "../../brand.js";
@@ -98,34 +97,34 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-describe("ConsoleView chat-first primary surface (#372)", () => {
-  it("owner + flag ON ⇒ coordination is the LANDING surface, board reachable via a tab", async () => {
+describe("ConsoleView reload.chat whole-app surface (#378)", () => {
+  it("owner + flag ON ⇒ coordination IS the whole app (no board, no toggle, no projects sidebar)", async () => {
     await mount();
 
     // The owner lands directly in the coordination view (the team channel is the home screen)…
     expect(await screen.findByText(COORD_TITLE)).toBeInTheDocument();
-    // …and the board is NOT the landing surface (its lanes are not mounted yet).
+    // …the kanban board is gone entirely (no lanes anywhere)…
     expect(screen.queryByRole("listitem", BOARD_LANE)).toBeNull();
+    // …the Coordination/Board toggle is removed…
+    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.open })).toBeNull();
+    expect(screen.queryByRole("tab", { name: CONSOLE.columns.shipped })).toBeNull();
+    // …and the projects/task sidebar (StandupPanel) is not rendered.
+    expect(screen.queryByText(CONSOLE.projects.label)).toBeNull();
 
-    // The board stays reachable via a secondary tab (it is not removed).
-    const boardTab = screen.getByRole("tab", { name: CONSOLE.coordination.boardTab });
-    await userEvent.click(boardTab);
-
-    // Switching to the Board tab shows the board lanes and drops the coordination surface.
-    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
-    expect(screen.queryByText(COORD_TITLE)).toBeNull();
+    // Approvals stay reachable and account utilities move into the header.
+    expect(screen.getByRole("button", { name: CONSOLE.coordination.shell.settings })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.coordination.shell.signOut })).toBeInTheDocument();
   });
 
-  it("flag OFF ⇒ board is the landing surface, byte-for-byte (no coordination, no tabs)", async () => {
+  it("flag OFF ⇒ board is the landing surface, byte-for-byte (board + projects sidebar, no coordination)", async () => {
     gate.flagOn = false;
     await mount();
 
-    // The board lanes render as the landing surface…
+    // The board lanes + the projects sidebar render as the landing surface…
     expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
-    // …and the coordination surface + the surface-switch tabs are absent entirely.
+    expect(screen.getByText(CONSOLE.projects.label)).toBeInTheDocument();
+    // …and the coordination surface is absent entirely.
     expect(screen.queryByText(COORD_TITLE)).toBeNull();
-    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.open })).toBeNull();
-    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.boardTab })).toBeNull();
   });
 
   it("non-owner workspace + flag ON ⇒ board unchanged (owner-first, fail-closed)", async () => {
@@ -133,20 +132,7 @@ describe("ConsoleView chat-first primary surface (#372)", () => {
     await mount();
 
     expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
+    expect(screen.getByText(CONSOLE.projects.label)).toBeInTheDocument();
     expect(screen.queryByText(COORD_TITLE)).toBeNull();
-    expect(screen.queryByRole("tab", { name: CONSOLE.coordination.boardTab })).toBeNull();
-  });
-
-  it("keeps a Coordination tab so the owner can return to the chat-first surface", async () => {
-    await mount();
-    // Start on coordination, switch to board, then back to coordination via its tab.
-    await userEvent.click(screen.getByRole("tab", { name: CONSOLE.coordination.boardTab }));
-    expect(await screen.findByRole("listitem", BOARD_LANE)).toBeInTheDocument();
-
-    const coordTab = screen.getByRole("tab", { name: CONSOLE.coordination.open });
-    await userEvent.click(coordTab);
-    expect(await screen.findByText(COORD_TITLE)).toBeInTheDocument();
-    // Use `within` to keep the lane assertion unambiguous if the title ever appears elsewhere.
-    expect(within(document.body).queryByRole("listitem", BOARD_LANE)).toBeNull();
   });
 });
