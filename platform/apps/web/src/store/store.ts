@@ -44,6 +44,7 @@ import type {
   MentionEvent,
   Message,
   PresenceStatus,
+  ServerEvent,
 } from "../api/types.js";
 
 export interface DirectoryEntry {
@@ -280,6 +281,13 @@ export interface Store {
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
   createChannel(name: string): Promise<void>;
+  /**
+   * Subscribe to the realtime socket stream the store already consumes (#362). Returns an unsubscribe.
+   * Fan-out ONLY — it never mutates store state — so a coordination component can refresh a view (e.g. the
+   * #147 mission-control strip) the instant a relevant event lands, instead of waiting on a fixed poll.
+   * Taps the store's single socket connection; it does not open a second one.
+   */
+  onRealtimeEvent(listener: (event: ServerEvent) => void): () => void;
   /** Read the saved composer draft for a channel (#168), or "" if none. Client-only, per-channel. */
   getDraft(channelId: string): string;
   /** Save (or clear, when empty) a channel's composer draft so switching channels preserves text (#168). */
@@ -376,6 +384,11 @@ export function createStore({ api, realtime }: StoreDeps): Store {
   // the whole app; the composer reads its channel's draft when it (re)mounts on a channel switch.
   const drafts = new Map<string, string>();
 
+  // External realtime subscribers (#362 live coordination feed). The store consumes the socket once (a
+  // single `realtime.on(onEvent)` in loadWorkspace); `onEvent` re-emits every event to these listeners so a
+  // view can react live (e.g. refetch the #147 mission-control strip) WITHOUT opening a second socket.
+  const realtimeListeners = new Set<(event: ServerEvent) => void>();
+
   function getQueue(channelId: string): SessionQueue {
     return state.queues[channelId] ?? emptyQueue();
   }
@@ -415,7 +428,20 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     }
   }
 
-  function onEvent(event: import("../api/types.js").ServerEvent): void {
+  function onEvent(event: ServerEvent): void {
+    applyEvent(event);
+    // #362: fan the event out to live-coordination subscribers AFTER applying it to state, so a listener
+    // that reads the store sees the update. A throwing listener must never break the socket pump.
+    for (const l of realtimeListeners) {
+      try {
+        l(event);
+      } catch {
+        /* a faulty subscriber can't stall realtime delivery */
+      }
+    }
+  }
+
+  function applyEvent(event: ServerEvent): void {
     switch (event.type) {
       case "message": {
         const m = event.message;
@@ -646,6 +672,11 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       const channel = await api.createChannel(workspaceId, name);
       set({ channels: [...state.channels, channel] });
       await store.selectChannel(channel.id);
+    },
+
+    onRealtimeEvent(listener) {
+      realtimeListeners.add(listener);
+      return () => realtimeListeners.delete(listener);
     },
 
     getDraft(channelId) {

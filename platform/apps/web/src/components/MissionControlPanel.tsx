@@ -1,13 +1,16 @@
 /**
  * Live mission control (#147) — the workspace's running agent sessions with status, elapsed, an
- * estimated spend, and steer/stop controls. Polled every few seconds (the #104 console pattern); spend
- * is an estimate from elapsed × the tenant compute rate (the platform records no per-session cost).
- * Steer + stop are tenant-scoped and best-effort.
+ * estimated spend, and steer/stop controls. Spend is an estimate from elapsed × the tenant compute rate
+ * (the platform records no per-session cost). Steer + stop are tenant-scoped and best-effort.
+ *
+ * #362: the session list is now driven by live websocket events via {@link useLiveMissionControl} — a new
+ * agent message / handoff / session lifecycle change refreshes the strip within the socket round-trip, with a
+ * poll FALLBACK that degrades to the prior 4s cadence when the socket is unavailable (never worse than today).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAppState } from "../store/StoreContext.js";
 import { api } from "../api/client.js";
-import type { MissionControlDto } from "../api/types.js";
+import { useLiveMissionControl } from "./console/useLiveMissionControl.js";
 
 function fmtElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -23,25 +26,10 @@ function fmtCents(c: number): string {
 export function MissionControlPanel(): React.JSX.Element {
   const { identity } = useAppState();
   const workspaceId = identity?.workspaceId;
-  const [mc, setMc] = useState<MissionControlDto | null>(null);
+  // #362: live websocket-driven mission control, with a poll fallback (see useLiveMissionControl).
+  const { data: mc, refresh } = useLiveMissionControl(workspaceId);
   const [steerFor, setSteerFor] = useState<string | null>(null);
   const [guidance, setGuidance] = useState("");
-
-  async function refresh(): Promise<void> {
-    if (!workspaceId) return;
-    try {
-      setMc(await api.missionControl.get(workspaceId));
-    } catch {
-      /* transient; next poll retries */
-    }
-  }
-
-  useEffect(() => {
-    if (!workspaceId) return;
-    void refresh();
-    const timer = setInterval(() => void refresh(), 4000);
-    return () => clearInterval(timer);
-  }, [workspaceId]);
 
   async function stop(id: string): Promise<void> {
     if (!workspaceId) return;
