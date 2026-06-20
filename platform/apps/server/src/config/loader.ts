@@ -431,7 +431,13 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // managed.toml (the owner workspace opts in first). Hard default stays OFF (var unset → no block); the
   // contract catalog is always readable regardless. A managed layer still wins as the lock.
   const agentRegistryEnabled = env.RELOAD_AGENT_REGISTRY_ENABLED;
-  const agentRegistryOwner = env.RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID;
+  // Reuse the established owner-workspace marker (RELOAD_MARKETING_OWNER_WORKSPACE_ID) like every other
+  // owner-first feature (venture/department/durableWorkflow/agentChannelPosting/agentCollaboration), so
+  // enabling the registry actually enables A2A for the owner workspace. WITHOUT this fallback, setting only
+  // RELOAD_AGENT_REGISTRY_ENABLED=true left ownerWorkspaceId undefined → isOwnerWorkspace false → EVERY agent
+  // entry resolved enabled:false → every A2A handoff was denied "not enabled for A2A in this workspace" (#417).
+  // A dedicated RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID still overrides it.
+  const agentRegistryOwner = env.RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID ?? mktOwner;
   if (agentRegistryEnabled !== undefined || agentRegistryOwner) {
     const agentRegistry: Record<string, unknown> = {};
     if (agentRegistryEnabled !== undefined) {
