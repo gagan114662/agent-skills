@@ -35,6 +35,8 @@ import {
 import { subagentRoutes } from "./routes/subagents.js";
 import { marketingRoutes } from "./routes/marketing.js";
 import { agentRegistryRoutes } from "./routes/agent-registry.js";
+import { createAgentRegistryService } from "./agent-registry/default.js";
+import { parseHandoffChain } from "./agent-registry/handoff.js";
 import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
 import { slackRoutes } from "./routes/slack.js";
@@ -42,7 +44,13 @@ import { createDefaultSlackService, createDefaultSlackDigestEngine } from "./sla
 import type { SlackEventService } from "./slack/service.js";
 import type { SlackDigestEngine } from "./slack/engine.js";
 import type { SlackClient } from "./slack/client.js";
-import { setChannelPostHook } from "./runtime/default.js";
+import { setChannelPostHook, setDeliverableHandoffHook } from "./runtime/default.js";
+import { getPersonaByAgentMember } from "./db/repositories/personas.js";
+import { loadConfig } from "./config/loader.js";
+import {
+  resolveAgentCollaborationCaps,
+  isSpawnEnabledForWorkspace,
+} from "./subagents/collaboration.js";
 import { setApprovalPendingHook } from "./approvals/pending-hook.js";
 import { gitReviewRoutes } from "./routes/git-review.js";
 import { turnRoutes } from "./routes/turns.js";
@@ -617,6 +625,28 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // real @mention silently did nothing (sessionsStarted stayed 0). The trigger gates itself (human
   // author, marketing channel, mentioned persona) and runs best-effort over the SAME SessionManager.
   setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager));
+  // #417 visible governed handoffs: when an agent's deliverable @mentions a fleet teammate, launch that
+  // teammate through the EXISTING governed a2a path (depth/cycle/capability-bounded by `decideA2ACall`)
+  // and visibly narrate it in-channel via the #370 bridge. Wired here AFTER both the SessionManager and
+  // the registry service exist (mirrors `setMarketingMentionTrigger` / `setChannelPostHook`, breaking the
+  // manager↔service cycle). Gated by the EXISTING `agentCollaboration` capability (#319, default-OFF,
+  // owner-workspace-first): with it off the hook is a no-op and behavior is byte-for-byte unchanged.
+  const agentRegistryService = createAgentRegistryService(sessionManager);
+  setDeliverableHandoffHook(async ({ workspaceId, agentMemberId, task, deliverable }) => {
+    const collab = resolveAgentCollaborationCaps(loadConfig(workspaceId).agentCollaboration);
+    if (!isSpawnEnabledForWorkspace(collab, workspaceId)) return;
+    // Resolve the caller's @handle from its member id (a persona's `name` IS its fleet @handle).
+    const persona = await getPersonaByAgentMember(workspaceId, agentMemberId);
+    const callerHandle = persona?.name;
+    if (!callerHandle) return;
+    // The chain marker is OUR structural prefix on the task WE assigned the caller's session (#200) — read
+    // it back to keep the depth/cycle guard accurate across hops; absent ⇒ this is the first hop.
+    const callChain = parseHandoffChain(task);
+    await agentRegistryService.handoffsFromDeliverable(
+      { workspaceId, memberId: agentMemberId },
+      { callerHandle, deliverable, callChain },
+    );
+  });
   // #170 Slack-native: bridge the fleet into the customer's Slack. The service translates inbound Slack
   // events/interactions into the EXISTING audited paths (the same #123 trigger above, the #13 decision
   // path) and mirrors outputs back — no new authority. Two hooks register the outbound side: the
@@ -638,6 +668,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addHook("onClose", async () => {
     setMarketingMentionTrigger(undefined);
     setChannelPostHook(undefined);
+    setDeliverableHandoffHook(undefined);
     setApprovalPendingHook(undefined);
     slackDigestEngine.stop();
     runManager.shutdown();
