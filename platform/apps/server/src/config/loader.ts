@@ -667,6 +667,27 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(attributionOwner ? { ownerWorkspaceId: attributionOwner } : {}),
     };
   }
+  // #389 customer-facing identity: let the deployment env opt the owner workspace into presenting a stable
+  // "face that sells" (display name + avatar + optional voice profile + tagline) on customer-facing comms,
+  // without a managed.toml. Hard default stays OFF (var unset → no block → no identity is presented).
+  // Owner-workspace-first: the optional owner-id var names the only workspace it activates for. IDENTITY ONLY
+  // — no secret here and no action path; every real send still flows through the #13 gate.
+  const customerIdentityEnabled = env.RELOAD_CUSTOMER_IDENTITY_ENABLED;
+  if (customerIdentityEnabled !== undefined) {
+    const ciOwner = env.RELOAD_CUSTOMER_IDENTITY_OWNER_WORKSPACE_ID?.trim();
+    const ciFounder = env.RELOAD_CUSTOMER_IDENTITY_FOUNDER_NAME?.trim();
+    const ciAvatar = env.RELOAD_CUSTOMER_IDENTITY_AVATAR_URL?.trim();
+    const ciVoice = env.RELOAD_CUSTOMER_IDENTITY_VOICE_PROFILE_ID?.trim();
+    const ciTagline = env.RELOAD_CUSTOMER_IDENTITY_TAGLINE?.trim();
+    raw.customerIdentity = {
+      enabled: customerIdentityEnabled === "true" || customerIdentityEnabled === "1",
+      ...(ciOwner ? { ownerWorkspaceId: ciOwner } : {}),
+      ...(ciFounder ? { founderName: ciFounder } : {}),
+      ...(ciAvatar ? { avatarUrl: ciAvatar } : {}),
+      ...(ciVoice ? { voiceProfileId: ciVoice } : {}),
+      ...(ciTagline ? { tagline: ciTagline } : {}),
+    };
+  }
   // #388 browser session-injection: let the deployment env opt the owner workspace into injecting a
   // per-workspace logged-in browser session into the #174 browser, without a managed.toml. Hard default
   // stays OFF (var unset → no block → every context is authless). Owner-workspace-first: the optional

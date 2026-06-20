@@ -1747,6 +1747,30 @@ export const attributionSchema = z.object({
 });
 
 /**
+ * Customer-facing identity policy (#389, ADR-0389). Default OFF, owner-workspace-first. The stable
+ * "face that sells": a display name + avatar (face) + optional voice-profile id the fleet PRESENTS on
+ * outbound, customer-facing touchpoints, so it shows up as one credible person instead of an anonymous
+ * bot. This block is IDENTITY/DISPLAY ONLY — it carries NO secret and adds NO action path: every real
+ * outbound send/publish still flows through the #13 gate and the existing connectors. Unset ⇒ no identity
+ * is presented (today's byte-for-byte behavior). Disclosure: the presented identity must remain truthful
+ * about being an AI agent wherever disclosure is required — this block never licenses impersonation.
+ */
+export const customerIdentitySchema = z.object({
+  /** Master switch for resolving + presenting the customer-facing identity — default OFF. */
+  enabled: z.boolean().optional(),
+  /** Restrict the identity to this owner workspace (fail-closed: unset ⇒ nobody). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Display name the fleet presents as on customer-facing comms (free text, sanitized on display). */
+  founderName: z.string().optional(),
+  /** Avatar (face) URL — must be a well-formed http(s) URL or it is omitted on display. */
+  avatarUrl: z.string().optional(),
+  /** Opaque voice-profile id for downstream synthesis (sanitized; no synthesis happens here). */
+  voiceProfileId: z.string().optional(),
+  /** Short tagline shown alongside the identity (free text, sanitized on display). */
+  tagline: z.string().optional(),
+});
+
+/**
  * Browser session-injection policy (#388, ADR-0388). Default OFF, owner-workspace-first. The seam that
  * injects a per-workspace, logged-in browser session (Playwright `storageState`: cookies + localStorage)
  * into the #174 agent browser, so an agent can operate a site the OWNER is already logged into — with NO
@@ -1885,6 +1909,8 @@ export const settingsSchema = z.object({
   finance: financeSchema.optional(),
   /** Attributed-revenue ledger (#386): artifact→exposure→signup→payment credit by causality (default OFF). */
   attribution: attributionSchema.optional(),
+  /** Customer-facing identity (#389): the display name + avatar + voice profile the fleet presents (default OFF). */
+  customerIdentity: customerIdentitySchema.optional(),
   /** Venture monetization policy (#188): per-venture pricing drafts + money-gated activation (default OFF). */
   monetization: monetizationSchema.optional(),
   /** Customer Discovery Engine policy (#222): per-venture signal layer + ranked prospect queue (default OFF). */
@@ -1990,6 +2016,7 @@ export type HostedSitesConfig = z.infer<typeof hostedSitesSchema>;
 export type SocialConfig = z.infer<typeof socialSchema>;
 export type FinanceConfig = z.infer<typeof financeSchema>;
 export type AttributionConfig = z.infer<typeof attributionSchema>;
+export type CustomerIdentityConfig = z.infer<typeof customerIdentitySchema>;
 export type SessionInjectionConfig = z.infer<typeof sessionInjectionSchema>;
 export type MonetizationConfig = z.infer<typeof monetizationSchema>;
 export type DiscoveryConfig = z.infer<typeof discoverySchema>;
@@ -2141,6 +2168,8 @@ export interface ResolvedConfig {
   finance: FinanceConfig;
   /** Attributed-revenue ledger policy (#386). A partial whose hard defaults `resolveAttributionCaps` fills. */
   attribution: AttributionConfig;
+  /** Customer-facing identity policy (#389). A partial whose hard defaults `resolveCustomerIdentity` fills. */
+  customerIdentity: CustomerIdentityConfig;
   /** Venture monetization policy (#188). A partial whose hard defaults `resolveMonetizationCaps` fills. */
   monetization: MonetizationConfig;
   /** Customer Discovery Engine policy (#222). A partial whose hard defaults `resolveDiscoveryCaps` fills. */
@@ -2248,6 +2277,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   social: {},
   finance: {},
   attribution: {},
+  customerIdentity: {},
   monetization: {},
   discovery: {},
   reach: {},

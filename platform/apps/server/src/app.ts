@@ -156,6 +156,7 @@ import type { RealWorldActuatorService } from "./realworld/service.js";
 import { financeRoutes } from "./routes/finance.js";
 import { createDefaultFinanceService, createDefaultFinanceEngine } from "./finance/default.js";
 import { attributionRoutes } from "./routes/attribution.js";
+import { customerIdentityRoutes } from "./routes/customer-identity.js";
 import type { FinanceService } from "./finance/service.js";
 import type { FinanceLedgerEngine } from "./finance/engine.js";
 import {
@@ -780,6 +781,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #386 attributed-revenue ledger read surface: the projection joining fleet exposures to Stripe receipts
   // by happened-before causality. Default OFF, owner-workspace-first (409 until the workspace opts in).
   app.register(attributionRoutes);
+  // #389 customer-facing identity read surface: the sanitized "face that sells" (name + avatar + voice) the
+  // fleet presents on customer-facing comms. Identity/display ONLY — authorizes no send. Default OFF,
+  // owner-workspace-first (409 until the workspace opts in).
+  app.register(customerIdentityRoutes);
   const financeEngine = opts.financeEngine ?? createDefaultFinanceEngine(app.log, finance);
   app.addHook("onClose", async () => {
     financeEngine.stop();
