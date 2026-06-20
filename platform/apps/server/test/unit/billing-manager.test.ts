@@ -192,6 +192,34 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(h.events.some((e) => e.kind === "payment_received")).toBe(true);
   });
 
+  it("persists a sanitized tracking ref from webhook metadata onto the revenue event (#386 slice 3)", async () => {
+    const ref = "ipop_deadbeefdeadbeef";
+    const raw = successEvent({ trackingRef: ref });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+    expect(res.event?.trackingRef).toBe(ref);
+    expect(h.store.events[0]?.trackingRef).toBe(ref);
+  });
+
+  it("drops a garbage/foreign tracking ref to null (untrusted webhook metadata, #200 §6)", async () => {
+    // A foreign ?ref= (no ipop_ prefix), an empty string, and control chars all sanitize to null ⇒ the
+    // payment stays unattributed rather than poisoning the attribution join.
+    for (const bad of ["abc123", "", "ipop_", "ipop_bad ref"]) {
+      const store = makeHarness();
+      const raw = successEvent({ trackingRef: bad });
+      const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+      const res = await store.manager.ingestWebhook("ws_1", raw, sig);
+      expect(res.event?.trackingRef).toBeNull();
+    }
+  });
+
+  it("leaves the tracking ref null when no metadata ref is present (existing/no-ref payments)", async () => {
+    const raw = successEvent();
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+    expect(res.event?.trackingRef).toBeNull();
+  });
+
   it("dedupes a replayed webhook (same event id) — at most one revenue event", async () => {
     const raw = successEvent();
     const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);

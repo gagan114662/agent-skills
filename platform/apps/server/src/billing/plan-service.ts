@@ -12,6 +12,7 @@ import {
   type PlanActivator,
 } from "./manager.js";
 import { getPlan, planCaps, PLANS, type Plan, type PlanCaps, type PlanKey } from "./plans.js";
+import { sanitizeTrackingRef } from "../attribution/tracking.js";
 
 /**
  * PlanBillingService (#125, ADR-0125) — the thin pricing/plan layer over the merged #98 rails. It does
@@ -73,6 +74,13 @@ export interface PlanCheckoutRequest {
   createdByMemberId?: string;
   /** In-app URL to return the customer to after a successful payment (validated http/https by the route). */
   returnUrl?: string;
+  /**
+   * Optional #386 tracking ref (slice 3) to stamp into Stripe checkout metadata so the resulting payment
+   * attributes to the artifact/lead that drove it. Sanitized before it reaches Stripe (#200 §6). The route
+   * does not yet recover a ref off the landing URL (gap 4) — the FIELD is plumbed so a supplied ref is
+   * stored; the landing-recovery source is the follow-up.
+   */
+  trackingRef?: string | null;
 }
 
 export interface PlanCheckoutResult {
@@ -146,6 +154,9 @@ export class PlanBillingService implements PlanActivator {
     this.gate(req.workspaceId);
     const secrets = await this.secrets.resolve(req.workspaceId);
     const redact = makeRedactor(secrets);
+    // #386 slice 3: stamp a (sanitized) tracking ref into checkout metadata so the resulting payment can be
+    // attributed to the artifact/lead that drove it. Garbage/absent ⇒ omitted ⇒ unattributed (honest).
+    const trackingRef = sanitizeTrackingRef(req.trackingRef);
     try {
       const { priceId } = await this.ensurePrice(req.workspaceId, plan, secrets);
       const link = await this.provider.createPaymentLink({
@@ -156,6 +167,7 @@ export class PlanBillingService implements PlanActivator {
           planKey: plan.key,
           // Round-tripped on the webhook so the merged ingest path knows to activate the plan.
           kind: "plan_checkout",
+          ...(trackingRef ? { trackingRef } : {}),
         },
         ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}),
         secrets,

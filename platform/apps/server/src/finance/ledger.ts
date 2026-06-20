@@ -56,6 +56,12 @@ export interface RevenueReceipt {
   currency: string;
   createdAtMs: number;
   ventureIdeaId?: string | null;
+  /**
+   * The #386 tracking ref carried through Stripe checkout metadata (slice 3). Optional/null for receipts
+   * that carried no ref or sources that do not track it (e.g. per-venture monetization). The finance ledger
+   * itself ignores this field; it rides along so the #386 attribution projection can credit an artifact.
+   */
+  trackingRef?: string | null;
 }
 
 /** A verified `credit` posting from a Stripe revenue event. */
