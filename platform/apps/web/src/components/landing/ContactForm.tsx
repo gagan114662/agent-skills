@@ -1,18 +1,46 @@
 /**
  * The closing contact block (#165): "a short reply, not a deck." A small, honest form — name, email, and
- * one open question. It's client-only (no backend wired yet), so on submit it shows a candid note that
- * says exactly that rather than faking a success state. All copy from `brand.ts` (brand.test scans this
- * file).
+ * one open question. As of GAP 1 of the leads centre (ADR-0400) it is WIRED: on submit it POSTs to the
+ * public `/inbound/leads` capture route, which persists the lead and best-effort feeds the #222 discovery
+ * engine — so a real prospect is captured instead of dropped. No auth, no money, no send: just capture.
+ * All copy from `brand.ts` (brand.test scans this file).
  */
 import { useState, type FormEvent } from "react";
 import { CONTACT } from "../../brand.js";
+import { apiUrl } from "../../api/config.js";
+
+type Status = "idle" | "sending" | "sent" | "error";
 
 export function ContactForm(): React.JSX.Element {
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
 
-  function onSubmit(e: FormEvent): void {
+  async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    setSent(true);
+    if (status === "sending") return;
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    const payload = {
+      name: String(data.get("name") ?? ""),
+      email: String(data.get("email") ?? ""),
+      message: String(data.get("message") ?? ""),
+      source: "landing_form",
+    };
+    setStatus("sending");
+    try {
+      const res = await fetch(apiUrl("/inbound/leads"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        setStatus("error");
+        return;
+      }
+      form.reset();
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
   }
 
   return (
@@ -31,19 +59,28 @@ export function ContactForm(): React.JSX.Element {
             </label>
             <label className="field">
               {CONTACT.emailLabel}
-              <input type="email" name="email" autoComplete="email" />
+              <input type="email" name="email" autoComplete="email" required />
             </label>
           </div>
           <label className="field">
             {CONTACT.messageLabel}
-            <textarea name="message" rows={3} placeholder={CONTACT.messagePlaceholder} />
+            <textarea name="message" rows={3} placeholder={CONTACT.messagePlaceholder} required />
           </label>
-          <button className="btn btn--primary contact-form__submit" type="submit">
-            {CONTACT.submitLabel}
+          <button
+            className="btn btn--primary contact-form__submit"
+            type="submit"
+            disabled={status === "sending"}
+          >
+            {status === "sending" ? CONTACT.sendingLabel : CONTACT.submitLabel}
           </button>
-          {sent && (
+          {status === "sent" && (
             <p className="contact-form__sent" role="status">
               {CONTACT.sentNote}
+            </p>
+          )}
+          {status === "error" && (
+            <p className="contact-form__error" role="alert">
+              {CONTACT.errorNote}
             </p>
           )}
         </form>

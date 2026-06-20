@@ -1213,8 +1213,12 @@ export const CONTACT = {
   messageLabel: "What are you hoping the fleet can do?",
   messagePlaceholder: "We publish twice a week and our SEO is a mess…",
   submitLabel: "Send it over",
-  /** Shown after a (client-only) submit — honest that this demo form doesn't wire to a backend yet. */
-  sentNote: "Got it — well, we would have. This demo form doesn't send yet; email us and we'll actually reply.",
+  /** In-flight label while the lead is posting. */
+  sendingLabel: "Sending…",
+  /** Shown after the lead is captured (GAP 1, ADR-0400) — it now really persists + reaches a human. */
+  sentNote: "Got it — your note's in. A person will read it and reply, usually within a day.",
+  /** Shown if the post fails — honest, with a fallback so the lead is never silently lost. */
+  errorNote: "That didn't go through. Mind trying again, or email us directly and we'll pick it up.",
 } as const;
 
 /**
