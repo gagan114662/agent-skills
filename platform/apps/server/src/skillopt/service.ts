@@ -10,8 +10,9 @@
  */
 import type { SkillEditProposal, SkillOptCycleResult, TaskCluster, TranscriptSample } from "./contract.js";
 import { mineRecurringTasks } from "./mine.js";
-import { decideSkillOptCycle, type ClusterCandidate } from "./cycle.js";
+import { decideSkillOptCycle, type ClusterCandidate, type RevenueReweight } from "./cycle.js";
 import { isSkillOptEnabledForWorkspace, type SkillOptCaps } from "./caps.js";
+import type { RevenueReward } from "../attribution/reward.js";
 
 /** Identity the cycle runs as: the workspace + the member a staged #13 request is attributed to. */
 export interface SkillOptIdentity {
@@ -60,6 +61,17 @@ export interface SkillOptDeps {
     requesterMemberId: string;
     proposal: SkillEditProposal;
   }): Promise<{ id: string }>;
+  /**
+   * OPTIONAL #390 revenue learning seam (ADR-0390). Build the live revenue reward for a workspace from the
+   * #386 attributed-revenue projection, so the cycle reweights its frequency-ranked clusters toward the work
+   * that earns ("more of what earns"). The default wiring (`default.ts`) supplies the real implementation,
+   * gated by the `attribution` flag: it returns `null` when attribution is OFF for the workspace OR the
+   * projection yields zero attributed receipts. Absent (the seam itself is unset) ⇒ no reweight either.
+   *
+   * In ALL of those cases the service passes NO `revenueReweight` to {@link decideSkillOptCycle}, so the
+   * frequency-only ranking is byte-for-byte unchanged. No money / no irreversible action — a read + ranking.
+   */
+  revenueRewardFor?(workspaceId: string): Promise<RevenueReward | null>;
 }
 
 /** The outcome of running the cycle for one agent (the decision + the staged request id, if any). */
@@ -94,9 +106,16 @@ export class SkillOptService {
       return { workspaceId: identity.workspaceId, enabled: false, agents: [] };
     }
 
+    // #390 (ADR-0390): build the live revenue learning signal ONCE for the workspace, gated by the
+    // `attribution` flag inside the seam. Absent seam, attribution OFF, or zero attributed receipts ⇒
+    // `null`/empty ⇒ NO reweight is passed below ⇒ the cycle ranks by frequency exactly as today.
+    const reward = (await this.deps.revenueRewardFor?.(identity.workspaceId)) ?? null;
+    const revenueReweight: RevenueReweight | undefined =
+      reward && !reward.isEmpty ? { reward } : undefined;
+
     const outcomes: SkillOptAgentOutcome[] = [];
     for (const agent of this.deps.agents()) {
-      outcomes.push(await this.runAgent(identity, caps, agent));
+      outcomes.push(await this.runAgent(identity, caps, agent, revenueReweight));
     }
     return { workspaceId: identity.workspaceId, enabled: true, agents: outcomes };
   }
@@ -105,6 +124,7 @@ export class SkillOptService {
     identity: SkillOptIdentity,
     caps: SkillOptCaps,
     agent: SkillOptAgentTarget,
+    revenueReweight: RevenueReweight | undefined,
   ): Promise<SkillOptAgentOutcome> {
     const samples = await this.deps.harvest(identity.workspaceId, agent.handle);
     const clusters = mineRecurringTasks(samples, agent.handle, { minRecurrence: caps.minRecurrence });
@@ -129,6 +149,8 @@ export class SkillOptService {
       mine: { minRecurrence: caps.minRecurrence },
       gate: { minSampleSize: caps.minSampleSize, minImprovementRatio: caps.minImprovementRatio },
       maxAppendChars: caps.maxAppendChars,
+      // #390: present only when attribution is on AND real receipts attributed (else undefined ⇒ frequency-only).
+      revenueReweight,
     });
 
     let requestId: string | null = null;

@@ -19,6 +19,11 @@ import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketi
 import { loadConfig } from "../config/loader.js";
 import { SKILLOPT_ADOPT_EDIT_ACTION } from "../approvals/policy.js";
 import { agentContracts, contractForHandle } from "../agent-registry/contract.js";
+import { attributionActive, maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { projectAttributedRevenue, type AttributionServiceDeps } from "../attribution/service.js";
+import { revenueRewardByChannel, type RevenueReward } from "../attribution/reward.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { dbRevenueReader } from "../finance/default.js";
 import { reduceMarketingTasksToSamples } from "./harvest.js";
 import { resolveSkillOptCaps } from "./caps.js";
 import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./service.js";
@@ -26,6 +31,31 @@ import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./
 /** The fleet agents the loop improves: each registry agent's runbook (its #155 procedure doc). */
 export function skillOptAgentTargets(): SkillOptAgentTarget[] {
   return agentContracts().map((c) => ({ handle: c.handle, skillId: `${c.handle}/runbook` }));
+}
+
+/**
+ * Build the LIVE #390 revenue learning signal for a workspace (ADR-0390) from the #386 attributed-revenue
+ * projection. Reuses the same caps + attribution service wiring as the `/me/attribution` read route: it
+ * projects credit over receipts that already exist (the #98 Stripe webhook), then maps the verified +
+ * caused `attributed` events through `revenueRewardByChannel`.
+ *
+ * Gated default-OFF, owner-first via `attributionActive`: when attribution is not active for the workspace
+ * this returns `null`, so the skillopt service passes NO reweight and ranks by frequency byte-for-byte as
+ * today. When active but the projection yields zero attributed receipts, the reward is EMPTY (the "no
+ * receipts ⇒ no learning" dependency) and the service still passes no reweight. Adds NO money path — read
+ * + ranking only.
+ */
+async function liveRevenueRewardFor(workspaceId: string): Promise<RevenueReward | null> {
+  const caps = resolveAttributionCaps(loadConfig(workspaceId).attribution);
+  if (!attributionActive(caps, workspaceId)) return null;
+  const deps: AttributionServiceDeps = {
+    store: dbAttributionExposureStore,
+    revenue: dbRevenueReader,
+    maxChainAgeMs: maxChainAgeMs(caps),
+    now: () => Date.now(),
+  };
+  const projection = await projectAttributedRevenue(deps, workspaceId);
+  return revenueRewardByChannel(projection.attributed);
 }
 
 /** Build the production-wired SkillOpt service. */
@@ -50,6 +80,9 @@ export function createDefaultSkillOptService(): SkillOptService {
     replay: () => Promise.resolve([]),
     loadSkillDoc: (skillId) =>
       Promise.resolve({ sha: createHash("sha256").update(skillId).digest("hex").slice(0, 16), text: "" }),
+    // #390 (ADR-0390): build the live revenue reward from the #386 projection so the cycle learns toward
+    // what earns. Gated default-OFF, owner-first inside the helper; null/empty ⇒ frequency-only, unchanged.
+    revenueRewardFor: (workspaceId) => liveRevenueRewardFor(workspaceId),
     stage: async (input) => {
       const req = await createRequest({
         workspaceId: input.workspaceId,
