@@ -421,14 +421,17 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       });
       // #417: after the deliverable is posted, fire the handoff hook so any @mentioned fleet teammate is
       // launched through the governed a2a path (the hook self-gates on `agentCollaboration`, default-OFF).
-      // The body we just posted IS the deliverable text we hand off. Best-effort: a hook failure never
-      // throws into the already-finalized session.
+      // Scan the FULL `e.result`, NOT the posted `body`: `formatDeliverableMessage` length-caps the body from
+      // the START (`slice(0, MAX_REPLY_CHARS)`), so a long deliverable whose "@quill …" hand-off sits at the
+      // END would be truncated away before we scan it (observed live: mentions:[] despite an @mention in the
+      // text). The full result is what `decideA2ACall.sanitizeTask` re-caps anyway. Best-effort: a hook
+      // failure never throws into the already-finalized session.
       if (deliverableHandoffHook) {
         void deliverableHandoffHook({
           workspaceId: e.workspaceId,
           agentMemberId: e.agentMemberId,
           task: e.task,
-          deliverable: body,
+          deliverable: e.result,
         }).catch(() => {
           /* best-effort handoff; the deliverable is already posted */
         });
