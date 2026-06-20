@@ -139,7 +139,10 @@ export interface SessionManagerDeps {
    * never takes the task (which is injected as env), so a per-session harness adds no injection
    * surface, and the runtime backend (Local/Sandbox) honors the resolved spec identically.
    */
-  harnessOverrides?: (kind: HarnessKind) => { command: string; args: string[]; decode: LineDecoder };
+  harnessOverrides?: (
+    kind: HarnessKind,
+    opts?: { fast?: boolean },
+  ) => { command: string; args: string[]; decode: LineDecoder };
   caps: ResourceCaps;
   logger: SessionLogger;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
@@ -283,6 +286,14 @@ export interface LaunchInput {
    * session works identically under LocalRuntime and SandboxRuntime.
    */
   harness?: HarnessKind;
+  /**
+   * Speed gap (reload.team feel): request a FAST, lightweight agent turn for THIS session — a cheap
+   * model + NO tools + a short cap, so coordination chatter (handoff acks, quick routing, agent↔agent
+   * questions) is seconds not minutes instead of a full heavyweight session. Only meaningful for the
+   * real `claude-code` harness (demo/codex ignore it). ADDITIVE + DEFAULT-OFF: omitted/false ⇒ today's
+   * full spec + default caps, byte-for-byte. No caller opts in yet — this is the capability + plumbing.
+   */
+  fast?: boolean;
   /** Team Mode: the team run this session belongs to (recorded on its trace for grouping). */
   teamRunId?: string;
   /** Team Mode: the team rollup span this session links under (Braintrust parent span id). */
@@ -329,6 +340,33 @@ const RESULT_MAX_CHARS = 4000;
  * watchdog stale cutoff (minutes), so detection is unaffected.
  */
 const HEARTBEAT_MIN_INTERVAL_MS = 10_000;
+
+/** Fallback short caps for a fast turn (#417) when the env overrides are unset: 60s idle / 180s wall. */
+const FAST_IDLE_MS_DEFAULT = 60_000;
+const FAST_WALLCLOCK_MS_DEFAULT = 180_000;
+
+/**
+ * Resolve the SHORT watchdog caps for a fast turn (#417) so a coordination chat turn can't hang for
+ * minutes like a full deliverable session. Reads `AGENT_FAST_IDLE_MS` / `AGENT_FAST_WALLCLOCK_MS`
+ * (positive integers) with small defaults, and NEVER exceeds the session's default caps — a fast turn
+ * is always capped at or below the normal limits, never longer. ADDITIVE: only consulted when a launch
+ * opts into `fast`; the default caps are untouched for every other launch.
+ */
+export function resolveFastCaps(
+  defaults: ResourceCaps,
+  env: NodeJS.ProcessEnv = process.env,
+): ResourceCaps {
+  const parse = (raw: string | undefined, fallback: number): number => {
+    const n = raw === undefined ? NaN : Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  };
+  const idleMs = Math.min(parse(env.AGENT_FAST_IDLE_MS, FAST_IDLE_MS_DEFAULT), defaults.idleMs);
+  const wallClockMs = Math.min(
+    parse(env.AGENT_FAST_WALLCLOCK_MS, FAST_WALLCLOCK_MS_DEFAULT),
+    defaults.wallClockMs,
+  );
+  return { ...defaults, idleMs, wallClockMs };
+}
 
 /**
  * SessionManager — the server-owned orchestrator that makes "close the laptop, agents keep
@@ -378,7 +416,12 @@ export class SessionManager {
     }
     // Resolve the per-session harness (#50) BEFORE acquiring an admission slot or persisting, so an
     // invalid kind is rejected without leaking a slot or leaving a half-started session behind.
-    const harness = this.resolveHarness(input.harness);
+    const harness = this.resolveHarness(input.harness, input.fast);
+
+    // Fast turn (#417): a coordination chat turn gets SHORT idle/wall-clock caps so it can't hang for
+    // minutes like a full deliverable session. Never longer than the default caps. Default launches use
+    // the deployment caps unchanged, so production behavior is byte-for-byte today's.
+    const caps = input.fast ? resolveFastCaps(this.deps.caps) : this.deps.caps;
 
     // Auto model-selection (convene-llm-gateway): when no explicit model is pinned, ask the routing
     // layer for the best model for this task. Done BEFORE admission so the (cheap, bounded, fail-open)
@@ -413,7 +456,7 @@ export class SessionManager {
         runtime: this.deps.runtime.kind,
         command: harness.spec.command,
         harness: harness.kind,
-        caps: this.deps.caps,
+        caps,
         provider: selectionRow?.provider ?? null,
         model: selectionRow?.model ?? null,
         effort: selectionRow?.effort ?? null,
@@ -437,6 +480,7 @@ export class SessionManager {
       decode: harness.decode,
       ticket,
       surfaceDeliverable: input.surfaceDeliverable,
+      caps,
     }).catch((err: unknown) => {
       // #248 silent-vanish defense: `runSession` finalizes the row on every normal path, but a throw
       // BEFORE its inner try (secrets.resolve / loadConfig) or in the tracer escapes here. Previously
@@ -455,7 +499,10 @@ export class SessionManager {
    * Returns the trusted spec + its output decoder + the kind to persist. Throws
    * {@link HarnessKindError} for an unknown kind, or an override the manager has no resolver for.
    */
-  private resolveHarness(override?: HarnessKind): {
+  private resolveHarness(
+    override?: HarnessKind,
+    fast?: boolean,
+  ): {
     kind: HarnessKind;
     spec: HarnessSpec;
     decode: LineDecoder;
@@ -464,13 +511,26 @@ export class SessionManager {
     const defaultDecode: LineDecoder =
       this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
     if (override === undefined || override === defaultKind) {
+      // A fast turn (#417) needs a DIFFERENT spec (cheap model + no tools), so it cannot reuse the
+      // pre-built default `{ command, args }` — it must go through the override resolver to rebuild the
+      // spec with `fast`. When not fast (the default), the pre-built default spec is used unchanged, so
+      // production is byte-for-byte today's behavior. If no resolver is wired (unit tests with only the
+      // legacy default harness), a fast request degrades to the default spec — never a hard failure.
+      if (fast && this.deps.harnessOverrides) {
+        const resolved = this.deps.harnessOverrides(defaultKind, { fast: true });
+        return {
+          kind: defaultKind,
+          spec: { command: resolved.command, args: resolved.args },
+          decode: resolved.decode,
+        };
+      }
       return { kind: defaultKind, spec: this.deps.harness, decode: defaultDecode };
     }
     if (!isHarnessKind(override)) throw new HarnessKindError(override);
     if (!this.deps.harnessOverrides) {
       throw new HarnessKindError(override, "cannot be selected (no harness override resolver wired)");
     }
-    const resolved = this.deps.harnessOverrides(override);
+    const resolved = this.deps.harnessOverrides(override, { fast });
     return {
       kind: override,
       spec: { command: resolved.command, args: resolved.args },
@@ -622,6 +682,8 @@ export class SessionManager {
       ticket?: AdmissionTicket;
       /** #248: surface a clean completion's result as a board deliverable (default true). */
       surfaceDeliverable?: boolean;
+      /** The effective resource caps for THIS session (#417 fast turn uses short caps). */
+      caps: ResourceCaps;
     },
   ): Promise<void> {
     const log = this.deps.logger.child({
@@ -651,6 +713,7 @@ export class SessionManager {
           decode: opts.decode,
           ticket: opts.ticket,
           surfaceDeliverable: opts.surfaceDeliverable,
+          caps: opts.caps,
         }),
     );
   }
@@ -667,6 +730,8 @@ export class SessionManager {
       decode: LineDecoder;
       ticket?: AdmissionTicket;
       surfaceDeliverable?: boolean;
+      /** The effective resource caps for THIS session (#417 fast turn uses short caps). */
+      caps: ResourceCaps;
     },
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only. #151: the launching
@@ -753,14 +818,14 @@ export class SessionManager {
     const resetIdle = (): void => {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
-        log.warn({ idleMs: this.deps.caps.idleMs }, "agent session idle-reaped");
+        log.warn({ idleMs: opts.caps.idleMs }, "agent session idle-reaped");
         void runningRef?.cancel("idle");
-      }, this.deps.caps.idleMs);
+      }, opts.caps.idleMs);
     };
     const wallTimer = setTimeout(() => {
-      log.warn({ wallClockMs: this.deps.caps.wallClockMs }, "agent session wall-clock reaped");
+      log.warn({ wallClockMs: opts.caps.wallClockMs }, "agent session wall-clock reaped");
       void runningRef?.cancel("timeout");
-    }, this.deps.caps.wallClockMs);
+    }, opts.caps.wallClockMs);
 
     let runningRef: RunningSession | undefined;
     let result: RuntimeResult = { status: "failed", exitCode: null };
@@ -786,7 +851,7 @@ export class SessionManager {
           region: opts.ticket?.region,
           // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
           egress,
-          caps: this.deps.caps,
+          caps: opts.caps,
         },
         {
           onOutput: (_stream, chunk) => {

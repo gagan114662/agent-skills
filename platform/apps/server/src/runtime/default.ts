@@ -266,8 +266,14 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // decoder so a launch can switch claude-code ↔ codex per session. Pure (no task), so it adds no
     // injection surface; both runtime backends honor the resolved spec identically. Binaries come
     // from env (CLAUDE_BIN / CODEX_BIN) just like the default spec.
-    harnessOverrides: (kind: HarnessKind) => ({
-      ...harnessSpec(kind, { claudeBin: process.env.CLAUDE_BIN, codexBin: process.env.CODEX_BIN }),
+    harnessOverrides: (kind: HarnessKind, opts?: { fast?: boolean }) => ({
+      ...harnessSpec(kind, {
+        claudeBin: process.env.CLAUDE_BIN,
+        codexBin: process.env.CODEX_BIN,
+        // #417 fast turn: a cheap model + no tools + no edit permission. Default-OFF — only set when a
+        // launch opts into `fast`, so every existing launch builds the full spec byte-for-byte.
+        fast: opts?.fast,
+      }),
       decode: harnessLineDecoder(kind),
     }),
     caps: env.caps,
