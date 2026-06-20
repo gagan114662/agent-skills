@@ -10,6 +10,7 @@ import { listChannels } from "../db/repositories/channels.js";
 import { getAgentMemberByHandle } from "../db/repositories/auth.js";
 import { getWorkspaceMember, getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { postMessage } from "../db/repositories/messages.js";
+import { publishMessageEvent } from "../realtime/bus.js";
 import { resolveAgentChannelPostingCaps } from "./caps.js";
 import { CoordinationChannelBridge } from "./bridge.js";
 
@@ -30,12 +31,20 @@ export function createCoordinationChannelBridge(): CoordinationChannelBridge {
       const member = await getWorkspaceMember(ownerId, workspaceId);
       return member?.displayName;
     },
-    post: (input) =>
-      postMessage({
+    post: async (input) => {
+      const message = await postMessage({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         authorMemberId: input.authorMemberId,
         body: input.body,
-      }),
+      });
+      // #419: broadcast the coordination line to the #5 realtime fan-out so kickoff/handoff/status messages
+      // appear in the open channel INSTANTLY (the same publish-on-write the runtime channelPoster does), not
+      // only on the client poll fallback. Best-effort: a Redis hiccup never fails the post (already persisted).
+      publishMessageEvent(input.channelId, message).catch(() => {
+        /* best-effort realtime; the message is already persisted (REST source of truth) */
+      });
+      return message;
+    },
   });
 }
