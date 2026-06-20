@@ -4,6 +4,7 @@ import {
   isOwnerWorkspace,
   AGENT_REGISTRY_DEFAULTS,
 } from "../../src/agent-registry/caps.js";
+import { loadConfig } from "../../src/config/loader.js";
 
 describe("agent-registry/caps — resolveAgentRegistryCaps", () => {
   it("defaults OFF and owner-workspace-first when no config is supplied", () => {
@@ -43,5 +44,36 @@ describe("agent-registry/caps — isOwnerWorkspace", () => {
     const caps = resolveAgentRegistryCaps({ ownerWorkspaceId: "ws-owner" });
     expect(isOwnerWorkspace(caps, "ws-owner")).toBe(true);
     expect(isOwnerWorkspace(caps, "ws-other")).toBe(false);
+  });
+});
+
+describe("agent-registry/caps — owner-ws env fallback (#417 regression)", () => {
+  // The prod bug: RELOAD_AGENT_REGISTRY_ENABLED=true with no dedicated owner var left ownerWorkspaceId
+  // undefined → isOwnerWorkspace false → every agent enabled:false → every A2A handoff denied. The loader
+  // must fall back to RELOAD_MARKETING_OWNER_WORKSPACE_ID like every other owner-first feature.
+  it("falls back to RELOAD_MARKETING_OWNER_WORKSPACE_ID when the dedicated owner var is unset", () => {
+    const cfg = loadConfig("owner-ws", {
+      env: { RELOAD_AGENT_REGISTRY_ENABLED: "true", RELOAD_MARKETING_OWNER_WORKSPACE_ID: "owner-ws" },
+      readFile: () => undefined,
+    });
+    const caps = resolveAgentRegistryCaps(cfg.agentRegistry);
+    expect(caps.enabled).toBe(true);
+    expect(caps.ownerWorkspaceId).toBe("owner-ws");
+    // The owner workspace is now correctly recognized → A2A entries enable for it.
+    expect(isOwnerWorkspace(caps, "owner-ws")).toBe(true);
+    expect(isOwnerWorkspace(caps, "customer-ws")).toBe(false);
+  });
+
+  it("a dedicated RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID still overrides the marketing fallback", () => {
+    const cfg = loadConfig("reg-owner", {
+      env: {
+        RELOAD_AGENT_REGISTRY_ENABLED: "true",
+        RELOAD_AGENT_REGISTRY_OWNER_WORKSPACE_ID: "reg-owner",
+        RELOAD_MARKETING_OWNER_WORKSPACE_ID: "mkt-owner",
+      },
+      readFile: () => undefined,
+    });
+    const caps = resolveAgentRegistryCaps(cfg.agentRegistry);
+    expect(caps.ownerWorkspaceId).toBe("reg-owner");
   });
 });
