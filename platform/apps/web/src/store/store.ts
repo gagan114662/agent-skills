@@ -280,6 +280,15 @@ export interface Store {
   }): Promise<void>;
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
+  /**
+   * Re-fetch a channel's messages and UPSERT them into state, without touching the active selection, thread, or
+   * realtime subscription (#419). This is the poll FALLBACK for the live feed: the realtime `message` event is
+   * the primary path (`applyEvent` appends it), but if a socket event is ever dropped or never delivered (e.g.
+   * a flaky / cross-site connection — #418), this self-heals the open channel within the poll cadence so the
+   * owner never has to manually refresh to see an agent's reply. Upsert (not replace) so an in-flight optimistic
+   * or just-arrived realtime message is never dropped. Best-effort: a failed fetch is a no-op.
+   */
+  refreshChannelMessages(channelId: string): Promise<void>;
   createChannel(name: string): Promise<void>;
   /**
    * Subscribe to the realtime socket stream the store already consumes (#362). Returns an unsubscribe.
@@ -664,6 +673,18 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       realtime.subscribe(channelId);
       const messages = await api.listMessages(channelId);
       set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: messages } });
+    },
+
+    async refreshChannelMessages(channelId) {
+      try {
+        const fetched = await api.listMessages(channelId);
+        // Upsert each fetched message into the existing list so a realtime/optimistic arrival is never dropped.
+        let list = state.messagesByChannel[channelId] ?? [];
+        for (const m of fetched) list = upsertMessage(list, m);
+        set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: list } });
+      } catch {
+        // Best-effort fallback: a transient miss just waits for the next poll tick or realtime event.
+      }
     },
 
     async createChannel(name) {
