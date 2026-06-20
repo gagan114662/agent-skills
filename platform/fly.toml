@@ -23,6 +23,13 @@ primary_region = "yyz"
   # charge and never a crash. Tracing: `fly secrets set -a reload-api BRAINTRUST_API_KEY=…`.
   AGENT_HARNESS = "claude-code"
   AGENT_RUNTIME = "local"
+  # #394 reliability: the watchdog idle/wall-clock reaper defaults (AGENT_IDLE_MS=120s, AGENT_WALLCLOCK_MS=600s
+  # in env.ts) are too aggressive for a real Opus session — the model often THINKS quietly for >2 min between
+  # stdout, so the idle timer reaped healthy sessions and surfaced them as "session failed (exit n/a)" (~40% of
+  # runs, #394). Raise idle to 5 min and wall-clock to 30 min so a deliberating agent (and a multi-step
+  # collaboration handoff) runs to completion instead of being killed mid-think.
+  AGENT_IDLE_MS = "300000"
+  AGENT_WALLCLOCK_MS = "1800000"
   # Deployment-wide default model. The harness emits an env-gated --model flag (#52) that reads this;
   # a workspace's owner-picked model (Settings → Connect Claude) and a per-session #52 selection still
   # override it. MUST be a model the API actually serves — #242/#246: a non-existent id (`claude-fable-5`)
