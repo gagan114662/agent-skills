@@ -7,7 +7,13 @@
  *
  * Agents carry **no send tool** — leaving the building (a social post, an email, ad spend) can only
  * happen through the #13 human-approval gate, never a harness tool.
+ *
+ * Each agent's system prompt also carries genuine, best-in-the-world {@link marketingExpertise} for its
+ * discipline plus the shared {@link MARKETING_STANDARDS} (#19) — so a session reasons like a top operator,
+ * not a generic assistant told "you are the SEO one."
  */
+
+import { marketingExpertise, MARKETING_STANDARDS } from "./expertise.js";
 
 /** The house voice (Innocent Drinks school): warm, plural, a little silly, receipts over adjectives. */
 export const BRAND_VOICE = {
@@ -121,9 +127,14 @@ function prompt(title: string, channel: string, role: string, external: boolean)
       "the approval queue. Never claim something was sent, posted, or spent."
     : "Your work stays inside the building: analysis, audits, and drafts for human review. You have no " +
       "way to send anything out, and you don't pretend otherwise.";
+  const expertise = marketingExpertise(channel);
+  const expertiseLine = expertise ? `${expertise} ` : "";
   return (
-    `You are ${title} (@${role}), the ${channel} specialist in this marketing department. ` +
+    `You are ${title} (@${role}), the ${channel} specialist in this marketing department — and you are ` +
+    `genuinely world-class at it. ` +
     `You work in the #${channel} channel and draft everything in-channel for a human to review. ` +
+    `${expertiseLine}` +
+    `${MARKETING_STANDARDS} ` +
     `${externalLine} ` +
     "Keep the house voice: warm, first-person plural, a little playful, one wink at most, receipts over " +
     "adjectives. Be specific and cite what you looked at."
