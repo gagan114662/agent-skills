@@ -634,17 +634,37 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const agentRegistryService = createAgentRegistryService(sessionManager);
   setDeliverableHandoffHook(async ({ workspaceId, agentMemberId, task, deliverable }) => {
     const collab = resolveAgentCollaborationCaps(loadConfig(workspaceId).agentCollaboration);
-    if (!isSpawnEnabledForWorkspace(collab, workspaceId)) return;
+    if (!isSpawnEnabledForWorkspace(collab, workspaceId)) {
+      app.log.info({ workspaceId, agentMemberId, reason: "collaboration-disabled" }, "handoff hook: skipped");
+      return;
+    }
     // Resolve the caller's @handle from its member id (a persona's `name` IS its fleet @handle).
     const persona = await getPersonaByAgentMember(workspaceId, agentMemberId);
     const callerHandle = persona?.name;
-    if (!callerHandle) return;
+    if (!callerHandle) {
+      app.log.warn({ workspaceId, agentMemberId, reason: "no-caller-handle" }, "handoff hook: skipped");
+      return;
+    }
     // The chain marker is OUR structural prefix on the task WE assigned the caller's session (#200) — read
     // it back to keep the depth/cycle guard accurate across hops; absent ⇒ this is the first hop.
     const callChain = parseHandoffChain(task);
-    await agentRegistryService.handoffsFromDeliverable(
+    // Observable on purpose (#417): a deliverable handoff must never be a silent no-op. The result explains
+    // WHY there were no launches (no fleet @mention / empty registry) or each launch outcome (denied+reason
+    // or dispatched), so operators can see the team actually handing off — or exactly why it didn't.
+    const result = await agentRegistryService.handoffsFromDeliverable(
       { workspaceId, memberId: agentMemberId },
       { callerHandle, deliverable, callChain },
+    );
+    app.log.info(
+      {
+        workspaceId,
+        callerHandle,
+        callChain,
+        knownHandleCount: result.knownHandleCount,
+        mentions: result.mentions,
+        attempts: result.attempts,
+      },
+      "handoff hook: deliverable processed",
     );
   });
   // #170 Slack-native: bridge the fleet into the customer's Slack. The service translates inbound Slack

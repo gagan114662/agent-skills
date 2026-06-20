@@ -192,18 +192,19 @@ describe("agent-registry/service — call (governed + observable A2A)", () => {
 describe("agent-registry/service — handoffsFromDeliverable (#417)", () => {
   it("launches one teammate @mentioned in a deliverable, with its primary capability + appended chain", async () => {
     const { service, dispatch, observed } = makeService();
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "scout",
       deliverable: "Audit done. @quill please draft the launch post.",
       callChain: ["scout"],
     });
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0]!.allowed).toBe(true);
-    expect(decisions[0]!.record.targetHandle).toBe("quill");
+    expect(result.enabled).toBe(true);
+    expect(result.mentions).toEqual(["quill"]);
+    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts[0]!.allowed).toBe(true);
+    expect(result.attempts[0]!.dispatched).toBe(true);
+    expect(result.attempts[0]!.target).toBe("quill");
     // quill's PRIMARY capability is the first in its contract.
-    expect(decisions[0]!.record.capability).toBe("content.draft_article");
-    // depth reflects the parsed chain length (one hop already taken).
-    expect(decisions[0]!.record.depth).toBe(1);
+    expect(result.attempts[0]!.capability).toBe("content.draft_article");
     // dispatch saw the appended chain so the NEXT hop is depth/cycle-aware.
     expect(dispatch).toHaveBeenCalledWith(
       OWNER,
@@ -214,58 +215,62 @@ describe("agent-registry/service — handoffsFromDeliverable (#417)", () => {
 
   it("ignores a self-mention (an agent never hands off to itself)", async () => {
     const { service, dispatch } = makeService();
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "scout",
       deliverable: "Note to self: @scout keep going.",
       callChain: ["scout"],
     });
-    expect(decisions).toEqual([]);
+    expect(result.mentions).toEqual([]);
+    expect(result.attempts).toEqual([]);
     expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("skips a target already on the call chain (loop-safe)", async () => {
     const { service, dispatch } = makeService();
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "quill",
       deliverable: "@scout your turn again.",
       callChain: ["scout", "quill"],
     });
-    expect(decisions).toEqual([]);
+    expect(result.mentions).toEqual([]);
+    expect(result.attempts).toEqual([]);
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("returns [] when the feature is disabled (default-OFF, byte-for-byte unchanged)", async () => {
+  it("is disabled (no attempts) when the feature is off (default-OFF, byte-for-byte unchanged)", async () => {
     const { service, dispatch } = makeService({ caps: () => caps({ enabled: false }) });
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "scout",
       deliverable: "@quill draft this",
       callChain: ["scout"],
     });
-    expect(decisions).toEqual([]);
+    expect(result.enabled).toBe(false);
+    expect(result.attempts).toEqual([]);
     expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("launches multiple distinct teammates in first-seen order", async () => {
     const { service } = makeService();
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "scout",
       deliverable: "@quill draft it then @echo amplify it.",
       callChain: ["scout"],
     });
-    expect(decisions.map((d) => d.record.targetHandle)).toEqual(["quill", "echo"]);
-    expect(decisions.every((d) => d.allowed)).toBe(true);
+    expect(result.attempts.map((a) => a.target)).toEqual(["quill", "echo"]);
+    expect(result.attempts.every((a) => a.allowed && a.dispatched)).toBe(true);
   });
 
-  it("returns the denied decision (observable) when a hop is denied, without throwing", async () => {
-    // A deep chain (depth >= cap) makes the hop deny — but it's still returned, never invisible.
+  it("reports a denied hop (observable) when a hop is denied, without throwing", async () => {
+    // A deep chain (depth >= cap) makes the hop deny — but it's still reported, never invisible.
     const { service } = makeService();
-    const decisions = await service.handoffsFromDeliverable(OWNER, {
+    const result = await service.handoffsFromDeliverable(OWNER, {
       callerHandle: "comet",
       deliverable: "@quill take it from here",
       callChain: ["scout", "echo", "comet"], // depth 3 >= default cap
     });
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0]!.allowed).toBe(false);
-    expect(decisions[0]!.record.status).toBe("denied");
+    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts[0]!.allowed).toBe(false);
+    expect(result.attempts[0]!.dispatched).toBe(false);
+    expect(result.attempts[0]!.reason).toMatch(/depth/i);
   });
 });

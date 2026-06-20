@@ -157,25 +157,36 @@ export class AgentRegistryService {
   async handoffsFromDeliverable(
     identity: AgentRegistryIdentity,
     input: { callerHandle: string; deliverable: string; callChain: readonly string[] },
-  ): Promise<A2ACallDecision[]> {
+  ): Promise<DeliverableHandoffResult> {
     const { registry, caps } = await this.registryFor(identity.workspaceId);
-    if (!caps.enabled) return [];
+    if (!caps.enabled) {
+      return { enabled: false, knownHandleCount: 0, mentions: [], attempts: [] };
+    }
 
     const caller = input.callerHandle.trim().replace(/^@/, "").toLowerCase();
     const onChain = new Set(input.callChain.map((h) => h.toLowerCase()));
     const knownHandles = registry.entries.map((e) => e.contract.handle);
 
-    const targets = extractFleetMentions(input.deliverable, knownHandles).filter(
+    const mentions = extractFleetMentions(input.deliverable, knownHandles).filter(
       (h) => h !== caller && !onChain.has(h),
     );
 
-    const decisions: A2ACallDecision[] = [];
-    for (const target of targets) {
+    const attempts: HandoffAttempt[] = [];
+    for (const target of mentions) {
       // The target's PRIMARY (first-advertised) capability. Skip a target absent from the registry or
       // with no advertised capability — there is nothing well-formed to request.
       const entry = registry.findEntry(target);
       const capability = entry?.contract.capabilities[0];
-      if (!capability) continue;
+      if (!capability) {
+        attempts.push({
+          target,
+          capability: null,
+          allowed: false,
+          dispatched: false,
+          reason: "target advertises no capability",
+        });
+        continue;
+      }
 
       const result = await this.call(identity, {
         callerHandle: caller,
@@ -184,8 +195,39 @@ export class AgentRegistryService {
         task: input.deliverable,
         callChain: input.callChain,
       });
-      if (result.decision) decisions.push(result.decision);
+      attempts.push({
+        target,
+        capability,
+        allowed: result.decision?.allowed ?? false,
+        dispatched: result.ok,
+        reason: result.decision?.record.reason ?? (result.ok ? "allowed" : "unknown"),
+        error: result.ok ? undefined : result.error,
+      });
     }
-    return decisions;
+    return { enabled: true, knownHandleCount: knownHandles.length, mentions, attempts };
   }
+}
+
+/** One attempted handoff to a mentioned teammate (allowed/denied + whether the launch dispatched) (#417). */
+export interface HandoffAttempt {
+  target: string;
+  capability: string | null;
+  allowed: boolean;
+  /** Whether the governed launch actually dispatched (`call().ok`) — false when denied OR the launch failed. */
+  dispatched: boolean;
+  reason: string;
+  error?: string;
+}
+
+/**
+ * Diagnostic result of {@link AgentRegistryService.handoffsFromDeliverable} (#417) — observable so the
+ * deliverable-handoff path is never a silent no-op. `enabled`/`knownHandleCount`/`mentions` explain WHY
+ * there were no attempts (feature off, empty registry, or no fleet @mention); `attempts` explains each
+ * launch outcome (denied + reason, or dispatched).
+ */
+export interface DeliverableHandoffResult {
+  enabled: boolean;
+  knownHandleCount: number;
+  mentions: string[];
+  attempts: HandoffAttempt[];
 }
