@@ -266,6 +266,34 @@ describe("store bootstrap + realtime", () => {
     expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1", "m2"]);
   });
 
+  it("refreshChannelMessages upserts fetched messages without dropping a live arrival (#419)", async () => {
+    const store = createStore(env.deps);
+    await store.bootstrap(); // c1 has [m1]
+
+    // A realtime message lands optimistically (the primary path).
+    env.rt.fire({ type: "message", message: msg({ id: "live", channelId: "c1", body: "live arrival" }) });
+    expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1", "live"]);
+
+    // The poll fallback re-fetches and returns the authoritative list (which now also includes m1, plus an edit
+    // of m1). The upsert must merge — never clobber the not-yet-persisted "live" message.
+    (env.deps.api.listMessages as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      msg({ id: "m1", body: "edited" }),
+    ]);
+    await store.refreshChannelMessages("c1");
+
+    const list = store.getState().messagesByChannel.c1 ?? [];
+    expect(list.map((m) => m.id)).toEqual(["m1", "live"]);
+    expect(list.find((m) => m.id === "m1")?.body).toBe("edited"); // the refetch updated m1 in place
+  });
+
+  it("refreshChannelMessages swallows a fetch error (best-effort fallback) (#419)", async () => {
+    const store = createStore(env.deps);
+    await store.bootstrap();
+    (env.deps.api.listMessages as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("network"));
+    await expect(store.refreshChannelMessages("c1")).resolves.toBeUndefined();
+    expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1"]);
+  });
+
   it("fans realtime events out to onRealtimeEvent subscribers and stops on unsubscribe (#362)", async () => {
     const store = createStore(env.deps);
     const seen: ServerEvent[] = [];

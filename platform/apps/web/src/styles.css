@@ -727,6 +727,8 @@ select:focus-visible {
      overflow and becomes the single scroll region, with the composer pinned beneath it. */
   min-height: 0;
   background: var(--bg);
+  /* #419: anchor the floating "new messages" pill to the bottom of the feed (just above the composer). */
+  position: relative;
 }
 .pane--empty {
   align-items: center;
@@ -765,6 +767,27 @@ select:focus-visible {
 .messagelist__empty {
   color: var(--text-faint);
   margin: auto;
+}
+/* #419: the "new messages ↓" pill — shown only when a reader has scrolled up and fresh messages arrived. It
+   floats centered just above the composer; clicking it jumps the feed to the newest message. */
+.messagelist__newpill {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent, var(--text));
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.messagelist__newpill:hover {
+  filter: brightness(1.05);
 }
 
 .message {

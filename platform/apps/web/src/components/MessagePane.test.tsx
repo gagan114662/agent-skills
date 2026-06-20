@@ -32,6 +32,50 @@ describe("MessagePane", () => {
     await waitFor(() => expect(screen.getByText("live update")).toBeInTheDocument());
   });
 
+  // #419: a reader pinned to the bottom auto-follows a new agent message — no pill, the message is just there.
+  it("auto-follows a new message when the reader is at the bottom (no pill)", async () => {
+    const { store, rt } = renderWithStore(<MessagePane />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    await act(async () => {
+      rt.fire({ type: "message", message: makeMessage({ id: "m2", authorMemberId: "ag1", body: "agent reply" }) });
+    });
+
+    await waitFor(() => expect(screen.getByText("agent reply")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /new message/i })).not.toBeInTheDocument();
+  });
+
+  // #419: a reader who scrolled UP into history is NOT yanked down — a "new messages" pill appears instead, and
+  // clicking it jumps to the newest message and clears the pill. This is the perception fix for "looks dead".
+  it("shows a 'new messages' pill when a message arrives while scrolled up, and clears it on click", async () => {
+    const { store, rt, container } = renderWithStore(<MessagePane />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    // Stub the scroller geometry as "scrolled up" and fire a scroll so the pane records it.
+    const list = container.querySelector(".messagelist") as HTMLElement;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 120 });
+    list.scrollTop = 0; // distance from bottom = 880 → not near bottom
+    await act(async () => {
+      list.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    // An agent (not the viewer) posts while the viewer is reading history.
+    await act(async () => {
+      rt.fire({ type: "message", message: makeMessage({ id: "m2", authorMemberId: "ag1", body: "scrolled-up reply" }) });
+    });
+
+    const pill = await screen.findByRole("button", { name: /1 new message/i });
+    expect(pill).toBeInTheDocument();
+
+    await userEvent.click(pill);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /new message/i })).not.toBeInTheDocument(),
+    );
+  });
+
   it("keeps thread replies out of the channel unless they were also sent to it", async () => {
     const { store } = renderWithStore(<MessagePane />, {
       messages: [
