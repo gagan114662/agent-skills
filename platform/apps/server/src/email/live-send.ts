@@ -1,4 +1,9 @@
 import { EMAIL_LIVE_SEND_ACTION } from "../approvals/policy.js";
+import {
+  decideAutonomousSend,
+  type AutonomousSendDecision,
+  type AutonomousSendInput,
+} from "../acquisition/autonomous-send.js";
 import type { EmailDeliverabilityConfig } from "../config/schema.js";
 import type { DeliverabilityConfirmation } from "./deliverability.js";
 import type { SendBudgetDecision } from "./rate-cap.js";
@@ -90,5 +95,54 @@ export function decidePostmarkLiveSend(req: LiveSendRequest): LiveSendVerdict {
     // The structural invariant: NEVER proceed without both eligibility AND an owner approval id.
     proceed: eligible && req.approvalRequestId !== null && req.approvalRequestId.length > 0,
     blockers,
+  };
+}
+
+/**
+ * The composed send decision (issue #403, ADR-0403): consult the autonomous-send layer FIRST, fall back to the
+ * existing #13 live-send gate. This is the single seam the send path calls so the autonomous layer is an opt-in
+ * layer ON TOP of the #13 path, never a replacement for it.
+ */
+export interface ComposedSendVerdict {
+  /** `send_autonomous` ⇒ proceed to the (still dry-run unless a real ESP is wired) sender WITHOUT raising #13. */
+  /** `gate_13` ⇒ the existing #13 path (`liveSend` carries that verdict). `blocked` ⇒ drop + record. */
+  mode: "send_autonomous" | "gate_13" | "blocked";
+  /** The autonomous-layer decision (always present — it is consulted first). */
+  autonomous: AutonomousSendDecision;
+  /** The #13 live-send verdict — present ONLY on the `gate_13` path (the autonomous path skips it). */
+  liveSend: LiveSendVerdict | null;
+  reason: string;
+}
+
+/**
+ * Decide how an outreach send proceeds, composing the autonomous-send layer (#403) with the #13 live-send gate
+ * (#268). The autonomous layer is consulted FIRST:
+ *
+ *  - `send_autonomous` ⇒ no #13 — proceed straight to the (dry-run unless a real ESP is wired) sender. The hard
+ *    pre-committed caps + compliance already cleared it; the human owns the cap, not this message.
+ *  - `blocked` ⇒ drop + record (a compliance/suppression fail — never autonomous, never escalated).
+ *  - `gate_13` ⇒ fall back to the existing `decidePostmarkLiveSend` #13 always-gate (over-cap escalation OR the
+ *    default-OFF byte-for-byte path: when autonomous send is disabled EVERY send lands here, exactly as today).
+ *
+ * Total + pure: it just sequences two pure decisions. When the autonomous layer is off, this is byte-for-byte
+ * the #13 path. The #13 path is NEVER removed — autonomous is strictly additive on top.
+ */
+export function decideComposedSend(
+  autonomousInput: AutonomousSendInput,
+  liveSendReq: LiveSendRequest,
+): ComposedSendVerdict {
+  const autonomous = decideAutonomousSend(autonomousInput);
+  if (autonomous.action === "send_autonomous") {
+    return { mode: "send_autonomous", autonomous, liveSend: null, reason: autonomous.reason };
+  }
+  if (autonomous.action === "blocked") {
+    return { mode: "blocked", autonomous, liveSend: null, reason: autonomous.reason };
+  }
+  // `gate_13` — fall back to the existing #13 live-send gate (the today's-behavior path when autonomous is off).
+  return {
+    mode: "gate_13",
+    autonomous,
+    liveSend: decidePostmarkLiveSend(liveSendReq),
+    reason: autonomous.reason,
   };
 }

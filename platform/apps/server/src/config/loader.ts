@@ -667,6 +667,23 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(attributionOwner ? { ownerWorkspaceId: attributionOwner } : {}),
     };
   }
+  // #403 autonomous send within hard caps: let the deployment env opt the owner workspace into sending
+  // outreach WITHOUT a human #13 yes per message, bounded by a pre-committed window + hard daily cap. Hard
+  // default stays OFF (var unset → no block → every send is a per-send #13 human gate). Owner-workspace-first:
+  // the optional owner-id var names the only workspace it activates for. The caps are the never-exceed line;
+  // only a human (raising these vars) lets more through. Caps unset/zero ⇒ nothing sends autonomously.
+  const autonomousSendEnabled = env.RELOAD_AUTONOMOUS_SEND_ENABLED;
+  if (autonomousSendEnabled !== undefined) {
+    const asOwner = env.RELOAD_AUTONOMOUS_SEND_OWNER_WORKSPACE_ID?.trim();
+    const asWindowCap = Number.parseInt(env.RELOAD_AUTONOMOUS_SEND_WINDOW_CAP ?? "", 10);
+    const asDailyCap = Number.parseInt(env.RELOAD_AUTONOMOUS_SEND_HARD_DAILY_CAP ?? "", 10);
+    raw.autonomousSend = {
+      enabled: autonomousSendEnabled === "true" || autonomousSendEnabled === "1",
+      ...(asOwner ? { ownerWorkspaceId: asOwner } : {}),
+      ...(Number.isFinite(asWindowCap) && asWindowCap >= 0 ? { windowCap: asWindowCap } : {}),
+      ...(Number.isFinite(asDailyCap) && asDailyCap >= 0 ? { hardDailyCap: asDailyCap } : {}),
+    };
+  }
   // #389 customer-facing identity: let the deployment env opt the owner workspace into presenting a stable
   // "face that sells" (display name + avatar + optional voice profile + tagline) on customer-facing comms,
   // without a managed.toml. Hard default stays OFF (var unset → no block → no identity is presented).
