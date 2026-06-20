@@ -54,7 +54,12 @@ primary_region = "yyz"
   # A paid plan's per-tenant managed [scale] override replaces these. Set RELOAD_TRIAL_ENABLED=false to
   # restore the pre-#147 unlimited-by-default behavior.
   RELOAD_TRIAL_ENABLED = "true"
-  RELOAD_TRIAL_TENANT_CONCURRENCY = "1"
+  # #417 multi-agent teams: a team (scout→quill→echo …) must run more than one agent at a time, and the #71
+  # admission in-flight counter is in-memory — a failed/reaped session that doesn't release() leaks a slot
+  # (#430), so a cap of 1 let a single failure brick the whole tenant ("429 tenant_capacity" for every
+  # later launch). Raised 1→4 so a small agent team runs concurrently AND a single leak no longer blocks it.
+  # (Was also set as a fly secret for the immediate prod unblock; persisted here so deploys don't revert it.)
+  RELOAD_TRIAL_TENANT_CONCURRENCY = "4"
   RELOAD_TRIAL_BUDGET_CENTS = "500"
   # #98 billing opt-in: present the [billing] config section so the per-tenant checkout gate is open
   # (otherwise /pricing → "Checkout isn't switched on for this workspace yet" → 409). The PROVIDER is
@@ -112,6 +117,8 @@ primary_region = "yyz"
 [[vm]]
   size = "shared-cpu-1x"
   # Bumped from 512mb (#68): a real in-host `claude-code` session needs headroom beyond the API
-  # server itself. Concurrency is still capped by the #71 admission chokepoint; scale up if a tenant's
-  # budget allows more parallel sessions.
-  memory = "1024mb"
+  # server itself. #417: bumped again 1024→2048mb so a multi-agent TEAM (concurrency 4 above) can run
+  # several in-host Opus sessions at once without OOM. Concurrency is still capped by the #71 admission
+  # chokepoint; scale memory + that cap together for larger teams. (Persisted here so a deploy doesn't
+  # revert the live `fly scale memory 2048`.)
+  memory = "2048mb"
