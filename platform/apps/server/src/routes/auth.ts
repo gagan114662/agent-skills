@@ -13,15 +13,37 @@ import {
   deleteSession,
 } from "../db/repositories/auth.js";
 import { getWorkspaceBySlug, createWorkspace } from "../db/repositories/workspaces.js";
+import { parseEnvOrigins } from "../http/cors.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
+/**
+ * #418 — Decide the `SameSite`/`Secure` attributes for the `rid` session cookie based on the
+ * deployment shape. In the split deploy (#108) the web console (https://ipop.ai) bootstraps by
+ * calling GET /me on a *different origin* (https://api.ipop.ai); that is a cross-site credentialed
+ * fetch, and the browser only attaches the cookie when it was set `SameSite=None; Secure`. A `Lax`
+ * cookie is silently dropped on cross-site XHR/fetch, so bootstrap() 401s and AuthGate redirects
+ * to /start. Cross-site presence is signalled by RELOAD_WEB_ORIGIN naming a separate web origin
+ * (the same signal CORS keys off). `None` is invalid without `Secure`, so we force Secure whenever
+ * we go cross-site. Same-origin / local dev keeps the original `Lax` + NODE_ENV-gated Secure so the
+ * cookie still sets over plain http during development.
+ */
+export function resolveSessionCookieOptions(env: NodeJS.ProcessEnv = process.env): {
+  sameSite: "none" | "lax";
+  secure: boolean;
+} {
+  const crossSite = parseEnvOrigins(env).length > 0;
+  if (crossSite) return { sameSite: "none", secure: true };
+  return { sameSite: "lax", secure: env.NODE_ENV === "production" };
+}
+
 function setSessionCookie(reply: FastifyReply, raw: string): void {
+  const { sameSite, secure } = resolveSessionCookieOptions();
   reply.setCookie(SESSION_COOKIE, raw, {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite,
     path: "/",
-    secure: process.env.NODE_ENV === "production",
+    secure,
     maxAge: SESSION_TTL_MS / 1000,
   });
 }

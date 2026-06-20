@@ -8,7 +8,31 @@ ipop.ai is a **split deployment** (#108):
 
 The web talks to the API cross-origin; the browser sends the httpOnly `rid` session cookie because the
 server sets it `SameSite=None; Secure` and allow-lists `https://ipop.ai` for credentialed CORS
-(`RELOAD_WEB_ORIGIN` in `fly.toml`).
+(`RELOAD_WEB_ORIGIN` in `fly.toml`). The cookie attributes are decided by `resolveSessionCookieOptions`
+(`apps/server/src/routes/auth.ts`, #418): when `RELOAD_WEB_ORIGIN` names a separate web origin the cookie
+goes `SameSite=None; Secure` (cross-site); otherwise it stays `SameSite=Lax` so it still sets over plain
+http in local same-origin dev. A `Lax` cookie is **silently dropped** on the SPA's cross-site `fetch`, so
+before #418 `bootstrap()` GET /me 401'd and AuthGate redirected to `/start`.
+
+### Automated login for headless QA (#418)
+
+To dogfood the **authenticated** app headlessly (not just public pages), log in programmatically and
+reuse the cookie jar — the `SameSite=None; Secure` cookie now attaches on cross-site fetch:
+
+```sh
+# 1. Log in (stores the rid cookie in a jar). Use a synthetic QA account, never a real customer.
+curl -sS -c /tmp/ipop-qa.cookies -X POST https://api.ipop.ai/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"<qa-account>","password":"<qa-password>"}'
+
+# 2. Confirm the session resolves cross-site exactly as the SPA's bootstrap() does.
+curl -sS -b /tmp/ipop-qa.cookies https://api.ipop.ai/me   # → the QA identity, not 401
+```
+
+For browser-driven QA, seed the same `rid` cookie into the automation context for `api.ipop.ai`
+(domain-scoped, `Secure`, `SameSite=None`) before loading `https://ipop.ai`; AuthGate then reaches
+`phase=ready` instead of redirecting. The existing #171 self-QA loop (`apps/server/src/selfqa/`) drives
+the real sign-in form and needs no cookie injection.
 
 Because the two halves deploy on **independent pipelines**, they can drift: a stale web bundle can run
 against a newer API (or a preview bundle can be mistaken for prod). #366 (ADR-0366) makes that drift

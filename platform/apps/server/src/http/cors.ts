@@ -18,10 +18,12 @@ export function parseEnvOrigins(env: NodeJS.ProcessEnv = process.env): string[] 
 
 /**
  * Dependency-free CORS for the split deployment (#108): the web console (https://ipop.ai) calls the
- * API (https://api.ipop.ai). Same registrable site — so the `sameSite: "lax"` session cookie is sent
- * — but a different *origin*, so the browser still needs explicit CORS headers to use the response of
- * a credentialed `fetch`. Installed directly on the root like {@link registerMaintenance} so it
- * covers every route (a registered plugin would encapsulate the hook to its own scope).
+ * API (https://api.ipop.ai). A different *origin*, so the browser needs explicit CORS headers to use
+ * the response of a credentialed `fetch`. NOTE (#418): cross-*origin* fetch is treated as cross-site
+ * for cookie attachment regardless of the shared registrable site, so the session cookie must be set
+ * `SameSite=None; Secure` (see {@link parseEnvOrigins} usage in routes/auth.ts) — a `Lax` cookie is
+ * silently dropped here. Installed directly on the root like {@link registerMaintenance} so it covers
+ * every route (a registered plugin would encapsulate the hook to its own scope).
  *
  * No-op when no origins are configured, preserving the same-origin/local-dev behavior. Credentialed
  * CORS forbids a wildcard origin, so we reflect the request `Origin` only when it's allow-listed and
