@@ -131,6 +131,21 @@ export interface ReceiptStore {
   list(workspaceId: string, opts?: { ideaId?: string }): Promise<OutreachReceiptRecord[]>;
 }
 
+/**
+ * Optional trackable pay-link minter (Leads Centre GAP 3, ADR-0401). When wired AND `caps.payLinkInOutreach`
+ * is on, the service mints an inbound-only Stripe collection link for the prospect (a #386-tracked URL) and
+ * the composer appends a single "Start here: <url>" line to the body. Minting a collection link is NOT
+ * money-out (a charge/payout stays #13-gated); the SEND still parks at the #13 gate. Returns `null` to mean
+ * "no pay link available" — the body is then byte-for-byte unchanged. Best-effort: a mint failure must never
+ * break composition (the body falls back to no link).
+ */
+export interface OutreachPayLinkMinter {
+  mintForProspect(
+    workspaceId: string,
+    input: { leadOrArtifactId: string; channel: OutreachChannel; planId: string },
+  ): Promise<{ url: string } | null>;
+}
+
 /** The #13 approval seam (reuses the approvals policy + queue; recorded-only until a human approves). */
 export interface OutreachApprovalGate {
   submit(input: {
@@ -149,6 +164,10 @@ export interface OutreachDeps {
   approvals: OutreachApprovalGate;
   /** Optional #222 pipeline advancer — absent ⇒ receipts are still recorded, the funnel just isn't advanced. */
   pipeline?: PipelineAdvancer;
+  /** Optional GAP 3 pay-link minter — absent OR flag-off ⇒ no pay link is appended (body unchanged). */
+  payLinks?: OutreachPayLinkMinter;
+  /** Plan id a pay link collects against when `caps.payLinkInOutreach` is on (defaults to "pro"). */
+  payLinkPlanId?: string;
   connectedAccounts: (workspaceId: string) => Promise<ReadonlySet<ServiceKind>>;
   caps: (workspaceId: string) => OutreachCaps;
   now?: () => Date;
@@ -222,6 +241,31 @@ export class OutreachService {
     return set;
   }
 
+  /**
+   * Resolve the trackable pay-link URL to append to the body (GAP 3), or `undefined` when none should be
+   * appended. Gated by `caps.payLinkInOutreach` AND a wired minter — default-OFF ⇒ no link, body unchanged.
+   * The lead/artifact id is the structural prospect key (never read text). Best-effort: a mint failure or a
+   * `null` return yields `undefined` so composition is never broken by the pay-link path.
+   */
+  private async resolvePayLinkUrl(
+    workspaceId: string,
+    prospectKey: string,
+    channel: OutreachChannel,
+  ): Promise<string | undefined> {
+    const caps = this.deps.caps(workspaceId);
+    if (!caps.payLinkInOutreach || !this.deps.payLinks) return undefined;
+    try {
+      const link = await this.deps.payLinks.mintForProspect(workspaceId, {
+        leadOrArtifactId: prospectKey,
+        channel,
+        planId: this.deps.payLinkPlanId ?? "pro",
+      });
+      return link?.url;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async resolve(
     workspaceId: string,
     prospectKey: string,
@@ -258,6 +302,7 @@ export class OutreachService {
     const channel: OutreachChannel =
       selectChannel(signalKinds, available) ?? channelPreference(signalKinds)[0] ?? "email";
     const variant = selectVariant(input.prospectKey);
+    const payLinkUrl = await this.resolvePayLinkUrl(workspaceId, input.prospectKey, channel);
     const message = composeMessage({
       prospectKey: input.prospectKey,
       signalKinds,
@@ -265,6 +310,7 @@ export class OutreachService {
       variant,
       buyer: briefToBuyer(brief),
       productName: input.productName ?? "",
+      ...(payLinkUrl ? { payLinkUrl } : {}),
     });
     const gate = decideToolGate(channelTool(channel), {
       connectedAccounts: await this.deps.connectedAccounts(workspaceId),
@@ -307,6 +353,7 @@ export class OutreachService {
     const experimentKey = `${ideaId ?? "workspace"}:${channel}`;
     const signalKind = signalKinds[0] ?? null;
 
+    const payLinkUrl = await this.resolvePayLinkUrl(workspaceId, input.prospectKey, channel);
     const message = composeMessage({
       prospectKey: input.prospectKey,
       signalKinds,
@@ -314,6 +361,7 @@ export class OutreachService {
       variant,
       buyer: briefToBuyer(brief),
       productName: input.productName ?? "",
+      ...(payLinkUrl ? { payLinkUrl } : {}),
     });
 
     const connected = await this.deps.connectedAccounts(workspaceId);
