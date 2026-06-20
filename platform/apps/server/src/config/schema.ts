@@ -570,6 +570,29 @@ export const agentCollaborationSchema = z.object({
 });
 
 /**
+ * Autonomous work-cadence policy (#416, ADR-0416). The recurring tick that keeps the fleet working ON
+ * ipop.ai's own growth (a draft-only dogfood playbook) so the work doesn't stop after a single one-shot
+ * brief. Every field is optional and the master `enabled` defaults **OFF** AND **owner-workspace-first**
+ * (`ownerWorkspaceOnly: true`, mirrors `agentCollaboration`/`ventureFactory`); `intervalMs` defaults to 0
+ * so the timer is never even started — a deployment that sets nothing runs NO ticks (behavior unchanged).
+ * Enabling without naming `ownerWorkspaceId` runs for nobody (the safest default). `maxLaunchesPerDay` is a
+ * HARD per-workspace per-day launch cap (default 12). The cadence launches draft-only briefs through the
+ * EXISTING #13-gated path — it adds no new money/send authority.
+ */
+export const cadenceSchema = z.object({
+  /** Run the autonomous work cadence — default OFF (the fleet stays one-shot otherwise). */
+  enabled: z.boolean().optional(),
+  /** Restrict the cadence to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** Timer interval in ms — default 0 = OFF (the background loop is never started). */
+  intervalMs: z.number().int().nonnegative().optional(),
+  /** HARD per-workspace per-day launch cap — default 12 (conservative). */
+  maxLaunchesPerDay: z.number().int().positive().optional(),
+});
+
+/**
  * Agent→channel posting policy (#370, ADR-0370). Whether agent coordination output (a lead's plan on
  * kickoff, an A2A handoff status line, an inline task card, an @mention surfacing the #13 gate) is routed
  * into chat-channel messages so the coordination view (#354) fills like reload.chat. Every field is
@@ -1956,6 +1979,8 @@ export const settingsSchema = z.object({
   agentRegistry: agentRegistrySchema.optional(),
   /** Agent collaboration policy (#319): provision the subagent-spawn tool so leads can delegate (default OFF, owner-first). */
   agentCollaboration: agentCollaborationSchema.optional(),
+  /** Autonomous work-cadence policy (#416): the recurring dogfood-growth tick (default OFF, owner-first, capped). */
+  cadence: cadenceSchema.optional(),
   /** Agent→channel posting policy (#370): route agent coordination output into chat channels (default OFF, owner-first). */
   agentChannelPosting: agentChannelPostingSchema.optional(),
   /** Agent Garden policy (#284): browse the department fleet + enable/disable agents per workspace (default OFF, owner-first). */
@@ -2058,6 +2083,7 @@ export type SeoConfig = z.infer<typeof seoSchema>;
 export type AnalyticsConfig = z.infer<typeof analyticsSchema>;
 export type AgentRegistryConfig = z.infer<typeof agentRegistrySchema>;
 export type AgentCollaborationConfig = z.infer<typeof agentCollaborationSchema>;
+export type CadenceConfig = z.infer<typeof cadenceSchema>;
 export type AgentChannelPostingConfig = z.infer<typeof agentChannelPostingSchema>;
 export type GardenConfig = z.infer<typeof gardenSchema>;
 export type WorktreePoolConfig = z.infer<typeof worktreePoolSchema>;
@@ -2218,6 +2244,8 @@ export interface ResolvedConfig {
   agentRegistry: AgentRegistryConfig;
   /** Agent collaboration policy (#319). A partial whose hard defaults `resolveAgentCollaborationCaps` fills. */
   agentCollaboration: AgentCollaborationConfig;
+  /** Autonomous work-cadence policy (#416). A partial whose hard defaults `resolveCadenceCaps` fills. */
+  cadence: CadenceConfig;
   /** Agent→channel posting policy (#370). A partial whose hard defaults `resolveAgentChannelPostingCaps` fills. */
   agentChannelPosting: AgentChannelPostingConfig;
   /** Agent Garden policy (#284). A partial whose hard defaults `resolveGardenCaps` fills. */
@@ -2321,6 +2349,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   analytics: {},
   agentRegistry: {},
   agentCollaboration: {},
+  cadence: {},
   agentChannelPosting: {},
   garden: {},
   worktreePool: {},

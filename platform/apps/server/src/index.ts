@@ -61,6 +61,12 @@ app.ventureMemoryEngine.start(env.ventureMemory.intervalMs);
 // is config default-OFF + owner-workspace-first; nothing autonomous runs until a deployment opts in.
 app.ventureFactoryEngine.start(env.ventureFactory.intervalMs);
 
+// #416 autonomous work cadence: start the opt-in tick (RELOAD_CADENCE_INTERVAL_MS; default 0 = off) that
+// keeps the fleet working ON ipop.ai's own growth — one draft-only dogfood task per cycle. The cadence is
+// config default-OFF + owner-workspace-first + hard per-day capped; nothing autonomous runs until a
+// deployment opts in. Stopped on server close via buildApp.
+app.cadenceEngine.start(env.cadence.intervalMs);
+
 // #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
 // the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.

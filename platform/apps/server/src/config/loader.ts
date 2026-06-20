@@ -465,6 +465,39 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (agentCollaborationOwner) agentCollaboration.ownerWorkspaceId = agentCollaborationOwner;
     raw.agentCollaboration = agentCollaboration;
   }
+  // #416 autonomous work cadence: let the deployment env turn the recurring dogfood-growth tick on + pick
+  // the owner workspace + interval + per-day cap without a managed.toml (the owner workspace opts in first).
+  // Hard default stays OFF (vars unset → no block ⇒ the fleet stays one-shot; the timer is never started
+  // because `intervalMs` defaults to 0). The owner workspace reuses the established #258 marker
+  // (RELOAD_MARKETING_OWNER_WORKSPACE_ID, matching agentCollaboration/durableWorkflow); a dedicated
+  // RELOAD_CADENCE_OWNER_WORKSPACE_ID overrides it. The cadence is a model-spend amplifier (it launches
+  // sessions on a timer), so it stays owner-first — enabling without naming an owner runs for nobody. A
+  // managed layer wins as the lock.
+  const cadenceEnabled = env.RELOAD_CADENCE_ENABLED;
+  const cadenceOwner = env.RELOAD_CADENCE_OWNER_WORKSPACE_ID ?? mktOwner;
+  const cadenceInterval = env.RELOAD_CADENCE_INTERVAL_MS;
+  const cadenceMaxPerDay = env.RELOAD_CADENCE_MAX_PER_DAY;
+  if (
+    cadenceEnabled !== undefined ||
+    cadenceOwner ||
+    cadenceInterval !== undefined ||
+    cadenceMaxPerDay !== undefined
+  ) {
+    const cadence: Record<string, unknown> = {};
+    if (cadenceEnabled !== undefined) {
+      cadence.enabled = cadenceEnabled === "true" || cadenceEnabled === "1";
+    }
+    if (cadenceOwner) cadence.ownerWorkspaceId = cadenceOwner;
+    if (cadenceInterval !== undefined) {
+      const n = Number(cadenceInterval);
+      if (Number.isFinite(n) && n >= 0) cadence.intervalMs = Math.trunc(n);
+    }
+    if (cadenceMaxPerDay !== undefined) {
+      const n = Number(cadenceMaxPerDay);
+      if (Number.isFinite(n) && n > 0) cadence.maxLaunchesPerDay = Math.trunc(n);
+    }
+    raw.cadence = cadence;
+  }
   // #284 agent Garden: let the deployment env turn the per-workspace enable/disable surface on + pick the
   // owner workspace without a managed.toml (the owner workspace opts in first). Hard default stays OFF (vars
   // unset → no block ⇒ a read-only catalog, no toggles take effect). Enabling an `external_send` agent stays
