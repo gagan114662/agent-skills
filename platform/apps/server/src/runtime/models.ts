@@ -102,6 +102,27 @@ function isLaunchable(model: string | null | undefined, env: NodeJS.ProcessEnv):
 }
 
 /**
+ * THE managed-model clamp (#261). A single, pure, total function: given a `requested` model, the set
+ * of `known` (launchable) models, and the managed `fallback` default, return a model that is ALWAYS
+ * known-good. The model is MANAGED — the owner never picks one and never sees "model unavailable":
+ *   - a `requested` value that is present in `known` is kept (a valid pick is never second-guessed),
+ *   - anything else — empty, null, whitespace, or an unknown/removed/unavailable id (the
+ *     `claude-fable-5` class that #292/#242 surfaced as a mid-run crash) — clamps to `fallback`.
+ *
+ * No clock, no IO, no env read — `known`/`fallback` are passed in so the helper is trivially testable
+ * and reusable. {@link resolveLaunchModel} applies this clamp per precedence candidate at the runtime
+ * boundary; this is the unit the "never broken" guarantee is proven on.
+ */
+export function resolveManagedModel(
+  requested: string | null | undefined,
+  known: readonly string[],
+  fallback: string,
+): string {
+  const m = (requested ?? "").trim();
+  return m.length > 0 && known.includes(m) ? m : fallback;
+}
+
+/**
  * Config-save preflight (the admin/dev override only): assert a model is launchable, else throw
  * {@link ModelUnavailableError}. Pure + total. This is the ONE place an unservable id surfaces an
  * actionable error to a human who explicitly typed it. The RUNTIME boundary never calls this — see
@@ -125,14 +146,19 @@ export function assertModelLaunchable(model: string, env: NodeJS.ProcessEnv = pr
  *
  * This is the fix for the bug where an empty value left `ANTHROPIC_MODEL` absent and the harness spawned
  * with no `--model`. Unlike {@link assertModelLaunchable} (which throws for the admin save path), the
- * runtime never throws on a model.
+ * runtime never throws on a model. The per-candidate guarantee is the pure {@link resolveManagedModel}
+ * clamp (#261): each candidate is clamped against the known set, and the FIRST that survives the clamp
+ * (i.e. clamps to itself, not the managed default) wins; if none does, the managed default is returned.
  */
 export function resolveLaunchModel(
   input: { sessionPinned?: string | null; workspacePicked?: string | null; envDefault?: string | null },
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const known = knownModels(env);
   for (const candidate of [input.sessionPinned, input.workspacePicked, input.envDefault]) {
-    if (isLaunchable(candidate, env)) return (candidate as string).trim();
+    if (isLaunchable(candidate, env)) {
+      return resolveManagedModel(candidate, known, DEFAULT_AGENT_MODEL);
+    }
   }
-  return DEFAULT_AGENT_MODEL;
+  return resolveManagedModel(null, known, DEFAULT_AGENT_MODEL);
 }

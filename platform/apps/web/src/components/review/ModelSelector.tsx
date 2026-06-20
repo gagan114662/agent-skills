@@ -1,11 +1,17 @@
 /**
  * Model / provider / effort / Auto selection control (#52).
  *
+ * NOTE (#261 — managed model, no UX): the model is MANAGED — the owner never picks one and never sees a
+ * "model unavailable" error. The server clamps every launch to a known-good default
+ * ({@link resolveManagedModel} / `resolveLaunchModel` in `runtime/models.ts`). Accordingly this picker is
+ * NO LONGER rendered in the product flow (it was removed from `ReviewPanel`). The component + its types +
+ * {@link DEFAULT_SELECTION} are kept exported (still imported by tests, and available for an
+ * operator/dev-only surface) but are not part of the owner's experience. {@link ModelBadge} below is a
+ * read-only display of what a session ran with and remains in the flow.
+ *
  * A small, fully-controlled presentational widget: it collects a {@link ModelSelection} (provider,
- * model, effort tier, and single-vs-Auto mode) that a session-launch flow passes to
- * `api.review.launchSession`. It holds no state and talks to no store, so it drops into any launch
- * surface and is trivial to test. The server validates the choice against the tenant's policy and
- * rejects a disallowed selection with a 400 — this widget only gathers intent.
+ * model, effort tier, and single-vs-Auto mode). It holds no state and talks to no store. When used, the
+ * server validates the choice against the tenant's policy and rejects a disallowed selection with a 400.
  */
 import type { AgentSessionSummary, EffortLevel, ModelSelection, ProviderKind, SessionMode } from "../../api/types.js";
 

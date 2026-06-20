@@ -48,6 +48,16 @@ describe("ReviewPanel (#51 git/PR/review surface)", () => {
     expect(screen.queryByText("Select a session to review its diff.")).not.toBeInTheDocument();
   });
 
+  it("does not render a model picker — the model is managed (#261), the owner never configures one", async () => {
+    await openReviewTab({ sessions: [SESSION] });
+    // The "New session model" launch control + the ModelSelector group are gone from the product flow:
+    // the server always resolves a known-good managed default, so there is nothing for the owner to pick.
+    expect(screen.queryByText("New session model")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Model selection" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Provider")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+  });
+
   it("opens a pull request for the active session and lists it", async () => {
     await openReviewTab({ sessions: [SESSION] });
     await userEvent.click(await screen.findByRole("button", { name: /agent\/s1/ }));
