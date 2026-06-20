@@ -114,6 +114,78 @@ describe("SubagentService.invoke (#59)", () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  describe("systemAuthorized (#417 a2a path — bypasses the #9 channel-RBAC head only)", () => {
+    it("launches even when the invoker lacks propagate, the persona lacks channel write, and there is no mention", async () => {
+      // All three RBAC-head checks would normally reject: invoker has no propagate, persona has no write,
+      // and the persona is not mentioned on the message. systemAuthorized:true skips that head (the a2a
+      // call was already governed by decideA2ACall) and reaches launcher.launch.
+      const { service, launch } = makeService({
+        channelCapabilityFor: vi.fn(async () => null), // neither invoker nor persona has any capability
+        mentionedMemberIds: vi.fn().mockResolvedValue([]), // persona is NOT mentioned
+      });
+      const res = await service.invoke(IDENTITY, {
+        personaId: "per_1",
+        channelId: "ch_1",
+        task: "draft the launch post",
+        messageId: "msg_handoff",
+        systemAuthorized: true,
+      });
+      expect(res).toEqual({ ok: true, sessionId: "sess_1" });
+      expect(launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: "ws_1",
+          channelId: "ch_1",
+          agentMemberId: "mem_reviewer",
+          createdByMemberId: "mem_human",
+          task: "draft the launch post",
+          parentMessageId: "msg_handoff",
+        }),
+      );
+    });
+
+    it("still 404s a cross-workspace channel even when systemAuthorized (workspace sanity is kept)", async () => {
+      const { service, launch } = makeService({ getChannelWorkspace: vi.fn().mockResolvedValue("ws_other") });
+      const res = await service.invoke(IDENTITY, {
+        personaId: "per_1",
+        channelId: "ch_x",
+        task: "x",
+        systemAuthorized: true,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.code).toBe(404);
+      expect(launch).not.toHaveBeenCalled();
+    });
+
+    it("still 404s an absent/cross-workspace persona even when systemAuthorized (persona-exists is kept)", async () => {
+      const { service, launch } = makeService({ getPersona: vi.fn().mockResolvedValue(undefined) });
+      const res = await service.invoke(IDENTITY, {
+        personaId: "per_x",
+        channelId: "ch_1",
+        task: "x",
+        systemAuthorized: true,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.code).toBe(404);
+      expect(launch).not.toHaveBeenCalled();
+    });
+
+    it("still enforces all three RBAC-head checks when systemAuthorized is falsy (default unchanged)", async () => {
+      const { service, launch } = makeService({
+        channelCapabilityFor: vi.fn(async () => null),
+        mentionedMemberIds: vi.fn().mockResolvedValue([]),
+      });
+      const res = await service.invoke(IDENTITY, {
+        personaId: "per_1",
+        channelId: "ch_1",
+        task: "x",
+        // systemAuthorized omitted ⇒ today's behavior
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.code).toBe(403); // invoker propagate check fires first
+      expect(launch).not.toHaveBeenCalled();
+    });
+  });
+
   it("narrows a tool request to the persona ceiling before launch (cannot widen)", async () => {
     const { service, launch } = makeService();
     await service.invoke(IDENTITY, {

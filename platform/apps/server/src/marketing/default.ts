@@ -268,7 +268,16 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         agentMemberId: p.agentMemberId,
         name: p.name,
       })),
-    invoke: (identity, input) => subagents.invoke(identity, input),
+    // #417: thread the a2a path's out-of-band authorization to the #59 gate (skips the channel-RBAC head
+    // only; the venture/admission gate inside the launcher still runs). Undefined for human @mentions.
+    invoke: (identity, input) =>
+      subagents.invoke(identity, {
+        personaId: input.personaId,
+        channelId: input.channelId,
+        task: input.task,
+        messageId: input.messageId,
+        systemAuthorized: input.systemAuthorized,
+      }),
     // #320: enrich the launched task with the workspace-context preamble so a briefed agent has the real
     // site URL + product context + brand voice on file instead of returning a placeholder. Default OFF and
     // owner-workspace-first (`shouldInjectWorkspaceContext`): a deployment that hasn't opted in returns the
@@ -407,6 +416,9 @@ export function createMarketingBriefService(sessionManager: SessionManager): Mar
         channelId: input.channelId,
         messageId: input.messageId,
         task: input.task,
+        // #417: a governed a2a handoff is authorized out-of-band; thread it so the #59 gate skips the
+        // human channel-RBAC head. Undefined for the human/owner brief path (unchanged).
+        systemAuthorized: input.systemAuthorized,
       }),
     notifyKickoff: async (input) => {
       await coordinationBridge.post(input.workspaceId, {

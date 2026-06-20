@@ -54,6 +54,31 @@ describe("#123 MarketingMentionService", () => {
     );
   });
 
+  it("#417 threads systemAuthorized through to the invoke gate (governed a2a handoff)", async () => {
+    const { deps, invoke } = baseDeps();
+    const svc = new MarketingMentionService(deps);
+    await svc.launch(identity, {
+      channelId: "c-seo",
+      messageId: "m-1",
+      task: "draft it",
+      systemAuthorized: true,
+    });
+    expect(invoke).toHaveBeenCalledWith(
+      identity,
+      expect.objectContaining({ personaId: "p-scout", systemAuthorized: true }),
+    );
+  });
+
+  it("#417 omits systemAuthorized by default (human @mention unchanged)", async () => {
+    const { deps, invoke } = baseDeps();
+    const svc = new MarketingMentionService(deps);
+    await svc.launch(identity, { channelId: "c-seo", messageId: "m-1", task: "audit homepage" });
+    expect(invoke).toHaveBeenCalledWith(
+      identity,
+      expect.objectContaining({ systemAuthorized: undefined }),
+    );
+  });
+
   it("#320 enriches the LAUNCHED task via enrichTask but records the ORIGINAL goal", async () => {
     const enrichTask = vi.fn(async (_ws: string, task: string) => `CONTEXT\n\nTask: ${task}`);
     const { deps, recordTask, invoke } = baseDeps({ enrichTask });

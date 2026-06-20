@@ -69,6 +69,16 @@ export interface SubagentInvokeInput {
   messageId?: string;
   /** Optionally narrow (never widen) the persona's tool ceiling for this run. */
   tools?: string[];
+  /**
+   * #417: the caller authorized this launch OUT-OF-BAND and the #9 channel-RBAC head does not apply. The
+   * ONLY caller that may set this is the #282 a2a path, whose {@link decideA2ACall} ALREADY governs the
+   * hop's depth/cycle/capability — an agent→agent handoff can't satisfy the human delegation checks
+   * (`propagate` on the target's channel, the persona's own channel `write`, an @mention on the message),
+   * so re-running them here would falsely reject a governed call. When true this skips that RBAC head ONLY;
+   * it NEVER bypasses the venture/admission gate (which lives in `launcher.launch`, not here) and grants no
+   * new authority. Default false ⇒ every existing call path (human @mention, owner brief) is unchanged.
+   */
+  systemAuthorized?: boolean;
 }
 
 export type SubagentInvokeResult =
@@ -88,40 +98,51 @@ export class SubagentService {
     input: SubagentInvokeInput,
   ): Promise<SubagentInvokeResult> {
     // 1. Channel exists + belongs to the caller's workspace (IDOR: a cross-tenant channel is a 404).
+    //    Workspace sanity is ALWAYS enforced — even for a systemAuthorized launch.
     const channelWorkspace = await this.deps.getChannelWorkspace(input.channelId);
     if (!channelWorkspace || channelWorkspace !== identity.workspaceId) {
       return { ok: false, code: 404, error: "channel not found" };
     }
 
     // 2. Invoking a subagent is delegation — the invoker must hold `propagate` on the channel.
-    const invokerCap = await this.deps.channelCapabilityFor(
-      identity.workspaceId,
-      identity.memberId,
-      input.channelId,
-    );
-    if (!invokerCap || !satisfies(invokerCap, "propagate")) {
-      return { ok: false, code: 403, error: "requires propagate capability to invoke a subagent" };
+    //    SKIPPED for a systemAuthorized launch (#417): a governed agent→agent handoff (decideA2ACall)
+    //    authorized the call out-of-band; the caller agent is not a `propagate` member of the target's
+    //    channel, so re-running the human delegation check here would falsely reject it.
+    if (!input.systemAuthorized) {
+      const invokerCap = await this.deps.channelCapabilityFor(
+        identity.workspaceId,
+        identity.memberId,
+        input.channelId,
+      );
+      if (!invokerCap || !satisfies(invokerCap, "propagate")) {
+        return { ok: false, code: 403, error: "requires propagate capability to invoke a subagent" };
+      }
     }
 
-    // 3. The persona must exist in this workspace and be active (#3/#9).
+    // 3. The persona must exist in this workspace and be active (#3/#9). ALWAYS enforced.
     const persona = await this.deps.getPersona(input.personaId, identity.workspaceId);
     if (!persona) {
       return { ok: false, code: 404, error: "persona not found" };
     }
 
-    // 4. The persona's own member must be permitted in the channel (>= write). The session runs as
-    //    this member, so it can never act where the member itself has no grant.
-    const personaCap = await this.deps.channelCapabilityFor(
-      identity.workspaceId,
-      persona.agentMemberId,
-      input.channelId,
-    );
-    if (!personaCap || !satisfies(personaCap, "write")) {
-      return { ok: false, code: 403, error: "persona is not permitted in this channel" };
+    // 4. The persona's own member must be permitted in the channel (>= write). SKIPPED for a
+    //    systemAuthorized launch (#417): the a2a handoff was governed by decideA2ACall, which already
+    //    bounded the hop; this human channel-write check does not apply to that out-of-band path.
+    if (!input.systemAuthorized) {
+      const personaCap = await this.deps.channelCapabilityFor(
+        identity.workspaceId,
+        persona.agentMemberId,
+        input.channelId,
+      );
+      if (!personaCap || !satisfies(personaCap, "write")) {
+        return { ok: false, code: 403, error: "persona is not permitted in this channel" };
+      }
     }
 
-    // 5. If bound to a message, the persona must actually be @-mentioned on it (mention-driven).
-    if (input.messageId) {
+    // 5. If bound to a message, the persona must actually be @-mentioned on it (mention-driven). SKIPPED
+    //    for a systemAuthorized launch (#417): an a2a handoff is not mention-driven — it is governed by
+    //    decideA2ACall, not by an @mention on a posted message.
+    if (input.messageId && !input.systemAuthorized) {
       const mentioned = await this.deps.mentionedMemberIds(input.messageId);
       if (!mentioned.includes(persona.agentMemberId)) {
         return { ok: false, code: 400, error: "persona is not mentioned on this message" };

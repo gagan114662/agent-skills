@@ -117,7 +117,14 @@ export interface MarketingMentionDeps {
   /** The #59 SubagentService gate, bound to the venture-gated launcher. */
   invoke(
     identity: { workspaceId: string; memberId: string },
-    input: { personaId: string; channelId: string; task: string; messageId: string },
+    input: {
+      personaId: string;
+      channelId: string;
+      task: string;
+      messageId: string;
+      /** #417: out-of-band-authorized (a2a) launch — skip the #9 channel-RBAC head, never the venture gate. */
+      systemAuthorized?: boolean;
+    },
   ): Promise<InvokeResult>;
   /** Record a durable mention task record. */
   recordTask(input: {
@@ -172,7 +179,13 @@ export class MarketingMentionService {
 
   async launch(
     identity: { workspaceId: string; memberId: string },
-    input: { channelId: string; messageId: string; task?: string },
+    input: {
+      channelId: string;
+      messageId: string;
+      task?: string;
+      /** #417: governed a2a handoff — threads through to the #59 invoke gate to skip the channel-RBAC head. */
+      systemAuthorized?: boolean;
+    },
   ): Promise<MarketingMentionResult> {
     const channel = await this.deps.getChannel(input.channelId);
     if (!channel || channel.workspaceId !== identity.workspaceId) {
@@ -291,6 +304,7 @@ export class MarketingMentionService {
         channelId: input.channelId,
         task: launchTask,
         messageId: input.messageId,
+        systemAuthorized: input.systemAuthorized,
       });
       if (!result.ok) return { ok: false, code: result.code, error: result.error };
       const record = await this.deps.recordTask({
