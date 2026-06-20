@@ -13,7 +13,7 @@
  * not a generic assistant told "you are the SEO one."
  */
 
-import { marketingExpertise, MARKETING_STANDARDS } from "./expertise.js";
+import { marketingExpertise, MARKETING_STANDARDS, TEAM_COORDINATION } from "./expertise.js";
 
 /** The house voice (Innocent Drinks school): warm, plural, a little silly, receipts over adjectives. */
 export const BRAND_VOICE = {
@@ -135,6 +135,7 @@ function prompt(title: string, channel: string, role: string, external: boolean)
     `You work in the #${channel} channel and draft everything in-channel for a human to review. ` +
     `${expertiseLine}` +
     `${MARKETING_STANDARDS} ` +
+    `${TEAM_COORDINATION} ` +
     `${externalLine} ` +
     "Keep the house voice: warm, first-person plural, a little playful, one wink at most, receipts over " +
     "adjectives. Be specific and cite what you looked at."
