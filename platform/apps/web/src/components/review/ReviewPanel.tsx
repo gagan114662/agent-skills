@@ -5,10 +5,9 @@
  */
 import { useEffect, useState } from "react";
 import type { DiffMode } from "@reload/shared";
-import type { ModelSelection } from "../../api/types.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { DiffView } from "./DiffView.js";
-import { ModelBadge, ModelSelector, DEFAULT_SELECTION } from "./ModelSelector.js";
+import { ModelBadge } from "./ModelSelector.js";
 
 export function ReviewPanel(): React.JSX.Element {
   const { review, activeChannelId } = useAppState();
@@ -43,7 +42,6 @@ export function ReviewPanel(): React.JSX.Element {
             ))}
           </ul>
         )}
-        <LaunchModelControl />
       </aside>
 
       <section className="review__main">
@@ -64,28 +62,6 @@ export function ReviewPanel(): React.JSX.Element {
         <CreatePrForm disabled={!activeSession} />
         <PrList />
       </aside>
-    </div>
-  );
-}
-
-/**
- * The model/provider/effort/Auto selection a new session would launch with (#52). Sessions are
- * launched via @mention or the launch API; this surfaces the selection control + previews the choice
- * that `api.review.launchSession` would send. Local state — it gathers intent without a store round-trip.
- */
-function LaunchModelControl(): React.JSX.Element {
-  const [selection, setSelection] = useState<ModelSelection>(DEFAULT_SELECTION);
-  return (
-    <div className="review__launch" aria-label="New session model">
-      <h3>New session model</h3>
-      <ModelSelector value={selection} onChange={setSelection} />
-      <p className="review__launch-preview">
-        {selection.mode === "auto"
-          ? "Auto · Opus plans → Sonnet implements"
-          : `${selection.provider} · ${selection.model || "(default)"}${
-              selection.effort !== "off" ? ` · ${selection.effort}` : ""
-            }`}
-      </p>
     </div>
   );
 }

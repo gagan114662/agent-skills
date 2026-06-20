@@ -1585,17 +1585,6 @@ select:focus-visible {
   color: var(--accent);
   font-family: ui-monospace, monospace;
 }
-.review__launch {
-  margin-top: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-}
-.review__launch h3 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-}
 .modelsel {
   display: flex;
   flex-direction: column;
@@ -1622,12 +1611,6 @@ select:focus-visible {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-}
-.review__launch-preview {
-  font-size: 11px;
-  color: var(--text-faint);
-  font-family: ui-monospace, monospace;
-  margin-top: 6px;
 }
 .review__diffhead {
   display: flex;

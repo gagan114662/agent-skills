@@ -6,6 +6,7 @@ import {
   isKnownModel,
   effectiveModel,
   resolveLaunchModel,
+  resolveManagedModel,
   assertModelLaunchable,
   ModelUnavailableError,
 } from "../../src/runtime/models.js";
@@ -58,6 +59,38 @@ describe("model registry (#246 — fleet model = claude-opus-4-8, no unservable 
     expect(effectiveModel({ sessionPinned: "  ", workspacePicked: "", envDefault: "claude-sonnet-4-6" })).toBe(
       "claude-sonnet-4-6",
     );
+  });
+
+  describe("resolveManagedModel — the pure managed-model clamp (#261: managed default, never broken)", () => {
+    const KNOWN = ["claude-opus-4-8", "claude-sonnet-4-6"] as const;
+
+    it("keeps a known/valid requested model untouched (a valid pick is never second-guessed)", () => {
+      expect(resolveManagedModel("claude-sonnet-4-6", KNOWN, DEFAULT_AGENT_MODEL)).toBe("claude-sonnet-4-6");
+      expect(resolveManagedModel("claude-opus-4-8", KNOWN, DEFAULT_AGENT_MODEL)).toBe("claude-opus-4-8");
+      // Surrounding whitespace on an otherwise-valid id is trimmed, then kept.
+      expect(resolveManagedModel("  claude-sonnet-4-6  ", KNOWN, DEFAULT_AGENT_MODEL)).toBe("claude-sonnet-4-6");
+    });
+
+    it("clamps an unknown / removed / unavailable id to the managed default (the #292/#242 class)", () => {
+      expect(resolveManagedModel("claude-fable-5", KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+      expect(resolveManagedModel("claude-removed-1", KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+    });
+
+    it("clamps empty / whitespace / null / undefined to the managed default", () => {
+      expect(resolveManagedModel("", KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+      expect(resolveManagedModel("   ", KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+      expect(resolveManagedModel(null, KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+      expect(resolveManagedModel(undefined, KNOWN, DEFAULT_AGENT_MODEL)).toBe(DEFAULT_AGENT_MODEL);
+    });
+
+    it("is pure: it consults only the passed-in known set (no env, no IO)", () => {
+      // A model absent from the supplied set clamps even though it IS in the deployment's real KNOWN list.
+      expect(resolveManagedModel("claude-haiku-4-5", ["claude-opus-4-8"], DEFAULT_AGENT_MODEL)).toBe(
+        DEFAULT_AGENT_MODEL,
+      );
+      // And it returns the EXACT fallback it was handed.
+      expect(resolveManagedModel("nope", KNOWN, "claude-custom-default")).toBe("claude-custom-default");
+    });
   });
 
   describe("resolveLaunchModel — the runtime boundary always yields a launchable model (managed default)", () => {
