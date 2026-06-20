@@ -84,6 +84,30 @@ export function setChannelPostHook(fn: ChannelPostHook | undefined): void {
 }
 
 /**
+ * A hook fired AFTER an agent's deliverable is posted to its channel (#417). When an agent's deliverable
+ * @mentions a fleet teammate, the wired hook launches that teammate through the EXISTING governed a2a path
+ * (depth/cycle/capability-bounded) so the #416 "@mention the right teammate in-channel" prompt fires a
+ * real, visible handoff. Module-level + best-effort, mirroring `setChannelPostHook`. Registered once at
+ * boot in `buildApp`, AFTER the SessionManager and the AgentRegistryService both exist (breaking the
+ * manager↔service cycle). Gated by the existing `agentCollaboration` capability inside the hook — with it
+ * off the hook is a no-op and behavior is byte-for-byte unchanged.
+ */
+export interface DeliverableHandoffHookInput {
+  workspaceId: string;
+  agentMemberId: string;
+  task: string;
+  deliverable: string;
+}
+export type DeliverableHandoffHook = (input: DeliverableHandoffHookInput) => Promise<void>;
+
+let deliverableHandoffHook: DeliverableHandoffHook | undefined;
+
+/** Register (or clear, with `undefined`) the deliverable-handoff hook. Called from `buildApp`. */
+export function setDeliverableHandoffHook(fn: DeliverableHandoffHook | undefined): void {
+  deliverableHandoffHook = fn;
+}
+
+/**
  * Channel poster: persists the message (REST source of truth) and best-effort publishes it to
  * the #5 realtime fan-out so connected clients see streamed output live. A Redis hiccup never
  * fails the session — the message is already persisted.
@@ -395,6 +419,20 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         agentMemberId: e.agentMemberId,
         body,
       });
+      // #417: after the deliverable is posted, fire the handoff hook so any @mentioned fleet teammate is
+      // launched through the governed a2a path (the hook self-gates on `agentCollaboration`, default-OFF).
+      // The body we just posted IS the deliverable text we hand off. Best-effort: a hook failure never
+      // throws into the already-finalized session.
+      if (deliverableHandoffHook) {
+        void deliverableHandoffHook({
+          workspaceId: e.workspaceId,
+          agentMemberId: e.agentMemberId,
+          task: e.task,
+          deliverable: body,
+        }).catch(() => {
+          /* best-effort handoff; the deliverable is already posted */
+        });
+      }
     },
   });
   return manager;

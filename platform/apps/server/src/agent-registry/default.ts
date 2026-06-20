@@ -14,6 +14,7 @@ import { listPersonas } from "../db/repositories/personas.js";
 import { loadConfig } from "../config/loader.js";
 import { createMarketingBriefService } from "../marketing/default.js";
 import { resolveAgentRegistryCaps } from "./caps.js";
+import { encodeHandoffGoal } from "./handoff.js";
 import { AgentRegistryService, type DispatchResult } from "./service.js";
 
 /**
@@ -29,7 +30,14 @@ export function createAgentRegistryService(sessionManager: SessionManager): Agen
     caps: (workspaceId) => resolveAgentRegistryCaps(loadConfig(workspaceId).agentRegistry),
     listPresentHandles: async (workspaceId) => (await listPersonas(workspaceId)).map((p) => p.name),
     dispatch: async (identity, input): Promise<DispatchResult> => {
-      const goal = `[A2A handoff from @${input.callerHandle}] ${input.task}`;
+      // The chain marker (#417) lets the launched session carry the a2a call chain to the next hop, so a
+      // multi-hop deliverable handoff stays depth/cycle-bounded. An empty chain returns the goal unchanged
+      // → byte-identical to today's manual a2a route. The marker is OUR structural prefix on the task we
+      // assign; it is never read from agent free output (#200).
+      const goal = encodeHandoffGoal(
+        input.callChain,
+        `[A2A handoff from @${input.callerHandle}] ${input.task}`,
+      );
       const result = await brief.brief(
         { workspaceId: identity.workspaceId, memberId: identity.memberId },
         { lead: input.targetHandle, goal },

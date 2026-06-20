@@ -11,7 +11,8 @@
  * in `default.ts` (mirrors `discovery/service.ts`).
  */
 import { buildAgentRegistry, type AgentRegistry, type RegistryEntry } from "./registry.js";
-import { decideA2ACall } from "./a2a.js";
+import { appendHop, decideA2ACall } from "./a2a.js";
+import { extractFleetMentions } from "./handoff.js";
 import type { AgentRegistryCaps } from "./caps.js";
 import { isOwnerWorkspace } from "./caps.js";
 import { isFleetHandle } from "./contract.js";
@@ -39,7 +40,17 @@ export interface AgentRegistryDeps {
    */
   dispatch(
     identity: AgentRegistryIdentity,
-    input: { callerHandle: string; targetHandle: string; task: string },
+    input: {
+      callerHandle: string;
+      targetHandle: string;
+      task: string;
+      /**
+       * The call chain INCLUDING the new target (`appendHop(callChain, targetHandle)`), so the launched
+       * session's task can carry the chain to the next hop (#417). The wiring encodes it as a structural
+       * marker on the goal; an empty chain leaves the goal byte-identical to today's manual a2a route.
+       */
+      callChain: readonly string[];
+    },
   ): Promise<DispatchResult>;
   /**
    * Optional observability sink for the call record (defense-in-depth). The durable receipt is the
@@ -123,10 +134,58 @@ export class AgentRegistryService {
       callerHandle: decision.record.callerHandle,
       targetHandle: decision.record.targetHandle,
       task: decision.record.task,
+      // The chain INCLUDING the new target, so the launched session can carry it to the next hop (#417).
+      callChain: appendHop(input.callChain ?? [], decision.record.targetHandle),
     });
     if (!dispatch.ok) {
       return { ok: false, code: dispatch.code, error: dispatch.error, decision };
     }
     return { ok: true, decision, dispatch };
+  }
+
+  /**
+   * Launch the fleet teammates an agent @mentioned in its finished deliverable (#417). This is the bridge
+   * that makes the #416 prompt ("@mention the right teammate in-channel") fire a real, GOVERNED handoff:
+   * each mention becomes an a2a {@link call} (depth/cycle/capability-bounded by {@link decideA2ACall}) so
+   * a scout→quill→echo chain terminates and a cycle is denied. Returns every decision — allowed AND denied
+   * (a refused handoff is observable, not silent). When the feature is disabled, returns [] (default-OFF).
+   *
+   * #200: the deliverable is untrusted DATA — a mentioned @handle is matched structurally against the
+   * registry and the deliverable text only ever becomes the target's `task` (which `decideA2ACall`
+   * sanitizes/caps). It can never name a tool, widen scope, or forge a capability.
+   */
+  async handoffsFromDeliverable(
+    identity: AgentRegistryIdentity,
+    input: { callerHandle: string; deliverable: string; callChain: readonly string[] },
+  ): Promise<A2ACallDecision[]> {
+    const { registry, caps } = await this.registryFor(identity.workspaceId);
+    if (!caps.enabled) return [];
+
+    const caller = input.callerHandle.trim().replace(/^@/, "").toLowerCase();
+    const onChain = new Set(input.callChain.map((h) => h.toLowerCase()));
+    const knownHandles = registry.entries.map((e) => e.contract.handle);
+
+    const targets = extractFleetMentions(input.deliverable, knownHandles).filter(
+      (h) => h !== caller && !onChain.has(h),
+    );
+
+    const decisions: A2ACallDecision[] = [];
+    for (const target of targets) {
+      // The target's PRIMARY (first-advertised) capability. Skip a target absent from the registry or
+      // with no advertised capability — there is nothing well-formed to request.
+      const entry = registry.findEntry(target);
+      const capability = entry?.contract.capabilities[0];
+      if (!capability) continue;
+
+      const result = await this.call(identity, {
+        callerHandle: caller,
+        targetHandle: target,
+        capability,
+        task: input.deliverable,
+        callChain: input.callChain,
+      });
+      if (result.decision) decisions.push(result.decision);
+    }
+    return decisions;
   }
 }
