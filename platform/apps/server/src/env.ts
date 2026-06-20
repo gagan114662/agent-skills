@@ -40,6 +40,8 @@ export interface Env {
   ventureMemory: VentureMemoryEnv;
   /** Venture Factory opportunity-scanner scheduled tick (#187). */
   ventureFactory: VentureFactoryEnv;
+  /** Autonomous work-cadence scheduled tick (#416). */
+  cadence: CadenceEnv;
   /** Self-Shipping Loop scheduled tick (#172). */
   buildLoop: BuildLoopEnv;
   /** Founder Briefings scheduled tick (#173). */
@@ -230,6 +232,11 @@ export interface VentureFactoryEnv {
   intervalMs: number;
 }
 
+export interface CadenceEnv {
+  /** Work-cadence tick interval in ms. Default `0` = the background loop is OFF (opt-in, #416). */
+  intervalMs: number;
+}
+
 export interface BuildLoopEnv {
   /** Self-shipping-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #172). */
   intervalMs: number;
@@ -399,6 +406,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ventureFactory: {
       // Default 0 (off): the opportunity-scanner loop is opt-in so tests/CI drive `advanceWorkspace()` deterministically.
       intervalMs: Number(source.VENTURE_FACTORY_INTERVAL_MS ?? 0) || 0,
+    },
+    cadence: {
+      // Default 0 (off): the autonomous work-cadence loop is opt-in so tests/CI drive `tickAll()` deterministically.
+      intervalMs: Number(source.RELOAD_CADENCE_INTERVAL_MS ?? 0) || 0,
     },
     buildLoop: {
       // Default 0 (off): the self-shipping loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

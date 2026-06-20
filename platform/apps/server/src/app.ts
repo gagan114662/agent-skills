@@ -216,7 +216,9 @@ import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
 import { createDefaultVentureMemoryService } from "./venture-memory/default.js";
 import { createDefaultVentureFactoryEngine } from "./venture-factory/default.js";
+import { createDefaultCadenceEngine } from "./cadence/default.js";
 import type { VentureFactoryEngine } from "./venture-factory/engine.js";
+import type { CadenceEngine } from "./cadence/engine.js";
 import type { VentureMemoryService } from "./venture-memory/service.js";
 import { ventureMemoryRoutes } from "./routes/venture-memory.js";
 import { buildLoopRoutes } from "./routes/build-loop.js";
@@ -288,6 +290,8 @@ declare module "fastify" {
     ventureMemoryEngine: VentureMemoryService;
     /** The #187 venture factory scanner; `index.ts` starts its opt-in tick (VENTURE_FACTORY_INTERVAL_MS). */
     ventureFactoryEngine: VentureFactoryEngine;
+    /** The #416 autonomous work cadence; `index.ts` starts its opt-in tick (RELOAD_CADENCE_INTERVAL_MS). */
+    cadenceEngine: CadenceEngine;
     /** The #172 self-shipping loop; `index.ts` starts its opt-in tick (BUILDLOOP_INTERVAL_MS). */
     buildLoopEngine: BuildLoopEngine;
     /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
@@ -1256,6 +1260,17 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     ventureFactoryEngine.stop();
   });
   app.decorate("ventureFactoryEngine", ventureFactoryEngine);
+  // #416 autonomous work cadence: the recurring tick that keeps the fleet working ON ipop.ai's own growth
+  // (the draft-only dogfood playbook) so the work doesn't stop after a single one-shot brief. Config
+  // default-OFF + owner-workspace-first + a hard per-day launch cap, and the timer is opt-in
+  // (RELOAD_CADENCE_INTERVAL_MS, started in index.ts only when > 0). Reuses the existing owner-brief launch
+  // path (no new authority; draft-only goals; outbound still #13-gated), so wiring it changes nothing until
+  // a deployment opts in.
+  const cadenceEngine = createDefaultCadenceEngine(sessionManager, app.log);
+  app.addHook("onClose", async () => {
+    cadenceEngine.stop();
+  });
+  app.decorate("cadenceEngine", cadenceEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and
