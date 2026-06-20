@@ -85,6 +85,66 @@ describe("harness selection (#50)", () => {
   });
 });
 
+describe("fast claude-code turn (#417 — the reload.team speed gap)", () => {
+  it("omits --permission-mode acceptEdits (a fast turn cannot apply edits)", () => {
+    const cmd = harnessSpec("claude-code", { fast: true }).args[1];
+    expect(cmd).not.toContain("--permission-mode acceptEdits");
+    expect(cmd).not.toContain("acceptEdits");
+  });
+
+  it("forces an empty allowedTools so the model has NO tools (strictly fewer capabilities)", () => {
+    const cmd = harnessSpec("claude-code", { fast: true }).args[1];
+    // Explicit empty allowlist — no tools to edit/web/spawn. NOT the env-gated AGENT_ALLOWED_TOOLS seam.
+    expect(cmd).toContain('--allowedTools ""');
+    expect(cmd).not.toContain("$AGENT_ALLOWED_TOOLS");
+    expect(cmd).not.toContain("AGENT_SKILLS");
+  });
+
+  it("drives the model from ANTHROPIC_FAST_MODEL, not ANTHROPIC_MODEL (cheap model, separate env)", () => {
+    const cmd = harnessSpec("claude-code", { fast: true }).args[1];
+    expect(cmd).toContain('${ANTHROPIC_FAST_MODEL:+--model "$ANTHROPIC_FAST_MODEL"}');
+    expect(cmd).not.toContain("$ANTHROPIC_MODEL");
+  });
+
+  it("keeps print mode + stream-json + injection-safe $AGENT_TASK + < /dev/null", () => {
+    const cmd = harnessSpec("claude-code", { fast: true }).args[1];
+    expect(cmd).toContain("'claude' -p \"$AGENT_TASK\"");
+    expect(cmd).toContain("--output-format stream-json");
+    expect(cmd).toMatch(/-p "\$AGENT_TASK"/);
+    expect(cmd).toContain("< /dev/null");
+    // Still arity-1 (opts-only) — hostile task text can never reach argv.
+    expect(harnessSpec).toHaveLength(1);
+  });
+
+  it("keeps the persona system-prompt seam but drops the tools seam", () => {
+    const cmd = harnessSpec("claude-code", { fast: true }).args[1];
+    expect(cmd).toContain(
+      '${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}',
+    );
+    expect(cmd).not.toContain("AGENT_ALLOWED_TOOLS");
+  });
+
+  it("honors a custom binary path in fast mode", () => {
+    const cmd = harnessSpec("claude-code", { fast: true, claudeBin: "/opt/bin/claude" }).args[1];
+    expect(cmd).toContain("'/opt/bin/claude' -p \"$AGENT_TASK\"");
+  });
+
+  it("fast:false / unset is byte-for-byte the current full spec (snapshot)", () => {
+    // The exact current full claude-code command — pinned so a future change to the full spec is caught.
+    const FULL =
+      `'claude' -p "$AGENT_TASK" ` +
+      `--output-format stream-json --verbose --permission-mode acceptEdits ` +
+      `\${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"} ` +
+      `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"} ` +
+      `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}` +
+      ` < /dev/null`;
+    expect(harnessSpec("claude-code").args[1]).toBe(FULL);
+    expect(harnessSpec("claude-code", { fast: false }).args[1]).toBe(FULL);
+    // And the full spec is unchanged by the presence of the fast option.
+    expect(harnessSpec("claude-code", {}).args[1]).toBe(FULL);
+  });
+});
+
 describe("harness allowlist (#50 — per-session selection)", () => {
   it("HARNESS_KINDS is the full allowlist and isHarnessKind validates against it", () => {
     expect([...HARNESS_KINDS].sort()).toEqual(["claude-code", "codex", "demo"]);

@@ -44,6 +44,23 @@ export interface HarnessOptions {
   codexBin?: string;
   /** Extra raw flags appended to the codex invocation. */
   codexExtraArgs?: string[];
+  /**
+   * Speed gap (reload.team feel): build a FAST, lightweight `claude-code` turn instead of the full
+   * heavyweight session. A full turn is `claude -p … --permission-mode acceptEdits --model <Opus>`
+   * with the persona/tools/skills seams — minutes per turn, right for deliverables but far too slow
+   * for coordination chatter (handoff acks, quick routing, agent↔agent questions). A fast turn is a
+   * cheap model + NO tools + capped, so coordination is seconds not minutes:
+   *   - keeps print mode + stream-json + the injection-safe `"$AGENT_TASK"` + `< /dev/null` contract,
+   *   - OMITS `--permission-mode acceptEdits` and forces NO tools (`--allowedTools ""`) so the model
+   *     cannot edit / web / spawn — strictly FEWER capabilities than a full turn, never more,
+   *   - is driven by a SEPARATE model env (`ANTHROPIC_FAST_MODEL`, not `ANTHROPIC_MODEL`) so it can
+   *     use a cheap model without touching the full turn's model selection,
+   *   - keeps the persona system-prompt seam (`AGENT_APPEND_SYSTEM_PROMPT`) but DROPS the
+   *     allowed-tools/skills seams (a fast turn has no tools to scope).
+   * ADDITIVE + DEFAULT-OFF: unset/false produces the existing full spec byte-for-byte. Only the
+   * `claude-code` kind has a fast variant (demo/codex ignore it).
+   */
+  fast?: boolean;
 }
 
 const DEMO: HarnessSpec = { command: "bash", args: ["scripts/agent-harness-demo.sh"] };
@@ -59,6 +76,8 @@ export function parseHarnessKind(value: string | undefined): HarnessKind {
 export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): HarnessSpec {
   if (kind === "demo") return { command: DEMO.command, args: [...DEMO.args] };
   if (kind === "codex") return codexSpec(opts);
+
+  if (opts.fast) return claudeFastSpec(opts);
 
   const bin = opts.claudeBin ?? "claude";
   const extra =
@@ -105,6 +124,47 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
     `--output-format stream-json --verbose --permission-mode acceptEdits${model}${extra}${persona}` +
     ` < /dev/null`;
 
+  return { command: "bash", args: ["-lc", cmd] };
+}
+
+/**
+ * Build the trusted command/args for a FAST, lightweight `claude-code` turn (the reload.team speed
+ * gap). Same injection-safe contract as the full {@link harnessSpec} — the task is `"$AGENT_TASK"`
+ * (double-quoted, NOT re-evaluated by bash) and the builder takes no task argument — but stripped to
+ * coordination speed: a cheap model + NO tools + no edit permission.
+ *
+ * Differences from the full claude-code spec (everything else identical):
+ *   - OMITS `--permission-mode acceptEdits` — a fast turn cannot apply edits.
+ *   - Forces `--allowedTools ""` (empty allowlist) so the model has NO tools at all — it cannot
+ *     edit/web/spawn. This is strictly FEWER capabilities than a full turn, never more.
+ *   - Drives the model from `ANTHROPIC_FAST_MODEL` (env-gated `--model`, double-quoted like
+ *     `$AGENT_TASK`) instead of `ANTHROPIC_MODEL`, so a fast turn picks a cheap model without
+ *     disturbing the full turn's model selection. When unset the flag vanishes (CLI default).
+ *   - Keeps the persona system-prompt seam (`AGENT_APPEND_SYSTEM_PROMPT`) but DROPS the
+ *     `AGENT_ALLOWED_TOOLS`/skills seams — a no-tools turn has nothing to scope.
+ *
+ * `extra` (claudeExtraArgs) is still honored so a caller can append raw flags; the empty
+ * `--allowedTools ""` is emitted explicitly so the no-tools posture is unconditional (it does not
+ * depend on an env var being unset).
+ */
+function claudeFastSpec(opts: HarnessOptions): HarnessSpec {
+  const bin = opts.claudeBin ?? "claude";
+  const extra =
+    opts.claudeExtraArgs && opts.claudeExtraArgs.length > 0
+      ? " " + opts.claudeExtraArgs.map(shellQuote).join(" ")
+      : "";
+  // Persona system prompt only — no tools seam (the fast turn has none). Same env-gated, double-quoted
+  // ${VAR:+...} expansion as the full spec (injection-safe like $AGENT_TASK).
+  const persona =
+    ` \${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}`;
+  // Separate cheap-model env so a fast turn never touches the full turn's ANTHROPIC_MODEL selection.
+  const model = ` \${ANTHROPIC_FAST_MODEL:+--model "$ANTHROPIC_FAST_MODEL"}`;
+  // No `--permission-mode acceptEdits`; `--allowedTools ""` forces an empty (no-tools) allowlist. The
+  // `< /dev/null` stdin-warning defense is kept identically to the full spec.
+  const cmd =
+    `${shellQuote(bin)} -p "$AGENT_TASK" ` +
+    `--output-format stream-json --verbose --allowedTools ""${model}${extra}${persona}` +
+    ` < /dev/null`;
   return { command: "bash", args: ["-lc", cmd] };
 }
 
