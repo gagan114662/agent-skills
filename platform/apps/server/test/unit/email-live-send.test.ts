@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   isLiveSendEnabledForWorkspace,
   decidePostmarkLiveSend,
+  decideComposedSend,
   type LiveSendRequest,
 } from "../../src/email/live-send.js";
+import type { AutonomousSendInput } from "../../src/acquisition/autonomous-send.js";
 import { EMAIL_LIVE_SEND_ACTION } from "../../src/approvals/policy.js";
 import type { EmailDeliverabilityConfig } from "../../src/config/schema.js";
 
@@ -94,5 +96,61 @@ describe("decidePostmarkLiveSend (structural #13 always-gate, #200 §4)", () => 
     const v = decidePostmarkLiveSend({ ...ok, approvalRequestId: "appr-123", contentQuarantined: false });
     expect(v.proceed).toBe(false);
     expect(v.blockers.some((b) => /quarantin|inject/i.test(b))).toBe(true);
+  });
+});
+
+describe("decideComposedSend (#403 autonomous layer composed on top of the #13 gate)", () => {
+  const liveReq: LiveSendRequest = {
+    workspaceId: "owner-ws",
+    config: { liveSendEnabled: true, ownerWorkspaceId: "owner-ws" },
+    complianceOk: true,
+    deliverability: { deliverable: true } as LiveSendRequest["deliverability"],
+    sendBudget: { allowed: true, grantable: 10, reason: "ok" },
+    contentQuarantined: true,
+    approvalRequestId: null,
+  };
+
+  function autoIn(overrides: Partial<AutonomousSendInput> = {}): AutonomousSendInput {
+    return {
+      autonomousEnabled: true,
+      sentInWindow: 0,
+      windowCap: 10,
+      hardDailyCap: 100,
+      sentToday: 0,
+      complianceOk: true,
+      recipientSuppressed: false,
+      withinWarmupRamp: false,
+      ...overrides,
+    };
+  }
+
+  it("autonomous OFF → gate_13 with the #13 verdict attached (byte-for-byte today's path)", () => {
+    const v = decideComposedSend(autoIn({ autonomousEnabled: false }), liveReq);
+    expect(v.mode).toBe("gate_13");
+    expect(v.liveSend).not.toBeNull();
+    expect(v.liveSend?.action).toBe(EMAIL_LIVE_SEND_ACTION);
+  });
+
+  it("enabled + compliant + in-cap → send_autonomous, NO #13 verdict computed", () => {
+    const v = decideComposedSend(autoIn(), liveReq);
+    expect(v.mode).toBe("send_autonomous");
+    expect(v.liveSend).toBeNull();
+  });
+
+  it("compliance fail → blocked, NO #13 verdict", () => {
+    const v = decideComposedSend(autoIn({ complianceOk: false }), liveReq);
+    expect(v.mode).toBe("blocked");
+    expect(v.liveSend).toBeNull();
+  });
+
+  it("suppressed recipient → blocked", () => {
+    const v = decideComposedSend(autoIn({ recipientSuppressed: true }), liveReq);
+    expect(v.mode).toBe("blocked");
+  });
+
+  it("over the hard daily cap → gate_13 (escalates to the human #13 gate)", () => {
+    const v = decideComposedSend(autoIn({ sentToday: 100, hardDailyCap: 100 }), liveReq);
+    expect(v.mode).toBe("gate_13");
+    expect(v.liveSend).not.toBeNull();
   });
 });

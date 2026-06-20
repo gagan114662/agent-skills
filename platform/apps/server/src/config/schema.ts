@@ -743,6 +743,30 @@ export const signupEntrySchema = z.object({
  * irreversible). The Postmark server token + unsubscribe HMAC secret are env/#192-vault driven, never in this
  * non-secret config, so enabling alone wires nothing live. `ratePerMinute` is the rolling-window send cap.
  */
+/**
+ * Autonomous outreach send within hard caps policy (#403, ADR-0403). Default OFF, owner-workspace-first. Lets
+ * the fleet send outreach WITHOUT a human #13 yes per message, bounded by a HARD pre-committed rate cap
+ * (`windowCap` rolling-window + `hardDailyCap` never-exceed daily backstop) and the existing compliance
+ * (warmup, CAN-SPAM, suppression) — escalating to the #13 gate ONLY over-cap or on a compliance flag (the #340
+ * hard-cap model applied to sends). With the defaults a deployment behaves exactly like today: every send is a
+ * per-send #13 human gate (`decideAutonomousSend` returns `gate_13`). Compliance always wins — a fail is
+ * blocked, never autonomous. Adds NO new sender: a real email still needs a connected ESP + `liveSendEnabled`
+ * to leave the building (it stays dry-run otherwise). The human owns the caps + the kill-switch, not each
+ * message; only a human (in config) may raise a cap.
+ */
+export const autonomousSendSchema = z.object({
+  /** Master switch for the autonomous-send layer — default OFF (every send stays a per-send #13 human gate). */
+  enabled: z.boolean().optional(),
+  /** Restrict autonomous send to the owner workspace first (default true). */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id (the owner-first rollout marker). */
+  ownerWorkspaceId: z.string().optional(),
+  /** The pre-committed per-window send cap (rolling window). 0 ⇒ no autonomous headroom (fail-closed). */
+  windowCap: z.number().int().nonnegative().optional(),
+  /** The HARD never-exceed daily cap — the backstop the system can never cross autonomously. 0 ⇒ none. */
+  hardDailyCap: z.number().int().nonnegative().optional(),
+});
+
 export const emailDeliverabilitySchema = z.object({
   /** Whether a real Postmark send is eligible to be proposed (still owner-approved per send) — default OFF. */
   liveSendEnabled: z.boolean().optional(),
@@ -1958,6 +1982,8 @@ export const settingsSchema = z.object({
   signupEntry: signupEntrySchema.optional(),
   /** Email deliverability + compliance pipeline (#268): Postmark live-send eligibility + rate caps (default OFF). */
   emailDeliverability: emailDeliverabilitySchema.optional(),
+  /** Autonomous outreach send within hard caps (#403): no-human send bounded by a pre-committed cap (default OFF). */
+  autonomousSend: autonomousSendSchema.optional(),
 });
 
 /** One config layer — a validated partial. */
@@ -2045,6 +2071,7 @@ export type DepartmentConfig = z.infer<typeof departmentSchema>;
 export type DurableWorkflowConfig = z.infer<typeof durableWorkflowSchema>;
 export type SignupEntryConfig = z.infer<typeof signupEntrySchema>;
 export type EmailDeliverabilityConfig = z.infer<typeof emailDeliverabilitySchema>;
+export type AutonomousSendConfig = z.infer<typeof autonomousSendSchema>;
 
 /**
  * The free-tier ("trial") scale caps every workspace gets when no paid plan / managed override sets
@@ -2217,6 +2244,8 @@ export interface ResolvedConfig {
   signupEntry: SignupEntryConfig;
   /** Email deliverability + compliance pipeline (#268). A partial resolved by `isLiveSendEnabledForWorkspace`. */
   emailDeliverability: EmailDeliverabilityConfig;
+  /** Autonomous-send policy (#403). A partial whose hard defaults `resolveAutonomousSendCaps` fills. */
+  autonomousSend: AutonomousSendConfig;
 }
 
 /**
@@ -2305,4 +2334,5 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   durableWorkflow: {},
   signupEntry: {},
   emailDeliverability: {},
+  autonomousSend: {},
 };

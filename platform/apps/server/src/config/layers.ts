@@ -251,6 +251,9 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #268 email deliverability policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // live-send flag + owner-first restriction + rate cap cannot be loosened by a lower layer.
     if (layer.emailDeliverability !== undefined) out.emailDeliverability = { ...layer.emailDeliverability };
+    // #403 autonomous-send policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // enable flag + owner-first restriction + the hard window/daily caps cannot be loosened by a lower layer.
+    if (layer.autonomousSend !== undefined) out.autonomousSend = { ...layer.autonomousSend };
   }
   return out;
 }
@@ -344,5 +347,6 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     durableWorkflow: merged.durableWorkflow ?? { ...CONFIG_DEFAULTS.durableWorkflow },
     signupEntry: merged.signupEntry ?? { ...CONFIG_DEFAULTS.signupEntry },
     emailDeliverability: merged.emailDeliverability ?? { ...CONFIG_DEFAULTS.emailDeliverability },
+    autonomousSend: merged.autonomousSend ?? { ...CONFIG_DEFAULTS.autonomousSend },
   };
 }
