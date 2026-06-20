@@ -173,6 +173,8 @@ import type { DecisionMakerService } from "./decision-maker/service.js";
 import { discoveryRoutes } from "./routes/discovery.js";
 import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
+import { inboundLeadsRoutes } from "./routes/inbound-leads.js";
+import { resolveInboundLeadsOwnerWorkspaceId } from "./leads/default.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
@@ -386,6 +388,12 @@ export interface BuildAppOptions {
    * `discovery_*` repos + the live growth bridge. Read-only — ranks/surfaces, never sends.
    */
   discovery?: DiscoveryService;
+  /**
+   * GAP 1 leads centre (ADR-0400): the workspace a public landing lead is attributed to. Tests inject a
+   * concrete id to exercise the public `POST /inbound/leads` capture; default resolves the marketing-owner
+   * workspace from config (`marketing.ownerWorkspaceId`). Unset ⇒ the public route 503s.
+   */
+  inboundLeadsOwnerWorkspaceId?: string;
   /**
    * #173 founder briefings: tests inject a service over reader fakes; default builds one over the SAME
    * live `scale`/`billing`/`portfolio` so the brief/report/decision-queue match what they enforce.
@@ -879,6 +887,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #222 customer discovery engine: define owner signals, ingest real product/channel receipts, and read
   // the ranked prospect queue / PQL events / GTM pipeline. Always-live ingest + reads (READ-ONLY surface).
   app.register(discoveryRoutes, { service: discoveryService });
+  // GAP 1 leads centre: the autonomous loop's INBOUND mouth (ADR-0400). The public landing form posts to a
+  // PUBLIC (unauth) `POST /inbound/leads` which persists the lead and best-effort feeds it to the #222
+  // discovery engine as a `role_identified` signal. No money, no send, no #13 action — capture is the safe
+  // default, ON whenever an owner workspace is resolved (marketing.ownerWorkspaceId); 503 until then.
+  app.register(inboundLeadsRoutes, {
+    discovery: discoveryService,
+    ownerWorkspaceId: opts.inboundLeadsOwnerWorkspaceId ?? resolveInboundLeadsOwnerWorkspaceId(),
+  });
   // #225 outreach engine: preview drafts, PARK a message for one-tap owner approval (never auto-sent),
   // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send
   // endpoint exists — the send happens only after the owner approves, via the recorded-only executor.
