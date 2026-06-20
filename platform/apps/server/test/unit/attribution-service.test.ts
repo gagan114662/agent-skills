@@ -104,7 +104,40 @@ describe("attribution service — recordLiveShipExposure (#386)", () => {
 });
 
 describe("attribution service — projectAttributedRevenue (#386)", () => {
-  it("receipts WITHOUT a tracking ref land in unattributed (slice-3 wires the ref through checkout)", async () => {
+  it("attributes a ref-carrying receipt to the exposure that happened-before it (#386 slice 3)", async () => {
+    // Slice 3 stamps the real tracking ref onto the revenue receipt (via checkout metadata → revenue_events),
+    // so projectAttributedRevenue now credits the artifact — no custom bypass needed.
+    const ref = mintTrackingRef({ workspaceId: "ws1", artifactId: "art-1", channel: "seo" });
+    const store = fakeStore();
+    await store.recordExposure({
+      workspaceId: "ws1",
+      artifactId: "art-1",
+      artifactKind: "site_pr",
+      trackingRef: ref,
+      channel: "seo",
+      occurredAtMs: 1_000,
+    });
+    const receipts: AttributionRevenueReceipt[] = [
+      // Carries the matching ref + happened-after the exposure ⇒ attributed.
+      { providerEventId: "evt_paid", amountCents: 9900, currency: "usd", createdAtMs: 4_000, trackingRef: ref },
+      // No ref ⇒ stays unattributed (honest), proving existing/no-ref payments are unaffected.
+      { providerEventId: "evt_noref", amountCents: 2500, currency: "usd", createdAtMs: 5_000 },
+    ];
+    const deps = buildDeps({ store, revenue: fakeRevenue(receipts) });
+    const result = await projectAttributedRevenue(deps, "ws1");
+    expect(result.attributed).toHaveLength(1);
+    expect(result.attributed[0]).toMatchObject({
+      providerEventId: "evt_paid",
+      artifactId: "art-1",
+      trackingRef: ref,
+      amountCents: 9900,
+    });
+    expect(result.unattributed.map((r) => r.providerEventId)).toEqual(["evt_noref"]);
+    expect(result.byArtifact).toHaveLength(1);
+    expect(result.byArtifact[0]).toMatchObject({ artifactId: "art-1", attributedCents: 9900, paymentCount: 1 });
+  });
+
+  it("receipts WITHOUT a tracking ref land in unattributed (existing / no-ref payments stay honest)", async () => {
     const store = fakeStore();
     // An exposure exists, but receipts carry no ref yet — they cannot be credited and must NOT be fabricated.
     await store.recordExposure({

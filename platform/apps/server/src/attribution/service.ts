@@ -33,6 +33,11 @@ export interface AttributionRevenueReceipt {
   amountCents: number;
   currency: string;
   createdAtMs: number;
+  /**
+   * The #386 tracking ref carried through Stripe checkout metadata onto the `revenue_events` row (slice 3).
+   * Optional/null ⇒ the payment carried no ref ⇒ it stays `unattributed` (honest, never fabricated).
+   */
+  trackingRef?: string | null;
 }
 
 /** Lists verified inbound payment receipts for a workspace. Mirrors finance/service.ts RevenueEventReader. */
@@ -96,10 +101,10 @@ export async function recordLiveShipExposure(
  * receipt to the artifact whose exposure happened-before it under the same tracking ref, and roll up per
  * artifact. Adds NO money path — it only reads receipts that already exist.
  *
- * NOTE (slice 3): revenue_events do NOT yet carry a tracking ref. Slice 3 wires the ref through Stripe
- * checkout metadata so a payment carries the ref of the artifact that caused it. Until then every receipt
- * maps to `trackingRef: null` and lands in `unattributed` — that is CORRECT and honest, never fabricated.
- * The projection still works and proves out; it just attributes 0 dollars until refs flow through checkout.
+ * Slice 3 (#402) wired the ref through Stripe checkout metadata onto `revenue_events`, so a receipt now
+ * carries the real `trackingRef`. A receipt whose ref matches a recorded exposure attributes by
+ * happened-before; a receipt with NO ref (an existing row, or a no-ref payment) still lands in
+ * `unattributed` — honest, never fabricated.
  */
 export async function projectAttributedRevenue(
   deps: AttributionServiceDeps,
@@ -109,8 +114,8 @@ export async function projectAttributedRevenue(
   const receiptRows = await deps.revenue.listReceipts(workspaceId);
   const receipts: AttributionReceipt[] = receiptRows.map((r) => ({
     providerEventId: r.providerEventId,
-    // slice 3 wires the ref through checkout metadata; until then a receipt carries no ref -> unattributed.
-    trackingRef: null,
+    // The real ref carried through Stripe checkout metadata (slice 3, #402); null ⇒ no ref ⇒ unattributed.
+    trackingRef: r.trackingRef ?? null,
     amountCents: r.amountCents,
     currency: r.currency,
     // A receipt from the #98 webhook is a signature-verified provider event — verified by construction.

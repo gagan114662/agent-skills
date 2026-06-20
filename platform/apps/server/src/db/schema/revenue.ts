@@ -75,6 +75,9 @@ export const revenueEvents = pgTable(
     amountCents: integer("amount_cents").notNull().default(0),
     currency: text("currency").notNull(),
     status: text("status").notNull(), // e.g. paid | succeeded | complete
+    // The #386 tracking ref carried through Stripe checkout metadata (slice 3, #402). NULL ⇒ the payment
+    // carried no ref (or pre-dates this column) ⇒ stays `unattributed` in the attribution projection.
+    trackingRef: text("tracking_ref"),
     raw: jsonb("raw").notNull().default(sql`'{}'::jsonb`), // REDACTED payload
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

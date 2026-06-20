@@ -39,6 +39,7 @@ export const dbRevenueReader: RevenueEventReader = {
         amountCents: revenueEvents.amountCents,
         currency: revenueEvents.currency,
         createdAt: revenueEvents.createdAt,
+        trackingRef: revenueEvents.trackingRef,
       })
       .from(revenueEvents)
       .where(and(...conds))
@@ -49,8 +50,10 @@ export const dbRevenueReader: RevenueEventReader = {
       amountCents: r.amountCents,
       currency: r.currency,
       createdAtMs: r.createdAt.getTime(),
-      // ipop's own billing is workspace-level (unattributed).
+      // ipop's own billing is workspace-level (unattributed for finance), but the #386 tracking ref rides
+      // along so the attribution projection can credit the artifact that drove this payment (slice 3).
       ventureIdeaId: null,
+      trackingRef: r.trackingRef ?? null,
     }));
     // #188 per-venture revenue, attributed to its venture (so it shows on the per-venture weekly P&L).
     const ventureReceipts = await listVentureRevenueReceipts(workspaceId, sinceMs);

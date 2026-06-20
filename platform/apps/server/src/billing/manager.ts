@@ -8,6 +8,7 @@ import { publishBillingEvent } from "../realtime/bus.js";
 import type { BillingStatusEvent } from "../realtime/protocol.js";
 import type { BillingProvider, PriceInterval } from "./provider.js";
 import { verifyWebhookSignature } from "./webhook.js";
+import { sanitizeTrackingRef } from "../attribution/tracking.js";
 
 /**
  * BillingManager (#98, ADR-0043) — turns a session's deployed app into a revenue rail through a swappable
@@ -67,6 +68,8 @@ export interface CreateRevenueEventRow {
   amountCents: number;
   currency: string;
   status: string;
+  /** The #386 tracking ref carried through Stripe checkout metadata (slice 3). Null ⇒ no ref ⇒ unattributed. */
+  trackingRef: string | null;
   /** The REDACTED webhook payload (stored verbatim as a JSON string value). */
   raw: string;
 }
@@ -150,6 +153,12 @@ export interface CreatePaymentLinkRequest {
   amountCents: number;
   currency?: string;
   interval?: PriceInterval | null;
+  /**
+   * Optional #386 tracking ref to stamp into Stripe checkout metadata (slice 3). When supplied it round-
+   * trips on the webhook onto the `revenue_events` row so the resulting payment attributes to the artifact/
+   * lead that drove it. Sanitized before it reaches Stripe (#200 §6); omitted ⇒ the payment is unattributed.
+   */
+  trackingRef?: string | null;
 }
 
 export interface WebhookIngestResult {
@@ -248,6 +257,9 @@ export class BillingManager {
 
     const latest = await this.deployments.latestForSession(req.sessionId, req.channelId);
     const deploymentId = latest?.id ?? null;
+    // #386 slice 3: stamp a (sanitized) tracking ref into checkout metadata so the resulting payment can be
+    // attributed to the artifact/lead that drove it. Garbage/absent ⇒ omitted ⇒ unattributed (honest).
+    const trackingRef = sanitizeTrackingRef(req.trackingRef);
 
     let productId: string;
     let priceId: string;
@@ -272,6 +284,7 @@ export class BillingManager {
           // provider webhook so a later delivery can attribute the channel message.
           agentMemberId: req.agentMemberId,
           ...(deploymentId ? { deploymentId } : {}),
+          ...(trackingRef ? { trackingRef } : {}),
         },
         secrets,
       });
@@ -353,6 +366,10 @@ export class BillingManager {
       amountCents: parsed.amountCents,
       currency: parsed.currency,
       status: parsed.status,
+      // #386 slice 3: carry the tracking ref through Stripe metadata onto the row so the attribution
+      // projection can credit the artifact/lead that drove this dollar. Sanitized — it comes off an
+      // external webhook (#200 §6); a missing/garbage ref lands as null ⇒ this payment stays unattributed.
+      trackingRef: sanitizeTrackingRef(parsed.metadata.trackingRef),
       raw: redact(rawBody),
     });
 
