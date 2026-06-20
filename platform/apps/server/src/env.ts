@@ -44,6 +44,8 @@ export interface Env {
   buildLoop: BuildLoopEnv;
   /** Founder Briefings scheduled tick (#173). */
   briefings: BriefingsEnv;
+  /** Content-cadence scheduled tick (#416). */
+  contentCadence: ContentCadenceEnv;
   /** Finance Ledger posting/close tick (#194). */
   finance: FinanceEnv;
   /** Venture monetization activation tick (#188). */
@@ -240,6 +242,11 @@ export interface BriefingsEnv {
   intervalMs: number;
 }
 
+export interface ContentCadenceEnv {
+  /** Content-cadence tick interval in ms. Default `0` = the loop is OFF (opt-in, #416). */
+  intervalMs: number;
+}
+
 export interface FinanceEnv {
   /** Finance posting/close-tick interval in ms. Default `0` = the accounting loop is OFF (opt-in, #194). */
   intervalMs: number;
@@ -407,6 +414,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     briefings: {
       // Default 0 (off): the briefings loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.
       intervalMs: Number(source.BRIEFINGS_INTERVAL_MS ?? 0) || 0,
+    },
+    contentCadence: {
+      // Default 0 (off): the content-cadence loop is opt-in so prod is unchanged until the owner flips it (#416).
+      intervalMs: Number(source.CONTENT_CADENCE_INTERVAL_MS ?? 0) || 0,
     },
     finance: {
       // Default 0 (off): the finance ledger loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

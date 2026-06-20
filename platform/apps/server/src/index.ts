@@ -71,6 +71,11 @@ app.buildLoopEngine.start(env.buildLoop.intervalMs);
 // dedups repeats within a period). Stopped on server close via buildApp.
 app.founderBriefingsEngine.start(env.briefings.intervalMs);
 
+// #416 content cadence: start the opt-in tick (CONTENT_CADENCE_INTERVAL_MS; default 0 = off) that briefs
+// the fleet to write+publish the next target query so it ships a steady stream of on-site content instead
+// of re-auditing the homepage (per-workspace flags are default-OFF + owner-first). Stopped on server close.
+app.contentCadenceEngine.start(env.contentCadence.intervalMs);
+
 // #194 finance ledger: start the opt-in posting/close tick (FINANCE_INTERVAL_MS; default 0 = off) that
 // posts each enabled workspace's external receipts into the per-venture ledger and refreshes the current
 // period's close pack (the idempotent upsert makes a repeat tick a no-op). Stopped on server close via buildApp.

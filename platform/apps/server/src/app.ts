@@ -146,6 +146,8 @@ import {
 } from "./founder-briefings/default.js";
 import type { FounderBriefingsService } from "./founder-briefings/service.js";
 import type { FounderBriefingsEngine } from "./founder-briefings/engine.js";
+import { createDefaultContentCadenceEngine } from "./marketing/content-cadence/default.js";
+import type { ContentCadenceEngine } from "./marketing/content-cadence/engine.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { acquisitionRoutes } from "./routes/acquisition.js";
 import { createDefaultOnboardingService } from "./onboarding/default.js";
@@ -292,6 +294,7 @@ declare module "fastify" {
     buildLoopEngine: BuildLoopEngine;
     /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
     founderBriefingsEngine: FounderBriefingsEngine;
+    contentCadenceEngine: ContentCadenceEngine;
     /** The #194 finance ledger engine; `index.ts` starts its opt-in tick (FINANCE_INTERVAL_MS). */
     financeEngine: FinanceLedgerEngine;
     /** The #188 monetization engine; `index.ts` starts its opt-in tick (MONETIZATION_INTERVAL_MS). */
@@ -409,6 +412,7 @@ export interface BuildAppOptions {
   founderBriefings?: FounderBriefingsService;
   /** #173 founder briefings engine: tests inject an engine and drive `tickWorkspace()`; default builds the real one. */
   founderBriefingsEngine?: FounderBriefingsEngine;
+  contentCadenceEngine?: ContentCadenceEngine;
   /** #192 external account onboarding: tests inject a service over fakes (incl. a fake DNS provider); default wires the real repos. */
   onboarding?: OnboardingService;
   /** #264 DNS automation: tests inject a manager over a fake provider + receipt sink; default wires the real repos. */
@@ -886,6 +890,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     founderBriefingsEngine.stop();
   });
   app.decorate("founderBriefingsEngine", founderBriefingsEngine);
+  // #416 content-cadence: the timed tick that briefs the fleet to write+publish the next target query so it
+  // ships a steady stream of on-site content instead of re-auditing the homepage. The timer is started in
+  // index.ts only when CONTENT_CADENCE_INTERVAL_MS > 0 (default OFF); per-workspace flags are default-OFF +
+  // owner-first, so prod with the block unset is byte-for-byte unchanged.
+  const contentCadenceEngine =
+    opts.contentCadenceEngine ?? createDefaultContentCadenceEngine(app.log, sessionManager);
+  app.addHook("onClose", async () => {
+    contentCadenceEngine.stop();
+  });
+  app.decorate("contentCadenceEngine", contentCadenceEngine);
   // #192 external account onboarding: the human-once setup handoff. The fleet files a SETUP request when a
   // venture needs an external service (ESP/ad/analytics/registrar/hosting) — it parks as a #13 approval in
   // the decision queue. The owner pastes keys ONCE (sealed write-only into the #192 vault); agents then use
