@@ -47,7 +47,17 @@ export interface MarketingBriefDeps {
   /** The existing @mention → real session launcher (the audited #59/#96/#71 path). */
   launch(
     identity: { workspaceId: string; memberId: string },
-    input: { channelId: string; messageId: string; task: string },
+    input: {
+      channelId: string;
+      messageId: string;
+      task: string;
+      /**
+       * #417: thread a governed a2a handoff's out-of-band authorization to the #59 gate so the launch
+       * skips the human channel-RBAC head (never the venture gate). Absent/false ⇒ the human/owner brief
+       * path is byte-for-byte unchanged.
+       */
+      systemAuthorized?: boolean;
+    },
   ): Promise<MarketingMentionResult>;
   /**
    * #370 (optional): narrate the lead's kickoff into its department channel — the lead posts its plan AS
@@ -82,7 +92,16 @@ export class MarketingBriefService {
 
   async brief(
     identity: { workspaceId: string; memberId: string },
-    input: { lead: string; goal: string },
+    input: {
+      lead: string;
+      goal: string;
+      /**
+       * #417: when set (the #282 a2a dispatch path), the launch is authorized out-of-band by
+       * {@link decideA2ACall}; thread it to the launcher so the #9 channel-RBAC head is skipped. The
+       * venture/admission gate still runs. Absent ⇒ today's human/owner brief, unchanged.
+       */
+      systemAuthorized?: boolean;
+    },
   ): Promise<MarketingBriefResult> {
     const goal = input.goal.trim();
     if (goal.length === 0) {
@@ -119,6 +138,7 @@ export class MarketingBriefService {
       channelId: channel.id,
       messageId: message.id,
       task: goal,
+      systemAuthorized: input.systemAuthorized,
     });
     if (!result.ok) return result;
     // #370: the lead posts its plan into the department channel on kickoff (best-effort, self-gating). The

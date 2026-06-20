@@ -13,9 +13,57 @@ import type { SessionManager } from "../runtime/manager.js";
 import { listPersonas } from "../db/repositories/personas.js";
 import { loadConfig } from "../config/loader.js";
 import { createMarketingBriefService } from "../marketing/default.js";
+import type { MarketingBriefResult } from "../marketing/brief.js";
 import { resolveAgentRegistryCaps } from "./caps.js";
 import { encodeHandoffGoal } from "./handoff.js";
-import { AgentRegistryService, type DispatchResult } from "./service.js";
+import {
+  AgentRegistryService,
+  type AgentRegistryDeps,
+  type AgentRegistryIdentity,
+  type DispatchResult,
+} from "./service.js";
+
+/** The slice of the #235 brief front door the a2a dispatch needs — injectable so the wiring is testable. */
+export interface A2ADispatchBrief {
+  brief(
+    identity: { workspaceId: string; memberId: string },
+    input: { lead: string; goal: string; systemAuthorized?: boolean },
+  ): Promise<MarketingBriefResult>;
+}
+
+/**
+ * Build the A2A `dispatch` seam over a brief front door (#282/#417). Exported (and brief-injected) so the
+ * wiring is unit-testable without a DB or SessionManager. It posts `@target <task>` and launches the target
+ * down the audited brief path — but as a GOVERNED agent→agent handoff: {@link decideA2ACall} already
+ * authorized the hop, so it sets `systemAuthorized: true` to skip the human #9 channel-RBAC head (the
+ * caller agent isn't a `propagate` member of the target's channel). The venture/admission gate inside the
+ * launcher still runs — `systemAuthorized` grants no new authority.
+ */
+export function buildA2ADispatch(brief: A2ADispatchBrief): AgentRegistryDeps["dispatch"] {
+  return async (identity: AgentRegistryIdentity, input): Promise<DispatchResult> => {
+    // The chain marker (#417) lets the launched session carry the a2a call chain to the next hop, so a
+    // multi-hop deliverable handoff stays depth/cycle-bounded. An empty chain returns the goal unchanged
+    // → byte-identical to today's manual a2a route. The marker is OUR structural prefix on the task we
+    // assign; it is never read from agent free output (#200).
+    const goal = encodeHandoffGoal(
+      input.callChain,
+      `[A2A handoff from @${input.callerHandle}] ${input.task}`,
+    );
+    const result = await brief.brief(
+      { workspaceId: identity.workspaceId, memberId: identity.memberId },
+      // #417: a governed a2a handoff — decideA2ACall authorized the call out-of-band, so the brief launches
+      // through the #59 gate WITHOUT the human channel-RBAC head (the caller agent can't satisfy it).
+      { lead: input.targetHandle, goal, systemAuthorized: true },
+    );
+    if (!result.ok) return { ok: false, code: result.code, error: result.error };
+    return {
+      ok: true,
+      channelId: result.channelId,
+      messageId: result.messageId,
+      sessionId: result.launched[0]?.sessionId ?? null,
+    };
+  };
+}
 
 /**
  * Build the Agent Registry service over the real repos + the venture-gated brief launcher. The `dispatch`
@@ -29,26 +77,6 @@ export function createAgentRegistryService(sessionManager: SessionManager): Agen
   return new AgentRegistryService({
     caps: (workspaceId) => resolveAgentRegistryCaps(loadConfig(workspaceId).agentRegistry),
     listPresentHandles: async (workspaceId) => (await listPersonas(workspaceId)).map((p) => p.name),
-    dispatch: async (identity, input): Promise<DispatchResult> => {
-      // The chain marker (#417) lets the launched session carry the a2a call chain to the next hop, so a
-      // multi-hop deliverable handoff stays depth/cycle-bounded. An empty chain returns the goal unchanged
-      // → byte-identical to today's manual a2a route. The marker is OUR structural prefix on the task we
-      // assign; it is never read from agent free output (#200).
-      const goal = encodeHandoffGoal(
-        input.callChain,
-        `[A2A handoff from @${input.callerHandle}] ${input.task}`,
-      );
-      const result = await brief.brief(
-        { workspaceId: identity.workspaceId, memberId: identity.memberId },
-        { lead: input.targetHandle, goal },
-      );
-      if (!result.ok) return { ok: false, code: result.code, error: result.error };
-      return {
-        ok: true,
-        channelId: result.channelId,
-        messageId: result.messageId,
-        sessionId: result.launched[0]?.sessionId ?? null,
-      };
-    },
+    dispatch: buildA2ADispatch(brief),
   });
 }

@@ -67,6 +67,33 @@ describe("#235 MarketingBriefService", () => {
     });
   });
 
+  it("#417 threads systemAuthorized through to the launch dep (governed a2a handoff)", async () => {
+    const { deps, launch } = baseDeps();
+    const res = await new MarketingBriefService(deps).brief(identity, {
+      lead: "scout",
+      goal: "draft the launch post",
+      systemAuthorized: true,
+    });
+    expect(res.ok).toBe(true);
+    expect(launch).toHaveBeenCalledWith(identity, {
+      channelId: "c-seo",
+      messageId: "msg-1",
+      task: "draft the launch post",
+      systemAuthorized: true,
+    });
+  });
+
+  it("#417 defaults systemAuthorized off (human/owner brief unchanged — not threaded)", async () => {
+    const { deps, launch } = baseDeps();
+    await new MarketingBriefService(deps).brief(identity, { lead: "scout", goal: "rank us" });
+    expect(launch).toHaveBeenCalledWith(identity, {
+      channelId: "c-seo",
+      messageId: "msg-1",
+      task: "rank us",
+      systemAuthorized: undefined,
+    });
+  });
+
   it("normalises a leading @ and case on the lead handle", async () => {
     const { deps, post } = baseDeps();
     const res = await new MarketingBriefService(deps).brief(identity, { lead: "@Scout", goal: "rank us" });
