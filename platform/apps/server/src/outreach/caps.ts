@@ -10,12 +10,15 @@ export interface OutreachCaps {
   enabled: boolean;
   sendProvider: string;
   perChannelDailyCap: number;
+  /** Append a trackable pay link to the composed body (GAP 3, ADR-0401). Default OFF — body unchanged. */
+  payLinkInOutreach: boolean;
 }
 
 export const OUTREACH_DEFAULTS: OutreachCaps = {
   enabled: false,
   sendProvider: "dryrun",
   perChannelDailyCap: 50,
+  payLinkInOutreach: false,
 };
 
 export function resolveOutreachCaps(cfg: OutreachConfig | undefined): OutreachCaps {
@@ -27,5 +30,6 @@ export function resolveOutreachCaps(cfg: OutreachConfig | undefined): OutreachCa
       typeof cap === "number" && Number.isFinite(cap) && cap > 0
         ? Math.trunc(cap)
         : OUTREACH_DEFAULTS.perChannelDailyCap,
+    payLinkInOutreach: cfg?.payLinkInOutreach ?? OUTREACH_DEFAULTS.payLinkInOutreach,
   };
 }

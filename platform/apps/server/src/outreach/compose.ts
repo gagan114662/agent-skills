@@ -117,6 +117,29 @@ export interface ComposeInput {
   buyer: ComposeBuyer;
   /** The venture's product — named once, lightly. We sell the outcome, not the product. */
   productName: string;
+  /**
+   * An optional trackable pay link (Leads Centre GAP 3, ADR-0401). When present, a single clean
+   * "Start here: <url>" line is appended to the body so a reached human has a real way to pay. The URL is
+   * ipop's OWN minted #386 tracked link (inbound collection, never a charge) — not read-derived — so it is
+   * appended only when the (gated) caller supplies one. Absent ⇒ the body is byte-for-byte unchanged.
+   */
+  payLinkUrl?: string;
+}
+
+/** The single line that carries the pay link into the body — fixed ipop voice, never artifact-derived. */
+const PAY_LINK_PREFIX = "Start here:";
+
+/**
+ * True iff `url` is a safe http(s) absolute URL to append to a message body. The URL is ipop's own minted
+ * link, but we still validate the scheme so a malformed/relative value never lands in the body verbatim.
+ */
+function isSafePayLinkUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 /** The benefit sentence per value-prop variant — frames solving the problem, not the feature list. */
@@ -157,7 +180,17 @@ export function composeMessage(input: ComposeInput): ComposedMessage {
   const bodyParts = isEmail
     ? [`Hi ${name},`, opener, value, cta]
     : [`Hi ${name} — ${opener}`, value, cta];
-  const body = sanitizeLine(bodyParts.join(" "), MAX_BODY_CHARS);
+  const prose = sanitizeLine(bodyParts.join(" "), MAX_BODY_CHARS);
+
+  // Append a single clean pay-link line when one is supplied (GAP 3). The URL is ipop's own minted #386
+  // tracked link — appended AFTER the prose cap so the link is never truncated, then re-capped together. The
+  // pay-link line is its own clause; the URL is not run through sanitizeLine (which would collapse it) but is
+  // scheme-validated. Absent/invalid ⇒ the body is byte-for-byte unchanged.
+  const payLinkUrl = input.payLinkUrl?.trim();
+  const body =
+    payLinkUrl && isSafePayLinkUrl(payLinkUrl)
+      ? `${prose} ${PAY_LINK_PREFIX} ${payLinkUrl}`
+      : prose;
 
   const subject = isEmail ? sanitizeLine(`${problem} at ${account}`, MAX_SUBJECT_CHARS) : "";
 

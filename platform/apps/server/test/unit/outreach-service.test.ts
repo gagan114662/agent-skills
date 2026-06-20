@@ -9,6 +9,7 @@ import {
   type BriefReader,
   type OutreachApprovalGate,
   type PipelineAdvancer,
+  type OutreachPayLinkMinter,
 } from "../../src/outreach/service.js";
 import { OUTREACH_DEFAULTS, type OutreachCaps } from "../../src/outreach/caps.js";
 import type {
@@ -163,11 +164,22 @@ class FakePipeline implements PipelineAdvancer {
   }
 }
 
+/** A fake GAP-3 minter that records its calls and returns a fixed tracked URL. */
+class FakePayLinkMinter implements OutreachPayLinkMinter {
+  calls: { leadOrArtifactId: string; channel: OutreachChannel; planId: string }[] = [];
+  constructor(private readonly result: { url: string } | null = { url: "https://pay.none.reload.test/plan-pro?ref=ipop_abc123def456abcd" }) {}
+  async mintForProspect(_ws: string, input: { leadOrArtifactId: string; channel: OutreachChannel; planId: string }): Promise<{ url: string } | null> {
+    this.calls.push(input);
+    return this.result;
+  }
+}
+
 function build(opts: {
   connected?: ServiceKind[];
   signalKinds?: string[];
   b?: BuyerBriefRecord;
   caps?: Partial<OutreachCaps>;
+  payLinks?: OutreachPayLinkMinter;
 } = {}) {
   const messages = new FakeMessageStore();
   const receipts = new FakeReceiptStore();
@@ -181,6 +193,7 @@ function build(opts: {
     receipts,
     approvals,
     pipeline,
+    ...(opts.payLinks ? { payLinks: opts.payLinks } : {}),
     connectedAccounts: async () => new Set<ServiceKind>(opts.connected ?? ["esp", "registrar", "ad_account"]),
     caps: () => ({ ...OUTREACH_DEFAULTS, ...opts.caps }),
   });
@@ -235,6 +248,50 @@ describe("OutreachService.queue — owner-gated, never auto-sent", () => {
     expect(first.status).toBe("pending_approval");
     const second = await service.queue("ws-1", { prospectKey: "p-1", buyerBriefId: "brief-1", requesterMemberId: "mem-1" });
     expect(second.status).toBe("rate_limited");
+  });
+});
+
+describe("OutreachService — trackable pay link in outreach (GAP 3, ADR-0401, default-OFF)", () => {
+  it("appends the tracked pay link to the parked body when the flag is ON and a minter is wired", async () => {
+    const minter = new FakePayLinkMinter();
+    const { service, messages } = build({ caps: { payLinkInOutreach: true }, payLinks: minter });
+    const res = await service.queue("ws-1", { prospectKey: "p-1", buyerBriefId: "brief-1", requesterMemberId: "mem-1" });
+    expect(res.status).toBe("pending_approval");
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.body).toContain("Start here: https://pay.none.reload.test/plan-pro?ref=ipop_abc123def456abcd");
+    // The minter is asked for the structural prospect key + selected channel (never read text).
+    expect(minter.calls).toEqual([{ leadOrArtifactId: "p-1", channel: "email", planId: "pro" }]);
+  });
+
+  it("leaves the body unchanged when the flag is OFF (default) even if a minter is wired", async () => {
+    const minter = new FakePayLinkMinter();
+    const { service, messages } = build({ payLinks: minter });
+    const res = await service.queue("ws-1", { prospectKey: "p-1", buyerBriefId: "brief-1", requesterMemberId: "mem-1" });
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.body).not.toContain("Start here:");
+    expect(minter.calls).toHaveLength(0);
+  });
+
+  it("leaves the body unchanged when the flag is ON but no minter is wired", async () => {
+    const { service, messages } = build({ caps: { payLinkInOutreach: true } });
+    const res = await service.queue("ws-1", { prospectKey: "p-1", buyerBriefId: "brief-1", requesterMemberId: "mem-1" });
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.body).not.toContain("Start here:");
+  });
+
+  it("a mint failure never breaks composition (body falls back to no link)", async () => {
+    const failing: OutreachPayLinkMinter = {
+      mintForProspect: async () => { throw new Error("stripe down"); },
+    };
+    const { service, messages } = build({ caps: { payLinkInOutreach: true }, payLinks: failing });
+    const res = await service.queue("ws-1", { prospectKey: "p-1", buyerBriefId: "brief-1", requesterMemberId: "mem-1" });
+    expect(res.status).toBe("pending_approval");
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.body).not.toContain("Start here:");
   });
 });
 

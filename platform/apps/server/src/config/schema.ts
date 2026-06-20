@@ -1308,6 +1308,13 @@ export const outreachSchema = z.object({
   sendProvider: z.string().optional(),
   /** Per-channel daily send cap (deliverability/brand protection). */
   perChannelDailyCap: z.number().int().positive().optional(),
+  /**
+   * Append a trackable Stripe pay LINK to the composed outreach body (Leads Centre GAP 3, ADR-0401).
+   * Default OFF — the body is byte-for-byte unchanged until an owner opts in. Minting an inbound collection
+   * link is NOT money-out (a charge/payout stays #13-gated); the link carries a #386 ref so a payment
+   * attributes back to the outreach. Composition only — the SEND still parks at the #13 gate.
+   */
+  payLinkInOutreach: z.boolean().optional(),
 });
 
 /**
