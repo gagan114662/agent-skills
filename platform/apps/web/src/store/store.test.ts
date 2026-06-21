@@ -89,6 +89,9 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
         rail: { humanCount: 1, agentCount: 1, decisionsCaptured: 0, summary: "1 human · 1 agent · 0 decisions captured" },
       })),
     },
+    missionControl: {
+      stop: vi.fn(async () => ({ canceled: true })),
+    },
     approvals: {
       list: vi.fn(async () => []),
       get: vi.fn(async (rid: string) => req({ id: rid })),

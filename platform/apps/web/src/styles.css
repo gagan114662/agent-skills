@@ -5243,3 +5243,9 @@ select:focus-visible {
   40% { transform: scale(1); opacity: 1; }
 }
 .typingind__label { font-style: italic; }
+.typingind__stop {
+  margin-left: 6px; background: none; border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 11px; padding: 1px 8px; border-radius: 999px; cursor: pointer;
+}
+.typingind__stop:hover { color: var(--accent-press); border-color: var(--accent); }
+
