@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Composer } from "./Composer.js";
+import { VOICE } from "../brand.js";
 import { renderWithStore } from "../test/utils.js";
 
 describe("Composer", () => {
@@ -103,11 +104,30 @@ describe("Composer", () => {
     await store.bootstrap();
 
     await userEvent.type(screen.getByRole("textbox"), "focus on the pricing page");
-    await userEvent.click(screen.getByRole("button", { name: /^steer$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /steer the running agent/i }));
 
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent(/steer sent/i);
     // It also actually stacked the steering message (the #54 path still runs).
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  // #508 — Queue and Steer must explain themselves: an accessible label for screen readers
+  // and a hover tooltip (title) so a new user can tell them apart from Send.
+  it("labels Queue and Steer with an accessible explanation and a hover tooltip", async () => {
+    const { store } = renderWithStore(<Composer queue />);
+    await store.bootstrap();
+
+    // The accessible name (aria-label) carries the full explanation, not a bare verb.
+    const queue = screen.getByRole("button", { name: /queue this message to send in turn/i });
+    const steer = screen.getByRole("button", { name: /steer the running agent/i });
+
+    // The same one-line explanation is exposed as a hover tooltip via `title`.
+    expect(queue).toHaveAttribute("title", VOICE.queueTooltip);
+    expect(steer).toHaveAttribute("title", VOICE.steerTooltip);
+
+    // The explanations distinguish the two actions (in turn vs. jump ahead) and are distinct from Send.
+    expect(VOICE.queueTooltip).not.toBe(VOICE.steerTooltip);
+    expect(screen.getByRole("button", { name: /^send$/i })).toBeInTheDocument();
   });
 });

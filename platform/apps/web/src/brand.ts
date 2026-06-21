@@ -95,6 +95,10 @@ export const VOICE = {
   steerSent: "Steer sent — we pushed that to the front of the line.",
   /** Composer: a message was queued (sends in turn). */
   queued: "Queued — it'll send in turn.",
+  /** Composer Queue button: accessible label + hover tooltip so a new user knows what it does (#508). */
+  queueTooltip: "Queue this message to send in turn — it goes out after the agent finishes its current reply. (⌘↵)",
+  /** Composer Steer button: accessible label + hover tooltip explaining how it differs from Send/Queue (#508). */
+  steerTooltip: "Steer the running agent — jump this to the front of the line so it course-corrects next. (⌥↵)",
 } as const;
 
 /**
