@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MembersRail, membersRailSummary } from "./MembersRail.js";
 import { renderWithStore } from "../test/utils.js";
 
@@ -19,6 +20,24 @@ describe("MembersRail", () => {
     await store.bootstrap();
     const footer = await screen.findByLabelText("Team summary");
     expect(footer).toHaveTextContent("1 human · 1 agent · 0 decisions captured");
+  });
+
+  // #462: the "N decisions captured" footer opens the auditable decision log when a handler is wired.
+  it("opens the decision log from the footer when onOpenDecisions is provided", async () => {
+    const onOpenDecisions = vi.fn();
+    const { store } = renderWithStore(<MembersRail onOpenDecisions={onOpenDecisions} />);
+    await store.bootstrap();
+    const btn = await screen.findByRole("button", { name: /open the decision log/i });
+    expect(btn).toHaveTextContent(/decisions captured/);
+    await userEvent.click(btn);
+    expect(onOpenDecisions).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a static footer (no button) when no handler is wired", async () => {
+    const { store } = renderWithStore(<MembersRail />);
+    await store.bootstrap();
+    await screen.findByLabelText("Team summary");
+    expect(screen.queryByRole("button", { name: /decision log/i })).toBeNull();
   });
 
   it("lists humans and agents as members", async () => {

@@ -37,20 +37,42 @@ export function membersRailSummary(humans: number, agents: number, decisionsCapt
   return `${plural(h, "human")} · ${plural(a, "agent")} · ${d} decisions captured`;
 }
 
-export function MembersRail(): React.JSX.Element {
+export interface MembersRailProps {
+  /**
+   * #462: open the decision log (the #13 approval history — the real audit behind the "N decisions captured"
+   * counter). When provided, the footer becomes a button; absent ⇒ today's static footer.
+   */
+  onOpenDecisions?: () => void;
+}
+
+export function MembersRail({ onOpenDecisions }: MembersRailProps = {}): React.JSX.Element {
   const { directory, presence, identity, decisionsCaptured } = useAppState();
   const members = Object.values(directory);
   const humans = members.filter((m) => m.kind === "human");
   const agents = members.filter((m) => m.kind === "agent");
+  const summary = membersRailSummary(humans.length, agents.length, decisionsCaptured);
 
   return (
     <aside className="members" aria-label="Members">
       <header className="members__head">Members</header>
       <Group label={`Agents · ${agents.length}`} members={agents} presence={presence} selfId={identity?.memberId} />
       <Group label={`People · ${humans.length}`} members={humans} presence={presence} selfId={identity?.memberId} />
-      <footer className="members__footer" aria-label="Team summary">
-        {membersRailSummary(humans.length, agents.length, decisionsCaptured)}
-      </footer>
+      {/* #462: the captured-decision count is no longer a dead number — it opens the auditable #13 decision
+          log (the Approvals inbox's Executed/Rejected history). */}
+      {onOpenDecisions ? (
+        <button
+          type="button"
+          className="members__footer members__footer--btn"
+          aria-label="Open the decision log"
+          onClick={onOpenDecisions}
+        >
+          {summary}
+        </button>
+      ) : (
+        <footer className="members__footer" aria-label="Team summary">
+          {summary}
+        </footer>
+      )}
     </aside>
   );
 }

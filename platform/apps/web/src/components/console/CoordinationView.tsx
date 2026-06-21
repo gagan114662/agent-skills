@@ -30,7 +30,12 @@ import { ThreadPanel } from "../ThreadPanel.js";
 import { MembersRail } from "../MembersRail.js";
 import { CONSOLE } from "../../brand.js";
 
-export function CoordinationView(): React.JSX.Element {
+export interface CoordinationViewProps {
+  /** #462: open the #13 decision log (the Approvals inbox) — wired to the members-rail decisions counter. */
+  onOpenDecisions?: () => void;
+}
+
+export function CoordinationView({ onOpenDecisions }: CoordinationViewProps = {}): React.JSX.Element {
   const store = useStore();
   // The active DM peer (a 1:1 framing over that member's channel), or null for a plain channel view.
   const [dmPeer, setDmPeer] = useState<DirectoryEntry | null>(null);
@@ -65,7 +70,7 @@ export function CoordinationView(): React.JSX.Element {
         />
         <MessagePane dmPeer={dmPeer} />
         <ThreadPanel />
-        <MembersRail />
+        <MembersRail onOpenDecisions={onOpenDecisions} />
       </div>
     </div>
   );

@@ -1133,6 +1133,17 @@ select:focus-visible {
   font-size: 11px;
   color: var(--text-dim);
 }
+/* #462: when the footer opens the decision log it's a button — keep the same look, add affordance on hover. */
+.members__footer--btn {
+  width: 100%;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+.members__footer--btn:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
 .members__grouphead {
   font-size: 11px;
   text-transform: uppercase;

@@ -16,7 +16,7 @@
  * overlays from the left footer / the paywall nudge rather than a tab strip.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalRequestDto } from "@reload/shared";
+import type { ApprovalRequestDto, ApprovalStatus } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { api, ApiError, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
@@ -163,6 +163,9 @@ export function ConsoleView(): React.JSX.Element {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
+  // #462: which status the Approvals inbox opens to — "pending" from the "waiting on you" pill, "executed"
+  // (the decision history) from the members-rail decisions counter.
+  const [approvalsInitialStatus, setApprovalsInitialStatus] = useState<ApprovalStatus>("pending");
   const [pricingOpen, setPricingOpen] = useState(false);
   // #479 first-run checklist: real setup signals (brand kit set / an account connected). Fetched once; the
   // run + approve signals come from already-loaded state below.
@@ -523,11 +526,19 @@ export function ConsoleView(): React.JSX.Element {
     // the first-class Approvals inbox (Approve / Reject / Edit per pending action, showing exactly what will
     // publish/send/spend), not scroll to a plain agent message. On the board, keep diving into the transcript.
     if (showCoordinationSurface) {
+      setApprovalsInitialStatus("pending");
       setApprovalsOpen(true);
       return;
     }
     const first = model.columns.waiting[0];
     if (first) dive(first, "transcript");
+  }
+
+  // #462: open the #13 decision LOG (executed/rejected history — the real audit behind the members-rail
+  // "N decisions captured" counter), landing on the executed decisions.
+  function openDecisionLog(): void {
+    setApprovalsInitialStatus("executed");
+    setApprovalsOpen(true);
   }
 
   function openSettings(project: ConsoleProject): void {
@@ -802,7 +813,7 @@ export function ConsoleView(): React.JSX.Element {
             {showFirstRun && (
               <FirstRunChecklist steps={firstRunSteps} onAction={onFirstRunAction} onDismiss={() => setFirstRunDismissed(true)} />
             )}
-            <CoordinationView />
+            <CoordinationView onOpenDecisions={openDecisionLog} />
           </>
         ) : (
           <>
@@ -943,7 +954,7 @@ export function ConsoleView(): React.JSX.Element {
           shows each pending action's type / amount / requester and the Approve / Reject controls. */}
       {approvalsOpen && (
         <ShellOverlay title={CONSOLE.shell.approvalsTitle} onClose={() => setApprovalsOpen(false)}>
-          <ApprovalsPanel />
+          <ApprovalsPanel initialStatus={approvalsInitialStatus} />
         </ShellOverlay>
       )}
 
