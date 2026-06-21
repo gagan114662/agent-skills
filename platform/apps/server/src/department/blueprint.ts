@@ -96,6 +96,12 @@ function persona(
  * Order is presentation order (lead first). Handles are lowercase; colors are distinct accessible accents.
  * Configurable: a deployment overrides any of these via `department.roster` ({@link resolveDepartmentRoster}).
  */
+// #476: the roster IS the marketing department (ipop is a marketing product, not a software team) — Hermes
+// leads, then the eight customer-facing specialists, 1:1 with the Agent Garden agents + the #138 marketing
+// channels (scout/echo/quill/postmark/bid/lens/mark/comet). Previously this listed software-dev personas
+// (Developer/QA/DevOps/Design) + 3 handles with no Garden config, so the members rail showed 11 while only 8
+// were configured. Roles/colors now match `MARKETING_DEPARTMENTS` so the rail, the Garden, and the channels
+// agree exactly.
 export const DEFAULT_DEPARTMENT_ROSTER: readonly DepartmentPersona[] = [
   persona(
     "hermes",
@@ -117,40 +123,67 @@ export const DEFAULT_DEPARTMENT_ROSTER: readonly DepartmentPersona[] = [
     "Hi, I'm Scout. I read your site the way a crawler does and bring back where it trips — with the receipts.",
   ),
   persona(
-    "lens",
-    "Lens",
-    "design",
-    "Design",
-    "#E5484D",
-    false,
-    "Lens here. I make it look like we meant it — clear hierarchy, honest spacing, no slop. Drafts land here first.",
-  ),
-  persona(
-    "atlas",
-    "Atlas",
-    "development",
-    "Developer",
-    "#0091FF",
-    false,
-    "I'm Atlas. I turn the plan into working code, small and reviewable. Nothing ships without your nod.",
-  ),
-  persona(
-    "sentinel",
-    "Sentinel",
-    "qa",
-    "QA",
-    "#F2A60D",
-    false,
-    "Sentinel, on watch. I try to break it before your users do and write down exactly how. Evidence over vibes.",
-  ),
-  persona(
     "echo",
     "Echo",
-    "devops",
-    "DevOps",
-    "#00A3BF",
+    "social",
+    "Social",
+    "#E8833A",
     false,
-    "Echo here. I keep the pipes flowing — builds, deploys, the boring reliable stuff. Every release waits for approval.",
+    "Echo here. I turn one good idea into a week of posts. Nothing leaves without your nod.",
+  ),
+  persona(
+    "quill",
+    "Quill",
+    "content",
+    "Content",
+    "#E0B341",
+    false,
+    "I'm Quill. Give me a topic and a target reader and I'll bring back a draft that sounds like a human wrote it.",
+  ),
+  persona(
+    "postmark",
+    "Postmark",
+    "email",
+    "Email",
+    "#15AABF",
+    false,
+    "Postmark, at your service. I write the emails people actually open. I never hit send — that's your job.",
+  ),
+  persona(
+    "bid",
+    "Bid",
+    "ads",
+    "Ads",
+    "#22B8CF",
+    false,
+    "I'm Bid. I plan spend like it's my own money — which is to say, carefully. Every dollar waits for your yes.",
+  ),
+  persona(
+    "lens",
+    "Lens",
+    "analytics",
+    "Analytics",
+    "#4C6EF5",
+    false,
+    "Lens here. I stare at the numbers so you don't have to, then tell you the one that matters.",
+  ),
+  persona(
+    "mark",
+    "Mark",
+    "brand",
+    "Brand",
+    "#9775FA",
+    false,
+    "I'm Mark. I keep us sounding like us — warm, a little silly, never smug. I'll flag anything that drifts off-voice.",
+  ),
+  persona(
+    "comet",
+    "Comet",
+    "reach",
+    "Reach",
+    "#E64980",
+    false,
+    "Comet here. I find the people who just raised or just hired and write each one a single good line.",
   ),
 ];
 

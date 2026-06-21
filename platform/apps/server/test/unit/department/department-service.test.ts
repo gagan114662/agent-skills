@@ -118,7 +118,7 @@ describe("department/service — view (read-only roster + rail)", () => {
     });
     const view = await service.view(OWNER);
     expect(view.roster.find((e) => e.handle === "hermes")!.present).toBe(true);
-    expect(view.roster.find((e) => e.handle === "atlas")!.present).toBe(false);
+    expect(view.roster.find((e) => e.handle === "comet")!.present).toBe(false);
   });
 });
 
