@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessagePane } from "./MessagePane.js";
+import { CHANNEL_STARTERS, VOICE } from "../brand.js";
 import { makeMessage, renderWithStore } from "../test/utils.js";
 
 describe("MessagePane", () => {
@@ -159,6 +160,52 @@ describe("MessagePane", () => {
       await store.selectChannel("c1");
     });
     expect(composer()).toHaveValue("draft for general");
+  });
+
+  // #509: an empty channel is not a dead end — it offers concrete, department-specific starter prompts so a
+  // new user knows what to ask in (e.g.) #seo, and tapping one drops it into the composer ready to send.
+  it("offers department starter prompts in an empty channel", async () => {
+    const { store } = renderWithStore(<MessagePane />, {
+      channels: [{ id: "c1", workspaceId: "w1", kind: "public", name: "seo", isArchived: false }],
+      messages: [],
+    });
+    await store.bootstrap();
+
+    // The empty-state heading and the #seo-specific prompts are shown (not a bare "Quiet in here").
+    expect(await screen.findByText(VOICE.startersHeading)).toBeInTheDocument();
+    for (const prompt of CHANNEL_STARTERS.seo!) {
+      expect(screen.getByRole("button", { name: prompt })).toBeInTheDocument();
+    }
+  });
+
+  it("prefills the composer when a starter prompt is tapped", async () => {
+    const { store } = renderWithStore(<MessagePane />, {
+      channels: [{ id: "c1", workspaceId: "w1", kind: "public", name: "seo", isArchived: false }],
+      messages: [],
+    });
+    await store.bootstrap();
+
+    const prompt = CHANNEL_STARTERS.seo![0]!;
+    await userEvent.click(await screen.findByRole("button", { name: prompt }));
+
+    // The brief lands in the composer (editable, not auto-sent) and is saved as this channel's draft.
+    expect(screen.getByRole("textbox")).toHaveValue(prompt);
+    expect(store.getDraft("c1")).toBe(prompt);
+  });
+
+  // A channel without a department still suggests something — the generic cross-fleet set, never a blank state.
+  it("falls back to generic starter prompts for a non-department channel", async () => {
+    const { store } = renderWithStore(<MessagePane />, {
+      channels: [{ id: "c1", workspaceId: "w1", kind: "public", name: "general", isArchived: false }],
+      messages: [],
+    });
+    await store.bootstrap();
+
+    expect(await screen.findByText(VOICE.startersHeading)).toBeInTheDocument();
+    // At least two clickable first actions are offered.
+    const heading = screen.getByText(VOICE.startersHeading);
+    const list = heading.parentElement!.querySelector(".starters__list")!;
+    expect(list.querySelectorAll("button").length).toBeGreaterThanOrEqual(2);
   });
 
   // #378: a DM peer reframes the header as a 1:1 over the resolved channel's real message stream.

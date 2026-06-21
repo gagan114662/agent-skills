@@ -767,6 +767,67 @@ select:focus-visible {
 .messagelist__empty {
   color: var(--text-faint);
   margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+/* #509: the empty-channel starter prompts — clickable @-mention briefs that prefill the composer so a new
+   user knows what to ask in this department instead of staring at a blank room. */
+.starters {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+}
+.starters__heading {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-faint);
+  text-align: center;
+}
+.starters__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.starters__chip {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s cubic-bezier(0.2, 1.4, 0.3, 1);
+}
+.starters__chip:hover {
+  border-color: var(--pop-color, var(--accent));
+  background: color-mix(in srgb, var(--pop-color, var(--accent)) 8%, transparent);
+  transform: translateY(-1px);
+}
+.starters__chip:focus-visible {
+  outline: 2px solid var(--pop-color, var(--accent));
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .starters__chip {
+    transition: none;
+  }
+  .starters__chip:hover {
+    transform: none;
+  }
 }
 /* #419: the "new messages ↓" pill — shown only when a reader has scrolled up and fresh messages arrived. It
    floats centered just above the composer; clicking it jumps the feed to the newest message. */
