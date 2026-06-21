@@ -55,8 +55,11 @@ export const TASK_EVENT_TYPES = [
   "assigned",
   "reassigned",
   "unassigned",
+  "handoff",
   "linked",
   "unlinked",
+  "dependency_added",
+  "dependency_removed",
 ] as const;
 
 export const taskEvents = pgTable(
@@ -106,6 +109,39 @@ export const taskLinks = pgTable(
   (t) => ({
     uniq: unique("task_links_task_target_uniq").on(t.taskId, t.targetType, t.targetId),
     reverse: index("task_links_reverse_idx").on(t.workspaceId, t.targetType, t.targetId),
+  }),
+);
+
+/**
+ * Task-to-task dependencies (#515). An edge `(blocked, blocker)` reads "blocked depends on blocker"
+ * / "blocker blocks blocked" — the blocked task can't start until the blocker is terminal. The graph
+ * is kept acyclic in the repository (cycle guard) before insert; the UNIQUE makes adding idempotent
+ * and the CHECK forbids self-edges. Both tasks are workspace-scoped (validated at the route/repo).
+ */
+export const taskDependencies = pgTable(
+  "task_dependencies",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    blockedTaskId: uuid("blocked_task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    blockerTaskId: uuid("blocker_task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: unique("task_dependencies_uniq").on(t.blockedTaskId, t.blockerTaskId),
+    noSelf: check("task_dependencies_no_self", sql`${t.blockedTaskId} <> ${t.blockerTaskId}`),
+    byBlocked: index("task_dependencies_blocked_idx").on(t.blockedTaskId),
+    byBlocker: index("task_dependencies_blocker_idx").on(t.blockerTaskId),
+    byWorkspace: index("task_dependencies_workspace_idx").on(t.workspaceId),
   }),
 );
 

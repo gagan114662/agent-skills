@@ -7,22 +7,31 @@ import type { Identity } from "../auth/identity.js";
 import { messageInWorkspace } from "../db/repositories/messages.js";
 import { memoryInWorkspace } from "../db/repositories/memories.js";
 import { canTransition, isStatus, type TaskStatus } from "../tasks/status.js";
+import { unsatisfiedBlockerCount } from "../tasks/dependencies.js";
 import {
   createTask,
+  getTask,
   listTasks,
   boardView,
   updateStatus,
   assignTask,
+  handoffTask,
   listTaskEvents,
   addTaskLink,
   removeTaskLink,
   listTaskLinks,
   listTasksLinkingTo,
+  addDependency,
+  removeDependency,
+  listBlockers,
+  listDependents,
+  getBlockerStatuses,
   createRoutingRule,
   listRoutingRules,
   deleteRoutingRule,
   pickRouteAssignee,
   type Task,
+  type HandoffLink,
 } from "../db/repositories/tasks.js";
 
 /**
@@ -168,6 +177,15 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         .code(409)
         .send({ error: `cannot transition from ${task.status} to ${b.status}` });
     }
+    // #515: a task can't START while it still has open blockers (done/canceled blockers are satisfied).
+    if (b.status === "in_progress") {
+      const open = unsatisfiedBlockerCount(await getBlockerStatuses(tid));
+      if (open > 0) {
+        return reply
+          .code(409)
+          .send({ error: `blocked by ${open} unfinished task${open === 1 ? "" : "s"}` });
+      }
+    }
     return updateStatus(tid, b.status, id.memberId);
   });
 
@@ -194,6 +212,106 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     return assignAndNotify(req, id, task, b.assigneeMemberId ?? null);
+  });
+
+  // explicit handoff (#515): reassign to another member + a handoff note + optional artifact links.
+  // Reassignment IS the handoff — one audited act, recorded as a single `handoff` event.
+  app.post("/tasks/:tid/handoff", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { tid } = req.params as { tid: string };
+    const task = await requireTaskInWorkspace(id, tid, reply);
+    if (!task) return;
+    const b = req.body as { toMemberId?: string; note?: string; links?: unknown };
+    if (!b.toMemberId) return reply.code(400).send({ error: "toMemberId required" });
+    if (!(await getWorkspaceMember(b.toMemberId, task.workspaceId))) {
+      return reply.code(404).send({ error: "handoff target not found in this workspace" });
+    }
+    // Validate every artifact link is a real message/memory in this workspace (the link IDOR guard).
+    const links: HandoffLink[] = [];
+    if (Array.isArray(b.links)) {
+      for (const raw of b.links) {
+        const l = raw as { targetType?: string; targetId?: string };
+        if (!l.targetType || !l.targetId) {
+          return reply.code(400).send({ error: "each link needs targetType and targetId" });
+        }
+        if (!LINK_TYPES.includes(l.targetType as LinkType)) {
+          return reply.code(400).send({ error: "link targetType must be message | memory" });
+        }
+        if (!(await targetInWorkspace(l.targetType as LinkType, l.targetId, task.workspaceId))) {
+          return reply.code(404).send({ error: "link target not found in this workspace" });
+        }
+        links.push({ targetType: l.targetType, targetId: l.targetId });
+      }
+    }
+    const updated = await handoffTask({
+      taskId: tid,
+      toMemberId: b.toMemberId,
+      actorMemberId: id.memberId,
+      note: b.note ?? null,
+      links,
+    });
+    // #8: the new owner is notified (best-effort; notify no-ops on self-handoff).
+    if (b.toMemberId !== task.assigneeMemberId) {
+      await notify(req.log, {
+        workspaceId: task.workspaceId,
+        recipientMemberId: b.toMemberId,
+        type: "assignment",
+        actorMemberId: id.memberId,
+        taskId: tid,
+        excerpt: task.title,
+      });
+    }
+    return updated;
+  });
+
+  // --- dependencies / blockers (#515) ---
+
+  // declare that this task is blocked by another task in the same workspace (rejects cycles)
+  app.post("/tasks/:tid/dependencies", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { tid } = req.params as { tid: string };
+    const task = await requireTaskInWorkspace(id, tid, reply);
+    if (!task) return;
+    const b = req.body as { blockerTaskId?: string };
+    if (!b.blockerTaskId) return reply.code(400).send({ error: "blockerTaskId required" });
+    const blocker = await getTask(b.blockerTaskId);
+    if (!blocker || blocker.workspaceId !== task.workspaceId) {
+      return reply.code(404).send({ error: "blocker task not found in this workspace" });
+    }
+    const result = await addDependency({
+      workspaceId: task.workspaceId,
+      blockedTaskId: tid,
+      blockerTaskId: b.blockerTaskId,
+      createdByMemberId: id.memberId,
+    });
+    if (!result.ok) {
+      return reply.code(409).send({ error: "dependency would create a cycle" });
+    }
+    return reply.code(result.created ? 201 : 200).send({ ok: true, created: result.created });
+  });
+
+  app.delete("/tasks/:tid/dependencies/:blockerId", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { tid, blockerId } = req.params as { tid: string; blockerId: string };
+    const task = await requireTaskInWorkspace(id, tid, reply);
+    if (!task) return;
+    const removed = await removeDependency(tid, blockerId, id.memberId);
+    if (!removed) return reply.code(404).send({ error: "dependency not found" });
+    return { ok: true };
+  });
+
+  // both directions: what blocks this task, and what this task blocks
+  app.get("/tasks/:tid/dependencies", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { tid } = req.params as { tid: string };
+    const task = await requireTaskInWorkspace(id, tid, reply);
+    if (!task) return;
+    const [blockers, dependents] = await Promise.all([listBlockers(tid), listDependents(tid)]);
+    return { blockers, dependents };
   });
 
   app.get("/tasks/:tid/events", async (req, reply) => {
