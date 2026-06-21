@@ -33,9 +33,11 @@ import { CONSOLE } from "../../brand.js";
 export interface CoordinationViewProps {
   /** #462: open the #13 decision log (the Approvals inbox) — wired to the members-rail decisions counter. */
   onOpenDecisions?: () => void;
+  /** #510: open the workspace settings overlay from the sidebar's title switcher. */
+  onOpenSettings?: () => void;
 }
 
-export function CoordinationView({ onOpenDecisions }: CoordinationViewProps = {}): React.JSX.Element {
+export function CoordinationView({ onOpenDecisions, onOpenSettings }: CoordinationViewProps = {}): React.JSX.Element {
   const store = useStore();
   // The active DM peer (a 1:1 framing over that member's channel), or null for a plain channel view.
   const [dmPeer, setDmPeer] = useState<DirectoryEntry | null>(null);
@@ -67,6 +69,7 @@ export function CoordinationView({ onOpenDecisions }: CoordinationViewProps = {}
           onSelectDm={handleSelectDm}
           onSelectChannel={handleSelectChannel}
           activeDmMemberId={dmPeer?.id ?? null}
+          onOpenSettings={onOpenSettings}
         />
         <MessagePane dmPeer={dmPeer} />
         <ThreadPanel />

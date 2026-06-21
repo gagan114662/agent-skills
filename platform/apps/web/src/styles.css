@@ -644,6 +644,91 @@ select:focus-visible {
   color: var(--text-faint);
   margin-top: 2px;
 }
+/* #510 workspace switcher: the title is a real button + popover, not a dead label. */
+.wsswitcher {
+  position: relative;
+  margin-top: 4px;
+}
+.wsswitcher__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.wsswitcher__trigger:hover,
+.wsswitcher__trigger[aria-expanded="true"] {
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+}
+.wsswitcher__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wsswitcher__caret {
+  margin-left: auto;
+  font-size: 9px;
+  opacity: 0.7;
+}
+.wsswitcher__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.wsswitcher__heading {
+  margin: 4px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.wsswitcher__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.wsswitcher__item:hover {
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+}
+.wsswitcher__itemname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wsswitcher__badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.wsswitcher__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
 .sidebar__section {
   margin-bottom: 18px;
 }

@@ -1064,6 +1064,19 @@ export const CONSOLE = {
       /** No-results line under the search box when a query matches nothing. */
       noMatches: "Nothing matches that — try another search.",
     },
+    /**
+     * #510 workspace switcher: the top-left title is a real menu, not dead chrome. It lists the current
+     * workspace/product (named by the #502 marketing target when set), plus shortcuts to point the fleet at
+     * a new product and to open settings. `currentPrefix` labels the fallback when no product name is set.
+     */
+    switcher: {
+      triggerLabel: "Switch workspace",
+      heading: "Workspace",
+      currentPrefix: "workspace",
+      current: "Current",
+      newProduct: "New product",
+      settings: "Settings",
+    },
     /** Center-pane header for a DM (#378): a 1:1 with an agent/teammate, framed as a direct message. */
     dm: {
       title: "Direct message",

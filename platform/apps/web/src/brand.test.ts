@@ -472,6 +472,9 @@ describe("no hardcoded brand strings in product chrome", () => {
     // nav), so it carries no brand copy — the scan covers the two-pane console components below instead.
     "components/AuthGate.tsx",
     "components/ChannelSidebar.tsx",
+    // The workspace/product switcher (#510): the top-left title menu reads its copy from CONSOLE.coordination
+    // .switcher; the current workspace label falls back to the workspace id (the product name comes from data).
+    "components/WorkspaceSwitcher.tsx",
     // The public landing (#149 → #165) is the most brand-heavy surface — every word must come from
     // brand.ts. The #165 full-workspace simulation splits across several components; scan them all.
     "components/landing/Landing.tsx",
