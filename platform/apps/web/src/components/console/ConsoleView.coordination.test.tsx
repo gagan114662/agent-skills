@@ -308,3 +308,43 @@ describe("ConsoleView coordination header tracks the open channel (#473)", () =>
     expect(title(), "switching channel re-syncs the header to #general").toBe("#general");
   });
 });
+
+// #506: the first-run "Set brand" CTA used to open Settings at the very top (Connect Claude), so the user
+// had to scroll past Slack/Connections/Agent Garden to reach the Brand kit. It must deep-link straight to the
+// Brand kit section. The pure target map + scroll helper are unit-tested in lib/settings-sections.test.ts;
+// this pins the live wiring — the click really opens settings AND scrolls the brand section into view.
+describe("ConsoleView 'Set brand' deep-links to the Brand kit section (#506)", () => {
+  it("owner + flag ON ⇒ 'Set brand' opens settings scrolled to the Brand kit section, not the top", async () => {
+    // Brand kit unset + no connected account ⇒ the first-run checklist shows its CTAs (incl. "Set brand").
+    vi.spyOn(api, "getBrandKit").mockResolvedValue({ connected: false, brandKit: null });
+    vi.spyOn(api, "getConnections").mockResolvedValue({ connections: [], canManageInternal: false });
+
+    // jsdom doesn't implement scrollIntoView; capture it to prove WHICH section the overlay scrolls to.
+    const scrollSpy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      await mount();
+
+      const setBrand = await screen.findByRole("button", {
+        name: CONSOLE.firstRunChecklist.steps.brand.cta,
+      });
+      await act(async () => {
+        fireEvent.click(setBrand);
+      });
+
+      // The settings overlay opens…
+      const dialog = await screen.findByRole("dialog", { name: CONSOLE.shell.settingsTitle });
+      const brandSection = dialog.querySelector('[data-settings-section="brand"]');
+      const topSection = dialog.querySelector('[data-settings-section="marketing"]');
+      expect(brandSection, "the Brand kit section is in the overlay").not.toBeNull();
+
+      // …scrolled to the Brand kit section, NOT the first section at the top.
+      expect(scrollSpy).toHaveBeenCalled();
+      expect(scrollSpy.mock.contexts).toContain(brandSection);
+      expect(scrollSpy.mock.contexts).not.toContain(topSection);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});
