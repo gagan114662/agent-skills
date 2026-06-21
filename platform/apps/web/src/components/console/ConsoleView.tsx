@@ -36,6 +36,12 @@ import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
 import { FirstRunChecklist } from "../FirstRunChecklist.js";
 import { deriveFirstRunChecklist, firstRunComplete, type FirstRunStepKey } from "../../lib/firstrun-checklist.js";
 import { loadFirstRunPrefs, saveFirstRunPrefs } from "../../lib/firstrun-prefs.js";
+import {
+  SETTINGS_SECTION_ATTR,
+  firstRunSettingsSection,
+  scrollToSettingsSection,
+  type SettingsSection,
+} from "../../lib/settings-sections.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
@@ -164,6 +170,9 @@ export function ConsoleView(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
+  // #506: which section the settings overlay deep-links to on open (null = the top). "Set brand" aims it at
+  // the Brand kit section so the user lands there instead of scrolling past every other section.
+  const [shellSettingsSection, setShellSettingsSection] = useState<SettingsSection | null>(null);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   // #462: which status the Approvals inbox opens to — "pending" from the "waiting on you" pill, "executed"
   // (the decision history) from the members-rail decisions counter.
@@ -511,7 +520,8 @@ export function ConsoleView(): React.JSX.Element {
     });
   }
   function onFirstRunAction(key: FirstRunStepKey): void {
-    if (key === "brand" || key === "connect") setShellSettingsOpen(true);
+    const section = firstRunSettingsSection(key);
+    if (section) openShellSettings(section); // #506: deep-link "Set brand"/"Connect" to their section
     else if (key === "approve") setApprovalsOpen(true);
     else dismissFirstRun(); // "run": the composer is right here — get out of the way
   }
@@ -572,6 +582,13 @@ export function ConsoleView(): React.JSX.Element {
   function openSettings(project: ConsoleProject): void {
     setSettingsProject(project);
     setSettingsOpen(true);
+  }
+
+  // #506: open the shell settings overlay, optionally deep-linked to one section. Openers with no specific
+  // target (the header gear, the connect-health chip) pass nothing and land at the top, as before.
+  function openShellSettings(section: SettingsSection | null = null): void {
+    setShellSettingsSection(section);
+    setShellSettingsOpen(true);
   }
 
   async function approveById(id: string, e: React.MouseEvent): Promise<void> {
@@ -716,7 +733,7 @@ export function ConsoleView(): React.JSX.Element {
           filterNeedsYou={filterNeedsYou}
           onToggleFilter={() => setFilterNeedsYou((v) => !v)}
           activeItemKey={peek?.item.key ?? null}
-          onOpenWorkspaceSettings={() => setShellSettingsOpen(true)}
+          onOpenWorkspaceSettings={() => openShellSettings()}
           onSignOut={() => void store.logout()}
           onNewProject={() => void startVenture()}
           newProjectBusy={seeding || seedHeld}
@@ -789,7 +806,7 @@ export function ConsoleView(): React.JSX.Element {
               default-OFF, so it is invisible in production until the owner opts in. When the fleet can't run
               it IS the button to Connect Claude (the one action that unlocks real agent runs). */}
           {connectHealthEnabled && (
-            <ConnectHealthChip health={claudeHealth} onConnect={() => setShellSettingsOpen(true)} />
+            <ConnectHealthChip health={claudeHealth} onConnect={() => openShellSettings()} />
           )}
           <span className="console__sp" />
           {/* #384: the live indicator — a small, calm pill, not a sessions table. Shows only on the
@@ -811,7 +828,7 @@ export function ConsoleView(): React.JSX.Element {
           )}
           {showCoordinationSurface && (
             <>
-              <button className="btn btn--ghost btn--small" onClick={() => setShellSettingsOpen(true)}>
+              <button className="btn btn--ghost btn--small" onClick={() => openShellSettings()}>
                 {CONSOLE.coordination.shell.settings}
               </button>
               <button className="btn btn--ghost btn--small" onClick={() => void store.logout()}>
@@ -890,7 +907,7 @@ export function ConsoleView(): React.JSX.Element {
             seeded={seeded}
             error={seedError}
             coolOff={seedCoolOff}
-            onConnect={() => setShellSettingsOpen(true)}
+            onConnect={() => openShellSettings()}
           />
         ) : (
           <>
@@ -966,16 +983,37 @@ export function ConsoleView(): React.JSX.Element {
       )}
 
       {shellSettingsOpen && (
-        <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setShellSettingsOpen(false)}>
+        <ShellOverlay
+          title={CONSOLE.shell.settingsTitle}
+          onClose={() => setShellSettingsOpen(false)}
+          scrollToSection={shellSettingsSection}
+        >
+          {/* #506: each section is tagged so a CTA can deep-link straight to it (e.g. "Set brand" → brand). */}
           {/* #502: "What are we marketing?" leads — it's the brief the whole fleet reads. */}
-          <MarketingTargetPanel />
-          <ConnectClaudePanel />
-          <SlackConnectPanel />
-          <ConnectionsPanel />
-          <GardenPanel />
-          <ExternalAccountsPanel />
-          <BrandKitPanel />
-          <BillingSettingsPanel />
+          <div {...{ [SETTINGS_SECTION_ATTR]: "marketing" }}>
+            <MarketingTargetPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "connect" }}>
+            <ConnectClaudePanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "slack" }}>
+            <SlackConnectPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "connections" }}>
+            <ConnectionsPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "garden" }}>
+            <GardenPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "accounts" }}>
+            <ExternalAccountsPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "brand" }}>
+            <BrandKitPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "billing" }}>
+            <BillingSettingsPanel />
+          </div>
         </ShellOverlay>
       )}
 
@@ -1003,11 +1041,21 @@ function ShellOverlay({
   title,
   onClose,
   children,
+  scrollToSection = null,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** #506: when set, the overlay scrolls this `data-settings-section` into view on open (deep-link target). */
+  scrollToSection?: SettingsSection | null;
 }): React.JSX.Element {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // The overlay mounts fresh each open, so a mount effect lands the deep-linked section once, then stays
+  // out of the way (no re-scroll while the user reads).
+  useEffect(() => {
+    scrollToSettingsSection(bodyRef.current, scrollToSection);
+  }, [scrollToSection]);
+
   return (
     <div className="shell-overlay" role="dialog" aria-label={title}>
       <div className="shell-overlay__bar">
@@ -1015,7 +1063,9 @@ function ShellOverlay({
           {CONSOLE.shell.closeSettings}
         </button>
       </div>
-      <div className="shell-overlay__body">{children}</div>
+      <div className="shell-overlay__body" ref={bodyRef}>
+        {children}
+      </div>
     </div>
   );
 }
