@@ -206,3 +206,24 @@ describe("ConsoleView slim reload.chat header (#384)", () => {
     expect(container.querySelector(".gauge-upgrade"), "the board keeps its Upgrade button").not.toBeNull();
   });
 });
+
+// #473: on the coordination surface the top-left header title was bound to `activeProjectId` (the board's
+// column selection, which the chat sidebar never touches), so it showed a stale #content/#seo while the feed
+// showed the real channel. The header must track the OPEN CHANNEL — what MessagePane renders — at all times.
+describe("ConsoleView coordination header tracks the open channel (#473)", () => {
+  it("owner + flag ON ⇒ the top-left title follows the active channel, never a stale project", async () => {
+    const utils = await mount();
+    await screen.findByLabelText(COORD_LABEL);
+    const title = () => utils.container.querySelector(".console__title")?.textContent ?? "";
+
+    await act(async () => {
+      await utils.store.selectChannel("c2");
+    });
+    expect(title(), "header shows the open channel #random").toBe("#random");
+
+    await act(async () => {
+      await utils.store.selectChannel("c1");
+    });
+    expect(title(), "switching channel re-syncs the header to #general").toBe("#general");
+  });
+});

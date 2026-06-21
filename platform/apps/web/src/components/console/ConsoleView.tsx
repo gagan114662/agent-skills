@@ -127,7 +127,7 @@ function classifySeedError(err: unknown): SeedError {
 }
 
 export function ConsoleView(): React.JSX.Element {
-  const { identity, channels, directory, messagesByChannel, paywall } = useAppState();
+  const { identity, channels, directory, messagesByChannel, paywall, activeChannelId } = useAppState();
   const store = useStore();
   const workspaceId = identity?.workspaceId;
   // #365: the connection-health chip shows only for the named owner workspace (fail-closed default-OFF), so
@@ -428,7 +428,21 @@ export function ConsoleView(): React.JSX.Element {
     workspaceId,
   });
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
-  const headerTitle = activeProject ? `#${activeProject.name}` : BRAND.name;
+  // #473: on the reload.chat coordination surface the top-left title MUST track the open channel (what
+  // MessagePane shows), not `activeProjectId` — the board's column selection, which the chat sidebar never
+  // touches. Binding to the project left the header showing a stale #content/#seo while the pane showed the
+  // real channel. Off the coordination surface (the board) the project-based title is unchanged.
+  const activeChannel = activeChannelId ? channels.find((c) => c.id === activeChannelId) ?? null : null;
+  const coordinationHeaderTitle = activeChannel
+    ? activeChannel.kind === "dm"
+      ? CONSOLE.coordination.dm.title
+      : `#${activeChannel.name ?? "channel"}`
+    : BRAND.name;
+  const headerTitle = showCoordinationSurface
+    ? coordinationHeaderTitle
+    : activeProject
+      ? `#${activeProject.name}`
+      : BRAND.name;
 
   // --- intent handlers -----------------------------------------------------------------------------
   function toggleProject(id: string): void {
