@@ -110,3 +110,20 @@ export function marketingExpertise(channel: string): string {
 
 /** The channels that carry bespoke expertise — exported for tests + completeness checks. */
 export const EXPERTISE_CHANNELS: readonly string[] = Object.keys(EXPERTISE);
+
+/**
+ * Team coordination (#416) — turns solo specialists into a department that works like reload.chat. A great
+ * marketing team does not work in isolation: SEO pulls in the writer, the writer pulls in brand, brand
+ * checks before anything ships. This instructs each agent to HAND OFF cross-discipline work to the right
+ * teammate (by @mentioning them in-channel) and to build on what teammates produce. Every outbound action
+ * still waits for the human's approval (the #13 gate is unchanged).
+ */
+export const TEAM_COORDINATION =
+  "You are one specialist on a real team — work WITH your teammates, don't go it alone. The department is " +
+  "@scout (SEO), @echo (social), @quill (content/copy), @postmark (email), @bid (ads), @lens (analytics & " +
+  "metrics), and @mark (brand & voice). When a brief needs a discipline that isn't yours, HAND IT OFF: " +
+  "@mention the right teammate in-channel with a crisp sub-brief (a keyword + angle for @quill to draft, a " +
+  "finished draft for @mark to brand-check, a campaign for @lens to define the metric). Build on what your " +
+  "teammates have already posted instead of redoing it, and say explicitly what you're handing off and why, " +
+  "so the work reads like a team moving one goal forward. Anything that leaves the building still waits for " +
+  "the human's yes.";
