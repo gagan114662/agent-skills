@@ -10,10 +10,12 @@ import type {
 import {
   recordSessionEnded,
   recordSessionStarted,
+  recordSessionRetry,
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
-import { decideSpawnRetry } from "./session-retry.js";
+import { decideSessionRetry } from "./session-retry.js";
+import type { BackoffPolicy } from "../durable-workflow/types.js";
 import { harnessEventReportsError, finalAnswerFromEvent, type LineDecoder } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
@@ -147,12 +149,25 @@ export interface SessionManagerDeps {
   caps: ResourceCaps;
   logger: SessionLogger;
   /**
-   * #436: bounded inline retry for a SPAWN-LAUNCH failure (`runtime.start()` throws before any output).
-   * `<= 1` (default) ⇒ a single attempt, no retry — today's behavior. `2`+ re-attempts the spawn that many
-   * times with backoff. Safe to retry because a throw from `start()` means no process ran, no output, no
-   * side effect; the broader "process started then died" retry is a deliberate integration-tested follow-up.
+   * #436: bounded inline retry budget for a transient, PRE-PROGRESS session death — covers BOTH a
+   * `runtime.start()` throw (no process ran) AND a process that started then died returning a `null`
+   * exit code with **no output and no heartbeat** (so no real/money action could have landed — safe to
+   * re-run per #200 §4). `<= 1` (default) ⇒ a single attempt, no retry (today's behavior); `2`+ re-attempts
+   * the full start→wait cycle that many times with exponential backoff. The instant any output/heartbeat is
+   * seen the attempt is never retried (it may have acted) — it fails honestly and routes to self-healing.
+   */
+  sessionRetryMaxAttempts?: number;
+  /**
+   * Deprecated alias for {@link sessionRetryMaxAttempts}, retained for the original #435 narrow
+   * spawn-launch knob (`AGENT_SPAWN_RETRY_MAX_ATTEMPTS`). When both are set, `sessionRetryMaxAttempts`
+   * wins; otherwise this value still drives the (now broader, still idempotency-safe) retry budget.
    */
   spawnRetryMaxAttempts?: number;
+  /**
+   * #436: backoff schedule between retry attempts. Absent ⇒ the conservative default (exp from 1s,
+   * factor 3, capped at 10s). Injected mainly so tests can drive a near-instant schedule deterministically.
+   */
+  sessionRetryBackoff?: BackoffPolicy;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
   /**
@@ -789,6 +804,10 @@ export class SessionManager {
     // tool-call traces). Updated from the harness's structured final-answer event; the last value wins
     // (codex emits several; claude-code emits one terminal `result`). Redacted like every other surface.
     let finalAnswer = "";
+    // #436 idempotency anchors: did the SESSION ever emit output / fire a heartbeat across its attempts?
+    // The moment either is true, a dead attempt may have taken a real/money action, so it is NEVER retried.
+    let sawOutput = false;
+    let sawHeartbeat = false;
     const emitLine = (line: string): void => {
       const decoded = decode(line);
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
@@ -815,6 +834,7 @@ export class SessionManager {
       const t = Date.now();
       if (t - lastBeatAt < HEARTBEAT_MIN_INTERVAL_MS) return;
       lastBeatAt = t;
+      sawHeartbeat = true; // proof of progress — a retried attempt must not re-run past this point (#436)
       // Fire-and-forget: a heartbeat hiccup must never fail an otherwise-healthy run.
       void this.deps.store.heartbeat(session.id).catch((err: unknown) => {
         log.error({ err }, "agent session heartbeat failed");
@@ -822,15 +842,20 @@ export class SessionManager {
     };
 
     // --- reaper: wall-clock + idle (no-output) timers ---
+    // The wall-clock timer spans the WHOLE session (it is not reset between #436 retries), so the overall
+    // lifetime stays bounded; `reaped` short-circuits any pending retry the instant a reaper fires.
+    let reaped = false;
     let idleTimer: NodeJS.Timeout | undefined;
     const resetIdle = (): void => {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
+        reaped = true;
         log.warn({ idleMs: opts.caps.idleMs }, "agent session idle-reaped");
         void runningRef?.cancel("idle");
       }, opts.caps.idleMs);
     };
     const wallTimer = setTimeout(() => {
+      reaped = true;
       log.warn({ wallClockMs: opts.caps.wallClockMs }, "agent session wall-clock reaped");
       void runningRef?.cancel("timeout");
     }, opts.caps.wallClockMs);
@@ -840,7 +865,6 @@ export class SessionManager {
     // #71: the session's wall-clock lifetime is the compute-seconds we bill the tenant for.
     const runStart = Date.now();
     try {
-      const provisionStart = Date.now();
       // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
       const prepared = await this.deps.workspace?.prepare({
         sessionId: session.id,
@@ -862,6 +886,7 @@ export class SessionManager {
       };
       const onStartOutput = {
         onOutput: (_stream: "stdout" | "stderr", chunk: string) => {
+          sawOutput = true; // any output ⇒ the attempt may have acted; it can never be retried (#436)
           resetIdle();
           beat();
           buffer += chunk;
@@ -873,31 +898,50 @@ export class SessionManager {
           }
         },
       };
-      // #436: bounded inline retry for a SPAWN-LAUNCH failure only. A throw from `start()` means no process
-      // ran (no output, no heartbeat, no side effect), so re-attempting can never duplicate work — safe to
-      // retry a transient sandbox/cold-start hiccup. Default OFF (`spawnRetryMaxAttempts <= 1` ⇒ one attempt).
-      let running: RunningSession;
+      // #436: bounded inline retry for a transient, PRE-PROGRESS session death. One loop covers BOTH a
+      // `start()` throw (no process ran) AND a process that started then died returning a `null` exit code —
+      // but ONLY while the session has produced no output and no heartbeat, so re-attempting can never
+      // duplicate a real/money action (#200 §4). The wall-clock timer is NOT reset between attempts (overall
+      // lifetime stays bounded); `reaped` short-circuits a pending retry. Default OFF (`<= 1` ⇒ one attempt).
+      const maxAttempts = this.deps.sessionRetryMaxAttempts ?? this.deps.spawnRetryMaxAttempts ?? 1;
       for (let attempt = 1; ; attempt++) {
+        const attemptStart = Date.now();
+        let running: RunningSession | undefined;
         try {
           running = await this.deps.runtime.start(startSpec, onStartOutput);
-          break;
-        } catch (startErr) {
-          const decision = decideSpawnRetry(attempt, this.deps.spawnRetryMaxAttempts ?? 1);
-          if (!decision.retry) throw startErr;
-          log.warn(
-            { attempt, backoffMs: decision.backoffMs, err: redactError(startErr, redact) },
-            "agent spawn failed; retrying after backoff",
-          );
-          await new Promise((r) => setTimeout(r, decision.backoffMs));
+          runningRef = running;
+          this.running.set(session.id, running);
+          observeSpinup(this.deps.runtime.kind, (Date.now() - attemptStart) / 1000);
+          resetIdle();
+          await this.deps.store.markRunning(session.id, running.sandboxId);
+          result = await running.wait();
+        } catch (attemptErr) {
+          // `start()`/`markRunning()` threw: a pre-process death (no exit code). Tear down any started
+          // child best-effort so a retry never leaves an orphan running, then treat it as a null-exit failure.
+          log.warn({ attempt, err: redactError(attemptErr, redact) }, "agent session attempt failed to start");
+          if (running) await running.cancel("failed").catch(() => {});
+          result = { status: "failed", exitCode: null };
+        } finally {
+          this.running.delete(session.id);
         }
-      }
-      runningRef = running;
-      this.running.set(session.id, running);
-      observeSpinup(this.deps.runtime.kind, (Date.now() - provisionStart) / 1000);
-      resetIdle();
-      await this.deps.store.markRunning(session.id, running.sandboxId);
 
-      result = await running.wait();
+        const decision = decideSessionRetry({
+          attempt,
+          maxAttempts,
+          status: result.status,
+          exitCode: result.exitCode,
+          sawOutput,
+          sawHeartbeat,
+          policy: this.deps.sessionRetryBackoff,
+        });
+        if (!decision.retry || reaped) break;
+        recordSessionRetry(this.deps.runtime.kind);
+        log.warn(
+          { attempt, backoffMs: decision.backoffMs, reason: decision.reason },
+          "agent session died with no progress; retrying after backoff",
+        );
+        await new Promise((r) => setTimeout(r, decision.backoffMs));
+      }
     } catch (err) {
       log.error({ err: redactError(err, redact) }, "agent session failed to run");
       result = { status: "failed", exitCode: null };
