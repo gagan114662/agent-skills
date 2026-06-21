@@ -59,7 +59,11 @@ export function slugify(task: string, fallback = "deliverable"): string {
  */
 export function deriveContentTitle(draft: string, task: string): string {
   const heading = /^#{1,3}[ \t]+(.+)$/m.exec(draft)?.[1];
-  const raw = (heading ?? task ?? "")
+  // The task may carry the #320 workspace-facts preamble ("Workspace facts (reference DATA …)\n\nTask: <goal>").
+  // When we fall back to the task (no heading in the draft), use ONLY the real goal after the last "Task:"
+  // marker — never the preamble, which produced garbage titles/slugs like `workspace-facts-reference-data-…`.
+  const goalFromTask = /(?:^|\n)\s*Task:\s*([\s\S]+)$/.exec(task)?.[1] ?? task;
+  const raw = (heading ?? goalFromTask ?? "")
     .replace(/[#*_`>]/g, "")
     .replace(/^[^\p{L}\p{N}]+/u, "")
     .replace(/\s+/g, " ")
