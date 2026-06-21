@@ -11,6 +11,7 @@ import { StripeBillingProvider } from "./stripe-provider.js";
  */
 export function createBillingProvider(env: BillingEnv, provider?: BillingProvider): BillingProvider {
   if (provider) return provider;
-  if (env.provider === "stripe") return new StripeBillingProvider();
+  // #481: thread the declared go-live mode into the adapter so it can fail closed on a key/mode mismatch.
+  if (env.provider === "stripe") return new StripeBillingProvider(env.mode);
   return new NoneBillingProvider();
 }

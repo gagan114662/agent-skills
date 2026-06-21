@@ -7,6 +7,7 @@ import type {
   ApprovalEventDto,
   ApprovalPolicyDto,
   ApprovalRequestDto,
+  BillingStatusDto,
   CheckoutResponseDto,
   CheckRunDto,
   ChecksStatus,
@@ -491,6 +492,13 @@ export const api = {
     /** The /pricing catalog + the workspace's active plan (un-gated — always renders). */
     listPlans(workspaceId: string): Promise<PlansResponseDto> {
       return request<PlansResponseDto>(`/workspaces/${workspaceId}/billing/plans`);
+    },
+    /**
+     * #481 go-live status: the configured backend + declared mode + whether real money is on, so the
+     * Settings → Billing panel renders the true state ("Live" vs "Test mode") instead of a fixed banner.
+     */
+    status(workspaceId: string): Promise<BillingStatusDto> {
+      return request<BillingStatusDto>(`/workspaces/${workspaceId}/billing/status`);
     },
     /**
      * Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on

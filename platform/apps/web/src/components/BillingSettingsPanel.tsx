@@ -19,32 +19,38 @@ export function BillingSettingsPanel(): React.JSX.Element {
   const [plans, setPlans] = useState<PlanDto[]>([]);
   const [current, setCurrent] = useState<ActivePlanDto | null>(null);
   const [usage, setUsage] = useState<UsageReport | null>(null);
+  // #481 go-live: whether real payments are on (stripe + live mode). Defaults to false → the test-mode note.
+  const [goLive, setGoLive] = useState(false);
 
   useEffect(() => {
     if (!workspaceId) return;
-    let live = true;
-    // Both reads are best-effort: a transient failure just leaves the summary on its trial/empty default and
-    // self-heals on the next open. The embedded PricingPanel fetches the catalog on its own too.
+    let mounted = true;
+    // All reads are best-effort: a transient failure just leaves the summary on its trial/empty/test default
+    // and self-heals on the next open. The embedded PricingPanel fetches the catalog on its own too.
     void api.billing
       .listPlans(workspaceId)
       .then((res) => {
-        if (!live) return;
+        if (!mounted) return;
         setPlans(res.plans);
         setCurrent(res.current);
       })
       .catch(() => {});
     void api
       .getScaleUsage(workspaceId)
-      .then((u) => live && setUsage(u))
+      .then((u) => mounted && setUsage(u))
+      .catch(() => {});
+    void api.billing
+      .status(workspaceId)
+      .then((s) => mounted && setGoLive(s.live))
       .catch(() => {});
     return () => {
-      live = false;
+      mounted = false;
     };
   }, [workspaceId]);
 
   return (
     <div className="billing-settings-panel">
-      <BillingSettings current={current} plans={plans} usage={usage} />
+      <BillingSettings current={current} plans={plans} usage={usage} live={goLive} />
       <PricingPanel />
     </div>
   );

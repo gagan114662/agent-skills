@@ -8,6 +8,7 @@ import type { SessionLogger } from "../runtime/manager.js";
 import { createBillingProvider } from "./factory.js";
 import { BillingManager, type DeploymentLookup, type DemandSignalIngestor } from "./manager.js";
 import { PlanBillingService } from "./plan-service.js";
+import { billingStatus, type BillingStatus } from "./mode.js";
 
 /**
  * Build the production billing surface (#98 + #125). The provider defaults to the no-network `none`
@@ -22,9 +23,12 @@ export function createDefaultBilling(
 ): {
   billingManager: BillingManager;
   planService: PlanBillingService;
+  /** #481 go-live snapshot (provider + declared mode + whether real money is on) for the status route. */
+  status: BillingStatus;
 } {
   const env = loadEnv();
   const provider = createBillingProvider(env.billing);
+  const status = billingStatus(env.billing.provider, env.billing.mode);
   // #98: billing reads STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET straight from env via a billing-only
   // resolver — NOT the agent-facing AGENT_SECRET_KEYS passthrough, which would inject the live key into
   // every agent session's runtime (the session manager uses EnvSecretsResolver as its inner resolver).
@@ -52,7 +56,7 @@ export function createDefaultBilling(
     toleranceSec: env.billing.webhookToleranceSeconds,
     logger,
   });
-  return { billingManager, planService };
+  return { billingManager, planService, status };
 }
 
 /** Back-compat helper: just the BillingManager (consumed by the founder console #104). */

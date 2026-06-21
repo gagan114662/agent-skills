@@ -358,5 +358,19 @@ export interface CheckoutResponseDto {
   planKey: string;
 }
 
+/**
+ * `GET /workspaces/:wid/billing/status` payload (#481 go-live). Lets the UI render the real billing state
+ * instead of a hardcoded "test mode" banner: `live` is true ONLY when the `stripe` backend runs in `live`
+ * mode (real money). No secrets — just the configured provider + declared mode.
+ */
+export interface BillingStatusDto {
+  /** Configured backend (`none` | `stripe`). */
+  provider: string;
+  /** Declared mode (`test` | `live`). */
+  mode: string;
+  /** True iff real money can be charged right now (stripe + live). */
+  live: boolean;
+}
+
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):
 // this package is consumed unbuilt and stays strictly type-only with no runtime exports.
