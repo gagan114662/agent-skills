@@ -50,6 +50,20 @@ import {
   createOutboundEmailSubmitter,
   type OutboundEmailSubmitter,
 } from "../email/agent-outbound.js";
+import { loadConfig } from "../config/loader.js";
+import {
+  LOWEST_RISK_CHANNEL,
+  getChannelDescriptor,
+  isOutboundChannel,
+  type OutboundChannel,
+} from "../outbound-channel/channel.js";
+import { isChannelFlagLive, resolveOutboundChannelFlags } from "../outbound-channel/flags.js";
+import { isCredentialPresent } from "../outbound-channel/service.js";
+import { decideChannelSend } from "../outbound-channel/send-gate.js";
+import {
+  getChannelConnection,
+  countVerifiedReceipts,
+} from "../db/repositories/outbound-channels.js";
 import {
   redisRealtimeSubscriptions,
   type RealtimeSubscriptions,
@@ -578,6 +592,104 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         message:
           "Queued for owner approval. The email will be sent for real once a human approves it in the " +
           "decision queue — nothing leaves until then.",
+      });
+    },
+  );
+
+  mcp.registerTool(
+    "check_channel_connection",
+    {
+      title: "Check an outbound channel's connection",
+      description:
+        "Check whether a real outbound channel (email) is connected and enabled for your workspace, so " +
+        "you know if you can actually reach a stranger before you try. Returns the connection status, the " +
+        "verified sending address, whether sending is turned on, and how many sends have been confirmed " +
+        "to reach a real inbox. Never returns any secret.",
+      inputSchema: {
+        channel: z
+          .string()
+          .optional()
+          .describe("The channel to check; defaults to the email channel (the only one available today)."),
+      },
+    },
+    async ({ channel }) => {
+      const ch: OutboundChannel = isOutboundChannel(channel) ? channel : LOWEST_RISK_CHANNEL;
+      if (channel !== undefined && !isOutboundChannel(channel)) {
+        return fail(`Unknown channel: ${channel}`);
+      }
+      const descriptor = getChannelDescriptor(ch);
+      const connection = await getChannelConnection(wid, ch);
+      const flags = resolveOutboundChannelFlags(loadConfig(wid).acquisition);
+      const flagLive = isChannelFlagLive(flags, ch, wid);
+      const verifiedSends = await countVerifiedReceipts(wid, ch);
+      const status = connection?.status ?? "pending";
+      const connected = status === "connected";
+      return ok({
+        channel: ch,
+        provider: descriptor?.provider ?? null,
+        status,
+        connected,
+        sendingEnabled: flagLive,
+        // A boolean only — the owner-gated credential value is never read into a tool response.
+        credentialConfigured: isCredentialPresent(ch),
+        fromAddress: connection?.fromAddress ?? null,
+        verifiedInboxReceipts: verifiedSends,
+        readyToSend: connected && flagLive,
+      });
+    },
+  );
+
+  mcp.registerTool(
+    "send_through_channel",
+    {
+      title: "Send through a connected outbound channel",
+      description:
+        "Reach a real person OUTSIDE your workspace through your connected channel (email). This checks " +
+        "the channel is actually connected and enabled, then queues the exact recipient, subject, and " +
+        "body for an owner to approve — the message is delivered for real only after a human approves it. " +
+        "If the channel is not connected or sending is off, it tells you what is missing instead of sending.",
+      inputSchema: {
+        to: z.string().describe("The recipient's email address (a single address)."),
+        subject: z.string().min(1).describe("The subject line."),
+        body: z.string().min(1).describe("The email body."),
+        channel: z
+          .string()
+          .optional()
+          .describe("The channel to send through; defaults to the email channel."),
+      },
+    },
+    async ({ to, subject, body, channel }) => {
+      const ch: OutboundChannel = isOutboundChannel(channel) ? channel : LOWEST_RISK_CHANNEL;
+      if (channel !== undefined && !isOutboundChannel(channel)) {
+        return fail(`Unknown channel: ${channel}`);
+      }
+      // Pre-flight the structural always-gate: flags live + channel connected. The owner #13 approval is
+      // supplied by parking the request below — so we evaluate the gate with no approval id and expect it
+      // to stop at "approval_required" once the channel is connected and enabled.
+      const connection = await getChannelConnection(wid, ch);
+      const flags = resolveOutboundChannelFlags(loadConfig(wid).acquisition);
+      const flagLive = isChannelFlagLive(flags, ch, wid);
+      const decision = decideChannelSend({
+        channel: ch,
+        connectionStatus: connection?.status ?? null,
+        flagLive,
+        approvalRequestId: null,
+      });
+      // The only non-terminal outcome is "approval_required" — anything else means we cannot send yet.
+      if (decision.code === "flag_disabled" || decision.code === "channel_not_connected") {
+        return fail(decision.reason);
+      }
+      // Connected + enabled: queue the send behind an owner #13 approval (the real send happens on approval).
+      const result = await submitOutboundEmail({ to, subject, body });
+      if (!result.ok) return fail(result.error);
+      return ok({
+        channel: ch,
+        status: "pending_approval",
+        requestId: result.requestId,
+        summary: result.summary,
+        message:
+          "Queued for owner approval. The message will be sent for real once a human approves it in the " +
+          "decision queue, and delivery is confirmed with a readback receipt — nothing leaves until then.",
       });
     },
   );
