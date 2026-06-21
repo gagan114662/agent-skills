@@ -1,0 +1,21 @@
+{
+  "name": "sandcastle-runtime-pilot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "#420 spike: ipop's agent runtime ported onto mattpocock/sandcastle (@ai-hero/sandcastle). Parallel pilot — NOT in the pnpm workspace, NOT wired to production. See README.md and ADR-0420.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-hero/sandcastle": "^0.3.0",
+    "@vercel/sandbox": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "typescript": "5.x"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}
