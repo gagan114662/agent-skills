@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   organizationLd,
+  softwareApplicationLd,
   websiteLd,
   breadcrumbLd,
   blogLd,
@@ -34,6 +35,23 @@ describe("organizationLd / websiteLd", () => {
     expect(site.url).toBe("https://ipop.ai/");
     // No SearchAction: we don't serve site-search, so we must not claim one.
     expect(JSON.stringify(site)).not.toContain("SearchAction");
+  });
+});
+
+describe("softwareApplicationLd (#467)", () => {
+  it("declares ipop as a web BusinessApplication, honestly (no fabricated price or rating)", () => {
+    const app = softwareApplicationLd(ORIGIN);
+    expect(app["@type"]).toBe("SoftwareApplication");
+    expect(app.name).toBe("ipop");
+    expect(app.url).toBe("https://ipop.ai/");
+    expect(app.applicationCategory).toBe("BusinessApplication");
+    expect(app.operatingSystem).toBe("Web");
+    expect(app.provider).toMatchObject({ "@type": "Organization", name: "ipop" });
+    // No invented commerce signals — same principled stance as the WebSite SearchAction omission.
+    const json = JSON.stringify(app);
+    expect(json).not.toContain("offers");
+    expect(json).not.toContain("aggregateRating");
+    expect(json).not.toContain("price");
   });
 });
 

@@ -38,6 +38,27 @@ export function organizationLd(origin: string): JsonLdNode {
   };
 }
 
+/**
+ * The SoftwareApplication node (#467) — declares ipop as the web-based marketing product it is, so a crawler
+ * understands the entity (a SaaS BusinessApplication), not just an Organization + WebSite. Deliberately
+ * declares NO `offers`/`aggregateRating`: those require a verified price or real rating, and fabricating
+ * either is a structured-data violation (and bad faith) — same principled stance as the WebSite SearchAction.
+ * Category + operatingSystem + provider is honest and is what lifts ipop into product entity understanding.
+ */
+export function softwareApplicationLd(origin: string): JsonLdNode {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: ORG_NAME,
+    url: `${origin}/`,
+    description: ORG_DESCRIPTION,
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    image: imageUrl(origin),
+    provider: { "@type": "Organization", name: ORG_NAME, url: `${origin}/` },
+  };
+}
+
 /** The WebSite node. No SearchAction is declared — the marketing site has no site-search endpoint yet, and
  *  claiming one we don't serve would be a structured-data violation (and bad faith). */
 export function websiteLd(origin: string): JsonLdNode {
