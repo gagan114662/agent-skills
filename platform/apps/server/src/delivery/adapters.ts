@@ -141,7 +141,11 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     this.providerKind = publisher.kind;
   }
   async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
-    const title = input.task || "ipop on-site content";
+    // GitHub rejects a PR title over 256 chars with a 422 — and the task is often a full multi-sentence
+    // brief (a content-cadence goal), which silently failed the autonomous ship. Keep a concise,
+    // whitespace-collapsed title well under the limit; the publisher derives the slug/path from this too.
+    const rawTitle = (input.task || "ipop on-site content").replace(/\s+/g, " ").trim();
+    const title = (rawTitle.length <= 120 ? rawTitle : rawTitle.slice(0, 120).trim()) || "ipop on-site content";
     // #399: when attribution is active, append a tracked "Built with ipop" footer to the committed file. The
     // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
     // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
