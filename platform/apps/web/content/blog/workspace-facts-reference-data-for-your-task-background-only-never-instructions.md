@@ -1,28 +1,41 @@
-📝 **#content — opened a content PR for human review**
+Picking the keyword first, then the draft. A quick note on what I had to work with: the crawl only returned meta tags for `/pricing`, `/start`, etc. — those pages render at runtime, so I couldn't pull live prices or the actual feature list. Where a real number belongs, I've left a `[bracketed placeholder]` for a human to drop the receipt in. Everything else is from the homepage positioning and the department roster (Scout, Quill, Echo & co.).
 
-Drafted and staged a full on-site blog post targeting **"best ai marketing tools for startups 2026."** It's a B-plus draft, ready for the **#13 approval queue** — not live until a human signs off and flips `draft: true`.
+**Keyword pick:** `AI marketing agency vs hiring a marketer`
 
-**The post:** *The Best AI Marketing Tools for Startups in 2026 (An Honest Shortlist)* — ~1,500 words.
-- `content/blog/best-ai-marketing-tools-for-startups-2026.md` (the post)
-- `…best-ai-marketing-tools-for-startups-2026.PR.md` (PR body + reviewer checklist)
-- Proposed URL: `ipop.ai/blog/best-ai-marketing-tools-for-startups-2026`
+Why this one over the obvious "best AI marketing tools": it's decision-stage, not browse-stage. Someone typing it has a job to fill and a budget in hand — they're choosing between two paths, and we are one of the paths. It also maps cleanly onto what ipop actually is (a whole department, human-steered) instead of a single tool we'd lose a feature-checklist fight to. Lower volume than "AI marketing tools," far higher intent.
 
-**How I read the intent:** a founder deciding what to actually pay for this quarter — not another 40-logo wall. So it's organized **by job-to-be-done** (get found / write / social / video / ads / glue), one honest line + a real price per pick, then a 30-second "choose for your stage" framework and the one mistake (tool-collecting). Skimmable, FAQ at the bottom.
+---
 
-**Voice calls I made:**
-- Honest broker first. We name where a $20 assistant or a Surfer+Jasper+Buffer stack beats us, *then* place ipop as the "department, not a tool" option with a fair "when the point stack wins" caveat. One wink (`Quill (hi)`), receipts over adjectives.
-- ipop shows up **once**, clearly labeled — no bait-and-switch.
+# AI Marketing Agency vs. Hiring a Marketer: Which Actually Ships the Work?
 
-**Receipts:** Jasper ~$69/seat, Surfer ~$89→$219, Creatify free/$19/$49, the $100–300/mo stack range, and the 2026 answer-engine/GEO shift. All flagged in-post as **mid-2026 ballparks that move**.
+*Draft — for human review. Numbers in brackets need a real source before this goes anywhere.*
 
-**Two things I want a human to check before publish:**
-1. I couldn't read the live repo from here — please confirm the `content/blog/` path + frontmatter keys match our content pipeline (slug routing, `canonical`).
-2. Re-verify those four prices against live pricing pages on publish day; flip `draft: true` → `false`.
+You're a founder with a product that's better than your traffic suggests. You have two doors. Door one: hire a marketer — full-time, fractional, or a freelancer. Door two: hand the work to an AI marketing team. Most "AI vs. human" posts end in a shrug and a "it depends." This one won't. Here's the honest tradeoff, by the things you actually care about.
 
-One deliberate omission: I dropped an "88% of marketers use AI" stat I could only single-source and framed it qualitatively instead. I'd rather not ship a number I can't stand behind — say the word and I'll add it back with a solid citation.
+## The five things that decide it
 
-Sources I leaned on: [Marketer Milk](https://www.marketermilk.com/blog/ai-marketing-tools), [Averi](https://www.averi.ai/how-to/best-ai-marketing-tools-for-startups-in-2026-(ranked-compared)), [seRanking](https://visible.seranking.com/blog/best-ai-seo-tools/), [Alai](https://getalai.com/blog/best-ai-marketing-tools).
+**1. Time to first shipped work.**
+A full-time hire is a 4–8 week search, then a ramp. A good freelancer can start in a week or two. An AI department like ipop starts drafting the day you point it at your site — Scout audits your SEO, Quill drafts posts, Echo plans the calendar — and you're reviewing real work, not interviewing for it. *Speed is the clearest win for AI; everything below is more of a trade.*
 
-Want me to draft an OG image brief for Lens and a couple of internal links (/pricing, /start) while this sits in the queue?
+**2. What "a marketer" actually covers.**
+Here's the quiet problem with one hire: marketing isn't one job. It's SEO, content, ads, brand, outbound — five skill sets. One person is genuinely great at maybe two of them and gamely faking the rest. An AI department is built as specialists from the start, so you're not paying a content person to muddle through paid acquisition. The flip side: a sharp human marketer brings *judgment* across all five even where they're not expert — taste, instinct, knowing what not to do. That's the real thing you're weighing.
 
-[Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_0f2aff01cdb2a401)
+**3. Cost, without the hand-waving.**
+- Full-time generalist marketer: `[$X–$Y/yr salary + benefits + ramp]`
+- Fractional CMO / experienced freelancer: `[$X–$Y/mo, often 10–20 hrs]`
+- AI marketing department (ipop): `[pull live tiers from /pricing]`
+
+The useful comparison isn't sticker price — it's *output per dollar.* Fill these brackets with real numbers before publishing; an unsourced cost claim is worse than no claim.
+
+**4. Who's accountable when it's wrong.**
+This is where "let the AI run it" gets people burned. The right model isn't autonomous-and-hope — it's AI does the work, a human approves anything irreversible or anything that spends money. That's how ipop is wired: every money or can't-undo action waits for your yes. You get the throughput of a team and the brakes of a human. A solo hire gives you accountability by default but caps throughput at one person's week.
+
+**5. Consistency over a quarter.**
+Humans take vacations, get poached, and have bad weeks. An AI department runs the calendar around the clock and doesn't ghost you in month three. The honest caveat: consistency isn't the same as brilliance. The breakthrough campaign idea still tends to come from a human who *gets* your market. Best case, you want both — the machine for the steady 80%, a human steering the 20% that needs taste.
+
+## So which should you pick?
+
+- **Pick a full-time hire** if marketing *is* your business's core engine and you can afford to build a team around one leader.
+- **Pick a freelancer or fractional CMO
+
+[Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_2f0548f419fa6a85)
