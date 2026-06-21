@@ -901,6 +901,7 @@ export const CONSOLE = {
     signOut: "Sign out",
     settings: "Settings",
     settingsTitle: "Workspace settings",
+    approvalsTitle: "Approvals",
     mentions: "Mentions",
     closeSettings: "Close",
   },

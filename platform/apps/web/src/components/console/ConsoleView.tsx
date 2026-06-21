@@ -31,6 +31,7 @@ import { GardenPanel } from "../GardenPanel.js";
 import { BrandKitPanel } from "../BrandKitPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
+import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
@@ -159,6 +160,7 @@ export function ConsoleView(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
+  const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
   // #352/#372/#378: the agent-coordination surface (reload.chat-style channels/threads/members + live
   // sessions), gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment
@@ -461,6 +463,13 @@ export function ConsoleView(): React.JSX.Element {
   }
 
   function openFirstWaiting(): void {
+    // #472: on the reload.chat surface there is no board to dive into — the "waiting on you" pill must open
+    // the first-class Approvals inbox (Approve / Reject / Edit per pending action, showing exactly what will
+    // publish/send/spend), not scroll to a plain agent message. On the board, keep diving into the transcript.
+    if (showCoordinationSurface) {
+      setApprovalsOpen(true);
+      return;
+    }
     const first = model.columns.waiting[0];
     if (first) dive(first, "transcript");
   }
@@ -855,6 +864,15 @@ export function ConsoleView(): React.JSX.Element {
       {pricingOpen && (
         <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setPricingOpen(false)}>
           <PricingPanel />
+        </ShellOverlay>
+      )}
+
+      {/* #472: the first-class Approvals inbox — the human governance surface for #13. Opened by the
+          "waiting on you" pill on the reload.chat surface (where there is no board to host it). The panel
+          shows each pending action's type / amount / requester and the Approve / Reject controls. */}
+      {approvalsOpen && (
+        <ShellOverlay title={CONSOLE.shell.approvalsTitle} onClose={() => setApprovalsOpen(false)}>
+          <ApprovalsPanel />
         </ShellOverlay>
       )}
 
