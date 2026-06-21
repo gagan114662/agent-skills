@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CONNECTION_DESCRIPTORS,
+  EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
   listConnectionDescriptors,
   SITE_PUBLISH_GITHUB_ID,
@@ -28,12 +29,32 @@ describe("connection registry (#258)", () => {
     expect(gh?.envKeys).toContain("REALWORLD_SITE_REPO");
   });
 
-  it("EVERY customer-facing connector is OAuth-shaped (never paste)", () => {
+  it("NO customer-facing connector ever asks the customer to paste a credential", () => {
     const customer = listConnectionDescriptors({ audience: "customer" });
     expect(customer.length).toBeGreaterThan(0);
     for (const d of customer) {
-      expect(d.auth, `${d.id} must be oauth`).toBe("oauth");
+      // Customers connect via consumer OAuth or a one-click consent — never a paste-a-token (that path is
+      // INTERNAL/admin only). And a customer connector never carries env-key secret slots.
+      expect(d.auth, `${d.id} must not be paste_internal`).not.toBe("paste_internal");
+      expect(d.auth === "oauth" || d.auth === "one_click", `${d.id} must be oauth|one_click`).toBe(true);
+      expect(d.envKeys, `${d.id} must seal no customer secret`).toEqual([]);
     }
+  });
+
+  it("surfaces outbound email as an AVAILABLE one-click customer connector (#529/#507)", () => {
+    // The dead-end fix: a fresh workspace can finish the "connect an account" step because email is live.
+    const email = getConnectionDescriptor(EMAIL_CONNECTION_ID);
+    expect(email?.audience).toBe("customer");
+    expect(email?.auth).toBe("one_click");
+    expect(email?.status).toBe("available");
+    expect(email?.capabilities).toContain("send_email");
+    expect(email?.oauthScopes).toEqual([]);
+    expect(email?.envKeys).toEqual([]);
+  });
+
+  it("at least one customer connector is actually available (no all-coming-soon dead-end)", () => {
+    const available = listConnectionDescriptors({ audience: "customer" }).filter((d) => d.status === "available");
+    expect(available.length).toBeGreaterThan(0);
   });
 
   it("models 'Sign in with Google' as one consent covering Search Console + Analytics", () => {

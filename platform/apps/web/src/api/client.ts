@@ -400,6 +400,16 @@ export const api = {
     await del(`/me/connections/${encodeURIComponent(id)}`);
     return this.getConnections();
   },
+  // One-click customer consent (#529/#507) — turn on a live channel (e.g. outbound email). No redirect, no
+  // pasted secret; the server seals an empty-secret connected row. Re-read the full surface for the caller.
+  async enableConnection(id: string): Promise<ConnectionsResponse> {
+    await post(`/me/connections/${encodeURIComponent(id)}/enable`);
+    return this.getConnections();
+  },
+  // Join the waitlist (#507) for a connector that isn't live yet — a clear next step instead of a dead stop.
+  async joinConnectionWaitlist(id: string): Promise<void> {
+    await request(`/me/connections/${encodeURIComponent(id)}/waitlist`, { method: "POST" });
+  },
   // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
   startConnectionOAuth(id: string): Promise<unknown> {
     return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });

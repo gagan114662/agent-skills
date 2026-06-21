@@ -175,6 +175,9 @@ export const CONNECTIONS = {
     "You only ever grant access once and approve real spend.",
   loading: "Loading…",
   comingSoon: "Coming soon",
+  // A not-yet-live connector offers "notify me" instead of a dead stop (#507).
+  waitlist: "Notify me when it's ready",
+  waitlisted: "You're on the list — we'll let you know when it's ready.",
   connect: "Connect",
   connectedBadge: "Connected",
   disconnect: "Disconnect",
