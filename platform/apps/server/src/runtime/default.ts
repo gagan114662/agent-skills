@@ -437,6 +437,20 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
               { workspaceId: e.workspaceId, sessionId: e.sessionId, channel: shipped.channel ?? null },
               "deliverable shipped autonomously",
             );
+            // Make the autonomous ship VISIBLE in the console — the owner shouldn't have to read the GitHub
+            // repo to know the fleet is producing. Post a short agent-authored line into the channel with the
+            // live artifact url so it shows in the feed (answers "I don't see anything happening in the UI").
+            // Best-effort: an announcement failure never affects the finalized session or the recorded ship.
+            if (shipped.externalRef) {
+              await channelPoster
+                .post({
+                  workspaceId: e.workspaceId,
+                  channelId: e.channelId,
+                  agentMemberId: e.agentMemberId,
+                  body: `📤 Shipped autonomously → ${shipped.externalRef}`,
+                })
+                .catch((err: unknown) => logger.error({ err }, "ship-announcement post failed"));
+            }
           }
         } catch (err: unknown) {
           logger.error({ err, sessionId: e.sessionId }, "autonomous deliverable ship failed");
