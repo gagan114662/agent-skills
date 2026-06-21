@@ -8,7 +8,7 @@
  * brief in — so the composer never receives a raw `{{site}}`. The values are substituted client-side
  * ({@link fillTemplate}); the composer's own send guard is the backstop for anything still unfilled.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../store/StoreContext.js";
 import { api } from "../api/client.js";
 import { VOICE } from "../brand.js";
@@ -20,19 +20,74 @@ export function TemplatePicker({ onPick }: { onPick: (text: string) => void }): 
   const workspaceId = identity?.workspaceId;
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<TaskTemplateDto[]>([]);
+  // Whether we've resolved the active channel's templates at least once (so we can HIDE the control when the
+  // channel genuinely has none, vs. flicker it away mid-load).
+  const [loaded, setLoaded] = useState(false);
   // The template whose variables we're currently collecting, and the values typed so far.
   const [filling, setFilling] = useState<TaskTemplateDto | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const rootRef = useRef<HTMLDivElement>(null);
 
+  // #474: fetch the channel's templates whenever the CHANNEL changes (not only on open) so we can hide the
+  // control where none exist — and ALWAYS reset the popover, so it never sticks open over the new channel's
+  // message list after a switch (the reported bug). Cancellation guards against an out-of-order resolve when
+  // channels are switched quickly.
   useEffect(() => {
-    if (!open || !workspaceId || !activeChannelId) return;
+    setOpen(false);
+    setFilling(null);
+    setValues({});
+    if (!workspaceId || !activeChannelId) {
+      setTemplates([]);
+      setLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    setLoaded(false);
     void api
       .getTaskTemplates(workspaceId, activeChannelId)
-      .then(setTemplates)
-      .catch(() => setTemplates([]));
-  }, [open, workspaceId, activeChannelId]);
+      .then((t) => {
+        if (!cancelled) {
+          setTemplates(t);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTemplates([]);
+          setLoaded(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, activeChannelId]);
+
+  // #474: dismiss the popover on an outside click or Escape so it never overlaps the message list after you
+  // click away. Only listens while open.
+  useEffect(() => {
+    if (!open) return;
+    function close(): void {
+      setOpen(false);
+      setFilling(null);
+    }
+    function onDown(e: MouseEvent): void {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   if (!activeChannelId) return null;
+  // #474: a channel with no templates hides the control entirely (acceptance: "hide the control where none
+  // exist"), so the composer never shows a dead "Templates ▾" that only ever says "No templates".
+  if (loaded && templates.length === 0) return null;
 
   /** Resolve the body with `vals`, prefix the agent @mention, and hand it to the composer. */
   function insert(t: TaskTemplateDto, vals: Record<string, string>): void {
@@ -57,7 +112,7 @@ export function TemplatePicker({ onPick }: { onPick: (text: string) => void }): 
     filling !== null && filling.params.every((p) => (values[p.key] ?? "").trim() !== "");
 
   return (
-    <div className="composer__templates">
+    <div className="composer__templates" ref={rootRef}>
       <button
         type="button"
         className="btn btn--ghost"

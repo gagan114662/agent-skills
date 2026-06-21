@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TemplatePicker } from "./TemplatePicker.js";
 import { renderWithStore } from "../test/utils.js";
@@ -70,5 +70,48 @@ describe("TemplatePicker (#167 — template variables)", () => {
     await userEvent.click(await screen.findByRole("option", { name: /No vars/i }));
 
     await waitFor(() => expect(onPick).toHaveBeenCalledWith("@scout Just do the thing."));
+  });
+});
+
+describe("TemplatePicker (#474 — dismiss + hide-when-empty)", () => {
+  it("hides the control entirely when the channel has no templates", async () => {
+    stubTemplates([]);
+    const { store } = renderWithStore(<TemplatePicker onPick={vi.fn()} />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+    // The whole 'Templates ▾' control is gone — no dead button that only ever says "No templates".
+    await waitFor(() => expect(screen.queryByRole("button", { name: /templates/i })).toBeNull());
+  });
+
+  it("closes the popover on a channel switch (never sticks open over the new channel)", async () => {
+    stubTemplates([SEO_AUDIT]);
+    const { store } = renderWithStore(<TemplatePicker onPick={vi.fn()} />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /templates/i }));
+    expect(await screen.findByRole("listbox", { name: /task templates/i })).toBeInTheDocument();
+
+    // Switching channels must reset the popover, not leave it overlapping the message list.
+    await act(async () => {
+      await store.selectChannel("c2");
+    });
+    await waitFor(() => expect(screen.queryByRole("listbox", { name: /task templates/i })).toBeNull());
+  });
+
+  it("closes the popover on an outside click", async () => {
+    stubTemplates([SEO_AUDIT]);
+    const { store } = renderWithStore(<TemplatePicker onPick={vi.fn()} />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /templates/i }));
+    expect(await screen.findByRole("listbox", { name: /task templates/i })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("listbox", { name: /task templates/i })).toBeNull());
   });
 });
