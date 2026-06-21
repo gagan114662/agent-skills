@@ -40,7 +40,7 @@ describe("ContentCadenceEngine (#416)", () => {
     expect(brief).toHaveBeenCalledTimes(1);
     const [identity, input] = (brief as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(identity).toEqual({ workspaceId: "ws-1", memberId: "owner-member" });
-    expect(input.lead).toBe("quill");
+    expect(input.lead).toBe("scout"); // #359: Scout leads (research), hands off to Quill
     expect(input.systemAuthorized).toBe(true);
     expect(input.goal.toLowerCase()).toContain("publish");
   });

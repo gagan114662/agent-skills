@@ -43,7 +43,7 @@ describe("resolveContentCadenceFlags (#416 default-OFF owner-first)", () => {
   });
 
   it("normalizes the lead handle and defaults to the content lead", () => {
-    expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["a"] }, ws).lead).toBe("quill");
+    expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["a"] }, ws).lead).toBe("scout"); // #359: cadence starts with Scout (research), hands off to Quill
     expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["a"], lead: "@Scout" }, ws).lead).toBe("scout");
   });
 });
@@ -81,7 +81,10 @@ describe("composeContentBrief (#415 PRODUCE+PUBLISH, not audit)", () => {
     expect(brief).toContain('"best seo tool"'); // whitespace collapsed
     // The decisive fix (live PR #453): the agent's final MESSAGE ships verbatim — it must BE the post.
     expect(brief.toLowerCase()).toContain("complete post as your final message");
-    expect(brief.toLowerCase()).toContain("not an outline, summary, or audit");
+    expect(brief.toLowerCase()).toContain("not an outline or summary");
+    // #359/#417: the brief is a Scout->Quill HANDOFF (the @quill line fires the handoff so the team coordinates).
+    expect(brief).toContain("@scout:");
+    expect(brief).toContain("@quill:");
     expect(brief.toLowerCase()).toContain("do not stage files");
   });
 });

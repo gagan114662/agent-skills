@@ -18,7 +18,9 @@
  */
 
 /** The content lead whose department (`content`) routes to the on-site publish channel (#364). */
-export const DEFAULT_CADENCE_LEAD = "quill";
+// The cadence now starts the chain with Scout (research), who hands off to Quill (writing) — so the fleet
+// visibly COORDINATES (a real Scout→Quill handoff) instead of each agent working in a silo (#359/#417).
+export const DEFAULT_CADENCE_LEAD = "scout";
 
 /** Owner-configured cadence block (mirrors `deliverySchema`'s default-OFF + owner-first shape). */
 export interface ContentCadenceConfigInput {
@@ -100,11 +102,17 @@ export function selectCadenceQuery(queries: readonly string[], dayNumber: number
  */
 export function composeContentBrief(query: string): string {
   const q = query.trim().replace(/\s+/g, " ");
+  // A COORDINATED brief (#359/#417): Scout does the research, then hands off to Quill to write — so the team
+  // visibly works together. The closing "@quill …" line is what fires the #417 handoff (the deliverable is
+  // scanned for @mentions), launching Quill with this context. Quill's brief (the second half) tells it to
+  // OUTPUT the complete post as its message (the live PR #453 lesson) — that post is what publishes.
   return (
-    `Write a focused, genuinely useful blog post that targets the search query "${q}". ` +
-    `Output the COMPLETE post as your final message — start with a short markdown H1 title line ("# …"), then ` +
-    `the full post body in markdown (~800-1200 words). Write the actual post, not an outline, summary, or audit. ` +
-    `Do NOT describe what you did, do NOT stage files, and do NOT try to open a PR — your final message IS the ` +
-    `post and the platform publishes it automatically. Ship a solid B-plus post today.`
+    `@scout: research the search query "${q}" — the search intent, the angle competitors miss, and the 3-5 ` +
+    `points a genuinely useful post must hit. Keep it short (a tight brief, not an audit). Then hand off to ` +
+    `your teammate so the post actually gets written:\n\n` +
+    `@quill: using Scout's brief above, write a focused, genuinely useful blog post that targets "${q}". ` +
+    `Output the COMPLETE post as your final message — a markdown H1 title line ("# …") then the full body ` +
+    `(~800-1200 words). Write the actual post, not an outline or summary. Do NOT stage files or open a PR — ` +
+    `your final message IS the post and the platform publishes it automatically. Ship a solid B-plus post.`
   );
 }
