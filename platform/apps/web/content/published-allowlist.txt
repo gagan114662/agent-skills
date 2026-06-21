@@ -1,0 +1,17 @@
+# Published-content allowlist (#527 — content editorial gate)
+#
+# This file IS the explicit human publish gate. A blog post under content/blog/*.md may carry
+# `status: published` ONLY if its slug appears below. The content gate
+# (scripts/content-gate.mjs) FAILS any PR that ships a published post whose slug is not here.
+#
+# To publish a post: a human reviews the draft, then adds its slug to this list in a
+# deliberate, reviewed commit. Drafting (`status: draft`) needs no entry — that is the default.
+# One slug per line. Blank lines and lines starting with `#` are ignored.
+
+ai-marketing-agency-vs-hiring-an-agency
+how-much-does-an-ai-marketing-agency-cost
+how-to-brief-an-ai-agent-to-write-like-you
+how-to-do-marketing-without-hiring-a-team
+the-best-ai-marketing-tools-for-startups-in-2026-and-how-to-actually-pick
+welcome-to-the-ipop-blog
+why-client-rendered-sites-are-invisible-to-google

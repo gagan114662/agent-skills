@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "content:gate": "node scripts/content-gate.mjs"
   },
   "dependencies": {
     "@reload/shared": "workspace:*",
