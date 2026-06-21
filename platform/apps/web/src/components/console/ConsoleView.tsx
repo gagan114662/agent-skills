@@ -32,6 +32,8 @@ import { BrandKitPanel } from "../BrandKitPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
+import { FirstRunChecklist } from "../FirstRunChecklist.js";
+import { deriveFirstRunChecklist, firstRunComplete, type FirstRunStepKey } from "../../lib/firstrun-checklist.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
@@ -162,6 +164,11 @@ export function ConsoleView(): React.JSX.Element {
   const [shellSettingsOpen, setShellSettingsOpen] = useState(false);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  // #479 first-run checklist: real setup signals (brand kit set / an account connected). Fetched once; the
+  // run + approve signals come from already-loaded state below.
+  const [brandSet, setBrandSet] = useState(false);
+  const [hasConnection, setHasConnection] = useState(false);
+  const [firstRunDismissed, setFirstRunDismissed] = useState(false);
   // #352/#372/#378: the agent-coordination surface (reload.chat-style channels/threads/members + live
   // sessions), gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment
   // names the owner workspace AND this is that workspace. No new backend: it re-mounts the existing
@@ -429,6 +436,45 @@ export function ConsoleView(): React.JSX.Element {
     ownerWorkspaceId: VENTURE_INTAKE_OWNER_WORKSPACE_ID,
     workspaceId,
   });
+  // #479 first-run checklist: fetch the two setup signals that aren't already in state (brand kit + any
+  // connected account), once, only on the coordination surface — so the board (prod) makes no extra fetch.
+  // Re-runs only when the surface flips on; a failure leaves the signal false (the step stays actionable).
+  useEffect(() => {
+    if (!showCoordinationSurface || !workspaceId) return;
+    let live = true;
+    void api.getBrandKit().then((b) => {
+      if (live) setBrandSet(b.connected);
+    }).catch(() => {});
+    void api.getConnections().then((c) => {
+      if (live) setHasConnection(c.connections.some((conn) => conn.connected));
+    }).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [showCoordinationSurface, workspaceId]);
+
+  // #479: derive the run + approve signals from already-loaded state. "An agent ran" is true once any
+  // agent-authored message exists, a session is live, or a result/approval has appeared (each downstream of a
+  // real run). "A result was approved" is true once an approval has executed (the `shipped` slice).
+  const agentRan =
+    runningCount > 0 ||
+    shipped.length > 0 ||
+    pending.length > 0 ||
+    Object.values(messagesByChannel).some((ms) => ms.some((m) => directory[m.authorMemberId]?.kind === "agent"));
+  const firstRunSteps = deriveFirstRunChecklist({
+    brandSet,
+    hasConnection,
+    agentRan,
+    resultApproved: shipped.length > 0,
+  });
+  // Only on the reload.chat surface, and only until every step is real or the user hides it.
+  const showFirstRun = showCoordinationSurface && !firstRunDismissed && !firstRunComplete(firstRunSteps);
+  function onFirstRunAction(key: FirstRunStepKey): void {
+    if (key === "brand" || key === "connect") setShellSettingsOpen(true);
+    else if (key === "approve") setApprovalsOpen(true);
+    else setFirstRunDismissed(true); // "run": the composer is right here — get out of the way
+  }
+
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
   // #473: on the reload.chat coordination surface the top-left title MUST track the open channel (what
   // MessagePane shows), not `activeProjectId` — the board's column selection, which the chat sidebar never
@@ -732,7 +778,12 @@ export function ConsoleView(): React.JSX.Element {
             gate is off, `showCoordinationSurface` is always false, so this whole branch is dead in production
             and the board below is byte-for-byte what ships today. */}
         {showCoordinationSurface ? (
-          <CoordinationView />
+          <>
+            {showFirstRun && (
+              <FirstRunChecklist steps={firstRunSteps} onAction={onFirstRunAction} onDismiss={() => setFirstRunDismissed(true)} />
+            )}
+            <CoordinationView />
+          </>
         ) : (
           <>
         {/* #299/#301: the console NEVER renders raw runner / exit-code errors. While the first deliverable
