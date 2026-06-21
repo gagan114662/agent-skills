@@ -356,7 +356,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
           : spec.args,
         caps: {
           wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
-          idleMs: num(source.AGENT_IDLE_MS, 120_000),
+          // #394: 120s idle was reaping THINKING agents mid-reason (a long Opus reasoning pass emits no
+          // output for minutes), a major source of the ~40% fail/hang rate. Raised to 300s; the 10-min
+          // wall-clock still backstops a truly dead run. Override per-deploy with AGENT_IDLE_MS.
+          idleMs: num(source.AGENT_IDLE_MS, 300_000),
           memoryMb: source.AGENT_MEMORY_MB ? num(source.AGENT_MEMORY_MB, 512) : undefined,
         },
         sandboxSource,

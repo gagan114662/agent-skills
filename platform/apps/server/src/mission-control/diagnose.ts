@@ -1,4 +1,5 @@
 import { classifyFailure, failureCopy, isSuccess, type FailureReasonClass } from "../runtime/outcome.js";
+import { summarizeFailureClasses, type FailureStats } from "../runtime/failure-stats.js";
 import type { SessionStatus } from "../runtime/types.js";
 
 /**
@@ -99,8 +100,14 @@ export interface DiagnoseInput {
 export function diagnose(input: DiagnoseInput): {
   diagnostic: MissionDiagnostic;
   recentFailures: RecentFailureView[];
+  /** #394: per-class failure histogram + rate over the recent terminal window (additive instrumentation). */
+  failureBreakdown: FailureStats;
 } {
   const { liveCount, recent, hasVenture, hasOpenWork, nowMs } = input;
+
+  // #394: count the whole terminal window by class so the failure RATE is measurable, not just the
+  // single dominant class. Reuses the same classifier as the terminal message / RecentFailureView below.
+  const failureBreakdown = summarizeFailureClasses(recent.filter((s) => isTerminal(s.status)));
 
   const failures: RecentFailureView[] = recent
     .filter((s) => isTerminal(s.status) && !isSuccess(s.status))
@@ -136,6 +143,7 @@ export function diagnose(input: DiagnoseInput): {
         recentFailureCount: 0,
       },
       recentFailures: failures,
+      failureBreakdown,
     };
   }
 
@@ -156,6 +164,7 @@ export function diagnose(input: DiagnoseInput): {
         recentFailureCount: recentlyFailed.length,
       },
       recentFailures: failures,
+      failureBreakdown,
     };
   }
 
@@ -171,6 +180,7 @@ export function diagnose(input: DiagnoseInput): {
         recentFailureCount: 0,
       },
       recentFailures: failures,
+      failureBreakdown,
     };
   }
   if (!hasOpenWork) {
@@ -184,6 +194,7 @@ export function diagnose(input: DiagnoseInput): {
         recentFailureCount: 0,
       },
       recentFailures: failures,
+      failureBreakdown,
     };
   }
   return {
@@ -196,5 +207,6 @@ export function diagnose(input: DiagnoseInput): {
       recentFailureCount: 0,
     },
     recentFailures: failures,
+    failureBreakdown,
   };
 }
