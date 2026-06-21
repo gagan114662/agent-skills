@@ -21,8 +21,15 @@ export interface MessagePaneProps {
 
 export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Element {
   const state = useAppState();
-  const { channels, activeChannelId, messagesByChannel, identity } = state;
+  const { channels, activeChannelId, messagesByChannel, identity, liveSessions, directory } = state;
   const channel = channels.find((c) => c.id === activeChannelId);
+
+  // #480: in-channel activity — the agents whose session is live in THIS channel right now, so the user sees
+  // "Scout is working…" where the work is happening instead of only the global "N running" pill. De-duplicated
+  // by display name (a teammate could in theory have two sessions). Empty ⇒ nothing running here.
+  const workingNames = (activeChannelId ? liveSessions.filter((s) => s.channelId === activeChannelId) : [])
+    .map((s) => authorLabel(directory, s.agentMemberId))
+    .filter((name, i, all) => all.indexOf(name) === i);
   // The server's message list/stream is flat and inclusive of replies (ADR-0006). Slack-style, a
   // reply stays in its thread unless it was explicitly "also sent to channel" — so the channel view
   // shows top-level messages plus replies flagged for the channel.
@@ -132,9 +139,29 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
         </button>
       )}
 
+      {workingNames.length > 0 && (
+        <div className="typingind" role="status" aria-live="polite">
+          <span className="typingind__dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="typingind__label">
+            {formatWorking(workingNames)} {workingNames.length === 1 ? "is" : "are"} working…
+          </span>
+        </div>
+      )}
+
       <Composer queue draftKey={activeChannelId ?? undefined} />
     </section>
   );
+}
+
+/** "Scout" · "Scout and Quill" · "Scout, Quill and 1 more" — a compact list for the working indicator. */
+function formatWorking(names: string[]): string {
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
 function MessageItem({ message, state }: { message: Message; state: AppState }): React.JSX.Element {

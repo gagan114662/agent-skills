@@ -12,6 +12,24 @@ describe("MessagePane", () => {
     expect(screen.getByText("Ada")).toBeInTheDocument();
   });
 
+  // #480: a live session in THIS channel shows an in-channel "working…" indicator (not just the global pill).
+  it("shows an in-channel 'working…' indicator for a live session in the open channel", async () => {
+    const { store } = renderWithStore(<MessagePane />);
+    await store.bootstrap();
+    await screen.findByText("first post"); // channel c1 is open
+
+    act(() => {
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+    });
+    expect(await screen.findByText(/Atlas is working/i)).toBeInTheDocument();
+
+    // A session in a DIFFERENT channel does not show here.
+    act(() => {
+      store.setLiveSessions([{ id: "s2", channelId: "c2", agentMemberId: "ag1", status: "running" }]);
+    });
+    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+  });
+
   it("marks agent authors with an AGENT badge (agent-first)", async () => {
     const { store } = renderWithStore(<MessagePane />, {
       messages: [makeMessage({ id: "m1", authorMemberId: "ag1", body: "deployed v2" })],
