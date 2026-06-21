@@ -15,6 +15,7 @@ import {
 import { postMessage } from "../db/repositories/messages.js";
 import { createRequest, listPolicyRules } from "../db/repositories/approvals.js";
 import { evaluatePolicy } from "../approvals/policy.js";
+import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
@@ -166,6 +167,15 @@ export function defaultPreflight(): PreflightReport {
     browserEnabled,
     workspaceRoot,
   });
+}
+
+// #403 autonomous publishing: the delivery dispatcher used to SHIP a non-money deliverable the moment the
+// agent finishes — no owner approval in the loop. Built lazily (the factory reads no per-request state) and
+// shared across sessions. The dispatcher is self-gating: it returns null unless delivery is enabled for the
+// workspace (owner-first), so this is a no-op everywhere delivery is off.
+let _deliveryDispatcher: ReturnType<typeof buildDeliveryDispatcher> | undefined;
+function deliveryDispatcher(): ReturnType<typeof buildDeliveryDispatcher> {
+  return (_deliveryDispatcher ??= buildDeliveryDispatcher());
 }
 
 export function createDefaultSessionManager(logger: SessionLogger, scale: Scale = createScale(0)): SessionManager {
@@ -381,18 +391,19 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       // rule. `evaluatePolicy` honors both the money predicate and any workspace rule (#243 / ADR-0013).
       const rules = await listPolicyRules(e.workspaceId);
       const gated = evaluatePolicy({ actionType: "agent.deliverable", amount: null }, rules).requiresApproval;
-      await createRequest({
+      const payload = {
+        sessionId: e.sessionId,
+        channelId: e.channelId,
+        task,
+        // The draft is already redacted + bounded (the result tail). Stored so the drawer can show
+        // what the agent produced without re-reading the channel.
+        draft: e.result.slice(0, 4000),
+      };
+      const request = await createRequest({
         workspaceId: e.workspaceId,
         requesterMemberId: e.agentMemberId,
         actionType: "agent.deliverable",
-        payload: {
-          sessionId: e.sessionId,
-          channelId: e.channelId,
-          task,
-          // The draft is already redacted + bounded (the result tail). Stored so the drawer can show
-          // what the agent produced without re-reading the channel.
-          draft: e.result.slice(0, 4000),
-        },
+        payload,
         amount: null,
         summary: `Deliverable ready for review: ${headline}`,
         // Non-money → autonomous: land it in Done (executed). Money (a future priced deliverable) → pending.
@@ -406,6 +417,31 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
               { type: "executed", detail: { acknowledged: true, autonomous: true } },
             ],
       });
+      // #403 autonomous publishing — the missing link: a non-money deliverable previously landed in "Done
+      // (executed)" but the SHIP only ran on a HUMAN approval (approvals/runtime.ts), so the fleet's work was
+      // recorded-and-acknowledged but NEVER actually published — the "everything waits for me" circle. Here
+      // we ship it the moment it's done, with no owner in the loop. The dispatcher is SELF-GATING (returns
+      // null unless delivery is enabled for the workspace + the department is shippable), so every workspace
+      // without delivery enabled is byte-for-byte unchanged — only the owner workspace publishes autonomously.
+      // Reversible by design (#200 §4 respected in spirit): site_pr opens a PR, it is not merged/live, so the
+      // autonomous action can always be undone. Best-effort: a ship failure is logged and never affects the
+      // already-finalized session or the recorded deliverable.
+      if (!gated) {
+        try {
+          const shipped = await deliveryDispatcher().ship(payload, {
+            workspaceId: e.workspaceId,
+            approvalRequestId: request.id,
+          });
+          if (shipped) {
+            logger.info(
+              { workspaceId: e.workspaceId, sessionId: e.sessionId, channel: shipped.channel ?? null },
+              "deliverable shipped autonomously",
+            );
+          }
+        } catch (err: unknown) {
+          logger.error({ err, sessionId: e.sessionId }, "autonomous deliverable ship failed");
+        }
+      }
     },
     // #393: post the agent's real deliverable as a chat MESSAGE into its own channel — the fleet's
     // visible reply — so a completed run isn't read as "no response" (it previously lived only as a
