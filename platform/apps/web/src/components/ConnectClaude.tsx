@@ -101,8 +101,8 @@ export function ConnectClaude(props: ConnectClaudeProps): React.JSX.Element {
             ✅ Connected{status.fingerprint ? ` · ${status.fingerprint}` : ""}
           </p>
           <p className="connect-claude__hint connect-claude__managed">
-            Your fleet runs on a managed model{defaultModel ? ` (${defaultModel})` : ""}, kept up to date by
-            ipop — there’s nothing to choose.
+            Running on your own subscription, your fleet stays on a current, capable model
+            {defaultModel ? ` (${defaultModel})` : ""} that ipop keeps up to date — you don’t have to pick one.
           </p>
           {/* Advanced model override: admin/dev only. The fleet otherwise runs on the managed default, so
               there is NO model picker in the normal user flow. The container reveals this for dev builds. */}

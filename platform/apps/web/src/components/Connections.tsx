@@ -123,6 +123,10 @@ function InternalConnect(props: {
       ) : (
         <form
           className="connections__form"
+          // #477: Chrome ignores input-level autoComplete="off" and will autofill a saved EMAIL into the
+          // first text field it guesses (the base-branch input got an account email). A form-level "off" plus
+          // non-semantic field names (not "branch"/"email") + data-1p/lp-ignore reliably stops the misfire.
+          autoComplete="off"
           onSubmit={(e) => {
             e.preventDefault();
             if (!ready) return;
@@ -134,7 +138,10 @@ function InternalConnect(props: {
           <input
             id={repoId}
             type="text"
+            name="ipop-site-repo-nofill"
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
             placeholder={CONNECTIONS.repoPlaceholder}
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
@@ -143,7 +150,10 @@ function InternalConnect(props: {
           <input
             id={branchId}
             type="text"
+            name="ipop-site-base-branch-nofill"
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
             placeholder={CONNECTIONS.branchPlaceholder}
             value={baseBranch}
             onChange={(e) => setBaseBranch(e.target.value)}
