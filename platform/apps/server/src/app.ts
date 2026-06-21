@@ -225,8 +225,10 @@ import type { PlanningService } from "./planning/service.js";
 import { createDefaultVentureMemoryService } from "./venture-memory/default.js";
 import { createDefaultVentureFactoryEngine } from "./venture-factory/default.js";
 import { createDefaultCadenceEngine } from "./cadence/default.js";
+import { createDefaultSkillOptEngine } from "./skillopt/default.js";
 import type { VentureFactoryEngine } from "./venture-factory/engine.js";
 import type { CadenceEngine } from "./cadence/engine.js";
+import type { SkillOptEngine } from "./skillopt/engine.js";
 import type { VentureMemoryService } from "./venture-memory/service.js";
 import { ventureMemoryRoutes } from "./routes/venture-memory.js";
 import { buildLoopRoutes } from "./routes/build-loop.js";
@@ -300,6 +302,8 @@ declare module "fastify" {
     ventureFactoryEngine: VentureFactoryEngine;
     /** The #416 autonomous work cadence; `index.ts` starts its opt-in tick (RELOAD_CADENCE_INTERVAL_MS). */
     cadenceEngine: CadenceEngine;
+    /** The #283 SkillOpt-Sleep loop; `index.ts` starts its opt-in tick (RELOAD_SKILLOPT_INTERVAL_MS). */
+    skilloptEngine: SkillOptEngine;
     /** The #172 self-shipping loop; `index.ts` starts its opt-in tick (BUILDLOOP_INTERVAL_MS). */
     buildLoopEngine: BuildLoopEngine;
     /** The #173 founder briefings engine; `index.ts` starts its opt-in tick (BRIEFINGS_INTERVAL_MS). */
@@ -1323,6 +1327,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     cadenceEngine.stop();
   });
   app.decorate("cadenceEngine", cadenceEngine);
+  // #283 SkillOpt-Sleep: the nightly self-improvement tick (RELOAD_SKILLOPT_INTERVAL_MS, started in index.ts
+  // only when > 0). Config default-OFF + owner-workspace-first; it stages at most a #13 proposal and edits
+  // no doc, so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  const skilloptEngine = createDefaultSkillOptEngine(app.log);
+  app.addHook("onClose", async () => {
+    skilloptEngine.stop();
+  });
+  app.decorate("skilloptEngine", skilloptEngine);
   // #55 persistent & shared cloud workspaces: durable cloud workspaces (sleep/wake around the #25
   // snapshot resume key), cloud→local file mirror with setup-on-first-mirror, and scoped/revocable
   // collaborator sharing. The idle sweep is opt-in (CLOUD_SWEEP_INTERVAL_MS, default off) and

@@ -43,6 +43,8 @@ export interface Env {
   ventureFactory: VentureFactoryEnv;
   /** Autonomous work-cadence scheduled tick (#416). */
   cadence: CadenceEnv;
+  /** SkillOpt-Sleep self-improvement nightly tick (#283). */
+  skillopt: SkillOptEnv;
   /** Self-Shipping Loop scheduled tick (#172). */
   buildLoop: BuildLoopEnv;
   /** Founder Briefings scheduled tick (#173). */
@@ -246,6 +248,11 @@ export interface CadenceEnv {
   intervalMs: number;
 }
 
+export interface SkillOptEnv {
+  /** SkillOpt-Sleep nightly tick interval in ms. Default `0` = the self-improvement loop is OFF (opt-in, #283). */
+  intervalMs: number;
+}
+
 export interface BuildLoopEnv {
   /** Self-shipping-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #172). */
   intervalMs: number;
@@ -427,6 +434,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     cadence: {
       // Default 0 (off): the autonomous work-cadence loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.RELOAD_CADENCE_INTERVAL_MS ?? 0) || 0,
+    },
+    skillopt: {
+      // Default 0 (off): the SkillOpt-Sleep self-improvement loop is opt-in so tests/CI drive `tickAll()`
+      // deterministically and prod is unchanged until the owner flips it on (#283).
+      intervalMs: Number(source.RELOAD_SKILLOPT_INTERVAL_MS ?? 0) || 0,
     },
     buildLoop: {
       // Default 0 (off): the self-shipping loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

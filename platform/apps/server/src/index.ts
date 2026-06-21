@@ -67,6 +67,13 @@ app.ventureFactoryEngine.start(env.ventureFactory.intervalMs);
 // deployment opts in. Stopped on server close via buildApp.
 app.cadenceEngine.start(env.cadence.intervalMs);
 
+// #283 SkillOpt-Sleep: start the opt-in nightly tick (RELOAD_SKILLOPT_INTERVAL_MS; default 0 = off) that
+// runs each owner workspace's offline self-improvement cycle — harvest → mine → gate → stage at most one
+// bounded skill-doc proposal in the #13 queue, and durably record the run's before/after signal. Config
+// default-OFF + owner-workspace-first; it edits no doc and takes no money/external action (adoption stays
+// human-gated), so nothing autonomous runs until a deployment opts in. Stopped on server close via buildApp.
+app.skilloptEngine.start(env.skillopt.intervalMs);
+
 // #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
 // the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.

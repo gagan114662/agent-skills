@@ -155,17 +155,57 @@ source of truth for the fleet), so the loop only ever reads the briefs **that** 
 
 **Crucially, this slice stages nothing new.** `replay` still returns `[]`, so even with real harvested data no
 candidate exists, no `ValidationReading` is produced, and the gate never runs. Mining is now real; *adoption*
-remains impossible until the production-grounded replay (Slice 3) supplies an externally-verified reading. The
+remains impossible until the production-grounded replay (Follow-up #2) supplies an externally-verified reading. The
 "no self-reported signal can ever move a doc" invariant (#200 §2/§3) is preserved by construction.
+
+## Slice 3 — Run persistence + nightly scheduler (this PR)
+
+The earlier slices were **stateless**: each cycle ran in memory and forgot itself, and nothing ever ticked
+it. This slice makes the loop a **real, recurring, self-measuring** one — without moving the safety posture an
+inch. It adds the durable AUDIT LEDGER, the idempotency guard, and the nightly "sleep" trigger.
+
+**Persistence (migration `0283_skillopt_runs`).** Two additive, workspace-scoped tables (#3, ON DELETE
+CASCADE): `skillopt_runs` (one header per workspace pass: `enabled` + agent/staged/deduped/skipped counts)
+and `skillopt_proposals` (one row per agent outcome). A staged/deduped row carries the held-out
+**BEFORE/AFTER** reading (`baseline` → `candidate`, `improvement_ratio`, `sample_size`, `externally_verified`)
+— **the measurable self-improvement signal** the issue asks for, now queryable over time
+(`latestImprovementSignal`). The ledger holds **no money and no secret**: a row records that a proposal was
+*staged* for the owner (its `request_id` links the #13 row), **never** that one was adopted. These tables are
+deliberately **not** `growth_/demand_/venture_/moat_/eval_runs/tenant_usage`-prefixed, so the #155 colocation
+gate correctly classes them as an audit ledger, not a governed metric surface.
+
+**Idempotency (the new `alreadyStaged` seam).** Before staging, the cycle asks `alreadyProposed(workspace,
+handle, clusterKey, docSha)`: if this exact edit was already staged **against this unchanged doc**, it is
+**not** re-staged (the proposal is already parked in the #13 queue) — the outcome is recorded as `deduped` and
+no duplicate request is created. Once the doc changes (the owner adopts an edit, or edits it by hand) the sha
+differs and a fresh proposal flows. This is how "future runs use the improved version" without ever editing a
+doc autonomously: the loop compounds against the *current* doc and stops spamming the owner.
+
+**Scheduler (`skillopt/engine.ts`, the `SkillOptEngine`).** A nightly/idle tick modelled exactly on the #416
+`CadenceEngine`: an opt-in `setInterval` (`RELOAD_SKILLOPT_INTERVAL_MS`, **default 0 = OFF**) started in
+`index.ts`, owner-workspace-first (work-list = the resolved `ownerWorkspaceId`), that calls
+`SkillOptService.runWorkspace` once per workspace per tick and catches+logs per-workspace errors so a failure
+never crashes the timer. `runWorkspace` self-gates on the layered config, so a started timer ticks nobody
+until a deployment opts a workspace in.
+
+**The safety invariant is unchanged.** The persistence seams are **recorded-only** and the engine owns **no
+new authority**: a pass still stages at most a PENDING `skillopt.adopt_skill_edit` #13 request the owner adopts
+(or not). The loop never edits a doc, never touches money, never takes an external action. Because production
+`replay` still returns `[]` (Follow-up #2), a *production* deployment stages nothing yet even with the timer on
+— the scheduler and ledger are simply ready for the slice that first produces a real reading. Covered by
+vitest unit tests (engine + service persistence/dedup) and an integration test against real Postgres (ledger
+record/read-back/dedup + the full wired cycle staging exactly one #13 request and de-duplicating a re-run).
 
 ## Follow-ups (the rest of the epic, tracked on #283)
 
 1. ✅ **Transcript harvest** — a real `harvest` seam reading recent briefs per agent (DATA, sanitized).
-   *Delivered in this PR (Slice 2 above).*
+   *Delivered in Slice 2 above.*
 2. **Production-grounded replay** — replay mined tasks under the candidate doc with **real spawns** and
    measure **external receipts** to fill `ValidationReading` (#200 §3); until then `replay` returns `[]`. This
    is the slice that first makes a staged proposal possible.
 3. **Edit apply** — on owner adoption, apply the bounded append to the versioned skill doc + bump the #155
    manifest version (the recorded-only executor becomes an applying one), with a one-click revert.
-4. **Scheduler** — a nightly cron tick that calls `SkillOptService.runWorkspace` for in-scope workspaces.
+4. ✅ **Scheduler** — a nightly tick (`SkillOptEngine`) that calls `SkillOptService.runWorkspace` for in-scope
+   workspaces, plus a durable run ledger with the before/after signal + idempotent staging.
+   *Delivered in this PR (Slice 3 above).*
 5. **Console surface** — show staged proposals + their validation receipts in the founder console.
