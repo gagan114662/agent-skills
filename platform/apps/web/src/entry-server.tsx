@@ -20,6 +20,7 @@ import { listPostMeta, type BlogPostMeta } from "./blog/posts.js";
 import { resolveOrigin, escapeHtml, type PrerenderPage } from "./blog/seo.js";
 import {
   organizationLd,
+  softwareApplicationLd,
   websiteLd,
   blogLd,
   blogPostingLd,
@@ -50,14 +51,15 @@ export function prerenderPages(): PrerenderPage[] {
   const posts = listPostMeta();
 
   // The marketing homepage. Its head meta already lives in index.html, so we only inject the body — plus
-  // the Organization + WebSite JSON-LD (#294) so the ipop entity is explicit to crawlers, not inferred.
+  // the Organization + WebSite JSON-LD (#294) and the SoftwareApplication node (#467) so crawlers understand
+  // ipop as the SaaS product it is (a marketing BusinessApplication), not just an org behind a website.
   pages.push({
     outFile: "index.html",
     urlPath: "/",
     html: renderToStaticMarkup(<Landing />),
     lastmod: posts[0]?.date,
     priority: 1.0,
-    headExtra: renderJsonLd([organizationLd(ORIGIN), websiteLd(ORIGIN)]),
+    headExtra: renderJsonLd([organizationLd(ORIGIN), websiteLd(ORIGIN), softwareApplicationLd(ORIGIN)]),
   });
 
   // The blog index: Blog node (lists every post) + a Home › Blog breadcrumb.
