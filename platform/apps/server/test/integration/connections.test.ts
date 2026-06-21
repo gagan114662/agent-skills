@@ -42,17 +42,18 @@ async function seed(): Promise<{ cookie: string; workspaceId: string }> {
   return { cookie, workspaceId: me.workspaceId };
 }
 
-describe("connections (#258) — customer view is OAuth-only, GitHub paste is admin", () => {
-  it("a customer (non-owner) workspace sees only OAuth connectors and cannot paste a token", async () => {
+describe("connections (#258) — customer view never pastes a token, GitHub paste is admin", () => {
+  it("a customer (non-owner) workspace sees only no-paste connectors and cannot paste a token", async () => {
     const { cookie } = await seed();
 
     const list = await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } });
     expect(list.statusCode).toBe(200);
     const body = list.json();
     expect(body.canManageInternal).toBe(false);
-    // No internal GitHub connector is exposed; every visible connector is consumer OAuth.
+    // No internal GitHub connector is exposed; every visible connector is a no-paste consumer connect
+    // (consumer OAuth, or the one-click outbound-email consent #529) — never the admin paste path.
     expect(body.connections.find((c: { id: string }) => c.id === "site_publish_github")).toBeUndefined();
-    expect(body.connections.every((c: { auth: string }) => c.auth === "oauth")).toBe(true);
+    expect(body.connections.every((c: { auth: string }) => c.auth !== "paste_internal")).toBe(true);
     expect(body.connections.find((c: { id: string }) => c.id === "google")).toBeDefined();
 
     // Pasting the internal connection is refused for a non-owner.
@@ -71,6 +72,47 @@ describe("connections (#258) — customer view is OAuth-only, GitHub paste is ad
       cookies: { rid: cookie },
     });
     expect(del.statusCode).toBe(403);
+  });
+
+  it("a customer can finish onboarding: one-click connecting email flips the account to connected (#529/#507)", async () => {
+    const { cookie } = await seed();
+
+    // Before: outbound email is offered as an AVAILABLE one-click connector, not yet connected.
+    const before = (await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })).json();
+    const email = before.connections.find((c: { id: string }) => c.id === "email");
+    expect(email).toMatchObject({ auth: "one_click", status: "available", connected: false });
+
+    // One-click connect — no redirect, no pasted secret.
+    const enable = await app.inject({ method: "POST", url: "/me/connections/email/enable", cookies: { rid: cookie } });
+    expect(enable.statusCode).toBe(200);
+    expect(enable.json().connected).toBe(true);
+
+    // After: the account reads connected, so the "connect an account" onboarding step is now completable.
+    const after = (await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })).json();
+    expect(after.connections.some((c: { id: string; connected: boolean }) => c.id === "email" && c.connected)).toBe(true);
+
+    // Disconnect → goes back to not-connected, gracefully.
+    const del = await app.inject({ method: "DELETE", url: "/me/connections/email", cookies: { rid: cookie } });
+    expect(del.statusCode).toBe(200);
+    const gone = (await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })).json();
+    expect(gone.connections.some((c: { id: string; connected: boolean }) => c.id === "email" && c.connected)).toBe(false);
+  });
+
+  it("enabling a not-yet-available connector is refused; a coming-soon connector offers the waitlist instead (#507)", async () => {
+    const { cookie } = await seed();
+
+    // You can't one-click a connector whose live flow isn't wired yet.
+    const badEnable = await app.inject({ method: "POST", url: "/me/connections/google/enable", cookies: { rid: cookie } });
+    expect(badEnable.statusCode).toBe(400);
+
+    // But it's not a dead stop — joining the waitlist is the next step (202 accepted).
+    const wait = await app.inject({ method: "POST", url: "/me/connections/google/waitlist", cookies: { rid: cookie } });
+    expect(wait.statusCode).toBe(202);
+    expect(wait.json()).toMatchObject({ status: "waitlisted", id: "google" });
+
+    // An already-available connector can't be waitlisted (connect it instead).
+    const noWait = await app.inject({ method: "POST", url: "/me/connections/email/waitlist", cookies: { rid: cookie } });
+    expect(noWait.statusCode).toBe(400);
   });
 
   it("an OAuth connector's start is an honest 'coming soon' (501), never a silent success", async () => {

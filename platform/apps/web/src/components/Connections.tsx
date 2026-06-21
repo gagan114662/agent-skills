@@ -17,12 +17,16 @@ export interface ConnectionsProps {
   busy?: boolean;
   error?: string | null;
   onOAuthConnect: (id: string) => void;
+  /** Turn on a one-click live channel (e.g. outbound email) — no redirect, no pasted secret (#529/#507). */
+  onOneClickConnect: (id: string) => void;
+  /** Join the waitlist for a connector that isn't live yet — a next step instead of a dead stop (#507). */
+  onWaitlist: (id: string) => void;
   onInternalConnect: (id: string, input: { repo: string; token: string; baseBranch: string }) => void;
   onDisconnect: (id: string) => void;
 }
 
 export function Connections(props: ConnectionsProps): React.JSX.Element {
-  const { data, busy, error, onOAuthConnect, onInternalConnect, onDisconnect } = props;
+  const { data, busy, error, onOAuthConnect, onOneClickConnect, onWaitlist, onInternalConnect, onDisconnect } = props;
 
   if (data === null) {
     return (
@@ -45,7 +49,14 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
         {customer.map((c) => (
           <li key={c.id} className="connections__item">
             <span className="connections__summary">{c.summary}</span>
-            <CustomerAction connection={c} busy={busy} onConnect={onOAuthConnect} onDisconnect={onDisconnect} />
+            <CustomerAction
+              connection={c}
+              busy={busy}
+              onOAuthConnect={onOAuthConnect}
+              onOneClickConnect={onOneClickConnect}
+              onWaitlist={onWaitlist}
+              onDisconnect={onDisconnect}
+            />
           </li>
         ))}
       </ul>
@@ -68,10 +79,13 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
 function CustomerAction(props: {
   connection: ConnectionView;
   busy?: boolean;
-  onConnect: (id: string) => void;
+  onOAuthConnect: (id: string) => void;
+  onOneClickConnect: (id: string) => void;
+  onWaitlist: (id: string) => void;
   onDisconnect: (id: string) => void;
 }): React.JSX.Element {
-  const { connection: c, busy, onConnect, onDisconnect } = props;
+  const { connection: c, busy, onOAuthConnect, onOneClickConnect, onWaitlist, onDisconnect } = props;
+  const [waitlisted, setWaitlisted] = useState(false);
   if (c.connected) {
     return (
       <span className="connections__connected">
@@ -82,13 +96,40 @@ function CustomerAction(props: {
       </span>
     );
   }
-  const comingSoon = c.status === "coming_soon";
+  // Not live yet: a clear next step (join the waitlist) instead of a dead, disabled "Coming soon" button.
+  if (c.status === "coming_soon") {
+    if (waitlisted) {
+      return (
+        <span className="connections__soon" role="status">
+          {CONNECTIONS.waitlisted}
+        </span>
+      );
+    }
+    return (
+      <span className="connections__action">
+        <span className="connections__label">{c.label}</span>
+        <span className="connections__soon">{CONNECTIONS.comingSoon}</span>
+        <button
+          type="button"
+          className="connections__waitlist"
+          disabled={busy}
+          onClick={() => {
+            onWaitlist(c.id);
+            setWaitlisted(true);
+          }}
+        >
+          {CONNECTIONS.waitlist}
+        </button>
+      </span>
+    );
+  }
+  // Live: one-click connectors (e.g. outbound email) turn on without a redirect; the rest start consumer OAuth.
+  const onConnect = c.auth === "one_click" ? onOneClickConnect : onOAuthConnect;
   return (
     <span className="connections__action">
-      <button type="button" disabled={busy || comingSoon} onClick={() => onConnect(c.id)}>
+      <button type="button" disabled={busy} onClick={() => onConnect(c.id)}>
         {c.label}
       </button>
-      {comingSoon ? <span className="connections__soon">{CONNECTIONS.comingSoon}</span> : null}
     </span>
   );
 }

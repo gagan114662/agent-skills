@@ -16,6 +16,13 @@ import type { ServiceKind } from "../onboarding/types.js";
 export type ConnectionAuthMethod =
   /** Consumer OAuth — the customer-facing default ("Sign in with Google", "Connect X"). */
   | "oauth"
+  /**
+   * A one-click customer consent that needs neither a redirect nor a pasted secret — the customer simply
+   * turns a channel the fleet already owns end-to-end ON for their workspace. The first is outbound email
+   * (#529): the agents can draft and queue a real email, and every send waits for the owner's approval. Like
+   * OAuth it never asks the customer for a token, so it honours the "customers never paste a credential" rule.
+   */
+  | "one_click"
   /** A pasted credential, INTERNAL/admin only (ipop's own GitHub site-publish). Never customer-facing. */
   | "paste_internal";
 
@@ -53,6 +60,9 @@ export const SITE_PUBLISH_GITHUB_ID = "site_publish_github";
 /** The connect-once SOCIAL AGGREGATOR connection id (#269 — one consent fans out to every network). */
 export const SOCIAL_AGGREGATOR_ID = "social_aggregator";
 
+/** The outbound-email connection id (#529 — the first real end-to-end outbound channel; one-click consent). */
+export const EMAIL_CONNECTION_ID = "email";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -76,7 +86,25 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // CUSTOMER — consumer OAuth, one consent each. The live redirect is a follow-up (`coming_soon`), but
   // the model is already OAuth-shaped so it slots in without re-modelling.
+  //
+  // Outbound EMAIL is the exception: it's the first channel wired end-to-end (#529), so it is `available`
+  // today. Turning it on is a one-click consent — no redirect, no pasted secret — and every email the fleet
+  // sends still waits for the owner's approval. This is the connector that lets a fresh workspace finish the
+  // "connect an account" step instead of dead-ending on a wall of "coming soon".
   // -------------------------------------------------------------------------------------------------
+  {
+    id: EMAIL_CONNECTION_ID,
+    label: "Connect email",
+    summary: "Let your fleet send email on your behalf — drafts come to you, and every send waits for your approval.",
+    provider: "email",
+    kind: "esp",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    capabilities: ["send_email"],
+    oauthScopes: [],
+    envKeys: [],
+  },
   {
     id: "google",
     label: "Sign in with Google",

@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { decideConnectionView, decideInternalConnect } from "../../src/connections/view.js";
-import { CONNECTION_DESCRIPTORS, getConnectionDescriptor, SITE_PUBLISH_GITHUB_ID } from "../../src/connections/registry.js";
+import {
+  decideConnectionView,
+  decideInternalConnect,
+  decideOneClickConnect,
+  decideWaitlist,
+} from "../../src/connections/view.js";
+import {
+  CONNECTION_DESCRIPTORS,
+  EMAIL_CONNECTION_ID,
+  getConnectionDescriptor,
+  SITE_PUBLISH_GITHUB_ID,
+} from "../../src/connections/registry.js";
 
 /**
  * #258 — what Settings shows and what an internal paste is allowed to do. Customers see only OAuth-shaped
@@ -90,5 +100,52 @@ describe("decideInternalConnect (#258)", () => {
 
   it("refuses an unknown connection", () => {
     expect(decideInternalConnect({ descriptor: undefined, isOwner: true, repo: "ipop/site", token: "x" })).toMatchObject({ ok: false });
+  });
+});
+
+describe("decideOneClickConnect (#529/#507)", () => {
+  it("connects an available one-click customer connector (outbound email) with no secret", () => {
+    const d = decideOneClickConnect({ descriptor: getConnectionDescriptor(EMAIL_CONNECTION_ID) });
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.serviceKey).toBe(EMAIL_CONNECTION_ID);
+    expect(d.serviceKind).toBe("esp");
+    expect(d.scopes).toContain("send_email");
+    // No `secrets` field at all — the consent IS the connection.
+    expect("secrets" in d).toBe(false);
+  });
+
+  it("refuses an OAuth connector (it isn't a one-click connect)", () => {
+    expect(decideOneClickConnect({ descriptor: getConnectionDescriptor("google") })).toMatchObject({ ok: false });
+  });
+
+  it("refuses the internal paste connector", () => {
+    expect(decideOneClickConnect({ descriptor: getConnectionDescriptor(SITE_PUBLISH_GITHUB_ID) })).toMatchObject({ ok: false });
+  });
+
+  it("refuses an unknown connection", () => {
+    expect(decideOneClickConnect({ descriptor: undefined })).toMatchObject({ ok: false });
+  });
+});
+
+describe("decideWaitlist (#507)", () => {
+  it("accepts a coming-soon customer connector (a next step instead of a dead stop)", () => {
+    const d = decideWaitlist({ descriptor: getConnectionDescriptor("google") });
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.connectionId).toBe("google");
+    expect(d.provider).toBe("google");
+  });
+
+  it("refuses an already-available connector (connect it, don't waitlist it)", () => {
+    expect(decideWaitlist({ descriptor: getConnectionDescriptor(EMAIL_CONNECTION_ID) })).toMatchObject({ ok: false });
+  });
+
+  it("refuses an internal connector (never customer-facing)", () => {
+    expect(decideWaitlist({ descriptor: getConnectionDescriptor(SITE_PUBLISH_GITHUB_ID) })).toMatchObject({ ok: false });
+  });
+
+  it("refuses an unknown connection", () => {
+    expect(decideWaitlist({ descriptor: undefined })).toMatchObject({ ok: false });
   });
 });

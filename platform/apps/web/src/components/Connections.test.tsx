@@ -30,22 +30,31 @@ const CUSTOMER: ConnectionsResponse = {
   connections: [view({ id: "google" }), view({ id: "x", label: "Connect X", auth: "oauth" })],
 };
 
+/** All the handlers wired off by default — individual tests override the one they assert on. */
+const noopHandlers = {
+  onOAuthConnect: () => {},
+  onOneClickConnect: () => {},
+  onWaitlist: () => {},
+  onInternalConnect: () => {},
+  onDisconnect: () => {},
+};
+
 describe("Connections (#258)", () => {
   it("shows a loading state until the data arrives", () => {
-    render(<Connections data={null} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={() => {}} />);
+    render(<Connections data={null} {...noopHandlers} />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("renders customer connectors as OAuth buttons, disabled when coming soon", () => {
-    render(<Connections data={CUSTOMER} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={() => {}} />);
+  it("renders customer connectors, offering a waitlist next step when coming soon (#507)", () => {
+    render(<Connections data={CUSTOMER} {...noopHandlers} />);
     expect(screen.getByText("Sign in with Google")).toBeInTheDocument();
     expect(screen.getByText("Connect X")).toBeInTheDocument();
-    // coming_soon ⇒ the connect button is disabled and a "coming soon" affordance is shown
-    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0);
+    // coming_soon ⇒ NOT a dead, disabled button: a "notify me" waitlist button is the next step.
+    expect(screen.getAllByRole("button", { name: /notify me/i }).length).toBeGreaterThan(0);
   });
 
   it("never shows the internal GitHub paste form to a customer (no admin form)", () => {
-    render(<Connections data={CUSTOMER} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={() => {}} />);
+    render(<Connections data={CUSTOMER} {...noopHandlers} />);
     expect(screen.queryByLabelText(/repository/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
   });
@@ -56,9 +65,35 @@ describe("Connections (#258)", () => {
       canManageInternal: false,
       connections: [view({ id: "google", status: "available" })],
     };
-    render(<Connections data={data} onOAuthConnect={onOAuthConnect} onInternalConnect={() => {}} onDisconnect={() => {}} />);
+    render(<Connections data={data} {...noopHandlers} onOAuthConnect={onOAuthConnect} />);
     fireEvent.click(screen.getByRole("button", { name: /sign in with google/i }));
     expect(onOAuthConnect).toHaveBeenCalledWith("google");
+  });
+
+  it("connects an available one-click connector (outbound email) with onOneClickConnect (#529/#507)", () => {
+    const onOneClickConnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [view({ id: "email", label: "Connect email", auth: "one_click", status: "available" })],
+    };
+    render(<Connections data={data} {...noopHandlers} onOneClickConnect={onOneClickConnect} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect email/i }));
+    expect(onOneClickConnect).toHaveBeenCalledWith("email");
+  });
+
+  it("a coming-soon connector waitlists instead of dead-ending, then confirms (#507)", () => {
+    const onWaitlist = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [view({ id: "x", label: "Connect X", auth: "oauth", status: "coming_soon" })],
+    };
+    render(<Connections data={data} {...noopHandlers} onWaitlist={onWaitlist} />);
+    // The connect path is never a disabled "Connect X" dead button for a coming_soon connector.
+    expect(screen.queryByRole("button", { name: /connect x/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /notify me/i }));
+    expect(onWaitlist).toHaveBeenCalledWith("x");
+    // After joining, the user gets an honest confirmation — not another dead stop.
+    expect(screen.getByText(/we'll let you know/i)).toBeInTheDocument();
   });
 
   it("renders the admin paste form and submits repo + token when the owner manages internal", () => {
@@ -76,7 +111,7 @@ describe("Connections (#258)", () => {
         }),
       ],
     };
-    render(<Connections data={data} onOAuthConnect={() => {}} onInternalConnect={onInternalConnect} onDisconnect={() => {}} />);
+    render(<Connections data={data} {...noopHandlers} onInternalConnect={onInternalConnect} />);
     const form = screen.getByText(/site publishing/i).closest("section") as HTMLElement;
     fireEvent.change(within(form).getByLabelText(/repository/i), { target: { value: "ipop/site" } });
     fireEvent.change(within(form).getByLabelText(/access token/i), { target: { value: "ghp_x" } });
@@ -99,7 +134,7 @@ describe("Connections (#258)", () => {
         }),
       ],
     };
-    render(<Connections data={data} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={onDisconnect} />);
+    render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
     // No free-text inputs when connected — only a disconnect affordance.
     expect(screen.queryByLabelText(/repository/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
@@ -113,7 +148,7 @@ describe("Connections (#258)", () => {
       canManageInternal: false,
       connections: [view({ id: "google", status: "available", connected: true })],
     };
-    render(<Connections data={data} onOAuthConnect={() => {}} onInternalConnect={() => {}} onDisconnect={onDisconnect} />);
+    render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(onDisconnect).toHaveBeenCalledWith("google");
   });

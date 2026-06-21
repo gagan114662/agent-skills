@@ -5,7 +5,12 @@ import {
   CONNECTION_DESCRIPTORS,
   getConnectionDescriptor,
 } from "../connections/registry.js";
-import { decideConnectionView, decideInternalConnect } from "../connections/view.js";
+import {
+  decideConnectionView,
+  decideInternalConnect,
+  decideOneClickConnect,
+  decideWaitlist,
+} from "../connections/view.js";
 import { createDefaultConnectOnceService } from "../connections/default.js";
 import {
   listServiceStatuses,
@@ -84,6 +89,48 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       isOwner: isOwnerWorkspace(wid),
     });
     return { connected: true, id: decision.serviceKey, connections };
+  });
+
+  // One-click customer consent (#529, #507) — turn on a channel the fleet already owns end-to-end (today:
+  // outbound email). No redirect, no pasted secret: the consent itself is the connection, so it's a non-money
+  // CONSENT and carries no #13 gate (same as the OAuth connects). It seals an empty-secret connected row, so
+  // the "connect an account" onboarding step becomes completable and dependent sends stay owner-approved.
+  app.post("/me/connections/:id/enable", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const wid = identity.workspaceId;
+    const id = (req.params as { id: string }).id;
+    const decision = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
+    if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    await setServiceCredentials({
+      workspaceId: wid,
+      serviceKey: decision.serviceKey,
+      secrets: {}, // a one-click consent seals no secret — the connection IS the consent.
+      scopes: decision.scopes,
+      connectedByMemberId: identity.memberId,
+    });
+    const connections = decideConnectionView({
+      descriptors: CONNECTION_DESCRIPTORS,
+      connectedIds: await connectedIds(wid),
+      isOwner: isOwnerWorkspace(wid),
+    });
+    return { connected: true, id: decision.serviceKey, connections };
+  });
+
+  // Waitlist (#507) — a connector whose live flow isn't wired yet offers "notify me" instead of a dead stop.
+  // We record the interest (no money, no secret) so the user always has a next step and the team can see
+  // demand; the connector stays `coming_soon` until its live flow ships.
+  app.post("/me/connections/:id/waitlist", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const id = (req.params as { id: string }).id;
+    const decision = decideWaitlist({ descriptor: getConnectionDescriptor(id) });
+    if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    req.log.info(
+      { event: "connection_waitlist", connectionId: decision.connectionId, provider: decision.provider, workspaceId: identity.workspaceId },
+      "connection waitlist interest recorded",
+    );
+    return reply.code(202).send({ status: "waitlisted", id: decision.connectionId });
   });
 
   // Consumer-OAuth seam (#258 Stage 2) — the shared connect-once flow. When the live flow is OUT of scope

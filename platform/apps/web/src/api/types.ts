@@ -102,7 +102,7 @@ export interface ConnectionView {
   provider: string;
   kind: string;
   audience: "customer" | "internal";
-  auth: "oauth" | "paste_internal";
+  auth: "oauth" | "one_click" | "paste_internal";
   status: "available" | "coming_soon";
   capabilities: string[];
   oauthScopes: string[];

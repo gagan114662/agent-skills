@@ -51,6 +51,11 @@ export function ConnectionsPanel(): React.JSX.Element {
             return api.getConnections();
           })
         }
+        // One-click live channel (e.g. outbound email): turns on without a redirect or a pasted secret (#529/#507).
+        onOneClickConnect={(id) => void run(() => api.enableConnection(id))}
+        // Not live yet: record interest so the user has a next step. Failures stay quiet — the UI already
+        // optimistically confirms, and a waitlist join is non-critical.
+        onWaitlist={(id) => void api.joinConnectionWaitlist(id).catch(() => undefined)}
         onInternalConnect={(id, input) => void run(() => api.connectInternal(id, input))}
         onDisconnect={(id) => void run(() => api.disconnectConnection(id))}
       />

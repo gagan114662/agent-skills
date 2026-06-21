@@ -6,6 +6,11 @@
  *    GitHub paste connector ONLY for the owner workspace (a customer must never see a repo/token field).
  *  - {@link decideInternalConnect} validates an internal paste connect. It refuses a non-owner, refuses an
  *    OAuth (customer) connector outright (paste is internal-only), and requires an `owner/repo` + a token.
+ *  - {@link decideOneClickConnect} validates a one-click customer consent (e.g. turning on outbound email,
+ *    #529): it accepts only a customer connector whose auth is `one_click` and whose live flow is wired
+ *    (`available`). No secret is sealed — the consent itself is the connection.
+ *  - {@link decideWaitlist} validates a "notify me" request for a connector whose live flow isn't wired yet
+ *    (`coming_soon`), so a not-yet-available connector offers a next step instead of a dead stop.
  */
 
 import type { ServiceKind } from "../onboarding/types.js";
@@ -92,4 +97,43 @@ export function decideInternalConnect(opts: {
       REALWORLD_SITE_BASE_BRANCH: baseBranch,
     },
   };
+}
+
+export type OneClickConnectDecision =
+  | { ok: true; serviceKey: string; serviceKind: ServiceKind; scopes: string[] }
+  | { ok: false; reason: string };
+
+/**
+ * Validate a one-click customer consent (#529, e.g. turning on outbound email). No secret changes hands —
+ * the consent itself is the connection — so this only checks the connector is a customer one-click connector
+ * whose live flow is wired. A `coming_soon` connector is refused here (use {@link decideWaitlist} instead).
+ */
+export function decideOneClickConnect(opts: {
+  descriptor: ConnectionDescriptor | undefined;
+}): OneClickConnectDecision {
+  const d = opts.descriptor;
+  if (!d) return { ok: false, reason: "unknown connection" };
+  if (d.audience !== "customer") return { ok: false, reason: "not a customer connection" };
+  if (d.auth !== "one_click") return { ok: false, reason: "this connection isn't a one-click connect" };
+  if (d.status !== "available") return { ok: false, reason: "this connection isn't available yet" };
+  return { ok: true, serviceKey: d.id, serviceKind: d.kind, scopes: d.capabilities };
+}
+
+export type WaitlistDecision =
+  | { ok: true; connectionId: string; provider: string }
+  | { ok: false; reason: string };
+
+/**
+ * Validate a "notify me when it's ready" request for a connector whose live flow isn't wired yet. Only a
+ * customer connector that is genuinely `coming_soon` qualifies — an already-available connector should be
+ * connected, not waitlisted, and an internal connector is never customer-facing.
+ */
+export function decideWaitlist(opts: {
+  descriptor: ConnectionDescriptor | undefined;
+}): WaitlistDecision {
+  const d = opts.descriptor;
+  if (!d) return { ok: false, reason: "unknown connection" };
+  if (d.audience !== "customer") return { ok: false, reason: "not a customer connection" };
+  if (d.status !== "coming_soon") return { ok: false, reason: "this connection is already available" };
+  return { ok: true, connectionId: d.id, provider: d.provider };
 }
