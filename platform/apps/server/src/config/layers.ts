@@ -320,6 +320,7 @@ export function mergeLayers(layers: Settings[]): ResolvedConfig {
     outreach: merged.outreach ?? { ...CONFIG_DEFAULTS.outreach },
     acquisition: merged.acquisition ?? { ...CONFIG_DEFAULTS.acquisition },
     delivery: merged.delivery ?? { ...CONFIG_DEFAULTS.delivery },
+    contentCadence: merged.contentCadence ?? { ...CONFIG_DEFAULTS.contentCadence },
     actionContract: merged.actionContract ?? { ...CONFIG_DEFAULTS.actionContract },
     provisioning: merged.provisioning ?? { ...CONFIG_DEFAULTS.provisioning },
     ads: merged.ads ?? { ...CONFIG_DEFAULTS.ads },

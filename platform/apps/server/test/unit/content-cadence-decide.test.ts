@@ -1,0 +1,86 @@
+import { describe, it, expect } from "vitest";
+import {
+  resolveContentCadenceFlags,
+  selectCadenceQuery,
+  cadenceDayNumber,
+  composeContentBrief,
+  DEFAULT_CADENCE_LEAD,
+} from "../../src/marketing/content-cadence/decide.js";
+
+describe("resolveContentCadenceFlags (#416 default-OFF owner-first)", () => {
+  const ws = "ws-owner";
+
+  it("is disabled when config is undefined (prod with the block unset)", () => {
+    expect(resolveContentCadenceFlags(undefined, ws)).toEqual({ enabled: false, queries: [], lead: DEFAULT_CADENCE_LEAD });
+  });
+
+  it("is disabled when enabled !== true", () => {
+    expect(resolveContentCadenceFlags({ queries: ["a"] }, ws).enabled).toBe(false);
+    expect(resolveContentCadenceFlags({ enabled: false, queries: ["a"] }, ws).enabled).toBe(false);
+  });
+
+  it("is disabled for a workspace outside the owner-first scope", () => {
+    const cfg = { enabled: true, ownerWorkspaceId: "ws-owner", queries: ["a"] };
+    expect(resolveContentCadenceFlags(cfg, "ws-other").enabled).toBe(false);
+    expect(resolveContentCadenceFlags(cfg, "ws-owner").enabled).toBe(true);
+  });
+
+  it("allows all workspaces only when ownerWorkspaceOnly is explicitly false", () => {
+    const cfg = { enabled: true, ownerWorkspaceOnly: false, queries: ["a"] };
+    expect(resolveContentCadenceFlags(cfg, "any-ws").enabled).toBe(true);
+  });
+
+  it("trims, de-duplicates and drops blank queries (order preserved)", () => {
+    const f = resolveContentCadenceFlags(
+      { enabled: true, ownerWorkspaceOnly: false, queries: [" seo tool ", "seo tool", "", "  ", "ai agents"] },
+      ws,
+    );
+    expect(f.queries).toEqual(["seo tool", "ai agents"]);
+  });
+
+  it("is disabled when the query calendar is effectively empty", () => {
+    expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["", "  "] }, ws).enabled).toBe(false);
+  });
+
+  it("normalizes the lead handle and defaults to the content lead", () => {
+    expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["a"] }, ws).lead).toBe("quill");
+    expect(resolveContentCadenceFlags({ enabled: true, ownerWorkspaceOnly: false, queries: ["a"], lead: "@Scout" }, ws).lead).toBe("scout");
+  });
+});
+
+describe("selectCadenceQuery (round-robin so the calendar keeps moving)", () => {
+  const qs = ["a", "b", "c"];
+  it("rotates through the calendar by day", () => {
+    expect(selectCadenceQuery(qs, 0)).toBe("a");
+    expect(selectCadenceQuery(qs, 1)).toBe("b");
+    expect(selectCadenceQuery(qs, 2)).toBe("c");
+    expect(selectCadenceQuery(qs, 3)).toBe("a"); // wraps
+  });
+  it("returns null for an empty calendar", () => {
+    expect(selectCadenceQuery([], 5)).toBeNull();
+  });
+  it("handles a negative day without going out of range", () => {
+    expect(selectCadenceQuery(qs, -1)).toBe("c");
+  });
+});
+
+describe("cadenceDayNumber", () => {
+  it("buckets a timestamp into whole UTC days", () => {
+    expect(cadenceDayNumber(new Date("2026-06-20T00:00:00Z"))).toBe(
+      cadenceDayNumber(new Date("2026-06-20T23:59:59Z")),
+    );
+    expect(cadenceDayNumber(new Date("2026-06-21T00:00:00Z"))).toBe(
+      cadenceDayNumber(new Date("2026-06-20T00:00:00Z")) + 1,
+    );
+  });
+});
+
+describe("composeContentBrief (#415 PRODUCE+PUBLISH, not audit)", () => {
+  it("embeds the query and instructs to write+publish, explicitly not an audit", () => {
+    const brief = composeContentBrief('  best   seo  tool ');
+    expect(brief).toContain('"best seo tool"'); // whitespace collapsed
+    expect(brief.toLowerCase()).toContain("publish");
+    expect(brief.toLowerCase()).toContain("not an audit");
+    expect(brief).toContain("#13"); // still approval-gated
+  });
+});

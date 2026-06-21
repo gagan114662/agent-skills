@@ -1527,6 +1527,27 @@ export const deliverySchema = z.object({
 });
 
 /**
+ * Content-cadence policy (#416, with #415). The scheduled tick that hands the fleet a NEW content
+ * objective so it ships a steady stream of on-site posts instead of re-auditing the homepage. Every field
+ * is optional and defaults **OFF, owner-workspace-first** (mirrors `delivery`): with the block unset the
+ * cadence engine no-ops and prod is byte-for-byte unchanged. The brief runs through the audited @mention
+ * launch path and the produced draft still flows the #13 → `site_pr` (delivery) chain — this block only
+ * decides WHEN and WHAT to write, never grants publish authority.
+ */
+export const contentCadenceSchema = z.object({
+  /** Master flag — default OFF. Nothing briefs on a timer unless this is explicitly true. */
+  enabled: z.boolean().optional(),
+  /** Restrict the cadence to the owner workspace (default true). Set false to broaden to all tenants. */
+  ownerWorkspaceOnly: z.boolean().optional(),
+  /** The owner's own workspace id — the cadence rolls out owner-workspace-first. */
+  ownerWorkspaceId: z.string().optional(),
+  /** The editorial calendar: the target search queries the fleet writes+publishes for, rotated in order. */
+  queries: z.array(z.string()).optional(),
+  /** Which department lead receives the brief (defaults to the content lead `quill`). */
+  lead: z.string().optional(),
+});
+
+/**
  * Shared agent-action contract policy (#337, ADR-0337). The flags that decide whether the
  * observe→investigate→propose→#13-approve→apply→verify→rollback contract may APPLY a change for a workspace.
  * Every field is optional and defaults **OFF, owner-workspace-first** (mirrors `delivery`/`skillopt`): a
@@ -1947,6 +1968,8 @@ export const settingsSchema = z.object({
   acquisition: acquisitionSchema.optional(),
   /** Deliverable delivery policy (#295): approve→publish ship of `agent.deliverable` drafts (default OFF). */
   delivery: deliverySchema.optional(),
+  /** Content-cadence policy (#416): timed briefs that keep the fleet shipping new on-site content (default OFF). */
+  contentCadence: contentCadenceSchema.optional(),
   /** Shared agent-action contract policy (#337): propose→#13-approve→apply→verify→rollback gating (default OFF). */
   actionContract: actionContractSchema.optional(),
   /** Central provisioning policy (#267): ipop-held paid data/posting/ads keys billed into the plan (default OFF). */
@@ -2066,6 +2089,7 @@ export type RealworldConfig = z.infer<typeof realworldSchema>;
 export type OutreachConfig = z.infer<typeof outreachSchema>;
 export type AcquisitionConfig = z.infer<typeof acquisitionSchema>;
 export type DeliveryConfig = z.infer<typeof deliverySchema>;
+export type ContentCadenceConfig = z.infer<typeof contentCadenceSchema>;
 export type ActionContractConfig = z.infer<typeof actionContractSchema>;
 export type ProvisioningConfig = z.infer<typeof provisioningSchema>;
 export type AdsConfig = z.infer<typeof adsSchema>;
@@ -2212,6 +2236,8 @@ export interface ResolvedConfig {
   acquisition: AcquisitionConfig;
   /** Deliverable delivery policy (#295). A partial resolved by `resolveDeliveryFlags`. */
   delivery: DeliveryConfig;
+  /** Content-cadence policy (#416). A partial resolved by `resolveContentCadenceFlags`. */
+  contentCadence: ContentCadenceConfig;
   /** Shared agent-action contract policy (#337). A partial resolved by `resolveActionContractFlags`. */
   actionContract: ActionContractConfig;
   /** Central provisioning policy (#267). A partial whose hard defaults `resolveProvisioningCaps` fills. */
@@ -2333,6 +2359,7 @@ export const CONFIG_DEFAULTS: ResolvedConfig = {
   outreach: {},
   acquisition: {},
   delivery: {},
+  contentCadence: {},
   actionContract: {},
   provisioning: {},
   ads: {},
