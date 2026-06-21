@@ -1,71 +1,68 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Keyword pick I went with 'AI marketing agency vs. hiring a marketing team' (and its close cousins — 'AI marketing agency cost,' 'should I hire a marketing agenc"
+description: "Keyword pick I went with 'AI marketing agency for startups' as the primary target. Why this one, not the obvious 'AI marketing tools': - It's buyer-intent, not"
 date: 2026-06-21
 status: published
 ---
 
 ## Keyword pick
 
-I went with **"AI marketing agency vs. hiring a marketing team"** (and its close cousins — "AI marketing agency cost," "should I hire a marketing agency or use AI").
+I went with **"AI marketing agency for startups"** as the primary target.
 
-Why this one over fatter-volume terms like "best AI marketing tools":
-- **It's a decision, not a browse.** Anyone typing "vs hiring" has a budget line open and is choosing between two real options. That's the buyer we want — founder or small team, weighing a hire.
-- **It's the exact frame on our own homepage.** We already say "the marketing agency of AI agents — you steer, they ship." The post just answers the question the headline provokes.
-- **We can win it with receipts, not adjectives.** A cost comparison is the one post where specifics beat vibes, which is our whole thing.
+Why this one, not the obvious "AI marketing tools":
+- It's **buyer-intent, not browse-intent.** Someone typing "tools" wants a listicle to graze. Someone typing "AI marketing agency for startups" is comparing *who they'd hire* — they've already decided they want work done, not another tab open. That's our buyer: the founder who wants marketing shipped, not a dashboard.
+- It matches **how we describe ourselves** on the homepage — "the marketing agency of AI agents" — so we're not stretching to rank for it.
+- It carries a built-in objection ("agency" = expensive, slow, retainer) that we get to answer in the post, which is where the comparison angle does the converting.
 
-One honesty flag up top: I've left every dollar figure as a **`[VERIFY]`** placeholder. I'm not going to invent agency retainer numbers or our own pricing — pull the real ones from the pricing page and from a couple of cited salary/retainer sources before this goes near publish.
+Secondary phrases I wove in naturally for the same searcher: *hire an AI marketing team*, *AI marketing agency cost*, *AI marketing for founders*.
 
----
-
-## Draft
-
-**Title:** AI Marketing Agency vs. Hiring a Marketing Team: A Founder's Honest Cost Breakdown
-
-**Slug:** `/blog/ai-marketing-agency-vs-hiring`
-
-**Meta description:** Hiring a marketer, retaining an agency, or running AI agents — here's what each actually costs a small team, with the trade-offs nobody puts on the sales page.
+What I drew from: our homepage and `/pricing` (the agent line-up, "start free — no card," the Starter/Pro/Agency tiers, and the human-approval gate). Everything below is grounded in those — I flagged the two spots where a human needs to drop in a real number.
 
 ---
 
-You're a founder with a product people kind of like and a marketing function that is currently… you, at 11pm, in a Google Doc. Three doors:
+## DRAFT — for human review
 
-1. **Hire someone.** A real marketer, on payroll.
-2. **Retain an agency.** Hand it to a shop with a Slack channel and a monthly invoice.
-3. **Run AI agents.** A fleet of specialists that drafts, researches, and plans, with you steering.
+**Title:** AI Marketing Agency for Startups: What You Actually Get (and What Still Needs You)
+**Slug:** `/blog/ai-marketing-agency-for-startups`
+**Meta description:** Thinking about an AI marketing agency for your startup? Here's what an AI marketing team actually does, where it beats a freelancer or retainer, and the one thing it won't do without you.
+**Target keyword:** AI marketing agency for startups
 
-We make door #3, so read us with the appropriate squint. But we'll give you the real trade-offs on all three, because the worst outcome for everyone is you picking us when you shouldn't have.
+---
 
-### Door 1: Hire a marketer
+You're a founder. Marketing is the plate you keep meaning to pick up, right after the other nine. So you've got three options on the table:
 
-**What it costs:** roughly `[VERIFY: loaded cost of a mid-level marketing generalist, salary + benefits + tools]` a year, plus the month or two it takes to find them.
+1. **Hire a marketer.** Great — that's a salary, a ramp, and a job description you're not sure how to write.
+2. **Sign with an agency.** Also great — that's a retainer, a kickoff deck, and a four-day wait for a landing page.
+3. **Hire an AI marketing agency.** Which sounds like a buzzword until you ask the only question that matters: *what does it actually do?*
 
-**What you get:** one brain that lives your problem, owns outcomes, and is in the room. Genuinely hard to beat for judgment.
+Let's answer that one. No vibes, just the job.
 
-**The catch:** one brain is also one *skill set*. A great content hire is rarely also your paid-ads person, your SEO person, and your outbound person. You're hiring a generalist and hoping the breadth holds. And the ramp is real — you're paying full freight for weeks before the first thing ships.
+### What an AI marketing agency actually is
 
-### Door 2: Retain an agency
+Skip the part where "AI" means a chatbot bolted onto a tool you already pay for. An AI marketing *agency* is a team of specialist agents, each one owning a lane the way a real department would:
 
-**What it costs:** commonly `[VERIFY: typical small-business agency retainer range, monthly]`, usually on a minimum commitment.
+- **Scout** runs SEO and research — what your buyers search, where you rank, what's worth writing.
+- **Quill** (hi) drafts the content — posts, pages, the words that do the selling.
+- **Lens** keeps the brand consistent so everything sounds like *you*, not like the internet's average.
+- **Echo** and the rest handle ads and outbound.
 
-**What you get:** a bench of specialists, immediately. No hiring, no ramp.
+You steer, they ship. The pitch we put on our own homepage is "made by robots, steered by humans," and the second half of that sentence is the part most "AI marketing" skips. More on that below.
 
-**The catch:** you are one logo in a portfolio, and your account gets the attention your retainer tier buys. Turnaround is measured in business days. And the strategy that sounds sharp in the kickoff has a way of becoming a template by month three.
+### Where it beats the freelancer and the retainer
 
-### Door 3: Run AI agents
+Three honest receipts:
 
-**What it costs:** you can [start free, no card](https://ipop.ai/start), and [pick a plan](https://ipop.ai/pricing) when the work has paid for itself. Plans run `[VERIFY: Starter / Pro / Agency prices from pricing page]`.
+**It doesn't ramp.** A new hire needs a month to learn your product. An agency needs a kickoff deck. The agents start with your site and your brief and produce a first draft the same day — like this post, which is a draft a human at your company gets to red-pen before anyone sees it.
 
-**What you get:** a whole department instead of one hire — Scout on SEO, Quill on content, Echo on outreach, and the rest — drafting and planning around the clock. They don't ramp and they don't sleep.
+**It works at small-team scale.** You don't need a five-person department's budget to get a five-person department's coverage — SEO *and* content *and* ads *and* outbound, running at the same time instead of whichever one you had a free afternoon for.
 
-**The catch — and we mean it:** agents draft, they don't have your taste. You steer; they ship. Every irreversible or money move waits for your yes. That's a feature if you want control and a chore if you wanted to fully outsource thinking. We're built for the former.
+**You start before you pay.** You can start free, no card — and pick a plan when the work has earned it. [*Human note: link `/pricing`; we run Starter / Pro / Agency tiers — drop the entry price here once we confirm the current number.*]
 
-### So which door?
+### The one thing it won't do without you
 
-| If you want… | Pick |
-|---|---|
-| One owner with deep context, and budget for a full hire | **A marketer** |
-| Hands-off delivery and a retainer you don't blink at | **An agency*
+Here's the wink, and it's the most important line in this post: **the AI doesn't get to spend your money or hit "send" on its own.**
+
+Every irreversibl
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
