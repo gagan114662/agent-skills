@@ -28,6 +28,16 @@ export const workspaceOnboarding = pgTable("workspace_onboarding", {
    * instructions — see `marketing/workspace-context.ts`).
    */
   productContext: text("product_context"),
+  /**
+   * The structured MARKETING TARGET (#502): what the fleet is marketing. The target can be the workspace's
+   * own product OR any external app/URL the owner points the fleet at. The URL reuses `domain` above and
+   * the brand voice reuses the brand kit (#271); these add the rest of the brief. All owner-typed, sanitized
+   * + length-bounded at the read seam before they ever reach an agent prompt (never run as instructions).
+   */
+  targetName: text("target_name"),
+  targetPositioning: text("target_positioning"),
+  targetAudience: text("target_audience"),
+  targetCompetitors: text("target_competitors"),
   /** Set once the post-signin bootstrap (seed + Scout brief) has run; null = not yet bootstrapped. */
   bootstrappedAt: timestamp("bootstrapped_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

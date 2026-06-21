@@ -41,7 +41,7 @@ import { resolveDedupeEnabled } from "./dedup.js";
 import {
   resolveWorkspaceFacts,
   enrichTaskWithContext,
-  shouldInjectWorkspaceContext,
+  shouldInjectForWorkspace,
   BRAND_VOICE_LINE,
 } from "./workspace-context.js";
 import { composeSiteFactsBlock } from "./site-reader/distill.js";
@@ -286,14 +286,23 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
     // `workspace_onboarding` row + `marketing.*` config — no new authority, no send/spend reachable.
     enrichTask: async (workspaceId, task) => {
       const marketing = loadConfig(workspaceId).marketing;
-      if (!shouldInjectWorkspaceContext(marketing, workspaceId)) return task;
+      // #502: read the onboarding row up front so the gate can see whether this workspace has set an explicit
+      // marketing target. We inject when EITHER the #320 owner-first flag is on OR the workspace has told the
+      // fleet what to market — that second arm is what lets ipop market ANY company, not just itself. A
+      // workspace that has done neither returns the task unchanged (byte-for-byte the prior behaviour).
       const onboarding = await getWorkspaceOnboarding(workspaceId);
+      if (!shouldInjectForWorkspace(marketing, workspaceId, onboarding)) return task;
       const facts = resolveWorkspaceFacts({
         workspaceId,
         ownerWorkspaceId: marketing.ownerWorkspaceId,
         configuredSiteUrl: marketing.siteUrl,
         domain: onboarding?.domain ?? null,
         productContext: onboarding?.productContext ?? null,
+        // #502: the structured marketing target — what the fleet is marketing, the single source of truth.
+        productName: onboarding?.targetName ?? null,
+        positioning: onboarding?.targetPositioning ?? null,
+        audience: onboarding?.targetAudience ?? null,
+        competitors: onboarding?.targetCompetitors ?? null,
         brandVoice: BRAND_VOICE_LINE,
       });
       // #363: connect the real public-site data source. Behind a second default-OFF, owner-first gate

@@ -242,6 +242,37 @@ export const BRAND_KIT = {
 } as const;
 
 /**
+ * Settings → "What are we marketing?" (#502). Point the fleet at a target — your own product OR any external
+ * app/URL — and the whole department reads this as their brief. All copy lives here so the panel carries no
+ * hardcoded brand strings (enforced by brand.test.ts).
+ */
+export const MARKETING_TARGET = {
+  title: "What are we marketing?",
+  hint:
+    "Point the fleet at a product — your own, or any app or site. Every agent reads this as their brief, so " +
+    "they market this product instead of guessing.",
+  loading: "Loading…",
+  configuredBadge: "Target set",
+  unsetBadge: "Not set yet",
+  nameLabel: "Product or app name",
+  namePlaceholder: "e.g. Acme Invoicing",
+  urlLabel: "Website or app URL",
+  urlPlaceholder: "e.g. acme.com",
+  positioningLabel: "One-line positioning",
+  positioningPlaceholder: "e.g. The fastest way for freelancers to get paid.",
+  audienceLabel: "Target customer",
+  audiencePlaceholder: "Who is it for? e.g. Solo freelancers and small studios in the US.",
+  competitorsLabel: "Competitors",
+  competitorsPlaceholder: "e.g. FreshBooks, Wave, Bonsai",
+  previewLabel: "The brief the fleet will read",
+  previewEmpty: "Fill in a field above to see the brief your agents will work from.",
+  save: "Save target",
+  saving: "Saving…",
+  saved: "Target saved. The fleet will market this from now on.",
+  error: "Couldn't save the target. Add at least a name, URL, or positioning and try again.",
+} as const;
+
+/**
  * The department spectrum (#123 fleet × #138 pop identity): one hue per marketing function, a
  * warm→cool arc anchored on Pop Vermilion. Keyed by the preloaded channel name so each department
  * channel and its named agent can wear its colour. See docs/brand/ipop-brand-identity.html.

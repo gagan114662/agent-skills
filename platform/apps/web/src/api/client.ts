@@ -62,6 +62,8 @@ import type {
   RealworldReadiness,
   BrandKitState,
   BrandKitInputDto,
+  MarketingTargetState,
+  MarketingTargetInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
   GardenResponse,
@@ -432,6 +434,14 @@ export const api = {
   },
   setBrandKit(input: BrandKitInputDto): Promise<BrandKitState> {
     return request<BrandKitState>("/me/brand-kit", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  // --- marketing target (#502): what the fleet is marketing — the workspace's product or any external app ---
+  getMarketingTarget(): Promise<MarketingTargetState> {
+    return request<MarketingTargetState>("/me/marketing-target");
+  },
+  setMarketingTarget(input: MarketingTargetInputDto): Promise<MarketingTargetState> {
+    return request<MarketingTargetState>("/me/marketing-target", { method: "PUT", body: JSON.stringify(input) });
   },
 
   // --- channels ---
