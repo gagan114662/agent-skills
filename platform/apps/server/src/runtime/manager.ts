@@ -13,6 +13,7 @@ import {
   observeSpinup,
 } from "../observability/metrics.js";
 import { makeRedactor } from "./redact.js";
+import { decideSpawnRetry } from "./session-retry.js";
 import { harnessEventReportsError, finalAnswerFromEvent, type LineDecoder } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
@@ -145,6 +146,13 @@ export interface SessionManagerDeps {
   ) => { command: string; args: string[]; decode: LineDecoder };
   caps: ResourceCaps;
   logger: SessionLogger;
+  /**
+   * #436: bounded inline retry for a SPAWN-LAUNCH failure (`runtime.start()` throws before any output).
+   * `<= 1` (default) ⇒ a single attempt, no retry — today's behavior. `2`+ re-attempts the spawn that many
+   * times with backoff. Safe to retry because a throw from `start()` means no process ran, no output, no
+   * side effect; the broader "process started then died" retry is a deliberate integration-tested follow-up.
+   */
+  spawnRetryMaxAttempts?: number;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
   /**
@@ -838,35 +846,51 @@ export class SessionManager {
         sessionId: session.id,
         workspaceId: session.workspaceId,
       });
-      const running = await this.deps.runtime.start(
-        {
-          sessionId: session.id,
-          workspaceId: session.workspaceId,
-          command: opts.spec.command,
-          args: opts.spec.args,
-          env: { AGENT_TASK: task, ...opts.harnessEnv },
-          cwd: prepared?.cwd,
-          secrets,
-          // #71: the runtime provisions in the placed region (sandbox backend); local ignores it.
-          region: opts.ticket?.region,
-          // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
-          egress,
-          caps: opts.caps,
+      const startSpec = {
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        command: opts.spec.command,
+        args: opts.spec.args,
+        env: { AGENT_TASK: task, ...opts.harnessEnv },
+        cwd: prepared?.cwd,
+        secrets,
+        // #71: the runtime provisions in the placed region (sandbox backend); local ignores it.
+        region: opts.ticket?.region,
+        // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
+        egress,
+        caps: opts.caps,
+      };
+      const onStartOutput = {
+        onOutput: (_stream: "stdout" | "stderr", chunk: string) => {
+          resetIdle();
+          beat();
+          buffer += chunk;
+          let nl: number;
+          while ((nl = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, nl);
+            buffer = buffer.slice(nl + 1);
+            emitLine(line);
+          }
         },
-        {
-          onOutput: (_stream, chunk) => {
-            resetIdle();
-            beat();
-            buffer += chunk;
-            let nl: number;
-            while ((nl = buffer.indexOf("\n")) >= 0) {
-              const line = buffer.slice(0, nl);
-              buffer = buffer.slice(nl + 1);
-              emitLine(line);
-            }
-          },
-        },
-      );
+      };
+      // #436: bounded inline retry for a SPAWN-LAUNCH failure only. A throw from `start()` means no process
+      // ran (no output, no heartbeat, no side effect), so re-attempting can never duplicate work — safe to
+      // retry a transient sandbox/cold-start hiccup. Default OFF (`spawnRetryMaxAttempts <= 1` ⇒ one attempt).
+      let running: RunningSession;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          running = await this.deps.runtime.start(startSpec, onStartOutput);
+          break;
+        } catch (startErr) {
+          const decision = decideSpawnRetry(attempt, this.deps.spawnRetryMaxAttempts ?? 1);
+          if (!decision.retry) throw startErr;
+          log.warn(
+            { attempt, backoffMs: decision.backoffMs, err: redactError(startErr, redact) },
+            "agent spawn failed; retrying after backoff",
+          );
+          await new Promise((r) => setTimeout(r, decision.backoffMs));
+        }
+      }
       runningRef = running;
       this.running.set(session.id, running);
       observeSpinup(this.deps.runtime.kind, (Date.now() - provisionStart) / 1000);
