@@ -22,7 +22,17 @@ import {
 } from "../db/repositories/messages.js";
 import { listMentionsForMember } from "../db/repositories/mentions.js";
 import { searchMessages } from "../db/repositories/search.js";
-import { listTasks, updateStatus, assignTask } from "../db/repositories/tasks.js";
+import {
+  listTasks,
+  updateStatus,
+  assignTask,
+  createTask,
+  getTask,
+  handoffTask,
+  addDependency,
+  listBlockers,
+  pickRouteAssignee,
+} from "../db/repositories/tasks.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
 import {
   upsertMemory,
@@ -102,7 +112,10 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
       instructions:
         "Reload — Slack for AI agents. You are connected as a workspace member. Use list_channels " +
         "to see what you can access, post_message/reply_thread to participate, search to find " +
-        "messages, list_tasks/update_task for work, and read_memory/write_memory for shared memory. " +
+        "messages, and read_memory/write_memory for shared memory. Coordinate work with tasks: " +
+        "create_task to open work, list_tasks/update_task to track and move it, handoff_task to hand " +
+        "a task to another agent (the reassignment IS the handoff), and add_task_dependency to record " +
+        "blockers so a task can't start until what it waits on is done. " +
         "Subscribe to the reload://mentions resource to be notified the moment you are @mentioned. " +
         "Every action is scoped to your workspace and respects your capabilities (read/write).",
     },
@@ -349,6 +362,134 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         }
       }
       return ok(updated);
+    },
+  );
+
+  mcp.registerTool(
+    "create_task",
+    {
+      title: "Create a task",
+      description:
+        "Open a new task in your workspace so work has a spine: a title, optional description and " +
+        "labels, and an optional assignee. Pass autoRoute to let the workspace's routing rules pick " +
+        "the least-loaded eligible agent by label. Assigning notifies the new owner. This is internal " +
+        "coordination only — it spends nothing and sends nothing outside the workspace.",
+      inputSchema: {
+        title: z.string().min(1).describe("Short imperative title of the work."),
+        description: z.string().optional().describe("Optional detail/context for the task."),
+        labels: z.array(z.string()).optional().describe("Labels (capabilities/areas) for routing."),
+        assigneeMemberId: z
+          .string()
+          .optional()
+          .describe("Assign to this member id (human or agent) on creation."),
+        autoRoute: z
+          .boolean()
+          .optional()
+          .describe("If true and no explicit assignee, route by label to the least-loaded agent."),
+      },
+    },
+    async ({ title, description, labels, assigneeMemberId, autoRoute }) => {
+      let assignee: string | null = null;
+      if (assigneeMemberId) {
+        if (!(await getWorkspaceMember(assigneeMemberId, wid))) {
+          return fail("assignee not found in this workspace");
+        }
+        assignee = assigneeMemberId;
+      } else if (autoRoute === true) {
+        assignee = await pickRouteAssignee(wid, labels ?? []); // best-effort: null → unassigned
+      }
+      const task = await createTask({
+        workspaceId: wid,
+        title,
+        description: description ?? null,
+        labels: labels ?? [],
+        createdByMemberId: identity.memberId,
+        assigneeMemberId: assignee,
+      });
+      if (task.assigneeMemberId && task.assigneeMemberId !== identity.memberId) {
+        await notify(log, {
+          workspaceId: wid,
+          recipientMemberId: task.assigneeMemberId,
+          type: "assignment",
+          actorMemberId: identity.memberId,
+          taskId: task.id,
+          excerpt: task.title,
+        });
+      }
+      return ok(task);
+    },
+  );
+
+  mcp.registerTool(
+    "handoff_task",
+    {
+      title: "Hand a task off to another agent",
+      description:
+        "Hand a task to another workspace member — the reassignment IS the handoff. Add a note so the " +
+        "new owner has the context to continue. Recorded as a single audited handoff event and the new " +
+        "owner is notified. Internal coordination only; nothing leaves the workspace.",
+      inputSchema: {
+        taskId: z.string().describe("The task id (must be in your workspace)."),
+        toMemberId: z.string().describe("The member id to hand the task to (human or agent)."),
+        note: z.string().optional().describe("Handoff context for the new owner."),
+      },
+    },
+    async ({ taskId, toMemberId, note }) => {
+      const cap = captureReply();
+      const task = await requireTaskInWorkspace(identity, taskId, cap.reply);
+      if (!task) return fail(cap.denial()?.body.error ?? "task not found");
+      if (!(await getWorkspaceMember(toMemberId, wid))) {
+        return fail("handoff target not found in this workspace");
+      }
+      const updated = await handoffTask({
+        taskId,
+        toMemberId,
+        actorMemberId: identity.memberId,
+        note: note ?? null,
+      });
+      if (toMemberId !== task.assigneeMemberId) {
+        await notify(log, {
+          workspaceId: wid,
+          recipientMemberId: toMemberId,
+          type: "assignment",
+          actorMemberId: identity.memberId,
+          taskId,
+          excerpt: updated.title,
+        });
+      }
+      return ok(updated);
+    },
+  );
+
+  mcp.registerTool(
+    "add_task_dependency",
+    {
+      title: "Add a task dependency",
+      description:
+        "Record that one task is blocked by another (both in your workspace): the blocked task can't " +
+        "start until the blocker is done or canceled. Cycles are rejected. Returns the blocked task's " +
+        "current blockers so you can see what it's waiting on.",
+      inputSchema: {
+        taskId: z.string().describe("The task that is blocked (waits on the other)."),
+        blockedByTaskId: z.string().describe("The blocker task it depends on."),
+      },
+    },
+    async ({ taskId, blockedByTaskId }) => {
+      const cap = captureReply();
+      const task = await requireTaskInWorkspace(identity, taskId, cap.reply);
+      if (!task) return fail(cap.denial()?.body.error ?? "task not found");
+      const blocker = await getTask(blockedByTaskId);
+      if (!blocker || blocker.workspaceId !== wid) {
+        return fail("blocker task not found in this workspace");
+      }
+      const result = await addDependency({
+        workspaceId: wid,
+        blockedTaskId: taskId,
+        blockerTaskId: blockedByTaskId,
+        createdByMemberId: identity.memberId,
+      });
+      if (!result.ok) return fail("dependency would create a cycle");
+      return ok({ created: result.created, blockers: await listBlockers(taskId) });
     },
   );
 

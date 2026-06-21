@@ -1,7 +1,16 @@
 import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "../index.js";
-import { tasks, taskEvents, taskLinks, taskRoutingRules, members, agents } from "../schema/index.js";
+import {
+  tasks,
+  taskEvents,
+  taskLinks,
+  taskDependencies,
+  taskRoutingRules,
+  members,
+  agents,
+} from "../schema/index.js";
 import { selectLeastLoaded } from "../../tasks/routing.js";
+import { wouldCreateCycle } from "../../tasks/dependencies.js";
 import type { TaskStatus } from "../../tasks/status.js";
 
 /** Statuses that don't count toward an assignee's open-task load (round-robin input). */
@@ -203,6 +212,73 @@ export async function assignTask(
   });
 }
 
+/** A memory/message artifact handed over alongside a task (validated in-workspace at the route). */
+export interface HandoffLink {
+  targetType: string;
+  targetId: string;
+}
+
+/**
+ * Explicit handoff (#515): reassign a task to `toMemberId` and, in the SAME transaction, record a
+ * single `handoff` event (carrying the optional note + from/to assignee) and attach any artifact
+ * links the sender passes along. "Reassignment IS the handoff" — one audited act, so the chain of
+ * who-held-what is never lost. Notifying the new assignee is the route's job (best-effort, #8).
+ */
+export async function handoffTask(input: {
+  taskId: string;
+  toMemberId: string;
+  actorMemberId: string;
+  note?: string | null;
+  links?: HandoffLink[];
+}): Promise<Task> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({ assignee: tasks.assigneeMemberId, workspaceId: tasks.workspaceId })
+      .from(tasks)
+      .where(eq(tasks.id, input.taskId))
+      .limit(1);
+    const prev = current!.assignee;
+    const wid = current!.workspaceId;
+    const [row] = await tx
+      .update(tasks)
+      .set({ assigneeMemberId: input.toMemberId, updatedAt: new Date() })
+      .where(eq(tasks.id, input.taskId))
+      .returning(TASK_COLUMNS);
+    await tx.insert(taskEvents).values({
+      workspaceId: wid,
+      taskId: input.taskId,
+      type: "handoff",
+      actorMemberId: input.actorMemberId,
+      fromValue: prev,
+      toValue: input.toMemberId,
+      detail: input.note ? { note: input.note } : {},
+    });
+    for (const link of input.links ?? []) {
+      const inserted = await tx
+        .insert(taskLinks)
+        .values({
+          workspaceId: wid,
+          taskId: input.taskId,
+          targetType: link.targetType,
+          targetId: link.targetId,
+          createdByMemberId: input.actorMemberId,
+        })
+        .onConflictDoNothing()
+        .returning({ id: taskLinks.id });
+      if (inserted.length > 0) {
+        await tx.insert(taskEvents).values({
+          workspaceId: wid,
+          taskId: input.taskId,
+          type: "linked",
+          actorMemberId: input.actorMemberId,
+          toValue: `${link.targetType}:${link.targetId}`,
+        });
+      }
+    }
+    return row as Task;
+  });
+}
+
 /** Full event history (chronological). Assignment history = the assign/reassign/unassign rows. */
 export async function listTaskEvents(taskId: string): Promise<TaskEvent[]> {
   const rows = await db
@@ -325,6 +401,131 @@ export async function listTasksLinkingTo(
     )
     .orderBy(asc(tasks.createdAt));
   return rows as Task[];
+}
+
+// ---- dependencies / blockers (#515) -----------------------------------------
+
+/** Outcome of adding an edge: created (or already existed), or rejected because it forms a cycle. */
+export type AddDependencyResult =
+  | { ok: true; created: boolean }
+  | { ok: false; reason: "cycle" };
+
+/** Load the workspace's depends-on adjacency (blocked → [blockers]) for the acyclic guard. */
+async function loadDependsOnGraph(workspaceId: string): Promise<Map<string, string[]>> {
+  const rows = await db
+    .select({ blocked: taskDependencies.blockedTaskId, blocker: taskDependencies.blockerTaskId })
+    .from(taskDependencies)
+    .where(eq(taskDependencies.workspaceId, workspaceId));
+  const graph = new Map<string, string[]>();
+  for (const r of rows) {
+    const list = graph.get(r.blocked) ?? [];
+    list.push(r.blocker);
+    graph.set(r.blocked, list);
+  }
+  return graph;
+}
+
+/**
+ * Add a dependency: `blockedTaskId` now waits on `blockerTaskId`. Both tasks are assumed already
+ * validated in `workspaceId` (the route does the IDOR check). Rejects edges that would create a
+ * cycle; the insert is idempotent (UNIQUE) and records a `dependency_added` event only when new.
+ */
+export async function addDependency(input: {
+  workspaceId: string;
+  blockedTaskId: string;
+  blockerTaskId: string;
+  createdByMemberId: string;
+}): Promise<AddDependencyResult> {
+  const graph = await loadDependsOnGraph(input.workspaceId);
+  if (wouldCreateCycle(graph, input.blockedTaskId, input.blockerTaskId)) {
+    return { ok: false, reason: "cycle" };
+  }
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(taskDependencies)
+      .values({
+        workspaceId: input.workspaceId,
+        blockedTaskId: input.blockedTaskId,
+        blockerTaskId: input.blockerTaskId,
+        createdByMemberId: input.createdByMemberId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: taskDependencies.id });
+    if (inserted.length === 0) return { ok: true, created: false };
+    await tx.insert(taskEvents).values({
+      workspaceId: input.workspaceId,
+      taskId: input.blockedTaskId,
+      type: "dependency_added",
+      actorMemberId: input.createdByMemberId,
+      toValue: input.blockerTaskId,
+    });
+    return { ok: true, created: true };
+  });
+}
+
+/** Remove a dependency edge. Records `dependency_removed` only when an edge was actually deleted. */
+export async function removeDependency(
+  blockedTaskId: string,
+  blockerTaskId: string,
+  actorMemberId: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [task] = await tx
+      .select({ workspaceId: tasks.workspaceId })
+      .from(tasks)
+      .where(eq(tasks.id, blockedTaskId))
+      .limit(1);
+    const deleted = await tx
+      .delete(taskDependencies)
+      .where(
+        and(
+          eq(taskDependencies.blockedTaskId, blockedTaskId),
+          eq(taskDependencies.blockerTaskId, blockerTaskId),
+        ),
+      )
+      .returning({ id: taskDependencies.id });
+    if (deleted.length === 0) return false;
+    await tx.insert(taskEvents).values({
+      workspaceId: task!.workspaceId,
+      taskId: blockedTaskId,
+      type: "dependency_removed",
+      actorMemberId,
+      fromValue: blockerTaskId,
+    });
+    return true;
+  });
+}
+
+/** The tasks that block `taskId` (its blockers). */
+export async function listBlockers(taskId: string): Promise<Task[]> {
+  const rows = await db
+    .select(TASK_COLUMNS)
+    .from(taskDependencies)
+    .innerJoin(tasks, eq(tasks.id, taskDependencies.blockerTaskId))
+    .where(eq(taskDependencies.blockedTaskId, taskId))
+    .orderBy(asc(tasks.createdAt));
+  return rows as Task[];
+}
+
+/** The tasks `taskId` blocks (its dependents). */
+export async function listDependents(taskId: string): Promise<Task[]> {
+  const rows = await db
+    .select(TASK_COLUMNS)
+    .from(taskDependencies)
+    .innerJoin(tasks, eq(tasks.id, taskDependencies.blockedTaskId))
+    .where(eq(taskDependencies.blockerTaskId, taskId))
+    .orderBy(asc(tasks.createdAt));
+  return rows as Task[];
+}
+
+/** Just the statuses of `taskId`'s blockers — the input the start-guard counts unsatisfied ones from. */
+export async function getBlockerStatuses(taskId: string): Promise<TaskStatus[]> {
+  const rows = await db
+    .select({ status: tasks.status })
+    .from(taskDependencies)
+    .innerJoin(tasks, eq(tasks.id, taskDependencies.blockerTaskId))
+    .where(eq(taskDependencies.blockedTaskId, taskId));
+  return rows.map((r) => r.status as TaskStatus);
 }
 
 // ---- auto-routing rules + selection -----------------------------------------
