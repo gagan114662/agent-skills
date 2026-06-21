@@ -744,11 +744,22 @@ describe("agent-session reliability — bounded inline retry (#436, real Postgre
     // single output-bearing attempt produced exactly one. No double-ship (#200 §4 idempotency, proven).
     expect(readFileSync(actions, "utf8").trim().split("\n")).toEqual(["did-the-work"]);
 
-    // Exactly one terminal deliverable card was surfaced for the recovered session (no duplicates).
-    const requests = await listRequests(w.workspaceId);
-    const cards = requests.filter(
-      (r) => r.actionType === "agent.deliverable" && (r.payload as { sessionId?: string }).sessionId === sessionId,
-    );
+    // Exactly one terminal deliverable card was surfaced for the recovered session (no duplicates). The
+    // card is surfaced best-effort JUST AFTER finalize, so a completed status does not yet guarantee the
+    // row — poll for it (same condition-based wait as the #248 deliverable test) before asserting count.
+    const cardsForSession = (rs: Awaited<ReturnType<typeof listRequests>>) =>
+      rs.filter(
+        (r) =>
+          r.actionType === "agent.deliverable" &&
+          (r.payload as { sessionId?: string }).sessionId === sessionId,
+      );
+    let cards: Awaited<ReturnType<typeof listRequests>> = [];
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      cards = cardsForSession(await listRequests(w.workspaceId));
+      if (cards.length > 0 || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     expect(cards).toHaveLength(1);
   });
 
