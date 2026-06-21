@@ -344,6 +344,33 @@ describe("delivery adapters (#295)", () => {
     expect(calls[0]?.title).toBe("Homepage SEO");
   });
 
+  it("bounds a long task to a GitHub-valid PR title (≤256 chars) so the autonomous ship never 422s", async () => {
+    const calls: Array<{ title: string }> = [];
+    const publisher: SitePublisher = {
+      kind: "github",
+      publish: (req) => {
+        calls.push({ title: req.title });
+        return Promise.resolve({
+          status: "published",
+          kind: "github",
+          url: "u",
+          prUrl: "u",
+          branch: "b",
+          path: "p",
+          providerId: "i",
+        } satisfies SitePublishResult);
+      },
+    };
+    // A real content-cadence brief — well over GitHub's 256-char PR-title cap (the live 422 bug).
+    const longTask =
+      'Write and publish a focused, genuinely useful on-site blog post that targets the search query ' +
+      '"best ai marketing tools for startups 2026". Start from the search intent, draft the full post ' +
+      "(not an audit, not an outline), and open the on-site content PR to publish it. Ship a solid B-plus draft today.";
+    expect(longTask.length).toBeGreaterThan(256);
+    await new SitePrChannelAdapter(publisher).ship({ workspaceId: "ws1", sessionId: "s1", task: longTask, draft: "body" });
+    expect(calls[0]!.title.length).toBeLessThanOrEqual(120);
+  });
+
   it("SitePrChannelAdapter with NO readback (dry-run provider) never claims a live PR (#200 §3)", async () => {
     const publisher: SitePublisher = {
       kind: "github",
