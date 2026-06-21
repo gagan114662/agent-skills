@@ -49,6 +49,38 @@ export function slugify(task: string, fallback = "deliverable"): string {
   return slug.length > 0 ? slug : fallback;
 }
 
+/**
+ * Wrap a raw fleet draft in the blog frontmatter the prerendered blog requires (#252). Without a `--- … ---`
+ * block carrying `status: published`, `posts.ts` treats the file as an invisible non-post — so an
+ * autonomously-shipped deliverable (a plain markdown body) would never render on /blog. We synthesize a
+ * valid header (title / slug / description / date / `status: published`) so the fleet's content actually
+ * goes live. If the agent already produced its own frontmatter we respect it untouched. Values are
+ * single-line + quoted (the blog's tiny parser reads `key: "value"`); the body is the draft verbatim.
+ */
+export function ensureBlogFrontmatter(draft: string, title: string, now: Date): string {
+  const body = draft.replace(/^\uFEFF/, "").replace(/^\s+/, "");
+  if (body.startsWith("---")) return draft; // the agent supplied its own frontmatter — leave it alone
+  const yaml = (s: string): string => `"${s.replace(/[\r\n]+/g, " ").replace(/"/g, "'").trim()}"`;
+  const excerpt = body
+    .replace(/^#+\s*/gm, "")
+    .replace(/[*_>`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  const header = [
+    "---",
+    `title: ${yaml(title)}`,
+    `slug: ${slugify(title)}`,
+    `description: ${yaml(excerpt || title)}`,
+    `date: ${now.toISOString().slice(0, 10)}`,
+    "status: published",
+    "---",
+    "",
+    "",
+  ].join("\n");
+  return header + body;
+}
+
 /** Escape the five HTML-significant characters so a draft renders as inert text, never executable markup. */
 export function escapeHtml(text: string): string {
   return text
@@ -150,7 +182,10 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
     // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
     const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: title, format: "markdown" });
-    const content = badge ? appendBadge(input.draft, badge, "markdown") : input.draft;
+    // Make the raw draft a real, VISIBLE blog post (#252 requires `status: published` frontmatter) so the
+    // autonomous ship actually goes live on /blog instead of committing an invisible non-post.
+    const post = ensureBlogFrontmatter(input.draft, title, new Date());
+    const content = badge ? appendBadge(post, badge, "markdown") : post;
     const result = await this.publisher.publish({
       workspaceId: input.workspaceId,
       title,

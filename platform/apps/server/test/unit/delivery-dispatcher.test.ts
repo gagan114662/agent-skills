@@ -15,6 +15,7 @@ import {
   draftToHtml,
   escapeHtml,
   slugify,
+  ensureBlogFrontmatter,
 } from "../../src/delivery/adapters.js";
 import type { DeliveryChannel, DeliveryFlags } from "../../src/delivery/decide.js";
 import type { PublishProvider } from "../../src/realworld/publish/provider.js";
@@ -339,8 +340,10 @@ describe("delivery adapters (#295)", () => {
       externalRef: "https://github.com/ipop/site/pull/42",
     });
     expect(out.detail).toMatchObject({ branch: "ipop-content/homepage-seo", headStatus: 200 });
-    // The draft is committed verbatim as the file body — it never becomes the title/routing.
-    expect(calls[0]?.content).toBe("# new meta tags");
+    // The draft is committed as the file body (now under generated `status: published` frontmatter so the
+    // shipped post is actually VISIBLE on /blog) — it never becomes the title/routing.
+    expect(calls[0]?.content).toContain("status: published");
+    expect(calls[0]?.content).toContain("# new meta tags");
     expect(calls[0]?.title).toBe("Homepage SEO");
   });
 
@@ -369,6 +372,29 @@ describe("delivery adapters (#295)", () => {
     expect(longTask.length).toBeGreaterThan(256);
     await new SitePrChannelAdapter(publisher).ship({ workspaceId: "ws1", sessionId: "s1", task: longTask, draft: "body" });
     expect(calls[0]!.title.length).toBeLessThanOrEqual(120);
+  });
+
+  describe("ensureBlogFrontmatter (#252 — a shipped draft must be a VISIBLE post)", () => {
+    const now = new Date("2026-06-21T00:00:00Z");
+    it("wraps a raw draft in published frontmatter so /blog renders it", () => {
+      const out = ensureBlogFrontmatter("# Best AI marketing tools\n\nHere is the post body.", "Best AI marketing tools for startups", now);
+      expect(out).toMatch(/^---\n/);
+      expect(out).toContain("status: published"); // posts.ts hides anything not 'published'
+      expect(out).toContain('title: "Best AI marketing tools for startups"');
+      expect(out).toContain("slug: best-ai-marketing-tools-for-startups");
+      expect(out).toContain("date: 2026-06-21");
+      expect(out).toContain("Here is the post body."); // body preserved verbatim
+    });
+    it("leaves a draft that already has frontmatter untouched", () => {
+      const draft = "---\ntitle: mine\nstatus: published\n---\n\nbody";
+      expect(ensureBlogFrontmatter(draft, "ignored", now)).toBe(draft);
+    });
+    it("keeps frontmatter values single-line (no newline can break the parser)", () => {
+      const out = ensureBlogFrontmatter("line one\nline two\nline three", "A\nbroken\ntitle", now);
+      const header = out.slice(0, out.indexOf("\n---", 3));
+      expect(header.split("\n").filter((l) => l.includes("title:"))).toHaveLength(1);
+      expect(out).toContain('title: "A broken title"');
+    });
   });
 
   it("SitePrChannelAdapter with NO readback (dry-run provider) never claims a live PR (#200 §3)", async () => {
