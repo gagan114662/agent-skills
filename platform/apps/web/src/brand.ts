@@ -1088,6 +1088,14 @@ export const CONSOLE = {
       settings: "Settings",
       signOut: "Sign out",
     },
+    /**
+     * #503: the #487 runtime-failure banner is dismissible so it can't, stacked with the first-run card, push
+     * the channel below the fold on load. The headline/detail are backend DATA; only the control label is copy.
+     */
+    diagnostic: {
+      dismiss: "Dismiss",
+      dismissLabel: "Dismiss the startup error",
+    },
   },
   /** Reports view sections. */
   reports: {
