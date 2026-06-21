@@ -779,6 +779,16 @@ export function ConsoleView(): React.JSX.Element {
             and the board below is byte-for-byte what ships today. */}
         {showCoordinationSurface ? (
           <>
+            {/* #487: surface the mission-control failure diagnostic on the reload.chat surface too — the board
+                already shows it, but here the user only saw a 'running' pill that silently cleared. When runs
+                are failing to spawn, show the backend's human headline + detail (e.g. "I couldn't start up —
+                my runtime is missing a tool") so the user sees the failure and reason without devtools. */}
+            {mc?.diagnostic?.state === "sessions_failing" && (
+              <div className="consolediag consolediag--sessions_failing" role="alert">
+                <p className="consolediag__headline">{mc.diagnostic.headline}</p>
+                <p className="consolediag__detail">{mc.diagnostic.detail}</p>
+              </div>
+            )}
             {showFirstRun && (
               <FirstRunChecklist steps={firstRunSteps} onAction={onFirstRunAction} onDismiss={() => setFirstRunDismissed(true)} />
             )}

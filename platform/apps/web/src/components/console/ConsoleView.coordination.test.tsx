@@ -255,6 +255,39 @@ describe("ConsoleView coordination approvals inbox (#472)", () => {
   });
 });
 
+// #487: the backend computes a clear failure diagnostic (headline + detail) the reload.chat surface never
+// showed — the user only saw a 'running' pill that silently cleared. Surface it as a failure banner.
+describe("ConsoleView coordination failure diagnostic (#487)", () => {
+  it("owner + flag ON + sessions_failing ⇒ shows the failure headline + detail in-app", async () => {
+    mockSeams();
+    vi.spyOn(api.missionControl, "get").mockResolvedValue({
+      ...mcDto(),
+      diagnostic: {
+        state: "sessions_failing",
+        headline: "I couldn't start up — my runtime is missing a tool I need.",
+        detail: "The team's been pinged to patch the agent image — try again once it's redeployed.",
+        dominantFailureClass: "spawn",
+        liveCount: 0,
+        recentFailureCount: 3,
+      },
+    });
+    const utils = renderWithStore(<ConsoleView />);
+    await act(async () => {
+      await utils.store.bootstrap();
+    });
+
+    expect(await screen.findByText(/couldn't start up/i)).toBeInTheDocument();
+    expect(screen.getByText(/patch the agent image/i)).toBeInTheDocument();
+    expect(utils.container.querySelector(".consolediag--sessions_failing")).not.toBeNull();
+  });
+
+  it("owner + flag ON + healthy ⇒ no failure banner", async () => {
+    await mount();
+    await screen.findByLabelText(COORD_LABEL);
+    expect(screen.queryByText(/couldn't start up/i)).toBeNull();
+  });
+});
+
 // #473: on the coordination surface the top-left header title was bound to `activeProjectId` (the board's
 // column selection, which the chat sidebar never touches), so it showed a stale #content/#seo while the feed
 // showed the real channel. The header must track the OPEN CHANNEL — what MessagePane renders — at all times.
