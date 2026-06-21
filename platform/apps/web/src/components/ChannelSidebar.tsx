@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { CONSOLE } from "../brand.js";
 import { Wordmark } from "./Wordmark.js";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher.js";
 import type { DirectoryEntry } from "../store/store.js";
 import {
   buildSidebarModel,
@@ -29,12 +30,15 @@ export interface ChannelSidebarProps {
   onSelectChannel?: (channelId: string) => void;
   /** The member id of the active DM, so its row highlights even when several DMs map to one channel. */
   activeDmMemberId?: string | null;
+  /** #510: open the workspace settings overlay from the title switcher's "New product" / "Settings" items. */
+  onOpenSettings?: () => void;
 }
 
 export function ChannelSidebar({
   onSelectDm,
   onSelectChannel,
   activeDmMemberId,
+  onOpenSettings,
 }: ChannelSidebarProps = {}): React.JSX.Element {
   const { channels, activeChannelId, directory, identity } = useAppState();
   const store = useStore();
@@ -100,7 +104,9 @@ export function ChannelSidebar({
         <div className="sidebar__brand">
           <Wordmark />
         </div>
-        {identity && <div className="sidebar__ws">workspace · {identity.workspaceId.slice(0, 8)}</div>}
+        {/* #510: the workspace title is a real switcher button now — clicking it opens the menu instead of
+            falling through to the channel behind it. */}
+        {identity && <WorkspaceSwitcher onOpenSettings={onOpenSettings} />}
       </header>
 
       <div className="sidebar__search">

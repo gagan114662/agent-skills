@@ -847,7 +847,7 @@ export function ConsoleView(): React.JSX.Element {
                 onDismiss={dismissFirstRun}
               />
             )}
-            <CoordinationView onOpenDecisions={openDecisionLog} />
+            <CoordinationView onOpenDecisions={openDecisionLog} onOpenSettings={() => setShellSettingsOpen(true)} />
           </>
         ) : (
           <>
