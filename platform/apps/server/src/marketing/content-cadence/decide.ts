@@ -91,18 +91,20 @@ export function selectCadenceQuery(queries: readonly string[], dayNumber: number
 }
 
 /**
- * Compose the brief goal. Critically (#415) it tells the fleet to WRITE AND PUBLISH a focused on-site
- * post that targets the query — not to produce yet another audit. The query is owner-authored DATA placed
- * after a fixed instruction prefix; the launched agents still carry only draft tools, so the actual
- * publish stays #13-gated (this just sets the objective). Ship-a-B-plus framing counters the persona's
- * audit/diagnose default.
+ * Compose the brief goal. Critically (#415) it tells the fleet to WRITE a focused on-site post that targets
+ * the query — not an audit. The decisive detail (learned from live PR #453): the agent's FINAL MESSAGE is
+ * what ships verbatim as the published `.md`, so the brief must demand the COMPLETE post as the output —
+ * NOT a chat summary "describing" a draft, NOT files staged in the session (they're lost), NOT a request to
+ * open a PR (the agent can't; the platform opens it). The query is owner-authored DATA after a fixed prefix;
+ * publishing is handled downstream, so the agent only has to produce the post body.
  */
 export function composeContentBrief(query: string): string {
   const q = query.trim().replace(/\s+/g, " ");
   return (
-    `Write and publish a focused, genuinely useful on-site blog post that targets the search query "${q}". ` +
-    `Start from the search intent, draft the full post (not an audit, not an outline), and open the on-site ` +
-    `content PR to publish it. Ship a solid B-plus draft today rather than a perfect plan later — the post ` +
-    `still goes through the #13 approval queue before anything is live.`
+    `Write a focused, genuinely useful blog post that targets the search query "${q}". ` +
+    `Output the COMPLETE post as your final message — start with a short markdown H1 title line ("# …"), then ` +
+    `the full post body in markdown (~800-1200 words). Write the actual post, not an outline, summary, or audit. ` +
+    `Do NOT describe what you did, do NOT stage files, and do NOT try to open a PR — your final message IS the ` +
+    `post and the platform publishes it automatically. Ship a solid B-plus post today.`
   );
 }
