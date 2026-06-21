@@ -35,6 +35,7 @@ import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
 import { FirstRunChecklist } from "../FirstRunChecklist.js";
 import { deriveFirstRunChecklist, firstRunComplete, type FirstRunStepKey } from "../../lib/firstrun-checklist.js";
+import { loadFirstRunPrefs, saveFirstRunPrefs } from "../../lib/firstrun-prefs.js";
 import { SoftPaywall } from "../site/SoftPaywall.js";
 import { StandupPanel } from "./StandupPanel.js";
 import { Board } from "./Board.js";
@@ -172,7 +173,11 @@ export function ConsoleView(): React.JSX.Element {
   // run + approve signals come from already-loaded state below.
   const [brandSet, setBrandSet] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
+  // #505: the checklist's dismissed/docked state is a per-user UI preference, hydrated from storage once we
+  // know the workspace (effect below) and persisted on every Hide / collapse so it sticks across reloads and
+  // channel switches instead of re-floating over the message area each visit.
   const [firstRunDismissed, setFirstRunDismissed] = useState(false);
+  const [firstRunCollapsed, setFirstRunCollapsed] = useState(false);
   // #352/#372/#378: the agent-coordination surface (reload.chat-style channels/threads/members + live
   // sessions), gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment
   // names the owner workspace AND this is that workspace. No new backend: it re-mounts the existing
@@ -467,6 +472,15 @@ export function ConsoleView(): React.JSX.Element {
     };
   }, [showCoordinationSurface, workspaceId]);
 
+  // #505: hydrate the checklist's per-user dismissed/docked state once we know the workspace, so a card the
+  // user hid (or docked to its compact bar) stays that way across reloads and channel switches.
+  useEffect(() => {
+    if (!workspaceId) return;
+    const prefs = loadFirstRunPrefs(workspaceId);
+    setFirstRunDismissed(prefs.dismissed);
+    setFirstRunCollapsed(prefs.collapsed);
+  }, [workspaceId]);
+
   // #479: derive the run + approve signals from already-loaded state. "An agent ran" is true once any
   // agent-authored message exists, a session is live, or a result/approval has appeared (each downstream of a
   // real run). "A result was approved" is true once an approval has executed (the `shipped` slice).
@@ -483,10 +497,23 @@ export function ConsoleView(): React.JSX.Element {
   });
   // Only on the reload.chat surface, and only until every step is real or the user hides it.
   const showFirstRun = showCoordinationSurface && !firstRunDismissed && !firstRunComplete(firstRunSteps);
+  // #505: persist a dismiss/dock so it sticks per user. We only WRITE on an explicit user action (Hide /
+  // collapse), never in the hydrate effect, so there's no load→save echo to fight.
+  function dismissFirstRun(): void {
+    setFirstRunDismissed(true);
+    saveFirstRunPrefs(workspaceId, { dismissed: true, collapsed: firstRunCollapsed });
+  }
+  function toggleFirstRunCollapsed(): void {
+    setFirstRunCollapsed((prev) => {
+      const next = !prev;
+      saveFirstRunPrefs(workspaceId, { dismissed: firstRunDismissed, collapsed: next });
+      return next;
+    });
+  }
   function onFirstRunAction(key: FirstRunStepKey): void {
     if (key === "brand" || key === "connect") setShellSettingsOpen(true);
     else if (key === "approve") setApprovalsOpen(true);
-    else setFirstRunDismissed(true); // "run": the composer is right here — get out of the way
+    else dismissFirstRun(); // "run": the composer is right here — get out of the way
   }
 
   const activeProject = model.projects.find((p) => p.id === activeProjectId) ?? null;
@@ -812,7 +839,13 @@ export function ConsoleView(): React.JSX.Element {
               </div>
             )}
             {showFirstRun && (
-              <FirstRunChecklist steps={firstRunSteps} onAction={onFirstRunAction} onDismiss={() => setFirstRunDismissed(true)} />
+              <FirstRunChecklist
+                steps={firstRunSteps}
+                collapsed={firstRunCollapsed}
+                onAction={onFirstRunAction}
+                onToggleCollapse={toggleFirstRunCollapsed}
+                onDismiss={dismissFirstRun}
+              />
             )}
             <CoordinationView onOpenDecisions={openDecisionLog} />
           </>
