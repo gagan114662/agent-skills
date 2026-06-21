@@ -160,6 +160,7 @@ import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { gardenRoutes } from "./routes/garden.js";
+import { agentToolRoutes } from "./routes/agent-tools.js";
 import { departmentRoutes } from "./routes/department.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
@@ -191,6 +192,7 @@ import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
+import { marketingTargetRoutes } from "./routes/marketing-target.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
@@ -939,6 +941,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.
   app.register(gardenRoutes);
+  // #464 agent execution tools: the runtime seam where an "acts outside" agent requests a real-world action
+  // (publish/post/spend). Every invocation parks a PENDING #13 approval and NEVER fires on its own — the
+  // action runs only after the owner approves it. The catalog is read-only and always listable.
+  app.register(agentToolRoutes);
   // #371 named-department roster: the reload.chat "team" — named personas (roles + handles + colors), their
   // #282 registry presence, and the members-rail footer. Default OFF, owner-workspace-first; the roster is
   // read-only/always listable and seeding mints identity personas only (no new action path — #200).
@@ -984,6 +990,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // read provider (`dryrun` default) decides whether real numbers flow. No #13 gate (not money).
   app.register(analyticsRoutes);
   app.register(workspaceContextRoutes);
+  // #502: the "What are we marketing?" target — any workspace points the fleet at its product/app and the
+  // agents read it as their brief. Not flag-gated (unlike #320's owner-first capture); this is the surface
+  // that makes ipop market any company.
+  app.register(marketingTargetRoutes);
   // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });

@@ -287,9 +287,15 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       decode: harnessLineDecoder(kind),
     }),
     caps: env.caps,
-    // #436: bounded retry for a spawn-launch failure (default 1 = off). `AGENT_SPAWN_RETRY_MAX_ATTEMPTS=2`
-    // re-attempts a transient `start()` throw once before failing the session.
-    spawnRetryMaxAttempts: Number(process.env.AGENT_SPAWN_RETRY_MAX_ATTEMPTS ?? 1) || 1,
+    // #436: bounded inline retry for a transient, pre-progress session death (spawn throw OR a process
+    // that started then died with a null exit code and produced no output/heartbeat). Default 1 = OFF —
+    // prod is byte-for-byte until flipped. `AGENT_SESSION_RETRY_MAX_ATTEMPTS=2` re-attempts the full
+    // start→wait cycle once. `AGENT_SPAWN_RETRY_MAX_ATTEMPTS` is the deprecated alias (the original #435
+    // narrow knob) — honored when the session var is unset so existing deployments keep working.
+    sessionRetryMaxAttempts:
+      Number(
+        process.env.AGENT_SESSION_RETRY_MAX_ATTEMPTS ?? process.env.AGENT_SPAWN_RETRY_MAX_ATTEMPTS ?? 1,
+      ) || 1,
     logger,
     // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.
     workspace,

@@ -27,6 +27,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check demo/proof references resolve (no false completion claims)
         run: node scripts/check-demo-refs.mjs
+      - name: Content editorial gate (frontmatter / no agent chatter / dupes / publish gate) — #527
+        run: node apps/web/scripts/content-gate.mjs
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

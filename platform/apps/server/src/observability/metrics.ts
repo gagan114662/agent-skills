@@ -64,6 +64,10 @@ interface SpinupSeries {
 }
 const spinups = new Map<string, SpinupSeries>();
 let sessionsActive = 0;
+// #394/#436: bounded inline retries of a transient, pre-progress session death (spawn / null-exit).
+// The before/after signal for reliability work — every increment is a session death that was caught
+// and re-attempted instead of being finalized `failed`. Labelled only by runtime kind (no tenant ids).
+const sessionRetries = new Map<string, { runtime: string; count: number }>();
 
 /** A session was launched (provisioning). */
 export function recordSessionStarted(): void {
@@ -77,6 +81,16 @@ export function recordSessionEnded(runtime: string, status: string): void {
   const existing = sessionTotals.get(key);
   if (existing) existing.count += 1;
   else sessionTotals.set(key, { runtime, status, count: 1 });
+}
+
+/**
+ * #436: a transient pre-progress session death was caught and the start→wait cycle re-attempted.
+ * Counts retries (not sessions): a session retried twice increments twice.
+ */
+export function recordSessionRetry(runtime: string): void {
+  const existing = sessionRetries.get(runtime);
+  if (existing) existing.count += 1;
+  else sessionRetries.set(runtime, { runtime, count: 1 });
 }
 
 /** Observe sandbox spin-up (provision) latency in seconds. */
@@ -362,6 +376,7 @@ export function resetMetrics(): void {
   inFlight = 0;
   sessionTotals.clear();
   spinups.clear();
+  sessionRetries.clear();
   sessionsActive = 0;
   cloudWorkspaceSleeps = 0;
   cloudWorkspaceWakes = 0;
@@ -468,6 +483,14 @@ export function renderMetrics(): string {
     lines.push(
       `agent_sessions_total{runtime="${esc(s.runtime)}",status="${esc(s.status)}"} ${s.count}`,
     );
+  }
+
+  lines.push(
+    "# HELP agent_session_retries_total Transient pre-progress session deaths caught and re-attempted (#436).",
+  );
+  lines.push("# TYPE agent_session_retries_total counter");
+  for (const s of sessionRetries.values()) {
+    lines.push(`agent_session_retries_total{runtime="${esc(s.runtime)}"} ${s.count}`);
   }
 
   lines.push("# HELP agent_sessions_active Agent sessions currently running.");

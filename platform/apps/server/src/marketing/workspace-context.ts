@@ -50,13 +50,32 @@ export const MAX_PRODUCT_CONTEXT_CHARS = 600;
 export const MAX_BRAND_VOICE_CHARS = 200;
 /** Max characters of a resolved site URL (a URL, never free text). */
 export const MAX_SITE_URL_CHARS = 200;
+/** Max characters of the marketing target's product/app name (#502). */
+export const MAX_PRODUCT_NAME_CHARS = 120;
+/** Max characters of the one-line positioning statement (#502). */
+export const MAX_POSITIONING_CHARS = 200;
+/** Max characters of the target customer / ICP description (#502). */
+export const MAX_AUDIENCE_CHARS = 300;
+/** Max characters of the competitors list (#502). */
+export const MAX_COMPETITORS_CHARS = 300;
 
 /** The resolved, sanitized facts about a workspace that an agent should act on. All fields optional. */
 export interface WorkspaceContextFacts {
+  /**
+   * The name of the product/app being marketed (#502). The marketing TARGET need not be the workspace's
+   * own company — it can be any product or external app the owner points the fleet at.
+   */
+  productName?: string;
   /** The company's real primary site URL (already scheme-normalised + sanitized), if known. */
   siteUrl?: string;
+  /** A one-line positioning statement for the target (#502), sanitized + bounded. */
+  positioning?: string;
+  /** The target customer / ICP description (#502), sanitized + bounded. */
+  audience?: string;
   /** Owner-typed product context (sanitized, bounded), if provided. */
   productContext?: string;
+  /** The target's main competitors (#502), sanitized + bounded — free text or a comma list. */
+  competitors?: string;
   /** The house brand-voice direction (sanitized, bounded), if provided. */
   brandVoice?: string;
   /**
@@ -77,8 +96,26 @@ export interface ResolveWorkspaceFactsInput {
   domain?: string | null;
   /** The owner-typed product context (`workspace_onboarding.product_context`). */
   productContext?: string | null;
+  /** The marketing target's product/app name (`workspace_onboarding.target_name`), #502. */
+  productName?: string | null;
+  /** The one-line positioning (`workspace_onboarding.target_positioning`), #502. */
+  positioning?: string | null;
+  /** The target customer / ICP (`workspace_onboarding.target_audience`), #502. */
+  audience?: string | null;
+  /** The target's competitors (`workspace_onboarding.target_competitors`), #502. */
+  competitors?: string | null;
   /** The house brand-voice line to surface (defaults to {@link BRAND_VOICE_LINE} at the IO seam). */
   brandVoice?: string | null;
+}
+
+/** The raw `workspace_onboarding` target fields the gate inspects (#502). */
+export interface MarketingTargetRow {
+  domain: string | null;
+  productContext: string | null;
+  targetName: string | null;
+  targetPositioning: string | null;
+  targetAudience: string | null;
+  targetCompetitors: string | null;
 }
 
 /**
@@ -138,9 +175,22 @@ export function resolveWorkspaceFacts(input: ResolveWorkspaceFactsInput): Worksp
     ? sanitizeContextValue(input.brandVoice, MAX_BRAND_VOICE_CHARS)
     : "";
 
+  // #502: the structured marketing target — sanitized + bounded just like every other typed fact, so a
+  // directive smuggled into a positioning line or competitor list is carried only as inert DATA.
+  const productName = input.productName ? sanitizeContextValue(input.productName, MAX_PRODUCT_NAME_CHARS) : "";
+  const positioning = input.positioning ? sanitizeContextValue(input.positioning, MAX_POSITIONING_CHARS) : "";
+  const audience = input.audience ? sanitizeContextValue(input.audience, MAX_AUDIENCE_CHARS) : "";
+  const competitors = input.competitors
+    ? sanitizeContextValue(input.competitors, MAX_COMPETITORS_CHARS)
+    : "";
+
   return {
+    ...(productName ? { productName } : {}),
     ...(siteUrl ? { siteUrl } : {}),
+    ...(positioning ? { positioning } : {}),
+    ...(audience ? { audience } : {}),
     ...(productContextRaw ? { productContext: productContextRaw } : {}),
+    ...(competitors ? { competitors } : {}),
     ...(brandVoiceRaw ? { brandVoice: brandVoiceRaw } : {}),
   };
 }
@@ -152,8 +202,14 @@ export function resolveWorkspaceFacts(input: ResolveWorkspaceFactsInput): Worksp
  */
 export function composeWorkspaceContextPreamble(facts: WorkspaceContextFacts): string | null {
   const lines: string[] = [];
+  // #502: the structured marketing-target brief leads — what the fleet is marketing, then the supporting
+  // facts. Order reads like a brief: product → site → positioning → who it's for → context → competitors.
+  if (facts.productName) lines.push(`- Product: ${facts.productName}`);
   if (facts.siteUrl) lines.push(`- Primary site: ${facts.siteUrl}`);
+  if (facts.positioning) lines.push(`- Positioning: ${facts.positioning}`);
+  if (facts.audience) lines.push(`- Target customer: ${facts.audience}`);
   if (facts.productContext) lines.push(`- Product context: ${facts.productContext}`);
+  if (facts.competitors) lines.push(`- Competitors: ${facts.competitors}`);
   if (facts.brandVoice) lines.push(`- Brand voice: ${facts.brandVoice}`);
 
   const sections: string[] = [];
@@ -195,4 +251,38 @@ export function shouldInjectWorkspaceContext(
 ): boolean {
   if (!marketing.injectWorkspaceContext) return false;
   return marketing.ownerWorkspaceId !== undefined && marketing.ownerWorkspaceId === workspaceId;
+}
+
+/**
+ * Has the workspace EXPLICITLY told the fleet what to market (#502)? True once the owner has set a
+ * structured marketing target (product name / positioning / audience / competitors) OR an owner-typed
+ * product context. A bare onboarding `domain` (a #260 sign-in) does NOT count — the user must have gone
+ * through the "What are we marketing?" flow — so a workspace that only signed in keeps its prior behaviour.
+ * Pure: operates on the raw row the IO seam already reads. Empty/whitespace strings count as not-set.
+ */
+export function hasExplicitMarketingTarget(onboarding: MarketingTargetRow | null): boolean {
+  if (!onboarding) return false;
+  const set = (v: string | null): boolean => typeof v === "string" && v.trim().length > 0;
+  return (
+    set(onboarding.targetName) ||
+    set(onboarding.targetPositioning) ||
+    set(onboarding.targetAudience) ||
+    set(onboarding.targetCompetitors) ||
+    set(onboarding.productContext)
+  );
+}
+
+/**
+ * The #502 source-of-truth gate: should a briefed agent's task be enriched with this workspace's facts?
+ * YES when EITHER the #320 owner-first flag is on for this (owner) workspace, OR this workspace has set an
+ * explicit marketing target. The second arm is what lets ipop market ANY company: a tenant that points the
+ * fleet at its own product/app gets its agents briefed on THAT target — no longer owner-only. A workspace
+ * that has done neither is byte-for-byte unchanged (the IO seam leaves the task untouched).
+ */
+export function shouldInjectForWorkspace(
+  marketing: { injectWorkspaceContext?: boolean; ownerWorkspaceId?: string },
+  workspaceId: string,
+  onboarding: MarketingTargetRow | null,
+): boolean {
+  return shouldInjectWorkspaceContext(marketing, workspaceId) || hasExplicitMarketingTarget(onboarding);
 }

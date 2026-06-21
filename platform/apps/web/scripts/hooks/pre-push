@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# Pre-PR content editorial gate (#527).
+#
+# Install:  ln -sf ../../platform/apps/web/scripts/hooks/pre-push "$(git rev-parse --git-path hooks/pre-push)"
+#
+# Runs the content gate over blog posts changed vs origin/main before a push leaves the machine, so agent
+# chatter / bad frontmatter / dupes / status:published never reach a PR. Aborts the push on any violation.
+# Skips cleanly when no content files changed.
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+gate="$repo_root/platform/apps/web/scripts/content-gate.mjs"
+
+if [ ! -f "$gate" ]; then
+  exit 0
+fi
+
+if ! node "$gate" --changed origin/main; then
+  echo ""
+  echo "✖ content gate failed — fix the violations above before pushing (see platform/apps/web/content/AUTHORING.md)."
+  exit 1
+fi

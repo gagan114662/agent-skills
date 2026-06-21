@@ -468,6 +468,8 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/GardenPanel.tsx",
     // Settings → Brand kit (#271): every word comes from BRAND_KIT.
     "components/BrandKitPanel.tsx",
+    // Settings → "What are we marketing?" (#502): every word comes from MARKETING_TARGET.
+    "components/MarketingTargetPanel.tsx",
   ];
 
   // Forbidden literals anywhere in chrome source: the internal name and the deployed brand name.

@@ -242,6 +242,37 @@ export const BRAND_KIT = {
 } as const;
 
 /**
+ * Settings → "What are we marketing?" (#502). Point the fleet at a target — your own product OR any external
+ * app/URL — and the whole department reads this as their brief. All copy lives here so the panel carries no
+ * hardcoded brand strings (enforced by brand.test.ts).
+ */
+export const MARKETING_TARGET = {
+  title: "What are we marketing?",
+  hint:
+    "Point the fleet at a product — your own, or any app or site. Every agent reads this as their brief, so " +
+    "they market this product instead of guessing.",
+  loading: "Loading…",
+  configuredBadge: "Target set",
+  unsetBadge: "Not set yet",
+  nameLabel: "Product or app name",
+  namePlaceholder: "e.g. Acme Invoicing",
+  urlLabel: "Website or app URL",
+  urlPlaceholder: "e.g. acme.com",
+  positioningLabel: "One-line positioning",
+  positioningPlaceholder: "e.g. The fastest way for freelancers to get paid.",
+  audienceLabel: "Target customer",
+  audiencePlaceholder: "Who is it for? e.g. Solo freelancers and small studios in the US.",
+  competitorsLabel: "Competitors",
+  competitorsPlaceholder: "e.g. FreshBooks, Wave, Bonsai",
+  previewLabel: "The brief the fleet will read",
+  previewEmpty: "Fill in a field above to see the brief your agents will work from.",
+  save: "Save target",
+  saving: "Saving…",
+  saved: "Target saved. The fleet will market this from now on.",
+  error: "Couldn't save the target. Add at least a name, URL, or positioning and try again.",
+} as const;
+
+/**
  * The department spectrum (#123 fleet × #138 pop identity): one hue per marketing function, a
  * warm→cool arc anchored on Pop Vermilion. Keyed by the preloaded channel name so each department
  * channel and its named agent can wear its colour. See docs/brand/ipop-brand-identity.html.
@@ -1462,6 +1493,51 @@ export const BRAND_ASSETS = {
   spectrumTitle: "Department spectrum",
   spectrumBody: "One hue per marketing function, a warm-to-cool arc anchored on Pop Vermilion.",
 } as const;
+
+/**
+ * Per-route SEO metadata for the prerendered public surfaces (#467). Scout's audit found every route —
+ * home, login, start, pricing, the marketing sections — shared the homepage's `<title>`, description, and
+ * H1, and that the real subject was buried after ~18 words of build-config boilerplate. Each entry here is
+ * a UNIQUE, FRONT-LOADED `<title>` (the distinguishing term first, the brand trailing) plus a focused meta
+ * description. The prerender step (`entry-server.tsx` → `injectPage`) bakes these into the static `<head>`
+ * for each page, so a raw crawl gets the right title/description/canonical instead of the homepage's.
+ *
+ * The home page keeps its hand-written tags in `index.html`; this map covers every other public route.
+ * Descriptions reuse each page's own on-page subtitle so there is one source of truth for the copy.
+ * Keyed by canonical path. `name` is the human label used for the breadcrumb trail.
+ */
+export const PAGE_SEO = {
+  "/pricing": {
+    name: "Pricing",
+    title: `Pricing — ${BRAND.name}, your marketing agency of AI agents`,
+    description: PRICING.sub,
+  },
+  "/compare": {
+    name: "Compare",
+    title: `Compare ${BRAND.name} vs. the alternatives`,
+    description: COMPARE.sub,
+  },
+  "/stories": {
+    name: "Customer stories",
+    title: `Customer stories — ${BRAND.name} receipts, not testimonials`,
+    description: STORIES.sub,
+  },
+  "/guides": {
+    name: "Guides",
+    title: "Guides — how AI marketing agents actually work",
+    description: GUIDES.sub,
+  },
+  "/changelog": {
+    name: "Changelog",
+    title: `Changelog — what the ${BRAND.name} fleet shipped`,
+    description: CHANGELOG.sub,
+  },
+  "/brand": {
+    name: "Brand kit",
+    title: `Brand kit — the ${BRAND.name} marks, palette & voice`,
+    description: BRAND_ASSETS.sub,
+  },
+} as const satisfies Record<string, { name: string; title: string; description: string }>;
 
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {

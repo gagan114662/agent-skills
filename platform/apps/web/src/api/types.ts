@@ -172,6 +172,33 @@ export interface BrandKitInputDto {
   logoAssetId?: string | null;
 }
 
+/** The marketing target (#502) — what the fleet is marketing (the workspace's product OR any external app). */
+export interface MarketingTargetDto {
+  name: string | null;
+  /** The target's website / app URL (stored as the onboarding domain). */
+  url: string | null;
+  positioning: string | null;
+  audience: string | null;
+  competitors: string | null;
+}
+
+/** `GET/PUT /me/marketing-target` — the stored target, whether it's set, and the brief the fleet reads. */
+export interface MarketingTargetState {
+  configured: boolean;
+  target: MarketingTargetDto;
+  /** The exact context preamble a briefed agent receives, so the owner can preview it (null until set). */
+  preamble: string | null;
+}
+
+/** Body for setting the marketing target from Settings (#502). Every field optional; at least one required. */
+export interface MarketingTargetInputDto {
+  name?: string;
+  url?: string;
+  positioning?: string;
+  audience?: string;
+  competitors?: string;
+}
+
 /** Body for connecting an external account from Settings (#231): file the need, then seal the secret. */
 export interface ExternalAccountConnectInput {
   serviceKey: string;
