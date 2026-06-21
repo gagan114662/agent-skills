@@ -21,12 +21,12 @@ describe("delivery routing (#295)", () => {
 
   describe("channelForDepartment — structural mapping", () => {
     it("maps the shippable marketing departments to their channel", () => {
-      expect(channelForDepartment("seo")).toBe("publish");
       expect(channelForDepartment("content")).toBe("publish");
       expect(channelForDepartment("social")).toBe("social");
       expect(channelForDepartment("email")).toBe("email");
     });
     it("returns null for spend/internal departments and unknowns (not a content send)", () => {
+      expect(channelForDepartment("seo")).toBeNull(); // #450: Scout/SEO produces AUDITS — internal, never the public blog
       expect(channelForDepartment("ads")).toBeNull(); // spend is money-gated separately (#189)
       expect(channelForDepartment("analytics")).toBeNull();
       expect(channelForDepartment("brand")).toBeNull();
@@ -59,11 +59,11 @@ describe("delivery routing (#295)", () => {
   describe("routeDeliveryChannel — owner-first on-site PR redirect (#364)", () => {
     const OFF: DeliveryFlags = { ...DELIVERY_FLAGS_OFF, enabled: true, publish: true };
     const SITE_PR: DeliveryFlags = { ...OFF, site_pr: true };
-    it("redirects content/SEO publishes to a real on-site PR ONLY when the site_pr flag is on", () => {
-      expect(routeDeliveryChannel("seo", OFF)).toBe("publish");
+    it("redirects content publishes to a real on-site PR ONLY when the site_pr flag is on", () => {
       expect(routeDeliveryChannel("content", OFF)).toBe("publish");
-      expect(routeDeliveryChannel("seo", SITE_PR)).toBe("site_pr");
       expect(routeDeliveryChannel("content", SITE_PR)).toBe("site_pr");
+      // #450: seo is no longer a publish channel (audits stay internal) — never routes to site_pr.
+      expect(routeDeliveryChannel("seo", SITE_PR)).toBeNull();
     });
     it("never redirects social/email/non-shippable departments (only the publish channel)", () => {
       expect(routeDeliveryChannel("social", SITE_PR)).toBe("social");
@@ -128,32 +128,27 @@ describe("delivery routing (#295)", () => {
       const d = decideDelivery({ department: "content", flags: ON, draft: "   \n  " });
       expect(d).toEqual({ ship: false, reason: expect.stringContaining("no draft content") });
     });
-    it("ships content/seo via publish (reversible)", () => {
+    it("ships content via publish (reversible)", () => {
       expect(decideDelivery({ department: "content", flags: ON, draft: "post" })).toEqual({
         ship: true,
         channel: "publish",
         reversibility: "reversible",
       });
+      // #450: seo (Scout's audits) is internal — never ships through the content path.
       expect(decideDelivery({ department: "seo", flags: ON, draft: "audit" })).toEqual({
-        ship: true,
-        channel: "publish",
-        reversibility: "reversible",
+        ship: false,
+        reason: expect.stringContaining("not shippable"),
       });
     });
-    it("ships content/seo as a real on-site PR (reversible) when site_pr is on (#364)", () => {
+    it("ships content as a real on-site PR (reversible) when site_pr is on (#364)", () => {
       const flags: DeliveryFlags = { enabled: true, publish: true, site_pr: true, social: true, email: true };
-      expect(decideDelivery({ department: "seo", flags, draft: "homepage meta tags" })).toEqual({
-        ship: true,
-        channel: "site_pr",
-        reversibility: "reversible",
-      });
       expect(decideDelivery({ department: "content", flags, draft: "a blog post" })).toMatchObject({
         ship: true,
         channel: "site_pr",
       });
       // site_pr supersedes the standalone page even when `publish` itself is off.
       const onlySitePr: DeliveryFlags = { ...flags, publish: false };
-      expect(decideDelivery({ department: "seo", flags: onlySitePr, draft: "x" })).toMatchObject({
+      expect(decideDelivery({ department: "content", flags: onlySitePr, draft: "x" })).toMatchObject({
         ship: true,
         channel: "site_pr",
       });
