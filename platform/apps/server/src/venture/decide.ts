@@ -46,8 +46,14 @@ export function decideVenture(input: VentureDecisionInput): VentureDecision {
   if (score >= fund) {
     return { verdict: "FUND", reasoning: `score ${score} ≥ fund threshold ${fund}` };
   }
-  if (score <= kill) {
-    return { verdict: "KILL", reasoning: `score ${score} ≤ kill threshold ${kill}` };
+  // #441: do NOT kill a founding idea on its FIRST pass. The venture loop exists to ITERATE and improve;
+  // a single harsh adversarial first score used to be an instant, permanent dead-end (a new user's idea
+  // scoring just below the line left the whole workspace stuck in `no_work` forever, the fleet idle). On
+  // iteration 1 a killable score falls through to the improvable mid-band (ITERATE if there's a novel angle
+  // + budget, else ESCALATE to a human) — never a silent death. From iteration 2 on, KILL applies normally,
+  // so a genuinely-bad idea that did NOT improve still dies. Discipline preserved; the dead-end removed.
+  if (score <= kill && iteration > 1) {
+    return { verdict: "KILL", reasoning: `score ${score} ≤ kill threshold ${kill} after ${iteration} passes` };
   }
   if (score >= fund - escalateBand) {
     return {
