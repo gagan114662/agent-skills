@@ -50,6 +50,7 @@ export * from "./catalog.js";
 export * from "./workflows.js";
 export * from "./build-loop.js";
 export * from "./durable-workflow.js";
+export * from "./scheduler.js";
 export * from "./slack.js";
 export * from "./founder-briefings.js";
 export * from "./browser-steps.js";

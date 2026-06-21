@@ -95,27 +95,10 @@ export interface WorkspaceVerifyResult {
 }
 
 export class VerifierRunner {
-  private timer?: NodeJS.Timeout;
-
   constructor(private readonly deps: VerifierRunnerDeps) {}
 
   private clock(): Date {
     return this.deps.now?.() ?? new Date();
-  }
-
-  /** Start the periodic loop. No-op if interval ≤ 0 or already started. */
-  start(intervalMs: number): void {
-    if (this.timer || intervalMs <= 0) return;
-    this.timer = setInterval(() => void this.tickAll(), intervalMs);
-    this.timer.unref?.();
-  }
-
-  /** Stop the periodic loop (idempotent) — called on server shutdown. */
-  stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
   }
 
   /**

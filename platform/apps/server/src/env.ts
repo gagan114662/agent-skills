@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
@@ -59,6 +60,8 @@ export interface Env {
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
   workflows: WorkflowsEnv;
+  /** Durable, single-leader scheduler (#559) — how the recurring ticks above are driven. */
+  scheduler: SchedulerEnv;
   /** Slack-native digest tick (#170). */
   slack: SlackEnv;
   /** Notifications (#8). */
@@ -97,6 +100,28 @@ export interface AutoModelEnv {
   gatewayUrl?: string;
   /** Request timeout (ms) for the routing call. A slow/unreachable gateway falls back, never blocks. */
   timeoutMs: number;
+}
+
+/**
+ * Durable scheduler deployment env (#559). The recurring engine ticks (planning / venture-memory /
+ * verifiers / workflows) run on ONE restart-safe, single-leader scheduler whose state is persisted in
+ * `scheduler_jobs`. These knobs tune the leader lease + poll cadence + failure backoff; the per-job cadence
+ * still comes from each engine's own `*_INTERVAL_MS` (default 0 = off), so nothing autonomous runs until a
+ * deployment opts a job in.
+ */
+export interface SchedulerEnv {
+  /** This replica's lease-holder id (`SCHEDULER_INSTANCE_ID`). Defaults to `<hostname>:<pid>`. */
+  instanceId: string;
+  /** How long a claimed lease is held before it auto-expires (`SCHEDULER_LEASE_MS`). Default 60s. */
+  leaseMs: number;
+  /** How often the single poll loop fires (`SCHEDULER_POLL_MS`). Default 5s. */
+  pollIntervalMs: number;
+  /** Per-tick wall-clock bound (`SCHEDULER_JOB_TIMEOUT_MS`) — a wedged tick is abandoned. Default 5m. */
+  jobTimeoutMs: number;
+  /** First backoff delay after a failing tick (`SCHEDULER_BACKOFF_BASE_MS`). Default 1s. */
+  backoffBaseMs: number;
+  /** Backoff ceiling (`SCHEDULER_BACKOFF_CAP_MS`) — bounds the retry cadence so it can never hang. Default 60s. */
+  backoffCapMs: number;
 }
 
 export interface DrEnv {
@@ -467,6 +492,16 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     workflows: {
       // Default 0 (off): the workflows loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.WORKFLOWS_INTERVAL_MS ?? 0) || 0,
+    },
+    scheduler: {
+      // #559: the leader lease + poll cadence + bounded backoff for the durable scheduler that drives the
+      // recurring engine ticks. The per-job cadence still comes from each engine's own *_INTERVAL_MS.
+      instanceId: source.SCHEDULER_INSTANCE_ID || `${hostname()}:${process.pid}`,
+      leaseMs: num(source.SCHEDULER_LEASE_MS, 60_000),
+      pollIntervalMs: num(source.SCHEDULER_POLL_MS, 5_000),
+      jobTimeoutMs: num(source.SCHEDULER_JOB_TIMEOUT_MS, 300_000),
+      backoffBaseMs: num(source.SCHEDULER_BACKOFF_BASE_MS, 1_000),
+      backoffCapMs: num(source.SCHEDULER_BACKOFF_CAP_MS, 60_000),
     },
     slack: {
       // Default 0 (off): the Slack digest loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

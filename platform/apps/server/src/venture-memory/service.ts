@@ -158,24 +158,10 @@ export interface VenturePlanTickResult {
 export class VentureMemoryService {
   private readonly deps: VentureMemoryDeps;
   private readonly now: () => Date;
-  private timer?: NodeJS.Timeout;
 
   constructor(deps: VentureMemoryDeps) {
     this.deps = deps;
     this.now = deps.now ?? (() => new Date());
-  }
-
-  start(intervalMs: number): void {
-    if (this.timer || intervalMs <= 0) return;
-    this.timer = setInterval(() => void this.tickAll(), intervalMs);
-    this.timer.unref?.();
-  }
-
-  stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
   }
 
   // ---- venture memory (always available) -------------------------------------------------------
