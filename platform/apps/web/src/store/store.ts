@@ -142,6 +142,21 @@ export interface AppState {
    * from `GET /me/department` on workspace load; 0 until then (humans/agents come from the directory).
    */
   decisionsCaptured: number;
+  /**
+   * #480 in-channel activity: the live (running/provisioning) agent sessions, keyed by the channel they run
+   * in, so a channel can show "{agent} is working…" instead of relying on the single global pill. Populated
+   * best-effort from the mission-control poll the console already runs ({@link Store.setLiveSessions}); [] when
+   * nothing is running or the poll hasn't landed.
+   */
+  liveSessions: LiveSessionLite[];
+}
+
+/** A live agent session reduced to what an in-channel activity indicator needs (#480). */
+export interface LiveSessionLite {
+  id: string;
+  channelId: string;
+  agentMemberId: string;
+  status: string;
 }
 
 /** Re-export so consumers (components) get the queue types from the store barrel. */
@@ -265,6 +280,7 @@ const INITIAL: AppState = {
   error: null,
   paywall: false,
   decisionsCaptured: 0,
+  liveSessions: [],
 };
 
 export interface Store {
@@ -307,6 +323,9 @@ export interface Store {
   sendReply(rootId: string, body: string, alsoSendToChannel: boolean): Promise<void>;
   searchMembers(query: string): Promise<MemberHit[]>;
   markMentionsRead(): void;
+  /** #480: replace the live-session set (from the mission-control poll) so channels can show in-channel
+   *  agent activity. A no-op when the set is unchanged, so it never forces a needless re-render. */
+  setLiveSessions(sessions: LiveSessionLite[]): void;
   // --- trial funnel soft paywall (#153) ---
   /** Surface the soft paywall nudge (called when a tenant cap is hit). */
   showPaywall(): void;
@@ -781,6 +800,19 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
     markMentionsRead() {
       if (state.unreadMentions !== 0) set({ unreadMentions: 0 });
+    },
+
+    setLiveSessions(sessions) {
+      // Cheap structural equality on (id,channelId,status) so the 15s poll doesn't re-render channels when the
+      // live set is unchanged. Order is stable (mission-control returns a consistent order).
+      const prev = state.liveSessions;
+      const same =
+        prev.length === sessions.length &&
+        prev.every((p, i) => {
+          const n = sessions[i]!;
+          return p.id === n.id && p.channelId === n.channelId && p.status === n.status;
+        });
+      if (!same) set({ liveSessions: sessions });
     },
 
     // --- composer message/steering queue (#54) ---

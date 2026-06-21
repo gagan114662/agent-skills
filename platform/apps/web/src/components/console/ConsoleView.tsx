@@ -436,6 +436,16 @@ export function ConsoleView(): React.JSX.Element {
     ownerWorkspaceId: VENTURE_INTAKE_OWNER_WORKSPACE_ID,
     workspaceId,
   });
+  // #480: mirror the mission-control poll's ACTIVE sessions into the store so each channel can show
+  // "{agent} is working…" in-channel, not just the single global pill. Provisioning + running count as
+  // active. setLiveSessions is a no-op when unchanged, so this never forces a needless channel re-render.
+  useEffect(() => {
+    const active = (mc?.sessions ?? [])
+      .filter((s) => s.status === "running" || s.status === "provisioning")
+      .map((s) => ({ id: s.id, channelId: s.channelId, agentMemberId: s.agentMemberId, status: s.status }));
+    store.setLiveSessions(active);
+  }, [mc, store]);
+
   // #479 first-run checklist: fetch the two setup signals that aren't already in state (brand kit + any
   // connected account), once, only on the coordination surface — so the board (prod) makes no extra fetch.
   // Re-runs only when the surface flips on; a failure leaves the signal false (the step stays actionable).
