@@ -1,31 +1,30 @@
-Pulled the homepage, robots, sitemap, and a couple of routes. Receipts gathered — here's the audit.
+Posted to **#content** — draft staged, PR description ready, queued for #13. Here's the rundown.
 
 ---
 
-## 🔍 Homepage SEO audit — ipop.ai
+**📝 New on-site post drafted: "best ai marketing tools for startups 2026"**
 
-Good news first: `robots.txt` is clean and permissive, and the `sitemap.xml` is healthy (8 URLs, fresh `lastmod` dates, homepage at priority 1.0, blog included). So crawlers can get in and find things. The problems are all in *what they find when they land*.
+Full draft, not an outline. Staged with `draft: true` so it sits in the **#13 approval queue** until a human says go.
 
-Top 5 fixes, ranked by impact:
+**Files staged** (`content/blog/`):
+- `best-ai-marketing-tools-for-startups-2026.md` — the post (~1,400 words)
+- `PR-best-ai-marketing-tools-for-startups-2026.md` — paste-ready PR description + reviewer checklist
 
-**1. There's a developer comment leaking into the title tag.** This is the big one. What unfurlers and Google actually read as our title:
+**One honesty note:** I couldn't open a literal git PR — there's no on-site repo reachable from my sandbox (workspace isn't a git checkout, no `gh`). So I did the part I *can* do: wrote the post and a ready-to-open PR description against the suggested branch `content/best-ai-marketing-tools-startups-2026`. Whoever merges drops the file in and opens it in one move. I'd rather tell you that than pretend a PR number exists.
 
-> `from VITE_BRAND_TITLE at runtime for the app shell; these tags are what link unfurlers read. --> ipop — your marketing agency of AI agents`
+**The angle, since it's the whole point:** I read the actual first page of results for this query. It's tool vendors ranking themselves — Averi ranking Averi, Lapis ranking Lapis, all the way down. So I wrote the version that isn't graded by the people taking the test:
+- **Sorted by job-to-be-done**, not by brand
+- **Real starting prices + free tiers** (Surfer ~$99, Jasper ~$49, Canva free, HubSpot's $20→$890 Pro cliff flagged)
+- **The wedge nobody else lists: operator time.** Every comparison table measures features and price; none list who's going to *run* five tools at 11pm. That gap (88% of marketers use AI daily, only ~38% have integrated it) is where the post lands — and it lets us put ipop in *one row among many*, with our bias disclosed in paragraph one and an explicit "who it's not for."
+- Exactly **one wink**, in the closing line. As is law.
 
-That `-->` is a stray HTML comment that got concatenated into the `<title>`. Every link preview — Slack, iMessage, LinkedIn, the SERP — is showing a code note before our brand name. Highest impact, lowest effort. Strip the comment, ship a clean title.
+**Before it goes live, a reviewer should:**
+1. **Spot-check the prices** — all hedged "as of mid-2026," but verify Jasper / Surfer / HubSpot Pro / Canva.
+2. **Map the frontmatter to our real content schema** — I used conventional fields; the site's a Vite app, so confirm the actual collection (Astro/MDX/whatever) and rename if needed.
+3. Confirm we're comfortable naming Gumloop/Averi as alternatives (I think it reads as honest, but your call).
 
-**2. We're a client-rendered SPA, and the title is injected "at runtime."** The comment itself tells the story — the real title comes from `VITE_BRAND_TITLE` *after* JS runs. That means the static HTML a crawler first sees has the placeholder/fallback, not the real thing. We literally have a blog post titled *"why client-rendered sites are invisible to Google"* — let's not be the cautionary tale. Recommend pre-rendering or SSR for the meta + hero content so it's in the initial HTML, not painted on after.
+Sources I leaned on for the landscape and pricing: [Marketer Milk](https://www.marketermilk.com/blog/ai-marketing-tools), [AI Agent Brief — pricing](https://www.ai-agent-brief.com/industry/marketing/pricing/), [Jasper pricing](https://www.jasper.ai/pricing), [Hashmeta — Surfer review](https://www.hashmeta.ai/en/ai-seo/surfer-seo-ai), [Averi roundup](https://www.averi.ai/how-to/best-ai-marketing-tools-for-startups-in-2026-(ranked-compared)).
 
-**3. Every route shares one identical title + description.** `/`, `/login`, `/start`, and `/pricing` all return the same `ipop — your marketing agency of AI agents` title and the same description. `/pricing` isn't even resolving as its own indexable page with its own metadata — it's an anchor on the SPA. No per-page targeting means pricing-intent and brand-intent searches all compete for one generic snippet. Give each real page a unique title/description.
-
-**4. No canonical, no Open Graph, no Twitter card tags.** I found no `rel=canonical`, no `og:` tags, no `twitter:` tags in the head. That means (a) no control over how we look when shared — no preview image, no curated title/desc — and (b) duplicate-URL dedup risk (`/`, `/start`, `/login` all serving the same content). Add a self-referencing canonical and a full OG/Twitter set with an image.
-
-**5. The title leads with brand, and the H1 doesn't match it.** Our title front-loads `ipop` instead of the thing people search for ("AI marketing agency"). Separately, the rendered H1 reads *"Your always-on marketing department"* while the hero/meta say *"The marketing agency of AI agents."* Pick one primary message, lead the title with the keyword, and make the H1 echo it. Lowest of the five, but it's the cheap on-page polish once 1–4 are done.
-
----
-
-Two caveats worth flagging before anyone acts: when I fetched with a JS-rendering bot the body content *did* appear, but the link-unfurl crawl only got the polluted meta — so #2 is a "verify against raw `view-source`" item, not a settled fact. And I'd confirm #4 against the true source HTML too, since rendered-head injection can hide tags from a quick look.
-
-Want me to draft the corrected title/description/OG set for each route next, or dig into the raw `view-source` to nail down the SSR question first?
+Want me to tighten anything before it hits the queue — shorter for skimmers, a different title, or pull our own row out entirely for a cleaner conscience?
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_ff44d2462cc7abfe)
