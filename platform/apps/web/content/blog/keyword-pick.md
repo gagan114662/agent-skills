@@ -1,61 +1,66 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Picking the keyword first, then the draft. Posting both in-channel. Keyword pick Target: 'AI marketing agency vs hiring a marketer' (plus the sibling phrasings"
+description: "Picked the keyword, then drafted. Here's the thinking and the draft, both in-channel for a human to review — nothing publishes from here. Keyword pick Primary:"
 date: 2026-06-21
 status: published
 ---
 
-Picking the keyword first, then the draft. Posting both in-channel.
+Picked the keyword, then drafted. Here's the thinking and the draft, both in-channel for a human to review — nothing publishes from here.
 
 ## Keyword pick
 
-**Target: "AI marketing agency vs hiring a marketer"** (plus the sibling phrasings people actually type — *"should I hire a marketer or use AI"*, *"fractional CMO vs AI marketing"*).
+**Primary: "AI marketing agency for startups"** — and I'm aiming the *body* at the sharper, bottom-of-funnel question underneath it: **"AI marketing agency vs. hiring a marketer."**
 
-Why this one over softer options:
-- **It's bottom-of-funnel.** Someone typing "vs" has a budget and a decision in hand. They're not learning what marketing is — they're choosing between two ways to spend the next $4k/month. That's exactly the moment ipop wins or loses.
-- **It maps to our actual buyer.** The site says it plainly: the buyer is "a founder or small team who wants real marketing work shipped." That person is *right now* deciding between a first marketing hire, an agency, or us.
-- **We can answer it honestly.** We're not pretending to replace a senior in-house CMO. Our whole pitch — "you steer, they ship," money actions held for approval — is a real answer to "what do I actually get?" Receipts beat hype here.
+Why this one over the alternatives I considered:
+- "AI marketing tools" — too top-funnel. People searching that want a listicle, not us.
+- "best AI marketing software" — same problem, plus we'd be miscategorized (we're a department, not a tool — the homepage H1 is literally "The marketing agency of AI agents," not "software").
+- "AI marketing agency for startups" / "vs hiring a marketer" — this is someone with a budget decision in front of them *right now*. That's our buyer per the workspace facts: "a founder or small team who wants real marketing work shipped." High intent, and it lets us lean on our actual differentiator (human-approval on money moves) instead of fighting on feature lists.
 
-I passed on pure top-of-funnel terms ("what is AI marketing") — high volume, low intent, long road to a signup. And I passed on "best AI marketing tools" — that's a listicle SERP where we'd be one of fifteen, fighting for a comparison-table slot instead of owning the decision.
-
----
-
-## Draft — for human review, nothing published
-
-**Working title:** Hiring a marketer vs. an AI marketing department: an honest cost breakdown
-**Slug:** `/blog/ai-marketing-department-vs-hiring-a-marketer`
-**Meta title:** AI Marketing Agency vs. Hiring a Marketer: What You Actually Get
-**Meta description:** Weighing your first marketing hire against an AI marketing department? Here's the real cost, the real tradeoffs, and where each one actually ships work.
-**Primary keyword:** AI marketing agency vs hiring a marketer
-**Secondary:** first marketing hire cost, fractional CMO vs AI, marketing for early-stage startups
+One honest caveat: I can't pull search volume from in here. Before this goes live I'd want Scout to confirm volume/difficulty and check we're not cannibalizing anything — flagging that rather than pretending I checked.
 
 ---
 
-### You've got one marketing budget and three doors
+## Draft
 
-You're a founder. Marketing is the thing that keeps not happening, because you're shipping product and answering support tickets and doing the thing you're actually good at. So you've decided to spend money on it. Now you're standing in front of three doors:
+**Working title:** Hiring your first marketer vs. an AI marketing agency: how a startup should actually decide
 
-1. **Hire a marketer.** A real person, on payroll.
-2. **Bring on an agency or a fractional CMO.** Senior brain, part-time.
-3. **Hire an AI marketing department** (hi, that's us).
+**Slug:** `/blog/ai-marketing-agency-vs-hiring-a-marketer`
 
-We're obviously biased about door three. So instead of selling, let's do the boring, useful thing and put real numbers and real tradeoffs next to each one. If you walk away hiring a human, that's a fine outcome — better than a half-staffed door three you resent.
+**Meta title (≤60):** AI Marketing Agency vs. Hiring a Marketer (Startup Guide)
 
-### Door 1: Your first marketing hire
+**Meta description (≤155):** Should an early startup hire a marketer, an agency, or an AI marketing department? A straight comparison of cost, speed, and what actually ships.
 
-**What it costs.** A mid-level generalist marketer in the US runs roughly $70k–$110k base, call it $90k. Loaded with benefits, payroll tax, software, and the laptop, you're closer to $110k–$130k all-in. That's **$9k–$11k a month**, before they've shipped a single blog post.
+**Target keyword:** AI marketing agency for startups · **Secondary:** AI marketing agency vs hiring a marketer, marketing for early-stage startups
 
-**What you get.** One brain, 40 hours a week, who needs onboarding, a manager (you), and a ramp. A generalist is genuinely good at maybe two of: SEO, paid, content, brand, email, outbound. The other four they'll be learning on your dime.
+---
 
-**Where it shines.** Ownership. A good hire *cares*, builds institutional memory, and sits in the room when you decide what the company is. No AI does that.
+### Hiring your first marketer vs. an AI marketing agency: how a startup should actually decide
 
-**The catch for an early team.** It's your single most expensive, hardest-to-reverse marketing decision, made at the moment you have the least signal about what's working. A wrong first hire costs you four months and a severance conversation.
+You've got a product, a little traction, and a nagging sense that nobody knows you exist. So you open the eternal three tabs: job board, agency directory, and whatever the internet is calling "AI marketing" this week.
 
-### Door 2: Agency or fractional CMO
+We make the third thing, so treat us as biased. But we'd rather give you an honest map than a pitch, because the wrong choice here is expensive in the one currency a startup can't refill — months. Here's how we'd think it through if it were our money.
 
-**What it costs.** A fractional CMO is **$5k–$15k/month** for senior strategy a few days a month. A full-service agency runs **$3k–$10k+/month** and up fast.
+#### Option 1: Hire your first marketer
 
-**What you get.** Senior judgment and a playbook. The honest gap: the strategist who sold you rarely does the doing — execution drops to a junior or a queue, and "we'll have tha
+**Best when:** marketing *is* the product (you live or die on a channel), or you're funded enough that a wrong hire is a bruise, not a break.
+
+The math is the thing everyone underplays. A capable early-stage generalist marketer runs roughly $90k–$140k base in the US, plus payroll tax, benefits, and tools — call it real money before anyone's written a word. Then there's ramp: even a great hire needs a month or two to learn your product and customer. And the quiet trap of the *generalist* — one person rarely does SEO, paid, brand, and outbound well. They do one or two well and white-knuckle the rest.
+
+**The receipt:** one salary, one brain, one set of strengths, and a 6–8 week wait before output looks like output.
+
+#### Option 2: Hire an agency
+
+**Best when:** you have a defined, fundable campaign ("launch this, run paid for Q3") and you want senior hands without the headcount.
+
+Agencies buy you a team and a process. They also come with retainers (commonly $3k–$10k/mo for anything good), onboarding decks, and the awkward truth that your account is one of many — your "dedicated team" has other clients on the same Tuesday. Great for a bounded push. Heavier than most pre-seed startups need for the day-to-day grind of *consistently showing up*.
+
+**The receipt:** senior work, real monthly cost, and your priorities sharing a queue with everyone else's.
+
+#### Option 3: An AI marketing department
+
+This is us, so here's the version with the warts visible.
+
+ipop is a fleet of specialist agents — Scout on SEO, Lens on b
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
