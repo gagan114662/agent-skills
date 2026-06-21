@@ -40,13 +40,16 @@ export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
 export type DeliveryReversibility = "reversible" | "irreversible";
 
 /**
- * The structural department key → delivery channel mapping. Scout/SEO + Quill/content publish a live page;
- * Echo/social posts; Postmark/email sends. Every other department (ads, analytics, brand, reach, the shared
- * rooms, an unknown channel) returns `null` — not shippable through this path. `null` in ⇒ `null` out.
+ * The structural department key → delivery channel mapping. Quill/content publishes a live page/post;
+ * Echo/social posts; Postmark/email sends. Every other department (Scout/seo, ads, analytics, brand, reach,
+ * the shared rooms, an unknown channel) returns `null` — not shippable through this path. `null` in ⇒ `null` out.
  */
 export function channelForDepartment(department: string | null): DeliveryChannel | null {
   switch (department) {
-    case "seo":
+    // #450: only Quill/content (the marketing writer + the #437 content-cadence target-query POSTS) auto-
+    // publishes. Scout/SEO produces AUDITS — internal diagnostics ("our homepage <title> is broken") — and
+    // auto-publishing those to the public blog is bad marketing, so `seo` falls through to `null` (it stays a
+    // board card / in-channel, never the public blog). Routing is still purely structural (#200 §6).
     case "content":
       return "publish";
     case "social":

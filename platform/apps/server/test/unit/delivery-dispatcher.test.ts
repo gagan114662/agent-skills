@@ -156,14 +156,14 @@ describe("delivery dispatcher (#295)", () => {
     expect(adapters.social.calls).toBe(1);
   });
 
-  it("routes an approved content/SEO deliverable to the site_pr channel when site_pr is on (#364)", async () => {
+  it("routes an approved content deliverable to the site_pr channel when site_pr is on (#364)", async () => {
     const { deps, receipts, adapters } = buildDeps({
-      resolveDepartment: () => Promise.resolve("seo"),
+      resolveDepartment: () => Promise.resolve("content"), // #450: content publishes; seo (audits) does not
       resolveFlags: () => ({ ...ALL_ON, site_pr: true }),
     });
     const dispatcher = createDeliveryDispatcher(deps);
     const result = await dispatcher.ship(
-      { sessionId: "s1", channelId: "c1", task: "Homepage SEO meta tags", draft: "<title>ipop.ai</title>" },
+      { sessionId: "s1", channelId: "c1", task: "How AI agents write SEO content", draft: "<title>ipop.ai</title>" },
       { workspaceId: "ws1", approvalRequestId: "req-364" },
     );
     expect(adapters.site_pr.calls).toBe(1);
