@@ -287,6 +287,9 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       decode: harnessLineDecoder(kind),
     }),
     caps: env.caps,
+    // #436: bounded retry for a spawn-launch failure (default 1 = off). `AGENT_SPAWN_RETRY_MAX_ATTEMPTS=2`
+    // re-attempts a transient `start()` throw once before failing the session.
+    spawnRetryMaxAttempts: Number(process.env.AGENT_SPAWN_RETRY_MAX_ATTEMPTS ?? 1) || 1,
     logger,
     // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.
     workspace,
