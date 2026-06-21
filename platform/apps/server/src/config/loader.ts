@@ -378,6 +378,61 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(siteContentDir !== undefined ? { siteContentDir } : {}),
     };
   }
+  // #295 deliverable delivery: let the deployment env turn approve→publish ship on owner-workspace-first
+  // WITHOUT a managed.toml (the realworld block above already had env support; delivery/contentCadence did
+  // not — #438, so the publish loop could not be enabled on the env-driven prod deploy at all). Hard
+  // default stays OFF (vars unset → no block ⇒ approving a deliverable is a pure acknowledgement, nothing
+  // ships). Owner-first via RELOAD_DELIVERY_OWNER_WORKSPACE_ID (falls back to the #258 marketing owner).
+  const deliveryEnabled = env.RELOAD_DELIVERY_ENABLED;
+  const deliverySitePr = env.RELOAD_DELIVERY_SITE_PR;
+  const deliveryPublish = env.RELOAD_DELIVERY_PUBLISH;
+  const deliverySocial = env.RELOAD_DELIVERY_SOCIAL;
+  const deliveryEmail = env.RELOAD_DELIVERY_EMAIL;
+  const deliveryOwner = env.RELOAD_DELIVERY_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (
+    deliveryEnabled !== undefined ||
+    deliverySitePr !== undefined ||
+    deliveryPublish !== undefined ||
+    deliverySocial !== undefined ||
+    deliveryEmail !== undefined ||
+    deliveryOwner
+  ) {
+    raw.delivery = {
+      ...(deliveryEnabled !== undefined ? { enabled: deliveryEnabled === "true" || deliveryEnabled === "1" } : {}),
+      ...(deliverySitePr !== undefined ? { sitePr: deliverySitePr === "true" || deliverySitePr === "1" } : {}),
+      ...(deliveryPublish !== undefined ? { publish: deliveryPublish === "true" || deliveryPublish === "1" } : {}),
+      ...(deliverySocial !== undefined ? { social: deliverySocial === "true" || deliverySocial === "1" } : {}),
+      ...(deliveryEmail !== undefined ? { email: deliveryEmail === "true" || deliveryEmail === "1" } : {}),
+      ...(deliveryOwner ? { ownerWorkspaceId: deliveryOwner } : {}),
+    };
+  }
+  // #416 content cadence: let the deployment env turn the timed content-brief loop on owner-workspace-first
+  // WITHOUT a managed.toml (#438 — the block had no env support, so the engine could never be enabled on the
+  // env-driven prod deploy). Hard default stays OFF (vars unset → no block ⇒ the engine no-ops). The TICK
+  // interval is separate (CONTENT_CADENCE_INTERVAL_MS). Queries are a comma-separated editorial calendar.
+  const contentCadenceEnabled = env.RELOAD_CONTENT_CADENCE_ENABLED;
+  const contentCadenceQueries = env.RELOAD_CONTENT_CADENCE_QUERIES;
+  const contentCadenceLead = env.RELOAD_CONTENT_CADENCE_LEAD;
+  const contentCadenceOwner = env.RELOAD_CONTENT_CADENCE_OWNER_WORKSPACE_ID ?? mktOwner;
+  if (
+    contentCadenceEnabled !== undefined ||
+    contentCadenceQueries !== undefined ||
+    contentCadenceLead !== undefined ||
+    contentCadenceOwner
+  ) {
+    const queries =
+      contentCadenceQueries !== undefined
+        ? contentCadenceQueries.split(",").map((q) => q.trim()).filter(Boolean)
+        : undefined;
+    raw.contentCadence = {
+      ...(contentCadenceEnabled !== undefined
+        ? { enabled: contentCadenceEnabled === "true" || contentCadenceEnabled === "1" }
+        : {}),
+      ...(queries !== undefined ? { queries } : {}),
+      ...(contentCadenceLead !== undefined ? { lead: contentCadenceLead } : {}),
+      ...(contentCadenceOwner ? { ownerWorkspaceId: contentCadenceOwner } : {}),
+    };
+  }
   // #225 outreach engine: let the deployment env turn the proactive posture on + pick a sender without a
   // managed.toml — the owner workspace opts in first. Hard default stays OFF (vars unset → no block ⇒ the
   // sender stays `dryrun`, recorded-only, no network egress). A managed layer still wins as the lock.

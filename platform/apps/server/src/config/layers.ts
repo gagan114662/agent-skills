@@ -157,6 +157,10 @@ export function mergeSettings(layers: Settings[]): Settings {
     // #295 delivery policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // approve→publish ship flags + owner-workspace scope cannot be loosened by a lower layer.
     if (layer.delivery !== undefined) out.delivery = { ...layer.delivery };
+    // #416 content-cadence policy: a higher (managed/owner) layer fully owns the block (replace) so the
+    // enable flag + owner-workspace scope + query calendar cannot be flipped on by a lower layer. (Without
+    // this line the block never merged through — the engine's config could never be set; #438.)
+    if (layer.contentCadence !== undefined) out.contentCadence = { ...layer.contentCadence };
     // #337 action contract policy: a higher (managed/owner) layer fully owns the block (replace) so the
     // contract master flag + owner-workspace scope + the irreversible-apply switch cannot be loosened by a
     // lower layer.

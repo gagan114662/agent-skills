@@ -180,6 +180,44 @@ describe("real-world tool surface config (#231)", () => {
     expect(loadConfig(undefined, sources({ managed, repo })).realworld).toEqual({ enabled: false });
   });
 
+  it("#438: delivery defaults OFF, and env opts the owner workspace in (RELOAD_DELIVERY_*)", () => {
+    expect(loadConfig(undefined, sources({})).delivery).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources({}, {
+        RELOAD_DELIVERY_ENABLED: "true",
+        RELOAD_DELIVERY_SITE_PR: "true",
+        RELOAD_DELIVERY_OWNER_WORKSPACE_ID: "ws_owner",
+      }),
+    );
+    expect(cfg.delivery).toEqual({ enabled: true, sitePr: true, ownerWorkspaceId: "ws_owner" });
+  });
+
+  it("#438: delivery owner falls back to the #258 marketing owner marker", () => {
+    const cfg = loadConfig(
+      undefined,
+      sources({}, { RELOAD_DELIVERY_ENABLED: "true", RELOAD_MARKETING_OWNER_WORKSPACE_ID: "ws_mkt" }),
+    );
+    expect(cfg.delivery).toEqual({ enabled: true, ownerWorkspaceId: "ws_mkt" });
+  });
+
+  it("#438: contentCadence defaults OFF, and env opts it in with a comma-separated query calendar", () => {
+    expect(loadConfig(undefined, sources({})).contentCadence).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources({}, {
+        RELOAD_CONTENT_CADENCE_ENABLED: "true",
+        RELOAD_CONTENT_CADENCE_QUERIES: " best seo tool , ai marketing agents ,, ",
+        RELOAD_CONTENT_CADENCE_OWNER_WORKSPACE_ID: "ws_owner",
+      }),
+    );
+    expect(cfg.contentCadence).toEqual({
+      enabled: true,
+      queries: ["best seo tool", "ai marketing agents"],
+      ownerWorkspaceId: "ws_owner",
+    });
+  });
+
   it("#262 connect-Claude defaults OFF, and env opts the owner workspace in (RELOAD_CONNECT_CLAUDE_*)", () => {
     expect(loadConfig(undefined, sources({})).connectClaude).toEqual({});
     const cfg = loadConfig(
