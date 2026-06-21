@@ -20,8 +20,8 @@ import { APPROVAL_STATUSES } from "../../../src/approvals/policy.js";
 const OWNER = "ws-owner";
 
 describe("department/blueprint — the named team", () => {
-  it("seeds the reload.chat roster: a lead + SEO/Design/Developer/QA/DevOps, all with role + color", () => {
-    expect(departmentHandles()).toEqual(["hermes", "scout", "lens", "atlas", "sentinel", "echo"]);
+  it("seeds the reload.chat MARKETING roster: a lead + the 8 marketing specialists, all with role + color", () => {
+    expect(departmentHandles()).toEqual(["hermes", "scout", "echo", "quill", "postmark", "bid", "lens", "mark", "comet"]);
     // Exactly one lead (the Product owner).
     const leads = DEFAULT_DEPARTMENT_ROSTER.filter((p) => p.lead);
     expect(leads).toHaveLength(1);
@@ -59,10 +59,10 @@ describe("department/blueprint — the named team", () => {
 
   it("looks up a teammate by handle (case-insensitive, @-tolerant)", () => {
     expect(departmentPersonaForHandle("HERMES")!.role).toBe("Product owner");
-    expect(departmentPersonaForHandle("@atlas")!.displayName).toBe("Atlas");
+    expect(departmentPersonaForHandle("@quill")!.displayName).toBe("Quill");
     expect(departmentPersonaForHandle("nobody")).toBeUndefined();
-    expect(isDepartmentHandle("sentinel")).toBe(true);
-    expect(isDepartmentHandle("quill")).toBe(false);
+    expect(isDepartmentHandle("comet")).toBe(true);
+    expect(isDepartmentHandle("atlas")).toBe(false); // #476: software-dev personas are gone from the marketing roster
   });
 });
 
@@ -189,11 +189,11 @@ describe("department/registry — present in the #282 registry surface", () => {
       ownerWorkspaceOnly: true,
     });
     const hermes = entries.find((e) => e.contract.handle === "hermes")!;
-    const atlas = entries.find((e) => e.contract.handle === "atlas")!;
+    const comet = entries.find((e) => e.contract.handle === "comet")!;
     expect(hermes.present).toBe(true);
     expect(hermes.enabled).toBe(true);
-    expect(atlas.present).toBe(false);
-    expect(atlas.enabled).toBe(false);
+    expect(comet.present).toBe(false);
+    expect(comet.enabled).toBe(false);
   });
 
   it("lists the catalog but enables NOBODY when the flag is off (byte-for-byte today)", () => {
