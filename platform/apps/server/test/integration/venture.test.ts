@@ -119,16 +119,23 @@ describe("venture routes + admission gate (integration)", () => {
     expect(body.iterations.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("KILLs a weak idea (verdict persisted, no funded scorecard produced)", async () => {
+  it("KILLs a weak idea on a LATER pass — never the first (no funded scorecard) (#441/#448)", async () => {
     const { cookie, workspaceId } = await seed();
-    scoreValue = 3; // → 30, KILL
+    scoreValue = 3; // → 30, kill band
 
     const vid = (await post(`/workspaces/${workspaceId}/ventures`, cookie, IDEA)).json().id;
-    await post(`/workspaces/${workspaceId}/ventures/${vid}/score`, cookie);
-    const decided = await post(`/workspaces/${workspaceId}/ventures/${vid}/decide`, cookie);
-    expect(decided.json().verdict).toBe("KILL");
 
-    // No passing scorecard was minted for this workspace.
+    // #441/#448: a weak idea does NOT die on its first pass — a single harsh adversarial score used to be an
+    // instant, permanent dead-end that left a new user's workspace stuck in `no_work` forever. The loop now
+    // gives it one improvement pass first.
+    const first = await post(`/workspaces/${workspaceId}/ventures/${vid}/advance`, cookie);
+    expect(first.json().verdict).toBe("ITERATE");
+
+    // From iteration 2 on, the same weak score KILLs — discipline preserved, the dead-end removed.
+    const second = await post(`/workspaces/${workspaceId}/ventures/${vid}/advance`, cookie);
+    expect(second.json().verdict).toBe("KILL");
+
+    // No passing scorecard was ever minted for this workspace.
     expect(await ventureRepo.hasPassingUnexpiredScorecard(workspaceId, new Date("2026-06-10T00:00:00Z"))).toBe(
       false,
     );
