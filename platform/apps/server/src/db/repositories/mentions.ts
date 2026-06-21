@@ -2,6 +2,7 @@ import { and, desc, eq, count, inArray, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { messageMentions, members, messages } from "../schema/index.js";
 import { parseMentionTokens } from "../../messaging/mentions.js";
+import { detectDirectedHandles } from "../../messaging/natural-address.js";
 
 /** A mention as carried in realtime events and the "my mentions" feed. */
 export interface Mention {
@@ -28,7 +29,12 @@ export async function resolveAndPersistMentions(input: {
   authorMemberId: string;
   body: string;
 }): Promise<Mention[]> {
-  const tokens = parseMentionTokens(input.body);
+  // #471 natural addressing: an `@mention` is the explicit form, but a *clearly directed* plain-text address
+  // ("Scout, …", "ask Scout to …", "QA test for scout:") should reach the teammate too. We union the explicit
+  // `@` tokens with the conservatively-detected directed-address tokens; de-duplication happens naturally in
+  // the Set below. The display-name match is the hard filter — a stray token that isn't a real member resolves
+  // to nothing and launches nothing — so natural addressing can only ever surface an ACTUAL teammate.
+  const tokens = [...new Set([...parseMentionTokens(input.body), ...detectDirectedHandles(input.body)])];
   if (tokens.length === 0) return [];
 
   // Resolve tokens → members by case-insensitive display name, scoped to this workspace.
