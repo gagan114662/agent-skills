@@ -1,4 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { AddressInfo } from "node:net";
@@ -92,6 +95,8 @@ async function startApp(
   decode?: LineDecoder,
   /** #248: wire the production deliverable-surfacing sink (completed session → pending review card). */
   surface = false,
+  /** #436: enable bounded inline retry of a transient pre-progress death (with a near-instant backoff). */
+  retryMaxAttempts?: number,
 ): Promise<{
   app: FastifyInstance;
   http: string;
@@ -105,6 +110,14 @@ async function startApp(
     harness: { command, args: harnessArgs },
     caps,
     logger: silentLogger,
+    ...(retryMaxAttempts
+      ? {
+          sessionRetryMaxAttempts: retryMaxAttempts,
+          // Near-instant backoff keeps the integration test fast while still exercising the real
+          // start→wait→retry lifecycle (timers, ticket release, this.running cleanup) on Postgres.
+          sessionRetryBackoff: { baseMs: 5, factor: 1, capMs: 20, maxAttempts: 1 },
+        }
+      : {}),
     ...(decode ? { decodeOutput: decode } : {}),
     ...(surface
       ? {
@@ -663,5 +676,101 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
       payload: { agentMemberId: b.agentMemberId, task: "intrude" },
     });
     expect(res.statusCode).toBe(404); // cross-workspace channel is invisible
+  });
+});
+
+// --- #436: bounded inline retry of a transient pre-progress death, end-to-end on Postgres ----------
+//
+// The delicate part #436 calls out — the timer / ticket-release / `this.running` lifecycle across a
+// re-attempt — only shows up with a REAL runtime spawning real processes and a REAL Postgres-backed
+// store finalizing the row. These tests use LocalRuntime + dbStore so the whole hot path is exercised.
+
+/**
+ * A flaky host harness keyed off a sentinel file: the FIRST run SIGKILLs itself before printing a
+ * single byte (a null-exit death with no output — the idempotency-safe retry shape), and EVERY run
+ * that produces the deliverable appends one line to an "actions" log. So a successful completion proves
+ * (a) the manager re-attempted the dead spawn, and (b) the real work ran EXACTLY once — no double-ship.
+ */
+function flakyHarnessArgs(sentinel: string, actions: string): string[] {
+  return [
+    "-e",
+    `const fs=require('fs');` +
+      `if(!fs.existsSync(${JSON.stringify(sentinel)})){` +
+      `fs.writeFileSync(${JSON.stringify(sentinel)},'1');` +
+      `process.kill(process.pid,'SIGKILL');` + // die before any output → exitCode null
+      `}else{` +
+      `fs.appendFileSync(${JSON.stringify(actions)},'did-the-work\\n');` +
+      `console.log('agent: recovered on retry and produced the deliverable');` +
+      `}`,
+  ];
+}
+
+describe("agent-session reliability — bounded inline retry (#436, real Postgres + LocalRuntime)", () => {
+  it("retries a transient null-exit spawn death and completes, running the real work exactly once", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "flaky-retry-"));
+    const sentinel = join(dir, "sentinel");
+    const actions = join(dir, "actions.log");
+
+    // retryMaxAttempts=2: one death is re-attempted once; surface=true so a completion would surface a
+    // deliverable card — letting us prove the idempotency guard never duplicates a real action.
+    const { app } = await startApp(
+      flakyHarnessArgs(sentinel, actions),
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      false,
+      undefined,
+      true,
+      2,
+    );
+    const w = await seed(app);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft the launch tweet" },
+    });
+    expect(launch.statusCode).toBe(202);
+    const sessionId = launch.json().id as string;
+
+    // Despite the first attempt dying, the session recovers to a clean completion on Postgres.
+    const session = await pollStatus(app, w, sessionId, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("completed");
+    expect(session.exitCode).toBe(0);
+
+    // The retry actually happened (the first run wrote the sentinel before killing itself)...
+    expect(existsSync(sentinel)).toBe(true);
+    // ...and the real work ran EXACTLY once — the dead pre-progress attempt produced no action, and the
+    // single output-bearing attempt produced exactly one. No double-ship (#200 §4 idempotency, proven).
+    expect(readFileSync(actions, "utf8").trim().split("\n")).toEqual(["did-the-work"]);
+
+    // Exactly one terminal deliverable card was surfaced for the recovered session (no duplicates).
+    const requests = await listRequests(w.workspaceId);
+    const cards = requests.filter(
+      (r) => r.actionType === "agent.deliverable" && (r.payload as { sessionId?: string }).sessionId === sessionId,
+    );
+    expect(cards).toHaveLength(1);
+  });
+
+  it("with retry OFF (default), the same transient death is finalized failed — no re-attempt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "flaky-noretry-"));
+    const sentinel = join(dir, "sentinel");
+    const actions = join(dir, "actions.log");
+
+    const { app } = await startApp(flakyHarnessArgs(sentinel, actions), { wallClockMs: 20_000, idleMs: 8_000 });
+    const w = await seed(app);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "draft the launch tweet" },
+    });
+    const sessionId = launch.json().id as string;
+
+    const session = await pollStatus(app, w, sessionId, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("failed"); // today's behavior preserved when the flag is off
+    expect(existsSync(sentinel)).toBe(true); // it ran once...
+    expect(existsSync(actions)).toBe(false); // ...and never reached the work-producing branch
   });
 });

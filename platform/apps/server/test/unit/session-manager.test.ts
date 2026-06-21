@@ -956,6 +956,151 @@ describe("SessionManager — owner can ALWAYS stop a runaway (#248)", () => {
   });
 });
 
+// --- #436: bounded inline retry for a transient, pre-progress session death --------------------
+
+import { resetMetrics, renderMetrics } from "../../src/observability/metrics.js";
+
+/**
+ * A runtime whose first `failuresBeforeSuccess` attempts die WITHOUT output (null exit code — the
+ * spawn/null-exit shape), then a final attempt streams output and completes. Records how many times
+ * `start()` was called so a test can prove the manager re-attempted (or didn't).
+ */
+class FlakyNullExitRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  starts = 0;
+  constructor(private readonly failuresBeforeSuccess: number) {}
+  start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    const attempt = ++this.starts;
+    const fail = attempt <= this.failuresBeforeSuccess;
+    if (!fail) hooks.onOutput("stdout", "recovered on retry\n");
+    return Promise.resolve({
+      sessionId: job.sessionId,
+      wait: () =>
+        Promise.resolve<RuntimeResult>(
+          fail ? { status: "failed", exitCode: null } : { status: "completed", exitCode: 0 },
+        ),
+      cancel: () => Promise.resolve(),
+    });
+  }
+}
+
+/** Streams output and THEN dies with a null exit code — a death the retry must NOT re-run (idempotency). */
+class OutputThenDieRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  starts = 0;
+  start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    this.starts++;
+    hooks.onOutput("stdout", "partial work: posted a tweet\n"); // a real action may have landed
+    return Promise.resolve({
+      sessionId: job.sessionId,
+      wait: () => Promise.resolve<RuntimeResult>({ status: "failed", exitCode: null }),
+      cancel: () => Promise.resolve(),
+    });
+  }
+}
+
+/** A store that counts finalize calls so a test can prove a retried session is finalized EXACTLY once. */
+class CountingStore extends FakeStore {
+  finalizeCount = 0;
+  override finalize(
+    id: string,
+    fields: { status: SessionStatus; exitCode?: number | null; result?: string | null },
+  ): Promise<void> {
+    this.finalizeCount++;
+    return super.finalize(id, fields);
+  }
+}
+
+describe("SessionManager — bounded inline retry for a transient pre-progress death (#436)", () => {
+  type CompletedEvent = Parameters<
+    NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionCompleted"]>
+  >[0];
+
+  function makeRetryManager(
+    runtime: AgentRuntime,
+    sessionRetryMaxAttempts: number,
+    onSessionCompleted?: (e: CompletedEvent) => Promise<void>,
+  ) {
+    const store = new CountingStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+      sessionRetryMaxAttempts,
+      // Near-instant backoff so the retry lifecycle is exercised without real wall-clock delay.
+      sessionRetryBackoff: { baseMs: 1, factor: 1, capMs: 2, maxAttempts: 1 },
+      ...(onSessionCompleted ? { onSessionCompleted } : {}),
+    });
+    return { manager, store, poster };
+  }
+
+  it("retries a null-exit death that produced no output, then completes — finalized once", async () => {
+    resetMetrics();
+    const runtime = new FlakyNullExitRuntime(1); // die once (no output), then succeed
+    const { manager, store } = makeRetryManager(runtime, 2);
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.starts).toBe(2); // it re-attempted the dead spawn
+    expect(store.finalized?.status).toBe("completed"); // and recovered to a clean completion
+    expect(store.finalizeCount).toBe(1); // EXACTLY one terminal write — the retry never double-finalizes
+    expect(manager.activeCount).toBe(0); // nothing left running
+    // The retry is counted for before/after reliability measurement.
+    expect(renderMetrics()).toContain('agent_session_retries_total{runtime="local"} 1');
+  });
+
+  it("does NOT retry once output was produced — protects against a duplicated real action (idempotency)", async () => {
+    resetMetrics();
+    const runtime = new OutputThenDieRuntime();
+    const completed: CompletedEvent[] = [];
+    const { manager, store } = makeRetryManager(runtime, 3, async (e) => {
+      completed.push(e);
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.starts).toBe(1); // the output-bearing attempt is never re-run
+    expect(store.finalized?.status).toBe("failed");
+    expect(store.finalizeCount).toBe(1);
+    expect(completed).toHaveLength(0); // a failed run surfaces no deliverable
+    expect(renderMetrics()).not.toContain('agent_session_retries_total{'); // no retry series emitted
+  });
+
+  it("is OFF by default: a null-exit death is finalized failed with no re-attempt", async () => {
+    resetMetrics();
+    const runtime = new FlakyNullExitRuntime(1);
+    const { manager, store } = makeRetryManager(runtime, 1); // default OFF
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.starts).toBe(1); // no retry — today's behavior preserved byte-for-byte
+    expect(store.finalized?.status).toBe("failed");
+    expect(renderMetrics()).not.toContain('agent_session_retries_total{'); // no retry series emitted
+  });
+
+  it("gives up after exhausting the attempt budget (bounded — never loops forever)", async () => {
+    resetMetrics();
+    const runtime = new FlakyNullExitRuntime(5); // always dies within the budget
+    const { manager, store } = makeRetryManager(runtime, 3);
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.starts).toBe(3); // exactly maxAttempts, then it stops
+    expect(store.finalized?.status).toBe("failed");
+    expect(store.finalizeCount).toBe(1);
+    expect(renderMetrics()).toContain('agent_session_retries_total{runtime="local"} 2'); // 2 retries before giving up
+  });
+});
+
 describe("SessionManager — a session NEVER vanishes silently (#248)", () => {
   /** A secrets resolver that throws BEFORE the run starts (the pre-`try` vanish path). */
   const throwingSecrets = {
