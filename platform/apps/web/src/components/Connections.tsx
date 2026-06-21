@@ -138,7 +138,7 @@ function InternalConnect(props: {
           <input
             id={repoId}
             type="text"
-            name="ipop-site-repo-nofill"
+            name="site-repo-nofill"
             autoComplete="off"
             data-1p-ignore
             data-lpignore="true"
@@ -150,7 +150,7 @@ function InternalConnect(props: {
           <input
             id={branchId}
             type="text"
-            name="ipop-site-base-branch-nofill"
+            name="site-base-branch-nofill"
             autoComplete="off"
             data-1p-ignore
             data-lpignore="true"

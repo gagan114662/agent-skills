@@ -10,10 +10,11 @@
  * owner-first contract itself is exercised (owner id == the test workspace ⇒ on; a different owner ⇒ off).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import type { ApprovalRequestDto } from "@reload/shared";
 import { api } from "../../api/client.js";
-import { CONSOLE, consoleRunningPill } from "../../brand.js";
+import { CONSOLE, consoleRunningPill, consoleWaitingChip } from "../../brand.js";
 import { renderWithStore } from "../../test/utils.js";
 
 // The test identity's workspace (utils.TEST_IDENTITY) — naming THIS workspace as the owner turns the gate on.
@@ -204,6 +205,53 @@ describe("ConsoleView slim reload.chat header (#384)", () => {
     await screen.findByRole("listitem", BOARD_LANE);
     expect(container.querySelector(".gauge"), "the board keeps its budget gauge").not.toBeNull();
     expect(container.querySelector(".gauge-upgrade"), "the board keeps its Upgrade button").not.toBeNull();
+  });
+});
+
+// #472: the "waiting on you" pill on the reload.chat surface must open a FIRST-CLASS approvals inbox
+// (Approve/Reject per pending action, showing what will publish/send/spend) — not scroll to a plain agent
+// message. Before, it dove into a board transcript that isn't even mounted on the coordination surface.
+describe("ConsoleView coordination approvals inbox (#472)", () => {
+  const pendingReq: ApprovalRequestDto = {
+    id: "r1",
+    workspaceId: OWNER_WS,
+    requesterMemberId: "ag1",
+    actionType: "external.send",
+    payload: {},
+    amount: null,
+    summary: "Publish the launch blog post",
+    status: "pending",
+    reason: null,
+    decidedByMemberId: null,
+    decidedAt: null,
+    expiresAt: null,
+    result: null,
+    error: null,
+    createdAt: "2026-06-20T00:00:00Z",
+    updatedAt: "2026-06-20T00:00:00Z",
+  };
+
+  it("owner + flag ON ⇒ the 'waiting on you' pill opens the Approvals inbox with the pending action", async () => {
+    mockSeams();
+    vi.spyOn(api.approvals, "list").mockImplementation(async (_w, status) =>
+      status === "pending" ? [pendingReq] : [],
+    );
+    vi.spyOn(api.approvals, "listPolicies").mockResolvedValue([]);
+    const utils = renderWithStore(<ConsoleView />);
+    await act(async () => {
+      await utils.store.bootstrap();
+    });
+
+    // The pill is present (1 pending)…
+    const pill = await screen.findByRole("button", { name: consoleWaitingChip(1) });
+    await act(async () => {
+      fireEvent.click(pill);
+    });
+
+    // …and clicking it opens the first-class Approvals inbox (the #13 governance surface with status tabs
+    // and per-request Approve/Reject) — not a scroll to a plain agent message.
+    expect(await screen.findByRole("region", { name: /approvals/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pending/i })).toBeInTheDocument();
   });
 });
 
