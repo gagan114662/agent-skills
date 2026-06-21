@@ -222,10 +222,22 @@ export function Composer({ placeholder, onSubmit, compact, queue, draftKey }: Co
         />
         {queue && (
           <>
-            <button className="btn btn--ghost" type="button" onClick={() => stack("queue")} aria-label="Queue">
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => stack("queue")}
+              aria-label={VOICE.queueTooltip}
+              title={VOICE.queueTooltip}
+            >
               Queue
             </button>
-            <button className="btn btn--ghost" type="button" onClick={() => stack("steer")} aria-label="Steer">
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => stack("steer")}
+              aria-label={VOICE.steerTooltip}
+              title={VOICE.steerTooltip}
+            >
               Steer
             </button>
           </>
