@@ -76,11 +76,12 @@ describe("cadenceDayNumber", () => {
 });
 
 describe("composeContentBrief (#415 PRODUCE+PUBLISH, not audit)", () => {
-  it("embeds the query and instructs to write+publish, explicitly not an audit", () => {
+  it("embeds the query and demands the COMPLETE post as the message (not a summary/audit)", () => {
     const brief = composeContentBrief('  best   seo  tool ');
     expect(brief).toContain('"best seo tool"'); // whitespace collapsed
-    expect(brief.toLowerCase()).toContain("publish");
-    expect(brief.toLowerCase()).toContain("not an audit");
-    expect(brief).toContain("#13"); // still approval-gated
+    // The decisive fix (live PR #453): the agent's final MESSAGE ships verbatim — it must BE the post.
+    expect(brief.toLowerCase()).toContain("complete post as your final message");
+    expect(brief.toLowerCase()).toContain("not an outline, summary, or audit");
+    expect(brief.toLowerCase()).toContain("do not stage files");
   });
 });
