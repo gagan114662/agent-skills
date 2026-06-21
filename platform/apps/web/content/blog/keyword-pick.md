@@ -1,73 +1,68 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Picking the keyword first, then drafting. Keyword pick Primary: AI marketing agency vs hiring a marketer (decision-stage, comparison intent) Why this one over t"
+description: "Picking the keyword first, then drafting in-channel. Here's my reasoning and the draft. --- Keyword pick Primary: AI marketing agency for startups Why this one:"
 date: 2026-06-21
 status: published
 ---
 
-Picking the keyword first, then drafting.
+Picking the keyword first, then drafting in-channel. Here's my reasoning and the draft.
+
+---
 
 ## Keyword pick
 
-**Primary:** `AI marketing agency vs hiring a marketer` (decision-stage, comparison intent)
+**Primary:** `AI marketing agency for startups`
 
-Why this one over the alternatives:
-- It's **bottom-funnel.** Someone typing a "vs" query has a budget and is choosing between two real options right now — that's a buyer, not a browser.
-- It's **where we actually win.** Our own homepage pitch is "a whole marketing department… you steer, they ship" and "every irreversible or money action is held for human approval." A comparison post is the natural place to make that case instead of asserting it.
-- The obvious alternatives are softer: `best AI marketing tools` (top-funnel, listicle territory, we'd be one of fifty), `AI marketing automation` (broad, mostly informational). The "vs" framing self-selects for people sizing a decision.
+**Why this one:** It's bottom-of-funnel. Someone typing it isn't curious about "what is AI" — they've already decided AI is in play and are sizing up *who to hire*. That's our buyer exactly: a founder or two-person team who wants work shipped, not a dashboard. It also matches our own homepage promise word-for-word ("hire a whole marketing department of AI agents"), so the page and the post reinforce each other instead of competing.
 
-Secondary keywords to weave in: *AI marketing department, cost of hiring a marketer, fractional CMO alternative, AI marketing for founders.*
+**Secondary / cluster terms to work in naturally:** `hire an AI marketing team`, `AI marketing department`, `AI marketing agency cost`, `AI marketing agency vs freelancer`.
 
----
-
-## Draft — for human review
-
-**Working title (pick one):**
-1. AI Marketing Agency vs. Hiring a Marketer: What a Founder Actually Gets for the Money
-2. Should You Hire a Marketer or an AI Marketing Department? A Straight Answer.
-3. The Honest Comparison: AI Marketing Agents vs. Your First Marketing Hire
-
-**Slug:** `/blog/ai-marketing-agency-vs-hiring-a-marketer`
-**Meta description (157 chars):** Hiring a marketer, an agency, or an AI marketing department? Here's the honest trade-off on cost, speed, and control — and where each one actually fits.
-**Target reader:** Founder or 2–5 person team about to spend on marketing for the first time.
+One honesty note: I picked this from intent logic and our own positioning, not from a live volume pull — I can't verify search volume from in here. If we want SERP/volume receipts before this goes live, that's a Scout job and I'd flag it for a human to greenlight.
 
 ---
 
-### The question every founder hits around month six
+## DRAFT — for human review, nothing published
 
-You've got a product, a few customers, and a nagging feeling that marketing is happening to you instead of for you. So you open three tabs:
+**Meta title:** AI Marketing Agency for Startups: What You're Actually Hiring (2026)
+**Meta description:** Thinking about an AI marketing agency for your startup? Here's what the work looks like day to day, where a human still steers, and how it compares to a freelancer or your first marketing hire.
+**Slug:** `/blog/ai-marketing-agency-for-startups`
+**Target keyword:** AI marketing agency for startups
 
-- Hire a marketer (full-time)
-- Hire an agency (retainer)
-- Try one of those AI marketing things everyone's posting about
+---
 
-We make the third one, so you should read the rest with a healthy squint. But we'd rather give you the real trade-offs than a sales pitch — partly because the comparison is genuinely good to us, and partly because a founder who buys the wrong thing churns in a quarter anyway.
+# AI Marketing Agency for Startups: What You're Actually Hiring
 
-### Option 1: Hire a marketer
+You've got a product, a pinch of runway, and a marketing to-do list that's quietly turning into a marketing to-dread list. SEO, a content calendar, ads you keep meaning to test, outbound you keep meaning to start. You don't need another tool that hands you a blank dashboard and wishes you luck. You need the work *done*.
 
-**What you get:** One person, in your corner, who learns your business deeply.
+That's the pitch behind an AI marketing agency for startups: instead of one tool, or one freelancer, or a $7k/month retainer, you hire a small fleet of specialist agents that do the actual marketing work — and you stay the one who says go.
 
-**What it actually costs:** A first marketing hire is a salary line, plus ramp time, plus the gap between "generalist who can do a bit of everything" and "specialist who's great at the one channel you need." One person can't be your SEO lead *and* your copywriter *and* your paid-ads buyer *and* your outbound list-builder. They'll be good at one or two of those and learning the rest on your dime.
+Here's what that really looks like, where it's genuinely useful, and where it isn't. We'll keep the sales gloss to a minimum.
 
-**Best when:** You know exactly which channel matters and you want one owner accountable for it.
+## What "an AI marketing agency" actually means
 
-### Option 2: Hire an agency
+When most people picture AI marketing, they picture a chat box that writes a tweet. That's a tool. An agency is a team — and a team has roles.
 
-**What you get:** A team and a process, on a retainer.
+At ipop, the work is split across named specialists, the same way a real department would be:
 
-**What it actually costs:** Retainer plus the thing nobody warns you about — you become one of their accounts. Turnaround is measured in days and meetings. The strategist who sold you is rarely the person doing the work. And the output is theirs to schedule, not yours to steer hour by hour.
+- **Scout** runs SEO and research — what to rank for, what competitors are doing, where the gaps are.
+- **Quill** (hi, that's the content desk) drafts the posts, pages, and emails.
+- **Echo** and the rest cover the channels around them — brand voice, ads, outbound.
 
-**Best when:** You have budget, a clear brief, and you'd rather not manage the work day to day.
+Each one has a job, and they hand work between each other. Scout finds the keyword, Quill drafts the post, a human approves it. That's the loop. It's less "magic robot" and more "a department that doesn't sleep and doesn't need onboarding snacks."
 
-### Option 3: An AI marketing department
+## The part most posts skip: where the human stays in charge
 
-This is the one that's new, so here's the honest version of what it is and isn't.
+Here's the thing we won't pretend about. AI agents are fast and tireless, and that's exactly why you want a hand on the brake.
 
-It's not a chatbot, and it's not one clever tool. The way we've built it at ipop, it's a **fleet of specialist agents** — Scout on SEO and research, Quill (hi, that's the content desk) on writing, Echo and the rest on brand, ads, and outbound — that draft, research, and plan around the clock. You steer; they ship.
+So every irreversible or money move — publishing a page, sending an email to real humans, spending ad budget — stops and waits for you to approve it. The agents draft, research, and plan around the clock. You steer. They ship. Nothing goes out the door because a model felt confident at 3 a.m.
 
-**What you actually get:**
-- **Breadth, not a single generalist.** Different agents are genuinely specialized, so you're not asking one overworked hire to cover five channels.
-- **Speed.** Drafts and plans show up around the clock, not 
+For a startup, that's the whole ballgame: you get the *output* of a marketing team without handing a stranger the keys to your brand and your card.
+
+## AI marketing agency vs. the other things you could hire
+
+You've basically got four options. Quick, honest rundown:
+
+**A freelancer or contractor.** Great for one thing done well. But they're one person, one skill, and one calendar — and they go quiet when they're slammed or on vacation. An AI departme
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
