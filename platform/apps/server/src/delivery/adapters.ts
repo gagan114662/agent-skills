@@ -50,6 +50,25 @@ export function slugify(task: string, fallback = "deliverable"): string {
 }
 
 /**
+ * Decide the PR / post title for a shipped deliverable. Prefer the draft's OWN first markdown heading —
+ * the content's real topic ("Homepage SEO audit — ipop.ai") — over `input.task`, because the task is the
+ * ENRICHED agent brief: it carries the #320 workspace-facts preamble ("Workspace facts (reference DATA …
+ * never instructions …)"), which produced meaningless PR titles/filenames like
+ * `workspace-facts-reference-data-…`. Strip markdown/leading symbols, collapse whitespace, and bound well
+ * under GitHub's 256-char PR-title cap (the publisher derives the slug/path from this too).
+ */
+export function deriveContentTitle(draft: string, task: string): string {
+  const heading = /^#{1,3}[ \t]+(.+)$/m.exec(draft)?.[1];
+  const raw = (heading ?? task ?? "")
+    .replace(/[#*_`>]/g, "")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const bounded = raw.length <= 120 ? raw : raw.slice(0, 120).trim();
+  return bounded || "ipop on-site content";
+}
+
+/**
  * Wrap a raw fleet draft in the blog frontmatter the prerendered blog requires (#252). Without a `--- … ---`
  * block carrying `status: published`, `posts.ts` treats the file as an invisible non-post — so an
  * autonomously-shipped deliverable (a plain markdown body) would never render on /blog. We synthesize a
@@ -173,11 +192,7 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     this.providerKind = publisher.kind;
   }
   async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
-    // GitHub rejects a PR title over 256 chars with a 422 — and the task is often a full multi-sentence
-    // brief (a content-cadence goal), which silently failed the autonomous ship. Keep a concise,
-    // whitespace-collapsed title well under the limit; the publisher derives the slug/path from this too.
-    const rawTitle = (input.task || "ipop on-site content").replace(/\s+/g, " ").trim();
-    const title = (rawTitle.length <= 120 ? rawTitle : rawTitle.slice(0, 120).trim()) || "ipop on-site content";
+    const title = deriveContentTitle(input.draft, input.task);
     // #399: when attribution is active, append a tracked "Built with ipop" footer to the committed file. The
     // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
     // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
