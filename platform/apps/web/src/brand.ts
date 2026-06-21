@@ -943,6 +943,8 @@ export const CONSOLE = {
     title: "Get set up",
     progress: (done: number, total: number): string => `${done} of ${total} done`,
     dismiss: "Hide",
+    collapse: "Collapse",
+    expand: "Expand",
     steps: {
       brand: { label: "Set your brand", hint: "Name, palette, and voice so the team sounds like you.", cta: "Set brand" },
       connect: { label: "Connect an account", hint: "Link one place your work goes out — the agents take it from there.", cta: "Connect" },
