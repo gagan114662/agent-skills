@@ -16,7 +16,11 @@
 import { createHash } from "node:crypto";
 import { createRequest } from "../db/repositories/approvals.js";
 import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketing-tasks.js";
+import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
+import { alreadyProposed, recordSkillOptRun } from "../db/repositories/skillopt-runs.js";
 import { loadConfig } from "../config/loader.js";
+import type { SessionLogger } from "../runtime/manager.js";
+import { SkillOptEngine } from "./engine.js";
 import { SKILLOPT_ADOPT_EDIT_ACTION } from "../approvals/policy.js";
 import { agentContracts, contractForHandle } from "../agent-registry/contract.js";
 import { attributionActive, maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
@@ -83,6 +87,12 @@ export function createDefaultSkillOptService(): SkillOptService {
     // #390 (ADR-0390): build the live revenue reward from the #386 projection so the cycle learns toward
     // what earns. Gated default-OFF, owner-first inside the helper; null/empty ⇒ frequency-only, unchanged.
     revenueRewardFor: (workspaceId) => liveRevenueRewardFor(workspaceId),
+    // #283 persistence: the idempotency guard — never re-stage an edit already proposed against this doc.
+    alreadyStaged: (input) =>
+      alreadyProposed(input.workspaceId, input.agentHandle, input.clusterKey, input.currentDocSha),
+    // #283 persistence: durably record the run + every agent's before/after signal. Recorded-only — it
+    // stages nothing and grants no authority (adoption stays human-gated in the #13 queue).
+    recordRun: (input) => recordSkillOptRun(input),
     stage: async (input) => {
       const req = await createRequest({
         workspaceId: input.workspaceId,
@@ -119,4 +129,24 @@ export function createDefaultSkillOptService(): SkillOptService {
     },
   };
   return new SkillOptService(deps);
+}
+
+/**
+ * Build the production-wired SkillOpt scheduled engine (#283, ADR-0283) — the nightly/idle "sleep" trigger.
+ * Owner-workspace-first like the cadence engine: the work-list is the resolved `ownerWorkspaceId` (empty —
+ * so it ticks nobody — until a deployment names one), and the service re-checks the per-workspace gate on
+ * every pass. Default-OFF: with no `skillopt` config the timer is never started (`intervalMs` resolves to 0
+ * in `index.ts`) and even a started timer runs nobody, so a deployment that sets nothing is unchanged.
+ */
+export function createDefaultSkillOptEngine(logger: SessionLogger): SkillOptEngine {
+  const service = createDefaultSkillOptService();
+  return new SkillOptEngine({
+    ownerWorkspaces: () => {
+      const ownerWs = resolveSkillOptCaps(loadConfig().skillopt).ownerWorkspaceId;
+      return ownerWs ? [ownerWs] : [];
+    },
+    ownerMemberId: (workspaceId) => getWorkspaceOwnerMemberId(workspaceId),
+    run: (identity) => service.runWorkspace(identity),
+    logger,
+  });
 }
