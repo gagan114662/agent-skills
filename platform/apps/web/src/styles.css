@@ -5131,6 +5131,20 @@ select:focus-visible {
 .consolediag--warming { border-color: var(--accent, #2d6cdf); background: rgba(45,108,223,0.05); }
 .consolediag__headline { margin: 0; font-weight: 600; }
 .consolediag__detail { margin: 4px 0 0; color: var(--ink-soft, #555); }
+/* #503: the coordination-surface failure banner is compact + dismissible — body on the left, a small dismiss
+   control pinned to the right — so it doesn't dominate the first screen. */
+.consolediag--dismissible { display: flex; align-items: flex-start; gap: 12px; }
+.consolediag__body { min-width: 0; }
+.consolediag__dismiss { margin-left: auto; flex: 0 0 auto; background: none; border: none; cursor: pointer;
+  color: var(--ink-soft, #555); font-size: 12px; padding: 4px 6px; border-radius: 6px; }
+.consolediag__dismiss:hover { color: var(--ink); background: var(--surface, rgba(0,0,0,0.04)); }
+/* #503: the stacked top-of-surface banners (failure diagnostic + first-run card) live in ONE height-capped,
+   scrollable rail. `flex: none` keeps it out of the column's grow/shrink fight; `max-height` + `overflow-y`
+   guarantee the banners can never consume more than a slice of the viewport, so `.coord` (flex: 1) always
+   keeps the rest and the channel's latest messages stay above the fold on first paint. Being a plain block
+   container (not a flex parent) it also neutralises the legacy `.firstrun { flex: 1 }` rule, which would
+   otherwise let the checklist grab half the column. */
+.console__banners { flex: none; min-height: 0; max-height: 40vh; overflow-y: auto; padding-bottom: 4px; }
 .firstrun__eyebrow { font-family: var(--console-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
 .firstrun__headline { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
 .firstrun__sub { margin: 0; max-width: 44ch; font-size: 14px; line-height: 1.55; color: var(--text-dim); }

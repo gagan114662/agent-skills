@@ -187,6 +187,10 @@ export function ConsoleView(): React.JSX.Element {
   // channel switches instead of re-floating over the message area each visit.
   const [firstRunDismissed, setFirstRunDismissed] = useState(false);
   const [firstRunCollapsed, setFirstRunCollapsed] = useState(false);
+  // #503: the failure diagnostic (#487) is dismissible so it can't, stacked under the first-run card, push
+  // the channel below the fold on load. Dismissal is per-session and only hides the banner — the underlying
+  // failure state still drives the rest of the surface; the diagnostic is reachable again on reload.
+  const [diagDismissed, setDiagDismissed] = useState(false);
   // #352/#372/#378: the agent-coordination surface (reload.chat-style channels/threads/members + live
   // sessions), gated default-OFF and owner-workspace-first — it renders for nobody unless this deployment
   // names the owner workspace AND this is that workspace. No new backend: it re-mounts the existing
@@ -519,6 +523,8 @@ export function ConsoleView(): React.JSX.Element {
       return next;
     });
   }
+  // #503: the runtime-failure banner shows on the coordination surface until the user dismisses it.
+  const showDiag = showCoordinationSurface && mc?.diagnostic?.state === "sessions_failing" && !diagDismissed;
   function onFirstRunAction(key: FirstRunStepKey): void {
     const section = firstRunSettingsSection(key);
     if (section) openShellSettings(section); // #506: deep-link "Set brand"/"Connect" to their section
@@ -845,24 +851,43 @@ export function ConsoleView(): React.JSX.Element {
             and the board below is byte-for-byte what ships today. */}
         {showCoordinationSurface ? (
           <>
-            {/* #487: surface the mission-control failure diagnostic on the reload.chat surface too — the board
-                already shows it, but here the user only saw a 'running' pill that silently cleared. When runs
-                are failing to spawn, show the backend's human headline + detail (e.g. "I couldn't start up —
-                my runtime is missing a tool") so the user sees the failure and reason without devtools. */}
-            {mc?.diagnostic?.state === "sessions_failing" && (
-              <div className="consolediag consolediag--sessions_failing" role="alert">
-                <p className="consolediag__headline">{mc.diagnostic.headline}</p>
-                <p className="consolediag__detail">{mc.diagnostic.detail}</p>
+            {/* #503: the top-of-surface banners (the #487 failure diagnostic + the #479 first-run card) share
+                ONE height-capped, scrollable rail so that — even stacked — they can never eat more than a
+                slice of the viewport. The channel below (`.coord`, flex: 1) always keeps the rest, so the
+                latest messages stay above the fold on first paint. */}
+            {(showDiag || showFirstRun) && (
+              <div className="console__banners">
+                {/* #487: surface the mission-control failure diagnostic on the reload.chat surface too — the
+                    board already shows it, but here the user only saw a 'running' pill that silently cleared.
+                    When runs are failing to spawn, show the backend's human headline + detail (e.g. "I
+                    couldn't start up — my runtime is missing a tool") so the user sees the failure and reason
+                    without devtools. #503: compact + dismissible so it doesn't dominate the first screen. */}
+                {showDiag && mc?.diagnostic && (
+                  <div className="consolediag consolediag--sessions_failing consolediag--dismissible" role="alert">
+                    <div className="consolediag__body">
+                      <p className="consolediag__headline">{mc.diagnostic.headline}</p>
+                      <p className="consolediag__detail">{mc.diagnostic.detail}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="consolediag__dismiss"
+                      aria-label={CONSOLE.coordination.diagnostic.dismissLabel}
+                      onClick={() => setDiagDismissed(true)}
+                    >
+                      {CONSOLE.coordination.diagnostic.dismiss}
+                    </button>
+                  </div>
+                )}
+                {showFirstRun && (
+                  <FirstRunChecklist
+                    steps={firstRunSteps}
+                    collapsed={firstRunCollapsed}
+                    onAction={onFirstRunAction}
+                    onToggleCollapse={toggleFirstRunCollapsed}
+                    onDismiss={dismissFirstRun}
+                  />
+                )}
               </div>
-            )}
-            {showFirstRun && (
-              <FirstRunChecklist
-                steps={firstRunSteps}
-                collapsed={firstRunCollapsed}
-                onAction={onFirstRunAction}
-                onToggleCollapse={toggleFirstRunCollapsed}
-                onDismiss={dismissFirstRun}
-              />
             )}
             <CoordinationView onOpenDecisions={openDecisionLog} onOpenSettings={() => setShellSettingsOpen(true)} />
           </>
