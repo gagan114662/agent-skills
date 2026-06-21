@@ -20,6 +20,9 @@ import { agentRoutes } from "./routes/agents.js";
 import { channelRoutes } from "./routes/channels.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { memoryRoutes } from "./routes/memory.js";
+import { decisionsRoutes } from "./routes/decisions.js";
+import { createDefaultDecisionService } from "./decisions/default.js";
+import { captureDecisionsFromDeliverable } from "./decisions/capture.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { buildAcquisitionRegistry } from "./acquisition/default.js";
@@ -577,6 +580,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(channelRoutes);
   app.register(notificationRoutes);
   app.register(memoryRoutes);
+  app.register(decisionsRoutes);
   app.register(taskRoutes);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   // #189: the executor registry routes approved `external.send` actions through the acquisition
@@ -645,7 +649,25 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // manager↔service cycle). Gated by the EXISTING `agentCollaboration` capability (#319, default-OFF,
   // owner-workspace-first): with it off the hook is a no-op and behavior is byte-for-byte unchanged.
   const agentRegistryService = createAgentRegistryService(sessionManager);
+  // #513 shared memory: capture the agent's decisions from its posted deliverable into the shared store so a
+  // teammate reuses them without being re-told. Internal memory write only (no send/spend), isolated from
+  // the a2a handoff below — a capture error never blocks the handoff. Built once; the SessionManager hook
+  // already only fires when a deliverable is actually posted (the #370 owner-first posting gate).
+  const decisionService = createDefaultDecisionService();
   setDeliverableHandoffHook(async ({ workspaceId, agentMemberId, task, deliverable }) => {
+    try {
+      const recorded = await captureDecisionsFromDeliverable(decisionService, {
+        workspaceId,
+        agentMemberId,
+        task,
+        deliverable,
+      });
+      if (recorded > 0) {
+        app.log.info({ workspaceId, agentMemberId, recorded }, "decision capture: recorded");
+      }
+    } catch (err) {
+      app.log.warn({ workspaceId, agentMemberId, err: String(err) }, "decision capture: skipped");
+    }
     const collab = resolveAgentCollaborationCaps(loadConfig(workspaceId).agentCollaboration);
     if (!isSpawnEnabledForWorkspace(collab, workspaceId)) {
       app.log.info({ workspaceId, agentMemberId, reason: "collaboration-disabled" }, "handoff hook: skipped");

@@ -3,16 +3,16 @@
  * DepartmentService} to the real repos: the per-workspace caps from the layered config (#58), the present
  * handles + persona minting from the #59 persona path (reusing `definePersona` exactly as the #123
  * marketing seed does), the member counts from the #2 members repo, and the "decisions captured" count from
- * the #13 approval requests. No new launch authority and no send/spend: seeding mints identity personas
+ * the #513 shared decision store (the live decisions agents recorded to the browsable memory graph). No new
+ * launch authority and no send/spend: seeding mints identity personas
  * only; every real action still flows through the #13 gate.
  */
 import { generateAgentToken } from "../auth/secrets.js";
 import { loadConfig } from "../config/loader.js";
-import { listRequests } from "../db/repositories/approvals.js";
+import { countLiveDecisions } from "../db/repositories/agent-decisions.js";
 import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { definePersona, getPersonaByHandle, listPersonas } from "../db/repositories/personas.js";
 import { resolveDepartmentCaps } from "./caps.js";
-import { isCapturedDecision } from "./rail.js";
 import { DepartmentService, type DepartmentDeps } from "./service.js";
 
 export function createDefaultDepartmentService(): DepartmentService {
@@ -46,8 +46,10 @@ export function createDefaultDepartmentService(): DepartmentService {
         agents: members.filter((m) => m.kind === "agent").length,
       };
     },
-    countDecisionsCaptured: async (workspaceId) =>
-      (await listRequests(workspaceId)).filter((r) => isCapturedDecision(r.status)).length,
+    // #513: the "decisions captured" footer is now backed by the real shared decision store — the live
+    // (non-superseded) decisions agents have recorded to the browsable memory graph, not a proxy count of
+    // approval requests. This is the number the Memory view can actually show.
+    countDecisionsCaptured: async (workspaceId) => countLiveDecisions(workspaceId),
   };
   return new DepartmentService(deps);
 }
