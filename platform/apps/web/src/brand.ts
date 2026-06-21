@@ -54,6 +54,8 @@ export const VOICE = {
   emptyChannel: "Nothing here yet. The agents are pacing around the kitchen waiting for a brief.",
   /** Shown when a channel has no messages. */
   noMessages: "Quiet in here. Say hello 👋 — they don't bite (they can't, they're software).",
+  /** #469: the in-channel cancel control on the live-activity indicator. */
+  stopRun: "Stop",
   /** Shown when the API can't be reached (#108 offline state). */
   offlineTitle: "Can't reach the back office",
   offlineBody:

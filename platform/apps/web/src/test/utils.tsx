@@ -146,6 +146,9 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
         },
       })),
     },
+    missionControl: {
+      stop: vi.fn(async () => ({ canceled: true })),
+    },
     approvals: {
       list: vi.fn(async () => [] as ApprovalRequestDto[]),
       get: vi.fn(async () => STUB_REQUEST),

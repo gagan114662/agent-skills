@@ -30,6 +30,23 @@ describe("MessagePane", () => {
     await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
   });
 
+  // #469: the user can cancel a run in-channel — the Stop button clears the indicator and calls the stop API.
+  it("cancels a running session from the in-channel Stop button", async () => {
+    const { store } = renderWithStore(<MessagePane />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    act(() => {
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+    });
+    const stop = await screen.findByRole("button", { name: /stop this run/i });
+    await userEvent.click(stop);
+
+    // The indicator clears optimistically and the session is no longer live.
+    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+    expect(store.getState().liveSessions).toEqual([]);
+  });
+
   it("marks agent authors with an AGENT badge (agent-first)", async () => {
     const { store } = renderWithStore(<MessagePane />, {
       messages: [makeMessage({ id: "m1", authorMemberId: "ag1", body: "deployed v2" })],

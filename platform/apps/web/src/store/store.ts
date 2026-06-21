@@ -186,6 +186,8 @@ export interface StoreDeps {
   > & {
     /** #371 members-rail footer — only the read-only `view` is needed (the team roster + the rail). */
     department: Pick<typeof realApi.department, "view">;
+    /** #469: cancel a running session from in-channel — only `stop` is needed here. */
+    missionControl: Pick<typeof realApi.missionControl, "stop">;
   };
   realtime: Realtime;
 }
@@ -326,6 +328,9 @@ export interface Store {
   /** #480: replace the live-session set (from the mission-control poll) so channels can show in-channel
    *  agent activity. A no-op when the set is unchanged, so it never forces a needless re-render. */
   setLiveSessions(sessions: LiveSessionLite[]): void;
+  /** #469: cancel a running session (the in-channel "Stop" affordance). Optimistically drops it from the
+   *  live set so the working indicator clears immediately; the next mission-control poll reconciles. */
+  stopSession(sessionId: string): Promise<void>;
   // --- trial funnel soft paywall (#153) ---
   /** Surface the soft paywall nudge (called when a tenant cap is hit). */
   showPaywall(): void;
@@ -813,6 +818,18 @@ export function createStore({ api, realtime }: StoreDeps): Store {
           return p.id === n.id && p.channelId === n.channelId && p.status === n.status;
         });
       if (!same) set({ liveSessions: sessions });
+    },
+
+    async stopSession(sessionId) {
+      const workspaceId = state.identity?.workspaceId;
+      if (!workspaceId) return;
+      // Optimistically clear the indicator so the click feels instant; the poll reconciles either way.
+      set({ liveSessions: state.liveSessions.filter((s) => s.id !== sessionId) });
+      try {
+        await api.missionControl.stop(workspaceId, sessionId);
+      } catch (e) {
+        set({ error: errMsg(e) });
+      }
     },
 
     // --- composer message/steering queue (#54) ---
