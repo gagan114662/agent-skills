@@ -1203,6 +1203,10 @@ export const BILLING = {
     testModeTitle: "Test mode — no live charges yet",
     testModeBody:
       "Checkout is wired end-to-end but runs in test mode. Going live (connecting Stripe and taking the first real payment) is the owner's call — until then nothing is charged.",
+    /** Shown instead of the test-mode note once the owner has flipped go-live (#481): real money is on. */
+    liveModeTitle: "Live — real payments are on",
+    liveModeBody:
+      "Checkout is live: real cards are charged and your plan activates the moment payment clears. Manage subscriptions, receipts, and refunds in the Stripe dashboard.",
   },
 } as const;
 

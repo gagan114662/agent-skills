@@ -10,6 +10,7 @@ import type { PlansResponseDto } from "@reload/shared";
 import type { UsageReport } from "../api/types.js";
 import { BillingSettingsPanel } from "./BillingSettingsPanel.js";
 import { api } from "../api/client.js";
+import { BILLING } from "../brand.js";
 import { createStore } from "../store/store.js";
 import { StoreProvider } from "../store/StoreContext.js";
 import { makeFakeDeps, TEST_IDENTITY } from "../test/utils.js";
@@ -65,6 +66,7 @@ describe("BillingSettingsPanel (#215)", () => {
   it("renders the current plan + usage vs cap and embeds the upgrade table", async () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
     vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
+    vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "none", mode: "test", live: false });
     const store = await bootedStore("ws-billing");
 
     await act(async () => {
@@ -80,5 +82,25 @@ describe("BillingSettingsPanel (#215)", () => {
     expect(screen.getByText(/\$5\.00/)).toBeInTheDocument();
     // Embedded PricingPanel renders the catalog so the upgrade path is right here in Settings.
     expect(screen.getAllByText("Pro").length).toBeGreaterThan(0);
+    // Not live → the test-mode safety note shows (#481).
+    expect(screen.getByText(BILLING.panel.testModeTitle)).toBeInTheDocument();
+  });
+
+  it("flips to the live-mode note when the billing status reports go-live is on (#481)", async () => {
+    vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
+    vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
+    vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "stripe", mode: "live", live: true });
+    const store = await bootedStore("ws-billing-live");
+
+    await act(async () => {
+      render(
+        <StoreProvider store={store}>
+          <BillingSettingsPanel />
+        </StoreProvider>,
+      );
+    });
+
+    expect(await screen.findByText(BILLING.panel.liveModeTitle)).toBeInTheDocument();
+    expect(screen.queryByText(BILLING.panel.testModeTitle)).not.toBeInTheDocument();
   });
 });

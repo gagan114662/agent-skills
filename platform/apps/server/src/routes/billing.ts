@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   ActivePlanDto,
+  BillingStatusDto,
   CheckoutResponseDto,
   PaymentLinkDto,
   PlanDto,
@@ -32,6 +33,8 @@ export interface BillingRoutesOptions {
   billingManager: BillingManager;
   /** The #125 pricing/plan layer (catalog + workspace-scoped checkout). */
   planService: PlanBillingService;
+  /** #481 go-live snapshot (provider + declared mode + whether real money is on), surfaced read-only. */
+  status: BillingStatusDto;
 }
 
 const MAX_NAME_LEN = 200;
@@ -67,7 +70,7 @@ function safeReturnUrl(raw: unknown): string | undefined {
  * action (see `approvals/runtime.ts`); payouts stay manual in the Stripe dashboard.
  */
 export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOptions): Promise<void> {
-  const { billingManager, planService } = opts;
+  const { billingManager, planService, status } = opts;
 
   async function authorize(
     req: FastifyRequest,
@@ -231,6 +234,18 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!assertWorkspace(id, wid, reply)) return;
     const listing = await planService.listPlans(wid);
     return reply.send(toListingDto(listing));
+  });
+
+  // #481 go-live: the configured backend + declared mode so the UI shows the REAL state ("Live" vs "Test
+  // mode") instead of a hardcoded banner. Read-only, workspace-scoped, no secrets — `live` is true only
+  // when the stripe backend runs in live mode.
+  app.get("/workspaces/:wid/billing/status", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const dto: BillingStatusDto = { provider: status.provider, mode: status.mode, live: status.live };
+    return reply.send(dto);
   });
 
   // Plan click → a real Stripe Checkout / payment link via the #98 provider seam (#125). INBOUND money.

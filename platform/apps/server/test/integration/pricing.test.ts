@@ -17,6 +17,7 @@ import { channelPoster } from "../../src/runtime/default.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { CONFIG_DEFAULTS, type BillingConfig } from "../../src/config/schema.js";
 import { getPlan, planCaps } from "../../src/billing/plans.js";
+import type { BillingStatus } from "../../src/billing/mode.js";
 import type { SessionLogger } from "../../src/runtime/manager.js";
 
 const silentLogger: SessionLogger = {
@@ -38,7 +39,9 @@ afterAll(async () => {
   await Promise.allSettled([closeDb(), closeRedis()]);
 });
 
-async function startApp(opts: { billing?: BillingConfig } = {}): Promise<FastifyInstance> {
+async function startApp(
+  opts: { billing?: BillingConfig; status?: BillingStatus } = {},
+): Promise<FastifyInstance> {
   const loadConfig = () => ({ ...CONFIG_DEFAULTS, billing: opts.billing });
   const secrets = new StaticSecretsResolver({
     STRIPE_SECRET_KEY: STRIPE_KEY,
@@ -63,7 +66,7 @@ async function startApp(opts: { billing?: BillingConfig } = {}): Promise<Fastify
     loadConfig,
     logger: silentLogger,
   });
-  const app = buildApp({ billingManager, planService });
+  const app = buildApp({ billingManager, planService, ...(opts.status ? { billingStatus: opts.status } : {}) });
   apps.push(app);
   await app.listen({ port: 0, host: "127.0.0.1" });
   void (app.server.address() as AddressInfo);
@@ -217,6 +220,47 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       payload: { planKey: "enterprise" },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("reports go-live status: test/none by default, live only when stripe runs live (#481)", async () => {
+    // Default (no override): the no-network none provider in test mode → never live.
+    const testApp = await startApp({ billing: BILLING_CFG });
+    const tw = await seed(testApp);
+    const testStatus = (
+      await testApp.inject({
+        method: "GET",
+        url: `/workspaces/${tw.workspaceId}/billing/status`,
+        cookies: { rid: tw.cookie },
+      })
+    ).json();
+    expect(testStatus).toEqual({ provider: "none", mode: "test", live: false });
+
+    // Owner has flipped go-live: stripe backend + live mode → real money is on.
+    const liveApp = await startApp({
+      billing: BILLING_CFG,
+      status: { provider: "stripe", mode: "live", live: true },
+    });
+    const lw = await seed(liveApp);
+    const liveStatus = (
+      await liveApp.inject({
+        method: "GET",
+        url: `/workspaces/${lw.workspaceId}/billing/status`,
+        cookies: { rid: lw.cookie },
+      })
+    ).json();
+    expect(liveStatus).toEqual({ provider: "stripe", mode: "live", live: true });
+  });
+
+  it("cannot read another workspace's billing status (IDOR, #481)", async () => {
+    const app = await startApp({ billing: BILLING_CFG });
+    const a = await seed(app);
+    const b = await seed(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/workspaces/${a.workspaceId}/billing/status`, // A's workspace
+      cookies: { rid: b.cookie }, // B's identity
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("cannot read or check out another workspace's plan (IDOR)", async () => {

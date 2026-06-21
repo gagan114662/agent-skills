@@ -11,15 +11,20 @@ import type { BillingProvider } from "../../src/billing/provider.js";
  */
 describe("createBillingProvider (#98 — none default, stripe opt-in, injectable)", () => {
   it("defaults to the no-network NoneBillingProvider", () => {
-    const p = createBillingProvider({ provider: "none", webhookToleranceSeconds: 300 });
+    const p = createBillingProvider({ provider: "none", mode: "test", webhookToleranceSeconds: 300 });
     expect(p).toBeInstanceOf(NoneBillingProvider);
     expect(p.kind).toBe("none");
   });
 
   it("selects the StripeBillingProvider when configured (SDK not loaded — lazy)", () => {
-    const p = createBillingProvider({ provider: "stripe", webhookToleranceSeconds: 300 });
+    const p = createBillingProvider({ provider: "stripe", mode: "test", webhookToleranceSeconds: 300 });
     expect(p).toBeInstanceOf(StripeBillingProvider);
     expect(p.kind).toBe("stripe");
+  });
+
+  it("threads the go-live mode into the Stripe adapter (#481)", () => {
+    const p = createBillingProvider({ provider: "stripe", mode: "live", webhookToleranceSeconds: 300 });
+    expect((p as StripeBillingProvider).mode).toBe("live");
   });
 
   it("returns an injected provider unchanged (tests pass a fake)", () => {
@@ -28,11 +33,13 @@ describe("createBillingProvider (#98 — none default, stripe opt-in, injectable
       createProductPrice: () => Promise.resolve({ productId: "p", priceId: "pr" }),
       createPaymentLink: () => Promise.resolve({ providerLinkId: "l", url: "https://x" }),
     };
-    expect(createBillingProvider({ provider: "stripe", webhookToleranceSeconds: 300 }, fake)).toBe(fake);
+    expect(
+      createBillingProvider({ provider: "stripe", mode: "test", webhookToleranceSeconds: 300 }, fake),
+    ).toBe(fake);
   });
 
   it("the BillingProvider seam exposes NO outbound-money method (inbound only)", () => {
-    const p = createBillingProvider({ provider: "none", webhookToleranceSeconds: 300 });
+    const p = createBillingProvider({ provider: "none", mode: "test", webhookToleranceSeconds: 300 });
     // Structural safety rail: refunds/payouts/transfers cannot be expressed through the seam.
     expect((p as Record<string, unknown>).refund).toBeUndefined();
     expect((p as Record<string, unknown>).payout).toBeUndefined();

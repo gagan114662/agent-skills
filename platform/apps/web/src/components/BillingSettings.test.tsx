@@ -61,9 +61,18 @@ describe("BillingSettings (#215)", () => {
     expect(screen.getByText("$0.00")).toBeInTheDocument();
   });
 
-  it("always shows the clearly-marked test-mode note (no live charges)", () => {
+  it("shows the clearly-marked test-mode note by default (no live charges)", () => {
     render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} />);
     expect(screen.getByText(BILLING.panel.testModeTitle)).toBeInTheDocument();
     expect(screen.getByText(BILLING.panel.testModeBody)).toBeInTheDocument();
+    // The live note is NOT shown in test mode.
+    expect(screen.queryByText(BILLING.panel.liveModeTitle)).not.toBeInTheDocument();
+  });
+
+  it("shows the live-mode note once go-live is on (#481), not the test note", () => {
+    render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} live />);
+    expect(screen.getByText(BILLING.panel.liveModeTitle)).toBeInTheDocument();
+    expect(screen.getByText(BILLING.panel.liveModeBody)).toBeInTheDocument();
+    expect(screen.queryByText(BILLING.panel.testModeTitle)).not.toBeInTheDocument();
   });
 });

@@ -19,10 +19,13 @@ export function BillingSettings({
   current,
   plans,
   usage,
+  live = false,
 }: {
   current: ActivePlanDto | null;
   plans: readonly PlanDto[];
   usage: UsageReport | null;
+  /** #481 go-live: true once real payments are on (stripe + live mode) — flips the safety note. */
+  live?: boolean;
 }): React.JSX.Element {
   // The display name of the active plan (catalog lookup); a workspace with no activated plan is on trial.
   const planName = current ? (plans.find((p) => p.key === current.planKey)?.name ?? current.planKey) : null;
@@ -70,9 +73,12 @@ export function BillingSettings({
         </div>
       </dl>
 
-      <p className="billing-settings__testmode" role="note">
-        <strong>{BILLING.panel.testModeTitle}</strong>
-        <span>{BILLING.panel.testModeBody}</span>
+      <p
+        className={`billing-settings__testmode${live ? " billing-settings__testmode--live" : ""}`}
+        role="note"
+      >
+        <strong>{live ? BILLING.panel.liveModeTitle : BILLING.panel.testModeTitle}</strong>
+        <span>{live ? BILLING.panel.liveModeBody : BILLING.panel.testModeBody}</span>
       </p>
     </section>
   );

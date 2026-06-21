@@ -2,6 +2,7 @@ import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
 import type { SandboxGitSource } from "./runtime/sandbox.js";
+import type { BillingMode } from "./billing/mode.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -119,6 +120,12 @@ export interface BillingEnv {
    * (currency, secret-var names) lives in the layered config (#58), not here.
    */
   provider: BillingProviderKind;
+  /**
+   * Go-live intent (#481). `test` (the default everywhere) never moves real money; `live` does. Going
+   * live is the owner's explicit three-part flip: `BILLING_PROVIDER=stripe` + `BILLING_MODE=live` + a real
+   * `sk_live_…` key. The Stripe adapter fails closed if the key's prefix contradicts this mode.
+   */
+  mode: BillingMode;
   /**
    * Max accepted age (seconds) of a webhook signature timestamp — the replay window. Default 300
    * (Stripe's recommendation).
@@ -489,6 +496,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     billing: {
       // Default `none`: no network/spend. `stripe` enables the real adapter (lazy SDK load).
       provider: source.BILLING_PROVIDER === "stripe" ? "stripe" : "none",
+      // #481 go-live: only the exact string `live` takes real money — anything else is `test` (fail safe).
+      mode: source.BILLING_MODE === "live" ? "live" : "test",
       // Stripe's recommended webhook replay window (seconds).
       webhookToleranceSeconds: num(source.BILLING_WEBHOOK_TOLERANCE_SECONDS, 300),
     },

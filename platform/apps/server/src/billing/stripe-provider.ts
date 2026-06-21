@@ -5,6 +5,7 @@ import type {
   PaymentLinkResult,
   ProductPrice,
 } from "./provider.js";
+import { assertKeyMatchesMode, type BillingMode } from "./mode.js";
 
 /**
  * Production adapter mapping {@link BillingProvider} onto Stripe (the official `stripe` npm SDK). This is
@@ -15,7 +16,12 @@ import type {
  * it. To use the `stripe` backend:
  *   1. Install it:  pnpm --filter @reload/server add stripe
  *   2. Provide STRIPE_SECRET_KEY (+ STRIPE_WEBHOOK_SECRET) per tenant on the #25 AGENT_SECRETS path.
- *   3. Set BILLING_PROVIDER=stripe.
+ *   3. Set BILLING_PROVIDER=stripe (and, to take real money, BILLING_MODE=live — see below).
+ *
+ * GO-LIVE (#481): the adapter carries the declared {@link BillingMode} and, before the SDK ever loads,
+ * asserts the supplied `STRIPE_SECRET_KEY`'s prefix matches it (`sk_live_…` ⇄ live, `sk_test_…` ⇄ test).
+ * A mismatch FAILS CLOSED ({@link import("./mode.js").BillingModeMismatchError}) so a test key can't sit
+ * in production (zero real revenue) and a live key can't sit in staging (accidental real charges).
  *
  * INBOUND ONLY: this adapter creates products/prices/payment links — it has no path that refunds, pays
  * out, or transfers. Outbound money is a #13 approval-gated, recorded-only action (see ./safety.ts).
@@ -57,25 +63,48 @@ function authError(): Error {
   );
 }
 
-async function loadClient(secrets: Record<string, string>): Promise<StripeClient> {
+/** The SDK loader seam — defaults to the lazy dynamic import; tests inject a mock module. */
+export type StripeModuleLoader = () => Promise<StripeSdkModule>;
+
+const defaultModuleLoader: StripeModuleLoader = async () => {
+  const specifier = "stripe";
+  return (await import(specifier)) as unknown as StripeSdkModule;
+};
+
+async function loadClient(
+  secrets: Record<string, string>,
+  mode: BillingMode,
+  loadModule: StripeModuleLoader,
+): Promise<StripeClient> {
   const apiKey = secrets[SECRET_KEY_NAME];
   if (!apiKey) throw authError();
-  const specifier = "stripe";
+  // Go-live guard (#481): refuse a key whose mode contradicts the declared BILLING_MODE — BEFORE any
+  // network or SDK load, and without ever logging the key value.
+  assertKeyMatchesMode(mode, apiKey);
   let mod: StripeSdkModule;
   try {
-    mod = (await import(specifier)) as unknown as StripeSdkModule;
+    mod = await loadModule();
   } catch {
     throw authError();
   }
   return new mod.default(apiKey);
 }
 
-/** The provider used when `BILLING_PROVIDER=stripe`. Lazily loads the SDK on first call. */
+/**
+ * The provider used when `BILLING_PROVIDER=stripe`. Lazily loads the SDK on first call. The declared
+ * `mode` (#481) gates real money; an optional `loadModule` is the test-only SDK seam (production uses the
+ * dynamic import).
+ */
 export class StripeBillingProvider implements BillingProvider {
   readonly kind = "stripe";
 
+  constructor(
+    readonly mode: BillingMode = "test",
+    private readonly loadModule: StripeModuleLoader = defaultModuleLoader,
+  ) {}
+
   async createProductPrice(input: CreateProductPriceInput): Promise<ProductPrice> {
-    const client = await loadClient(input.secrets);
+    const client = await loadClient(input.secrets, this.mode, this.loadModule);
     const product = await client.products.create({ name: input.name });
     const price = await client.prices.create({
       product: product.id,
@@ -87,7 +116,7 @@ export class StripeBillingProvider implements BillingProvider {
   }
 
   async createPaymentLink(input: CreatePaymentLinkInput): Promise<PaymentLinkResult> {
-    const client = await loadClient(input.secrets);
+    const client = await loadClient(input.secrets, this.mode, this.loadModule);
     const link = await client.paymentLinks.create({
       line_items: [{ price: input.priceId, quantity: 1 }],
       metadata: input.metadata,
