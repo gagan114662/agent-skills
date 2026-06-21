@@ -35,6 +35,7 @@ import { createCoordinationChannelBridge } from "../agent-channel-bridge/default
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
+import { handleHumanMentionPost, type AddressedPersona } from "./mention-trigger.js";
 import { MarketingBriefService } from "./brief.js";
 import { resolveDedupeEnabled } from "./dedup.js";
 import {
@@ -447,10 +448,30 @@ export function buildMarketingMentionTrigger(sessionManager: SessionManager): Ma
   const mention = createMarketingMentionService(sessionManager);
   return async (identity, channel, message) => {
     if (identity.kind !== "human") return;
-    if (channel.name === null || !MARKETING_CHANNELS.includes(channel.name)) return;
-    await mention.launch(
-      { workspaceId: identity.workspaceId, memberId: identity.memberId },
-      { channelId: channel.id, messageId: message.id, task: message.body },
+    // #468: delegate to the pure handler so a department channel LAUNCHES, a denial is SURFACED, and an agent
+    // addressed off its home channel gets an honest in-channel redirect — never a silent drop. A real session
+    // still launches only in a department channel (the launch surface is unchanged).
+    const id = { workspaceId: identity.workspaceId, memberId: identity.memberId };
+    await handleHumanMentionPost(
+      {
+        isMarketingChannel: (name) => name !== null && MARKETING_CHANNELS.includes(name),
+        launch: (input) => mention.launch(id, input),
+        // The fan-out persists mention rows BEFORE this trigger runs (see messaging/delivery.ts), so the
+        // addressed personas are already resolvable here. Keep only those that map to a real department agent.
+        addressedDepartmentPersonas: async (workspaceId, messageId) =>
+          (await personaMentionsOnMessage(workspaceId, messageId))
+            .map((p) => {
+              const dept = departmentForHandle(p.name);
+              return dept ? { agentMemberId: p.agentMemberId, name: p.name, homeChannel: dept.channel } : null;
+            })
+            .filter((p): p is AddressedPersona => p !== null),
+        postNotice: async (input) => {
+          await channelPoster.post(input);
+        },
+      },
+      id,
+      channel,
+      message,
     );
   };
 }
