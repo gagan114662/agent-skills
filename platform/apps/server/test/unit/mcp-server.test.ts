@@ -79,6 +79,8 @@ const TOOL_NAMES = [
   "read_memory",
   "write_memory",
   "send_outbound_email",
+  "check_channel_connection",
+  "send_through_channel",
 ];
 
 describe("#10 MCP server (hermetic, in-memory transport)", () => {
