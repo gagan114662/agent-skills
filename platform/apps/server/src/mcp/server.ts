@@ -37,6 +37,10 @@ import { resolveThreadRoot } from "../messaging/threads.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 import { captureReply } from "./reply-capture.js";
 import {
+  createOutboundEmailSubmitter,
+  type OutboundEmailSubmitter,
+} from "../email/agent-outbound.js";
+import {
   redisRealtimeSubscriptions,
   type RealtimeSubscriptions,
   type Unsubscribe,
@@ -63,6 +67,11 @@ export interface McpServerDeps {
   logger: FastifyBaseLogger;
   /** Realtime source for resource-update pushes; injected so tests run Redis-free. */
   realtime?: RealtimeSubscriptions;
+  /**
+   * The #463 outbound-email submitter — queues a real email behind owner approval. Injected so the
+   * hermetic unit test runs DB-free; defaults to the repository-backed submitter bound to this identity.
+   */
+  outboundEmail?: OutboundEmailSubmitter;
 }
 
 type ToolResult = {
@@ -84,6 +93,7 @@ function fail(message: string): ToolResult {
 export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): McpServer {
   const log = deps.logger;
   const realtime = deps.realtime ?? redisRealtimeSubscriptions;
+  const submitOutboundEmail = deps.outboundEmail ?? createOutboundEmailSubmitter(identity, log);
   const wid = identity.workspaceId;
 
   const mcp = new McpServer(
@@ -399,6 +409,35 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         createdByMemberId: identity.memberId,
       });
       return ok({ ...(await getMemory(wid, r.id)), created: r.created });
+    },
+  );
+
+  mcp.registerTool(
+    "send_outbound_email",
+    {
+      title: "Send an outbound email",
+      description:
+        "Reach a real person OUTSIDE your workspace — a prospect, customer, or partner — by email. " +
+        "This does not send right away: it queues the exact recipient, subject, and body for an owner " +
+        "to approve in the decision queue, and the email is delivered for real only once they approve. " +
+        "Use this to actually follow up and ship, instead of leaving a draft for someone to copy out.",
+      inputSchema: {
+        to: z.string().describe("The recipient's email address (a single address)."),
+        subject: z.string().min(1).describe("The subject line."),
+        body: z.string().min(1).describe("The email body."),
+      },
+    },
+    async ({ to, subject, body }) => {
+      const result = await submitOutboundEmail({ to, subject, body });
+      if (!result.ok) return fail(result.error);
+      return ok({
+        status: "pending_approval",
+        requestId: result.requestId,
+        summary: result.summary,
+        message:
+          "Queued for owner approval. The email will be sent for real once a human approves it in the " +
+          "decision queue — nothing leaves until then.",
+      });
     },
   );
 
