@@ -1459,6 +1459,51 @@ export const BRAND_ASSETS = {
   spectrumBody: "One hue per marketing function, a warm-to-cool arc anchored on Pop Vermilion.",
 } as const;
 
+/**
+ * Per-route SEO metadata for the prerendered public surfaces (#467). Scout's audit found every route —
+ * home, login, start, pricing, the marketing sections — shared the homepage's `<title>`, description, and
+ * H1, and that the real subject was buried after ~18 words of build-config boilerplate. Each entry here is
+ * a UNIQUE, FRONT-LOADED `<title>` (the distinguishing term first, the brand trailing) plus a focused meta
+ * description. The prerender step (`entry-server.tsx` → `injectPage`) bakes these into the static `<head>`
+ * for each page, so a raw crawl gets the right title/description/canonical instead of the homepage's.
+ *
+ * The home page keeps its hand-written tags in `index.html`; this map covers every other public route.
+ * Descriptions reuse each page's own on-page subtitle so there is one source of truth for the copy.
+ * Keyed by canonical path. `name` is the human label used for the breadcrumb trail.
+ */
+export const PAGE_SEO = {
+  "/pricing": {
+    name: "Pricing",
+    title: `Pricing — ${BRAND.name}, your marketing agency of AI agents`,
+    description: PRICING.sub,
+  },
+  "/compare": {
+    name: "Compare",
+    title: `Compare ${BRAND.name} vs. the alternatives`,
+    description: COMPARE.sub,
+  },
+  "/stories": {
+    name: "Customer stories",
+    title: `Customer stories — ${BRAND.name} receipts, not testimonials`,
+    description: STORIES.sub,
+  },
+  "/guides": {
+    name: "Guides",
+    title: "Guides — how AI marketing agents actually work",
+    description: GUIDES.sub,
+  },
+  "/changelog": {
+    name: "Changelog",
+    title: `Changelog — what the ${BRAND.name} fleet shipped`,
+    description: CHANGELOG.sub,
+  },
+  "/brand": {
+    name: "Brand kit",
+    title: `Brand kit — the ${BRAND.name} marks, palette & voice`,
+    description: BRAND_ASSETS.sub,
+  },
+} as const satisfies Record<string, { name: string; title: string; description: string }>;
+
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {
   title: "You're flying — time for more runway",

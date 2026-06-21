@@ -13,8 +13,12 @@
  * which `renderToStaticMarkup` never runs.
  */
 import { renderToStaticMarkup } from "react-dom/server";
-import { BLOG, BRAND } from "./brand.js";
+import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO } from "./brand.js";
 import { Landing } from "./components/landing/Landing.js";
+import { PricingPage } from "./components/landing/PricingPage.js";
+import { SiteShell } from "./components/site/SiteShell.js";
+import { SectionPage } from "./components/site/SectionPage.js";
+import { Brand } from "./components/site/Brand.js";
 import { BlogIndex, BlogPostPage } from "./blog/Blog.js";
 import { listPostMeta, type BlogPostMeta } from "./blog/posts.js";
 import { resolveOrigin, escapeHtml, type PrerenderPage } from "./blog/seo.js";
@@ -44,7 +48,70 @@ function articleMeta(post: BlogPostMeta): string {
   return tags.map((t) => `  ${t}`).join("\n");
 }
 
-/** Build the full set of pages to prerender (home + blog index + every published post). */
+/**
+ * The public marketing surfaces beyond the homepage and the blog (#467): the focused pricing page and the
+ * five content-site sections (compare / stories / guides / changelog / brand). Before this, every one of
+ * these fell through `AuthGate` to the SPA shell — a crawler got an empty `<div id="root">` and the
+ * homepage's shared `<title>` / description / H1 (Scout's "all routes share the same title" finding).
+ *
+ * Each is now rendered to static HTML with its own front-loaded title + description (from `PAGE_SEO`) and a
+ * Home › Page breadcrumb. The section indexes' card lists still hydrate from the live content API on the
+ * client, but everything a crawler indexes — the headline, the intro copy, the nav, and the footer — is
+ * server-rendered here. The body wrappers mirror what the client mounts (`SiteShell` chrome for the content
+ * sections; `PricingPage` carries its own nav/footer) so the prerendered markup matches the hydrated page.
+ */
+function marketingPages(): PrerenderPage[] {
+  const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
+    "/pricing": <PricingPage />,
+    "/compare": (
+      <SiteShell>
+        <SectionPage section="compare" copy={COMPARE} />
+      </SiteShell>
+    ),
+    "/stories": (
+      <SiteShell>
+        <SectionPage section="stories" copy={STORIES} />
+      </SiteShell>
+    ),
+    "/guides": (
+      <SiteShell>
+        <SectionPage section="guides" copy={GUIDES} />
+      </SiteShell>
+    ),
+    "/changelog": (
+      <SiteShell>
+        <SectionPage section="changelog" copy={CHANGELOG} />
+      </SiteShell>
+    ),
+    "/brand": (
+      <SiteShell>
+        <Brand />
+      </SiteShell>
+    ),
+  };
+  // Pricing is a primary conversion + SEO destination, so it outranks the content-section indexes.
+  const priority: Partial<Record<keyof typeof PAGE_SEO, number>> = { "/pricing": 0.9 };
+
+  return (Object.keys(PAGE_SEO) as (keyof typeof PAGE_SEO)[]).map((urlPath) => {
+    const seo = PAGE_SEO[urlPath];
+    return {
+      outFile: `${urlPath.replace(/^\//, "")}/index.html`,
+      urlPath,
+      html: renderToStaticMarkup(body[urlPath]),
+      title: seo.title,
+      description: seo.description,
+      priority: priority[urlPath] ?? 0.6,
+      headExtra: renderJsonLd(
+        breadcrumbLd(ORIGIN, [
+          [BRAND.name, "/"],
+          [seo.name, urlPath],
+        ]),
+      ),
+    };
+  });
+}
+
+/** Build the full set of pages to prerender (home + pricing + marketing sections + blog index + posts). */
 export function prerenderPages(): PrerenderPage[] {
   const pages: PrerenderPage[] = [];
 
@@ -61,6 +128,9 @@ export function prerenderPages(): PrerenderPage[] {
     priority: 1.0,
     headExtra: renderJsonLd([organizationLd(ORIGIN), websiteLd(ORIGIN), softwareApplicationLd(ORIGIN)]),
   });
+
+  // The pricing page + the five content-site sections (#467) — each with its own front-loaded head meta.
+  pages.push(...marketingPages());
 
   // The blog index: Blog node (lists every post) + a Home › Blog breadcrumb.
   pages.push({
