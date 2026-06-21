@@ -23,9 +23,20 @@ describe("decideVenture (the pure YC-fundability gate)", () => {
     expect(decideVenture(input({ score: 70 })).verdict).toBe("FUND"); // boundary: >=
   });
 
-  it("KILLs when the score is at/below the kill threshold", () => {
-    expect(decideVenture(input({ score: 20 })).verdict).toBe("KILL");
-    expect(decideVenture(input({ score: 35 })).verdict).toBe("KILL"); // boundary: <=
+  it("KILLs a sub-threshold score from the second pass on (a bad idea that didn't improve still dies)", () => {
+    expect(decideVenture(input({ score: 20, iteration: 2 })).verdict).toBe("KILL");
+    expect(decideVenture(input({ score: 35, iteration: 2 })).verdict).toBe("KILL"); // boundary: <=
+  });
+
+  it("#441: a sub-threshold FIRST pass ITERATEs (improves) instead of dead-ending the workspace", () => {
+    // The exact new-user dead-end: a founding idea scoring just below the kill line on pass 1 used to KILL
+    // outright, stranding the whole workspace in no_work. Now it gets one real improvement pass.
+    expect(decideVenture(input({ score: 32, iteration: 1, proposedAngles: ["novel"] })).verdict).toBe("ITERATE");
+    expect(decideVenture(input({ score: 20, iteration: 1, proposedAngles: ["novel"] })).verdict).toBe("ITERATE");
+    // With no angle left to pursue, a first-pass low score ESCALATEs to a human — never a silent death.
+    expect(
+      decideVenture(input({ score: 20, iteration: 1, proposedAngles: [], failedAngles: [] })).verdict,
+    ).toBe("ESCALATE");
   });
 
   it("ESCALATEs a borderline near-miss just below the fund line", () => {
@@ -78,12 +89,16 @@ describe("decideVenture (the pure YC-fundability gate)", () => {
     ).toBe("ITERATE");
   });
 
-  it("orders hard verdicts over loop state: FUND/KILL ignore iteration + angles", () => {
+  it("FUND ignores loop state; KILL applies from the 2nd pass (first-pass killable improves first, #441)", () => {
     expect(decideVenture(input({ score: 90, iteration: 99, proposedAngles: [], failedAngles: ["x"] })).verdict).toBe(
       "FUND",
     );
     expect(decideVenture(input({ score: 10, iteration: 99, proposedAngles: [], failedAngles: ["x"] })).verdict).toBe(
       "KILL",
+    );
+    // The iteration-1 exception: a killable first pass with nowhere to iterate ESCALATEs, never KILLs silently.
+    expect(decideVenture(input({ score: 10, iteration: 1, proposedAngles: [], failedAngles: ["x"] })).verdict).toBe(
+      "ESCALATE",
     );
   });
 });
