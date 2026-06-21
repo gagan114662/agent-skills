@@ -80,9 +80,15 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # #69 preflight now asserts it for the real (claude-code/codex) harness so a git-less image fails the
 # deploy, not the user. Pin to debian's stable build for a reproducible image (mirrors the claude-code
 # pin); a debian point-release bump is a deliberate, visible lockfile change.
+# #488: also install `ripgrep` — Claude Code's Grep/search shells out to `rg` (it ships a vendored
+# fallback, so the harness can run without it, which is why the image spawned even while `rg` was absent;
+# but the system binary is the path it prefers and the tool most associated with the "runtime is missing a
+# tool" class). Left UNPINNED (unlike git): `rg` is a behavior-stable search CLI, and bookworm only carries
+# one version, so a point-release bump is not a reproducibility concern worth a hard pin that could break the
+# build. The #69 preflight does NOT gate on it (the harness runs without it), so this can never block a deploy.
 RUN corepack enable \
   && apt-get update \
-  && apt-get install -y --no-install-recommends git=1:2.39.5-0+deb12u3 \
+  && apt-get install -y --no-install-recommends git=1:2.39.5-0+deb12u3 ripgrep \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g @anthropic-ai/claude-code@2.1.173 \
   && groupadd --system reload \
