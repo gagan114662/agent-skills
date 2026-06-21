@@ -23,6 +23,7 @@ import { memoryRoutes } from "./routes/memory.js";
 import { decisionsRoutes } from "./routes/decisions.js";
 import { createDefaultDecisionService } from "./decisions/default.js";
 import { captureDecisionsFromDeliverable } from "./decisions/capture.js";
+import { tracesRoutes } from "./routes/traces.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { buildAcquisitionRegistry } from "./acquisition/default.js";
@@ -594,6 +595,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(notificationRoutes);
   app.register(memoryRoutes);
   app.register(decisionsRoutes);
+  app.register(tracesRoutes);
   app.register(taskRoutes);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   // #189: the executor registry routes approved `external.send` actions through the acquisition
