@@ -68,6 +68,14 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       { lead: b.lead, goal: b.goal },
     );
     if (!result.ok) return reply.code(result.code).send({ error: result.error });
+    // #439: never return a SILENT no-op. When a brief launched nothing AND no other category explains it
+    // (no connect prompt, no model block, no dedup), the launch was gated upstream (most often: the venture
+    // isn't active yet). Surface an honest, actionable note instead of an empty 202 the composer can't read.
+    const nothingHappened =
+      result.launched.length === 0 &&
+      result.connectPrompted.length === 0 &&
+      result.modelBlocked.length === 0 &&
+      result.deduped.length === 0;
     return reply.code(202).send({
       lead: result.lead,
       department: result.department,
@@ -77,6 +85,13 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       connectPrompted: result.connectPrompted,
       modelBlocked: result.modelBlocked,
       deduped: result.deduped,
+      ...(nothingHappened
+        ? {
+            note:
+              "Your message was posted, but no agent started working on it yet — usually because your " +
+              "venture isn't active. Activate your venture (or re-activate) to put the fleet to work.",
+          }
+        : {}),
     });
   });
 
