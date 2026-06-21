@@ -905,6 +905,18 @@ export const CONSOLE = {
     mentions: "Mentions",
     closeSettings: "Close",
   },
+  /** First-run setup checklist (#479): the guided path from signup to first real output. */
+  firstRunChecklist: {
+    title: "Get set up",
+    progress: (done: number, total: number): string => `${done} of ${total} done`,
+    dismiss: "Hide",
+    steps: {
+      brand: { label: "Set your brand", hint: "Name, palette, and voice so the team sounds like you.", cta: "Set brand" },
+      connect: { label: "Connect an account", hint: "Link one place your work goes out — the agents take it from there.", cta: "Connect" },
+      run: { label: "Run an agent", hint: "Ask a teammate in any channel, e.g. “@scout audit our homepage.”", cta: "Got it" },
+      approve: { label: "See & approve the result", hint: "Review what the team drafted and give it the green light.", cta: "Review" },
+    },
+  },
   /**
    * The agent-coordination surface (#352) — the reload.chat-style channels/messages/members view, re-mounted
    * behind the default-OFF, owner-workspace-first coordination flag. Read + steer only; no new action path.
