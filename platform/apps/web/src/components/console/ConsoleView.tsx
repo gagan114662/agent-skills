@@ -29,6 +29,7 @@ import { ExternalAccountsPanel } from "../ExternalAccountsPanel.js";
 import { ConnectionsPanel } from "../ConnectionsPanel.js";
 import { GardenPanel } from "../GardenPanel.js";
 import { BrandKitPanel } from "../BrandKitPanel.js";
+import { MarketingTargetPanel } from "../MarketingTargetPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
@@ -933,6 +934,8 @@ export function ConsoleView(): React.JSX.Element {
 
       {shellSettingsOpen && (
         <ShellOverlay title={CONSOLE.shell.settingsTitle} onClose={() => setShellSettingsOpen(false)}>
+          {/* #502: "What are we marketing?" leads — it's the brief the whole fleet reads. */}
+          <MarketingTargetPanel />
           <ConnectClaudePanel />
           <SlackConnectPanel />
           <ConnectionsPanel />

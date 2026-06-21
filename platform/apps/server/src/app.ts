@@ -191,6 +191,7 @@ import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
+import { marketingTargetRoutes } from "./routes/marketing-target.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
@@ -983,6 +984,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // read provider (`dryrun` default) decides whether real numbers flow. No #13 gate (not money).
   app.register(analyticsRoutes);
   app.register(workspaceContextRoutes);
+  // #502: the "What are we marketing?" target — any workspace points the fleet at its product/app and the
+  // agents read it as their brief. Not flag-gated (unlike #320's owner-first capture); this is the surface
+  // that makes ipop market any company.
+  app.register(marketingTargetRoutes);
   // #267 central provisioning read surface: what's provisioned for this workspace (never a key) + the
   // metered usage ledger. No connect/paste endpoint — the customer never provisions a key.
   app.register(provisioningRoutes, { service: provisioningService });
