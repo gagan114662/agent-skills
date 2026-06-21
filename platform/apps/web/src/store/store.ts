@@ -770,6 +770,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     async searchMembers(query) {
       const workspaceId = state.identity?.workspaceId;
       if (!workspaceId) return [];
+      // #470: the member-search API requires a non-empty `q` (an empty query 400s with "q required"). When the
+      // user has only typed "@" (no characters yet), show the cached roster instead of firing an empty search
+      // that 400s and breaks the whole @mention picker — so typing "@" surfaces the team, not a console error.
+      if (query.trim().length === 0) return Object.values(state.directory);
       const hits = await api.searchMembers(workspaceId, query);
       if (hits.length) set({ directory: mergeDirectory(state.directory, hits) });
       return hits;
