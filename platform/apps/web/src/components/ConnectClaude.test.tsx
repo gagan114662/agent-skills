@@ -62,7 +62,7 @@ describe("ConnectClaude (#68)", () => {
         onSelectModel={() => {}}
       />,
     );
-    expect(screen.getByText(/managed model/i)).toBeInTheDocument();
+    expect(screen.getByText(/keeps up to date/i)).toBeInTheDocument();
     // The fleet runs on a managed default — ordinary owners never see or set a model.
     expect(screen.queryByLabelText(/fleet model/i)).not.toBeInTheDocument();
   });
