@@ -2,21 +2,27 @@
  * Policy management — with a request detail pane (audit timeline) opened from a queue row. Loads
  * the queue + policies on mount; live pending updates arrive via the store's notification handler. */
 import { useEffect, useState } from "react";
+import type { ApprovalStatus } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { ReviewQueue } from "./ReviewQueue.js";
 import { PolicyManager } from "./PolicyManager.js";
 import { RequestDetail } from "./RequestDetail.js";
 
-export function ApprovalsPanel(): React.JSX.Element {
+export interface ApprovalsPanelProps {
+  /** #462: the status the queue opens to — "pending" (default, the inbox) or "executed" (the decision log). */
+  initialStatus?: ApprovalStatus;
+}
+
+export function ApprovalsPanel({ initialStatus }: ApprovalsPanelProps = {}): React.JSX.Element {
   const store = useStore();
   const { identity, approvals } = useAppState();
   const [view, setView] = useState<"queue" | "policies">("queue");
   const isHuman = identity?.kind === "human";
 
   useEffect(() => {
-    void store.loadApprovals();
+    void store.loadApprovals(initialStatus);
     void store.loadPolicies();
-  }, [store]);
+  }, [store, initialStatus]);
 
   return (
     <section className="approvals" aria-label="Approvals">
