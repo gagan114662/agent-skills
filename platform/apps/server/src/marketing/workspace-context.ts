@@ -84,6 +84,12 @@ export interface WorkspaceContextFacts {
    * pure module never fetches and stays unaware of the crawler. Absent ⇒ no crawl surfaced.
    */
   siteContentBlock?: string;
+  /**
+   * A pre-composed, already-sanitized + DATA-framed block of the workspace's prior decisions (#513). The
+   * IO seam builds it via `decisions/recall.ts:composePriorDecisionsBlock` and passes the string in — this
+   * pure module never queries and stays unaware of the store. Absent ⇒ no prior decisions to reuse.
+   */
+  priorDecisionsBlock?: string;
 }
 
 export interface ResolveWorkspaceFactsInput {
@@ -223,6 +229,9 @@ export function composeWorkspaceContextPreamble(facts: WorkspaceContextFacts): s
   // #363: the crawled public-site content (already sanitized + DATA-framed by the IO seam) is appended as
   // its own section so a briefed SEO audit can cite real pages — still strictly DATA, never instructions.
   if (facts.siteContentBlock) sections.push(facts.siteContentBlock);
+  // #513: the workspace's prior decisions (already sanitized + DATA-framed by the decisions seam) so a
+  // briefed agent reuses what a teammate decided instead of re-deriving it — still strictly DATA.
+  if (facts.priorDecisionsBlock) sections.push(facts.priorDecisionsBlock);
 
   if (sections.length === 0) return null;
   return sections.join("\n\n");

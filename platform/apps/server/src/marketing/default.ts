@@ -47,6 +47,7 @@ import {
 import { composeSiteFactsBlock } from "./site-reader/distill.js";
 import { LiveSiteReaderProvider } from "./site-reader/provider.js";
 import { createSiteReader, shouldReadSiteContent } from "./site-reader/service.js";
+import { createDefaultDecisionService } from "../decisions/default.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
@@ -247,6 +248,8 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
   // source — no OAuth/secret). Only ever consulted behind `shouldReadSiteContent` (default OFF, owner-first,
   // and only when the #320 preamble is on), so the default deployment never crawls anything.
   const siteReader = createSiteReader({ provider: new LiveSiteReaderProvider() });
+  // #513: recall the workspace's prior decisions to brief a launched agent (read-only; no send/spend).
+  const decisionService = createDefaultDecisionService();
   const subagents = new SubagentService({
     getPersona,
     getChannelWorkspace: async (channelId) => (await getChannel(channelId))?.workspaceId,
@@ -318,6 +321,16 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
         } catch {
           // read() is defensive, but belt-and-suspenders: a briefed launch never fails on a crawl error.
         }
+      }
+      // #513 shared memory: surface the workspace's prior decisions so a briefed agent reuses what a
+      // teammate decided instead of re-deriving it. Recalled by the task topic, capped, and DATA-framed by
+      // the decisions seam. Best-effort: a recall error just yields no block (the preamble degrades to the
+      // typed facts), and an empty store is a no-op — every existing launch stays byte-for-byte the same.
+      try {
+        const block = await decisionService.priorDecisionsBlock(workspaceId, { topic: task, limit: 5 });
+        if (block) facts.priorDecisionsBlock = block;
+      } catch {
+        // recall is defensive; a briefed launch never fails on a decision-store hiccup.
       }
       return enrichTaskWithContext(task, facts);
     },
