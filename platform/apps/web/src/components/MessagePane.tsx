@@ -1,7 +1,7 @@
 /** Center column: the active channel header, its message list, and the composer. */
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { CONSOLE, VOICE, agentColor } from "../brand.js";
+import { CONSOLE, VOICE, agentColor, departmentColor, starterPromptsFor } from "../brand.js";
 import { authorLabel, type AppState, type DirectoryEntry } from "../store/store.js";
 import { Avatar, KindBadge } from "./Primitives.js";
 import { EmptyState } from "./EmptyState.js";
@@ -52,6 +52,9 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
   const prevChannelRef = useRef<string | null>(null);
   const prevCountRef = useRef(0);
   const [unread, setUnread] = useState(0);
+  // #509: a tapped starter prompt is handed to the composer as a prefill. The bump nonce lets the same
+  // prompt be re-applied on a repeat tap (and resets naturally when the channel/messages change).
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
 
   function scrollToBottom(): void {
     const el = listRef.current;
@@ -123,7 +126,10 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
 
       <div className="messagelist" ref={listRef} onScroll={handleScroll}>
         {messages.length === 0 ? (
-          <EmptyState className="messagelist__empty">{VOICE.noMessages}</EmptyState>
+          <ChannelStarters
+            channelName={channel.name}
+            onPick={(text) => setPrefill((p) => ({ text, nonce: (p?.nonce ?? 0) + 1 }))}
+          />
         ) : (
           messages.map((m) => <MessageItem key={m.id} message={m} state={state} />)
         )}
@@ -164,8 +170,47 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
         </div>
       )}
 
-      <Composer queue draftKey={activeChannelId ?? undefined} />
+      <Composer queue draftKey={activeChannelId ?? undefined} prefill={prefill} />
     </section>
+  );
+}
+
+/**
+ * #509: the empty-channel helper. Instead of a dead "Quiet in here" line, an empty channel offers 2–3
+ * concrete first actions for that department (e.g. what to ask in #ads vs #seo). Each is a real @-mention
+ * brief; tapping one drops it into the composer (focused, editable) rather than sending anything — the
+ * human still hits send. Copy comes from brand.ts; the channel's department tints the mark.
+ */
+function ChannelStarters({
+  channelName,
+  onPick,
+}: {
+  channelName: string | null;
+  onPick: (text: string) => void;
+}): React.JSX.Element {
+  const starters = starterPromptsFor(channelName);
+  const color = departmentColor(channelName);
+  return (
+    <div className="messagelist__empty">
+      <EmptyState color={color}>{VOICE.noMessages}</EmptyState>
+      <div className="starters">
+        <p className="starters__heading">{VOICE.startersHeading}</p>
+        <ul className="starters__list">
+          {starters.map((text) => (
+            <li key={text}>
+              <button
+                type="button"
+                className="starters__chip"
+                style={color ? ({ "--pop-color": color } as CSSProperties) : undefined}
+                onClick={() => onPick(text)}
+              >
+                {text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

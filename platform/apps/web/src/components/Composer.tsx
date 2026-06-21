@@ -25,9 +25,13 @@ export interface ComposerProps {
    * text swaps to that key's saved draft, and edits persist back to it. Omit for ephemeral composers
    * (e.g. thread replies) that shouldn't retain text across switches. */
   draftKey?: string;
+  /** #509: when this changes, adopt `text` as the composer's content (focused, persisted to the draft, ready
+   * to edit/send). Used by the empty-channel starter prompts to drop a suggested brief into the box. The
+   * `nonce` lets the same text be re-applied on a repeat tap. */
+  prefill?: { text: string; nonce: number } | null;
 }
 
-export function Composer({ placeholder, onSubmit, compact, queue, draftKey }: ComposerProps): React.JSX.Element {
+export function Composer({ placeholder, onSubmit, compact, queue, draftKey, prefill }: ComposerProps): React.JSX.Element {
   const store = useStore();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState(() => (draftKey === undefined ? "" : store.getDraft(draftKey)));
@@ -48,6 +52,19 @@ export function Composer({ placeholder, onSubmit, compact, queue, draftKey }: Co
     setOptions([]);
     setNotice(null);
   }, [draftKey, store]);
+
+  // #509: a starter prompt was tapped — adopt it as the composer's text, persist it to this channel's draft
+  // so a channel switch keeps it, and focus the box so the user can edit or send straight away. Keyed on the
+  // nonce so tapping the same prompt twice re-applies it.
+  useEffect(() => {
+    if (!prefill) return;
+    setText(prefill.text);
+    if (draftKey !== undefined) store.setDraft(draftKey, prefill.text);
+    setNotice(null);
+    setOpen(false);
+    requestAnimationFrame(() => ref.current?.focus());
+    // Keyed on the nonce so a repeat tap re-applies; store/draftKey are stable for the composer's life.
+  }, [prefill?.nonce]);
 
   async function refreshMentions(value: string, caret: number): Promise<void> {
     const seq = ++querySeq.current;

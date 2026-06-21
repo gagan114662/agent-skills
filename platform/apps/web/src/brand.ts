@@ -99,6 +99,8 @@ export const VOICE = {
   queueTooltip: "Queue this message to send in turn — it goes out after the agent finishes its current reply. (⌘↵)",
   /** Composer Steer button: accessible label + hover tooltip explaining how it differs from Send/Queue (#508). */
   steerTooltip: "Steer the running agent — jump this to the front of the line so it course-corrects next. (⌥↵)",
+  /** #509: heading above the clickable starter prompts shown in an empty channel. */
+  startersHeading: "Not sure where to start? Tap one to drop it in the box:",
 } as const;
 
 /**
@@ -328,6 +330,74 @@ export const FLEET: readonly FleetAgent[] = [
   { handle: "mark", name: "Mark", department: "brand", personality: "Keeps us sounding like us — warm, a little silly, never smug." },
   { handle: "comet", name: "Comet", department: "reach", personality: "Finds the people who just raised or just hired, and writes each one a single good line." },
 ];
+
+/**
+ * #509: per-channel starter prompts for an EMPTY channel. A blank "Quiet in here" tells a new user nothing
+ * about what to ask in #ads vs #seo, so each department channel offers 2–3 concrete first actions — real
+ * @-mention briefs that prefill the composer on tap (the user edits/sends, nothing fires on its own). Keyed
+ * by department/channel name; channels without a department (e.g. #general, #launch) fall back to a generic
+ * cross-fleet set so EVERY channel suggests something. User-facing copy only — no internal agent chatter.
+ * The @handles are the named fleet leads (see {@link FLEET}), not brand strings.
+ */
+export const CHANNEL_STARTERS: Readonly<Record<string, readonly string[]>> = {
+  seo: [
+    "@scout audit our homepage for SEO quick wins",
+    "@scout find the keywords we should be ranking for",
+    "@scout check the site for broken links and crawl issues",
+  ],
+  social: [
+    "@echo turn our latest update into a week of posts",
+    "@echo draft a LinkedIn thread about what we do",
+    "@echo what should we post this week?",
+  ],
+  content: [
+    "@quill draft a blog post about our latest update",
+    "@quill rewrite our homepage copy to sound more like us",
+    "@quill outline a content calendar for next month",
+  ],
+  email: [
+    "@postmark draft a welcome email for new signups",
+    "@postmark write a launch announcement for our list",
+    "@postmark suggest a re-engagement email for quiet subscribers",
+  ],
+  ads: [
+    "@bid plan a starter ad campaign with a $20/day budget",
+    "@bid draft three ad headlines for our main product",
+    "@bid which audience should we target first?",
+  ],
+  analytics: [
+    "@lens what's the one number we should watch this week?",
+    "@lens summarise last week's traffic and conversions",
+    "@lens where are we losing visitors on the site?",
+  ],
+  brand: [
+    "@mark define our brand voice in a few lines",
+    "@mark suggest taglines for our homepage",
+    "@mark is this copy on-brand? (paste it in)",
+  ],
+  reach: [
+    "@comet find companies that just raised and might need us",
+    "@comet build a shortlist of outreach targets this week",
+    "@comet draft a cold outreach opener for our best-fit customer",
+  ],
+};
+
+/** Generic first actions for channels without a department (e.g. #general, #launch). */
+export const DEFAULT_STARTERS: readonly string[] = [
+  "@scout audit our homepage for SEO quick wins",
+  "@quill draft a blog post about our latest update",
+  "@lens what's the one number we should watch this week?",
+];
+
+/**
+ * #509: the starter prompts to suggest in an empty channel, by channel name. A leading "#" is tolerated and
+ * matching is case-insensitive; an unknown/blank name yields the generic {@link DEFAULT_STARTERS} set so
+ * every channel suggests at least 2–3 concrete first actions.
+ */
+export function starterPromptsFor(channelName: string | null | undefined): readonly string[] {
+  const key = channelName ? channelName.replace(/^#/, "").toLowerCase() : "";
+  return CHANNEL_STARTERS[key] ?? DEFAULT_STARTERS;
+}
 
 /**
  * A single line in the hero's staged chat vignette (#149) — a scripted, looping peek at the fleet at

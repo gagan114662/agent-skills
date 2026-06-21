@@ -36,6 +36,9 @@ import {
   consoleOvernightSummary,
   consoleBriefLaunched,
   consoleBriefConnect,
+  CHANNEL_STARTERS,
+  DEFAULT_STARTERS,
+  starterPromptsFor,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -415,6 +418,50 @@ describe("console redesign copy (board + standup)", () => {
     // The outcome lines name the lead.
     expect(consoleBriefLaunched("Scout")).toMatch(/^Scout .+Work in progress/);
     expect(consoleBriefConnect("Scout")).toMatch(/^Scout .+connect Claude/i);
+  });
+});
+
+describe("empty-channel starter prompts (#509)", () => {
+  it("gives every department channel 2–3 concrete @-mention first actions", () => {
+    // Acceptance: every department channel suggests 2–3 first actions, each a real @-mention brief.
+    const handleByDept: Record<string, string> = Object.fromEntries(
+      FLEET.map((a) => [a.department, a.handle]),
+    );
+    for (const dept of Object.keys(DEPARTMENT_SPECTRUM)) {
+      const starters = CHANNEL_STARTERS[dept];
+      expect(starters, `#${dept} has starters`).toBeTruthy();
+      expect(starters!.length, `#${dept} count`).toBeGreaterThanOrEqual(2);
+      expect(starters!.length, `#${dept} count`).toBeLessThanOrEqual(3);
+      // Every prompt is a concrete, non-trivial brief that mentions that department's named lead.
+      for (const prompt of starters!) {
+        expect(prompt.length, prompt).toBeGreaterThan(15);
+        expect(prompt, prompt).toContain(`@${handleByDept[dept]}`);
+      }
+    }
+  });
+
+  it("falls back to a generic cross-fleet set for channels without a department", () => {
+    expect(DEFAULT_STARTERS.length).toBeGreaterThanOrEqual(2);
+    expect(DEFAULT_STARTERS.length).toBeLessThanOrEqual(3);
+    // #general / #launch / unknown / blank all get the generic set, never an empty list.
+    expect(starterPromptsFor("general")).toBe(DEFAULT_STARTERS);
+    expect(starterPromptsFor("launch")).toBe(DEFAULT_STARTERS);
+    expect(starterPromptsFor(null)).toBe(DEFAULT_STARTERS);
+    expect(starterPromptsFor(undefined)).toBe(DEFAULT_STARTERS);
+    expect(starterPromptsFor("").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("resolves department channels by name, tolerating a leading # and case", () => {
+    expect(starterPromptsFor("seo")).toBe(CHANNEL_STARTERS.seo);
+    expect(starterPromptsFor("#seo")).toBe(CHANNEL_STARTERS.seo);
+    expect(starterPromptsFor("SEO")).toBe(CHANNEL_STARTERS.seo);
+    expect(starterPromptsFor("#Ads")).toBe(CHANNEL_STARTERS.ads);
+  });
+
+  it("never suggests nothing — every resolved set has at least two actions", () => {
+    for (const name of ["seo", "social", "content", "email", "ads", "analytics", "brand", "reach", "general", "anything-else"]) {
+      expect(starterPromptsFor(name).length, name).toBeGreaterThanOrEqual(2);
+    }
   });
 });
 
