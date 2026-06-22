@@ -629,6 +629,16 @@ export const api = {
     launchSession(channelId: string, input: LaunchSessionInput): Promise<LaunchSessionResult> {
       return post(`/channels/${channelId}/agent-sessions`, input) as Promise<LaunchSessionResult>;
     },
+    /**
+     * Retry a FAILED run (#634): re-launch the same agent + model selection on a re-briefed task. The
+     * original task is not persisted server-side, so the caller re-supplies it. Returns the new run.
+     */
+    retrySession(channelId: string, sessionId: string, input: { task: string }): Promise<LaunchSessionResult> {
+      return post(
+        `/channels/${channelId}/agent-sessions/${sessionId}/retry`,
+        input,
+      ) as Promise<LaunchSessionResult>;
+    },
     /** A session's diff (cumulative or the latest turn). */
     diff(channelId: string, sessionId: string, mode: DiffMode): Promise<SessionDiff> {
       return request<SessionDiff>(

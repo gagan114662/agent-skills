@@ -46,6 +46,31 @@ describe("classifyFailure (#166)", () => {
     expect(classifyFailure({ status: "failed", exitCode: 2, outputTail: "boom" })).toBe("error");
   });
 
+  it("classifies an Anthropic overload (529 / 429 / 'Overloaded') as overloaded, not a generic error (#634)", () => {
+    // 429/529 are transient capacity blips on the API side — a retry is the right move, so they must
+    // get their own retry-forward class instead of disappearing into the opaque generic "error" bucket.
+    expect(
+      classifyFailure({ status: "failed", exitCode: 1, outputTail: 'API Error: 529 {"type":"overloaded_error"}' }),
+    ).toBe("overloaded");
+    expect(
+      classifyFailure({ status: "failed", exitCode: 1, outputTail: "Error: 429 rate_limit_error: too many requests" }),
+    ).toBe("overloaded");
+    expect(
+      classifyFailure({ status: "failed", exitCode: 1, outputTail: "The server is Overloaded, please try again later" }),
+    ).toBe("overloaded");
+  });
+
+  it("a model misconfig still wins over the overloaded bucket", () => {
+    // Defense in depth: an owner-actionable model error mentioning a rate limit must still route to model.
+    expect(
+      classifyFailure({
+        status: "failed",
+        exitCode: 1,
+        outputTail: "model_not_found (also saw a 429 earlier)",
+      }),
+    ).toBe("model");
+  });
+
   it("classifies a non-zero exit naming an unavailable model as a model misconfig (#242)", () => {
     // The exact prod case: ANTHROPIC_MODEL=claude-fable-5 (a non-existent model) → claude -p exits 1
     // having produced only Claude Code's own model error, which used to read as an opaque "error".
@@ -247,6 +272,19 @@ describe("renderSessionOutcome (#166)", () => {
     // Honest debug footer still carries the raw status + exit, but never the model name from the tail.
     expect(msg).toContain("exit 1");
     expect(msg).not.toContain("claude-fable-5");
+  });
+
+  it("surfaces an overload as a transient, retry-forward failure — never a green check (#634)", () => {
+    const msg = renderSessionOutcome({
+      status: "failed",
+      exitCode: 1,
+      outputTail: 'API Error: 529 {"type":"overloaded_error","message":"Overloaded"}',
+    });
+    expect(msg).not.toContain("✅");
+    expect(msg).toContain("❌");
+    expect(msg.toLowerCase()).toContain("overloaded");
+    // Honest debug footer still carries the raw status + exit.
+    expect(msg).toContain("exit 1");
   });
 
   it("never echoes the raw output tail (no secret leakage) into the rendered message", () => {

@@ -370,6 +370,11 @@ export interface Store {
   loadRun(): Promise<void>;
   /** Select a session and fetch its current run-process state. */
   selectRunSession(sessionId: string): Promise<void>;
+  /**
+   * Retry a FAILED run (#634): re-launch the same agent on a re-briefed task, then refresh the session
+   * list and select the new run. Returns the new run's id, or null on failure.
+   */
+  retryRunSession(sessionId: string, task: string): Promise<string | null>;
   /** Start the selected session's run process (spawns the dev server → detects the preview url). */
   startRun(): Promise<void>;
   /** Stop the selected session's run process. */
@@ -1128,6 +1133,24 @@ export function createStore({ api, realtime }: StoreDeps): Store {
         if (state.run.activeSessionId === sessionId) setRun({ process });
       } catch (e) {
         setRun({ error: errMsg(e) });
+      }
+    },
+
+    /** Retry a failed run: re-launch the same agent on a re-briefed task, refresh, and select the new run. */
+    async retryRunSession(sessionId, task) {
+      const channelId = state.activeChannelId;
+      if (!channelId || !task.trim()) return null;
+      setRun({ error: null });
+      try {
+        const result = await api.review.retrySession(channelId, sessionId, { task: task.trim() });
+        // Refresh the session list so the new run appears, then select it.
+        const sessions = await api.review.listSessions(channelId);
+        setRun({ sessions });
+        await store.selectRunSession(result.id);
+        return result.id;
+      } catch (e) {
+        setRun({ error: errMsg(e) });
+        return null;
       }
     },
 
