@@ -965,3 +965,39 @@ export interface SampleConsoleResponse {
   offered: boolean;
   console: SampleConsoleDto | null;
 }
+
+/** A workspace's live spend position against its global cap (#670). All amounts are cents. */
+export interface BudgetStatusDto {
+  capCents: number;
+  committedCents: number;
+  projectedCents: number;
+  totalCents: number;
+  availableCents: number;
+  /** Utilization in basis points (0–10000). */
+  utilizationBps: number;
+  /** True once committed+projected reach the cap — further spend is halted. */
+  halted: boolean;
+  /** True once utilization crosses the alert threshold. */
+  alerting: boolean;
+}
+
+/** A request to raise a workspace's spend cap, pending an explicit human approval (#670). */
+export interface CapRaiseDto {
+  id: string;
+  workspaceId: string;
+  fromCents: number;
+  toCents: number;
+  status: "pending" | "approved" | "rejected";
+  requestedByMemberId: string;
+  requestedAt: string;
+  decidedByMemberId: string | null;
+  decidedAt: string | null;
+  reason: string | null;
+}
+
+/** The `GET /workspaces/:wid/budget` response (#670). */
+export interface BudgetResponse {
+  enabled: boolean;
+  status: BudgetStatusDto;
+  pendingRaises: CapRaiseDto[];
+}

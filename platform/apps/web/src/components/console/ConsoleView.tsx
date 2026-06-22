@@ -31,6 +31,7 @@ import { GardenPanel } from "../GardenPanel.js";
 import { BrandKitPanel } from "../BrandKitPanel.js";
 import { MarketingTargetPanel } from "../MarketingTargetPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
+import { BudgetSettingsPanel } from "../BudgetSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
 import { FirstRunChecklist } from "../FirstRunChecklist.js";
@@ -1038,6 +1039,9 @@ export function ConsoleView(): React.JSX.Element {
           </div>
           <div {...{ [SETTINGS_SECTION_ATTR]: "billing" }}>
             <BillingSettingsPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "budget" }}>
+            <BudgetSettingsPanel />
           </div>
         </ShellOverlay>
       )}

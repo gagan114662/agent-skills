@@ -27,6 +27,9 @@ import type {
   AgentSessionSummary,
   DepartmentViewDto,
   AuditEventDto,
+  BudgetResponse,
+  BudgetStatusDto,
+  CapRaiseDto,
   AutomationDto,
   AutomationRunDto,
   CatalogEntryDto,
@@ -910,4 +913,42 @@ export const api = {
       return request<{ entries: SiteDocMeta[] }>("/site/changelog").then((r) => r.entries);
     },
   },
+
+  // --- global spend cap + governor (#670) ---
+  budget: {
+    /** The workspace's live spend position + pending cap-raises. Throws ApiError(409) when disabled. */
+    status(workspaceId: string): Promise<BudgetResponse> {
+      return request<BudgetResponse>(`/workspaces/${workspaceId}/budget`);
+    },
+    /** Request a cap RAISE (parked pending — takes effect only once a human approves). */
+    requestRaise(workspaceId: string, toCents: number): Promise<{ raise: CapRaiseDto }> {
+      return post(`/workspaces/${workspaceId}/budget/cap/raise`, { toCents }) as Promise<{ raise: CapRaiseDto }>;
+    },
+    /** Lower the cap immediately (tightening never needs approval). */
+    lower(workspaceId: string, toCents: number): Promise<{ status: BudgetStatusDto }> {
+      return post(`/workspaces/${workspaceId}/budget/cap/lower`, { toCents }) as Promise<{
+        status: BudgetStatusDto;
+      }>;
+    },
+    /** Approve a pending cap-raise (the recorded human approval). */
+    approveRaise(workspaceId: string, raiseId: string, reason?: string): Promise<RaiseDecisionResult> {
+      return post(
+        `/workspaces/${workspaceId}/budget/raises/${raiseId}/approve`,
+        reason ? { reason } : undefined,
+      ) as Promise<RaiseDecisionResult>;
+    },
+    /** Reject a pending cap-raise (the cap is unchanged). */
+    rejectRaise(workspaceId: string, raiseId: string, reason?: string): Promise<RaiseDecisionResult> {
+      return post(
+        `/workspaces/${workspaceId}/budget/raises/${raiseId}/reject`,
+        reason ? { reason } : undefined,
+      ) as Promise<RaiseDecisionResult>;
+    },
+  },
 };
+
+/** The result of approving/rejecting a cap-raise (#670). */
+export interface RaiseDecisionResult {
+  raise: CapRaiseDto;
+  status: BudgetStatusDto;
+}
