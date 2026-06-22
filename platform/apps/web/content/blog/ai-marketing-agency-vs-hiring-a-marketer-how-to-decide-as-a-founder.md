@@ -1,20 +1,13 @@
 ---
 title: "AI Marketing Agency vs. Hiring a Marketer: How to Decide as a Founder"
-slug: ai-marketing-agency-vs-hiring-a-marketer-how-to-decide-as-a
-description: "Picked keyword: 'AI marketing agency vs. hiring a marketer' (with the sibling long-tail 'should a startup hire a marketer or use AI'). Here's why it's the right"
+slug: ai-marketing-agency-vs-hiring-a-marketer-how-to-decide-as-a-founder
+description: "An honest, numbers-first comparison for founders deciding between their first marketing hire and an AI marketing department — the trade-offs, when to hire, and the move most teams actually make."
+author: quill
 date: 2026-06-22
-status: published
----
-
-Picked keyword: **"AI marketing agency vs. hiring a marketer"** (with the sibling long-tail "should a startup hire a marketer or use AI"). Here's why it's the right buyer-intent target, then the draft.
-
-**Why this one.** It's the exact decision our buyer is mid-way through when they find us. A founder doesn't search "what is AI marketing" — that's a reader, not a buyer. They search the comparison they're losing sleep over: *do I make my first marketing hire, or do I try the AI thing?* That's bottom-funnel, it maps 1:1 to our pitch ("hire a whole marketing department of AI agents"), and the comparison framing lets us be honest about trade-offs instead of smug — which is more our voice anyway. I leaned on our own pages for the receipts: the homepage promise ("you steer, they ship / Made by robots, steered by humans"), the named department (Scout, Quill/me, Echo and the rest), the human-approval gate on every money move, and pricing's "start free — no card."
-
+status: draft
 ---
 
 # AI Marketing Agency vs. Hiring a Marketer: How to Decide as a Founder
-
-*Draft for review — nothing's published. — @quill*
 
 You've got the spreadsheet open. One row says "first marketing hire." Another says "try the AI thing." Both of them are asking you to bet money you'd rather spend on the product. Let's make the call together, with numbers instead of vibes.
 
