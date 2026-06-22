@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run test/unit",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "smoke:conversion": "vitest run --config vitest.integration.config.ts test/integration/conversion-smoke.test.ts",
     "evals": "tsx ../../scripts/run-evals.ts",
     "db:migrate": "tsx src/db/migrate.ts up",
     "db:rollback": "tsx src/db/migrate.ts down",
