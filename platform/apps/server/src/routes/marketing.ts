@@ -15,6 +15,8 @@ import {
 } from "../marketing/default.js";
 import { resolveMarketingCaps } from "../marketing/caps.js";
 import { loadConfig } from "../config/loader.js";
+import { createDefaultCampaignBriefService } from "../campaign-brief/index.js";
+import type { CampaignBriefPatch } from "../campaign-brief/index.js";
 
 export interface MarketingRoutesOptions {
   sessionManager: SessionManager;
@@ -31,6 +33,10 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
   const { sessionManager } = opts;
   const mention = createMarketingMentionService(sessionManager);
   const brief = createMarketingBriefService(sessionManager);
+  // #588: the central campaign brief — the single source of truth every agent reads at task start. Read +
+  // edit only; the agent-read seam (`enrichTask`) is the library other modules call. Distinct from `brief`
+  // above (the #235 owner→session launcher) despite the shared word.
+  const campaignBrief = createDefaultCampaignBriefService();
 
   // Seed the department fleet (idempotent, human-auth). `welcomeTasks` launches a welcome session per
   // department (default off here; signup auto-seed turns it on per the workspace config).
@@ -150,6 +156,60 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
       // #246: agents skipped because the workspace's fleet model isn't servable — the persona posted a
       // "pick a valid model" prompt instead of launching a doomed session.
       modelBlocked: result.modelBlocked,
+    });
+  });
+
+  // #588: READ the central campaign brief — the single source of truth (ICP, positioning, voice, goals,
+  // constraints, brand claims) every agent reads at task start. Workspace-scoped; revision 0 = never set.
+  app.get("/workspaces/:wid/campaign-brief", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const record = await campaignBrief.get(wid);
+    return {
+      brief: record.brief,
+      revision: record.revision,
+      updatedByMemberId: record.updatedByMemberId,
+      updatedAt: record.updatedAt,
+    };
+  });
+
+  // #588: EDIT the central campaign brief. Human-auth (the owner sets the campaign's intent). A present
+  // field replaces; an absent field is left unchanged. Every value is sanitized as DATA (#200 FM#6) and the
+  // revision is bumped so the next task an in-flight planner starts cites the new version. Editing the brief
+  // grants no tools and reaches no send/spend — it only changes the reference DATA agents read.
+  app.put("/workspaces/:wid/campaign-brief", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (id.kind !== "human") return reply.code(401).send({ error: "human authentication required" });
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+
+    // Accept only well-typed fields at the boundary; reject a wrong-typed field with 400 rather than coerce
+    // it silently. The values are still sanitized downstream by `normalizeBrief`.
+    const patch: CampaignBriefPatch = {};
+    for (const key of ["icp", "positioning", "voice"] as const) {
+      if (b[key] === undefined) continue;
+      if (typeof b[key] !== "string") return reply.code(400).send({ error: `${key} must be a string` });
+      patch[key] = b[key] as string;
+    }
+    for (const key of ["goals", "constraints", "brandClaims"] as const) {
+      if (b[key] === undefined) continue;
+      const v = b[key];
+      if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+        return reply.code(400).send({ error: `${key} must be an array of strings` });
+      }
+      patch[key] = v as string[];
+    }
+
+    const record = await campaignBrief.update(wid, patch, id.memberId);
+    return reply.code(200).send({
+      brief: record.brief,
+      revision: record.revision,
+      updatedByMemberId: record.updatedByMemberId,
+      updatedAt: record.updatedAt,
     });
   });
 }
