@@ -59,6 +59,24 @@ export async function onboardingRoutes(
     await streamDeliverable(business, req, reply, activeStreams);
   });
 
+  // -------------------------------------------------------------------------------------------------
+  // #610 INSTANT DEMO / SANDBOX: the no-signup sandbox's single-shot feed.
+  //
+  // The same pure, offline #633 generator as the SSE stream above — but returned as ONE JSON document so
+  // a standalone public landing page can fetch it with a plain request and run its own paced reveal. A
+  // single GET is far more robust than `EventSource` behind a CDN/proxy (e.g. a Vercel preview that
+  // buffers or rate-limits SSE), which matters for a prospect's first impression. Still PUBLIC +
+  // UNAUTHENTICATED, deterministic, no DB, no outbound fetch (no SSRF), and no side effects — so nothing
+  // here needs the #13 queue. The URL is UNTRUSTED (#200): `deriveBusiness` parses it structurally and we
+  // only ever emit sanitized text. 400s (never partial/faked output) when the input isn't a web address.
+  app.get("/onboarding/deliverable", async (req, reply) => {
+    const business = deriveBusiness((req.query as { url?: string }).url);
+    if (!business) {
+      return reply.code(400).send({ error: "a website url is required (e.g. acme.com)" });
+    }
+    return buildDeliverable(business);
+  });
+
   // The guided setup checklist (requests + connection state + rotation reminders). Read-only.
   app.get("/me/external-services", async (req, reply) => {
     const identity = await requireIdentity(req, reply);

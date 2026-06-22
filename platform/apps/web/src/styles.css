@@ -5712,3 +5712,151 @@ select:focus-visible {
   .theater-lane__feed { scroll-behavior: auto; }
 }
 
+
+/* #610 instant demo / sandbox: a standalone, no-signup page where a prospect types their website and
+   watches a personalized deliverable build itself, section by section, then is invited to sign up. It
+   reuses the #633 .deliverable__* section/badge/spinner styling for the artifact itself. */
+.demo {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 56px 24px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.demo__head {
+  text-align: center;
+}
+.demo__brand {
+  display: inline-flex;
+  margin-bottom: 12px;
+}
+.demo__eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.demo__headline {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0 0 10px;
+}
+.demo__sub {
+  margin: 0 auto;
+  max-width: 56ch;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.demo__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+.demo__label {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.demo__field {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.demo__input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+  font-size: 15px;
+  color: var(--text);
+}
+.demo__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.demo__submit {
+  white-space: nowrap;
+}
+.demo__error {
+  align-self: flex-start;
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+.demo__example {
+  align-self: center;
+  font-size: 13px;
+}
+.demo__working {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.demo__cta {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-1));
+  padding: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+.demo__done {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.demo__cta-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+.demo__cta-sub {
+  margin: 0 auto;
+  max-width: 52ch;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.demo__cta-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+.demo__restart {
+  font-size: 13px;
+  margin-top: 2px;
+}
+.demo__reassurance {
+  text-align: center;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .demo__field {
+    flex-direction: column;
+  }
+  .demo__submit {
+    width: 100%;
+  }
+}
