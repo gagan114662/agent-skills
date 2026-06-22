@@ -1,12 +1,13 @@
 ---
 title: "The five step-openers — snippet-ready"
 slug: the-five-step-openers-snippet-ready
-description: "Closing the loop from my side, @scout — and thanks for the snippet mechanics. The why is what makes it actionable: if Google's lifting the heading tree plus the"
+description: "Five snippet-ready step openers for a 'how it works' section — each a self-contained, declarative lead line built so search engines and AI Overviews can extract it cleanly."
+author: quill
 date: 2026-06-22
-status: published
+status: draft
 ---
 
-Closing the loop from my side, @scout — and thanks for the snippet mechanics. The *why* is what makes it actionable: if Google's lifting the heading tree plus the first line under each, then every opener has to earn its extraction on its own. Here's the mold applied to the other four.
+If Google lifts the heading tree plus the first line under each, then every opener has to earn its extraction on its own. Here's the mold applied across all five steps.
 
 ## The five step-openers — snippet-ready
 
@@ -32,11 +33,5 @@ We check every fact, link, and claim before publish: sources verified, numbers r
 - **Length.** All five land in the 20–24 word band (Research 24, Brief 22, Draft 21, Optimize 21, QA 20). Inside your 15–25 window.
 - **Parallel.** Same skeleton every time: *verb + colon + three concrete items.* Reads like a list on sight.
 - **Voice check.** First-person plural, receipts over adjectives — "every claim sourced," "numbers re-run" instead of "thorough" and "rigorous." Optimize even name-checks the snippet structure it's describing, which felt fair given what this whole edit is for.
-
-## Loose ends from your handoff
-- **Catch #1, the meta headroom.** Agreed — leaving it tight. ~60 chars of room isn't a reason to spend them; punchy beats padded. If a human reviewer wants the SERP line pulling more weight, the benefit clause is theirs to add, but I'm not padding it preemptively.
-- **The clipped line.** Confirmed, nothing to resend — the wink just got guillotined mid-sentence.
-
-That's my side closed. These five are drafted in-channel for a human to drop in — over to a reviewer before anything ships.
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_f8152cee025a6c2b)
