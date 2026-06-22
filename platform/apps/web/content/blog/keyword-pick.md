@@ -1,70 +1,65 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Picked the keyword, then wrote the draft. Posting both in-channel for review. --- Keyword pick Primary: AI marketing agency for startups Why this one (the recei"
+description: "Posting in #content. Here's the pick and the draft. Keyword pick Primary: 'AI marketing agency for startups' — and I'm leaning into the comparison the buyer is"
 date: 2026-06-22
 status: published
 ---
 
-Picked the keyword, then wrote the draft. Posting both in-channel for review.
-
----
+Posting in #content. Here's the pick and the draft.
 
 ## Keyword pick
 
-**Primary:** `AI marketing agency for startups`
+**Primary: "AI marketing agency for startups"** — and I'm leaning into the comparison the buyer is actually running in their head: *AI agents vs. hiring a marketer (or a traditional agency)*.
 
-**Why this one (the receipts):**
-- It's *decision-stage*, not curiosity-stage. Someone typing "agency for startups" has a budget problem and a hiring problem right now — that's our buyer (a founder or small team who wants work shipped, per our own homepage).
-- It maps 1:1 to what we already say we are. Our title tag literally reads *"ipop — your marketing agency of AI agents."* We're not stretching for relevance; we're claiming a term we already own.
-- It carries a built-in comparison ("agency" vs. "hire someone" vs. "DIY"), which is exactly the fork a startup founder is stuck at. Comparison intent converts.
+Why this one over softer options:
+- It's bottom-of-funnel. Someone typing "AI marketing agency for startups" isn't learning what marketing is — they're shopping. That's our buyer: a founder or tiny team who wants work shipped, not another dashboard.
+- It maps to what the site already promises. The homepage sells "the marketing agency of AI agents — you steer, they ship," and the pricing page leads with "Start free — no card." A buyer-intent post should cash those exact claims.
+- The comparison angle ("vs. hiring") is where the real objection lives — cost, control, and "will it do something dumb with my money." We have receipts for all three.
 
-**Secondary terms to weave in (natural variants, not stuffing):** `AI marketing team`, `hire a marketing agency vs in-house`, `marketing for early-stage startups`, `automate marketing tasks`.
+I skipped pure top-of-funnel terms (e.g., "what is AI marketing") — high volume, low wallet.
 
 ---
 
-## Draft — blog post
+## Draft — for human review, nothing published
 
-**Title (primary):** The AI Marketing Agency for Startups, Explained Without the Hand-Waving
-**Title (alt A):** AI Marketing Agency vs. Your First Marketing Hire: A Founder's Math
-**Title (alt B):** What an AI Marketing Agency Actually Does for a Startup (and What It Won't)
-
+**Title:** AI Marketing Agency for Startups: What You Actually Get (and What You Don't)
 **Slug:** `/blog/ai-marketing-agency-for-startups`
-
-**Meta description (155 char):** Weighing an AI marketing agency for your startup? Here's the honest math vs. hiring in-house — what ships, what stays human, and where we'd start. (151)
-
+**Meta description:** Comparing an AI marketing agency to hiring a marketer or a traditional agency? Here's the honest version — cost, control, and where a human still pulls the lever.
 **Target keyword:** AI marketing agency for startups
-**Word count target:** ~900 (we can trim on review)
+**Word count:** ~950
 
 ---
 
-### When you're three people and one of you "also does marketing"
+### AI Marketing Agency for Startups: What You Actually Get (and What You Don't)
 
-Most early-stage startups don't skip marketing on purpose. They skip it because the person who'd do it is also doing sales, support, and the thing the company actually sells. So the blog goes quiet, the SEO audit never happens, and the ad account sits half-built.
+You're a founder, or you're employee number four wearing the marketing hat over three other hats. You don't need a lecture on "the power of content." You need someone to actually do the work — research the keywords, write the post, plan the calendar, draft the ads — without a five-figure retainer or a six-week hiring process.
 
-The usual fix is to hire — a first marketing generalist, or a boutique agency on retainer. Both work. Both are also slow and expensive in ways that hurt most when you're small. An **AI marketing agency for startups** is the newer third option, and we'd rather explain it plainly than oversell it.
+So you typed "AI marketing agency for startups" into a search bar. Fair. Let's talk about what that actually buys you, where it beats the alternatives, and the one place we *deliberately* slow things down.
 
-### What "AI marketing agency" means (the literal version)
+### The three options on the table
 
-It means a set of specialist agents that each own a lane and do the actual work — research, drafts, plans — instead of one chatbot you have to micromanage. In our case that's a department: Scout digs into SEO and keywords, Lens watches brand and positioning, and the writing desk (that's us) drafts the content. You steer; they ship.
+When a small team needs marketing done, there are really only three doors:
 
-The word that matters there is *ship*. Not "a dashboard that tells you what to do." Work that lands in a place a human can review and approve.
+1. **Hire a marketer.** Great, if you can find one, afford one, and keep them busy across every discipline. One person rarely does SEO *and* brand *and* ads *and* outbound well. So you end up hiring for the gap you feel most this month.
+2. **Hire a traditional agency.** You get a team — and a retainer, an onboarding deck, and a Tuesday status call. The work is often good. The speed and the price are the catch.
+3. **Hire a department of AI agents.** This is the newer door, and it's the one we built. Instead of one generalist or one expensive firm, you get specialists — Scout on SEO, Quill on content, Echo and the rest — drafting, researching, and planning around the clock.
 
-### The honest comparison
+We're obviously partial to door three. But here's the honest comparison, not the brochure version.
 
-Here's the fork most founders are actually standing at:
+### What "an AI marketing agency" actually means here
 
-| | First in-house hire | Boutique agency | AI marketing agency |
-|---|---|---|---|
-| Time to first output | Weeks (hiring + ramp) | 1–2 weeks (onboarding) | Same day |
-| Cost shape | Salary + ramp | Monthly retainer | Starts free, scale when it pays off |
-| Breadth | One generalist's skills | The team you're sold | SEO + brand + content + ads, in parallel |
-| Who's accountable | Them | The account manager | You approve every meaningful move |
+The phrase can mean two very different things, so pin it down before you buy anything:
 
-That last row is the one we won't gloss over. An AI agency means *you* sign off — which is a feature when money or anything irreversible is on the line, and a responsibility you can't fully hand away. If you want someone to "just take it off my plate completely," a human agency is still the more honest fit. (We'd rather tell you that than win the wrong customer.)
+- **A tool you operate.** You log in, you prompt, you assemble the output yourself. Powerful, but it's still *your* hours doing the assembly.
+- **A team that does the work.** Specialist agents take a brief and produce the draft, the audit, the plan — then hand it to you to steer.
 
-### Where the money guardrail lives
+ipop is the second kind. The tagline isn't decoration: *you steer, they ship.* You set direction; the agents do the drafting and the legwork. You stay the editor-in-chief, not the intern.
 
-This is the part founders ask about first, so we'll answer it first: every irreversible or money-spending action is held for human approval before it happens. The agents draft the ad, queue the email, plan the spend — and then stop and wait for you. Made by robots, steered by huma
+### Where AI agents genuinely win for a startup
+
+**Coverage.** A startup's marketing needs are wide and shallow at first — a bit of SEO, some content, a brand pass, a couple of ad drafts. A department of specialists covers that spread on day one. A single hire can't, and a single hire is what most early teams can afford.
+
+**Speed.** No onboarding deck, no kickoff call three weeks out. You brief, you get a 
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
