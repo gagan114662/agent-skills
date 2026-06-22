@@ -27,6 +27,24 @@
   --danger: #d23a1c;
   --radius: 12px;
 
+  /* #729 premium chrome — a refined radius scale + an elevation system so cards, the composer, and the
+     floating command dock read as designed, layered surfaces rather than flat boxes. Shadows are warm and
+     low-contrast on paper; the dark theme redefines them deeper (see the reload-dark block). */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow-xs: 0 1px 2px rgba(43, 33, 22, 0.06);
+  --shadow-sm: 0 2px 6px rgba(43, 33, 22, 0.07), 0 1px 2px rgba(43, 33, 22, 0.05);
+  --shadow-md: 0 8px 24px rgba(43, 33, 22, 0.1), 0 2px 6px rgba(43, 33, 22, 0.06);
+  --shadow-lg: 0 18px 48px rgba(43, 33, 22, 0.16), 0 4px 12px rgba(43, 33, 22, 0.08);
+  /* Type scale (#729) — a consistent ramp the chrome keys off, so headings/labels/body share one rhythm. */
+  --fs-eyebrow: 11px;
+  --fs-label: 12px;
+  --fs-body: 14px;
+  --fs-title: 15px;
+  --tracking-eyebrow: 0.07em;
+
   /* Department spectrum (#123 fleet × pop identity): one hue per marketing function. */
   --dept-seo: #ff4524;
   --dept-social: #ff7a00;
@@ -890,11 +908,13 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  /* #729 premium chrome: a crisper section eyebrow — smaller, wider-tracked, semibold. */
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--text-faint);
-  padding: 0 6px 4px;
+  padding: 2px 8px 6px;
 }
 .sidebar__addform {
   display: flex;
@@ -915,20 +935,26 @@ select:focus-visible {
   padding: 0;
 }
 .channelrow {
+  position: relative;
   width: 100%;
   text-align: left;
   border: none;
   background: transparent;
   color: var(--text-dim);
-  /* #381 polish: calmer, roomier rows in the reload.team rhythm. */
+  /* #729 premium chrome: calm, roomier rows with a consistent rhythm and a smooth hover. */
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  font-size: 13.5px;
+  line-height: 1.2;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
 }
 .channelrow:hover {
-  background: var(--bg-3);
+  background: var(--bg-2);
   color: var(--text);
 }
 .channelrow--active {
@@ -936,6 +962,21 @@ select:focus-visible {
   color: var(--accent-press);
   font-weight: 700;
   animation: squash-stretch 0.34s var(--pop-ease);
+}
+/* #729: a 2px accent rail on the active row — the reload.team selected-state signature. */
+.channelrow--active::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.5px;
+  height: 15px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+.channelrow--dept.channelrow--active::before {
+  background: var(--dept, var(--accent));
 }
 .channelrow__hash {
   color: var(--text-faint);
@@ -985,12 +1026,15 @@ select:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 .pane__title {
-  font-size: 15px;
+  font-size: var(--fs-title);
+  font-weight: 800;
+  letter-spacing: -0.02em;
   margin: 0;
 }
 .pane__sub {
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: var(--fs-label);
+  font-weight: 600;
 }
 .messagelist {
   flex: 1;
@@ -1093,9 +1137,10 @@ select:focus-visible {
 .message {
   display: flex;
   gap: 12px;
-  /* #381 polish: roomier rows with a softer hit area, the calm reload.team rhythm. */
-  padding: 9px 11px;
-  border-radius: 10px;
+  /* #729 premium chrome: roomier rows with a soft hit area and a smooth hover lift. */
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  transition: background 0.14s ease;
   /* New messages enter with a swell-pop (#145 criterion #4) — they arrive, they don't just appear. */
   animation: msg-pop 0.26s var(--pop-ease);
 }
@@ -1119,22 +1164,29 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 .message__author {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
 }
 .message__replytag {
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--text-faint);
   background: var(--bg-3);
-  border-radius: 4px;
-  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
 }
 .message__text {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.5;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  color: var(--text);
 }
 .message__thread {
   margin-top: 4px;
@@ -1238,17 +1290,32 @@ select:focus-visible {
 .composer__input {
   flex: 1;
   resize: none;
-  background: var(--bg-2);
+  background: var(--bg-1);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   color: var(--text);
   padding: 11px 14px;
   font: inherit;
-  line-height: 1.45;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    background 0.14s ease;
 }
+.composer__input::placeholder {
+  color: var(--text-faint);
+}
+.composer__input:hover {
+  border-color: color-mix(in srgb, var(--text-faint) 50%, var(--line));
+}
+/* #729: a soft focus ring instead of a flat border swap — the premium composer signature. */
 .composer__input:focus {
   outline: none;
+  background: var(--bg);
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .mention-menu {
   position: absolute;
@@ -1639,9 +1706,21 @@ select:focus-visible {
   align-items: center;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg-1);
-  padding: 10px 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.18s ease;
+}
+.review-row:hover {
+  border-color: color-mix(in srgb, var(--text-faint) 30%, var(--line));
+  box-shadow: var(--shadow-sm);
+}
+/* #729: a pending decision wears a warm accent edge so it reads as "act here", mirroring the board card. */
+.review-row[data-status="pending"] {
+  border-left: 3px solid var(--accent);
 }
 .review-row__main {
   flex: 1;
@@ -1654,18 +1733,26 @@ select:focus-visible {
   gap: 4px;
 }
 .review-row__summary {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: var(--fs-body);
+  letter-spacing: -0.01em;
 }
 .review-row__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 7px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-label);
 }
+/* #729: the action type reads as a defined chip, not loose mono text. */
 .review-row__action {
   color: var(--agent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: var(--agent-dim);
+  border-radius: var(--radius-sm);
+  padding: 1px 7px;
 }
 .review-row__amount {
   color: var(--away);
@@ -5283,17 +5370,23 @@ select:focus-visible {
 .board__col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .board__col--live { background: linear-gradient(180deg, transparent, rgba(255, 69, 36, 0.045)); border-radius: var(--radius); padding: 0 4px 8px; }
 .board__colh { display: flex; align-items: center; gap: 8px; padding: 0 2px 2px; }
-.board__colt { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.board__colt { font-size: 10.5px; font-weight: 700; letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; color: var(--text-faint); }
 .board__colh--hot .board__colt { color: var(--accent); }
 .board__coln { font-family: var(--console-mono); font-size: 10px; color: var(--text-faint); }
 .board__pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: console-pulse 1.4s infinite; }
 
-.card { position: relative; overflow: hidden; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 11px 13px 11px 14px; cursor: pointer; animation: swell-pop 0.4s var(--pop-ease) both; }
+/* #729 premium chrome: cards are layered surfaces — a soft elevation at rest, a lift on hover. */
+.card { position: relative; overflow: hidden; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 12px 14px 12px 15px; cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.18s ease, transform 0.18s var(--pop-ease);
+  animation: swell-pop 0.4s var(--pop-ease) both; }
 .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--hue, var(--line)); }
-.card:hover { background: var(--bg-2); }
-.card--need { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); cursor: default; }
-.card__ttl { font-size: 13px; font-weight: 700; line-height: 1.35; display: flex; align-items: center; gap: 8px; }
+.card:hover { background: var(--bg-1); border-color: color-mix(in srgb, var(--text-faint) 30%, var(--line)); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+/* #729 designed approval card: a warm vermilion wash + accent edge so a money decision reads as "act here". */
+.card--need { background: color-mix(in srgb, var(--accent) 5%, var(--bg-1)); border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); cursor: default; }
+.card--need::before { width: 3.5px; background: var(--accent); }
+.card--need:hover { transform: none; box-shadow: var(--shadow-sm); border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); }
+.card__ttl { font-size: var(--fs-body); font-weight: 700; line-height: 1.35; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
 .card__meta { color: var(--text-dim); margin-top: 2px; }
 .card__amount { color: var(--text-dim); }
 .card__foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-family: var(--console-mono); font-size: 10.5px; color: var(--text-faint); }
@@ -5432,13 +5525,15 @@ select:focus-visible {
 .peek__whylink:hover { text-decoration: underline; }
 .peek__back { border: none; background: none; padding: 0 0 12px; font: inherit; font-size: 11.5px; font-weight: 700; color: var(--text-dim); cursor: pointer; }
 .peek__back:hover { color: var(--ink); }
-.peek__foot { padding: 14px 18px; border-top: 1px solid var(--line); flex: none; }
-.peek__ask { font-size: 12.5px; color: var(--accent-press); font-weight: 700; background: var(--accent-dim); border-radius: 10px; padding: 10px 13px; margin-bottom: 12px; line-height: 1.4; }
+/* #729 premium chrome: the approval foot reads as a designed decision surface, not a button row. */
+.peek__foot { padding: 16px 18px; border-top: 1px solid var(--line); flex: none; background: color-mix(in srgb, var(--accent) 3%, var(--bg)); }
+.peek__ask { font-size: 12.5px; color: var(--accent-press); font-weight: 700; background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: var(--radius-md); padding: 11px 14px; margin-bottom: 13px; line-height: 1.45; }
 .peek__approve { display: flex; gap: 10px; margin-bottom: 12px; }
-.peek__yes { flex: 1; background: var(--accent); color: #fff; font-weight: 800; font-size: 13px; border: none; border-radius: 10px; padding: 11px; cursor: pointer; }
-.peek__yes:hover { background: var(--accent-press); }
-.peek__yes:disabled { opacity: 0.5; cursor: default; }
-.peek__no { flex: 0 0 100px; }
+.peek__yes { flex: 1; background: var(--accent); color: #fff; font-weight: 800; font-size: 13px; border: none; border-radius: var(--radius-md); padding: 12px; cursor: pointer; box-shadow: var(--shadow-sm); transition: background 0.14s ease, box-shadow 0.18s ease, transform 0.12s var(--pop-ease); }
+.peek__yes:hover { background: var(--accent-press); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.peek__yes:active { transform: translateY(0); }
+.peek__yes:disabled { opacity: 0.5; cursor: default; box-shadow: none; transform: none; }
+.peek__no { flex: 0 0 110px; border-radius: var(--radius-md); }
 .peek__foot .peek__box { margin: 0; }
 
 /* ---- board v5: approval-needed card ask line ---- */
@@ -5529,6 +5624,11 @@ select:focus-visible {
   --away: #e0a82e;
   --offline: #4a4a55;
   --danger: #ff5a3c;
+  /* #729: deeper elevation on near-black so layered surfaces still read as lifted, not washed out. */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 52px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.45);
 }
 /* Kill the light radial glow on the login/splash so it reads as one dark surface (#378). */
 :root[data-theme="reload-dark"] .auth {
@@ -6293,3 +6393,115 @@ select:focus-visible {
 }
 .connect-claude__connected > button:hover { color: var(--text); background: var(--bg-2); }
 .connect-claude__model { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+/* ============================================================================================
+   #729 — premium workspace chrome: the floating command dock.
+
+   A small, always-present launcher pinned to the bottom-right of the workspace. It collects the
+   cross-surface quick actions (approvals, settings) behind one consistent stroked icon set, plus the
+   user-facing light ⇄ dark theme toggle. Glassy, elevated, calm — the reload.team signature. Visual only.
+   ============================================================================================ */
+.cmddock {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-1) 86%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: var(--shadow-lg);
+  animation: cmddock-in 0.42s var(--pop-ease) both;
+}
+.cmddock__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.16s var(--pop-ease);
+}
+.cmddock__btn:hover {
+  background: var(--bg-3);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.cmddock__btn:active {
+  transform: translateY(0);
+}
+.cmddock__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cmddock__btn--theme:hover {
+  color: var(--accent);
+}
+.cmddock__divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: var(--line);
+}
+/* The waiting-on-you count, anchored to the approvals button — the dock's only loud element. */
+.cmddock__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+@keyframes cmddock-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* #729 reduced-motion gate (criterion #10): neutralise the chrome-polish motion vocabulary for people who
+   opt out — the static state must still read as designed. Kept LAST in the file so it overrides everything
+   above. The motion-gating test asserts this final block declares `animation: none`. */
+@media (prefers-reduced-motion: reduce) {
+  .cmddock {
+    animation: none;
+  }
+  .cmddock__btn,
+  .card,
+  .card:hover,
+  .review-row,
+  .peek__yes,
+  .peek__yes:hover,
+  .channelrow,
+  .composer__input,
+  .message {
+    transition: none;
+    transform: none;
+    animation: none;
+  }
+}

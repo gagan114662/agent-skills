@@ -34,6 +34,7 @@ import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { BudgetSettingsPanel } from "../BudgetSettingsPanel.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
+import { CommandDock } from "../CommandDock.js";
 import { FirstRunChecklist } from "../FirstRunChecklist.js";
 import { deriveFirstRunChecklist, firstRunComplete, type FirstRunStepKey } from "../../lib/firstrun-checklist.js";
 import { loadFirstRunPrefs, saveFirstRunPrefs } from "../../lib/firstrun-prefs.js";
@@ -1061,6 +1062,17 @@ export function ConsoleView(): React.JSX.Element {
         </ShellOverlay>
       )}
 
+      {/* #729: the floating command dock — one consistent set of quick actions + the light/dark theme toggle,
+          present on both the board and the reload.chat surface. Visual only: these are shortcuts to existing
+          overlays (approvals/settings) plus a palette swap; no new behaviour. */}
+      <CommandDock
+        onOpenApprovals={() => {
+          setApprovalsInitialStatus("pending");
+          setApprovalsOpen(true);
+        }}
+        onOpenSettings={() => openShellSettings()}
+        pendingCount={pendingCount}
+      />
     </div>
   );
 }
