@@ -246,6 +246,8 @@ import type { AutomationEngine } from "./automations/engine.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { workflowRoutes } from "./routes/workflows.js";
 import { createDefaultWorkflowEngine } from "./workflows/default.js";
+import { createDefaultScheduler } from "./scheduler/default.js";
+import type { DurableScheduler } from "./scheduler/scheduler.js";
 import { workflowStore } from "./db/repositories/workflows.js";
 import type { WorkflowEngine } from "./workflows/engine.js";
 import { missionControlRoutes } from "./routes/mission-control.js";
@@ -317,6 +319,11 @@ declare module "fastify" {
     automationEngine: AutomationEngine;
     /** The #152 workflow engine; `index.ts` starts its opt-in tick (WORKFLOWS_INTERVAL_MS). */
     workflowEngine: WorkflowEngine;
+    /**
+     * The #559 durable, single-leader scheduler. `index.ts` registers each restart-safe engine tick
+     * (planning / venture-memory / verifiers / workflows) and calls `start()`; stopped on server close.
+     */
+    scheduler: DurableScheduler;
     /** The #170 Slack digest engine; `index.ts` starts its opt-in tick (SLACK_DIGEST_INTERVAL_MS). */
     slackDigestEngine: SlackDigestEngine;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
@@ -464,6 +471,8 @@ export interface BuildAppOptions {
   automations?: AutomationEngine;
   /** #152 workflows: tests inject an engine over fake action seams; default builds the real repo-backed one. */
   workflows?: WorkflowEngine;
+  /** #559 scheduler: tests inject a scheduler over an in-memory store; default builds the Postgres-backed one. */
+  scheduler?: DurableScheduler;
   /** #147 mission control: tests inject a read-only service over fakes; default reads the live #25 sessions. */
   missionControl?: MissionControlService;
   /** #147 audit trail: tests inject a read-only service over fakes; default reads existing append-only rows. */
@@ -1037,9 +1046,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // venture-gated #96 launcher; pivots / over-budget / not-#95-allowed dispatches #13-gate. Default-OFF.
   const planningService = opts.planning ?? createDefaultPlanningService(sessionManager);
   app.register(planningRoutes, { service: planningService });
-  app.addHook("onClose", async () => {
-    planningService.stop();
-  });
   app.decorate("planningEngine", planningService);
   // #197 venture memory & planning loop: per-venture durable memory (reusing the #15 graph) retrieved
   // into every new session's brief, plus a weekly tick that drafts next week's backlog per venture from
@@ -1048,9 +1054,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // backlog (which auto-dispatches). Recording/reading is always available; the weekly tick is default-OFF.
   const ventureMemoryService = opts.ventureMemory ?? createDefaultVentureMemoryService();
   app.register(ventureMemoryRoutes, { service: ventureMemoryService });
-  app.addHook("onClose", async () => {
-    ventureMemoryService.stop();
-  });
   app.decorate("ventureMemoryEngine", ventureMemoryService);
   // #172 self-shipping loop: agent-ok issues → cloud build sessions → auto-review against the house
   // rubric → auto-merge ONLY within guardrails (reviewer PASS, CI green, no protected-path touched,
@@ -1253,16 +1256,22 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // context. The engine reuses the SAME #123 venture-gated launcher (agent_task), the #13 gate
   // (draft_send → a PENDING approval, never an egress), and the #8 notifier (notify_owner); a FAILED
   // firing feeds the #117 flywheel. Both surfaces are config default-OFF (`catalog.enabled` /
-  // `workflows.enabled`); the timer is opt-in (WORKFLOWS_INTERVAL_MS, started in index.ts). A catalog
-  // mutation fires the workflow's `catalog_change` triggers (best-effort, never awaited). Stopped on close.
+  // `workflows.enabled`); the tick is opt-in (WORKFLOWS_INTERVAL_MS, registered on the #559 scheduler in
+  // index.ts). A catalog mutation fires the workflow's `catalog_change` triggers (best-effort, never awaited).
   const workflowEngine =
     opts.workflows ?? createDefaultWorkflowEngine(app.log, sessionManager, (event) => flywheelEngine.record(event));
   app.register(catalogRoutes, { workflowEngine });
   app.register(workflowRoutes, { engine: workflowEngine, store: workflowStore });
-  app.addHook("onClose", async () => {
-    workflowEngine.stop();
-  });
   app.decorate("workflowEngine", workflowEngine);
+  // #559 durable, single-leader scheduler: the restart-safe replacement for the per-engine `setInterval`
+  // tick loops (planning / venture-memory / verifiers / workflows). `index.ts` registers each engine's
+  // `tickAll` as a durable job (persisted cursor + leader lease in `scheduler_jobs`) and calls `start()`;
+  // here we only construct + decorate + stop-on-close. Default-inert until an engine's *_INTERVAL_MS opts in.
+  const scheduler = opts.scheduler ?? createDefaultScheduler(app.log);
+  app.addHook("onClose", async () => {
+    scheduler.stop();
+  });
+  app.decorate("scheduler", scheduler);
   const missionControl = opts.missionControl ?? createDefaultMissionControlService();
   app.register(missionControlRoutes, { service: missionControl, sessionManager });
   const auditService = opts.audit ?? createDefaultAuditService();
@@ -1275,12 +1284,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #106 outcome verifiers: the measured-gate runner. It turns non-code claims (deploy live? revenue
   // real? growth moved? fix held?) into durable `verifier_results` evidence rows via pure verifier
   // modules, and a FAILED verification opens a #13 escalation (never silently passes). It is config
-  // default-OFF (`verifiers.enabled`) + the timer is opt-in (VERIFIERS_INTERVAL_MS, started in
-  // index.ts), so wiring it changes nothing until a deployment opts in. Stopped on server close.
+  // default-OFF (`verifiers.enabled`) + the tick is opt-in (VERIFIERS_INTERVAL_MS, registered on the #559
+  // scheduler in index.ts), so wiring it changes nothing until a deployment opts in.
   const verifierRunner = opts.verifiers ?? createDefaultVerifierRunner(app.log);
-  app.addHook("onClose", async () => {
-    verifierRunner.stop();
-  });
   app.decorate("verifierRunner", verifierRunner);
   // #191 deliverable verification layer: "nothing ships unverified". Before a deliverable (outbound
   // content / support reply / campaign change / venture deploy) can request approval or auto-send, a

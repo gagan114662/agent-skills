@@ -18,9 +18,10 @@ import type {
 
 /**
  * WorkflowEngine (#152, ADR-0152) — the generalization of the #147 AutomationEngine into a
- * trigger → conditions → actions runner. It mirrors the proven supervisor shape: an opt-in
- * `start(intervalMs)` timer (default 0), a `tickAll()` that checks the #99 maintenance flag before any
- * DB call, a per-workspace `tickWorkspace` gated on the config `enabled` flag then the #17 kill switch,
+ * trigger → conditions → actions runner. It mirrors the proven supervisor shape: a `tickAll()` driven by
+ * the #559 durable scheduler (registered in `index.ts`, replacing the old in-process `setInterval`) that
+ * checks the #99 maintenance flag before any DB call, a per-workspace `tickWorkspace` gated on the config
+ * `enabled` flag then the #17 kill switch,
  * a **pure decision core** (`conditions.ts` + `decide.ts`), and a definition table + run-ledger pair.
  *
  * Every action reuses an EXISTING gated path, so the feature adds zero new egress:
@@ -131,25 +132,10 @@ export interface WorkflowEngineDeps {
 }
 
 export class WorkflowEngine {
-  private timer?: NodeJS.Timeout;
-
   constructor(private readonly deps: WorkflowEngineDeps) {}
 
   private clock(): Date {
     return this.deps.now?.() ?? new Date();
-  }
-
-  start(intervalMs: number): void {
-    if (this.timer || intervalMs <= 0) return;
-    this.timer = setInterval(() => void this.tickAll(), intervalMs);
-    this.timer.unref?.();
-  }
-
-  stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
   }
 
   /** One pass over every workspace with enabled schedule workflows. */

@@ -134,26 +134,10 @@ export interface PlanningTickResult {
 export class PlanningService {
   private readonly deps: PlanningDeps;
   private readonly now: () => Date;
-  private timer?: NodeJS.Timeout;
 
   constructor(deps: PlanningDeps) {
     this.deps = deps;
     this.now = deps.now ?? (() => new Date());
-  }
-
-  /** Start the periodic planning loop over every active workspace. No-op if interval ≤ 0 or started. */
-  start(intervalMs: number): void {
-    if (this.timer || intervalMs <= 0) return;
-    this.timer = setInterval(() => void this.tickAll(), intervalMs);
-    this.timer.unref?.();
-  }
-
-  /** Stop the periodic loop (idempotent) — called on server shutdown. */
-  stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
   }
 
   /**

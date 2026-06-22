@@ -37,24 +37,36 @@ app.flywheelEngine.start(env.flywheel.intervalMs);
 // entry is the `selfqa:run` CLI in CI; the timer is for an in-process nightly. Stopped on close via buildApp.
 app.selfqaEngine.start(env.selfqa.intervalMs);
 
-// #106 outcome verifiers: start the opt-in tick (VERIFIERS_INTERVAL_MS; default 0 = off) that turns
+// #106 outcome verifiers: register the opt-in tick (VERIFIERS_INTERVAL_MS; default 0 = off) that turns
 // non-code claims into durable measured verdicts and escalates failures. Self-gates on the #99
-// maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
-app.verifierRunner.start(env.verifiers.intervalMs);
+// maintenance flag + the #17 kill switch. Driven by the #559 durable scheduler (started below).
+app.scheduler.register({
+  key: "verifiers",
+  intervalMs: env.verifiers.intervalMs,
+  run: () => app.verifierRunner.tickAll(),
+});
 
 // #100 insight miner: start the opt-in mining tick (INSIGHT_INTERVAL_MS; default 0 = off) that ranks
 // evidence sources and mines them into structured insights for the venture loop. Stopped on close.
 app.insightEngine.start(env.insight.intervalMs);
 
-// #115 product planning loop: start the opt-in tick (PLANNING_INTERVAL_MS; default 0 = off) that
+// #115 product planning loop: register the opt-in tick (PLANNING_INTERVAL_MS; default 0 = off) that
 // re-ranks the backlog, drafts a spec for the top item, and proposes a build session (venture-gated,
-// budget + kill-switch aware). Stopped on server close via buildApp.
-app.planningEngine.start(env.planning.intervalMs);
+// budget + kill-switch aware). Driven by the #559 durable scheduler (started below).
+app.scheduler.register({
+  key: "planning",
+  intervalMs: env.planning.intervalMs,
+  run: () => app.planningEngine.tickAll(),
+});
 
-// #197 venture memory & planning: start the opt-in weekly tick (VENTURE_PLANNING_INTERVAL_MS; default
+// #197 venture memory & planning: register the opt-in weekly tick (VENTURE_PLANNING_INTERVAL_MS; default
 // 0 = off) that drafts each venture's next-week plan from memory + scorecard + OKR drift, cites the #200
-// premortem, and #13-gates it to the owner. Stopped on server close via buildApp.
-app.ventureMemoryEngine.start(env.ventureMemory.intervalMs);
+// premortem, and #13-gates it to the owner. Driven by the #559 durable scheduler (started below).
+app.scheduler.register({
+  key: "venture_memory",
+  intervalMs: env.ventureMemory.intervalMs,
+  run: () => app.ventureMemoryEngine.tickAll(),
+});
 
 // #187 venture factory: start the opt-in opportunity-scanner tick (VENTURE_FACTORY_INTERVAL_MS; default
 // 0 = off) that advances `scanned` candidates through the edge gate into validation. The factory itself
@@ -103,9 +115,19 @@ app.monetizationEngine.start(env.monetization.intervalMs);
 // due scheduled automations through the #123 venture-gated path. Stopped on server close via buildApp.
 app.automationEngine.start(env.automations.intervalMs);
 
-// #152 workflows: start the opt-in tick (WORKFLOWS_INTERVAL_MS; default 0 = off) that fires due
-// scheduled workflows (trigger → conditions → actions) through the same gated paths. Stopped on close.
-app.workflowEngine.start(env.workflows.intervalMs);
+// #152 workflows: register the opt-in tick (WORKFLOWS_INTERVAL_MS; default 0 = off) that fires due
+// scheduled workflows (trigger → conditions → actions) through the same gated paths.
+app.scheduler.register({
+  key: "workflows",
+  intervalMs: env.workflows.intervalMs,
+  run: () => app.workflowEngine.tickAll(),
+});
+
+// #559 durable, single-leader scheduler: begin the single poll loop now that every restart-safe engine
+// tick is registered. Each due job is claimed via a persisted leader lease (exactly-once across replicas),
+// resumes from its persisted cursor after a restart, and is retried on bounded backoff on failure. The
+// scheduler is stopped on server close via buildApp's onClose hook.
+app.scheduler.start();
 
 // #170 Slack-native: start the opt-in daily-digest tick (SLACK_DIGEST_INTERVAL_MS; default 0 = off)
 // that DMs each opted-in workspace's owner the fleet digest. Stopped on server close via buildApp.
