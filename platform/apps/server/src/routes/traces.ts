@@ -4,6 +4,7 @@ import { requireMemoryCapability } from "../auth/access.js";
 import { createDefaultTraceService } from "../trace/default.js";
 import type { TraceService } from "../trace/service.js";
 import { selectNewEvents, sseComment, sseFrame, toTheaterEvent } from "../trace/theater.js";
+import { createDefaultCostService } from "../observability/cost/index.js";
 
 /** Live-theater stream tuning (issue #624). Env-overridable; safe, bounded defaults otherwise. */
 const POLL_MS = clampInt(process.env.TRACE_STREAM_POLL_MS, 1_000, 200, 15_000);
@@ -16,6 +17,13 @@ function clampInt(raw: string | undefined, fallback: number, min: number, max: n
   const n = raw ? Number.parseInt(raw, 10) : NaN;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+/** Parse an ISO timestamp query param into a Date, or undefined for missing/unparseable input (issue #667). */
+function parseDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? undefined : new Date(ms);
 }
 
 /** Standard SSE response head — disables proxy buffering so frames flush as they are written. */
@@ -38,6 +46,7 @@ function writeSseHead(reply: FastifyReply): void {
  */
 export async function tracesRoutes(app: FastifyInstance): Promise<void> {
   const service = createDefaultTraceService();
+  const costService = createDefaultCostService();
 
   // Every open SSE poll loop registers a stop fn here so a server shutdown tears them all down (no leak).
   const activeStreams = new Set<() => void>();
@@ -58,6 +67,36 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
       sessionId: q.sessionId,
       limit: Number.isFinite(limit) ? limit : undefined,
     });
+  });
+
+  // workspace cost rollup (issue #667): token + estimated-cost totals, broken down per agent and per UTC day.
+  // Static `/cost` segment wins over the `/:runId` param route below in Fastify's router (same as `/stream`).
+  // ?since/?until are ISO timestamps (invalid values are ignored); ?limit caps the run scan.
+  app.get("/workspaces/:wid/traces/cost", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!(await requireMemoryCapability(id, wid, "read", reply))) return;
+    const q = req.query as { since?: string; until?: string; limit?: string };
+    const since = parseDate(q.since);
+    const until = parseDate(q.until);
+    const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
+    return costService.getSummary(wid, {
+      since,
+      until,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+  });
+
+  // per-run cost (issue #667): the run's token + cost totals plus a per-model breakdown.
+  app.get("/workspaces/:wid/traces/:runId/cost", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, runId } = req.params as { wid: string; runId: string };
+    if (!(await requireMemoryCapability(id, wid, "read", reply))) return;
+    const cost = await costService.getRunCost(wid, runId);
+    if (!cost) return reply.code(404).send({ error: "trace not found in this workspace" });
+    return cost;
   });
 
   // the full trace for one run: header + every event in replay (seq) order.
