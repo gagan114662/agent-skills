@@ -81,3 +81,4 @@ export * from "./inbound-leads.js";
 export * from "./agent-decisions.js";
 export * from "./skillopt-runs.js";
 export * from "./outbound-channels.js";
+export * from "./agent-trace.js";

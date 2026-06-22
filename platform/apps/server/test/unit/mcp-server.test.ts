@@ -78,6 +78,8 @@ const TOOL_NAMES = [
   "add_task_dependency",
   "read_memory",
   "write_memory",
+  "list_traces",
+  "get_trace",
   "send_outbound_email",
   "check_channel_connection",
   "send_through_channel",

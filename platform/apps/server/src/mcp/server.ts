@@ -41,6 +41,12 @@ import {
   getNeighbors,
 } from "../db/repositories/memories.js";
 import { dedupeKey } from "../memory/dedupe.js";
+import {
+  getTraceRun,
+  listTraceEvents,
+  listTraceRuns,
+} from "../db/repositories/agent-trace.js";
+import { reconstructReplay } from "../trace/service.js";
 import { isStatus, canTransition } from "../tasks/status.js";
 import { notify } from "../notifications/service.js";
 import { resolveThreadRoot } from "../messaging/threads.js";
@@ -564,6 +570,59 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         createdByMemberId: identity.memberId,
       });
       return ok({ ...(await getMemory(wid, r.id)), created: r.created });
+    },
+  );
+
+  mcp.registerTool(
+    "list_traces",
+    {
+      title: "List observation traces",
+      description:
+        "List the observation/replay traces in your workspace, newest first (issue #560). Each trace is " +
+        "the append-only record of one agent run — every model request, response, tool call+result, and " +
+        "approval decision. Use this to find a run, then fetch its full trace with get_trace. Scoped to " +
+        "your workspace; payloads are already secret-redacted.",
+      inputSchema: {
+        sessionId: z.string().optional().describe("Filter to the trace for one agent session (#25) run."),
+        limit: z.number().int().positive().max(200).optional().describe("Max runs to return (default 50)."),
+      },
+    },
+    async ({ sessionId, limit }) => {
+      const cap = captureReply();
+      if (!(await requireMemoryCapability(identity, wid, "read", cap.reply))) {
+        return fail(cap.denial()?.body.error ?? "access denied");
+      }
+      return ok(await listTraceRuns(wid, { sessionId, limit }));
+    },
+  );
+
+  mcp.registerTool(
+    "get_trace",
+    {
+      title: "Fetch a run's observation trace",
+      description:
+        "Fetch the full observation/replay trace for one agent run (issue #560): the run header plus " +
+        "every event in order — the exact context the model saw at each turn (system+messages+tools), " +
+        "every response incl reasoning, every tool call+result, and every approval-gate decision, with " +
+        "timestamps and token/cost. Pass replay=true to also get the decision path reconstructed " +
+        "turn-by-turn. Scoped to your workspace; all payloads are already secret-redacted.",
+      inputSchema: {
+        runId: z.string().describe("The trace run id (must be in your workspace)."),
+        replay: z
+          .boolean()
+          .optional()
+          .describe("When true, also return the turn-by-turn reconstructed replay."),
+      },
+    },
+    async ({ runId, replay }) => {
+      const cap = captureReply();
+      if (!(await requireMemoryCapability(identity, wid, "read", cap.reply))) {
+        return fail(cap.denial()?.body.error ?? "access denied");
+      }
+      const run = await getTraceRun(wid, runId);
+      if (!run) return fail("trace not found in this workspace");
+      const events = await listTraceEvents(wid, runId);
+      return ok(replay ? { run, replay: reconstructReplay(run, events) } : { run, events });
     },
   );
 
