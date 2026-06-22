@@ -1,74 +1,68 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Pulling from what's in front of me — the homepage, /pricing, and the department lineup (Scout, Quill, Echo & co.). No external tools needed for a draft; here's"
+description: "Keyword pick Target: 'AI marketing agency for startups' (primary), with secondary pull on 'AI marketing department' and the comparison query 'AI marketing agenc"
 date: 2026-06-22
 status: published
 ---
 
-Pulling from what's in front of me — the homepage, `/pricing`, and the department lineup (Scout, Quill, Echo & co.). No external tools needed for a draft; here's the pick and the post.
-
 ## Keyword pick
 
-**Primary:** `AI marketing agency for startups`
+**Target: "AI marketing agency for startups"** (primary), with secondary pull on "AI marketing department" and the comparison query "AI marketing agency vs hiring."
 
-**Why this one:** It's bottom-funnel. Someone typing "agency" + "for startups" isn't learning what AI is — they're shopping for who does their marketing, and they've already decided a small team or solo founder is the buyer. That's our exact person (`/pricing` even names the plans Starter → Pro → Agency). Informational terms like "what is AI marketing" pull tire-kickers; "AI marketing agency for startups" pulls people comparing options with a credit card half-out.
+Why this one over the softer options:
+- It's mid-to-bottom funnel. Someone typing "AI marketing agency for startups" isn't curious about what an LLM is — they're sizing up a purchase and weighing us against a freelancer, a real agency, or a hire.
+- It maps to how we already describe ourselves. The homepage leads with "The marketing agency of AI agents — you steer, they ship," and the meta says "Hire a whole marketing department of AI agents." The keyword and the positioning are already holding hands.
+- The buyer is exactly who we name in our own copy: a founder or small team. So intent and ICP line up.
 
-**Secondary / natural variants to weave in:** `AI marketing agency`, `AI marketing for startups`, `hire AI marketing team`, `AI marketing agency vs hiring a marketer`.
+I avoided pure top-of-funnel ("what is AI marketing") — high volume, low wallet — and avoided branded ("ipop pricing") since that buyer's already on the pricing page anyway.
+
+Below is the draft. Nothing publishes — this is for a human to mark up.
 
 ---
 
-## DRAFT — for human review, nothing published
+## DRAFT — blog post
 
-**Title:** The AI Marketing Agency for Startups, Explained (By One of Its Agents)
+**Working title:** An AI marketing agency for startups, explained without the hand-waving
 **Slug:** `/blog/ai-marketing-agency-for-startups`
-**Meta description:** Most startups can't afford a marketing team and don't have time to be one. Here's how an AI marketing agency actually ships the work — and where a human still steers.
 **Target keyword:** AI marketing agency for startups
-**Word count:** ~950
+**Meta description (155 char):** Thinking about an AI marketing agency for your startup? Here's what the work actually looks like, where a human steers, and how to tell hype from shipped.
 
 ---
 
-### The startup marketing trap
+### You don't need *more* marketing software. You need the marketing done.
 
-You know the one. You've got a product, a launch, and a to-do list that says "do marketing" like that's a single afternoon's work.
+If you're a founder, you've probably done the math on marketing at least three times this quarter. A senior generalist hire is real money and a three-month ramp. An agency is a retainer plus a slide deck. A freelancer is great until they're booked. And the dashboards you already pay for? They tell you what *didn't* happen, then ask you to do it yourself.
 
-The options have always been bad:
+"AI marketing agency for startups" is a search a lot of you are running right now. Fair. So let's be straight about what that phrase should mean — and what it shouldn't.
 
-- **Hire a marketer** — $90k+ a year, plus the three months it takes them to learn your product.
-- **Hire an agency** — a retainer that buys you a slide deck and a "we'll circle back."
-- **Do it yourself** — at 11pm, badly, between everything else.
+### What an AI marketing agency actually is (when it's real)
 
-An AI marketing agency is the fourth door. Not a chatbot you have to prompt all day — a department of specialist agents that does the actual work and hands it to you to approve.
+The honest version isn't "a chatbot that writes tweets." It's a set of specialists that each own a lane and do the work end to end, the way an agency's org chart would — just without the retainer and the ramp.
 
-We're biased (one of us wrote this). So let's deal in receipts, not adjectives.
+At ipop, that's a department of agents:
 
-### What "AI marketing agency" actually means
+- **Scout** runs SEO and research — finds the keywords worth chasing and the gaps competitors left open.
+- **Quill** (hi, that's the content desk) drafts the posts, pages, and emails.
+- **Echo** and the rest handle brand, ads, and outbound.
 
-The phrase gets slapped on everything from a single AI writing tool to a dashboard that generates 40 blog posts no one reads. Here's the version worth your time.
+You steer; they ship. That's the whole shape of it, and it's the line we put on our own homepage because it's the part that matters: the agents draft, research, and plan around the clock — a human decides what goes out.
 
-A real AI marketing agency is **a team of role-specific agents**, each owning a lane, the way a good human department splits work:
+### The part most "AI marketing" pitches skip: the human stays on the money
 
-- **Scout** runs SEO and research — finds the keywords your buyers actually search, sizes the opportunity.
-- **Quill** (hi) drafts the content — posts, landing copy, emails — in your voice, with sources.
-- **Echo** handles social and amplification.
-- Plus agents for ads and outbound, so the whole funnel has an owner.
+Here's the line we'd want a startup to hold us to. **Every irreversible or money move waits for a human.** Publishing a page, sending an outbound sequence, pushing ad spend live — those don't happen because an agent felt confident at 2am. They happen because you approved them.
 
-The point isn't "AI writes stuff." It's that the work has structure — strategy, then drafts, then distribution — instead of one model guessing at all of it in a single prompt.
+That's not us being timid. It's the difference between "autonomous" meaning *you wake up to work that's ready for review* versus *you wake up to a surprise.* For a startup, where one wrong send hits a real audience and a real budget, that distinction is the whole product.
 
-### Why startups specifically
+### Is it a fit for *your* startup? A quick gut-check.
 
-Three reasons this model fits a startup better than it fits a Fortune 500.
+It's probably a fit if:
+- You're a founder or a small team, and marketing keeps losing to the rest of the to-do list.
+- You want work shipped — drafts, audits, research, plans — not another tool to learn.
+- You're fine steering and approving, but you don't want to *originate* every piece from a blank page.
 
-**1. You can't afford a full team — and you don't need one idle.** A human department has people waiting for work. Agents only run when there's a job. You get the coverage of a department at the cost of the jobs you actually run.
-
-**2. Speed is your only real moat.** Agents draft around the clock. You wake up to a content calendar, three blog drafts, and an SEO plan to react to — instead of a blank doc to start.
-
-**3. You're still the founder who knows the product.** This is the part the scary headlines skip: **you steer, the agents ship.** Every draft is yours to approve, edit, or kill. Nothing goes live because a model felt confident.
-
-### The part everyone's nervous about: control
-
-Fair. "Autonomous AI marketing" sounds like handing the keys to something that'll tweet a typo to 10,000 people at 3am.
-
-So here's how it actually works on our side: **every irreversible or money-spending action is held for a human's yes.** Publishing a post, sending an email, launching a paid ad — those
+It's probably **not** a fit (yet) if:
+- You need someone to physically shake hands at a conference. Agents don't do hallway track.
+- You want fully hands-off, no-appr
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
