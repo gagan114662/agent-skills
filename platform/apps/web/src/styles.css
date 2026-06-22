@@ -5473,3 +5473,88 @@ select:focus-visible {
 }
 .typingind__stop:hover { color: var(--accent-press); border-color: var(--accent); }
 
+/* ── Live agent theater (#624): watch the fleet work, reasoning → action → artifact ─────────────── */
+.theater {
+  display: flex; flex-direction: column; height: 100%; min-height: 100vh;
+  background: var(--bg); color: var(--text); padding: 20px 24px 28px;
+  box-sizing: border-box; gap: 16px;
+}
+.theater__bar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 14px;
+}
+.theater__title { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.theater__subtitle { margin: 4px 0 0; color: var(--text-dim); font-size: 13px; max-width: 52ch; }
+.theater__meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.theater__status {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
+  color: var(--text-dim);
+}
+.theater__status-dot {
+  width: 9px; height: 9px; border-radius: 999px; background: var(--text-faint);
+  box-shadow: 0 0 0 0 transparent;
+}
+.theater__status--live { color: var(--online); }
+.theater__status--live .theater__status-dot {
+  background: var(--online); animation: theater-pulse 1.8s ease-in-out infinite;
+}
+.theater__status--reconnecting { color: var(--away); }
+.theater__status--reconnecting .theater__status-dot { background: var(--away); }
+.theater__counts { font-size: 12px; color: var(--text-faint); }
+.theater__back {
+  font-size: 12px; color: var(--text-dim); text-decoration: none; border: 1px solid var(--border);
+  padding: 5px 12px; border-radius: 999px;
+}
+.theater__back:hover { color: var(--accent-press); border-color: var(--accent); }
+.theater__empty { margin: auto; }
+
+.theater__stage {
+  display: grid; gap: 16px; align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); flex: 1; min-height: 0;
+}
+.theater-lane {
+  display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; max-height: 70vh;
+}
+.theater-lane__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--bg-2);
+}
+.theater-lane__name { font-weight: 650; font-size: 14px; }
+.theater-lane__chip {
+  font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.theater-lane__chip--working { background: var(--agent-dim); color: var(--agent); }
+.theater-lane__chip--done { background: var(--bg-3); color: var(--text-dim); }
+.theater-lane__feed {
+  list-style: none; margin: 0; padding: 8px 12px 14px; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 2px; scroll-behavior: smooth;
+}
+.theater-step {
+  display: flex; gap: 10px; padding: 8px 6px 8px 10px; border-left: 2px solid var(--line);
+  position: relative;
+}
+.theater-step__glyph { font-size: 14px; line-height: 1.4; flex: none; }
+.theater-step__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.theater-step__label { font-size: 11px; font-weight: 600; color: var(--text-dim); }
+.theater-step__tool { color: var(--text-faint); font-weight: 500; }
+.theater-step__summary {
+  font-size: 13px; line-height: 1.45; color: var(--text); word-break: break-word;
+  white-space: pre-wrap;
+}
+.theater-step--reasoning { border-left-color: var(--agent); }
+.theater-step--action { border-left-color: var(--accent); }
+.theater-step--artifact { border-left-color: var(--online); }
+.theater-step--approval { border-left-color: var(--away); }
+.theater-step--context { border-left-color: var(--line); }
+
+@keyframes theater-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--online); opacity: 1; }
+  50% { box-shadow: 0 0 0 4px transparent; opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theater__status--live .theater__status-dot { animation: none; }
+  .theater-lane__feed { scroll-behavior: auto; }
+}
+

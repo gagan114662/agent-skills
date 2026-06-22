@@ -104,6 +104,36 @@ export const VOICE = {
 } as const;
 
 /**
+ * Live agent-theater copy (#624). The "watch the agents work" screen reads every string from here so the
+ * view stays copy-free (house rule: brand voice via this module). Receipts-over-adjectives: it narrates
+ * real reasoning → action → artifact, never a spinner.
+ */
+export const THEATER = {
+  title: "The floor",
+  subtitle: "Watch the team work — reasoning, action, and the artifacts they produce, live.",
+  /** Header status labels, by connection state. */
+  statusLive: "Live",
+  statusConnecting: "Connecting…",
+  statusReconnecting: "Reconnecting…",
+  /** Lane status chips. */
+  working: "Working",
+  done: "Done",
+  /** Nothing streaming yet. */
+  empty: "No one's at work this second. Kick off an agent and you'll watch it think, act, and ship right here.",
+  /** Per-phase label shown beside each streamed step. */
+  phaseContext: "Context",
+  phaseReasoning: "Thinking",
+  phaseAction: "Action",
+  phaseArtifact: "Artifact",
+  phaseApproval: "Approval",
+  /** Back-to-console link. */
+  back: "← Back to console",
+  /** Count line in the header: filled with live numbers. */
+  agentsLabel: "agents",
+  stepsLabel: "steps",
+} as const;
+
+/**
  * Connect-Slack settings copy (#170). The whole panel reads from here so there are no hardcoded
  * strings in the component (house rule: brand copy via VOICE). Warm, receipts-over-adjectives.
  */
