@@ -165,9 +165,11 @@ export function validateRaise(currentCapCents: number, toCents: number): RaiseVa
 }
 
 // ---- pure state transitions (the service persists the returned state) -------------------------
+// Generic in the state type so a persisted record's extra fields (e.g. the alert high-water mark) are
+// preserved by the spread rather than widened away to a bare SpendState.
 
 /** Reserve `cents` of projected (in-flight) spend. Use only after {@link decideSpend} allowed the request. */
-export function applyReserve(state: SpendState, cents: number): SpendState {
+export function applyReserve<T extends SpendState>(state: T, cents: number): T {
   const add = Number.isFinite(cents) && cents > 0 ? Math.trunc(cents) : 0;
   return { ...state, projectedCents: Math.max(0, normCounter(state.projectedCents, normCap(state.capCents)) + add) };
 }
@@ -176,7 +178,7 @@ export function applyReserve(state: SpendState, cents: number): SpendState {
  * Settle a reservation: drop `reservedCents` from projected and add the `actualCents` that were really spent
  * to committed. Counters never go negative.
  */
-export function applySettle(state: SpendState, reservedCents: number, actualCents: number): SpendState {
+export function applySettle<T extends SpendState>(state: T, reservedCents: number, actualCents: number): T {
   const cap = normCap(state.capCents);
   const reserved = Number.isFinite(reservedCents) && reservedCents > 0 ? Math.trunc(reservedCents) : 0;
   const actual = Number.isFinite(actualCents) && actualCents > 0 ? Math.trunc(actualCents) : 0;
@@ -188,17 +190,17 @@ export function applySettle(state: SpendState, reservedCents: number, actualCent
 }
 
 /** Release a reservation that will not be spent (the action was cancelled). Projected never goes negative. */
-export function applyRelease(state: SpendState, cents: number): SpendState {
+export function applyRelease<T extends SpendState>(state: T, cents: number): T {
   const drop = Number.isFinite(cents) && cents > 0 ? Math.trunc(cents) : 0;
   return { ...state, projectedCents: Math.max(0, normCounter(state.projectedCents, normCap(state.capCents)) - drop) };
 }
 
 /** Lower the cap immediately (always safe — tightening never needs approval). */
-export function applyLowerCap(state: SpendState, toCents: number): SpendState {
+export function applyLowerCap<T extends SpendState>(state: T, toCents: number): T {
   return { ...state, capCents: normCap(toCents) };
 }
 
 /** Raise the cap to a new approved ceiling. Call only after a recorded human approval. */
-export function applyRaiseCap(state: SpendState, toCents: number): SpendState {
+export function applyRaiseCap<T extends SpendState>(state: T, toCents: number): T {
   return { ...state, capCents: normCap(toCents) };
 }

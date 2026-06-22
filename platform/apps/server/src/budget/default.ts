@@ -129,7 +129,9 @@ export class PgBudgetStore implements BudgetStore {
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [newId(), input.workspaceId, input.fromCents, input.toCents, input.requestedByMemberId],
     );
-    return toCapRaise(res.rows[0]);
+    const row = res.rows[0];
+    if (!row) throw new Error("budget: INSERT ... RETURNING produced no row");
+    return toCapRaise(row);
   }
 
   async getRaise(workspaceId: string, id: string): Promise<CapRaise | null> {
