@@ -171,6 +171,7 @@ import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
 import { financeRoutes } from "./routes/finance.js";
 import { createDefaultFinanceService, createDefaultFinanceEngine } from "./finance/default.js";
+import { budgetRoutes } from "./routes/budget.js";
 import { attributionRoutes } from "./routes/attribution.js";
 import { customerIdentityRoutes } from "./routes/customer-identity.js";
 import type { FinanceService } from "./finance/service.js";
@@ -596,6 +597,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(memoryRoutes);
   app.register(decisionsRoutes);
   app.register(tracesRoutes);
+  app.register(budgetRoutes);
   app.register(taskRoutes);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   // #189: the executor registry routes approved `external.send` actions through the acquisition
