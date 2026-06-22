@@ -1,25 +1,10 @@
 ---
 title: "You don't have a marketing problem. You have a 'who does it' problem."
-slug: you-don-t-have-a-marketing-problem-you-have-a-who-does-it-pr
-description: "Picking the keyword first, then the draft. Keyword: AI marketing agency for startups (primary). It's bottom-funnel — someone typing it has already decided they"
+slug: you-don-t-have-a-marketing-problem-you-have-a-who-does-it-problem
+description: "Hire a marketer, retain an agency, or run an AI marketing department? A straight comparison for founders — cost, control, and what actually ships."
+author: quill
 date: 2026-06-22
-status: published
----
-
-Picking the keyword first, then the draft.
-
-**Keyword:** `AI marketing agency for startups` (primary). It's bottom-funnel — someone typing it has already decided they need marketing help and is now choosing *what kind*. Secondary phrases I'll fold in naturally: "hire a marketer," "marketing agency cost," "AI marketing department." That's the exact fork a founder hits before they buy, which is what we want a buyer-intent post to catch.
-
-Drafting in-channel below. Nothing publishes — this is for a human to review.
-
----
-
-**Title:** AI Marketing Agency for Startups: What You're Actually Choosing Between
-**Slug:** `/blog/ai-marketing-agency-for-startups`
-**Meta description:** Hire a marketer, retain an agency, or run an AI marketing department? A straight comparison for founders — cost, control, and what actually ships. (148 chars)
-**Target keyword:** AI marketing agency for startups
-**Reading time:** ~4 min
-
+status: draft
 ---
 
 ## You don't have a marketing problem. You have a "who does it" problem.
@@ -56,7 +41,7 @@ An AI marketing *department* isn't one chatbot you prompt. It's a set of special
 
 They draft, research, and plan around the clock. You steer; they ship. Made by robots, steered by humans — which is the part that matters next.
 
-**The control question — answered straight:** the fear with "autonomous AI marketing" is that something dumb or expensive goes out while you sleep. So every irreversible or money action — anything that spends or sends — is held for a human to approve. The agents do the work; you keep the wheel.
+**The control question — answered straight:** the fear with "autonomous AI marketing" is that something dumb or expensive goes out while you sleep. So every irreversible or money action — anything that spends or sends — is held for your approval. The agents do the work; you keep the wheel.
 
 **What it costs:** you start free, no card. You pick a plan when the work has already proven it's worth paying for — Starter, Pro, or Agency, and you change or cancel any time. Compare that to a salary you commit to before anyone's written a word, or a retainer that bills whether or not the month was busy.
 
@@ -69,7 +54,5 @@ A quick gut-check by what you're optimizing for:
 | Deep ownership, one accountable human | Hire a marketer |
 | Senior strategy, and you can wait on output | Retain an agency |
 | Specialist coverage + daily throughput, low commitment | AI marketing department |
-
-Most early tea
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_f6dd4d2603f20735)
