@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,10 +115,79 @@ describe("conflict-free concurrent acquire (#200 §3)", () => {
     for (const r of results) expect(existsSync(join(r.cwd, "README.md"))).toBe(true);
   });
 
-  it("throws WorktreePoolExhaustedError when all slots are leased and at cap", async () => {
+});
+
+describe("queue on exhaustion (#640)", () => {
+  // A no-op release whose lease holds nothing — used only to serialize behind pending enqueues
+  // (the mutex is FIFO), so we can assert the queued state deterministically without timers.
+  const settleQueue = (pool: WorktreePoolService) => pool.release("__ghost__");
+
+  it("queues overflow acquires instead of failing, draining them FIFO as slots free", async () => {
     const pool = svc(1);
-    await pool.acquire("s1");
-    await expect(pool.acquire("s2")).rejects.toBeInstanceOf(WorktreePoolExhaustedError);
+    await pool.acquire("s1"); // slot-0 leased — pool now at cap
+
+    const pendingB = pool.acquire("s2");
+    const pendingC = pool.acquire("s3");
+    await settleQueue(pool); // both s2,s3 have now enqueued (and freed nothing)
+
+    expect(pool.queueDepth()).toBe(2);
+    expect(pool.queued().map((q) => q.sessionId)).toEqual(["s2", "s3"]);
+    expect(pool.queued().map((q) => q.position)).toEqual([0, 1]);
+
+    // First release drains the head of the line (s2), leaving s3 queued.
+    await pool.release("s1");
+    const b = await pendingB;
+    expect(b.slotId).toBe("slot-0");
+    expect(pool.queued().map((q) => q.sessionId)).toEqual(["s3"]);
+
+    // Second release drains s3 — queue empties cleanly.
+    await pool.release("s2");
+    const c = await pendingC;
+    expect(c.slotId).toBe("slot-0");
+    expect(pool.queueDepth()).toBe(0);
+  });
+
+  it("spawning more agents than capacity queues the overflow and drains cleanly (acceptance)", async () => {
+    const pool = svc(2);
+    const sessions = ["a", "b", "c", "d", "e"];
+    const acquires = sessions.map((s) => pool.acquire(s));
+    await settleQueue(pool); // a,b served (grew slot-0/1); c,d,e queued
+
+    expect(pool.queueDepth()).toBe(3);
+    expect(pool.queued().map((q) => q.sessionId)).toEqual(["c", "d", "e"]);
+
+    // a,b were served immediately; releasing each drains one queued overflow in FIFO order.
+    await pool.release("a");
+    expect((await acquires[2]).warm).toBe(true); // c reuses a's freed (warm) slot
+    await pool.release("b");
+    await acquires[3]; // d
+    await pool.release("c");
+    await acquires[4]; // e
+
+    expect(pool.queueDepth()).toBe(0);
+    const all = await Promise.all(acquires);
+    // Every one of the five got a real, materialized worktree — none failed.
+    for (const r of all) expect(existsSync(join(r.cwd, "README.md"))).toBe(true);
+  });
+
+  it("rejects a queued acquire after timeoutMs without wedging the queue", async () => {
+    vi.useFakeTimers();
+    try {
+      // size 0 disables growth, so the very first acquire is exhausted and queues — no git I/O.
+      const pool = svc(0);
+      const pending = pool.acquire("s1", { timeoutMs: 1000 });
+      pending.catch(() => {}); // pre-attach so the rejection is never "unhandled"
+      await settleQueue(pool); // s1 enqueued, timeout armed
+
+      expect(pool.queueDepth()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      await expect(pending).rejects.toBeInstanceOf(WorktreePoolExhaustedError);
+      expect(pool.queueDepth()).toBe(0); // timed-out waiter removed — queue not wedged
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

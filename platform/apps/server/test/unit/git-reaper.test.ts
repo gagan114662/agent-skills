@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { GitWorkspaceService } from "../../src/git/workspace.js";
-import { GitWorktreeReaper } from "../../src/git/reaper.js";
+import { GitWorktreeReaper, LeaseRegistry } from "../../src/git/reaper.js";
 
 /**
  * #70 local worktree isolation — the reaping half. Exercised against a REAL temp git repo (git is on
@@ -172,5 +172,90 @@ describe("GitWorktreeReaper.sweep", () => {
     });
     const reaper = new GitWorktreeReaper(broken, { activeSessionIds: [] });
     await expect(reaper.sweep()).resolves.toEqual({ reaped: [] });
+  });
+});
+
+describe("GitWorktreeReaper lease/heartbeat safety (#641)", () => {
+  it("never reaps a worktree with an active lease, even when it's absent from activeSessionIds", async () => {
+    // The #641 race: a freshly-spawned run holds a worktree + heartbeats, but hasn't yet propagated
+    // into SessionManager.activeSessionIds. Keep-set alone would reap it; the lease check must not.
+    const svc = service();
+    const live = await svc.prepare("sessLive");
+    const dead = await svc.prepare("sessDead");
+
+    const leases = new LeaseRegistry();
+    const NOW = 1_000_000;
+    leases.touch("sessLive", NOW); // fresh heartbeat — an active lease
+
+    const reaper = new GitWorktreeReaper(svc, { activeSessionIds: [] }, undefined, {
+      leases,
+      ttlMs: 60_000,
+      now: () => NOW,
+    });
+    const result = await reaper.sweep();
+
+    expect(result.reaped).toEqual(["sessDead"]); // only the genuinely orphaned worktree
+    expect(existsSync(live.cwd)).toBe(true); // active lease survived despite empty keep-set
+    expect(existsSync(dead.cwd)).toBe(false);
+  });
+
+  it("reaps a worktree whose lease heartbeat is older than the TTL (presumed dead)", async () => {
+    const svc = service();
+    const stale = await svc.prepare("sessStale");
+
+    const leases = new LeaseRegistry();
+    const NOW = 1_000_000;
+    leases.touch("sessStale", NOW - 120_000); // 2 min old, past the 60s TTL → no active lease
+
+    const reaper = new GitWorktreeReaper(svc, { activeSessionIds: [] }, undefined, {
+      leases,
+      ttlMs: 60_000,
+      now: () => NOW,
+    });
+    const result = await reaper.sweep();
+
+    expect(result.reaped).toEqual(["sessStale"]);
+    expect(existsSync(stale.cwd)).toBe(false);
+  });
+
+  it("keeps a session that is BOTH active and leased, reaping only the unprotected one", async () => {
+    const svc = service();
+    const active = await svc.prepare("sessActive");
+    const leased = await svc.prepare("sessLeased");
+    const orphan = await svc.prepare("sessOrphan");
+
+    const leases = new LeaseRegistry();
+    const NOW = 2_000_000;
+    leases.touch("sessLeased", NOW);
+
+    const reaper = new GitWorktreeReaper(svc, { activeSessionIds: ["sessActive"] }, undefined, {
+      leases,
+      ttlMs: 60_000,
+      now: () => NOW,
+    });
+    const result = await reaper.sweep();
+
+    expect(result.reaped).toEqual(["sessOrphan"]);
+    expect(existsSync(active.cwd)).toBe(true);
+    expect(existsSync(leased.cwd)).toBe(true);
+    expect(existsSync(orphan.cwd)).toBe(false);
+  });
+});
+
+describe("LeaseRegistry", () => {
+  it("reports only sessions heartbeated within the TTL and forgets on release", () => {
+    const r = new LeaseRegistry();
+    r.touch("a", 0); // at now=1000, age 1000 > ttl 600 → stale
+    r.touch("b", 500); // at now=1000, age 500 <= ttl 600 → active
+
+    expect(r.activeWithin(1000, 600)).toEqual(["b"]);
+    expect(r.lastHeartbeat("a")).toBe(0);
+    expect(r.lastHeartbeat("missing")).toBeUndefined();
+
+    r.touch("a", 900); // re-heartbeat → now active (age 100)
+    expect(r.activeWithin(1000, 600).sort()).toEqual(["a", "b"]);
+
+    r.forget("b");
+    expect(r.activeWithin(1000, 600)).toEqual(["a"]);
   });
 });
