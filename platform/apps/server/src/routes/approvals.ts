@@ -8,6 +8,7 @@ import { getMemberRole } from "../db/repositories/governance.js";
 import { decideApprovalClear, resolveRbacConfig, type WorkspaceRole } from "../team/rbac.js";
 import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
+import { classifyRisk, gateWithRisk, type RiskModel } from "../approvals/risk-classifier.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
 import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
 import { departmentForHandle } from "../marketing/blueprint.js";
@@ -42,6 +43,13 @@ export interface ApprovalRoutesOptions {
   /** #151 RBAC seams (injected in tests). Default: per-tenant config + the governance repo. */
   rbacEnabled?: (workspaceId: string) => boolean;
   loadMemberRole?: (workspaceId: string, memberId: string) => Promise<WorkspaceRole | null>;
+  /**
+   * #561 the cheap model for the fail-safe per-action risk classifier. When omitted (the default) the
+   * classifier is deterministic floor-only — it never escalates a send/chat, so the existing #13 gate is
+   * unchanged; inject a model to turn on per-action risk escalation. A model FAILURE/timeout/garbage
+   * always fails safe to HIGH (requires approval) — it can only ever ADD a gate, never loosen one.
+   */
+  riskModel?: RiskModel | null;
 }
 
 /** A decision (approve/reject) is restricted to human members — "humans only on critical decisions". */
@@ -58,6 +66,7 @@ export async function approvalRoutes(
   opts: ApprovalRoutesOptions = {},
 ): Promise<void> {
   const registry = opts.registry ?? defaultRegistry;
+  const riskModel = opts.riskModel ?? null;
   const rbacEnabled = opts.rbacEnabled ?? ((wid: string) => resolveRbacConfig(loadConfig(wid).rbac).enabled);
   const loadMemberRole = opts.loadMemberRole ?? getMemberRole;
   // #370: when an AGENT's action pauses for a human, the agent @mentions the owner in-channel to surface
@@ -170,8 +179,21 @@ export async function approvalRoutes(
     }
 
     const rules = await listPolicyRules(wid);
-    const decision = evaluatePolicy({ actionType: b.actionType, amount }, rules);
+    const baseDecision = evaluatePolicy({ actionType: b.actionType, amount }, rules);
     const summary = executor.summarize(payload);
+
+    // #561: the single fail-safe risk-classification step in front of every side-effectful action. It is
+    // strictly ADDITIVE on top of the #13 policy gate (never loosens it): a classifier failure/timeout/
+    // garbage fails safe to HIGH → requires approval, and money/publish/delete carry a >= medium floor.
+    // The classification (level + rationale) is logged so it can feed the observation trace (#560).
+    const risk = await classifyRisk(
+      { actionType: b.actionType, amount, summary, payload },
+      {
+        model: riskModel,
+        onClassified: (record) => req.log.info({ riskClassification: record }, "action risk classified"),
+      },
+    );
+    const decision = gateWithRisk(baseDecision, risk);
 
     if (!decision.requiresApproval) {
       // Auto-approved: execute immediately, but still record an auditable request (requested+executed).
