@@ -1,76 +1,67 @@
 ---
-title: "DRAFT — Blog post"
+title: "DRAFT — blog post"
 slug: draft-blog-post
-description: "Picking the keyword first, then dropping the draft right here in #content. Keyword: AI marketing agency for startups Why this one: It's bottom-funnel. Someone t"
-date: 2026-06-21
+description: "Picking the keyword first, then the draft. Quick reasoning on intent so you can veto before reading 1,200 words: Target keyword: 'AI marketing agency vs hiring"
+date: 2026-06-22
 status: published
 ---
 
-Picking the keyword first, then dropping the draft right here in #content.
+Picking the keyword first, then the draft. Quick reasoning on intent so you can veto before reading 1,200 words:
 
-**Keyword:** `AI marketing agency for startups`
+**Target keyword: "AI marketing agency vs hiring a marketer"** (cluster: *cost of hiring a marketer*, *marketing agency alternatives for startups*, *can AI do marketing*).
 
-**Why this one:** It's bottom-funnel. Someone typing that isn't curious about "what is AI marketing" — they're deciding *how to staff marketing without hiring a team*, which is the exact fork in the road where ipop wins. It maps 1:1 to our homepage promise ("the marketing agency of AI agents — you steer, they ship") and our pricing reality (start free, no card). Adjacent variants I'd also rank for with this piece: *AI marketing team for founders*, *AI marketing agency vs hiring a marketer*, *outsource marketing startup AI*.
+Why this one over the obvious "best AI marketing tools":
+- **It's a decision, not a browse.** Someone typing "vs hiring a marketer" has a budget line open and is choosing where it goes. That's the bottom of the funnel.
+- **It matches our actual buyer.** Workspace facts say the buyer is "a founder or small team who wants real marketing work shipped." That person isn't shopping for a 14th tool — they're deciding between a hire, an agency, or us.
+- **We can win it with receipts.** A cost/speed/control comparison is a table, not adjectives. Our differentiator (every money move held for human approval) is literally a column.
 
-Everything below is a **draft for human review** — nothing publishes from here.
-
----
-
-## DRAFT — Blog post
-
-**Title (primary):** The AI Marketing Agency for Startups: What You Actually Get (and What Stays in Your Hands)
-
-**Title options (alt):**
-- A Marketing Department for Startups That Doesn't Need a Salary
-- AI Marketing Agency vs. Your First Marketing Hire: An Honest Comparison
-
-**Slug:** `/ai-marketing-agency-for-startups`
-
-**Meta description (155 char):** An AI marketing agency for startups runs SEO, content, ads, and outbound around the clock — and holds every money move for your approval. Start free, no card.
-
-**Target keyword:** AI marketing agency for startups · **Secondary:** AI marketing team for founders, outsource startup marketing
+Below is the draft. Nothing publishes — this is for your red pen.
 
 ---
 
-### The startup marketing problem nobody likes saying out loud
+## DRAFT — blog post
 
-You're a founder or a team of four. You need SEO, content, an ad account that isn't on fire, and outbound that doesn't read like a robot wrote it. Your options have always been three flavors of "not great":
+**Target keyword:** AI marketing agency vs hiring a marketer
+**URL slug:** `/blog/ai-marketing-agency-vs-hiring-a-marketer`
+**Title tag (58 char):** AI Marketing Agency vs Hiring a Marketer: An Honest Look
+**Meta description (152 char):** Comparing an AI marketing agency to a first marketing hire or a freelance agency? Here's the real tradeoff on cost, speed, and who's actually steering.
+**Primary CTA:** Start free — no card (mirrors `/pricing`)
 
-- **Hire a marketer** — $90k+, three months to ramp, and they can only do one thing at a time.
-- **Hire an agency** — a retainer, a kickoff deck, and a 6-week wait for the first deliverable.
-- **Do it yourself** — at 11pm, badly, instead of building the product.
+---
 
-An AI marketing agency is the fourth option: a whole department of specialist agents that drafts, researches, and plans around the clock. You steer, they ship.
+# AI marketing agency vs hiring a marketer: the honest version
 
-### What an AI marketing agency for startups actually does
+You've got a product that's working and marketing that's... mostly you, at 11pm, in a Google Doc named "ideas FINAL v3." So you start pricing out help. And you hit the same fork everyone hits: **hire someone, hire an agency, or hand it to AI.**
 
-The word "agency" is doing real work here. It's not one chatbot wearing a lot of hats — it's a fleet of specialists, each owning a lane:
+We make an AI marketing department, so you can guess where we land. But you came here to decide, not to get sold. So here's the comparison the way we'd want it if we were the ones writing the check.
 
-- **Scout** runs SEO and research — keyword gaps, competitor teardowns, what to write next and why.
-- **Quill** (hi) drafts the content — posts, pages, the stuff you'd otherwise write at 11pm.
-- **Lens** keeps the brand consistent — voice, positioning, the audit that catches when a page goes off-script.
-- **Ads & outbound agents** plan campaigns and sequences and bring them to you ready to launch.
+## The three options, plainly
 
-The point isn't "AI wrote some words." It's that the actual marking *work* gets done — drafted, organized, queued — while you're in customer calls.
+**A first marketing hire.** One human, on payroll, who owns marketing. Great when you have the budget and the management bandwidth, and you're ready to commit for the long haul.
 
-### The part that matters: you steer, they ship
+**A freelance marketer or agency.** Hired help by the project or the retainer. Faster to start, no payroll, but you're renting attention that's split across other clients.
 
-Here's the line we won't cross, and you shouldn't trust any AI marketing tool that does: **every irreversible or money move is held for human approval.**
+**An AI marketing agency** (us, and the category): a set of specialist agents that draft, research, and plan the work, with a human — you — approving anything that spends money or goes public.
 
-Spending ad budget, sending outbound to real inboxes, publishing a page — those wait for your yes. The agents do the heavy lifting up to the edge of "this costs money or can't be undone," then hand you the wheel. Made by robots, steered by humans isn't a tagline; it's where the guardrail sits.
+These aren't really competitors so much as three different bets on *who does the thinking* and *who carries the risk.*
 
-### AI marketing agency vs. your first marketing hire
+## The part nobody puts in the pricing table: ramp time
 
-| | First marketing hire | Traditional agency | AI marketing agency |
+A marketing hire is a 3–6 month bet before you know if it worked. You write the job post, screen, interview, onboard, and *then* wait for them to learn your product, your customers, and your voice. The salary is the visible cost. The months are the hidden one.
+
+An agency is faster to start — days, not months — but the ramp shows up differently: a kickoff deck, a discovery call, a strategy doc, and an invoice, before a single post ships.
+
+An AI department starts the same afternoon. That's not a brag, it's just what software does. The honest tradeoff: it starts knowing nothing about *you* until you tell it, which is why the first week is you steering closely, not you disappearing.
+
+## Cost, without the sleight of hand
+
+We're not going to pretend a $20/mo tool replaces a $90k hire — that's the kind of math that loses trust. Here's the real shape of it:
+
+| | First hire | Agency / freelancer | AI marketing department |
 |---|---|---|---|
-| Cost to start | $90k+/yr | $3–10k/mo retainer | Free to start, no card |
-| Time to first work | Weeks to ramp | ~6 weeks | Same day |
-| Coverage | One specialty | Their scope | SEO + content + brand + ads + outbound |
-| Hours | 9–5 | Business hours | Around the clock |
-| Who approves spend | They do | They do | You do, every time |
+| **Time to first work** | Weeks to months | Days | Same day |
+| **Typical cost** | Salary + benefits + tools | Monthly retainer | A plan you pick when it pays for itself |
+| **Owns strategy** | Them (eventually) | Them | You, with drafts to react to |
+| **Who carries voice** | One person's read | Account team's read | A b
 
-A hire is the right call eventually. But "eventually" is the keyword — most startups need the *work* shipped now, not a salary line and a ramp period.
-
-### 
-
-[Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_63619bd9462637b2)
+[Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_db44483709d2353f)
