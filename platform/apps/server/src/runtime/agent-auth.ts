@@ -1,4 +1,5 @@
 import type { HarnessKind } from "./harness.js";
+import { isWellFormedClaudeKey } from "../auth/claude-key-validation.js";
 
 /**
  * Subscription-ONLY agent auth (#68, ADR-0068; tightened in #246).
@@ -36,7 +37,12 @@ function present(value: string | null | undefined): string | null {
  */
 export function decideAgentAuth(input: AgentAuthInput): AgentAuth {
   const subscriptionToken = present(input.subscriptionToken);
-  if (subscriptionToken) {
+  // #659 validate-before-run-start: a stored token that is present but MALFORMED (an embedded
+  // newline/space from a bad paste) is treated as absent, so the @mention auth gate posts the
+  // "reconnect your Claude" prompt up front instead of injecting a doomed credential that crashes the
+  // session mid-run. Format-only + pure (no network) — a well-formed-but-revoked token is still caught
+  // at entry by the live checker and, failing that, by the existing observed-failure → `expired` path.
+  if (subscriptionToken && isWellFormedClaudeKey(subscriptionToken)) {
     return { mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: subscriptionToken } };
   }
   return { mode: "none", secrets: {} };

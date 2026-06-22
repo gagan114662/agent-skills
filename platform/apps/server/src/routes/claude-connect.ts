@@ -16,6 +16,7 @@ import {
   setWorkspaceClaudeToken,
   getClaudeConnectionHealth,
 } from "../db/repositories/agent-credentials.js";
+import { isWellFormedClaudeKey } from "../auth/claude-key-validation.js";
 
 /**
  * Connect Claude without a CLI token (#262, ADR-0262) — the in-app, one-click replacement for pasting a
@@ -124,6 +125,9 @@ export async function claudeConnectRoutes(
       return fail("error");
     }
     if (!token) return fail("error"); // never seal a blank credential into the vault
+    // #659 validate-on-entry: a mangled token from the exchange is rejected up front (format-only here —
+    // the OAuth redirect path stays network-free) rather than sealed and discovered broken mid-run.
+    if (!isWellFormedClaudeKey(token)) return fail("error");
 
     await setWorkspaceClaudeToken({
       workspaceId: identity.workspaceId,

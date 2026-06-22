@@ -23,6 +23,14 @@ describe("decideAgentAuth (#68/#246 — subscription-ONLY, per-tenant)", () => {
     expect(decideAgentAuth({ subscriptionToken: "   " }).mode).toBe("none");
     expect(decideAgentAuth({ subscriptionToken: "" }).mode).toBe("none");
   });
+
+  it("#659: a present-but-MALFORMED token resolves to 'none' so the run is blocked up front, not mid-run", () => {
+    // A bad paste with an embedded newline/space would otherwise be injected and crash the session.
+    expect(decideAgentAuth({ subscriptionToken: "sk-ant\noat" }).mode).toBe("none");
+    expect(decideAgentAuth({ subscriptionToken: "sk-ant oat" }).mode).toBe("none");
+    // A well-formed token (even a short test literal) still authenticates.
+    expect(decideAgentAuth({ subscriptionToken: "oauth-tok" }).mode).toBe("subscription");
+  });
 });
 
 describe("harnessRequiresAuth (#68 — only real harnesses need model auth)", () => {

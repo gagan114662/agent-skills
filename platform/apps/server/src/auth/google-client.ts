@@ -14,13 +14,27 @@ import {
 export interface GoogleOAuthClient {
   exchangeCode(input: { code: string }): Promise<GoogleTokens>;
   fetchUserInfo(accessToken: string): Promise<GoogleUserInfo>;
+  /**
+   * Exchange a stored refresh token for a fresh access token (#660). Google does NOT return a new refresh
+   * token on this grant, so the result's `refreshToken` is left unset — the caller preserves the existing
+   * one. A revoked/expired refresh token surfaces as a {@link GoogleOAuthError} with `reauthRequired`
+   * set, so the connector can mark itself "needs re-auth" instead of looping on a dead grant.
+   */
+  refreshAccessToken(refreshToken: string): Promise<GoogleTokens>;
 }
 
 /** A small error so the route can map a Google failure to a friendly redirect instead of a 500. */
 export class GoogleOAuthError extends Error {
-  constructor(message: string) {
+  /**
+   * True when Google definitively rejected the credential (`401`, or a `400 invalid_grant` on refresh):
+   * the user must re-consent. Distinguished from transient failures (5xx/network) so a refresh routine
+   * only marks "needs re-auth" when re-auth is genuinely required, never on a blip.
+   */
+  readonly reauthRequired: boolean;
+  constructor(message: string, options?: { reauthRequired?: boolean }) {
     super(message);
     this.name = "GoogleOAuthError";
+    this.reauthRequired = options?.reauthRequired ?? false;
   }
 }
 
@@ -59,6 +73,52 @@ export function createGoogleOAuthClient(config: GoogleOAuthConfig): GoogleOAuthC
       return {
         accessToken: json.access_token,
         refreshToken: json.refresh_token,
+        expiresInSec: json.expires_in,
+        scope: json.scope,
+        tokenType: json.token_type,
+      };
+    },
+
+    async refreshAccessToken(refreshToken) {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      });
+      let json: {
+        access_token?: string;
+        expires_in?: number;
+        scope?: string;
+        token_type?: string;
+        error?: string;
+      };
+      try {
+        const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body,
+        });
+        json = (await res.json().catch(() => ({}))) as typeof json;
+        if (!res.ok) {
+          // Google returns 400 `invalid_grant` when the refresh token is revoked/expired, and 401 for a
+          // bad client — both mean re-auth is required. Other statuses (5xx) are transient.
+          const reauthRequired =
+            res.status === 401 || (res.status === 400 && json.error === "invalid_grant");
+          throw new GoogleOAuthError(
+            `token refresh returned ${res.status}${json.error ? ` (${json.error})` : ""}`,
+            { reauthRequired },
+          );
+        }
+      } catch (err) {
+        if (err instanceof GoogleOAuthError) throw err;
+        throw new GoogleOAuthError(`token refresh failed: ${(err as Error).message}`);
+      }
+      if (!json.access_token) throw new GoogleOAuthError("token refresh returned no access_token");
+      return {
+        accessToken: json.access_token,
+        // Google omits the refresh token on this grant — the caller preserves the existing one.
+        refreshToken: undefined,
         expiresInSec: json.expires_in,
         scope: json.scope,
         tokenType: json.token_type,
