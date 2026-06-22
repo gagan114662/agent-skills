@@ -71,3 +71,49 @@ describe("Onboarding screen (#260)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(ONBOARDING.errors.invalid_domain);
   });
 });
+
+describe("Onboarding outcome-first (#633)", () => {
+  // The preview view opens a real EventSource via the default factory; jsdom has none, so stub a no-op one
+  // that just constructs. We assert the *transition* into the live deliverable, not its streamed content
+  // (that is covered by DeliverablePreview.test.tsx with an injected fake source).
+  class NoopEventSource {
+    onerror: ((ev: unknown) => void) | null = null;
+    onopen: ((ev: unknown) => void) | null = null;
+    addEventListener(): void {}
+    close(): void {}
+  }
+  beforeEach(() => {
+    (globalThis as unknown as { EventSource: unknown }).EventSource = NoopEventSource;
+  });
+  afterEach(() => {
+    delete (globalThis as unknown as { EventSource?: unknown }).EventSource;
+  });
+
+  it("produces a deliverable immediately on submit — no setup, no redirect to config", async () => {
+    render(<Onboarding />);
+    await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
+    // The PRIMARY action is the outcome, not the Google sign-in.
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
+    // We did NOT navigate away to config…
+    expect(assignSpy).not.toHaveBeenCalled();
+    // …and the live deliverable view is now on screen, building immediately.
+    expect(screen.getByRole("status")).toHaveTextContent(ONBOARDING.deliverable.working);
+    expect(screen.queryByLabelText(new RegExp(ONBOARDING.domainLabel, "i"))).not.toBeInTheDocument();
+  });
+
+  it("keeps Google sign-in available in parallel beside the streaming deliverable", async () => {
+    render(<Onboarding />);
+    await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
+    // Config runs alongside: signing in from the preview still navigates to OAuth carrying the domain.
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
+    expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com");
+  });
+
+  it("nudges (and does not produce a deliverable) when the domain is empty", async () => {
+    render(<Onboarding />);
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
+    expect(screen.getByRole("alert")).toHaveTextContent(ONBOARDING.needDomain);
+    expect(screen.queryByText(ONBOARDING.deliverable.working)).not.toBeInTheDocument();
+  });
+});

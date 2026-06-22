@@ -1,10 +1,16 @@
 /**
- * The #260 non-technical onboarding screen: ONE screen, two things — type your domain, click "Sign in with
- * Google". Nothing else. No password, no workspace name, no token paste, no model picker. The Google button
- * is a full-page navigation to `/auth/google/start?domain=…` (not a fetch) so the OAuth redirect dance runs
- * in the browser; the server's callback creates the workspace, kicks Scout, and lands the user on the board.
+ * The non-technical onboarding screen.
  *
- * Every server-side failure redirects back here with `?error=<code>`, which we render in the house voice.
+ * #260 established the one-screen entry: type your domain, then sign in with Google. #633 makes it
+ * OUTCOME-FIRST — the moment a visitor types their website and asks, we immediately produce a real,
+ * personalized artifact about their business and stream it in live ({@link DeliverablePreview}), while the
+ * Google sign-in / config runs alongside it, never as a gate. A brand-new visitor watches a deliverable
+ * appear with zero required setup; they sign in when (and if) they like what they see.
+ *
+ * The Google path is still a full-page navigation to `/auth/google/start?domain=…` (not a fetch) so the
+ * OAuth redirect dance runs in the browser; the server's callback creates the workspace, kicks Scout, and
+ * lands the user on the board. Every server-side failure redirects back here with `?error=<code>`, which we
+ * render in the house voice.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { BRAND, ONBOARDING } from "../brand.js";
@@ -12,6 +18,7 @@ import { api, googleStartUrl } from "../api/client.js";
 import { Link } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
+import { DeliverablePreview } from "./DeliverablePreview.js";
 
 /** Read the `?error=<code>` the OAuth routes redirect with, mapped to a friendly line (or null). */
 function errorFromUrl(): string | null {
@@ -26,6 +33,9 @@ export function Onboarding(): React.JSX.Element {
   const [domain, setDomain] = useState("");
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
+  // #633: once a visitor submits a website we switch to the live deliverable view (config runs alongside,
+  // not before). `null` = the entry form; a string = the URL we're streaming a deliverable for.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   // #300: offer the low-commitment "explore a sample workspace" entry only when the deployment turned it on
   // (default OFF). We ask the server rather than assume, and a failure/offline just hides it — the Google
   // path is always available, so this can never block sign-in.
@@ -46,16 +56,45 @@ export function Onboarding(): React.JSX.Element {
     };
   }, []);
 
-  function onSubmit(e: FormEvent): void {
-    e.preventDefault();
+  /** The trimmed domain, or null after nudging the visitor when it's blank. Shared by both actions. */
+  function validatedDomain(): string | null {
     const trimmed = domain.trim();
     if (!trimmed) {
       setError(ONBOARDING.needDomain);
-      return;
+      return null;
     }
+    setError(null);
+    return trimmed;
+  }
+
+  // #633 OUTCOME FIRST: the primary action. Produce the deliverable immediately — no setup, no redirect.
+  function onSubmit(e: FormEvent): void {
+    e.preventDefault();
+    const trimmed = validatedDomain();
+    if (trimmed) setPreviewUrl(trimmed);
+  }
+
+  // The parallel config path: full-page navigation to the API's OAuth entry. Available on the entry screen
+  // AND alongside the streaming deliverable — it is never the gate to seeing the outcome.
+  function signInWithGoogle(): void {
+    const trimmed = validatedDomain();
+    if (!trimmed) return;
     setBusy(true);
-    // Full-page navigation to the API's OAuth entry — the consent screen + callback take it from here.
     window.location.assign(googleStartUrl(trimmed));
+  }
+
+  // #633: once a website is submitted, the live deliverable IS the screen — config sits beside it.
+  if (previewUrl) {
+    return (
+      <DeliverablePreview
+        url={previewUrl}
+        onSignIn={signInWithGoogle}
+        onRestart={() => {
+          setPreviewUrl(null);
+          setBusy(false);
+        }}
+      />
+    );
   }
 
   return (
@@ -86,7 +125,13 @@ export function Onboarding(): React.JSX.Element {
           </p>
         )}
 
+        {/* Outcome first: the primary button produces the deliverable. */}
         <button className="btn btn--primary" type="submit" disabled={busy}>
+          {ONBOARDING.deliverable.cta}
+        </button>
+
+        {/* Config in parallel: sign-in stays one click away, but it is not the gate to the outcome. */}
+        <button className="btn btn--ghost" type="button" onClick={signInWithGoogle} disabled={busy}>
           {ONBOARDING.googleCta}
         </button>
 
