@@ -488,6 +488,160 @@ select:focus-visible {
   color: var(--text-dim);
   padding: 32px 0;
 }
+/* #633 outcome-first onboarding: the live deliverable view — a real artifact streams in on the left while
+   the parallel sign-in (config, never a gate) sits in the aside on the right. */
+.deliverable {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 28px;
+  align-items: start;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+.deliverable__head {
+  margin-bottom: 20px;
+}
+.deliverable__mark {
+  margin-bottom: 8px;
+}
+.deliverable__title {
+  font-size: 24px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.deliverable__sub {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.deliverable__sections {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.deliverable__section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--bg-1);
+  /* New sections pop in as they stream — a small fade keeps the "appearing live" feel calm, not jarring. */
+  animation: deliverable-pop 0.32s ease both;
+}
+@keyframes deliverable-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.deliverable__badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-1));
+  color: var(--accent);
+}
+.deliverable__badge--action {
+  background: color-mix(in srgb, #2e9e6b 14%, var(--bg-1));
+  color: #2e9e6b;
+}
+.deliverable__badge--draft {
+  background: color-mix(in srgb, #3b73e8 14%, var(--bg-1));
+  color: #3b73e8;
+}
+.deliverable__section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 8px 0 6px;
+}
+.deliverable__section-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.deliverable__working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.deliverable__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: deliverable-spin 0.8s linear infinite;
+}
+@keyframes deliverable-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.deliverable__done {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.deliverable__error {
+  color: var(--danger);
+  font-size: 14px;
+}
+.deliverable__aside {
+  position: sticky;
+  top: 40px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.deliverable__aside-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0;
+}
+.deliverable__aside-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.deliverable__restart {
+  align-self: flex-start;
+  font-size: 13px;
+}
+.deliverable__reassurance {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+@media (max-width: 720px) {
+  .deliverable {
+    grid-template-columns: 1fr;
+  }
+  .deliverable__aside {
+    position: static;
+    order: -1;
+  }
+}
 .field {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
@@ -6,6 +6,12 @@ import type { OnboardingService } from "../onboarding/service.js";
 import type { DnsManager } from "../onboarding/dns/manager.js";
 import type { RequiredService } from "../onboarding/types.js";
 import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
+import {
+  buildDeliverable,
+  deriveBusiness,
+  planToFrames,
+  type DeliverableBusiness,
+} from "../onboarding/deliverable.js";
 
 /**
  * External account onboarding routes (#192, ADR-0192). All `/me/*`-scoped to the caller's workspace (#3).
@@ -25,6 +31,33 @@ export async function onboardingRoutes(
   function enabled(workspaceId: string): boolean {
     return resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled;
   }
+
+  // Every open deliverable stream registers a teardown here so a server shutdown ends them all (no leak).
+  const activeStreams = new Set<() => void>();
+  app.addHook("onClose", async () => {
+    for (const stop of activeStreams) stop();
+    activeStreams.clear();
+  });
+
+  // -------------------------------------------------------------------------------------------------
+  // #633 OUTCOME-FIRST ONBOARDING: produce a real deliverable before asking for config.
+  //
+  // PUBLIC + UNAUTHENTICATED on purpose — a brand-new visitor types a URL and immediately watches a real,
+  // personalized artifact appear, with zero setup first. The Google sign-in / config happens in parallel in
+  // the browser, never as a gate. This route is a pure, offline generator: it derives everything from the
+  // typed URL (no DB, no outbound fetch → no SSRF), so it is deterministic and finishes well inside ~60s.
+  // The URL is UNTRUSTED (#200): we parse it structurally and only ever emit sanitized text — no execution,
+  // no fetch, no secrets. No money moves and there are no side effects, so nothing here needs the #13 queue.
+  // -------------------------------------------------------------------------------------------------
+  app.get("/onboarding/deliverable/stream", async (req, reply) => {
+    const business = deriveBusiness((req.query as { url?: string }).url);
+    if (!business) {
+      return reply.code(400).send({ error: "a website url is required (e.g. acme.com)" });
+    }
+    reply.hijack();
+    writeDeliverableSseHead(reply);
+    await streamDeliverable(business, req, reply, activeStreams);
+  });
 
   // The guided setup checklist (requests + connection state + rotation reminders). Read-only.
   app.get("/me/external-services", async (req, reply) => {
@@ -261,6 +294,66 @@ export async function onboardingRoutes(
       dmarcPolicy: parseDmarcPolicy(body.dmarcPolicy),
     });
   });
+}
+
+/** Standard SSE response head — disables proxy buffering so frames flush as they are written (#633). */
+function writeDeliverableSseHead(reply: FastifyReply): void {
+  reply.raw.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+}
+
+/**
+ * Per-section pacing (ms) for the deliverable stream — the small pause that makes the artifact visibly
+ * "appear live" rather than dumping at once. Env-overridable and clamped to a safe 0–2000ms window so even
+ * the slowest pacing keeps the whole stream far inside the ~60s budget; tests set it to 0 for instant runs.
+ */
+function deliverableDelayMs(): number {
+  const raw = Number(process.env.ONBOARDING_DELIVERABLE_STREAM_DELAY_MS);
+  if (!Number.isFinite(raw)) return 150;
+  return Math.max(0, Math.min(2000, Math.trunc(raw)));
+}
+
+/**
+ * Stream a business's deliverable over an already-hijacked SSE reply: the `start` header, then one
+ * `section` frame at a time (paced so it appears live), then `done`. Stops early if the client disconnects
+ * or the server shuts down — the timer is always cleared and the socket always ended exactly once.
+ */
+async function streamDeliverable(
+  business: DeliverableBusiness,
+  req: FastifyRequest,
+  reply: FastifyReply,
+  activeStreams: Set<() => void>,
+): Promise<void> {
+  const res = reply.raw;
+  const frames = planToFrames(buildDeliverable(business));
+  const delay = deliverableDelayMs();
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+  const stop = (): void => {
+    if (stopped) return;
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    activeStreams.delete(stop);
+    if (!res.writableEnded) res.end();
+  };
+  activeStreams.add(stop);
+  req.raw.on("close", stop);
+
+  for (const frame of frames) {
+    if (stopped) return;
+    res.write(`event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`);
+    if (delay > 0 && frame.event === "section") {
+      await new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, delay);
+      });
+    }
+  }
+  stop();
 }
 
 /** Parse + trim a required domain string. Returns null when absent/blank. */

@@ -481,6 +481,27 @@ export const ONBOARDING = {
   /** #300 low-commitment entry: the divider + link to the read-only sample workspace (no account needed). */
   sampleDivider: "Just want to look around?",
   sampleCta: "Explore a sample workspace",
+  /**
+   * #633 outcome-first onboarding: copy for the live deliverable that appears the moment a URL is typed —
+   * config (the Google sign-in) runs alongside it, never as a gate.
+   */
+  deliverable: {
+    /** Primary CTA on the entry screen — produces the artifact instead of demanding setup first. */
+    cta: "Show me what you'd make for us",
+    /** The "we're building it" status line shown while the first section streams in. */
+    working: "Putting your deliverable together — this takes a few seconds, no setup needed…",
+    /** Shown once the stream finishes. */
+    ready: "That's a real sample of day-one work. Sign in and your agents do this for real.",
+    /** The parallel-config nudge shown beside the streaming artifact (config is not a gate). */
+    parallelTitle: "Like it? Make it yours.",
+    parallelSub: "Sign in with Google while you read — your agents pick up right where this leaves off.",
+    /** Let the visitor go back and try a different URL. */
+    restart: "Try a different website",
+    /** Honest failure copy if the stream can't start (offline / API down) — never a faked artifact. */
+    error: "We couldn't build your preview just now. You can still sign in, or try again.",
+    /** Per-kind labels for the section badges. */
+    kinds: { insight: "Insight", action: "Action plan", draft: "Ready to use" },
+  },
 } as const;
 
 /**
