@@ -1,0 +1,70 @@
+name: conversion-smoke-nightly
+
+# Nightly end-to-end conversion smoke test (#562): walks the one path the business is defined by —
+# stranger → outbound send → landing/attribution → signup → checkout (Stripe TEST MODE) → recorded
+# conversion — against a REAL Postgres, asserting each hop emits its #200 production-readback receipt. A
+# broken hop fails the run AT that hop with a clear receipt gap. A FAILED scheduled run is the regression
+# alert (GitHub notifies on a failing scheduled workflow); nothing here moves real money or hits a network.
+#
+# Safe to run nightly: the checkout hop uses the no-network/no-spend `none` billing provider and a signed
+# webhook; the run creates + tears down its own ephemeral workspace and is fully idempotent. Stripe stays in
+# TEST MODE — keys come ONLY from secrets/env (never committed), and the test asserts a live-money config is
+# never in effect. Disable per-fork by setting the repo variable CONVERSION_SMOKE_DISABLED=true.
+
+on:
+  schedule:
+    - cron: "37 6 * * *" # 06:37 UTC nightly — off the top of the hour to dodge scheduler contention
+  workflow_dispatch: {} # manual run (e.g. right after a funnel change)
+
+concurrency:
+  group: conversion-smoke-nightly
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    if: ${{ vars.CONVERSION_SMOKE_DISABLED != 'true' }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reload
+          POSTGRES_PASSWORD: reload
+          POSTGRES_DB: reload
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U reload -d reload"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://reload:reload@localhost:5432/reload
+      REDIS_URL: redis://localhost:6379
+      # Stripe TEST MODE only. Supplied via repo secrets (never committed); the test falls back to a
+      # non-secret test value when absent, so the run is hermetic even with no secrets configured. A real
+      # key here MUST be a *_test_* key — the test fails closed on a live key.
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Migrate up
+        run: pnpm --filter @reload/server db:migrate
+      - name: End-to-end conversion smoke (real Postgres, Stripe test mode)
+        run: pnpm --filter @reload/server smoke:conversion
