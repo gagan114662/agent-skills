@@ -11,6 +11,7 @@ import {
   setWorkspaceClaudeModel,
 } from "../db/repositories/agent-credentials.js";
 import { knownModels, isKnownModel, DEFAULT_AGENT_MODEL } from "../runtime/models.js";
+import { createClaudeKeyChecker } from "../auth/claude-key-validation.js";
 
 export async function meRoutes(app: FastifyInstance): Promise<void> {
   app.get("/me", async (req, reply) => {
@@ -52,6 +53,13 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     const token = typeof body.token === "string" ? body.token.trim() : "";
     if (!token) {
       return reply.code(400).send({ error: "token required" });
+    }
+    // #659 validate-on-entry: catch a malformed paste (and, when CLAUDE_KEY_VALIDATION=live, a revoked
+    // token) HERE with an actionable 400 instead of sealing a doomed credential that only fails mid-run.
+    // The default checker is format-only + offline, so this stays deterministic in tests/CI.
+    const keyCheck = await createClaudeKeyChecker(process.env).check(token);
+    if (!keyCheck.valid) {
+      return reply.code(400).send({ error: `Claude token rejected — ${keyCheck.reason}` });
     }
     return setWorkspaceClaudeToken({
       workspaceId: identity.workspaceId,

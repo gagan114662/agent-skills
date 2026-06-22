@@ -34,6 +34,7 @@ const currentTokens = {
 const fakeClient: GoogleOAuthClient = {
   exchangeCode: async () => currentTokens,
   fetchUserInfo: async () => currentUser,
+  refreshAccessToken: async () => ({ ...currentTokens, refreshToken: undefined }),
 };
 
 const createdWorkspaceIds: string[] = [];
