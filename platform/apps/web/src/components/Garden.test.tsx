@@ -33,11 +33,38 @@ describe("Garden (pure)", () => {
     expect(screen.getByText(GARDEN.loading)).toBeInTheDocument();
   });
 
-  it("lists each agent's name, summary and capabilities", () => {
+  it("lists each agent's name, summary and human-readable capabilities (never raw ids)", () => {
     render(<Garden data={response()} onEnable={() => {}} onDisable={() => {}} />);
     expect(screen.getByText("Scout")).toBeInTheDocument();
     expect(screen.getByText(/Audits your site/)).toBeInTheDocument();
-    expect(screen.getByText("seo.audit")).toBeInTheDocument();
+    // The card shows the human-readable capability name, not the developer id the server ships.
+    expect(screen.getByText("Audit")).toBeInTheDocument();
+    expect(screen.queryByText("seo.audit")).toBeNull();
+  });
+
+  it("humanizes multi-word and acronym capability ids", () => {
+    const data = response({
+      agents: [agent({ capabilities: ["social.draft_thread", "reach.build_icp"] })],
+    });
+    render(<Garden data={data} onEnable={() => {}} onDisable={() => {}} />);
+    expect(screen.getByText("Draft thread")).toBeInTheDocument();
+    expect(screen.getByText("Build ICP")).toBeInTheDocument();
+    expect(screen.queryByText("social.draft_thread")).toBeNull();
+  });
+
+  it("never renders the server's raw off reason ('switch it on to work')", () => {
+    render(<Garden data={response()} onEnable={() => {}} onDisable={() => {}} />);
+    expect(screen.queryByText(/switch it on/i)).toBeNull();
+    // The off state reads as a calm, designed label instead.
+    expect(screen.getByText(GARDEN.off)).toBeInTheDocument();
+  });
+
+  it("flags an outbound agent as money-gated", () => {
+    const data = response({
+      agents: [agent({ riskTier: "external_send", requiresApprovalToEnable: true })],
+    });
+    render(<Garden data={data} onEnable={() => {}} onDisable={() => {}} />);
+    expect(screen.getByText(GARDEN.moneyGated)).toBeInTheDocument();
   });
 
   it("calls onEnable when a disabled read-only agent is switched on", () => {
