@@ -1,65 +1,65 @@
 ---
 title: "Keyword pick (and why)"
 slug: keyword-pick-and-why
-description: "Here's a draft, ready for a human's red pen. --- Keyword pick (and why) Primary keyword: AI marketing agency for startups Why this one: it's bottom-funnel. Some"
+description: "Here's the draft. I picked the keyword first, then wrote to it. --- Keyword pick (and why) Target: 'AI marketing agency vs hiring a marketer' This is decision-s"
 date: 2026-06-22
 status: published
 ---
 
-Here's a draft, ready for a human's red pen.
+Here's the draft. I picked the keyword first, then wrote to it.
 
 ---
 
 ## Keyword pick (and why)
 
-**Primary keyword:** `AI marketing agency for startups`
+**Target: "AI marketing agency vs hiring a marketer"**
 
-Why this one: it's bottom-funnel. Someone typing it has already decided AI is in play and is now shopping for *who* — they're comparing, not browsing. It maps cleanly to our buyer (a founder or two-person team who wants work shipped) and to what we actually are. Supporting terms I'll weave in: *AI marketing team*, *hire a marketing agency vs AI*, *marketing for startups without hiring*.
+This is decision-stage, not curiosity-stage. Someone typing it has already decided they need marketing done — they're choosing *how to buy*, and they have a budget number in their head. That's about as buyer-intent as it gets for us, because it's the exact fork in the road where ipop is one of the two roads. Adjacent terms I considered: "AI marketing agency for startups" (good, but earlier-funnel), "how much does an AI marketing agency cost" (high intent, but narrower — I'd fold pricing into this post and write that one next).
 
-**Meta title:** AI Marketing Agency for Startups: What You Actually Get (2026)
-**Meta description:** Comparing an AI marketing agency to a freelancer or a full hire? Here's what each costs, what each ships, and where AI agents fit — with the receipts.
+Grounded in what's actually on the site: free start, no card ([ipop.ai/pricing](https://ipop.ai/pricing)); three plans — Starter / Pro / Agency; every money or irreversible action held for human approval; the named department — Scout (SEO), me (Quill, content), Echo, Lens (brand), plus ads and outbound ([ipop.ai](https://ipop.ai)).
 
 ---
 
-# AI Marketing Agency for Startups: What You Actually Get
+## DRAFT — for human review
 
-You don't need a pitch on whether AI can do marketing. You've seen the demos. The question you're actually asking — the one that brought you to this page — is narrower and more annoying:
+**Title:** AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders
+**Slug:** /blog/ai-marketing-agency-vs-hiring-a-marketer
+**Meta description:** Weighing an AI marketing team against your first marketing hire? Here's the real math on cost, speed, and what each one actually ships — no spin.
+**Target keyword:** AI marketing agency vs hiring a marketer
+**Word count:** ~950
 
-*If I'm a founder with no marketing team and no time to be one, what's the smartest way to get real marketing shipped?*
+---
 
-So let's compare the real options, plainly. No "synergy," no "transform your funnel." Just what each one costs you, what it gives you back, and where an AI marketing agency like ours fits.
+You've got marketing that needs doing and two ways to make it happen: hire someone, or hand it to a fleet of AI agents. We make the second thing, so you can roll your eyes at our objectivity now and we'll earn it back with receipts.
 
-## Your three real options
+Here's the honest version of the trade-off.
 
-**1. Hire a marketer.** A good full-time generalist runs you somewhere north of $90k/year plus the months it takes to find them and the ramp before they ship. They're excellent — when they're the *right* one, and when you can keep them busy across SEO, ads, brand, content, and outbound at once. Most early-stage companies can't, so you end up paying senior rates for whichever one skill is on fire this week.
+### Option 1: Hire your first marketer
 
-**2. Hire an agency or freelancers.** Faster to start, no payroll. But you're now a project manager: writing briefs, chasing drafts, stitching together the SEO person and the ads person and the writer who've never met. Retainers climb, and the work is only as connected as your own coordination.
+A generalist marketing hire in the US runs roughly $70k–$110k a year, plus benefits, plus the two-to-three months it takes to find them and the month after that before they've shipped anything. Call it real money and real calendar time before the first blog post goes live.
 
-**3. Hire an AI marketing team.** A fleet of specialist agents that each own a lane and actually talk to each other:
+What you get for it: judgment, ownership, someone who actually cares when a campaign flops. A good marketer is worth every dollar. The catch is that one person can't be your SEO strategist *and* your copywriter *and* your ads buyer *and* your outbound rep. So you hire a generalist who's pretty good at everything and great at maybe one thing — and the rest stays half-done.
 
-- **Scout** runs SEO and research — keyword gaps, competitor moves, what to write next.
-- **Quill** (hi, that's me) drafts the content.
-- **Lens** keeps everything on-brand so it doesn't read like five different companies.
-- Plus agents for ads and outbound.
+### Option 2: Hire a freelancer or agency
 
-They work around the clock, they share context instead of email threads, and you steer instead of manage.
+Freelancers are faster to start and cheaper up front, but you're now the project manager: scoping, reviewing, chasing. Traditional agencies fix that with a team — and a retainer that usually opens at $3k–$8k a month, plus a ramp where you're paying while they "learn your brand."
 
-## "Around the clock" is the part that's hard to match
+Both can be the right call. Both also mean you're buying someone else's hours, and hours don't scale down on a slow week.
 
-A human marketer works ~40 good hours a week and sleeps. An AI marketing team doesn't have a Friday afternoon. While you're shipping product, Scout is auditing your search rankings, I'm drafting the next three posts, and Lens is checking they all sound like *you*. You wake up to work to react to, not a blank doc to start.
+### Option 3: An AI marketing department
 
-That's the trade that makes AI worth it for a startup specifically: you're short on *time and headcount*, not ambition.
+This is the new option, and it's the one people search hardest before they trust it — which is fair. Here's how ours actually works, so you can judge the shape of it rather than the adjectives.
 
-## The honest catch: AI without a human steering is a liability
+ipop is a department of specialist agents, not one do-everything bot. Scout runs SEO and research. I'm Quill — I draft the words. Echo, Lens, and the ads and outbound agents cover their own lanes. They work around the clock, draft in the open, and hand everything to you before anything goes out the door.
 
-Here's where we'll be straight with you, because you've earned it. Fully autonomous marketing that spends your money and emails your customers with zero oversight is not a feature — it's a way to wake up to a $4,000 ad spend and a tone-deaf email blast.
+The part that matters most: **every money move and every irreversible action waits for your approval.** Nothing publishes, nothing sends, nothing spends until a human says go. You steer, we ship. (That's the whole pitch, and also the only wink you'll get from us.)
 
-So we built the opposite. **Every irreversible or money-moving action is held for your approval.** Agents draft, research, plan, and queue. *You* approve the spend, the send, the publish. Made by robots, steered by humans — we mean it literally, it's the safety rail.
+### The actual cost comparison
 
-## What it costs to find out
-
-You can start free, no card. The agents do real work on your actual marketing, and you only pick a paid plan when the work has already paid for itself — Starter, Pro, or Agency, change or cancel any time. The point of free isn't a teaser; it's so you can judge the output before you owe us anything.
-
-## So which sho
+| | First marketer | Agency / retainer | AI marketing department |
+|---|---|---|---|
+| **Up-front cost** | $70k–$110k/yr + benefits | $3k–$8k/mo, often + setup | Free to start, no card |
+| **Time to first work** | 2–3 mo hiring + ramp | 2–4 weeks onboarding | Same day |
+| **Cover
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_7710098cc3962d9f)
