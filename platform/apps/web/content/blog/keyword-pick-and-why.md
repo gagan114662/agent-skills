@@ -1,65 +1,75 @@
 ---
 title: "Keyword pick (and why)"
 slug: keyword-pick-and-why
-description: "Here's the draft. I picked the keyword first, then wrote to it. --- Keyword pick (and why) Target: 'AI marketing agency vs hiring a marketer' This is decision-s"
+description: "Dropping this in #content for human review. Draft only — nothing publishes, and I've got no way to send it anywhere even if I wanted to. --- Keyword pick (and w"
 date: 2026-06-22
 status: published
 ---
 
-Here's the draft. I picked the keyword first, then wrote to it.
+Dropping this in #content for human review. Draft only — nothing publishes, and I've got no way to send it anywhere even if I wanted to.
 
 ---
 
 ## Keyword pick (and why)
 
-**Target: "AI marketing agency vs hiring a marketer"**
+**Target: "AI marketing agency for startups"**
 
-This is decision-stage, not curiosity-stage. Someone typing it has already decided they need marketing done — they're choosing *how to buy*, and they have a budget number in their head. That's about as buyer-intent as it gets for us, because it's the exact fork in the road where ipop is one of the two roads. Adjacent terms I considered: "AI marketing agency for startups" (good, but earlier-funnel), "how much does an AI marketing agency cost" (high intent, but narrower — I'd fold pricing into this post and write that one next).
+Why this one over the obvious alternatives:
 
-Grounded in what's actually on the site: free start, no card ([ipop.ai/pricing](https://ipop.ai/pricing)); three plans — Starter / Pro / Agency; every money or irreversible action held for human approval; the named department — Scout (SEO), me (Quill, content), Echo, Lens (brand), plus ads and outbound ([ipop.ai](https://ipop.ai)).
+- It's **commercial-investigation intent** — someone typing this has already decided they might outsource marketing to AI. They're comparison-shopping, not learning. That's the buyer we want: a founder or small team, which is exactly who the homepage names ("a founder or small team who wants real marketing work shipped").
+- It maps to our core claim. The homepage H1 is literally *"The marketing agency of AI agents — you steer, they ship."* We already say "agency" — the post lets us rank for it.
+- The runner-up keywords are weaker fits: *"AI marketing tools"* pulls dashboard-shoppers (the exact buyer we say we're *not* for), and *"fractional CMO"* pulls people with bigger budgets who want a human strategist. "AI marketing agency for startups" sits right on our buyer.
 
----
-
-## DRAFT — for human review
-
-**Title:** AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders
-**Slug:** /blog/ai-marketing-agency-vs-hiring-a-marketer
-**Meta description:** Weighing an AI marketing team against your first marketing hire? Here's the real math on cost, speed, and what each one actually ships — no spin.
-**Target keyword:** AI marketing agency vs hiring a marketer
-**Word count:** ~950
+Secondary keywords to weave in: *AI marketing department*, *hire AI marketing agents*, *marketing for startups without a team*.
 
 ---
 
-You've got marketing that needs doing and two ways to make it happen: hire someone, or hand it to a fleet of AI agents. We make the second thing, so you can roll your eyes at our objectivity now and we'll earn it back with receipts.
+## Draft
 
-Here's the honest version of the trade-off.
+**Title (pick one):**
+1. AI Marketing Agency for Startups: What You Actually Get (and What You Don't)
+2. Can an AI Marketing Agency Replace Your First Marketing Hire?
+3. The AI Marketing Agency for Startups That Doesn't Touch Your Card Without Asking
 
-### Option 1: Hire your first marketer
+*(Recommending #1 — it leads with the keyword and promises the honest version, which is the house voice.)*
 
-A generalist marketing hire in the US runs roughly $70k–$110k a year, plus benefits, plus the two-to-three months it takes to find them and the month after that before they've shipped anything. Call it real money and real calendar time before the first blog post goes live.
+**Meta description (155 char):**
+Thinking about an AI marketing agency for your startup? Here's what the work actually looks like, where humans stay in the loop, and how to try it free.
 
-What you get for it: judgment, ownership, someone who actually cares when a campaign flops. A good marketer is worth every dollar. The catch is that one person can't be your SEO strategist *and* your copywriter *and* your ads buyer *and* your outbound rep. So you hire a generalist who's pretty good at everything and great at maybe one thing — and the rest stays half-done.
+**Slug:** `/blog/ai-marketing-agency-for-startups`
 
-### Option 2: Hire a freelancer or agency
+---
 
-Freelancers are faster to start and cheaper up front, but you're now the project manager: scoping, reviewing, chasing. Traditional agencies fix that with a team — and a retainer that usually opens at $3k–$8k a month, plus a ramp where you're paying while they "learn your brand."
+### AI Marketing Agency for Startups: What You Actually Get (and What You Don't)
 
-Both can be the right call. Both also mean you're buying someone else's hours, and hours don't scale down on a slow week.
+You're a founder. Marketing needs to happen. Hiring a full team costs more than your runway likes, an agency retainer wants $4k+/month before anyone writes a word, and the "AI marketing tool" you tried last month gave you a dashboard and a homework assignment.
 
-### Option 3: An AI marketing department
+So the real question isn't *"should startups use AI for marketing?"* — everyone's already pasting things into a chatbot. It's: **can an AI marketing agency actually ship the work, the way a team would?**
 
-This is the new option, and it's the one people search hardest before they trust it — which is fair. Here's how ours actually works, so you can judge the shape of it rather than the adjectives.
+Here's the honest version.
 
-ipop is a department of specialist agents, not one do-everything bot. Scout runs SEO and research. I'm Quill — I draft the words. Echo, Lens, and the ads and outbound agents cover their own lanes. They work around the clock, draft in the open, and hand everything to you before anything goes out the door.
+#### What "AI marketing agency" should mean
 
-The part that matters most: **every money move and every irreversible action waits for your approval.** Nothing publishes, nothing sends, nothing spends until a human says go. You steer, we ship. (That's the whole pitch, and also the only wink you'll get from us.)
+Most things sold under that label are tools. You log in, you prompt, you get a draft, you do the rest. That's not an agency — that's a smarter blank page.
 
-### The actual cost comparison
+An actual agency has *roles*. Somebody owns SEO. Somebody owns brand. Somebody writes. Somebody runs ads. They do the work and bring it to you for a yes.
 
-| | First marketer | Agency / retainer | AI marketing department |
-|---|---|---|---|
-| **Up-front cost** | $70k–$110k/yr + benefits | $3k–$8k/mo, often + setup | Free to start, no card |
-| **Time to first work** | 2–3 mo hiring + ramp | 2–4 weeks onboarding | Same day |
-| **Cover
+That's the bar. At ipop, the department is a fleet of specialist agents — Scout on SEO and research, Lens on brand, Quill on content, plus ads and outbound — each owning a lane and drafting around the clock. You steer; they ship. (Yes, Quill wrote this. We contain ourselves.)
+
+#### What you actually get
+
+- **Work, not worksheets.** Keyword research, content drafts, brand audits, ad concepts, outbound plans — produced and handed to you, not assigned back to you.
+- **Specialists, not one generalist bot.** SEO research and brand voice are different jobs. Splitting them across agents means each draft is made by something that only does that job.
+- **Around-the-clock drafting.** The work continues between your investor calls. You review when you've got ten minutes.
+
+#### What you *don't* get (and this is the point)
+
+You don't get an AI quietly spending your ad budget at 2am.
+
+Every irreversible or money-touching action is held for a human yes. Publishing, sending, spending — those stop and wait for you. That's the line: AI does the drafting and the legwork; a human signs off on anything that costs money or can't be undone. *Made by robots, steered by humans*, as we put it on the tin.
+
+For a startup, that's the whole ballgame. You want leverage, not a runaway.
+
+##
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_7710098cc3962d9f)
