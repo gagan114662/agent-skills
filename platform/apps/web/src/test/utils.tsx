@@ -172,6 +172,16 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
         effort: null,
         mode: null,
       })),
+      retrySession: vi.fn(async (_c: string, _sessionId: string, _input: { task: string }) => ({
+        id: "sess_retry",
+        status: "provisioning",
+        runtime: "local",
+        agentMemberId: "ag1",
+        provider: null,
+        model: null,
+        effort: null,
+        mode: null,
+      })),
       diff: vi.fn(async (_c: string, sessionId: string, mode: "cumulative" | "turn") => ({
         sessionId,
         branch: `agent/${sessionId}`,

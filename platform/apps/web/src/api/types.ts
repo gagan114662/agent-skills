@@ -329,6 +329,20 @@ export interface DepartmentViewDto {
 }
 
 /**
+ * The classified, human-readable cause of a failed run (#634), present on a session whose status is a
+ * terminal failure (else null). Lets the run-status UI show WHY a run stopped + what to do next, so a
+ * failure is never silent. Carries only the class + brand-voice copy — never the raw output tail.
+ */
+export interface SessionFailureDto {
+  /** spawn | auth | timeout | budget | canceled | model | overloaded | error. */
+  failureClass: string;
+  /** One-line "what happened". */
+  headline: string;
+  /** One-line "what to do next" (retry / reconnect / pick a model …). */
+  detail: string;
+}
+
+/**
  * A summary of an agent session for the review surface (#51), from `GET /channels/:cid/agent-sessions`.
  * The git refs are set once the session has run in a worktree (null otherwise).
  */
@@ -347,6 +361,8 @@ export interface AgentSessionSummary {
   effort: EffortLevel | null;
   mode: SessionMode | null;
   createdAt: string;
+  /** #634: the classified failure cause when this run failed (else null/absent on older servers). */
+  failure?: SessionFailureDto | null;
 }
 
 /** Model/provider selection vocabulary (#52) — mirrors the server's selection layer. */

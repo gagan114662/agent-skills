@@ -115,6 +115,16 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
         effort: null,
         mode: null,
       })),
+      retrySession: vi.fn(async () => ({
+        id: "sess_retry",
+        status: "provisioning",
+        runtime: "local",
+        agentMemberId: "ag1",
+        provider: null,
+        model: null,
+        effort: null,
+        mode: null,
+      })),
       diff: vi.fn(async (_c, sessionId, mode) => ({
         sessionId,
         branch: `agent/${sessionId}`,
@@ -399,5 +409,24 @@ describe("store bootstrap + realtime", () => {
     await store.bootstrap();
     await expect(store.sendMessage("hi")).rejects.toThrow();
     expect(store.getState().paywall).toBe(false);
+  });
+
+  it("#634 retryRunSession re-launches the failed run and selects the new run", async () => {
+    const store = createStore(env.deps);
+    await store.bootstrap();
+    const newId = await store.retryRunSession("s1", "ship the homepage again");
+    expect(env.deps.api.review.retrySession).toHaveBeenCalledWith("c1", "s1", {
+      task: "ship the homepage again",
+    });
+    expect(newId).toBe("sess_retry");
+    expect(store.getState().run.activeSessionId).toBe("sess_retry");
+  });
+
+  it("#634 retryRunSession is a no-op (no API call) without a re-briefed task", async () => {
+    const store = createStore(env.deps);
+    await store.bootstrap();
+    const newId = await store.retryRunSession("s1", "   ");
+    expect(newId).toBeNull();
+    expect(env.deps.api.review.retrySession).not.toHaveBeenCalled();
   });
 });

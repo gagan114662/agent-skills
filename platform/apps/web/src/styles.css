@@ -2030,6 +2030,49 @@ select:focus-visible {
   font-size: 11px;
   color: var(--text-faint);
 }
+.run__session-status--failed {
+  color: var(--danger);
+  font-weight: 600;
+}
+/* #634: the never-silent failure banner — surfaces a failed run's cause + a retry affordance. */
+.run__failure {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-2));
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.run__failure-headline {
+  font-weight: 600;
+  color: var(--danger);
+  margin: 0 0 4px;
+}
+.run__failure-detail {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.run__failure-step {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+.run__failure-step code {
+  font-family: ui-monospace, monospace;
+}
+.run__failure-retry {
+  display: flex;
+  gap: 8px;
+}
+.run__failure-retry input {
+  flex: 1;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 13px;
+}
 .run__controls {
   display: flex;
   align-items: center;

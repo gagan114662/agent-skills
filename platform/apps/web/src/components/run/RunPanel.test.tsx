@@ -39,10 +39,50 @@ async function openRunTab(): Promise<ReturnType<typeof renderWithStore>> {
   return rendered;
 }
 
+const FAILED_SESSION: AgentSessionSummary = {
+  ...SESSION,
+  id: "f1",
+  status: "failed",
+  branch: "agent/f1",
+  failure: {
+    failureClass: "overloaded",
+    headline: "Claude's servers were overloaded, so I had to stop",
+    detail: "This is a temporary capacity blip on the model's side — hit Retry and I'll pick this right back up.",
+  },
+};
+
 describe("RunPanel (#56 Run tab)", () => {
   it("renders the run surface with the annotations rail", async () => {
     await openRunTab();
     expect(await screen.findByRole("heading", { name: "Annotations" })).toBeInTheDocument();
+  });
+
+  it("surfaces a failed run's human-readable cause + failing step — never silent (#634)", async () => {
+    const rendered = renderWithStore(<RunPanel />, { sessions: [FAILED_SESSION] });
+    await rendered.store.bootstrap();
+    // The sidebar marks the failed run; selecting it shows the failure banner.
+    await userEvent.click(await screen.findByRole("button", { name: /agent\/f1/ }));
+    const banner = await screen.findByRole("alert", { name: "Run failed" });
+    expect(banner).toHaveTextContent("Claude's servers were overloaded");
+    expect(banner).toHaveTextContent(/Failing step/i);
+    expect(banner).toHaveTextContent("overloaded");
+  });
+
+  it("retries a failed run with a re-briefed task (#634)", async () => {
+    const { store } = renderWithStore(<RunPanel />, { sessions: [FAILED_SESSION] });
+    await store.bootstrap();
+    await userEvent.click(await screen.findByRole("button", { name: /agent\/f1/ }));
+
+    // Retry is gated on a re-brief: disabled until the operator supplies a task.
+    const retryBtn = screen.getByRole("button", { name: "Retry" });
+    expect(retryBtn).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText("Re-brief and retry"), "ship the homepage again");
+    expect(retryBtn).toBeEnabled();
+    await userEvent.click(retryBtn);
+
+    // The re-launch (fake → "sess_retry") becomes the selected run.
+    await waitFor(() => expect(store.getState().run.activeSessionId).toBe("sess_retry"));
   });
 
   it("starts a run and shows the live preview iframe once the app's url is detected", async () => {

@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { PreviewAnnotation } from "@reload/shared";
+import type { AgentSessionSummary } from "../../api/types.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 
 export function RunPanel(): React.JSX.Element {
@@ -37,7 +38,11 @@ export function RunPanel(): React.JSX.Element {
                   onClick={() => void store.selectRunSession(s.id)}
                 >
                   <span className="run__session-branch">{s.branch ?? s.id.slice(0, 8)}</span>
-                  <span className="run__session-status">{s.status}</span>
+                  <span
+                    className={`run__session-status${s.failure ? " run__session-status--failed" : ""}`}
+                  >
+                    {s.failure ? `❌ ${s.status}` : s.status}
+                  </span>
                 </button>
               </li>
             ))}
@@ -51,6 +56,7 @@ export function RunPanel(): React.JSX.Element {
             {run.error}
           </p>
         )}
+        {activeSession?.failure && <RunFailureBanner session={activeSession} />}
         {activeSession ? <RunStage /> : <p className="run__empty">Select a session to run its app.</p>}
       </section>
 
@@ -58,6 +64,56 @@ export function RunPanel(): React.JSX.Element {
         <AnnotationList />
       </aside>
     </div>
+  );
+}
+
+/**
+ * The never-silent failure surface (#634). When the selected run failed, show the human-readable cause
+ * (headline + what-to-do-next), the failing step (terminal status + classified reason), and a retry
+ * affordance. The original task isn't persisted server-side, so retry re-briefs the agent: the operator
+ * confirms/edits the task, then re-launches the same agent + model selection on it.
+ */
+function RunFailureBanner({ session }: { session: AgentSessionSummary }): React.JSX.Element | null {
+  const store = useStore();
+  const [task, setTask] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const failure = session.failure;
+  if (!failure) return null;
+
+  async function retry(): Promise<void> {
+    if (!task.trim() || retrying) return;
+    setRetrying(true);
+    try {
+      await store.retryRunSession(session.id, task);
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <section className="run__failure" role="alert" aria-label="Run failed">
+      <p className="run__failure-headline">❌ {failure.headline}</p>
+      <p className="run__failure-detail">{failure.detail}</p>
+      <p className="run__failure-step">
+        Failing step: <code>{session.status}</code> <span className="run__failure-class">({failure.failureClass})</span>
+      </p>
+      <div className="run__failure-retry">
+        <input
+          aria-label="Re-brief and retry"
+          placeholder="Re-brief the agent, then retry"
+          value={task}
+          onChange={(e) => setTask(e.target.value)}
+          disabled={retrying}
+        />
+        <button
+          className="btn btn--primary"
+          onClick={() => void retry()}
+          disabled={!task.trim() || retrying}
+        >
+          {retrying ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    </section>
   );
 }
 

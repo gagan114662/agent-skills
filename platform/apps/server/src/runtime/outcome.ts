@@ -15,7 +15,15 @@ import type { SessionStatus } from "./types.js";
  */
 
 /** The bucket a failed session falls into, surfaced inline so the message is actionable. */
-export type FailureReasonClass = "spawn" | "auth" | "timeout" | "budget" | "canceled" | "model" | "error";
+export type FailureReasonClass =
+  | "spawn"
+  | "auth"
+  | "timeout"
+  | "budget"
+  | "canceled"
+  | "model"
+  | "overloaded"
+  | "error";
 
 export interface SessionOutcome {
   status: SessionStatus;
@@ -86,6 +94,25 @@ const STARTUP_FAILURE_MARKERS = [
   "runtime is missing a tool",
 ];
 
+/**
+ * Markers of a **transient API overload** (#634): the model API answered the run with a 429 (rate
+ * limited) or 529 (overloaded) — Anthropic's `overloaded_error` / `rate_limit_error` shapes — so the
+ * harness stopped through no fault of the owner or the brief. Unlike auth/budget/model these are NOT
+ * config errors to fix; they are capacity blips where the right move is simply to RETRY. They get their
+ * own class + retry-forward copy so a 429/529 stops reading as an opaque generic "error" the owner can't
+ * act on. The status codes mirror the existing bare-number auth/budget markers ("401"/"402").
+ */
+const OVERLOADED_MARKERS = [
+  "overloaded",
+  "overloaded_error",
+  "rate limit",
+  "rate_limit",
+  "rate_limit_error",
+  "too many requests",
+  "429",
+  "529",
+];
+
 function matches(tail: string | undefined, markers: string[]): boolean {
   if (!tail) return false;
   const t = tail.toLowerCase();
@@ -116,6 +143,9 @@ export function looksLikeStartupFailure(artifact: string | undefined): boolean {
  *  - a run whose OUTPUT is the agent self-reporting that it couldn't start up (#319) is a "spawn"
  *    failure even on a clean (exit 0) process, so the message reads "couldn't start up — missing a tool"
  *    rather than a generic error. Checked before auth/budget/model so the boot failure wins its own copy.
+ *  - a non-zero exit whose output is a transient API overload (429/529 — #634) is "overloaded", a
+ *    retry-forward class. Checked AFTER the fixable config classes (auth/budget/model) so a config error
+ *    that merely mentions a rate limit still routes to its fixable bucket, but before the generic bucket.
  *  - everything else is a generic harness "error".
  */
 export function classifyFailure(o: SessionOutcome): FailureReasonClass {
@@ -126,6 +156,9 @@ export function classifyFailure(o: SessionOutcome): FailureReasonClass {
   if (matches(o.outputTail, AUTH_MARKERS)) return "auth";
   if (matches(o.outputTail, BUDGET_MARKERS)) return "budget";
   if (matches(o.outputTail, MODEL_MARKERS)) return "model";
+  // Checked AFTER the owner-actionable config classes (auth/budget/model) so a config error that also
+  // mentions a rate limit still routes to its fixable bucket; otherwise a 429/529 is a transient overload.
+  if (matches(o.outputTail, OVERLOADED_MARKERS)) return "overloaded";
   return "error";
 }
 
@@ -224,6 +257,11 @@ const FAILURE_COPY: Record<FailureReasonClass, { headline: string; detail: strin
     detail:
       "This one's on the setup, not you — the configured AI model can't be reached. Pick a valid model in " +
       "**Settings → Model** (or clear it to use the default), then @mention me again and I'll pick this right up.",
+  },
+  overloaded: {
+    headline: "Claude's servers were overloaded, so I had to stop",
+    detail:
+      "This is a temporary capacity blip on the model's side (a 429/529), not anything you did — hit Retry and I'll pick this right back up.",
   },
   error: {
     headline: "I hit an error mid-run and had to stop",
