@@ -5,6 +5,7 @@ import { createDefaultTraceService } from "../trace/default.js";
 import type { TraceService } from "../trace/service.js";
 import { selectNewEvents, sseComment, sseFrame, toTheaterEvent } from "../trace/theater.js";
 import { createDefaultCostService } from "../observability/cost/index.js";
+import { createDefaultRunLogService } from "../observability/logs/index.js";
 
 /** Live-theater stream tuning (issue #624). Env-overridable; safe, bounded defaults otherwise. */
 const POLL_MS = clampInt(process.env.TRACE_STREAM_POLL_MS, 1_000, 200, 15_000);
@@ -47,6 +48,7 @@ function writeSseHead(reply: FastifyReply): void {
 export async function tracesRoutes(app: FastifyInstance): Promise<void> {
   const service = createDefaultTraceService();
   const costService = createDefaultCostService();
+  const logService = createDefaultRunLogService();
 
   // Every open SSE poll loop registers a stop fn here so a server shutdown tears them all down (no leak).
   const activeStreams = new Set<() => void>();
@@ -119,6 +121,36 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     const replay = await service.replay(wid, runId);
     if (!replay) return reply.code(404).send({ error: "trace not found in this workspace" });
     return replay;
+  });
+
+  // durable run log (issue #665): the run's persisted output lines, oldest-first, that survive a restart
+  // (the runtime's in-memory buffer does not). ?afterSeq= tails incrementally; ?limit= bounds the page.
+  // Returns 200 with an empty `lines` array for a run that has no persisted log yet (not a 404) — absence of
+  // lines is a valid state, and the store is workspace-scoped so a foreign workspace simply sees nothing (#3).
+  app.get("/workspaces/:wid/traces/:runId/logs", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, runId } = req.params as { wid: string; runId: string };
+    if (!(await requireMemoryCapability(id, wid, "read", reply))) return;
+    const q = req.query as { afterSeq?: string; limit?: string };
+    const afterSeq = q.afterSeq ? Number.parseInt(q.afterSeq, 10) : undefined;
+    const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
+    return logService.getLog(wid, runId, {
+      afterSeq: Number.isFinite(afterSeq) ? afterSeq : undefined,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+  });
+
+  // failing tool call (issue #666): the exact tool whose call sank the run — its name, redacted args, and
+  // error — so a failed run names what broke instead of an opaque "failed". `failure` is null for a run that
+  // never recorded a tool failure (e.g. a successful run).
+  app.get("/workspaces/:wid/traces/:runId/failure", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, runId } = req.params as { wid: string; runId: string };
+    if (!(await requireMemoryCapability(id, wid, "read", reply))) return;
+    const failure = await logService.getFailure(wid, runId);
+    return { runId, failure };
   });
 
   // LIVE THEATER (issue #624): stream ONE run's reasoning → action → artifact as it happens, over SSE.
