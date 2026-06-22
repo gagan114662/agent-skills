@@ -30,6 +30,38 @@ export interface AcquiredWorktree {
   warm: boolean;
 }
 
+/** Options for {@link WorktreePoolService.acquire}. */
+export interface AcquireOptions {
+  /**
+   * If set, an acquire that has to wait in the queue is rejected with {@link WorktreePoolExhaustedError}
+   * after this many ms instead of waiting indefinitely (a safety valve against a permanently wedged
+   * pool). Omit to wait until a slot frees — the #640 default: queue, never fail.
+   */
+  timeoutMs?: number;
+}
+
+/** A pending acquire parked in the queue while the pool is at cap (#640). */
+interface Waiter {
+  readonly sessionId: string;
+  readonly resolve: (w: AcquiredWorktree) => void;
+  readonly reject: (err: unknown) => void;
+  /** Epoch ms the acquire entered the queue (for `queued()` visibility + timeout accounting). */
+  readonly enqueuedAt: number;
+  /** Cleared once the waiter is served or times out — guards against double-settle. */
+  timer?: ReturnType<typeof setTimeout>;
+  settled: boolean;
+}
+
+/** A snapshot of one queued acquire — the visible 'queued' state (#640). */
+export interface QueuedAcquire {
+  /** The session waiting for a slot. */
+  readonly sessionId: string;
+  /** 0-based position in line (0 = next to be served). */
+  readonly position: number;
+  /** How long this acquire has been queued, in ms. */
+  readonly waitingMs: number;
+}
+
 /** Git identity for any pool-side commit/branch op — kept off the host global config (hermetic). */
 const POOL_IDENTITY = ["-c", "user.name=Reload Pool", "-c", "user.email=pool@reload.local"];
 
@@ -58,10 +90,21 @@ export class WorktreePoolService {
   private readonly known = new Set<string>();
   /** Serializes acquire/release so two concurrent acquires can't both pick the same free slot. */
   private mutex: Promise<void> = Promise.resolve();
+  /** FIFO line of acquires waiting for a slot while the pool is at cap (#640). */
+  private readonly waiters: Waiter[] = [];
+  /** Guards the drain loop so concurrent releases can't both serve the same waiter. */
+  private draining = false;
+  /** Injectable clock (defaults to wall time) — keeps queue timing deterministic under test. */
+  private readonly now: () => number;
 
-  constructor(cfg: WorktreePoolServiceConfig, runner: GitRunner = new SpawnGitRunner()) {
+  constructor(
+    cfg: WorktreePoolServiceConfig,
+    runner: GitRunner = new SpawnGitRunner(),
+    now: () => number = () => Date.now(),
+  ) {
     this.cfg = cfg;
     this.runner = runner;
+    this.now = now;
   }
 
   private get poolConfig(): PoolConfig {
@@ -111,37 +154,108 @@ export class WorktreePoolService {
 
   /**
    * Acquire a warm worktree for `sessionId`. Reuses a free clean slot (warm), resets a free dirty
-   * slot then leases it, or grows the pool up to `size`. Throws only when the pool is exhausted (all
-   * slots leased and at cap) — the caller falls back to a fresh checkout. Serialized so two concurrent
-   * acquires never collide on the same slot.
+   * slot then leases it, or grows the pool up to `size`. When the pool is exhausted (all slots leased
+   * and at cap) the acquire does NOT fail — it parks in a FIFO queue with a visible 'queued' state
+   * ({@link queued}) and resolves once a slot frees (#640). Pass {@link AcquireOptions.timeoutMs} to
+   * bound the wait. Serialized so two concurrent acquires never collide on the same slot.
    */
-  acquire(sessionId: string): Promise<AcquiredWorktree> {
-    return this.locked(async () => {
-      const decision = decideAcquire(await this.snapshot(), sessionId, this.poolConfig);
-      switch (decision.kind) {
-        case "reuse": {
-          return { cwd: decision.slot.path, slotId: decision.slot.id, warm: true };
+  acquire(sessionId: string, opts: AcquireOptions = {}): Promise<AcquiredWorktree> {
+    return new Promise<AcquiredWorktree>((resolve, reject) => {
+      // Decide serve-or-enqueue while holding the mutex: a concurrent release is serialized after us,
+      // so it can never slip a free slot past the gap between "exhausted?" and "join the queue".
+      this.locked(async () => {
+        const served = await this.serve(sessionId);
+        if (served) {
+          resolve(served);
+          return;
         }
-        case "lease": {
-          await this.leaseInto(decision.slot.id, sessionId);
-          return { cwd: this.slotPath(decision.slot.id), slotId: decision.slot.id, warm: true };
-        }
-        case "reset-then-lease": {
-          await this.resetSlot(decision.slot.id);
-          await this.leaseInto(decision.slot.id, sessionId);
-          return { cwd: this.slotPath(decision.slot.id), slotId: decision.slot.id, warm: true };
-        }
-        case "grow": {
-          await this.growSlot(decision.nextId);
-          await this.leaseInto(decision.nextId, sessionId);
-          // A freshly grown worktree has no deps yet → the one cold spin-up; every reuse after is warm.
-          return { cwd: this.slotPath(decision.nextId), slotId: decision.nextId, warm: false };
-        }
-        case "exhausted": {
-          throw new WorktreePoolExhaustedError(this.cfg.size);
-        }
-      }
+        this.enqueue(sessionId, opts.timeoutMs, resolve, reject);
+      }).catch(reject);
     });
+  }
+
+  /**
+   * Try to serve an acquire from the current pool state, returning the lease or `null` when the pool
+   * is exhausted (all slots leased, at cap). Pure-decision driven ({@link decideAcquire}); the queue
+   * lives one level up in {@link acquire}/{@link drain} so this stays a single, lock-held attempt.
+   */
+  private async serve(sessionId: string): Promise<AcquiredWorktree | null> {
+    const decision = decideAcquire(await this.snapshot(), sessionId, this.poolConfig);
+    switch (decision.kind) {
+      case "reuse": {
+        return { cwd: decision.slot.path, slotId: decision.slot.id, warm: true };
+      }
+      case "lease": {
+        await this.leaseInto(decision.slot.id, sessionId);
+        return { cwd: this.slotPath(decision.slot.id), slotId: decision.slot.id, warm: true };
+      }
+      case "reset-then-lease": {
+        await this.resetSlot(decision.slot.id);
+        await this.leaseInto(decision.slot.id, sessionId);
+        return { cwd: this.slotPath(decision.slot.id), slotId: decision.slot.id, warm: true };
+      }
+      case "grow": {
+        await this.growSlot(decision.nextId);
+        await this.leaseInto(decision.nextId, sessionId);
+        // A freshly grown worktree has no deps yet → the one cold spin-up; every reuse after is warm.
+        return { cwd: this.slotPath(decision.nextId), slotId: decision.nextId, warm: false };
+      }
+      case "exhausted": {
+        return null;
+      }
+    }
+  }
+
+  /** Park an exhausted acquire in the FIFO queue, arming an optional timeout. Called under the mutex. */
+  private enqueue(
+    sessionId: string,
+    timeoutMs: number | undefined,
+    resolve: (w: AcquiredWorktree) => void,
+    reject: (err: unknown) => void,
+  ): void {
+    const waiter: Waiter = { sessionId, resolve, reject, enqueuedAt: this.now(), settled: false };
+    if (timeoutMs !== undefined) {
+      waiter.timer = setTimeout(() => {
+        if (waiter.settled) return;
+        waiter.settled = true;
+        const i = this.waiters.indexOf(waiter);
+        if (i !== -1) this.waiters.splice(i, 1);
+        reject(new WorktreePoolExhaustedError(this.cfg.size, timeoutMs));
+      }, timeoutMs);
+      // Don't let a queued acquire keep the process alive (it's waiting on other work to release).
+      waiter.timer.unref?.();
+    }
+    this.waiters.push(waiter);
+  }
+
+  /**
+   * Drain the queue after a slot frees: serve waiters FIFO until the next one can't be served (pool
+   * exhausted again) or the queue empties. Guarded by `draining` so concurrent releases each calling
+   * drain can't double-serve. Runs OUTSIDE any held mutex — each serve re-takes the lock — so it can
+   * never deadlock against the release that triggered it.
+   */
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      for (;;) {
+        const next = this.waiters[0];
+        if (next === undefined) break; // queue empty
+        const served = await this.locked(() => this.serve(next.sessionId));
+        if (!served) break; // still exhausted — leave the rest queued for the next release
+        this.waiters.shift();
+        if (next.settled) {
+          // Raced with its own timeout: hand the slot back rather than leak the lease.
+          await this.release(next.sessionId);
+          continue;
+        }
+        next.settled = true;
+        if (next.timer) clearTimeout(next.timer);
+        next.resolve(served);
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   /**
@@ -149,13 +263,15 @@ export class WorktreePoolService {
    * and mark it free for the next acquire. Idempotent — releasing a session that holds nothing is a
    * no-op. This is the treehouse `return` step; it never destroys, so work is never lost here.
    */
-  release(sessionId: string): Promise<void> {
-    return this.locked(async () => {
+  async release(sessionId: string): Promise<void> {
+    await this.locked(async () => {
       const decision = decideRelease(await this.snapshot(), sessionId);
       if (decision.kind === "noop") return;
       await this.resetSlot(decision.slot.id);
       this.leases.delete(decision.slot.id);
     });
+    // A slot may now be free — hand it to whoever is queued (#640). Outside the lock to avoid deadlock.
+    await this.drain();
   }
 
   /**
@@ -164,18 +280,21 @@ export class WorktreePoolService {
    * warm worktree re-enters the pool. A live concurrent run is never reaped (#200 §3). Returns the
    * reaped session ids.
    */
-  releaseInactive(activeSessionIds: Iterable<string>): Promise<string[]> {
-    return this.locked(async () => {
-      const stale = reapableLeases(await this.snapshot(), activeSessionIds);
-      for (const sessionId of stale) {
+  async releaseInactive(activeSessionIds: Iterable<string>): Promise<string[]> {
+    const stale = await this.locked(async () => {
+      const reaped = reapableLeases(await this.snapshot(), activeSessionIds);
+      for (const sessionId of reaped) {
         const decision = decideRelease(this.slotsFromLeases(), sessionId);
         if (decision.kind === "release") {
           await this.resetSlot(decision.slot.id);
           this.leases.delete(decision.slot.id);
         }
       }
-      return stale;
+      return reaped;
     });
+    // Freed slots can now serve queued acquires (#640). Outside the lock to avoid deadlock.
+    if (stale.length > 0) await this.drain();
+    return stale;
   }
 
   /**
@@ -202,12 +321,32 @@ export class WorktreePoolService {
     await this.tryGit(this.cfg.repoRoot, ["worktree", "prune"]);
     this.leases.delete(slotId);
     this.known.delete(slotId);
+    // Shrinking the pool frees a `grow` headroom slot — let a queued acquire take it (#640).
+    await this.drain();
     return { destroyed: true };
   }
 
   /** The current pool state (for `status` / tests / the AGENTS.md `treehouse status` analog). */
   status(): Promise<PoolSlot[]> {
     return this.snapshot();
+  }
+
+  /** How many acquires are currently waiting in the queue for a free slot (#640). */
+  queueDepth(): number {
+    return this.waiters.length;
+  }
+
+  /**
+   * The visible 'queued' state (#640): every acquire currently waiting for a slot, in line order, with
+   * its position and how long it has waited. Empty when the pool is serving every acquire immediately.
+   */
+  queued(): QueuedAcquire[] {
+    const at = this.now();
+    return this.waiters.map((w, position) => ({
+      sessionId: w.sessionId,
+      position,
+      waitingMs: at - w.enqueuedAt,
+    }));
   }
 
   // --- internals -------------------------------------------------------------
@@ -306,10 +445,22 @@ export class WorktreePoolService {
   }
 }
 
-/** Thrown by {@link WorktreePoolService.acquire} when every slot is leased and the pool is at `size`. */
+/**
+ * Thrown by {@link WorktreePoolService.acquire} ONLY when a caller opted into a bounded wait via
+ * {@link AcquireOptions.timeoutMs} and that deadline elapsed while queued. Without a timeout an acquire
+ * never throws this — it waits in the queue until a slot frees (#640).
+ */
 export class WorktreePoolExhaustedError extends Error {
-  constructor(readonly size: number) {
-    super(`worktree pool exhausted (size ${size}): all slots leased`);
+  constructor(
+    readonly size: number,
+    /** The `timeoutMs` the queued acquire waited before giving up, when it timed out. */
+    readonly waitedMs?: number,
+  ) {
+    super(
+      waitedMs === undefined
+        ? `worktree pool exhausted (size ${size}): all slots leased`
+        : `worktree pool exhausted (size ${size}): waited ${waitedMs}ms in queue, no slot freed`,
+    );
     this.name = "WorktreePoolExhaustedError";
   }
 }

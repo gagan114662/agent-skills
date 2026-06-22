@@ -19,13 +19,23 @@ export interface PoolProvisionerLogger {
   warn(obj: unknown, msg?: string): void;
 }
 
+/**
+ * How long a launch waits in the pool's queue for a warm slot before falling back to a fresh checkout
+ * (#640). Overflow runs WAIT (bounded concurrency, visible 'queued' state) instead of immediately
+ * spawning an unbounded fresh checkout; the bound is the safety valve so a launch can never hang on a
+ * wedged pool. `0` restores the old fail-fast fallback.
+ */
+export const DEFAULT_ACQUIRE_QUEUE_TIMEOUT_MS = 30_000;
+
 export interface PooledWorktreeProvisionerDeps {
-  /** The provisioner to fall back to when the pool is off for a workspace, exhausted, or errors. */
+  /** The provisioner to fall back to when the pool is off for a workspace, the wait times out, or it errors. */
   fallback: WorkspaceProvisioner;
   /** The warm pool. */
   pool: WorktreePoolService;
   /** Resolve the per-tenant config so the owner-first gate is evaluated per workspace. */
   loadConfig: (workspaceId: string) => ResolvedConfig;
+  /** Max ms to wait queued for a warm slot before falling back. Defaults to {@link DEFAULT_ACQUIRE_QUEUE_TIMEOUT_MS}. */
+  acquireTimeoutMs?: number;
   logger?: PoolProvisionerLogger;
 }
 
@@ -47,15 +57,18 @@ export class PooledWorktreeProvisioner implements WorkspaceProvisioner {
     if (!isWorktreePoolEnabledForWorkspace(caps, input.workspaceId)) {
       return this.deps.fallback.prepare(input);
     }
+    const timeoutMs = this.deps.acquireTimeoutMs ?? DEFAULT_ACQUIRE_QUEUE_TIMEOUT_MS;
     try {
-      const acquired = await this.deps.pool.acquire(input.sessionId);
+      // When the pool is exhausted this WAITS in the queue (#640) — overflow runs get a warm slot as
+      // soon as one frees, bounded by `timeoutMs` so a launch never hangs on a wedged pool.
+      const acquired = await this.deps.pool.acquire(input.sessionId, { timeoutMs });
       this.deps.logger?.info(
         { sessionId: input.sessionId, slotId: acquired.slotId, warm: acquired.warm },
         "worktree pool: leased warm worktree",
       );
       return { cwd: acquired.cwd };
     } catch (err) {
-      // Pool exhausted or a git hiccup must never block a launch — fall back to a fresh checkout.
+      // Wait timed out (pool stayed full) or a git hiccup — never block a launch, fall back to a fresh checkout.
       this.deps.logger?.warn(
         { sessionId: input.sessionId, err: err instanceof Error ? err.message : String(err) },
         "worktree pool: acquire failed, falling back to fresh checkout",
@@ -80,9 +93,11 @@ export function maybePooledWorktreeProvisioner(deps: {
   fallback: WorkspaceProvisioner;
   gitWorkspace: GitWorkspaceService | undefined;
   loadConfig: (workspaceId?: string) => ResolvedConfig;
+  /** Override the queue-wait bound before falling back (see {@link DEFAULT_ACQUIRE_QUEUE_TIMEOUT_MS}). */
+  acquireTimeoutMs?: number;
   logger?: PoolProvisionerLogger;
 }): { provisioner: WorkspaceProvisioner; pool?: WorktreePoolService } {
-  const { fallback, gitWorkspace, loadConfig, logger } = deps;
+  const { fallback, gitWorkspace, loadConfig, acquireTimeoutMs, logger } = deps;
   if (!gitWorkspace) return { provisioner: fallback };
   const serverCaps: WorktreePoolCaps = resolveWorktreePoolCaps(loadConfig().worktreePool);
   if (!serverCaps.enabled || serverCaps.size <= 0) return { provisioner: fallback };
@@ -97,6 +112,7 @@ export function maybePooledWorktreeProvisioner(deps: {
     fallback,
     pool,
     loadConfig: (workspaceId: string) => loadConfig(workspaceId),
+    acquireTimeoutMs,
     logger,
   });
   return { provisioner, pool };

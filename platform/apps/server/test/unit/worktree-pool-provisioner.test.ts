@@ -126,18 +126,41 @@ describe("PooledWorktreeProvisioner — per-workspace opt-in", () => {
     expect(fb.calls).toEqual([]); // pool served it, fallback untouched
   });
 
-  it("falls back to a fresh checkout when the pool is exhausted", async () => {
+  it("falls back to a fresh checkout when the queued wait times out (safety valve)", async () => {
     const fb = fallbackStub();
     const { provisioner } = maybePooledWorktreeProvisioner({
       fallback: fb.provisioner,
       gitWorkspace,
       loadConfig: () => cfgWith({ enabled: true, ownerWorkspaceOnly: false, size: 1 }),
+      acquireTimeoutMs: 0, // don't wait — exercise the fallback safety valve deterministically
     });
     const first = await provisioner.prepare({ sessionId: "s1", workspaceId: "ws" });
     expect(first.cwd).toContain(".reload-worktree-pool");
-    // size 1, s1 still leased → s2 exhausts the pool and must fall back
+    // size 1, s1 still leased → s2 finds the pool full; with a 0ms wait it falls back at once
     const second = await provisioner.prepare({ sessionId: "s2", workspaceId: "ws" });
     expect(second.cwd).toBe("/fallback/s2");
     expect(fb.calls).toEqual(["s2"]);
+  });
+
+  it("queues an overflow launch and serves it a warm slot when one frees, never falling back (#640)", async () => {
+    const fb = fallbackStub();
+    const { provisioner, pool } = maybePooledWorktreeProvisioner({
+      fallback: fb.provisioner,
+      gitWorkspace,
+      loadConfig: () => cfgWith({ enabled: true, ownerWorkspaceOnly: false, size: 1 }),
+      acquireTimeoutMs: 10_000,
+    });
+    const first = await provisioner.prepare({ sessionId: "s1", workspaceId: "ws" });
+    expect(first.cwd).toContain(".reload-worktree-pool");
+
+    // s2 finds the pool full → it WAITS in the queue instead of falling back to a fresh checkout.
+    const pendingSecond = provisioner.prepare({ sessionId: "s2", workspaceId: "ws" });
+    // Freeing s1's slot drains the queue: s2 gets a warm pool slot (the FIFO release serializes after
+    // s2's enqueue), so the fallback is never touched.
+    await pool!.release("s1");
+    const second = await pendingSecond;
+
+    expect(second.cwd).toContain(".reload-worktree-pool");
+    expect(fb.calls).toEqual([]); // overflow queued + got pooled — no fresh checkout spawned
   });
 });
