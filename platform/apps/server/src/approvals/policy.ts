@@ -3,7 +3,18 @@
  * unit job and is the single source of truth for "does this action pause for a human?". Persistence,
  * execution, and notification live elsewhere; this only classifies (the same split as #8's
  * `shouldNotify`). ADR-0013 §1.
+ *
+ * #727 — autonomy by default: the no-rule branch of {@link evaluatePolicy} now delegates to the merged
+ * autonomy-defaults policy ({@link decideAutonomy}), so the single source of truth for "does this action
+ * pause for a human?" is the productized money-only gate plus the per-capability / per-channel opt-out.
+ * The wiring is ADDITIVE — it can only ever ADD gating (a money action via the richer #727 classifier, or
+ * a capability/channel the workspace dialed off), never relax an existing money gate — so every decision
+ * that was autonomous before stays autonomous, and money stays the one hard, non-toggleable gate.
  */
+
+import { resolveAutonomyCaps } from "../autonomy-defaults/caps.js";
+import type { AutonomyCaps, Capability, Channel } from "../autonomy-defaults/defaults.js";
+import { decideAutonomy } from "../autonomy-defaults/policy.js";
 
 /** Action types the executor registry can run (#13). Submitting any other type is a 400. */
 export const ACTION_TYPES = ["chat.post_message", "external.send", "billing.refund", "browser.action"] as const;
@@ -442,6 +453,14 @@ export interface PolicyRule {
 export interface ActionDescriptor {
   actionType: string;
   amount?: number | null;
+  /**
+   * #727 opt-out hints. The autonomy policy normally INFERS the capability from the action verb (e.g.
+   * `outreach.send` → `outreach`), but a caller that knows its capability/channel can pass them so a
+   * workspace that dialed that capability/channel OFF re-gates precisely. Omit to let the verb decide;
+   * the channel is only meaningful for a channel-scoped send (the actuator that has it passes it).
+   */
+  capability?: Capability;
+  channel?: Channel;
 }
 
 export interface PolicyDecision {
@@ -454,14 +473,24 @@ export interface PolicyDecision {
  *   - a matching rule with `requiresApproval` → gated;
  *   - else a matching rule whose `maxAutoAmount` is exceeded by `amount` → gated (the spend cap);
  *   - else a matching rule → auto-approved;
- *   - else, no rule → `requiresHumanApproval(action)` — gated iff the action spends money, OR its cost
- *     cannot be determined (conservative: never auto-spend on uncertainty).
- * Under #243 (owner decision 2026-06-14) approval is driven by a single MONEY predicate:
- * `requiresHumanApproval(action) === spendsMoney(action) !== "no"`. Only money (and indeterminate cost)
- * pauses for the owner; everything else the fleet ships autonomously. Total and pure — the single source
- * of truth for gating (ADR-0013 §1, ADR-0243).
+ *   - else, no rule → the #727 autonomy-by-default policy ({@link decideAutonomy}) layered with the
+ *     amount-aware spend gate — gated iff the action moves money (the one hard gate), or the workspace
+ *     dialed its capability/channel OFF, or its cost cannot be determined (never auto-spend on uncertainty).
+ *
+ * Under #243 (owner decision 2026-06-14) approval was driven by a single MONEY predicate; #727 productizes
+ * that as `decideAutonomy` and adds the per-capability / per-channel opt-out. The wiring here is the
+ * consumption seam: the whole run/actuator path that funnels through `evaluatePolicy` now defaults ALL
+ * capabilities ON (autonomous) and pauses only for money (or a deliberately dialed-off capability/channel).
+ * `caps` is resolved from the environment by default (the self-contained #727 opt-out toggles); pass an
+ * explicit {@link AutonomyCaps} for a deterministic decision (the no-DB unit job / tests). The three
+ * always-on guards (kill-switch #592, suppression/DNC #594, anti-injection #674) are orthogonal — they run
+ * independently of this decision and are never weakened by it. Pure given `caps` (ADR-0013 §1, ADR-0243).
  */
-export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): PolicyDecision {
+export function evaluatePolicy(
+  action: ActionDescriptor,
+  rules: PolicyRule[],
+  caps: AutonomyCaps = resolveAutonomyCaps(),
+): PolicyDecision {
   const rule = rules.find((r) => r.actionType === action.actionType);
   if (rule) {
     if (rule.requiresApproval) {
@@ -489,12 +518,29 @@ export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): P
     }
     return { requiresApproval: false, reason: "auto-approved by policy" };
   }
-  // No workspace rule → the single MONEY predicate decides (#243). `spendsMoney` is two-pronged: a money
-  // action TYPE, OR any real spend (a positive `amount` committed through a generic action type — e.g. a
-  // marketing `ad.spend` that rides `external.send` and carries the budget as `amount`). It is also
-  // CONSERVATIVE: a cost it cannot interpret (`"unknown"`) gates rather than spending blindly. A workspace
-  // rule's `maxAutoAmount` (above) is the spend cap that auto-approves small spends under its ceiling.
+  // No workspace rule → the #727 autonomy-by-default policy decides (it supersedes and subsumes the inline
+  // #243 money predicate). `decideAutonomy` reads the action's STRUCTURAL fields (verb token + the explicit
+  // capability/channel hints) against the env-resolved opt-out caps; it is the authority for the money gate
+  // (charges/refunds/payouts, real ad spend, live payment keys) AND the per-capability / per-channel opt-out.
+  const autonomy = decideAutonomy(
+    { action: action.actionType, capability: action.capability, channel: action.channel },
+    caps,
+  );
+
+  // 1) A capability or channel the workspace deliberately dialed OFF re-gates only its own actions (the new
+  //    #727 opt-out). Defaults are ALL-ON, so a fresh workspace never hits this — everything stays autonomous.
+  if (autonomy.gate === "capability_disabled" || autonomy.gate === "channel_disabled") {
+    return { requiresApproval: true, reason: autonomy.reason };
+  }
+
+  // 2) Money is the one hard gate. It fires from the #727 classifier (the action's own money signals) OR the
+  //    amount-aware #243 spend gate — `spendsMoney` still catches a real budget riding a generic action type
+  //    (a positive `amount`) and an indeterminate cost (NaN/±Infinity), which the structural classifier does
+  //    not read. The union can only ADD gating — it never relaxes a money gate (#727 invariant).
   const verdict = spendsMoney(action);
+  if (autonomy.money) {
+    return { requiresApproval: true, reason: autonomy.reason };
+  }
   if (verdict === "yes") {
     return isMoneyAction(action.actionType)
       ? { requiresApproval: true, reason: `${action.actionType} moves money — owner approval required` }
@@ -509,7 +555,7 @@ export function evaluatePolicy(action: ActionDescriptor, rules: PolicyRule[]): P
       reason: `${action.actionType} has an undetermined cost — owner approval required (never auto-spend on uncertainty)`,
     };
   }
-  return { requiresApproval: false, reason: "autonomous: only money needs approval (#243)" };
+  return { requiresApproval: false, reason: "autonomous by default — money is the only hard gate (#243/#727)" };
 }
 
 /** A request is expired once its TTL deadline has passed. Pure so expiry is deterministically tested. */
