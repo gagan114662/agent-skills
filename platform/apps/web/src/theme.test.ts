@@ -13,7 +13,7 @@ afterEach(() => document.documentElement.removeAttribute("data-theme"));
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 function ruleBody(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(escaped + "\\s*\\{([^}]*)\\}"));
   expect(match, selector + " rule must exist").not.toBeNull();
   return match![1]!;
