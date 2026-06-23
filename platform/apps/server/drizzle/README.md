@@ -26,6 +26,13 @@ reserving the next free number. It is **safe**: both are additive and mutually i
 touches a table the other defines — so either order produces the same schema and the reverse order
 unwinds cleanly.
 
+CI runs the migration guard (node scripts/check-migrations.mjs) to keep this deterministic under parallel PRs:
+
+- every NNNN_name.sql must have a paired NNNN_name.down.sql;
+- duplicate numeric prefixes are allowed only when their up migrations touch disjoint tables/objects;
+- duplicate prefixes that mutate the same table fail before merge, because their order would encode a
+  hidden conflict that should be resolved in the PR.
+
 ## Why we don't renumber
 
 `_migrations` stores the applied **filename**. Renaming a shipped migration would orphan that ledger
