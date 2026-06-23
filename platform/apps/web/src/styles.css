@@ -4230,6 +4230,13 @@ select:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.template-menu__empty {
+  max-width: 260px;
+  padding: 10px 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
 
 /* ── Template variable prompt (#167): fill {{vars}} before the brief drops in ── */
 .template-fill {

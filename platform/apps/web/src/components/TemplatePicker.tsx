@@ -20,8 +20,8 @@ export function TemplatePicker({ onPick }: { onPick: (text: string) => void }): 
   const workspaceId = identity?.workspaceId;
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<TaskTemplateDto[]>([]);
-  // Whether we've resolved the active channel's templates at least once (so we can HIDE the control when the
-  // channel genuinely has none, vs. flicker it away mid-load).
+  // Whether we've resolved the active channel's templates at least once, so an empty channel can explain what
+  // to do next instead of showing a blank dropdown.
   const [loaded, setLoaded] = useState(false);
   // The template whose variables we're currently collecting, and the values typed so far.
   const [filling, setFilling] = useState<TaskTemplateDto | null>(null);
@@ -85,10 +85,6 @@ export function TemplatePicker({ onPick }: { onPick: (text: string) => void }): 
   }, [open]);
 
   if (!activeChannelId) return null;
-  // #474: a channel with no templates hides the control entirely (acceptance: "hide the control where none
-  // exist"), so the composer never shows a dead "Templates ▾" that only ever says "No templates".
-  if (loaded && templates.length === 0) return null;
-
   /** Resolve the body with `vals`, prefix the agent @mention, and hand it to the composer. */
   function insert(t: TaskTemplateDto, vals: Record<string, string>): void {
     const mention = t.agentHandle ? `@${t.agentHandle} ` : "";
@@ -152,7 +148,12 @@ export function TemplatePicker({ onPick }: { onPick: (text: string) => void }): 
       )}
       {open && !filling && (
         <ul className="template-menu" role="listbox" aria-label="Task templates">
-          {templates.length === 0 && <li className="muted">No templates for this channel.</li>}
+          {loaded && templates.length === 0 && (
+            <li className="template-menu__empty">
+              Templates appear for department channels. Switch to a department channel, or write the brief
+              directly in chat.
+            </li>
+          )}
           {templates.map((t) => (
             <li key={t.key}>
               <button type="button" role="option" className="template-option" onClick={() => choose(t)}>
