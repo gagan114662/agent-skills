@@ -39,9 +39,14 @@ export function createAdmission(globalDefault: number): Admission {
     usage: usageStore,
     killSwitch,
     config: tenantConfig,
-    globalMax: serverScale.globalConcurrency || globalDefault || 0,
+    globalMax: resolveGlobalConcurrencyCap(serverScale.globalConcurrency, globalDefault),
     onPlace: recordRegionPlacement,
   });
+}
+
+/** Resolve the fleet-wide launch ceiling. A positive managed cap wins; otherwise use the env fallback. */
+export function resolveGlobalConcurrencyCap(managedGlobal: number | undefined, envDefault: number): number {
+  return managedGlobal || envDefault || 0;
 }
 
 /** The managed-global scale block (no tenant) — for the fleet-wide ceiling. */

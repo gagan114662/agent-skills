@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
+import { loadEnv } from "./env.js";
 import { newId } from "./db/id.js";
 import { registerObservability } from "./observability/plugin.js";
 import { registerCors } from "./http/cors.js";
@@ -523,9 +524,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #71 cloud scale: ONE Admission instance (kill switch, budget, concurrency caps, region placement)
   // shared between the SessionManager (which mutates its counters) and the usage/founder-console/metrics
   // readers. Built here (before observability) so the #113 saturation sampler can read its global
-  // in-flight count as the scrape-time queue-depth signal. With all caps 0 (the default) it admits
-  // everything — unchanged #25 behavior.
-  const scale = opts.scale ?? createScale(0);
+  // in-flight count as the scrape-time queue-depth signal. When managed config sets no global cap,
+  // admission falls back to TEAM_MAX_CONCURRENCY so parallel local/demo runs cannot stampede the host.
+  const scale = opts.scale ?? createScale(loadEnv().team.maxConcurrency);
   const retentionLoop = startRetentionLoop({ logger: app.log });
   app.addHook("onClose", async () => {
     retentionLoop.stop();
