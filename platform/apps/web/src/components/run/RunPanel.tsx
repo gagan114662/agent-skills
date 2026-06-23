@@ -28,7 +28,10 @@ export function RunPanel(): React.JSX.Element {
       <aside className="run__sidebar" aria-label="Sessions">
         <h3>Sessions</h3>
         {run.sessions.length === 0 ? (
-          <p className="run__empty">No agent sessions in this channel yet.</p>
+          <div className="run__empty" role="status">
+            <p>Agent sessions appear here after a task starts in this channel.</p>
+            <p>Ask an agent in chat, then return here to run, inspect, and annotate its app.</p>
+          </div>
         ) : (
           <ul>
             {run.sessions.map((s) => (
@@ -58,7 +61,14 @@ export function RunPanel(): React.JSX.Element {
           </p>
         )}
         {activeSession?.failure && <RunFailureBanner session={activeSession} />}
-        {activeSession ? <RunStage /> : <p className="run__empty">Select a session to run its app.</p>}
+        {activeSession ? (
+          <RunStage />
+        ) : (
+          <div className="run__empty" role="status">
+            <p>Select a session to run its app preview.</p>
+            <p>Pick a session on the left, then use Run app to open the live preview.</p>
+          </div>
+        )}
       </section>
 
       <aside className="run__rail" aria-label="Annotations">
@@ -262,7 +272,10 @@ function AnnotationList(): React.JSX.Element {
         </button>
       </div>
       {run.annotations.length === 0 ? (
-        <p className="run__empty">Turn on Annotate, then click the preview to add notes.</p>
+        <div className="run__empty" role="status">
+          <p>Annotations you place on the preview appear here.</p>
+          <p>Turn on Annotate, click the preview, then deliver the notes to the agent.</p>
+        </div>
       ) : (
         <ul>
           {run.annotations.map((a, i) => (

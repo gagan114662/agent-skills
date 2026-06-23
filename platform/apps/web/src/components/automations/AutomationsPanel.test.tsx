@@ -94,6 +94,16 @@ describe("AutomationsPanel (#167 — Create button)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("explains the empty list and focuses the create CTA (#649)", async () => {
+    stubRoutes();
+    const { store } = renderWithStore(<AutomationsPanel />);
+    await store.bootstrap();
+
+    expect(await screen.findByText(/Automations appear here after you choose/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Name an automation" }));
+    expect(screen.getByPlaceholderText(/Monday SEO audit/i)).toHaveFocus();
+  });
+
   it("surfaces a server validation failure instead of swallowing it", async () => {
     stubRoutes({ create: { status: 400, body: { error: "templateKey must reference a known template" } } });
     const { store } = renderWithStore(<AutomationsPanel />);

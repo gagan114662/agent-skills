@@ -4,7 +4,7 @@
  * of the realtime store. Default-OFF on the server: a created automation never fires until the
  * `automations` config is enabled, and every external send the launched agent drafts stays #13-gated.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../../store/StoreContext.js";
 import { api, ApiError } from "../../api/client.js";
 import { VOICE } from "../../brand.js";
@@ -33,6 +33,7 @@ export function AutomationsPanel(): React.JSX.Element {
   const [hour, setHour] = useState(9);
   const [minute, setMinute] = useState(0);
   const [everyMinutes, setEveryMinutes] = useState(60);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh(): Promise<void> {
     if (!workspaceId) return;
@@ -120,7 +121,12 @@ export function AutomationsPanel(): React.JSX.Element {
       </p>
 
       <div className="automations__form">
-        <input placeholder="Name (e.g. Monday SEO audit)" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          ref={nameInputRef}
+          placeholder="Name (e.g. Monday SEO audit)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
           <option value="">Channel…</option>
           {channels.map((c) => (
@@ -208,7 +214,14 @@ export function AutomationsPanel(): React.JSX.Element {
       )}
 
       <ul className="automations__list">
-        {items.length === 0 && <li className="muted">No automations yet.</li>}
+        {items.length === 0 && (
+          <li className="panel__empty panel__empty--action">
+            <p>Automations appear here after you choose a channel, template, and schedule.</p>
+            <button className="btn btn--primary" type="button" onClick={() => nameInputRef.current?.focus()}>
+              Name an automation
+            </button>
+          </li>
+        )}
         {items.map((a) => (
           <li key={a.id} className="automations__item">
             <div>

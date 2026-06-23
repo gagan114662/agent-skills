@@ -2451,6 +2451,12 @@ select:focus-visible {
   color: var(--text-faint);
   font-size: 13px;
 }
+.run__empty p {
+  margin: 0 0 6px;
+}
+.run__empty p:last-child {
+  margin-bottom: 0;
+}
 .run__error {
   color: var(--danger);
   font-size: 13px;
@@ -4128,6 +4134,23 @@ select:focus-visible {
 .muted {
   color: var(--ink-muted, #6b6b72);
   font-size: 0.85rem;
+}
+.panel__empty {
+  color: var(--ink-muted, #6b6b72);
+  font-size: 13px;
+}
+.panel__empty--action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+.panel__empty--action p {
+  margin: 0;
+  line-height: 1.45;
 }
 .automations__form {
   display: flex;
