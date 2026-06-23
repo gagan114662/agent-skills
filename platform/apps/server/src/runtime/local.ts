@@ -37,7 +37,20 @@ export class LocalRuntime implements AgentRuntime {
     child.stdout?.on("data", (chunk: string) => hooks.onOutput("stdout", chunk));
     child.stderr?.on("data", (chunk: string) => hooks.onOutput("stderr", chunk));
 
-    return Promise.resolve(new LocalSession(job.sessionId, child));
+    const session = new LocalSession(job.sessionId, child);
+
+    // #778: honor the hard-cancel signal directly — SIGKILL the process tree the instant Stop is pressed.
+    // Belt-and-suspenders with SessionManager.cancel() (which also calls cancel("canceled")); a no-op when
+    // the signal is absent (back-compat) or already torn down. Marked `canceled` so the exit reports it.
+    if (job.signal) {
+      const onAbort = (): void => {
+        void session.cancel("canceled");
+      };
+      if (job.signal.aborted) onAbort();
+      else job.signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    return Promise.resolve(session);
   }
 }
 

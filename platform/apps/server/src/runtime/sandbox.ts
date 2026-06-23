@@ -56,6 +56,13 @@ export interface SandboxCreateOpts {
   /** Multi-region placement (#71): the region to provision in, chosen by the admission planner. */
   region?: string;
   caps: ResourceCaps;
+  /**
+   * #778: hard-cancel signal threaded from {@link AgentJob.signal}. The provider SHOULD pass it to its
+   * provisioning fetch(es) so a Stop pressed DURING provisioning aborts the outbound cloud call (the
+   * window before a {@link RunningSession} exists, which the SessionManager cannot otherwise reach).
+   * Optional — a provider that ignores it still gets torn down by {@link SandboxSession.cancel}.
+   */
+  signal?: AbortSignal;
 }
 
 /** Construction-time options for {@link SandboxRuntime} (the per-deployment git source, #83). */
@@ -141,6 +148,8 @@ export class SandboxRuntime implements AgentRuntime {
       source: this.options.source,
       cwd: job.cwd,
       snapshotId: job.snapshotId,
+      // #778: thread the hard-cancel signal so the provider can abort the provisioning fetch on Stop.
+      signal: job.signal,
     });
     const session = new SandboxSession(
       job.sessionId,
@@ -148,6 +157,16 @@ export class SandboxRuntime implements AgentRuntime {
       this.options.teardownTimeoutMs ?? DEFAULT_TEARDOWN_TIMEOUT_MS,
     );
     session.begin(job.command, job.args, hooks);
+    // #778: a Stop pressed DURING `provider.create` (above) is observed here — tear the sandbox down at
+    // once instead of waiting for the run to finish naturally. After create() resolves the abort listener
+    // forces teardown; if it already aborted while we were provisioning, cancel synchronously now.
+    if (job.signal) {
+      const onAbort = (): void => {
+        void session.cancel("canceled");
+      };
+      if (job.signal.aborted) onAbort();
+      else job.signal.addEventListener("abort", onAbort, { once: true });
+    }
     return session;
   }
 }

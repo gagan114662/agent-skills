@@ -423,6 +423,14 @@ export function resolveFastCaps(
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>();
   private readonly runs = new Map<string, Promise<void>>();
+  /**
+   * #778: per-session hard-cancel token. Created synchronously in {@link launch} (so it exists for the
+   * whole provision→start→run→teardown lifecycle, including the window BEFORE `runtime.start()` resolves
+   * and a {@link RunningSession} lands in {@link running}), tripped by {@link cancel}. The run loop checks
+   * it before every dispatch and between steps and threads it into the runtime, so a Stop halts the agent
+   * the instant it is pressed — no further tool/runtime dispatch, no respawn, immediate `canceled`.
+   */
+  private readonly aborts = new Map<string, AbortController>();
   private readonly tracer: AgentTracer;
 
   constructor(private readonly deps: SessionManagerDeps) {
@@ -515,6 +523,11 @@ export class SessionManager {
       throw err;
     }
 
+    // #778: the hard-cancel token for THIS run. Created here — synchronously, before `drive` is kicked
+    // off — so a Stop pressed during provisioning (before any `RunningSession` exists) is still observed
+    // by the run loop and dispatches nothing.
+    const abort = new AbortController();
+    this.aborts.set(session.id, abort);
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
@@ -525,6 +538,7 @@ export class SessionManager {
       ticket,
       surfaceDeliverable: input.surfaceDeliverable,
       caps,
+      signal: abort.signal,
     }).catch((err: unknown) => {
       // #248 silent-vanish defense: `runSession` finalizes the row on every normal path, but a throw
       // BEFORE its inner try (secrets.resolve / loadConfig) or in the tracer escapes here. Previously
@@ -534,7 +548,10 @@ export class SessionManager {
       void this.finalizeOrphanedFailure(session, err);
     });
     this.runs.set(session.id, run);
-    void run.finally(() => this.runs.delete(session.id));
+    void run.finally(() => {
+      this.runs.delete(session.id);
+      this.aborts.delete(session.id);
+    });
     return session;
   }
 
@@ -655,29 +672,41 @@ export class SessionManager {
   }
 
   /**
-   * Cancel a session so the owner can ALWAYS kill a runaway (#248). Two paths:
-   *  - In-flight on THIS process → cancel the runtime (SIGKILLs the child); `runSession` then finalizes
-   *    the row to `canceled` on its teardown path. We AWAIT that teardown (the tracked `drive` promise)
-   *    so the DB row is already `canceled` when this resolves — otherwise a UI that polls immediately
-   *    after Stop could still read `running` and the card would flicker back (gemini #249 review note).
-   *  - NOT in our in-memory map (an orphan left `running` by a deploy/restart, or a session driven by
-   *    another machine — the 30-min stuck Scout) → force-finalize the DB row to `canceled` directly, so
-   *    it leaves the live board immediately even though no process is holding it. Race-safe: the guarded
-   *    store update is a no-op (returns false) if the row already went terminal.
+   * Cancel a session so the owner can ALWAYS kill a runaway (#248) — and so Stop HARD-HALTS it the
+   * instant it is pressed (#778). Two paths:
+   *  - Driven by THIS process (a hard-cancel token exists) → trip the token FIRST, synchronously and
+   *    before any `await`, so the run loop dispatches nothing further and never respawns (it checks the
+   *    token before every step). Then signal any in-flight {@link RunningSession} (SIGKILLs the child /
+   *    tears the sandbox down) so a step already running is aborted, and AWAIT the driven lifecycle so the
+   *    DB row is already `canceled` when this resolves — otherwise a UI that polls right after Stop could
+   *    still read `running` and the card would flicker back (gemini #249 review note). This covers all
+   *    three windows — before the first step, mid-step, and between steps (during a retry backoff) —
+   *    because the token is set at {@link launch}, not only once a {@link RunningSession} exists.
+   *  - NOT driven here (an orphan left `running` by a deploy/restart, or a session driven by another
+   *    machine — the 30-min stuck Scout) → force-finalize the DB row to `canceled` directly, so it leaves
+   *    the live board immediately even though no process is holding it. Race-safe: the guarded store
+   *    update is a no-op (returns false) if the row already went terminal.
    * Idempotent; returns whether the cancel took effect.
    */
   async cancel(id: string): Promise<boolean> {
-    const running = this.running.get(id);
-    if (running) {
-      await running.cancel("canceled");
-      // Wait for the driven lifecycle to finish writing the terminal row before returning, so a
-      // poll-right-after-Stop never still sees `running`. `drive` never rejects (its terminal failures
-      // are persisted), so awaiting it is safe; absent (already torn down) ⇒ resolves immediately.
-      await this.runs.get(id);
+    const abort = this.aborts.get(id);
+    const run = this.runs.get(id);
+    if (abort || run) {
+      // Trip the hard-cancel token BEFORE awaiting anything: the run loop guards on it before every
+      // dispatch and between steps, so this synchronously guarantees no further tool/runtime call and no
+      // respawn — even if the loop is mid-`await` in provisioning or a retry backoff right now.
+      abort?.abort();
+      // Abort an in-flight step if one is already running (the manager-driven path the loop can't reach
+      // until `start()` resolves is handled by the token + the loop's own post-start re-check).
+      const running = this.running.get(id);
+      if (running) await running.cancel("canceled");
+      // `drive` never rejects (its terminal failures are persisted), so awaiting it is safe; absent
+      // (already torn down) ⇒ resolves immediately. Guarantees the terminal `canceled` row is written.
+      await run;
       return true;
     }
-    // Orphan / cross-process: there is no child to signal — finalize the durable row so a runaway can
-    // still be killed from the UI. Absent forceFinalize (a bare fake store) ⇒ unchanged: cannot cancel.
+    // Orphan / cross-process: there is no token or live run here — finalize the durable row so a runaway
+    // can still be killed from the UI. Absent forceFinalize (a bare fake store) ⇒ unchanged: cannot cancel.
     if (this.deps.store.forceFinalize) {
       return this.deps.store.forceFinalize(id, {
         status: "canceled",
@@ -707,6 +736,9 @@ export class SessionManager {
 
   /** Cancel every in-flight session and wait for teardown — used on server shutdown. */
   async shutdown(): Promise<void> {
+    // #778: trip every hard-cancel token first so a session caught between steps (not yet in `running`)
+    // halts and never respawns, then signal any in-flight steps and wait for teardown.
+    for (const abort of this.aborts.values()) abort.abort();
     await Promise.allSettled([...this.running.values()].map((r) => r.cancel("canceled")));
     await Promise.allSettled([...this.runs.values()]);
   }
@@ -728,6 +760,8 @@ export class SessionManager {
       surfaceDeliverable?: boolean;
       /** The effective resource caps for THIS session (#417 fast turn uses short caps). */
       caps: ResourceCaps;
+      /** #778: the hard-cancel token for this run (tripped by {@link cancel}). */
+      signal: AbortSignal;
     },
   ): Promise<void> {
     const log = this.deps.logger.child({
@@ -758,6 +792,7 @@ export class SessionManager {
           ticket: opts.ticket,
           surfaceDeliverable: opts.surfaceDeliverable,
           caps: opts.caps,
+          signal: opts.signal,
         }),
     );
   }
@@ -776,8 +811,11 @@ export class SessionManager {
       surfaceDeliverable?: boolean;
       /** The effective resource caps for THIS session (#417 fast turn uses short caps). */
       caps: ResourceCaps;
+      /** #778: the hard-cancel token for this run (tripped by {@link cancel}). */
+      signal: AbortSignal;
     },
   ): Promise<AgentSessionOutcome> {
+    const signal = opts.signal;
     // Secrets are resolved per tenant at provision and injected as runtime env only. #151: the launching
     // agent's member id scopes the resolution — with the credential matrix OFF (default) this is a no-op
     // passthrough; when enabled the resolver filters to that agent's allowlisted keys.
@@ -927,6 +965,10 @@ export class SessionManager {
         // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
         egress,
         caps: opts.caps,
+        // #778: thread the hard-cancel token into the runtime so an in-flight OUTBOUND call (sandbox
+        // provisioning / run) is aborted the instant Stop is pressed — the provisioning window the
+        // manager itself can't reach (no RunningSession exists until start() resolves).
+        signal,
       };
       const onStartOutput = {
         onOutput: (_stream: "stdout" | "stderr", chunk: string) => {
@@ -949,12 +991,23 @@ export class SessionManager {
       // lifetime stays bounded); `reaped` short-circuits a pending retry. Default OFF (`<= 1` ⇒ one attempt).
       const maxAttempts = this.deps.sessionRetryMaxAttempts ?? this.deps.spawnRetryMaxAttempts ?? 1;
       for (let attempt = 1; ; attempt++) {
+        // #778: hard-cancel guard — checked BEFORE every dispatch and BETWEEN steps. A Stop pressed
+        // before the first step, or during a retry backoff, lands here and the loop finalizes `canceled`
+        // WITHOUT ever calling `runtime.start()` again — no post-stop dispatch, no respawn.
+        if (signal.aborted) {
+          result = { status: "canceled", exitCode: null };
+          break;
+        }
         const attemptStart = Date.now();
         let running: RunningSession | undefined;
         try {
           running = await this.deps.runtime.start(startSpec, onStartOutput);
           runningRef = running;
           this.running.set(session.id, running);
+          // #778: a Stop can race in WHILE start() is provisioning — by the time it resolves the token is
+          // already tripped but cancel() saw no RunningSession to signal. Tear this just-started step down
+          // now so wait() resolves `canceled` immediately and we never stream past the Stop.
+          if (signal.aborted) await running.cancel("canceled").catch(() => {});
           observeSpinup(this.deps.runtime.kind, (Date.now() - attemptStart) / 1000);
           resetIdle();
           await this.deps.store.markRunning(session.id, running.sandboxId);
@@ -980,13 +1033,15 @@ export class SessionManager {
           sawHeartbeat,
           policy: this.deps.sessionRetryBackoff,
         });
-        if (!decision.retry || reaped) break;
+        if (!decision.retry || reaped || signal.aborted) break;
         recordSessionRetry(this.deps.runtime.kind);
         log.warn(
           { attempt, backoffMs: decision.backoffMs, reason: decision.reason },
           "agent session died with no progress; retrying after backoff",
         );
-        await new Promise((r) => setTimeout(r, decision.backoffMs));
+        // #778: an abortable backoff — a Stop during the wait wakes it at once, and the loop's top guard
+        // then finalizes `canceled` instead of sleeping out the full delay before re-checking.
+        await delayUntilAbort(decision.backoffMs, signal);
       }
     } catch (err) {
       log.error({ err: redactError(err, redact) }, "agent session failed to run");
@@ -1203,4 +1258,25 @@ export class SessionManager {
 function redactError(err: unknown, redact: (s: string) => string): string {
   const msg = err instanceof Error ? err.message : String(err);
   return redact(msg);
+}
+
+/**
+ * #778: sleep for `ms`, resolving EARLY if `signal` aborts. Used for the inter-attempt retry backoff so a
+ * Stop pressed between steps wakes the loop immediately (which then finalizes `canceled`) instead of
+ * sleeping out the full delay. The timer is unref'd so it never keeps the event loop alive, and the abort
+ * listener is removed on every exit path so a long-lived signal accrues no leaked listeners.
+ */
+function delayUntilAbort(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const onAbort = (): void => done();
+    const timer = setTimeout(done, ms);
+    timer.unref?.();
+    function done(): void {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
