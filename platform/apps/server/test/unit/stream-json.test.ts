@@ -5,6 +5,8 @@ import {
   harnessLineDecoder,
   harnessEventReportsError,
   finalAnswerFromEvent,
+  toolCallFromEvent,
+  errorMessageFromEvent,
 } from "../../src/runtime/stream-json.js";
 
 describe("claude-code stream-json decoder (#81)", () => {
@@ -33,6 +35,11 @@ describe("claude-code stream-json decoder (#81)", () => {
     expect(decoded.display[0]).toContain("🔧");
     expect(decoded.display[0]).toContain("Bash");
     expect(decoded.display[0]).toContain("ls -la");
+    expect(toolCallFromEvent(decoded.raw)).toEqual({
+      id: "toolu_1",
+      name: "Bash",
+      args: { command: "ls -la", description: "list" },
+    });
   });
 
   it("renders both text and tool_use blocks from a single assistant event in order", () => {
@@ -67,6 +74,7 @@ describe("claude-code stream-json decoder (#81)", () => {
     const decoded = decodeClaudeCodeLine(line);
     expect(decoded.display[0]).toContain("⚠️");
     expect(decoded.display[0]).toContain("max turns exceeded");
+    expect(errorMessageFromEvent(decoded.raw)).toBe("max turns exceeded");
   });
 
   it("suppresses non-renderable events (system init) from the channel but keeps the raw event", () => {

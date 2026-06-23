@@ -58,6 +58,7 @@ import type {
   Message,
   MissionControlDto,
   ProviderKind,
+  AgentTraceDto,
   SearchEnvelope,
   SessionMode,
   SlackStatus,
@@ -541,8 +542,9 @@ export const api = {
   },
 
   // --- messages & threads ---
-  listMessages(channelId: string): Promise<Message[]> {
-    return request<Message[]>(`/channels/${channelId}/messages`);
+  listMessages(channelId: string, limit?: number): Promise<Message[]> {
+    const suffix = limit && Number.isFinite(limit) && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
+    return request<Message[]>(`/channels/${channelId}/messages${suffix}`);
   },
   postMessage(channelId: string, body: string, parentMessageId?: string): Promise<Message> {
     const payload = parentMessageId ? { body, parentMessageId } : { body };
@@ -890,6 +892,14 @@ export const api = {
       return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/steer`, {
         guidance,
       }) as Promise<{ delivered: boolean }>;
+    },
+  },
+  traces: {
+    /** Complete per-run trace (#664): every persisted step, tool call/result, payload, timing, and error. */
+    get(workspaceId: string, runId: string): Promise<AgentTraceDto> {
+      return request<AgentTraceDto>(
+        `/workspaces/${encodeURIComponent(workspaceId)}/traces/${encodeURIComponent(runId)}`,
+      );
     },
   },
 

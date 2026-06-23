@@ -29,11 +29,16 @@ function stubHtmlFetch(): void {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  window.history.pushState({}, "", "/");
 });
 
 describe("web console with no API backend", () => {
   it("renders a clear 'API not connected' state instead of crashing", async () => {
     stubHtmlFetch();
+    // #784: root `/` (and `/welcome`) now open the public onboarding door, which needs no backend. This test
+    // exercises the AUTHED app's offline fallback, so it must render at an authed route — any path other than
+    // the public onboarding/demo/theater routes falls through to AuthGate, which shows the offline notice.
+    window.history.pushState({}, "", "/board");
     const store = createStore({ api, realtime: fakeRealtime() });
 
     render(

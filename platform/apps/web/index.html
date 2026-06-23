@@ -13,8 +13,9 @@
     />
     <meta name="theme-color" content="#f6f1e7" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- #784 experience-system fonts: Instrument Serif (greetings/editorial) + Inter (UI/body), two weights
-         only. Scoped to the onboarding surface via `.onboard` in styles.css; harmless when the flag is OFF. -->
+    <!-- #784 experience-system fonts: Instrument Serif (greetings/editorial headlines) + Inter (UI/body),
+         two weights only. Loaded globally but consumed ONLY under the scoped `.onboard` / `.everyday-shell`
+         surfaces in styles.css, so the rest of the app is unaffected. preconnect keeps first paint snappy. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

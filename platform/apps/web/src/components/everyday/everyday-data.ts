@@ -1,0 +1,211 @@
+/**
+ * Pure data + types for the everyday workspace shell (#784). The shell is presentational: it renders these
+ * typed shapes and reads every label/button/empty-state word from `EVERYDAY` in brand.ts. This module owns
+ * the shapes, a couple of pure helpers (time-of-day greeting bucket, number formatting), and a realistic
+ * seed dataset used to render the flagged preview before live data is wired (a documented follow-up).
+ *
+ * Keeping it pure (no React, no DOM) means every branch is unit-tested directly. Agent output text and
+ * deliverable bodies in the seed are DATA (what an agent actually produced), not product chrome, so they
+ * live here rather than in brand.ts — the chrome voice (headings, buttons, nudges) stays in EVERYDAY.
+ */
+
+/** The north star: customers + revenue, front and centre (#630). Numbers are data; trend drives the copy. */
+export interface NorthStar {
+  readonly customers: number;
+  readonly customersDelta: number;
+  /** Pre-formatted revenue string (e.g. "$2,480") so the shell never guesses a currency. */
+  readonly revenue: string;
+  readonly revenueDelta: string;
+  readonly trend: "up" | "flat" | "zero";
+}
+
+/** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
+export interface Deliverable {
+  readonly title: string;
+  readonly kind: "draft" | "diff";
+  /** For a draft: the work product. For a diff: the "after" text. */
+  readonly preview: string;
+  /** For a diff only: the "before" text, shown above the after. */
+  readonly before?: string;
+}
+
+/** A line in the calm thread: either an agent narrating, or a deliverable landing inline. */
+export type ThreadEntry =
+  | {
+      readonly id: string;
+      readonly kind: "agent-line";
+      readonly agent: string;
+      readonly at: string;
+      readonly text: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "deliverable";
+      readonly agent: string;
+      readonly at: string;
+      readonly deliverable: Deliverable;
+    };
+
+/** A ship-decision card: the FINISHED deliverable + the one consequence of approving — never chatter. */
+export interface ApprovalCard {
+  readonly id: string;
+  readonly agent: string;
+  readonly deliverable: Deliverable;
+  /** Verb phrase completing "approve and we'll …" (e.g. "send this to 3 warm leads"). */
+  readonly consequence: string;
+  /** True when approving spends real money — the one hard gate. */
+  readonly costsMoney: boolean;
+  /** Pre-formatted spend (e.g. "$40"), shown only when costsMoney. */
+  readonly amount?: string;
+}
+
+/** A timestamped, linked external action for the quiet transparency log (#629). */
+export interface ExternalAction {
+  readonly id: string;
+  /** Pre-formatted, human time (e.g. "2:14 pm"). */
+  readonly at: string;
+  /** What we did, plainly (e.g. "replied to a warm lead in gmail"). */
+  readonly action: string;
+  /** Optional link to the real artifact out in the world. */
+  readonly href?: string;
+}
+
+/** Everything the everyday shell renders. */
+export interface EverydayData {
+  readonly memberName: string;
+  readonly northStar: NorthStar;
+  readonly thread: readonly ThreadEntry[];
+  readonly approvals: readonly ApprovalCard[];
+  readonly transparency: readonly ExternalAction[];
+  /** The kill-switch is always on; this is just whether the fleet is currently running or paused. */
+  readonly fleetPaused: boolean;
+}
+
+/** Time-of-day bucket for the greeting. Pure: takes the local hour (0–23) so it is trivially testable. */
+export function partOfDay(hour: number): "morning" | "afternoon" | "evening" {
+  const h = ((Math.trunc(hour) % 24) + 24) % 24;
+  if (h < 12) return "morning";
+  if (h < 18) return "afternoon";
+  return "evening";
+}
+
+/** Compact integer formatting for the north-star customer count (1,200 → "1.2k"). Pure. */
+export function compactCount(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const v = Math.trunc(n);
+  if (Math.abs(v) < 1000) return String(v);
+  const k = v / 1000;
+  return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+}
+
+/** A signed delta string for a count (e.g. +3 → "+3", 0 → "—"). Pure. */
+export function signedDelta(n: number): string {
+  const v = Math.trunc(n);
+  if (v === 0) return "—";
+  return v > 0 ? `+${v}` : String(v);
+}
+
+/**
+ * A realistic seed dataset for the flagged preview. Voice-rich and concrete so the shell reads like a real,
+ * working product (the whole point of #784) before live data is wired. The chrome copy is still sourced
+ * from EVERYDAY — only the agent output / deliverable bodies (genuine work product) live here.
+ */
+export function seedEveryday(memberName: string = "gagan"): EverydayData {
+  return {
+    memberName,
+    northStar: {
+      customers: 14,
+      customersDelta: 3,
+      revenue: "$2,480",
+      revenueDelta: "+$640",
+      trend: "up",
+    },
+    fleetPaused: false,
+    thread: [
+      {
+        id: "t1",
+        kind: "agent-line",
+        agent: "Scout",
+        at: "9:02 am",
+        text: "had a poke around your site overnight. your pricing page buries the one thing people actually want — the free trial. i've got thoughts.",
+      },
+      {
+        id: "t2",
+        kind: "deliverable",
+        agent: "Quill",
+        at: "9:14 am",
+        deliverable: {
+          title: "rewritten homepage hero",
+          kind: "diff",
+          before: "The all-in-one platform for modern teams.",
+          preview: "Ship faster. Your whole marketing department, minus the meetings.",
+        },
+      },
+      {
+        id: "t3",
+        kind: "agent-line",
+        agent: "Echo",
+        at: "11:30 am",
+        text: "found 3 reddit threads where people are basically begging for what you sell. drafted replies that help first and mention you second. ready when you are.",
+      },
+      {
+        id: "t4",
+        kind: "deliverable",
+        agent: "Echo",
+        at: "11:31 am",
+        deliverable: {
+          title: "draft reply to r/marketing",
+          kind: "draft",
+          preview:
+            "honestly the thing that worked for us was treating outreach as research, not pitching. we used ipop to draft the first pass and a human approved every send — kept it human, scaled the boring bit.",
+        },
+      },
+    ],
+    approvals: [
+      {
+        id: "a1",
+        agent: "Comet",
+        deliverable: {
+          title: "reply to a warm lead in your inbox",
+          kind: "draft",
+          preview:
+            "Hi Dana — thanks for the kind words about the demo! Happy to set you up with a 14-day trial, no card needed. Want me to send the link, or hop on a quick call Thursday?",
+        },
+        consequence: "send this reply from your gmail to dana@northwind.co",
+        costsMoney: false,
+      },
+      {
+        id: "a2",
+        agent: "Ada",
+        deliverable: {
+          title: "boosted post for the launch thread",
+          kind: "draft",
+          preview:
+            "We just shipped the thing you asked for 47 times in our DMs. It's live. Link in the replies. 🚀",
+        },
+        consequence: "spend on a 3-day boost to ~8k people in your niche",
+        costsMoney: true,
+        amount: "$40",
+      },
+    ],
+    transparency: [
+      {
+        id: "x1",
+        at: "8:55 am",
+        action: "read your site (ipop.ai) to learn the product",
+        href: "https://ipop.ai",
+      },
+      {
+        id: "x2",
+        at: "9:10 am",
+        action: "saved a draft to your gmail (not sent — waiting on you)",
+      },
+      {
+        id: "x3",
+        at: "11:28 am",
+        action: "read 3 public reddit threads in r/marketing",
+        href: "https://reddit.com/r/marketing",
+      },
+    ],
+  };
+}

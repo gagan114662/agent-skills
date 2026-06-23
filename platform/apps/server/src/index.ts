@@ -1,11 +1,21 @@
 import { buildApp } from "./app.js";
 import { loadEnv } from "./env.js";
-import { closeDb } from "./db/index.js";
+import { closeDb, getPool } from "./db/index.js";
+import { assertDatabaseSchemaCompatible } from "./db/schema-compat.js";
 import { closeRedis } from "./redis/index.js";
 import { isMaintenanceActive } from "./maintenance/flag.js";
 import { backfillMarketingDepartments } from "./marketing/default.js";
 
 const env = loadEnv();
+
+try {
+  await assertDatabaseSchemaCompatible(getPool());
+} catch (err) {
+  console.error(err);
+  await closeDb();
+  process.exit(1);
+}
+
 const app = buildApp();
 
 // #17 autonomy: start the opt-in background loop (AUTONOMY_INTERVAL_MS; default 0 = off). The

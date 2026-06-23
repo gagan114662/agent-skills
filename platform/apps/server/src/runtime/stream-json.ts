@@ -49,10 +49,14 @@ export function harnessLineDecoder(kind: HarnessKind): LineDecoder {
 }
 
 interface ContentBlock {
+  id?: string;
   type?: string;
   text?: string;
   name?: string;
   input?: unknown;
+  content?: unknown;
+  is_error?: boolean;
+  tool_use_id?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,6 +108,57 @@ export function finalAnswerFromEvent(raw: unknown): string | null {
     typeof raw.item.text === "string"
   ) {
     return raw.item.text;
+  }
+  return null;
+}
+
+export interface HarnessToolCall {
+  id?: string;
+  name: string;
+  args: unknown;
+}
+
+export function toolCallFromEvent(raw: unknown): HarnessToolCall | null {
+  if (!isRecord(raw)) return null;
+  if (raw.type === "assistant" && isRecord(raw.message)) {
+    const content = Array.isArray(raw.message.content) ? (raw.message.content as ContentBlock[]) : [];
+    for (const block of content) {
+      if (block?.type === "tool_use" && typeof block.name === "string") {
+        return { id: block.id, name: block.name, args: block.input ?? null };
+      }
+    }
+  }
+  if (raw.type === "item.completed" && isRecord(raw.item)) {
+    const item = raw.item;
+    if (item.type === "command_execution") {
+      return { name: "command_execution", args: item.command ?? null };
+    }
+    if (item.type === "file_change") {
+      return { name: "file_change", args: item.changes ?? item.path ?? null };
+    }
+  }
+  return null;
+}
+
+export function errorMessageFromEvent(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+  if (raw.type === "result" && raw.is_error === true) {
+    return typeof raw.result === "string" && raw.result.trim() ? raw.result : "agent run ended with an error";
+  }
+  if ((raw.type === "error" || raw.type === "turn.failed") && typeof raw.message === "string") {
+    return raw.message;
+  }
+  if (raw.type === "item.completed" && isRecord(raw.item) && raw.item.type === "error") {
+    return typeof raw.item.message === "string" ? raw.item.message : "codex item failed";
+  }
+  if (raw.type === "user" && isRecord(raw.message)) {
+    const content = Array.isArray(raw.message.content) ? (raw.message.content as ContentBlock[]) : [];
+    for (const block of content) {
+      if (block?.type === "tool_result" && block.is_error === true) {
+        if (typeof block.content === "string" && block.content.trim()) return block.content;
+        return "tool result reported an error";
+      }
+    }
   }
   return null;
 }

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { redactSecrets, makeRedactor, REDACTION_MASK } from "../../src/runtime/redact.js";
+import {
+  redactSecrets,
+  makeRedactor,
+  redactPotentialSecrets,
+  REDACTION_MASK,
+} from "../../src/runtime/redact.js";
 
 describe("secret redaction (#25 — secrets never in logs/output)", () => {
   it("replaces every occurrence of a secret value with the mask", () => {
@@ -33,5 +38,14 @@ describe("secret redaction (#25 — secrets never in logs/output)", () => {
   it("makeRedactor scrubs all configured secret values", () => {
     const redact = makeRedactor({ A: "supersecretvalue", B: "anothersecret" });
     expect(redact("supersecretvalue / anothersecret")).toBe(`${REDACTION_MASK} / ${REDACTION_MASK}`);
+  });
+
+  it("redacts provider-shaped secrets even when no resolver handed us the value", () => {
+    const out = redactPotentialSecrets(
+      "OPENAI_API_KEY=sk-live-thisShouldDisappear and hook whsec_123456789abcdef",
+    );
+    expect(out).not.toContain("sk-live-thisShouldDisappear");
+    expect(out).not.toContain("whsec_123456789abcdef");
+    expect(out).toBe("OPENAI_API_KEY=" + REDACTION_MASK + " and hook " + REDACTION_MASK);
   });
 });

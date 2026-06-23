@@ -695,6 +695,89 @@ select:focus-visible {
   max-width: 100%;
   overflow-x: hidden;
 }
+
+/* ---- ipop experience system onboarding (#784, default-OFF owner-first) ---- */
+.experience-door,
+.experience {
+  --xp-canvas: #0f0f12;
+  --xp-surface: #17171c;
+  --xp-raised: #1e1e25;
+  --xp-border: rgba(255, 255, 255, 0.08);
+  --xp-text: #f4f3f1;
+  --xp-muted: #9a9aa2;
+  --xp-pop: #ff5470;
+  --xp-on-pop: #2a0a12;
+  min-height: 100%;
+  color: var(--xp-text);
+  background: var(--xp-canvas);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 400;
+}
+.experience-door { display: grid; place-items: center; padding: 32px; }
+.experience-door__form { width: min(620px, 100%); display: flex; flex-direction: column; gap: 20px; }
+.experience-door__hello,
+.experience__kicker { margin: 0; color: var(--xp-pop); font-size: 14px; }
+.experience-door h1,
+.experience h1,
+.experience h2 {
+  margin: 0;
+  font-family: "Instrument Serif", ui-serif, Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.experience-door h1 { font-size: clamp(42px, 8vw, 78px); line-height: 0.96; max-width: 9ch; }
+.experience-door__field { display: flex; flex-direction: column; gap: 8px; color: var(--xp-muted); font-size: 13px; }
+.experience-door__field input {
+  height: 54px; border: 1px solid var(--xp-border); border-radius: 8px; padding: 0 16px;
+  background: var(--xp-surface); color: var(--xp-text); font: inherit; font-size: 16px;
+}
+.experience-door__field input:focus { outline: 2px solid color-mix(in srgb, var(--xp-pop) 55%, transparent); outline-offset: 2px; }
+.experience-door button,
+.experience button {
+  width: fit-content; min-height: 40px; border: 0; border-radius: 8px; padding: 0 16px;
+  background: var(--xp-pop); color: var(--xp-on-pop); font: inherit; font-weight: 500; cursor: pointer;
+}
+.experience-door button:disabled,
+.experience button:disabled { cursor: default; opacity: 0.45; }
+.experience {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  grid-template-rows: auto auto; gap: 16px; padding: 18px; overflow-y: auto;
+}
+.experience__thread,
+.experience__tools,
+.experience__ship {
+  border: 1px solid var(--xp-border); border-radius: 8px; background: var(--xp-surface); padding: 22px;
+}
+.experience__thread { min-height: 420px; }
+.experience__thread h1 { font-size: clamp(38px, 6vw, 72px); line-height: 0.98; margin: 6px 0 22px; }
+.experience-feed { display: flex; flex-direction: column; gap: 10px; }
+.experience-msg {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px;
+  border-radius: 8px; background: var(--xp-raised); border: 1px solid var(--xp-border);
+}
+.experience-msg span { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--xp-pop); flex: none; }
+.experience-msg p { margin: 0; color: var(--xp-text); line-height: 1.45; }
+.experience__tools { grid-row: span 2; }
+.experience__tools h2,
+.experience__ship h2 { font-size: 30px; line-height: 1.05; }
+.experience-tools { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.experience-tool {
+  display: grid; gap: 10px; padding: 14px; border: 1px solid var(--xp-border);
+  border-radius: 8px; background: var(--xp-raised);
+}
+.experience-tool p { margin: 0; color: var(--xp-muted); line-height: 1.45; }
+.experience-tool strong { color: var(--xp-text); font-weight: 500; line-height: 1.4; }
+.experience-tool--done { border-color: color-mix(in srgb, var(--xp-pop) 48%, var(--xp-border)); }
+.experience__ship { display: flex; flex-direction: column; gap: 12px; }
+.experience__ship p,
+.experience__ship small { margin: 0; color: var(--xp-muted); }
+.experience__ship strong { color: var(--xp-text); font-weight: 500; }
+.experience__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.experience .experience__secondary { background: transparent; color: var(--xp-text); border: 1px solid var(--xp-border); }
+@media (max-width: 820px) {
+  .experience { grid-template-columns: 1fr; }
+  .experience__tools { grid-row: auto; }
+}
 .topbar {
   height: 48px;
   flex: 0 0 48px;
@@ -5365,6 +5448,64 @@ select:focus-visible {
 .venturebrief__hint { margin: 0; font-size: 12px; color: var(--accent); }
 .venturebrief__outcome { margin: 0; font-size: 12.5px; color: var(--ink); }
 
+/* ---- short-form Blitz + content calendar (#744): gated default-OFF, owner-first ---- */
+.shortform { margin: 12px 24px 0; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--bg-1); display: flex; flex-direction: column; gap: 12px; }
+.shortform__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.shortform__eyebrow { margin: 0 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--accent); }
+.shortform__title { margin: 0; font-size: 15px; line-height: 1.2; color: var(--ink); }
+.shortform__count { flex: none; font-family: var(--console-mono); font-size: 10px; color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; background: var(--paper); }
+.shortform__error { margin: 0; color: var(--danger); font-size: 12.5px; }
+.shortform__grid { display: grid; grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 1.1fr); gap: 12px; }
+.shortform__queue, .shortform-calendar { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--paper); }
+.shortform__queue { padding: 10px; }
+.shortform__empty, .shortform-calendar__empty { margin: 0; padding: 18px 12px; color: var(--text-dim);
+  font-size: 12.5px; text-align: center; }
+.shortform-card { display: flex; flex-direction: column; gap: 9px; padding: 12px; border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--paper)); }
+.shortform-card__top, .shortform-card__actions, .shortform-calendar__head, .shortform-calendar__post {
+  display: flex; align-items: center; gap: 8px; }
+.shortform-card__platform, .shortform-card__duration, .shortform-calendar__status {
+  font-family: var(--console-mono); font-size: 10px; font-style: normal; font-weight: 700; }
+.shortform-card__platform { color: var(--accent); }
+.shortform-card__duration { margin-left: auto; color: var(--text-faint); }
+.shortform-card__title { margin: 0; font-size: 14px; line-height: 1.3; }
+.shortform-card__hook { margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.45; }
+.shortform-card__meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.shortform-card__meta div { min-width: 0; }
+.shortform-card__meta dt { font-family: var(--console-mono); font-size: 9.5px; color: var(--text-faint);
+  text-transform: uppercase; }
+.shortform-card__meta dd { margin: 2px 0 0; font-size: 12px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortform-card__actions { justify-content: flex-end; }
+.shortform-calendar { overflow: hidden; }
+.shortform-calendar__head { justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.shortform-calendar__head h3 { margin: 0; font-size: 13px; }
+.shortform-calendar__head span { font-family: var(--console-mono); font-size: 10px; color: var(--text-faint); }
+.shortform-calendar__list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.shortform-calendar__post { padding: 10px 12px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+.shortform-calendar__post:last-child { border-bottom: none; }
+.shortform-calendar__post time { width: 76px; flex: none; display: flex; flex-direction: column; gap: 1px;
+  font-family: var(--console-mono); font-size: 10px; color: var(--text-dim); }
+.shortform-calendar__post time small { color: var(--text-faint); }
+.shortform-calendar__post div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.shortform-calendar__post strong { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortform-calendar__post div span { font-size: 11px; color: var(--text-dim); }
+.shortform-calendar__status { flex: none; border-radius: 999px; padding: 2px 7px; border: 1px solid var(--line);
+  color: var(--text-dim); }
+.shortform-calendar__status--scheduled { color: var(--accent-press);
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line)); }
+.shortform-calendar__status--published { color: var(--online);
+  border-color: color-mix(in srgb, var(--online) 44%, var(--line)); }
+@media (max-width: 760px) {
+  .shortform__grid { grid-template-columns: 1fr; }
+  .shortform-calendar__post { align-items: stretch; }
+}
+
 /* ---- board ---- */
 .board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding: 18px 24px; overflow-y: auto; align-items: start; min-height: 0; }
 .board__col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -5572,8 +5713,13 @@ select:focus-visible {
 .field__mono { font-family: var(--console-mono); font-size: 11px; }
 .field__hint { font-size: 10.5px; color: var(--text-faint); margin-top: 4px; }
 .field__row { display: flex; align-items: center; gap: 8px; }
+.field__row input { min-width: 0; flex: 1; }
 .field__locked { font-family: var(--console-mono); font-size: 12px; color: var(--text-dim); }
 .field__connected { color: var(--online); font-size: 11px; font-weight: 700; margin-left: auto; }
+.field__status {
+  flex: none; color: var(--text-faint); border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 7px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+}
 .sheet__roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .sheet__agent { display: flex; align-items: flex-start; gap: 10px; }
 .sheet__agentdot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; }
@@ -5731,6 +5877,9 @@ select:focus-visible {
   font-size: 11px; padding: 1px 8px; border-radius: 999px; cursor: pointer;
 }
 .typingind__stop:hover { color: var(--accent-press); border-color: var(--accent); }
+.messagelist__window { margin: 8px auto 12px; width: fit-content; max-width: calc(100% - 32px);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--text-dim);
+  background: var(--bg-1); font-family: var(--console-mono); font-size: 10px; }
 
 /* ── Live agent theater (#624): watch the fleet work, reasoning → action → artifact ─────────────── */
 .theater {
@@ -5780,6 +5929,13 @@ select:focus-visible {
   padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--bg-2);
 }
 .theater-lane__name { font-weight: 650; font-size: 14px; }
+.theater-lane__actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.theater-lane__trace {
+  border: 1px solid var(--border); background: var(--bg-1); color: var(--text-dim);
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+}
+.theater-lane__trace:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-press); }
+.theater-lane__trace:disabled { cursor: wait; opacity: 0.6; }
 .theater-lane__chip {
   font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: 0.03em;
@@ -5807,6 +5963,37 @@ select:focus-visible {
 .theater-step--artifact { border-left-color: var(--online); }
 .theater-step--approval { border-left-color: var(--away); }
 .theater-step--context { border-left-color: var(--line); }
+.theater-trace {
+  border-top: 1px solid var(--line); background: var(--bg); padding: 10px 12px 12px;
+}
+.theater-trace--loading,
+.theater-trace--error {
+  margin: 0; color: var(--text-dim); font-size: 12px;
+}
+.theater-trace--error { color: var(--danger); }
+.theater-trace__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  color: var(--text-dim); font-size: 11px; font-weight: 650; margin-bottom: 8px;
+}
+.theater-trace__list {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+  max-height: 42vh; overflow-y: auto;
+}
+.theater-trace__event {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-1); overflow: hidden;
+}
+.theater-trace__event-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  padding: 6px 8px; color: var(--text-dim); font-size: 11px; font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.theater-trace__usage { color: var(--text-faint); font-family: var(--console-mono); font-size: 10px; }
+.theater-trace__payload {
+  margin: 0; padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap;
+  word-break: break-word; color: var(--text); background: transparent; font-family: var(--console-mono);
+  font-size: 11px; line-height: 1.45;
+}
+.theater-trace__empty { margin: 0; color: var(--text-faint); font-size: 12px; }
 
 @keyframes theater-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--online); opacity: 1; }
@@ -6502,6 +6689,392 @@ select:focus-visible {
   .message {
     transition: none;
     transform: none;
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   #784 — Everyday workspace shell. The linzumi-calm, chat-first redesign, fully
+   SCOPED under `.everyday-shell` with its own token block so it touches no global
+   token and stays parallel-merge-safe. Near-black canvas, ONE coral pop used
+   sparingly (the primary action + one highlight), Instrument Serif headlines +
+   Inter body (two weights), generous whitespace, calm intentional motion.
+   ========================================================================== */
+.everyday-shell {
+  /* #784 tokens — local only. */
+  --ed-canvas: #0f0f12;
+  --ed-surface: #17171c;
+  --ed-raised: #1e1e25;
+  --ed-border: rgba(255, 255, 255, 0.08);
+  --ed-text: #f4f3f1;
+  --ed-text-dim: #9a9aa2;
+  --ed-pop: #ff5470; /* the single coral pop */
+  --ed-on-pop: #2a0a12; /* text on the pop */
+  --ed-radius: 16px;
+  --ed-gap: 28px;
+
+  min-height: 100vh;
+  background: var(--ed-canvas);
+  color: var(--ed-text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+}
+
+.everyday-shell__main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 72px 28px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 56px; /* generous whitespace between surfaces */
+}
+
+/* Editorial serif headlines (greetings + section heads). */
+.everyday-serif {
+  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.everyday-eyebrow {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+}
+
+/* ---- The door: greeting + the one input ---------------------------------- */
+.everyday-door__greeting {
+  margin: 0 0 24px;
+  font-size: clamp(34px, 6vw, 52px);
+  color: var(--ed-text);
+}
+
+.everyday-composer {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.everyday-composer__input {
+  flex: 1;
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  color: var(--ed-text);
+  font: inherit;
+  padding: 16px 18px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.everyday-composer__input::placeholder {
+  color: var(--ed-text-dim);
+}
+.everyday-composer__input:focus {
+  border-color: var(--ed-pop);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ed-pop) 22%, transparent);
+}
+
+/* ---- Buttons. The pop is reserved for the primary action. ---------------- */
+.everyday-btn {
+  font: inherit;
+  font-weight: 500;
+  border-radius: var(--ed-radius);
+  padding: 14px 22px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 140ms var(--pop-ease, ease), background 140ms ease, border-color 140ms ease;
+}
+.everyday-btn:active {
+  transform: scale(0.98);
+}
+.everyday-btn--pop {
+  background: var(--ed-pop);
+  color: var(--ed-on-pop);
+}
+.everyday-btn--pop:hover {
+  background: color-mix(in srgb, var(--ed-pop) 88%, white);
+}
+.everyday-btn--ghost {
+  background: transparent;
+  color: var(--ed-text-dim);
+  border-color: var(--ed-border);
+}
+.everyday-btn--ghost:hover {
+  color: var(--ed-text);
+  border-color: color-mix(in srgb, var(--ed-text) 24%, transparent);
+}
+.everyday-btn--stop {
+  background: transparent;
+  color: var(--ed-pop);
+  border-color: color-mix(in srgb, var(--ed-pop) 55%, transparent);
+}
+
+/* ---- Agent monogram ------------------------------------------------------ */
+.everyday-agent {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ed-text);
+  background: var(--ed-raised);
+  border: 1px solid var(--ed-border);
+}
+
+/* ---- North star: the only scoreboard that matters ------------------------ */
+.everyday-northstar__metrics {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+.everyday-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.everyday-metric__value {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--ed-text);
+}
+.everyday-metric__label {
+  font-size: 13px;
+  color: var(--ed-text-dim);
+}
+.everyday-metric__delta {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ed-pop); /* the one highlight, used sparingly */
+}
+.everyday-northstar__note {
+  margin: 18px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 14px;
+}
+
+/* ---- Thread: calm, inline deliverables ----------------------------------- */
+.everyday-thread__heading,
+.everyday-approvals__heading,
+.everyday-log__heading,
+.everyday-safety__title {
+  margin: 0 0 18px;
+  font-size: 28px;
+  color: var(--ed-text);
+}
+.everyday-thread__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ed-gap);
+}
+.everyday-msg {
+  display: flex;
+  gap: 14px;
+}
+.everyday-msg__body {
+  flex: 1;
+  min-width: 0;
+}
+.everyday-msg__meta {
+  margin: 0 0 6px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.everyday-msg__agent {
+  font-weight: 500;
+  font-size: 14px;
+}
+.everyday-msg__at {
+  font-size: 12px;
+  color: var(--ed-text-dim);
+}
+.everyday-msg__text {
+  margin: 0;
+  color: var(--ed-text);
+}
+
+/* Inline deliverables (drafts + diffs). */
+.everyday-deliverable {
+  margin-top: 12px;
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 16px 18px;
+}
+.everyday-deliverable__label,
+.everyday-deliverable__body {
+  margin: 0;
+}
+.everyday-deliverable__label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+  margin-bottom: 10px;
+}
+.everyday-deliverable__body {
+  color: var(--ed-text);
+}
+.everyday-diff {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border-left: 2px solid var(--ed-border);
+}
+.everyday-diff--before {
+  color: var(--ed-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ed-text-dim) 60%, transparent);
+  margin-bottom: 6px;
+}
+.everyday-diff--after {
+  color: var(--ed-text);
+  border-left-color: var(--ed-pop);
+  background: color-mix(in srgb, var(--ed-pop) 7%, transparent);
+}
+
+/* Empty states + nudges (the voice lives here). */
+.everyday-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.everyday-empty__line {
+  margin: 0;
+  color: var(--ed-text);
+  font-size: 16px;
+}
+.everyday-empty__nudge {
+  margin: 0;
+  color: var(--ed-text-dim);
+}
+
+/* ---- Approval queue: one-glance ship decisions --------------------------- */
+.everyday-approvals__subhead,
+.everyday-log__subhead {
+  margin: -8px 0 22px;
+  color: var(--ed-text-dim);
+}
+.everyday-approvals__list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.everyday-card {
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 22px;
+}
+.everyday-card__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.everyday-card__head .everyday-eyebrow {
+  margin-bottom: 4px;
+}
+.everyday-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ed-text);
+}
+.everyday-card__consequence {
+  margin: 14px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 14px;
+}
+.everyday-card__money {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: var(--ed-text);
+  background: color-mix(in srgb, var(--ed-pop) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ed-pop) 40%, transparent);
+  font-size: 14px;
+}
+.everyday-card__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.everyday-celebrate {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: var(--ed-radius);
+  background: color-mix(in srgb, var(--ed-pop) 14%, transparent);
+  color: var(--ed-text);
+  animation: swell-pop 320ms var(--pop-ease, ease) both;
+}
+
+/* ---- Transparency log: quiet, timestamped, linked ------------------------ */
+.everyday-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.everyday-log__row {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-top: 1px solid var(--ed-border);
+  font-size: 14px;
+}
+.everyday-log__row:last-child {
+  border-bottom: 1px solid var(--ed-border);
+}
+.everyday-log__when {
+  flex: 0 0 auto;
+  width: 78px;
+  color: var(--ed-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.everyday-log__action {
+  flex: 1;
+  color: var(--ed-text);
+}
+.everyday-log__link {
+  color: var(--ed-pop);
+  text-decoration: none;
+}
+.everyday-log__link:hover {
+  text-decoration: underline;
+}
+
+/* ---- Safety: money gate + always-on kill switch, as reassurance ---------- */
+.everyday-safety {
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 26px;
+}
+.everyday-safety__body {
+  margin: 0 0 18px;
+  color: var(--ed-text-dim);
+  max-width: 52ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .everyday-btn,
+  .everyday-celebrate {
+    transition: none;
     animation: none;
   }
 }

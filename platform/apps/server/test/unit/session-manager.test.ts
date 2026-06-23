@@ -19,6 +19,7 @@ import type {
 } from "../../src/runtime/types.js";
 import { statusForReason } from "../../src/runtime/types.js";
 import type { AgentSession, ResourceCaps, SessionStatus } from "../../src/db/repositories/agent-sessions.js";
+import { REDACTION_MASK } from "../../src/runtime/redact.js";
 
 // --- fakes ------------------------------------------------------------------
 
@@ -284,6 +285,24 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     const all = poster.bodies().join("\n") + (store.finalized?.result ?? "");
     expect(all).not.toContain("sk-supersecret-value-123");
     expect(poster.bodies().some((b) => b.includes("token=‹redacted›"))).toBe(true);
+  });
+
+  it("redacts pasted secrets from task text before model context or visible posts (#671)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager, poster } = makeManager(runtime, caps(), new Secrets({}));
+    const rawSecret = "sk-live-taskSecret12345";
+
+    const session = await manager.launch({
+      ...launch,
+      task: "Use OPENAI_API_KEY=" + rawSecret + " to do the thing",
+      harnessEnv: { AGENT_APPEND_SYSTEM_PROMPT: "never echo " + rawSecret },
+    });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).not.toContain(rawSecret);
+    expect(runtime.job?.env.AGENT_APPEND_SYSTEM_PROMPT).not.toContain(rawSecret);
+    expect(poster.bodies().join("\n")).not.toContain(rawSecret);
+    expect(runtime.job?.env.AGENT_TASK).toContain(REDACTION_MASK);
   });
 
   it("idle-reaps a silent session to idle_reaped", async () => {
@@ -724,7 +743,7 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
     NonNullable<import("../../src/runtime/manager.js").SessionManagerDeps["onSessionFailure"]>
   >[0];
 
-  function makeManager251(runtime: AgentRuntime) {
+  function makeManager251(runtime: AgentRuntime, secrets: Record<string, string> = {}) {
     const store = new FakeStore();
     const poster = new FakePoster(store);
     const completed: CompletedEvent[] = [];
@@ -733,7 +752,7 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
       runtime,
       store,
       poster,
-      secrets: new Secrets({}),
+      secrets: new Secrets(secrets),
       harness: { command: "bash", args: ["x.sh"] },
       harnessKind: "claude-code",
       decodeOutput: harnessLineDecoder("claude-code"),
@@ -777,6 +796,41 @@ describe("SessionManager — a harness-reported error never surfaces a deliverab
     const terminal = poster.bodies().at(-1)!;
     expect(terminal).toContain("❌");
     expect(terminal).not.toContain("✅");
+  });
+
+  it("persists the failed tool name, redacted args, and error in the failure result (#666)", async () => {
+    const toolUse =
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_fail",
+              name: "Bash",
+              input: { command: "pnpm test -- --token sk-live-should-redact-123456" },
+            },
+          ],
+        },
+      }) + "\n";
+    const errorResult =
+      JSON.stringify({
+        type: "result",
+        subtype: "error",
+        is_error: true,
+        result: "Bash exited 1: test failure",
+      }) + "\n";
+    const runtime = new CompletingRuntime([toolUse + errorResult], 0);
+    const { manager, store } = makeManager251(runtime, { TOOL_TOKEN: "sk-live-should-redact-123456" });
+
+    const session = await manager.launch({ ...launch, task: "run tests" });
+    await manager.join(session.id);
+
+    expect(store.finalized?.status).toBe("failed");
+    expect(store.finalized?.result).toContain("failed tool: Bash");
+    expect(store.finalized?.result).toContain("pnpm test");
+    expect(store.finalized?.result).toContain("Bash exited 1: test failure");
+    expect(store.finalized?.result).not.toContain("sk-live-should-redact-123456");
   });
 
   it("an exit-0 run with a clean is_error:false result still surfaces its deliverable (happy path intact)", async () => {

@@ -586,6 +586,8 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
   /** How many trailing log lines the Run tab keeps from a live stream (mirrors the server tail). */
   const RUN_LOG_TAIL = 200;
+  /** How many recent channel messages the web UI asks the server for on channel open/poll (#684). */
+  const CHANNEL_HISTORY_TAIL_LIMIT = 500;
 
   /** Refresh the pending bucket: always updates the nav badge; updates rows when pending is shown.
    * Best-effort — a failure only zeroes the badge, never breaks login or a decision. */
@@ -633,10 +635,12 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       kind: identity.kind,
       displayName: identity.displayName,
     };
+    const first = channels[0];
     set({
       phase: "ready",
       identity,
       channels,
+      activeChannelId: first?.id ?? state.activeChannelId,
       agents,
       directory: mergeDirectory(state.directory, [selfEntry]),
       presence: { ...state.presence, [identity.memberId]: "online" },
@@ -653,10 +657,8 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       .view()
       .then((view) => set({ decisionsCaptured: view.rail.decisionsCaptured }))
       .catch(() => undefined);
-    await refreshPending();
-
-    const first = channels[0];
-    if (first) await store.selectChannel(first.id);
+    void refreshPending();
+    if (first) void store.selectChannel(first.id).catch(() => undefined);
   }
 
   const store: Store = {
@@ -700,13 +702,13 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     async selectChannel(channelId) {
       set({ activeChannelId: channelId, thread: null });
       realtime.subscribe(channelId);
-      const messages = await api.listMessages(channelId);
+      const messages = await api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
       set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: messages } });
     },
 
     async refreshChannelMessages(channelId) {
       try {
-        const fetched = await api.listMessages(channelId);
+        const fetched = await api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
         // Upsert each fetched message into the existing list so a realtime/optimistic arrival is never dropped.
         let list = state.messagesByChannel[channelId] ?? [];
         for (const m of fetched) list = upsertMessage(list, m);

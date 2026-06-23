@@ -8,9 +8,10 @@
  * verify on ipop.ai. Default-OFF means the env-unset deployment renders nobody the new surface — the existing
  * `/start` onboarding (#260/#633) is untouched. This module flips nothing in production.
  *
- * Two invariants, mirroring the safest default of the other web gates (#352 coordination, #365 connect-health):
- *   · DEFAULT-OFF — env unset ⇒ flag off ⇒ the surface renders for nobody.
- *   · EXPLICIT-ON — only the literal "true"/"1" turns it on; any other value (including typos) stays off.
+ * #784 GO-LIVE: this is now the production default landing, so the gate is DEFAULT-ON:
+ *   · DEFAULT-ON   — env unset ⇒ flag on ⇒ root `/` and `/welcome` open the new experience for everyone.
+ *   · EXPLICIT-OFF — only the literal "false"/"0" turns it off (restoring the marketing landing); any other
+ *                    value (including typos) leaves it on. Reversible with a single env var, no code change.
  */
 
 const env = import.meta.env;
@@ -20,10 +21,10 @@ function readEnv(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-/** Master switch — `VITE_RELOAD_ONBOARDING_V2=true|1`. Default OFF (any other / unset ⇒ off). */
+/** Master switch — `VITE_RELOAD_ONBOARDING_V2`. Default ON; only "false"/"0" turns it off (#784 go-live). */
 export const ONBOARDING_V2_ENABLED: boolean = (() => {
   const raw = readEnv(env.VITE_RELOAD_ONBOARDING_V2);
-  return raw === "true" || raw === "1";
+  return raw !== "false" && raw !== "0";
 })();
 
 export interface OnboardingGateInput {

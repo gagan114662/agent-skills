@@ -10,6 +10,8 @@ import { decideOnNewMessages, isNearBottom } from "./message-scroll.js";
 import { useLiveChannelMessages } from "./console/useLiveChannelMessages.js";
 import type { Message } from "../api/types.js";
 
+const MESSAGE_RENDER_WINDOW = 200;
+
 export interface MessagePaneProps {
   /**
    * When set (#378), the pane is framed as a 1:1 DIRECT MESSAGE with this member — the header reads "Direct
@@ -39,6 +41,8 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
   const messages = (activeChannelId ? (messagesByChannel[activeChannelId] ?? []) : []).filter(
     (m) => m.parentMessageId === null || m.alsoSentToChannel,
   );
+  const hiddenMessageCount = Math.max(0, messages.length - MESSAGE_RENDER_WINDOW);
+  const visibleMessages = hiddenMessageCount > 0 ? messages.slice(hiddenMessageCount) : messages;
 
   // #419: keep the open channel fresh as a fallback to the realtime stream, so a dropped / never-delivered
   // socket event self-heals without a manual refresh (the realtime append in the store stays the primary path).
@@ -131,7 +135,14 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
             onPick={(text) => setPrefill((p) => ({ text, nonce: (p?.nonce ?? 0) + 1 }))}
           />
         ) : (
-          messages.map((m) => <MessageItem key={m.id} message={m} state={state} />)
+          <>
+            {hiddenMessageCount > 0 && (
+              <p className="messagelist__window" role="status">
+                Showing latest {visibleMessages.length} of {messages.length} messages
+              </p>
+            )}
+            {visibleMessages.map((m) => <MessageItem key={m.id} message={m} state={state} />)}
+          </>
         )}
       </div>
 

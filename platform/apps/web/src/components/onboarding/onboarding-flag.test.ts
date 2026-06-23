@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { shouldShowOnboardingV2 } from "./onboarding-flag.js";
 
 /**
- * #784 onboarding gate — PURE and fail-closed: only an explicitly-on flag reveals the new experience, so an
- * unset/false env can never expose it. (The env→boolean coercion is exercised by the env at import time; the
- * decision logic is what we unit-test here.)
+ * #784 onboarding gate — PURE pass-through of the master flag. #784 go-live makes the flag DEFAULT-ON (the
+ * env→boolean coercion in ONBOARDING_V2_ENABLED is on unless "false"/"0"); the decision logic here just
+ * honours that flag: on ⇒ the new experience is the public landing, off ⇒ the marketing landing returns.
  */
 describe("shouldShowOnboardingV2 (#784)", () => {
-  it("is OFF by default (flag off ⇒ surface hidden)", () => {
+  it("hides only when the flag is explicitly off (the one reversal env)", () => {
     expect(shouldShowOnboardingV2({ flagOn: false })).toBe(false);
   });
 
-  it("shows only when the flag is explicitly on", () => {
+  it("shows when the flag is on — the default-on production landing", () => {
     expect(shouldShowOnboardingV2({ flagOn: true })).toBe(true);
   });
 });
