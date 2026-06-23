@@ -1,8 +1,7 @@
 /**
- * Pure everyday-shell-gate tests (#784). Lock the default-OFF, owner-workspace-first contract: the redesign
- * shows ONLY when the flag is on AND a non-empty owner workspace is named AND the current workspace IS that
- * owner. Every other branch is fail-closed — there is no path where an off flag, a missing workspace, or an
- * unnamed owner reveals the shell.
+ * Pure everyday-shell-gate tests (#784). #784 go-live makes the shell the production default: with no owner
+ * workspace pinned it shows for ANY signed-in workspace (full rollout); pinning an owner narrows it back to
+ * owner-only. The only fail-closed branches are an explicitly-off flag and a missing current workspace.
  */
 import { describe, expect, it } from "vitest";
 import { shouldShowEverydayShell, type EverydayShellGateInput } from "./everyday-shell-flag.js";
@@ -15,35 +14,35 @@ describe("shouldShowEverydayShell (#784)", () => {
     expect(shouldShowEverydayShell(on)).toBe(true);
   });
 
-  it("is OFF by default — flag off shows for nobody, even the owner", () => {
+  it("an explicitly-off flag shows for nobody, even the owner", () => {
     expect(shouldShowEverydayShell({ ...on, flagOn: false })).toBe(false);
   });
 
-  it("hides from a non-owner workspace even when the flag is on (owner-first)", () => {
+  it("full rollout: with no owner pinned, shows for any signed-in workspace", () => {
+    expect(
+      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: undefined, workspaceId: "ws_anyone" }),
+    ).toBe(true);
+    expect(
+      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: "", workspaceId: "ws_anyone" }),
+    ).toBe(true);
+    expect(
+      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: "   ", workspaceId: "ws_anyone" }),
+    ).toBe(true);
+  });
+
+  it("hides from a non-owner workspace when an owner IS pinned (owner-only narrowing)", () => {
     expect(shouldShowEverydayShell({ ...on, workspaceId: "ws_someone_else" })).toBe(false);
   });
 
-  it("naming nobody (no owner id) shows it to nobody, flag on or not", () => {
-    expect(
-      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: undefined, workspaceId: owner }),
-    ).toBe(false);
-    expect(
-      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: "", workspaceId: owner }),
-    ).toBe(false);
-    expect(
-      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: "   ", workspaceId: owner }),
-    ).toBe(false);
-  });
-
-  it("hides when there is no current workspace, even for a named owner", () => {
+  it("hides when there is no current workspace (the shell is a logged-in surface), pinned or not", () => {
     expect(
       shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: owner, workspaceId: null }),
     ).toBe(false);
     expect(
-      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: owner, workspaceId: undefined }),
+      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: undefined, workspaceId: undefined }),
     ).toBe(false);
     expect(
-      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: owner, workspaceId: "" }),
+      shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: undefined, workspaceId: "" }),
     ).toBe(false);
   });
 
