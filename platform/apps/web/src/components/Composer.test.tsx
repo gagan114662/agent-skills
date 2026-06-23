@@ -42,6 +42,22 @@ describe("Composer", () => {
     expect(textarea).toHaveValue("@Atlas ");
   });
 
+  it("exposes the mention list relationship to assistive tech", async () => {
+    const { store } = renderWithStore(<Composer />);
+    await store.bootstrap();
+
+    const textarea = screen.getByRole("textbox", { name: "Message composer" });
+    expect(textarea).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.type(textarea, "@");
+    const list = await screen.findByRole("listbox", { name: "Mention a member" });
+    const option = screen.getByRole("option", { name: /Ada/ });
+
+    expect(textarea).toHaveAttribute("aria-expanded", "true");
+    expect(textarea).toHaveAttribute("aria-controls", list.id);
+    expect(textarea).toHaveAttribute("aria-activedescendant", option.id);
+  });
+
   // #168 — bug 3: agent options wear their department spectrum hue (dept colors).
   it("tints an agent option with its department colour", async () => {
     const { store } = renderWithStore(<Composer />, {

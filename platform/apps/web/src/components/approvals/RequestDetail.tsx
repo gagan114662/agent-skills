@@ -11,11 +11,13 @@ export function RequestDetail(): React.JSX.Element | null {
   if (!req) return null;
 
   return (
-    <aside className="request-detail" role="dialog" aria-label="Approval request detail">
+    <aside className="request-detail" role="dialog" aria-labelledby="approval-request-detail-title">
       <header className="request-detail__head">
-        <h3>{req.summary}</h3>
-        <span className={`pill pill--${req.status}`}>{req.status}</span>
-        <button className="iconbtn" aria-label="Close detail" onClick={() => store.closeRequest()}>
+        <h3 id="approval-request-detail-title">{req.summary}</h3>
+        <span className={`pill pill--${req.status}`} aria-label={`Status: ${req.status}`}>
+          {req.status}
+        </span>
+        <button className="iconbtn" type="button" aria-label="Close approval request detail" onClick={() => store.closeRequest()}>
           ✕
         </button>
       </header>

@@ -22,15 +22,33 @@ describe("ApprovalsPanel", () => {
       policies: [makePolicy({ id: "p1", actionType: "external.send" })],
     });
     await screen.findByText(/Send external message/);
-    await user.click(screen.getByRole("button", { name: "Policies" }));
+    await user.click(screen.getByRole("tab", { name: "Policies" }));
     expect(await screen.findByText("Approval policies")).toBeInTheDocument();
     expect(screen.getByText("requires approval")).toBeInTheDocument(); // the rule row
+  });
+
+  it("uses keyboard-operable tabs for the queue and policy views", async () => {
+    const user = userEvent.setup();
+    await renderApprovals(<ApprovalsPanel />, {
+      pending: [makeRequest({ id: "r1" })],
+      policies: [makePolicy({ id: "p1", actionType: "external.send" })],
+    });
+    await screen.findByText(/Send external message/);
+
+    const queue = screen.getByRole("tab", { name: /Queue/ });
+    queue.focus();
+    await user.keyboard("{ArrowRight}");
+
+    const policies = screen.getByRole("tab", { name: "Policies" });
+    expect(policies).toHaveFocus();
+    expect(policies).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tabpanel", { name: "Policies" })).toBeInTheDocument();
   });
 
   it("does not offer the Policies view to agents", async () => {
     await renderApprovals(<ApprovalsPanel />, { pending: [makeRequest({ id: "r1" })], as: "agent" });
     await screen.findByText(/Send external message/);
-    expect(screen.queryByRole("button", { name: "Policies" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Policies" })).not.toBeInTheDocument();
   });
 
   it("opens a request's detail (audit timeline) from a queue row", async () => {
@@ -43,7 +61,7 @@ describe("ApprovalsPanel", () => {
       ],
     });
     await user.click(await screen.findByRole("button", { name: "Open request: Open me" }));
-    expect(await screen.findByRole("dialog", { name: "Approval request detail" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Open me" })).toBeInTheDocument();
     expect(screen.getByText("Audit trail")).toBeInTheDocument();
     expect(screen.getByText("Requested")).toBeInTheDocument();
   });

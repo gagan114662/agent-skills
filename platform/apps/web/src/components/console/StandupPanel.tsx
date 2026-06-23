@@ -107,6 +107,8 @@ export function StandupPanel(props: StandupPanelProps): React.JSX.Element {
                 <button
                   className="proj__main"
                   aria-expanded={open}
+                  aria-current={isCurrent ? "page" : undefined}
+                  aria-label={`Switch to workspace project: ${p.name}`}
                   onClick={() => {
                     onToggleProject(p.id);
                     onSelectProject(p);
@@ -138,12 +140,13 @@ export function StandupPanel(props: StandupPanelProps): React.JSX.Element {
                   return (
                     <button
                       key={item.key}
-                      className={
+                    className={
                         "sess" +
                         (item.kind === "waiting" ? " sess--need" : "") +
                         (item.key === activeItemKey ? " sess--active" : "") +
                         (dimmed ? " sess--dim" : "")
                       }
+                      aria-current={item.key === activeItemKey ? "true" : undefined}
                       onClick={() => onPeek(item)}
                     >
                       <span className="sess__glyph">

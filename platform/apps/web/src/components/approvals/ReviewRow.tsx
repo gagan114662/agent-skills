@@ -85,7 +85,12 @@ export function ReviewRow({
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
               />
-              <button type="submit" className="btn btn--danger" disabled={busy || !reason.trim()}>
+              <button
+                type="submit"
+                className="btn btn--danger"
+                disabled={busy || !reason.trim()}
+                aria-label={`Confirm rejection for request: ${request.summary}`}
+              >
                 Confirm reject
               </button>
               <button
@@ -101,10 +106,22 @@ export function ReviewRow({
             </form>
           ) : (
             <>
-              <button className="btn btn--primary" disabled={busy} onClick={(e) => void approve(e)}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={busy}
+                aria-label={`Approve request: ${request.summary}`}
+                onClick={(e) => void approve(e)}
+              >
                 Approve
               </button>
-              <button className="btn btn--danger" disabled={busy} onClick={() => setRejecting(true)}>
+              <button
+                type="button"
+                className="btn btn--danger"
+                disabled={busy}
+                aria-label={`Reject request: ${request.summary}`}
+                onClick={() => setRejecting(true)}
+              >
                 Reject
               </button>
             </>

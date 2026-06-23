@@ -41,7 +41,7 @@ describe("RequestDetail", () => {
       events: EVENTS,
     });
     await store.openRequest("r1");
-    await screen.findByRole("dialog", { name: "Approval request detail" });
+    await screen.findByRole("dialog", { name: /Send external message/ });
     store.closeRequest();
     await waitFor(() => expect(container.querySelector(".request-detail")).toBeNull());
   });
