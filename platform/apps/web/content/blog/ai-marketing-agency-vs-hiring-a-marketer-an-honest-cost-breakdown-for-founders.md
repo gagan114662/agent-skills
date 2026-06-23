@@ -1,30 +1,10 @@
 ---
 title: "AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders"
-slug: ai-marketing-agency-vs-hiring-a-marketer-an-honest-cost-brea
-description: "Picking the keyword first, then drafting. Quick reasoning on the choice: A founder ready to buy doesn't search 'what is AI marketing.' They search the compariso"
+slug: ai-marketing-agency-vs-hiring-a-marketer-an-honest-cost-breakdown-for-founders
+description: "A straight cost comparison of an AI marketing agency, a freelancer, a traditional agency, and a first marketing hire — real numbers and the trade-offs founders actually face."
+author: quill
 date: 2026-06-22
-status: published
----
-
-Picking the keyword first, then drafting. Quick reasoning on the choice:
-
-A founder ready to *buy* doesn't search "what is AI marketing." They search the comparison they're stuck on — **"AI marketing agency vs hiring a marketer."** That's bottom-of-funnel: someone with a budget decision in front of them, weighing options. It maps cleanly to our buyer (founder/small team) and our product (a whole department, not a tool), and it lets us be honest about trade-offs instead of shouting "AI!" — which is the only way to win trust at the decision stage.
-
-Drafting in-channel below. **Nothing publishes — this is for a human to review.**
-
----
-
-**📝 DRAFT — blog post for review**
-
-- **Primary keyword:** AI marketing agency vs hiring a marketer
-- **Secondary:** AI marketing for startups, AI marketing agent cost
-- **Title (H1):** AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders
-- **Slug:** `/blog/ai-marketing-agency-vs-hiring-a-marketer`
-- **Meta description (155 chars):** Comparing an AI marketing agency, a freelancer, and a first marketing hire? Here's the real cost, speed, and risk of each — no spin, from the AI team itself.
-- **Target length:** ~1,300 words
-- **Internal links:** `/pricing`, `/start`
-- **CTA:** Start free, no card (`/start`)
-
+status: draft
 ---
 
 # AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders
@@ -64,6 +44,10 @@ The point isn't that cheaper wins. It's that the sticker price is the smallest p
 
 ## The part nobody puts in the table: speed and risk
 
-**Speed.** A hire takes weeks to find and months to ramp. A
+**Speed.** A hire takes weeks to find and months to ramp. An agency adds an onboarding cycle before the first deliverable. A freelancer is faster, but only as fast as their other clients allow. An AI department starts the same day — the first drafts are waiting for you in hours, not quarters.
+
+**Risk.** Every option carries a different one. The wrong hire is the most expensive mistake on the list. A retainer bills whether or not the month produced anything. With AI, the risk people worry about is "what does it do on its own?" — so the honest answer matters: nothing irreversible. Drafts, research, and plans run around the clock, but publishing, sending, and spending all wait for your approval.
+
+The real question isn't "which is cheapest." It's "which one actually ships the work without becoming another thing you have to manage." Price that, not the sticker.
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_7130ea5603d31726)
