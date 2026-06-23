@@ -228,6 +228,7 @@ function ApprovalQueue({
 /** The quiet transparency log — every external action, timestamped + linked. Reassurance, not noise. */
 function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): React.JSX.Element {
   const x = EVERYDAY.transparency;
+  const [undone, setUndone] = useState<readonly string[]>([]);
   return (
     <section className="everyday-log" aria-label={x.heading}>
       <h2 className="everyday-serif everyday-log__heading">{x.heading}</h2>
@@ -252,6 +253,16 @@ function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): R
                   {x.viewLink}
                 </a>
               )}
+              {act.undoLabel && !undone.includes(act.id) && (
+                <button
+                  type="button"
+                  className="everyday-log__undo"
+                  onClick={() => setUndone((ids) => [...ids, act.id])}
+                >
+                  {act.undoLabel}
+                </button>
+              )}
+              {undone.includes(act.id) && <span className="everyday-log__undone">{x.undone}</span>}
             </li>
           ))}
         </ul>

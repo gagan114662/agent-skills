@@ -1412,6 +1412,8 @@ export const EVERYDAY = {
     empty: "we haven't touched the outside world yet. when we do, it all shows up here.",
     /** Accessible label for the timestamp column. */
     whenLabel: "when",
+    /** Status suffix shown after a public action has been undone. */
+    undone: "undone",
     /** Link text to the external artifact. */
     viewLink: "see it",
   },

@@ -143,6 +143,17 @@ describe("EverydayShell — transparency + kill switch (#629/#784)", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("undoes a reversible public action from the activity log in one click (#628)", () => {
+    render(<EverydayShell data={seedEveryday()} />);
+    const log = screen.getByLabelText(EVERYDAY.transparency.heading);
+    expect(within(log).getByText(/published the launch page update/i)).toBeInTheDocument();
+
+    fireEvent.click(within(log).getByRole("button", { name: "unpublish" }));
+
+    expect(within(log).queryByRole("button", { name: "unpublish" })).not.toBeInTheDocument();
+    expect(within(log).getByText(EVERYDAY.transparency.undone)).toBeInTheDocument();
+  });
+
   it("shows the always-on kill switch as reassurance, not config", () => {
     render(<EverydayShell data={seedEveryday()} />);
     expect(screen.getByText(EVERYDAY.safety.killSwitchTitle)).toBeInTheDocument();
