@@ -116,3 +116,33 @@ export const revenueEvidence = pgTable(
     bySession: index("revenue_evidence_session_idx").on(t.sessionId),
   }),
 );
+
+/**
+ * The first paid conversion is a product milestone, not just another ledger row (#613). Keep one durable
+ * case-study draft per workspace so the app can leverage the first customer story after the webhook moment.
+ */
+export const firstCustomerStories = pgTable(
+  "first_customer_stories",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    revenueEventId: uuid("revenue_event_id")
+      .notNull()
+      .references(() => revenueEvents.id, { onDelete: "cascade" }),
+    channelId: uuid("channel_id").references(() => channels.id, { onDelete: "set null" }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
+    providerEventId: text("provider_event_id").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    caseStudyDraft: text("case_study_draft").notNull(),
+    celebrationTitle: text("celebration_title").notNull(),
+    celebrationMessage: text("celebration_message").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byWorkspace: unique("first_customer_stories_workspace_uq").on(t.workspaceId),
+    byRevenueEvent: index("first_customer_stories_revenue_event_idx").on(t.revenueEventId),
+  }),
+);

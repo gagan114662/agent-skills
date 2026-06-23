@@ -6,7 +6,7 @@ import { WebSocket } from "ws";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";
-import { workspaces, revenueEvents } from "../../src/db/schema/index.js";
+import { firstCustomerStories, workspaces, revenueEvents } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { DeployManager } from "../../src/deploy/manager.js";
 import { DryRunDeployProvider } from "../../src/deploy/dry-run-provider.js";
@@ -169,7 +169,12 @@ function waitFor(events: ServerEvent[], match: (e: ServerEvent) => boolean, time
 const BILLING_CFG: BillingConfig = { provider: "none", currency: "usd" };
 
 /** A Stripe-shaped checkout.session.completed event, with the link metadata the manager round-trips. */
-function paymentEvent(w: World, sessionId: string, leaked?: string): string {
+function paymentEvent(
+  w: World,
+  sessionId: string,
+  leaked?: string,
+  extraMeta: Record<string, string> = {},
+): string {
   return JSON.stringify({
     id: `evt_${newId()}`,
     type: "checkout.session.completed",
@@ -185,6 +190,7 @@ function paymentEvent(w: World, sessionId: string, leaked?: string): string {
           sessionId,
           agentMemberId: w.agentMemberId,
           ...(leaked ? { leaked } : {}),
+          ...extraMeta,
         },
       },
     },
@@ -223,7 +229,10 @@ describe("Stripe revenue rails (#98 — real Postgres + Redis, no-network none p
     const sessionId = await launchSession(app, w);
     const sub = await subscribe(ws, w);
 
-    const raw = paymentEvent(w, sessionId);
+    const raw = paymentEvent(w, sessionId, undefined, {
+      customerJourney: "Customer found the demo, tried the launch flow, then paid.",
+      quoteRequest: "Ask why the demo earned trust.",
+    });
     const sig = signWebhookPayload(raw, WHSEC, Math.floor(Date.now() / 1000));
     const res = await app.inject({
       method: "POST",
@@ -234,9 +243,29 @@ describe("Stripe revenue rails (#98 — real Postgres + Redis, no-network none p
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: true, deduped: false });
 
-    // A "💰 Received" message + a payment_received event reach the channel.
+    // A "💰 Received" message + payment + first-customer celebration events reach the channel.
     await waitFor(sub.events, (e) => e.type === "message" && /received/i.test(e.message.body));
     await waitFor(sub.events, (e) => e.type === "billing_status" && e.kind === "payment_received");
+    await waitFor(
+      sub.events,
+      (e) => e.type === "billing_status" && e.kind === "first_customer_won",
+    );
+    await waitFor(
+      sub.events,
+      (e) => e.type === "message" && /first paying customer/i.test(e.message.body),
+    );
+
+    const [story] = await db
+      .select({
+        caseStudyDraft: firstCustomerStories.caseStudyDraft,
+        celebrationTitle: firstCustomerStories.celebrationTitle,
+      })
+      .from(firstCustomerStories)
+      .where(eq(firstCustomerStories.workspaceId, w.workspaceId))
+      .limit(1);
+    expect(story?.celebrationTitle).toBe("First paying customer!");
+    expect(story?.caseStudyDraft).toContain("Customer found the demo");
+    expect(story?.caseStudyDraft).toContain("Ask why the demo earned trust");
 
     // Revenue per venture is surfaced for the #71 dashboard, with willingness-to-pay evidence counted.
     const revenue = (
