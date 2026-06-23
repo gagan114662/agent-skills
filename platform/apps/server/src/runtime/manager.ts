@@ -16,7 +16,14 @@ import {
 import { makeRedactor, redactPotentialSecrets } from "./redact.js";
 import { decideSessionRetry } from "./session-retry.js";
 import type { BackoffPolicy } from "../durable-workflow/types.js";
-import { harnessEventReportsError, finalAnswerFromEvent, type LineDecoder } from "./stream-json.js";
+import {
+  harnessEventReportsError,
+  finalAnswerFromEvent,
+  toolCallFromEvent,
+  errorMessageFromEvent,
+  type HarnessToolCall,
+  type LineDecoder,
+} from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
@@ -388,6 +395,19 @@ export const DEFAULT_REAP_GRACE_MS = 15_000;
 /** Fallback short caps for a fast turn (#417) when the env overrides are unset: 60s idle / 180s wall. */
 const FAST_IDLE_MS_DEFAULT = 60_000;
 const FAST_WALLCLOCK_MS_DEFAULT = 180_000;
+
+interface ToolFailureContext {
+  tool: HarnessToolCall;
+  error: string;
+}
+
+function formatToolFailure(ctx: ToolFailureContext, redact: (text: string) => string): string {
+  const rawArgs =
+    typeof ctx.tool.args === "string" ? ctx.tool.args : JSON.stringify(ctx.tool.args ?? null);
+  const args = redact(rawArgs ?? "").slice(0, 500);
+  const error = redact(ctx.error).slice(0, 500);
+  return ["failed tool: " + ctx.tool.name, "args: " + args, "error: " + error].join("\n");
+}
 
 /**
  * Resolve the SHORT watchdog caps for a fast turn (#417) so a coordination chat turn can't hang for
@@ -864,6 +884,8 @@ export class SessionManager {
     // tool-call traces). Updated from the harness's structured final-answer event; the last value wins
     // (codex emits several; claude-code emits one terminal `result`). Redacted like every other surface.
     let finalAnswer = "";
+    let lastToolCall: HarnessToolCall | null = null;
+    let failedTool: ToolFailureContext | null = null;
     // #436 idempotency anchors: did the SESSION ever emit output / fire a heartbeat across its attempts?
     // The moment either is true, a dead attempt may have taken a real/money action, so it is NEVER retried.
     let sawOutput = false;
@@ -873,8 +895,17 @@ export class SessionManager {
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
       // the structured log so secrets never persist there either.
       if (decoded.raw !== null) {
+        const tool = toolCallFromEvent(decoded.raw);
+        if (tool) lastToolCall = tool;
+        const eventError = errorMessageFromEvent(decoded.raw);
+        if (eventError && lastToolCall) failedTool = { tool: lastToolCall, error: eventError };
         log.info({ event: redact(JSON.stringify(decoded.raw)) }, "agent stream event");
-        if (harnessEventReportsError(decoded.raw)) harnessReportedError = true;
+        if (harnessEventReportsError(decoded.raw)) {
+          harnessReportedError = true;
+          if (!failedTool && lastToolCall) {
+            failedTool = { tool: lastToolCall, error: eventError ?? "agent run ended with an error" };
+          }
+        }
         const answer = finalAnswerFromEvent(decoded.raw);
         if (answer !== null) finalAnswer = redact(answer);
       }
@@ -1063,7 +1094,7 @@ export class SessionManager {
     if (buffer.trim()) emitLine(buffer); // flush a trailing partial line
     await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
-    const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
+    let resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);
     // The agent's produced artifact: its structured final answer when the harness marked one, else the
     // rolling tail (the demo / plain-text harness has no final event). This is what a deliverable card
     // shows AND the evidence the disposition weighs for "did it actually produce real output?".
@@ -1084,6 +1115,12 @@ export class SessionManager {
     });
     if (disposition.status !== result.status) {
       result = { ...result, status: disposition.status };
+    }
+    if (failedTool && !isSuccess(result.status)) {
+      resultText = [formatToolFailure(failedTool, redact), resultText]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, RESULT_MAX_CHARS);
     }
     // #166: a green check ONLY on a clean completion. A failed/timed-out/canceled session renders a
     // failure mark + brand-voice reason (spawn/auth/timeout/budget/…) instead of the old lying
