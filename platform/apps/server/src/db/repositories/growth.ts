@@ -72,11 +72,15 @@ const EXPERIMENT_COLS = {
   ideaId: growthExperiments.ideaId,
   channel: growthExperiments.channel,
   hypothesis: growthExperiments.hypothesis,
+  variant: growthExperiments.variant,
+  metricKey: growthExperiments.metricKey,
   targetQuery: growthExperiments.targetQuery,
   status: growthExperiments.status,
   proposedByMemberId: growthExperiments.proposedByMemberId,
   approvalRequestId: growthExperiments.approvalRequestId,
   resultSummary: growthExperiments.resultSummary,
+  result: growthExperiments.result,
+  decision: growthExperiments.decision,
   createdAt: growthExperiments.createdAt,
   updatedAt: growthExperiments.updatedAt,
 } as const;
@@ -86,6 +90,8 @@ export async function insertExperiment(input: {
   ideaId: string | null;
   channel: string;
   hypothesis: string;
+  variant: string;
+  metricKey: string;
   targetQuery: string;
   proposedByMemberId: string | null;
 }): Promise<GrowthExperimentRecord> {
@@ -96,6 +102,8 @@ export async function insertExperiment(input: {
       ideaId: input.ideaId,
       channel: input.channel,
       hypothesis: input.hypothesis,
+      variant: input.variant,
+      metricKey: input.metricKey,
       targetQuery: input.targetQuery,
       proposedByMemberId: input.proposedByMemberId,
     })
@@ -155,6 +163,27 @@ export async function updateExperimentStatus(
   const [row] = await db
     .update(growthExperiments)
     .set({ status, resultSummary, updatedAt: now })
+    .where(and(eq(growthExperiments.workspaceId, workspaceId), eq(growthExperiments.id, id)))
+    .returning(EXPERIMENT_COLS);
+  return row as GrowthExperimentRecord | undefined;
+}
+
+export async function completeExperiment(
+  workspaceId: string,
+  id: string,
+  result: string,
+  decision: string,
+  now: Date,
+): Promise<GrowthExperimentRecord | undefined> {
+  const [row] = await db
+    .update(growthExperiments)
+    .set({
+      status: "completed",
+      resultSummary: result,
+      result,
+      decision,
+      updatedAt: now,
+    })
     .where(and(eq(growthExperiments.workspaceId, workspaceId), eq(growthExperiments.id, id)))
     .returning(EXPERIMENT_COLS);
   return row as GrowthExperimentRecord | undefined;

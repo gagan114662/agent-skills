@@ -43,6 +43,8 @@ export interface GrowthExperimentStore {
     ideaId: string | null;
     channel: string;
     hypothesis: string;
+    variant: string;
+    metricKey: string;
     targetQuery: string;
     proposedByMemberId: string | null;
   }): Promise<GrowthExperimentRecord>;
@@ -59,6 +61,13 @@ export interface GrowthExperimentStore {
     id: string,
     status: ExperimentStatus,
     resultSummary: string,
+    now: Date,
+  ): Promise<GrowthExperimentRecord | undefined>;
+  complete(
+    workspaceId: string,
+    id: string,
+    result: string,
+    decision: string,
     now: Date,
   ): Promise<GrowthExperimentRecord | undefined>;
 }
@@ -123,6 +132,13 @@ export class GrowthExperimentNotFoundError extends Error {
   constructor(id: string) {
     super(`growth experiment not found: ${id}`);
     this.name = "GrowthExperimentNotFoundError";
+  }
+}
+
+export class GrowthExperimentValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GrowthExperimentValidationError";
   }
 }
 
@@ -240,6 +256,8 @@ export class GrowthService {
       ideaId?: string | null;
       channel: string;
       hypothesis: string;
+      variant?: string;
+      metricKey?: string;
       targetQuery?: string;
       proposedByMemberId?: string | null;
     },
@@ -249,6 +267,8 @@ export class GrowthService {
       ideaId: input.ideaId ?? null,
       channel: input.channel,
       hypothesis: input.hypothesis,
+      variant: input.variant ?? "",
+      metricKey: input.metricKey ?? "",
       targetQuery: input.targetQuery ?? "",
       proposedByMemberId: input.proposedByMemberId ?? null,
     });
@@ -256,6 +276,26 @@ export class GrowthService {
 
   async listExperiments(workspaceId: string): Promise<GrowthExperimentRecord[]> {
     return this.deps.experiments.list(workspaceId);
+  }
+
+  async completeExperiment(
+    workspaceId: string,
+    experimentId: string,
+    input: { result: string; decision: string },
+  ): Promise<GrowthExperimentRecord> {
+    const result = input.result.trim();
+    const decision = input.decision.trim();
+    if (!result) throw new GrowthExperimentValidationError("result is required");
+    if (!decision) throw new GrowthExperimentValidationError("decision is required");
+    const completed = await this.deps.experiments.complete(
+      workspaceId,
+      experimentId,
+      result,
+      decision,
+      this.now(),
+    );
+    if (!completed) throw new GrowthExperimentNotFoundError(experimentId);
+    return completed;
   }
 
   /**

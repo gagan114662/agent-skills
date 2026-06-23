@@ -58,6 +58,10 @@ export interface GrowthExperimentRecord {
   channel: string;
   /** The experiment hypothesis the agent is testing. */
   hypothesis: string;
+  /** The variant/package/content/campaign arm under test; `''` when not applicable. */
+  variant: string;
+  /** The primary metric this experiment is judged on; `''` when not set. */
+  metricKey: string;
   /** The content engine's measurable target query (e.g. a keyword to rank for); `''` when none. */
   targetQuery: string;
   status: ExperimentStatus;
@@ -67,6 +71,10 @@ export interface GrowthExperimentRecord {
   approvalRequestId: string | null;
   /** A one-line outcome summary once the experiment completes; `''` while pending. */
   resultSummary: string;
+  /** The measured result once completed; `''` while pending. */
+  result: string;
+  /** The keep/kill/iterate decision made from the result; `''` while pending. */
+  decision: string;
   createdAt: Date;
   updatedAt: Date;
 }
