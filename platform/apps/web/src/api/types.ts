@@ -879,6 +879,44 @@ export interface RecentFailureDto {
   endedAtMs: number | null;
 }
 
+/** One persisted event in an agent run's append-only trace (#664). */
+export interface AgentTraceEventDto {
+  id: string;
+  runId: string;
+  seq: number;
+  type: "model_request" | "model_response" | "tool_call" | "tool_result" | "approval_decision";
+  turn: number;
+  label: string | null;
+  payload: Record<string, unknown>;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costMicros: number | null;
+  occurredAt: string;
+}
+
+/** Header for one persisted trace run (#664). */
+export interface AgentTraceRunDto {
+  id: string;
+  workspaceId: string;
+  sessionId: string | null;
+  agentMemberId: string | null;
+  taskId: string | null;
+  label: string | null;
+  status: "open" | "closed";
+  eventCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+/** The complete, replay-ordered trace for one run (#664). */
+export interface AgentTraceDto {
+  run: AgentTraceRunDto;
+  events: AgentTraceEventDto[];
+}
+
 /** The live mission-control roll-up. */
 export interface MissionControlDto {
   sessions: LiveSessionDto[];

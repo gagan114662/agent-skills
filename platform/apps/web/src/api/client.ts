@@ -58,6 +58,7 @@ import type {
   Message,
   MissionControlDto,
   ProviderKind,
+  AgentTraceDto,
   SearchEnvelope,
   SessionMode,
   SlackStatus,
@@ -891,6 +892,14 @@ export const api = {
       return post(`/workspaces/${workspaceId}/mission-control/sessions/${sessionId}/steer`, {
         guidance,
       }) as Promise<{ delivered: boolean }>;
+    },
+  },
+  traces: {
+    /** Complete per-run trace (#664): every persisted step, tool call/result, payload, timing, and error. */
+    get(workspaceId: string, runId: string): Promise<AgentTraceDto> {
+      return request<AgentTraceDto>(
+        `/workspaces/${encodeURIComponent(workspaceId)}/traces/${encodeURIComponent(runId)}`,
+      );
     },
   },
 
