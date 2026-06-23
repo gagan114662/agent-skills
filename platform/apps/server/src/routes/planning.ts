@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
+import { isFeedbackChannel } from "../planning/feedback.js";
 import type { PlanningService } from "../planning/service.js";
 import { isBacklogSource, type BacklogEvidence } from "../planning/types.js";
 
@@ -63,6 +64,34 @@ export async function planningRoutes(app: FastifyInstance, opts: PlanningRoutesO
       evidence: readEvidence(body.evidence),
       targetChannelId: body.targetChannelId ?? null,
       targetAgentMemberId: body.targetAgentMemberId ?? null,
+    });
+    return reply.code(201).send(item);
+  });
+
+  /** Ingest real user feedback and draft a triaged customer-voice backlog item (#623). */
+  app.post("/workspaces/:wid/planning/feedback", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+
+    const body = (req.body ?? {}) as {
+      text?: string;
+      channel?: string;
+      reporter?: string;
+      url?: string;
+    };
+    const text = body.text?.trim();
+    if (!text) return reply.code(400).send({ error: "text is required" });
+    if (!isFeedbackChannel(body.channel)) {
+      return reply.code(400).send({ error: "channel must be one of in_app, email, support" });
+    }
+
+    const item = await service.ingestFeedback(wid, {
+      text,
+      channel: body.channel,
+      reporter: body.reporter,
+      url: body.url,
     });
     return reply.code(201).send(item);
   });

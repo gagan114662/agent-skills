@@ -1,5 +1,6 @@
 import type { PlanningCaps } from "./caps.js";
 import { decidePlanningDispatch, type PlanningDispatchAction } from "./decide.js";
+import { triageFeedback, type FeedbackInput } from "./feedback.js";
 import { deriveRice, rankBacklog } from "./rice.js";
 import { draftSpec } from "./spec.js";
 import { parseSteeringIntent, type PlanningSteeringDirective } from "./steering.js";
@@ -176,6 +177,21 @@ export class PlanningService {
       isPivot: input.isPivot ?? false,
       targetChannelId: input.targetChannelId ?? null,
       targetAgentMemberId: input.targetAgentMemberId ?? null,
+    });
+  }
+
+  /**
+   * Ingest real user feedback (#623) and turn it into a triaged customer-voice backlog item. This is the
+   * no-copy-paste path for in-app, email, and support feedback collectors.
+   */
+  async ingestFeedback(workspaceId: string, input: FeedbackInput): Promise<BacklogItemRecord> {
+    const triaged = triageFeedback(input);
+    return this.addItem(workspaceId, {
+      title: triaged.title,
+      description: triaged.description,
+      source: "customer_voice",
+      sourceRef: triaged.sourceRef,
+      evidence: triaged.evidence,
     });
   }
 
