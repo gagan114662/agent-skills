@@ -1,24 +1,11 @@
 ---
 title: "AI Marketing Agency for Startups: The Honest Buyer's Guide (2026)"
-slug: ai-marketing-agency-for-startups-the-honest-buyer-s-guide-20
-description: "Posting a draft in-channel for human review. Here's my pick and the reasoning, then the full draft. --- Target keyword: AI marketing agency for startups (primar"
+slug: ai-marketing-agency-for-startups-the-honest-buyer-s-guide-2026
+description: "An honest look at a founder's three options for getting marketing done — hire, DIY, or an AI marketing department — and where each actually fits."
+author: quill
 date: 2026-06-23
-status: published
+status: draft
 ---
-
-Posting a draft in-channel for human review. Here's my pick and the reasoning, then the full draft.
-
----
-
-**Target keyword:** `AI marketing agency for startups` (primary) — with the buyer's real question woven in: *AI marketing agency vs. a first marketing hire vs. doing it yourself.*
-
-**Why this one:** A founder who searches this isn't browsing — they've already decided they need marketing help and are pricing options. That's bottom-of-funnel intent, and it maps 1:1 to what we sell (a whole department, not a tool). Comparison framing ("vs. hire / vs. DIY") is where these searchers actually land, so I built the post to answer the comparison head-on. I worked from our [home page](https://ipop.ai/) and [pricing page](https://ipop.ai/pricing) — the only sources I have — so a few claims are flagged for you to confirm before this goes anywhere.
-
----
-
-# AI Marketing Agency for Startups: The Honest Buyer's Guide (2026)
-
-*Draft — for review. Nothing here is published.*
 
 **TL;DR:** If you're a founder staring down a marketing to-do list and an empty calendar, you have three real options: hire someone, do it yourself, or hand it to AI agents. Here's the honest trade-off on each — and where an AI marketing department actually fits.
 
@@ -51,15 +38,15 @@ This is the newer option, and it's the one worth understanding before you decide
 - **Echo** handles brand and voice
 - …and the rest cover ads and outbound
 
-They draft, research, and plan around the clock. You steer; they ship. The point isn't to replace judgment — it's to do the 80% of marketing work that's real, repeatable, and currently not getting done. *(Source: our [home page](https://ipop.ai/). Reviewer — confirm the full agent roster and each one's exact remit before we publish.)*
+They draft, research, and plan around the clock. You steer; they ship. The point isn't to replace judgment — it's to do the 80% of marketing work that's real, repeatable, and currently not getting done.
 
 **Best when:** you want real work shipped without a hire or a long ramp.
 **Rough when:** you need a single human owner with full P&L accountability — that's still a person's job.
 
 ## "But will it spend my money without asking?"
 
-The honest answer is the whole reason to trust the model: **no.** Every irreversible or money action is held for a human to approve. The agents draft the ad, plan the spend, write the outbound — and then they wait for you. Made by robots, steered by humans. *(Source: product framing on our site. Reviewer — confirm this is exactly how approvals work in-product before it goes live.)*
+The honest answer is the whole reason to trust the model: **no.** Every irreversible or money action is held until you approve it. The agents draft the ad, plan the spend, write the outbound — and then they wait for you. Made by robots, steered by humans.
 
-That's the difference between "AI that does marketing" and "AI that goes rogue with your credit card." We built for the first one on purpo
+That's the difference between "AI that does marketing" and "AI that goes rogue with your credit card." We built for the first one on purpose — and if you're pricing your options, that's the line worth holding any tool to.
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_35b78167530724b1)
