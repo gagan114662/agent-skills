@@ -21,6 +21,7 @@ export const EXPERIMENT_STATUSES = [
   "proposed",
   "approved",
   "running",
+  "paused",
   "completed",
   "abandoned",
 ] as const;

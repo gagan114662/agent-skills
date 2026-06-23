@@ -144,3 +144,18 @@ export async function linkExperimentApproval(
     .returning(EXPERIMENT_COLS);
   return row as GrowthExperimentRecord | undefined;
 }
+
+export async function updateExperimentStatus(
+  workspaceId: string,
+  id: string,
+  status: ExperimentStatus,
+  resultSummary: string,
+  now: Date,
+): Promise<GrowthExperimentRecord | undefined> {
+  const [row] = await db
+    .update(growthExperiments)
+    .set({ status, resultSummary, updatedAt: now })
+    .where(and(eq(growthExperiments.workspaceId, workspaceId), eq(growthExperiments.id, id)))
+    .returning(EXPERIMENT_COLS);
+  return row as GrowthExperimentRecord | undefined;
+}

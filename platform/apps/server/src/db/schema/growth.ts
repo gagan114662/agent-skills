@@ -62,6 +62,7 @@ export const EXPERIMENT_STATUSES = [
   "proposed",
   "approved",
   "running",
+  "paused",
   "completed",
   "abandoned",
 ] as const;
@@ -92,7 +93,7 @@ export const growthExperiments = pgTable(
     byWorkspaceStatus: index("growth_experiments_workspace_status_idx").on(t.workspaceId, t.status),
     statusCk: check(
       "growth_experiments_status_ck",
-      sql`${t.status} IN ('proposed','approved','running','completed','abandoned')`,
+      sql`${t.status} IN ('proposed','approved','running','paused','completed','abandoned')`,
     ),
   }),
 );

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS growth_experiments (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT growth_experiments_status_ck
-    CHECK (status IN ('proposed','approved','running','completed','abandoned'))
+    CHECK (status IN ('proposed','approved','running','paused','completed','abandoned'))
 );
 CREATE INDEX IF NOT EXISTS growth_experiments_workspace_status_idx
   ON growth_experiments (workspace_id, status);

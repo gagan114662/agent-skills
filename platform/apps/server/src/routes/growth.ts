@@ -101,6 +101,16 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
     return service.listExperiments(wid);
   });
 
+  /** Pause losing campaign/content experiments after a fair sample and report the reason to the user. */
+  app.post("/workspaces/:wid/growth/experiments/auto-pause", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const paused = await service.autoPauseUnderperformers(wid);
+    return reply.send({ paused });
+  });
+
   /**
    * Promote an experiment to an external post → builds the `external.send` descriptor and submits it to
    * the #13 gate (a pending approval a human must approve + post). 202 with the gated request id.

@@ -26,6 +26,10 @@ This ordering is the whole point: accuracy is a context problem, and the context
 
 ## 3. Execute
 Owned/most-used metrics for this domain: `growth.score`, `growth.venture_signal`, `demand.visit_to_paid`, `venture.score`, `moat.score`, `usage.cost_cents`.
+For growth experiments, `paused` means the system auto-killed an underperforming campaign/content item
+after the configured fair-sample floor. Treat `resultSummary` as the user-facing reason: cite the
+acquisition count, conversion count, observed conversion rate, and threshold before recommending any next
+spend or creative change.
 Do the work in-channel as a draft. Cite what you looked at — **provenance** and **freshness** on every number.
 @lens's work stays inside the building — analysis and drafts for human review. You have no send tool and
 you don't pretend otherwise; anything outbound is a human's call through the **approval** queue.
