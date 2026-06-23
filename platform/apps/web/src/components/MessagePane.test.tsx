@@ -104,20 +104,23 @@ describe("MessagePane", () => {
 
     // Stub the scroller geometry as "scrolled up" and fire a scroll so the pane records it.
     const list = container.querySelector(".messagelist") as HTMLElement;
-    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1000 });
+    let scrollHeight = 1000;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => scrollHeight });
     Object.defineProperty(list, "clientHeight", { configurable: true, value: 120 });
-    list.scrollTop = 0; // distance from bottom = 880 → not near bottom
+    list.scrollTop = 200; // distance from bottom = 680 → not near bottom
     await act(async () => {
       list.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
 
     // An agent (not the viewer) posts while the viewer is reading history.
+    scrollHeight = 1120; // the feed grew by 120px; preserve the reader's visual anchor (#656).
     await act(async () => {
       rt.fire({ type: "message", message: makeMessage({ id: "m2", authorMemberId: "ag1", body: "scrolled-up reply" }) });
     });
 
     const pill = await screen.findByRole("button", { name: /1 new message/i });
     expect(pill).toBeInTheDocument();
+    expect(list.scrollTop).toBe(320);
 
     await userEvent.click(pill);
     await waitFor(() =>

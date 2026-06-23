@@ -42,6 +42,11 @@ export function isNearBottom(m: ScrollMetrics, thresholdPx = NEAR_BOTTOM_PX): bo
   return distanceFromBottom(m) <= thresholdPx;
 }
 
+/** Preserve the reader's visual anchor when content height changes while they are scrolled up. */
+export function scrollTopForPreservedAnchor(before: ScrollMetrics, after: ScrollMetrics): number {
+  return Math.max(0, before.scrollTop + (after.scrollHeight - before.scrollHeight));
+}
+
 export interface NewMessagesInput {
   /** How many messages appeared since the previous render (added = now - before; never negative in practice). */
   readonly added: number;
