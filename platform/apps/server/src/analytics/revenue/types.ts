@@ -174,6 +174,35 @@ export interface DashboardTotals {
   roi: number | null;
 }
 
+/** One month in a paying-customer cohort retention curve (#621). */
+export interface RetentionPoint {
+  /** UTC calendar month, `YYYY-MM`. */
+  month: string;
+  /** 0 = acquisition month, 1 = next month, etc. */
+  monthOffset: number;
+  activeCustomers: number;
+  revenueCents: number;
+  /** Active customers / original cohort customers, 0..1. */
+  customerRetention: number;
+  /** Month revenue / acquisition-month revenue, 0..1+. */
+  revenueRetention: number;
+  /** True when customer retention drops by at least 25 percentage points vs the previous observed month. */
+  churnSpike: boolean;
+}
+
+/** A monthly cohort of paying customers and its retention/revenue-retention curve (#621). */
+export interface RetentionCohort {
+  cohortMonth: string;
+  customers: number;
+  revenueCents: number;
+  points: RetentionPoint[];
+}
+
+export interface RetentionSnapshot {
+  cohorts: RetentionCohort[];
+  churnSpikes: { cohortMonth: string; month: string; drop: number }[];
+}
+
 /** The one dashboard view (#615): headline totals, a daily trend, attribution breakdowns, and top journeys. */
 export interface DashboardSnapshot {
   window: { sinceMs: number | null; untilMs: number; days: number };
@@ -188,4 +217,6 @@ export interface DashboardSnapshot {
   byAgent: DimensionCredit[];
   /** The highest-revenue customer journeys (a glanceable "who paid + why" list). */
   topJourneys: CustomerJourney[];
+  /** Monthly paying-customer retention curves and visible churn spikes (#621). */
+  retention: RetentionSnapshot;
 }
