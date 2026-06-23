@@ -13,7 +13,7 @@ import {
   recordSessionRetry,
   observeSpinup,
 } from "../observability/metrics.js";
-import { makeRedactor } from "./redact.js";
+import { makeRedactor, redactPotentialSecrets } from "./redact.js";
 import { decideSessionRetry } from "./session-retry.js";
 import type { BackoffPolicy } from "../durable-workflow/types.js";
 import { harnessEventReportsError, finalAnswerFromEvent, type LineDecoder } from "./stream-json.js";
@@ -459,6 +459,7 @@ export class SessionManager {
 
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
+    const task = redactPotentialSecrets(input.task);
     // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
     // a row, acquire an admission slot, or make any runtime/cloud call — so a half-broken session
     // never starts. The default local/demo posture always passes; no gate wired (unit tests) = no-op.
@@ -478,7 +479,7 @@ export class SessionManager {
     // Auto model-selection (convene-llm-gateway): when no explicit model is pinned, ask the routing
     // layer for the best model for this task. Done BEFORE admission so the (cheap, bounded, fail-open)
     // routing call doesn't hold a concurrency slot; it never throws (a failure degrades to the default).
-    const auto = await this.maybeAutoSelectModel(input);
+    const auto = await this.maybeAutoSelectModel({ ...input, task });
     const selectionRow = auto?.selectionRow ?? input.selection;
     let harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
 
@@ -528,7 +529,7 @@ export class SessionManager {
     // by the run loop and dispatches nothing.
     const abort = new AbortController();
     this.aborts.set(session.id, abort);
-    const run = this.drive(session, input.task, {
+    const run = this.drive(session, task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
       parentMessageId: input.parentMessageId,
@@ -952,12 +953,15 @@ export class SessionManager {
         sessionId: session.id,
         workspaceId: session.workspaceId,
       });
+      const safeHarnessEnv = Object.fromEntries(
+        Object.entries(opts.harnessEnv ?? {}).map(([key, value]) => [key, redactPotentialSecrets(value)]),
+      );
       const startSpec = {
         sessionId: session.id,
         workspaceId: session.workspaceId,
         command: opts.spec.command,
         args: opts.spec.args,
-        env: { AGENT_TASK: task, ...opts.harnessEnv },
+        env: { AGENT_TASK: task, ...safeHarnessEnv },
         cwd: prepared?.cwd,
         secrets,
         // #71: the runtime provisions in the placed region (sandbox backend); local ignores it.

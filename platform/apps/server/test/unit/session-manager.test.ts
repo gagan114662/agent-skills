@@ -19,6 +19,7 @@ import type {
 } from "../../src/runtime/types.js";
 import { statusForReason } from "../../src/runtime/types.js";
 import type { AgentSession, ResourceCaps, SessionStatus } from "../../src/db/repositories/agent-sessions.js";
+import { REDACTION_MASK } from "../../src/runtime/redact.js";
 
 // --- fakes ------------------------------------------------------------------
 
@@ -284,6 +285,24 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     const all = poster.bodies().join("\n") + (store.finalized?.result ?? "");
     expect(all).not.toContain("sk-supersecret-value-123");
     expect(poster.bodies().some((b) => b.includes("token=‹redacted›"))).toBe(true);
+  });
+
+  it("redacts pasted secrets from task text before model context or visible posts (#671)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager, poster } = makeManager(runtime, caps(), new Secrets({}));
+    const rawSecret = "sk-live-taskSecret12345";
+
+    const session = await manager.launch({
+      ...launch,
+      task: "Use OPENAI_API_KEY=" + rawSecret + " to do the thing",
+      harnessEnv: { AGENT_APPEND_SYSTEM_PROMPT: "never echo " + rawSecret },
+    });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).not.toContain(rawSecret);
+    expect(runtime.job?.env.AGENT_APPEND_SYSTEM_PROMPT).not.toContain(rawSecret);
+    expect(poster.bodies().join("\n")).not.toContain(rawSecret);
+    expect(runtime.job?.env.AGENT_TASK).toContain(REDACTION_MASK);
   });
 
   it("idle-reaps a silent session to idle_reaped", async () => {

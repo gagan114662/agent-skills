@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import { loadEnv } from "./env.js";
 import { newId } from "./db/id.js";
+import { REDACTION_MASK } from "./runtime/redact.js";
 import { registerObservability } from "./observability/plugin.js";
 import { registerCors } from "./http/cors.js";
 import { registerMaintenance } from "./maintenance/gate.js";
@@ -511,7 +512,23 @@ export interface BuildAppOptions {
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
-    logger: true,
+    logger: {
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          "req.headers.cookie",
+          "req.headers['set-cookie']",
+          "req.body.password",
+          "req.body.token",
+          "req.body.secret",
+          "req.body.apiKey",
+          "req.query.token",
+          "req.query.secret",
+          "req.query.apiKey",
+        ],
+        censor: REDACTION_MASK,
+      },
+    },
     requestIdHeader: "x-request-id",
     requestIdLogLabel: "requestId",
     genReqId: () => newId(),

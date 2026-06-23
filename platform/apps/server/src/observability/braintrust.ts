@@ -1,6 +1,7 @@
 import { initLogger, traced } from "braintrust";
 import { noopTracer, type AgentTracer } from "./tracing.js";
 import { egressAllowed } from "../config/egress.js";
+import { redactPotentialSecrets } from "../runtime/redact.js";
 
 /**
  * Braintrust-backed agent tracer (https://braintrust.dev). Every agent session becomes one span —
@@ -35,8 +36,8 @@ export function createBraintrustTracer(opts: { dataPrivacyMode?: boolean } = {})
         async (span) => {
           const outcome = await run();
           span.log({
-            input: trace.task,
-            output: outcome.result ?? "",
+            input: redactPotentialSecrets(trace.task),
+            output: redactPotentialSecrets(outcome.result ?? ""),
             metadata: {
               sessionId: trace.sessionId,
               workspaceId: trace.workspaceId,
@@ -62,7 +63,9 @@ export function createBraintrustTracer(opts: { dataPrivacyMode?: boolean } = {})
           const parentSpanId = await span.export();
           const outcome = await run({ parentSpanId });
           span.log({
-            input: `team run ${trace.teamRunId} (${trace.subtaskCount} subtasks)`,
+            input: redactPotentialSecrets(
+              "team run " + trace.teamRunId + " (" + trace.subtaskCount + " subtasks)",
+            ),
             output: `completed=${outcome.completed} failed=${outcome.failed}`,
             metadata: {
               teamRunId: trace.teamRunId,
