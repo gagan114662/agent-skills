@@ -24,7 +24,7 @@ export const TICKET_CHANNELS = ["email", "webhook", "widget"] as const;
 export const TICKET_STATUSES = ["open", "triaged", "awaiting_approval", "replied", "closed"] as const;
 export const VOICE_SENTIMENTS = ["positive", "neutral", "negative"] as const;
 export const VOICE_CHURN_RISKS = ["low", "medium", "high"] as const;
-export const VOICE_SOURCE_KINDS = ["support_ticket", "checkout_abandon", "cancellation", "nps"] as const;
+export const VOICE_SOURCE_KINDS = ["support_ticket", "checkout_abandon", "cancellation", "nps", "brand_mention"] as const;
 
 /** The inbound support inbox. One row per inbound message; deduped on (workspace, channel, source_ref). */
 export const supportTickets = pgTable(

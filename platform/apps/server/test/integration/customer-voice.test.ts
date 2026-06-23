@@ -152,6 +152,33 @@ describe("Customer Voice Loop (#114 — real Postgres + Redis, inbound-only, no 
     expect(typeof digest.headline).toBe("string");
   });
 
+  it("brand mentions appear in a sentiment feed and negative ones are flagged (#618)", async () => {
+    const app = await startApp();
+    const w = await seed(app);
+    const raw = JSON.stringify({
+      kind: "brand_mention",
+      sourceRef: `tweet-${newId()}`,
+      text: "ipop.ai is broken and confusing; can someone respond?",
+    });
+    const ingested = await app.inject({ method: "POST", url: `/voice/webhook/${w.workspaceId}`, headers: signed(raw), payload: raw });
+    expect(ingested.statusCode).toBe(201);
+
+    const feed = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/voice/mentions`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(feed).toHaveLength(1);
+    expect(feed[0]).toMatchObject({
+      sourceRef: JSON.parse(raw).sourceRef,
+      sentiment: "negative",
+      category: "bug",
+      needsResponse: true,
+    });
+  });
+
   it("feeds the #96 scorecard: post-launch voice replaces the problemSeverity dimension", async () => {
     const app = await startApp();
     const w = await seed(app);

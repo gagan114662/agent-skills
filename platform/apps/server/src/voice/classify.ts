@@ -1,6 +1,7 @@
 /**
  * Customer Voice Loop classifier (#114, ADR-0114) — the **pure**, deterministic core. Turns one inbound
- * feedback signal (a support message, a checkout abandon, a cancellation reason, or an NPS response) into
+ * feedback signal (a support message, a checkout abandon, a cancellation reason, an NPS response, or a
+ * brand mention) into
  * a structured `{ sentiment, churnRisk, category }` classification. No IO, no clock, no model call — so
  * the classification that becomes a `user_voice` evidence row is unit-tested in isolation (the #96
  * `rubric.ts` pattern). The LLM-drafted *reply* is a separate, #13-gated path; classification is rules.
@@ -17,7 +18,7 @@ export type VoiceCategory =
   | "support"
   | "other";
 /** Where a voice signal came from — the discriminator on the evidence row. */
-export type VoiceSourceKind = "support_ticket" | "checkout_abandon" | "cancellation" | "nps";
+export type VoiceSourceKind = "support_ticket" | "checkout_abandon" | "cancellation" | "nps" | "brand_mention";
 
 export interface FeedbackInput {
   sourceKind: VoiceSourceKind;

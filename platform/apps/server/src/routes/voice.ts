@@ -23,6 +23,7 @@ const FEEDBACK_KINDS: readonly Exclude<VoiceSourceKind, "support_ticket">[] = [
   "checkout_abandon",
   "cancellation",
   "nps",
+  "brand_mention",
 ];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,7 +113,7 @@ export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions
         }
         return reply
           .code(400)
-          .send({ error: "kind must be support | checkout_abandon | cancellation | nps" });
+          .send({ error: "kind must be support | checkout_abandon | cancellation | nps | brand_mention" });
       } catch (err) {
         if (err instanceof VoiceNotFoundError) return reply.code(404).send({ error: err.message });
         throw err;
@@ -180,5 +181,14 @@ export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     return reply.send(await service.digest(wid));
+  });
+
+  /** Classified brand mention feed (#618): negative/high-risk mentions carry `needsResponse=true`. */
+  app.get("/workspaces/:wid/voice/mentions", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    return reply.send(await service.brandMentions(wid));
   });
 }
