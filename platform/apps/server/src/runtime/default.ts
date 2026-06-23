@@ -317,6 +317,8 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // and the deployment default, so the launch gate validates the EFFECTIVE model against the models
     // known to resolve BEFORE spawning a real claude-code session — an unservable id (claude-fable-5)
     // throws an actionable ModelUnavailableError instead of crashing mid-run.
+    modelForAgent: async (workspaceId: string, agentMemberId: string) =>
+      (await getPersonaByAgentMember(workspaceId, agentMemberId))?.model ?? null,
     modelForWorkspace: (workspaceId: string) => getWorkspaceClaudeModel(workspaceId),
     envDefaultModel: process.env.ANTHROPIC_MODEL,
     // #230: route genuine session failures into the self-healing flywheel (see note above).

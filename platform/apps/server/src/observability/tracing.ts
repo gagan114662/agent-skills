@@ -12,6 +12,8 @@ export interface AgentSessionTrace {
   workspaceId: string;
   agentMemberId: string;
   runtime: RuntimeKind;
+  /** Effective launch model, when the runtime uses one. */
+  model?: string | null;
   /** The task/prompt the agent was launched with — recorded as the span input. */
   task: string;
   /** Team Mode: the run this session belongs to, so the dashboard can group it with its peers. */

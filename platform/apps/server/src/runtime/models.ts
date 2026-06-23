@@ -81,6 +81,7 @@ export class ModelUnavailableError extends Error {
  */
 export function effectiveModel(input: {
   sessionPinned?: string | null;
+  agentPicked?: string | null;
   workspacePicked?: string | null;
   envDefault?: string | null;
 }): string {
@@ -88,7 +89,13 @@ export function effectiveModel(input: {
     const t = (v ?? "").trim();
     return t.length > 0 ? t : null;
   };
-  return pick(input.sessionPinned) ?? pick(input.workspacePicked) ?? pick(input.envDefault) ?? DEFAULT_AGENT_MODEL;
+  return (
+    pick(input.sessionPinned) ??
+    pick(input.agentPicked) ??
+    pick(input.workspacePicked) ??
+    pick(input.envDefault) ??
+    DEFAULT_AGENT_MODEL
+  );
 }
 
 /**
@@ -151,11 +158,21 @@ export function assertModelLaunchable(model: string, env: NodeJS.ProcessEnv = pr
  * (i.e. clamps to itself, not the managed default) wins; if none does, the managed default is returned.
  */
 export function resolveLaunchModel(
-  input: { sessionPinned?: string | null; workspacePicked?: string | null; envDefault?: string | null },
+  input: {
+    sessionPinned?: string | null;
+    agentPicked?: string | null;
+    workspacePicked?: string | null;
+    envDefault?: string | null;
+  },
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const known = knownModels(env);
-  for (const candidate of [input.sessionPinned, input.workspacePicked, input.envDefault]) {
+  for (const candidate of [
+    input.sessionPinned,
+    input.agentPicked,
+    input.workspacePicked,
+    input.envDefault,
+  ]) {
     if (isLaunchable(candidate, env)) {
       return resolveManagedModel(candidate, known, DEFAULT_AGENT_MODEL);
     }
