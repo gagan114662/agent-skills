@@ -10,8 +10,13 @@
  *   - {@link buildAcquisitionBriefReader} — the founder-brief reader (AC5) that turns the external send
  *     receipts into the daily-brief acquisition section (spend + CAC + failing channels).
  *
- * No real ESP/ads/social adapters are wired here — every provider resolves to its dry-run (recorded-only)
- * default. Connecting a real provider is a deliberate future step behind the #192 credential vault.
+ * ONE real adapter is wired here (issue #395): the email channel's ESP is the real Postmark provider,
+ * behind the connect-once gate. It stays SAFE BY DEFAULT — `resolvePostmarkForWorkspace` returns
+ * `live:false` (→ the recorded-only dry-run sender, no network) unless the owner has (a) selected the
+ * Postmark ESP for the workspace, (b) connected the channel (the ledger shows `connected` with a verified
+ * From address), AND (c) set the owner-gated `POSTMARK_SERVER_TOKEN` secret. ads/social/SEO stay dry-run.
+ * A real send is NEVER autonomous: the dispatcher is only reached from `executeApprovedRequest`, i.e. after
+ * a human approves the parked `external.send` #13 request.
  */
 
 import { loadConfig } from "../config/loader.js";
@@ -20,6 +25,9 @@ import { defaultComplianceEnforcer } from "../legal/enforcer.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
 import { resolveAcquisitionCaps, type AcquisitionCaps } from "./caps.js";
 import { createAcquisitionProviders } from "./providers.js";
+import { createPostmarkEspProvider, type PostmarkEspResolution } from "./postmark-esp.js";
+import { getChannelConnection } from "../db/repositories/outbound-channels.js";
+import { getChannelDescriptor, LOWEST_RISK_CHANNEL } from "../outbound-channel/channel.js";
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
@@ -51,11 +59,36 @@ function footerInfoFor(workspaceId: string): FooterInfo | null {
   };
 }
 
-/** Build the production acquisition dispatcher over the real repos + dry-run providers. */
+/**
+ * Resolve, per workspace and at send time, whether a REAL Postmark send is connected (and from where).
+ * Returns `live:false` — the recorded-only dry-run sender, no network — unless ALL three owner-gated
+ * conditions hold: the workspace selected the Postmark ESP, the connect-once ledger shows `connected` with
+ * a verified From address, and the `POSTMARK_SERVER_TOKEN` secret is set. The token is read inline and
+ * never persisted here (mirrors `outbound-channel/service.ts`); only its presence is consulted.
+ */
+async function resolvePostmarkForWorkspace(workspaceId: string): Promise<PostmarkEspResolution> {
+  const caps = acquisitionCapsFor(workspaceId);
+  if (caps.espProvider !== "postmark") return { live: false, serverToken: "", from: "" };
+  const connection = await getChannelConnection(workspaceId, LOWEST_RISK_CHANNEL);
+  const connected = connection?.status === "connected";
+  const from = (connection?.fromAddress ?? "").trim();
+  const credentialEnvKey = getChannelDescriptor(LOWEST_RISK_CHANNEL)?.credentialEnvKey ?? "POSTMARK_SERVER_TOKEN";
+  const serverToken = (process.env[credentialEnvKey] ?? "").trim();
+  return { live: connected && from !== "" && serverToken !== "", serverToken, from };
+}
+
+/**
+ * Build the production acquisition dispatcher over the real repos + providers. The email ESP is the real,
+ * connect-once-gated Postmark provider (#395); ads/social/SEO stay dry-run (recorded-only). Default-safe:
+ * with nothing connected the Postmark provider resolves to the dry-run sender, so behavior is unchanged.
+ */
 export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
   return createAcquisitionDispatcher({
     resolveCaps: acquisitionCapsFor,
-    providers: createAcquisitionProviders({}),
+    providers: createAcquisitionProviders(
+      {},
+      { esp: createPostmarkEspProvider({ resolve: resolvePostmarkForWorkspace }) },
+    ),
     envelopes: dbEnvelopeStore,
     suppressions: dbSuppressionStore,
     receipts: dbReceiptStore,
