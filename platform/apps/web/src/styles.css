@@ -6505,3 +6505,389 @@ select:focus-visible {
     animation: none;
   }
 }
+
+/* ============================================================================
+   #784 — Everyday workspace shell. The linzumi-calm, chat-first redesign, fully
+   SCOPED under `.everyday-shell` with its own token block so it touches no global
+   token and stays parallel-merge-safe. Near-black canvas, ONE coral pop used
+   sparingly (the primary action + one highlight), Instrument Serif headlines +
+   Inter body (two weights), generous whitespace, calm intentional motion.
+   ========================================================================== */
+.everyday-shell {
+  /* #784 tokens — local only. */
+  --ed-canvas: #0f0f12;
+  --ed-surface: #17171c;
+  --ed-raised: #1e1e25;
+  --ed-border: rgba(255, 255, 255, 0.08);
+  --ed-text: #f4f3f1;
+  --ed-text-dim: #9a9aa2;
+  --ed-pop: #ff5470; /* the single coral pop */
+  --ed-on-pop: #2a0a12; /* text on the pop */
+  --ed-radius: 16px;
+  --ed-gap: 28px;
+
+  min-height: 100vh;
+  background: var(--ed-canvas);
+  color: var(--ed-text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+}
+
+.everyday-shell__main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 72px 28px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 56px; /* generous whitespace between surfaces */
+}
+
+/* Editorial serif headlines (greetings + section heads). */
+.everyday-serif {
+  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.everyday-eyebrow {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+}
+
+/* ---- The door: greeting + the one input ---------------------------------- */
+.everyday-door__greeting {
+  margin: 0 0 24px;
+  font-size: clamp(34px, 6vw, 52px);
+  color: var(--ed-text);
+}
+
+.everyday-composer {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.everyday-composer__input {
+  flex: 1;
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  color: var(--ed-text);
+  font: inherit;
+  padding: 16px 18px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.everyday-composer__input::placeholder {
+  color: var(--ed-text-dim);
+}
+.everyday-composer__input:focus {
+  border-color: var(--ed-pop);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ed-pop) 22%, transparent);
+}
+
+/* ---- Buttons. The pop is reserved for the primary action. ---------------- */
+.everyday-btn {
+  font: inherit;
+  font-weight: 500;
+  border-radius: var(--ed-radius);
+  padding: 14px 22px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 140ms var(--pop-ease, ease), background 140ms ease, border-color 140ms ease;
+}
+.everyday-btn:active {
+  transform: scale(0.98);
+}
+.everyday-btn--pop {
+  background: var(--ed-pop);
+  color: var(--ed-on-pop);
+}
+.everyday-btn--pop:hover {
+  background: color-mix(in srgb, var(--ed-pop) 88%, white);
+}
+.everyday-btn--ghost {
+  background: transparent;
+  color: var(--ed-text-dim);
+  border-color: var(--ed-border);
+}
+.everyday-btn--ghost:hover {
+  color: var(--ed-text);
+  border-color: color-mix(in srgb, var(--ed-text) 24%, transparent);
+}
+.everyday-btn--stop {
+  background: transparent;
+  color: var(--ed-pop);
+  border-color: color-mix(in srgb, var(--ed-pop) 55%, transparent);
+}
+
+/* ---- Agent monogram ------------------------------------------------------ */
+.everyday-agent {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ed-text);
+  background: var(--ed-raised);
+  border: 1px solid var(--ed-border);
+}
+
+/* ---- North star: the only scoreboard that matters ------------------------ */
+.everyday-northstar__metrics {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+.everyday-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.everyday-metric__value {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--ed-text);
+}
+.everyday-metric__label {
+  font-size: 13px;
+  color: var(--ed-text-dim);
+}
+.everyday-metric__delta {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ed-pop); /* the one highlight, used sparingly */
+}
+.everyday-northstar__note {
+  margin: 18px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 14px;
+}
+
+/* ---- Thread: calm, inline deliverables ----------------------------------- */
+.everyday-thread__heading,
+.everyday-approvals__heading,
+.everyday-log__heading,
+.everyday-safety__title {
+  margin: 0 0 18px;
+  font-size: 28px;
+  color: var(--ed-text);
+}
+.everyday-thread__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ed-gap);
+}
+.everyday-msg {
+  display: flex;
+  gap: 14px;
+}
+.everyday-msg__body {
+  flex: 1;
+  min-width: 0;
+}
+.everyday-msg__meta {
+  margin: 0 0 6px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.everyday-msg__agent {
+  font-weight: 500;
+  font-size: 14px;
+}
+.everyday-msg__at {
+  font-size: 12px;
+  color: var(--ed-text-dim);
+}
+.everyday-msg__text {
+  margin: 0;
+  color: var(--ed-text);
+}
+
+/* Inline deliverables (drafts + diffs). */
+.everyday-deliverable {
+  margin-top: 12px;
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 16px 18px;
+}
+.everyday-deliverable__label,
+.everyday-deliverable__body {
+  margin: 0;
+}
+.everyday-deliverable__label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+  margin-bottom: 10px;
+}
+.everyday-deliverable__body {
+  color: var(--ed-text);
+}
+.everyday-diff {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border-left: 2px solid var(--ed-border);
+}
+.everyday-diff--before {
+  color: var(--ed-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ed-text-dim) 60%, transparent);
+  margin-bottom: 6px;
+}
+.everyday-diff--after {
+  color: var(--ed-text);
+  border-left-color: var(--ed-pop);
+  background: color-mix(in srgb, var(--ed-pop) 7%, transparent);
+}
+
+/* Empty states + nudges (the voice lives here). */
+.everyday-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.everyday-empty__line {
+  margin: 0;
+  color: var(--ed-text);
+  font-size: 16px;
+}
+.everyday-empty__nudge {
+  margin: 0;
+  color: var(--ed-text-dim);
+}
+
+/* ---- Approval queue: one-glance ship decisions --------------------------- */
+.everyday-approvals__subhead,
+.everyday-log__subhead {
+  margin: -8px 0 22px;
+  color: var(--ed-text-dim);
+}
+.everyday-approvals__list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.everyday-card {
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 22px;
+}
+.everyday-card__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.everyday-card__head .everyday-eyebrow {
+  margin-bottom: 4px;
+}
+.everyday-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ed-text);
+}
+.everyday-card__consequence {
+  margin: 14px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 14px;
+}
+.everyday-card__money {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: var(--ed-text);
+  background: color-mix(in srgb, var(--ed-pop) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ed-pop) 40%, transparent);
+  font-size: 14px;
+}
+.everyday-card__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.everyday-celebrate {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: var(--ed-radius);
+  background: color-mix(in srgb, var(--ed-pop) 14%, transparent);
+  color: var(--ed-text);
+  animation: swell-pop 320ms var(--pop-ease, ease) both;
+}
+
+/* ---- Transparency log: quiet, timestamped, linked ------------------------ */
+.everyday-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.everyday-log__row {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-top: 1px solid var(--ed-border);
+  font-size: 14px;
+}
+.everyday-log__row:last-child {
+  border-bottom: 1px solid var(--ed-border);
+}
+.everyday-log__when {
+  flex: 0 0 auto;
+  width: 78px;
+  color: var(--ed-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.everyday-log__action {
+  flex: 1;
+  color: var(--ed-text);
+}
+.everyday-log__link {
+  color: var(--ed-pop);
+  text-decoration: none;
+}
+.everyday-log__link:hover {
+  text-decoration: underline;
+}
+
+/* ---- Safety: money gate + always-on kill switch, as reassurance ---------- */
+.everyday-safety {
+  background: var(--ed-surface);
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 26px;
+}
+.everyday-safety__body {
+  margin: 0 0 18px;
+  color: var(--ed-text-dim);
+  max-width: 52ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .everyday-btn,
+  .everyday-celebrate {
+    transition: none;
+    animation: none;
+  }
+}
