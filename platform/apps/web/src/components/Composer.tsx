@@ -1,5 +1,5 @@
 /** Message composer with @mention autocomplete. Used for channel posts and (compact) thread replies. */
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useStore } from "../store/StoreContext.js";
 import { activeMentionQuery, applyMentionSelection } from "../store/mentions.js";
 import { popConfetti } from "../lib/confetti.js";
@@ -34,6 +34,7 @@ export interface ComposerProps {
 export function Composer({ placeholder, onSubmit, compact, queue, draftKey, prefill }: ComposerProps): React.JSX.Element {
   const store = useStore();
   const ref = useRef<HTMLTextAreaElement>(null);
+  const mentionListId = useId();
   const [text, setText] = useState(() => (draftKey === undefined ? "" : store.getDraft(draftKey)));
   const [options, setOptions] = useState<MemberHit[]>([]);
   const [open, setOpen] = useState(false);
@@ -198,7 +199,7 @@ export function Composer({ placeholder, onSubmit, compact, queue, draftKey, pref
         />
       )}
       {open && options.length > 0 && (
-        <ul className="mention-menu" role="listbox" aria-label="Mention a member">
+        <ul id={mentionListId} className="mention-menu" role="listbox" aria-label="Mention a member">
           {options.map((m, i) => {
             // Agents wear their department spectrum hue (#168 #3, #145 criterion #4); humans don't tint.
             const deptColor = m.kind === "agent" ? agentColor(m.displayName) : undefined;
@@ -207,6 +208,7 @@ export function Composer({ placeholder, onSubmit, compact, queue, draftKey, pref
                 <button
                   type="button"
                   role="option"
+                  id={`${mentionListId}-${m.id}`}
                   aria-selected={i === active}
                   className={`mention-option${i === active ? " mention-option--active" : ""}`}
                   onMouseDown={(e) => {
@@ -236,6 +238,11 @@ export function Composer({ placeholder, onSubmit, compact, queue, draftKey, pref
           rows={compact ? 1 : 2}
           onChange={(e) => onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           onKeyDown={onKeyDown}
+          aria-label="Message composer"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={open ? mentionListId : undefined}
+          aria-activedescendant={open && options[active] ? `${mentionListId}-${options[active].id}` : undefined}
         />
         {queue && (
           <>
