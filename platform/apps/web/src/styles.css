@@ -695,6 +695,77 @@ select:focus-visible {
   max-width: 100%;
   overflow-x: hidden;
 }
+.workspace-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-2) 94%, var(--danger));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  color: var(--text);
+}
+.workspace-toast__body {
+  min-width: 0;
+}
+.workspace-toast__body strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.workspace-toast__body p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.workspace-toast__details,
+.workspace-toast__dismiss {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+.workspace-toast__details {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  text-decoration: none;
+}
+.workspace-toast__details:hover {
+  text-decoration: underline;
+}
+.workspace-toast__dismiss {
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+}
+.workspace-toast__dismiss:hover {
+  border-color: var(--danger);
+}
+@media (max-width: 640px) {
+  .workspace-toast {
+    left: 16px;
+    right: 16px;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .workspace-toast__details,
+  .workspace-toast__dismiss {
+    justify-content: center;
+  }
+}
 
 /* ---- ipop experience system onboarding (#784, default-OFF owner-first) ---- */
 .experience-door,

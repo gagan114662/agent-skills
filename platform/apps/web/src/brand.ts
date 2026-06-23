@@ -1041,6 +1041,12 @@ export const CONSOLE = {
     success: "You're upgraded — your new plan and cap are live. Thanks for backing the fleet. 🎉",
     dismiss: "Dismiss",
   },
+  /** Persistent error toast (#658): never auto-dismisses; the owner gets details and an explicit close. */
+  errorToast: {
+    title: "Something needs attention",
+    details: "Details",
+    dismiss: "Dismiss error",
+  },
   /** Status-grammar words used on rows + cards. */
   status: { yourYes: "your yes", running: "working", shipped: "shipped", idle: "idle", sending: "sending" },
   /** Card chrome. The ▲ marks an approval-needed card (its ask line); the card opens the drawer. */
