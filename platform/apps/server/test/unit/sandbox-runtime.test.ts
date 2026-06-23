@@ -47,6 +47,25 @@ class FakeSandbox implements SandboxInstance {
   }
 }
 
+/** A sandbox whose teardown calls (snapshot/stop) never resolve — the prod wedged-teardown hang (#394). */
+class HangingTeardownSandbox implements SandboxInstance {
+  readonly id = "sbx_wedged";
+  snapshotStarted = false;
+  stopStarted = false;
+
+  run(): Promise<{ exitCode: number }> {
+    return new Promise(() => {}); // stays running until torn down (which never completes)
+  }
+  snapshot(): Promise<string> {
+    this.snapshotStarted = true;
+    return new Promise<string>(() => {}); // wedged cloud call
+  }
+  stop(): Promise<void> {
+    this.stopStarted = true;
+    return new Promise<void>(() => {}); // wedged cloud call
+  }
+}
+
 class FakeProvider implements SandboxProvider {
   lastCreate?: SandboxCreateOpts;
   constructor(private readonly sandbox: FakeSandbox) {}
@@ -114,6 +133,23 @@ describe("SandboxRuntime (#25 — provision → run → snapshot → teardown, a
     await running.cancel("canceled");
     expect(sandbox.snapshots).toBe(1);
     expect(sandbox.stops).toBe(1);
+  });
+
+  it("#394: a wedged teardown (snapshot/stop hang) still settles wait()/cancel() within the bound", async () => {
+    // snapshot() and stop() never resolve — the prod hang where the cloud teardown call wedges and
+    // leaves both wait() and cancel() stuck forever. The teardown bound must still resolve done().
+    const sandbox = new HangingTeardownSandbox();
+    const running = await new SandboxRuntime(new FakeProvider(sandbox), {
+      teardownTimeoutMs: 20,
+    }).start(job(), noopHooks);
+
+    await running.cancel("timeout"); // would hang forever before the fix
+    const result = await running.wait();
+
+    expect(result.status).toBe("timeout"); // reaped with the reaper's reason despite the wedge
+    expect(result.exitCode).toBeNull();
+    expect(sandbox.snapshotStarted).toBe(true); // it DID try a clean teardown first
+    expect(sandbox.stopStarted).toBe(true);
   });
 
   it("injects per-tenant secrets at provision, and the snapshot carries none of them", async () => {

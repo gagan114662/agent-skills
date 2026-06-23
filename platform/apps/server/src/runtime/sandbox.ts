@@ -66,6 +66,40 @@ export interface SandboxRuntimeOptions {
    * sandbox (or a {@link AgentJob.snapshotId} resume), exactly as before.
    */
   source?: SandboxGitSource;
+  /**
+   * #394: hard upper bound (ms) on each teardown cloud call (`snapshot()` / `stop()`). These used to
+   * be awaited with no bound, so a hung provider call left `teardown()` stuck before `resolveDone()` —
+   * meaning BOTH `wait()` and `cancel()` (which calls the same `teardown()`) never settled and the run
+   * hung in `running` forever. Bounding each call guarantees `done` always resolves and `cancel()`
+   * always returns, so the SessionManager (and its #394 reap deadline) can finalize. Absent ⇒
+   * {@link DEFAULT_TEARDOWN_TIMEOUT_MS}.
+   */
+  teardownTimeoutMs?: number;
+}
+
+/** #394: default per-call teardown bound — generous enough for a real snapshot+stop, short enough that a hung call can't wedge a run. */
+export const DEFAULT_TEARDOWN_TIMEOUT_MS = 10_000;
+
+/**
+ * Race a teardown cloud call against a bound (#394). REJECTS on timeout so the caller's existing
+ * best-effort try/catch treats a wedged call exactly like a failed one and proceeds to reap. The
+ * timer is unref'd + cleared so it never keeps the event loop alive or fires after the call settles.
+ */
+function boundTeardownCall<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`sandbox ${label} exceeded ${ms}ms teardown bound`)), ms);
+    timer.unref?.();
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }
 
 export interface SandboxInstance {
@@ -108,7 +142,11 @@ export class SandboxRuntime implements AgentRuntime {
       cwd: job.cwd,
       snapshotId: job.snapshotId,
     });
-    const session = new SandboxSession(job.sessionId, sandbox);
+    const session = new SandboxSession(
+      job.sessionId,
+      sandbox,
+      this.options.teardownTimeoutMs ?? DEFAULT_TEARDOWN_TIMEOUT_MS,
+    );
     session.begin(job.command, job.args, hooks);
     return session;
   }
@@ -124,6 +162,7 @@ class SandboxSession implements RunningSession {
   constructor(
     readonly sessionId: string,
     private readonly sandbox: SandboxInstance,
+    private readonly teardownTimeoutMs: number = DEFAULT_TEARDOWN_TIMEOUT_MS,
   ) {
     this.sandboxId = sandbox.id;
     this.done = new Promise<RuntimeResult>((resolve) => {
@@ -158,14 +197,16 @@ class SandboxSession implements RunningSession {
     this.tornDown = true;
     let snapshotId: string | undefined;
     try {
-      snapshotId = await this.sandbox.snapshot();
+      // #394: bounded so a wedged provider call can't stall teardown before resolveDone() — a hung
+      // snapshot is treated exactly like a failed one (best-effort) and the run still reaps.
+      snapshotId = await boundTeardownCall(this.sandbox.snapshot(), this.teardownTimeoutMs, "snapshot");
     } catch {
-      /* snapshot is best-effort; teardown must still reap */
+      /* snapshot is best-effort (failed OR exceeded the bound); teardown must still reap */
     }
     try {
-      await this.sandbox.stop();
+      await boundTeardownCall(this.sandbox.stop(), this.teardownTimeoutMs, "stop");
     } catch {
-      /* already gone */
+      /* already gone OR exceeded the bound — the run is still finalized below */
     }
     this.resolveDone({ status: statusForReason(reason), exitCode, snapshotId });
   }

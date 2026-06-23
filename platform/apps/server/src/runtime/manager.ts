@@ -26,6 +26,7 @@ import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
+import { statusForReason } from "./types.js";
 import type { AutoModelDecision, AutoModelResolver } from "./auto-model.js";
 import {
   renderSessionOutcome,
@@ -168,6 +169,17 @@ export interface SessionManagerDeps {
    * factor 3, capped at 10s). Injected mainly so tests can drive a near-instant schedule deterministically.
    */
   sessionRetryBackoff?: BackoffPolicy;
+  /**
+   * #394: the grace window (ms) the run loop gives `RunningSession.cancel()` to tear down cleanly
+   * after a reaper (idle / wall-clock) fires before it finalizes the run WITHOUT waiting on the
+   * runtime. The reaper relies on `wait()` resolving, but a wedged teardown (e.g. a sandbox
+   * `snapshot()`/`stop()` cloud call that hangs) leaves BOTH `wait()` and `cancel()` stuck, so the
+   * loop would block on `await running.wait()` forever and the row would stay `running` until only
+   * the cross-process fleet watchdog reaps it ("the run hung"). Racing `wait()` against this bounded
+   * deadline guarantees every reaped run reaches `finalize()` in bounded time. Absent ⇒
+   * {@link DEFAULT_REAP_GRACE_MS}; tests inject a tiny value to exercise the path without real delay.
+   */
+  reapGraceMs?: number;
   /** Optional observability seam: traces each session as a span. Defaults to a no-op. */
   tracer?: AgentTracer;
   /**
@@ -363,6 +375,15 @@ const RESULT_MAX_CHARS = 4000;
  * watchdog stale cutoff (minutes), so detection is unaffected.
  */
 const HEARTBEAT_MIN_INTERVAL_MS = 10_000;
+
+/**
+ * #394: default grace the run loop gives a reaper's `cancel()` to tear down cleanly before it
+ * finalizes WITHOUT the runtime — the upper bound on how long a reaped run can stay un-finalized
+ * even if `wait()`/`cancel()` are wedged. Generous enough for a real sandbox snapshot+stop to land
+ * (so the normal path keeps its exit code + snapshot), short enough that a hung teardown can never
+ * leave a run stalled for minutes. See {@link SessionManagerDeps.reapGraceMs}.
+ */
+export const DEFAULT_REAP_GRACE_MS = 15_000;
 
 /** Fallback short caps for a fast turn (#417) when the env overrides are unset: 60s idle / 180s wall. */
 const FAST_IDLE_MS_DEFAULT = 60_000;
@@ -844,21 +865,44 @@ export class SessionManager {
     // --- reaper: wall-clock + idle (no-output) timers ---
     // The wall-clock timer spans the WHOLE session (it is not reset between #436 retries), so the overall
     // lifetime stays bounded; `reaped` short-circuits any pending retry the instant a reaper fires.
+    //
+    // #394: the reaper used to only call `cancel()` and trust `wait()` to resolve. A wedged teardown
+    // (a sandbox `snapshot()`/`stop()` cloud call that hangs) leaves BOTH `wait()` and `cancel()` stuck,
+    // so the loop would block on `await running.wait()` forever and the run would hang in `running`. The
+    // `reapDeadline` promise closes that: when a reaper fires it calls `cancel()` (a clean-teardown
+    // chance), then arms a bounded grace timer; if `wait()` hasn't resolved by then the deadline resolves
+    // with the synthetic reap result so the loop ALWAYS finalizes in bounded time. `wait()` never rejects
+    // and is left to settle in the background, so racing it can never drop a real result on the floor.
+    const reapGraceMs = this.deps.reapGraceMs ?? DEFAULT_REAP_GRACE_MS;
     let reaped = false;
+    let graceTimer: NodeJS.Timeout | undefined;
+    let resolveReap: ((r: RuntimeResult) => void) | undefined;
+    const reapDeadline = new Promise<RuntimeResult>((resolve) => {
+      resolveReap = resolve;
+    });
+    const fireReap = (reason: "idle" | "timeout"): void => {
+      if (reaped) return; // first reaper to fire wins; the second is a no-op
+      reaped = true;
+      log.warn(
+        reason === "idle" ? { idleMs: opts.caps.idleMs } : { wallClockMs: opts.caps.wallClockMs },
+        reason === "idle" ? "agent session idle-reaped" : "agent session wall-clock reaped",
+      );
+      void runningRef?.cancel(reason).catch(() => {}); // best-effort clean teardown; never throws into the timer
+      graceTimer = setTimeout(() => {
+        log.error(
+          { reason, graceMs: reapGraceMs },
+          "agent session reap grace elapsed; finalizing without runtime teardown (wedged wait/cancel)",
+        );
+        resolveReap?.({ status: statusForReason(reason), exitCode: null });
+      }, reapGraceMs);
+      graceTimer.unref?.();
+    };
     let idleTimer: NodeJS.Timeout | undefined;
     const resetIdle = (): void => {
       if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        reaped = true;
-        log.warn({ idleMs: opts.caps.idleMs }, "agent session idle-reaped");
-        void runningRef?.cancel("idle");
-      }, opts.caps.idleMs);
+      idleTimer = setTimeout(() => fireReap("idle"), opts.caps.idleMs);
     };
-    const wallTimer = setTimeout(() => {
-      reaped = true;
-      log.warn({ wallClockMs: opts.caps.wallClockMs }, "agent session wall-clock reaped");
-      void runningRef?.cancel("timeout");
-    }, opts.caps.wallClockMs);
+    const wallTimer = setTimeout(() => fireReap("timeout"), opts.caps.wallClockMs);
 
     let runningRef: RunningSession | undefined;
     let result: RuntimeResult = { status: "failed", exitCode: null };
@@ -914,7 +958,9 @@ export class SessionManager {
           observeSpinup(this.deps.runtime.kind, (Date.now() - attemptStart) / 1000);
           resetIdle();
           await this.deps.store.markRunning(session.id, running.sandboxId);
-          result = await running.wait();
+          // #394: race the runtime's wait() against the bounded reap deadline so a wedged
+          // teardown (wait()/cancel() never settling) can never hang the loop here.
+          result = await Promise.race([running.wait(), reapDeadline]);
         } catch (attemptErr) {
           // `start()`/`markRunning()` threw: a pre-process death (no exit code). Tear down any started
           // child best-effort so a retry never leaves an orphan running, then treat it as a null-exit failure.
@@ -948,6 +994,7 @@ export class SessionManager {
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(wallTimer);
+      if (graceTimer) clearTimeout(graceTimer); // #394: drop the reap grace timer on every teardown path
       this.running.delete(session.id);
       // #71: free the admission slot on every teardown path (success, failure, reap, cancel) so a
       // crashed/timed-out session never permanently consumes a tenant's concurrency budget.
