@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import type { PreviewAnnotation } from "@reload/shared";
 import type { AgentSessionSummary } from "../../api/types.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
+import { CopyButton } from "../CopyButton.js";
 
 export function RunPanel(): React.JSX.Element {
   const { run, activeChannelId } = useAppState();
@@ -231,10 +232,17 @@ function RunPreview({ annotateMode }: { annotateMode: boolean }): React.JSX.Elem
 
 function RunLogs({ logs }: { logs: string[] }): React.JSX.Element | null {
   if (logs.length === 0) return null;
+  const text = logs.join("\n");
   return (
-    <pre className="run__logs" aria-label="Run logs">
-      {logs.join("\n")}
-    </pre>
+    <section className="copyblock">
+      <div className="copyblock__head">
+        <span>Run logs</span>
+        <CopyButton text={text} />
+      </div>
+      <pre className="run__logs" aria-label="Run logs">
+        {text}
+      </pre>
+    </section>
   );
 }
 

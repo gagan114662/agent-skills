@@ -4,6 +4,7 @@
  * reviewable without a heavyweight diff library. Per-file stats render above the patch.
  */
 import type { DiffFileStat } from "@reload/shared";
+import { CopyButton } from "../CopyButton.js";
 
 type LineKind = "meta" | "hunk" | "add" | "del" | "context";
 
@@ -30,21 +31,24 @@ export function DiffView({
   const lines = patch.replace(/\n$/, "").split("\n");
   return (
     <div className="diff">
-      <ul className="diff__files" aria-label="Changed files">
-        {files.map((f) => (
-          <li key={f.path} className="diff__file">
-            <span className="diff__file-path">{f.path}</span>
-            {f.binary ? (
-              <span className="diff__file-bin">binary</span>
-            ) : (
-              <span className="diff__file-stat">
-                <span className="diff__add">+{f.additions ?? 0}</span>{" "}
-                <span className="diff__del">-{f.deletions ?? 0}</span>
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className="copyblock__head diff__head">
+        <ul className="diff__files" aria-label="Changed files">
+          {files.map((f) => (
+            <li key={f.path} className="diff__file">
+              <span className="diff__file-path">{f.path}</span>
+              {f.binary ? (
+                <span className="diff__file-bin">binary</span>
+              ) : (
+                <span className="diff__file-stat">
+                  <span className="diff__add">+{f.additions ?? 0}</span>{" "}
+                  <span className="diff__del">-{f.deletions ?? 0}</span>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <CopyButton text={patch} />
+      </div>
       <pre className="diff__patch" aria-label="Unified diff">
         {lines.map((line, i) => {
           const kind = classify(line);

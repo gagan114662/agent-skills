@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import type { DeploymentDto } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { VOICE } from "../../brand.js";
+import { CopyButton } from "../CopyButton.js";
 import { EmptyState } from "../EmptyState.js";
 
 export function DeployPanel(): React.JSX.Element {
@@ -105,10 +106,17 @@ function DeployStage(): React.JSX.Element {
 
 function DeployLogs({ logs }: { logs: string[] }): React.JSX.Element | null {
   if (logs.length === 0) return null;
+  const text = logs.join("\n");
   return (
-    <pre className="deploy__logs" aria-label="Deploy logs">
-      {logs.join("\n")}
-    </pre>
+    <section className="copyblock">
+      <div className="copyblock__head">
+        <span>Deploy logs</span>
+        <CopyButton text={text} />
+      </div>
+      <pre className="deploy__logs" aria-label="Deploy logs">
+        {text}
+      </pre>
+    </section>
   );
 }
 
