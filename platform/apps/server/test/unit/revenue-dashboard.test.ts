@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildJourneys } from "../../src/analytics/revenue/attribution.js";
-import { buildDashboard, dayKeyUtc, MICROS_PER_CENT } from "../../src/analytics/revenue/dashboard.js";
+import { buildDashboard, dayKeyUtc, monthKeyUtc, MICROS_PER_CENT } from "../../src/analytics/revenue/dashboard.js";
 import type { DailySpend } from "../../src/analytics/revenue/dashboard.js";
 import type { Payment, PipelineEntry, Touch } from "../../src/analytics/revenue/types.js";
 
@@ -102,5 +102,48 @@ describe("buildDashboard — the glanceable revenue/pipeline/spend view (#615)",
     expect(t.roi).toBeNull();
     expect(t.pipelineOpenCents).toBe(0);
     expect(t.netMicros).toBe(35_000 * MICROS_PER_CENT);
+  });
+
+  it("shows monthly retention cohorts and flags churn spikes (#621)", () => {
+    const jan = Date.parse("2026-01-15T12:00:00Z");
+    const feb = Date.parse("2026-02-15T12:00:00Z");
+    const cohortPayments: Payment[] = [
+      { customerRef: "a", providerEventId: "jan-a", amountCents: 10_000, currency: "usd", paidAtMs: jan },
+      { customerRef: "b", providerEventId: "jan-b", amountCents: 10_000, currency: "usd", paidAtMs: jan },
+      { customerRef: "a", providerEventId: "feb-a", amountCents: 8_000, currency: "usd", paidAtMs: feb },
+    ];
+
+    const d = buildDashboard(
+      { journeys: [], payments: cohortPayments, currency: "usd", model: "linear" },
+      { sinceMs: null, untilMs: feb, nowMs: feb },
+    );
+
+    expect(d.retention.cohorts).toHaveLength(1);
+    expect(d.retention.cohorts[0]).toMatchObject({
+      cohortMonth: monthKeyUtc(jan),
+      customers: 2,
+      revenueCents: 20_000,
+    });
+    expect(d.retention.cohorts[0].points).toEqual([
+      {
+        month: "2026-01",
+        monthOffset: 0,
+        activeCustomers: 2,
+        revenueCents: 20_000,
+        customerRetention: 1,
+        revenueRetention: 1,
+        churnSpike: false,
+      },
+      {
+        month: "2026-02",
+        monthOffset: 1,
+        activeCustomers: 1,
+        revenueCents: 8_000,
+        customerRetention: 0.5,
+        revenueRetention: 0.4,
+        churnSpike: true,
+      },
+    ]);
+    expect(d.retention.churnSpikes).toEqual([{ cohortMonth: "2026-01", month: "2026-02", drop: 0.5 }]);
   });
 });
