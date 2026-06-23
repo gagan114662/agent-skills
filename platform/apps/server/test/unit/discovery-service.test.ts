@@ -3,6 +3,7 @@ import {
   DiscoveryService,
   DiscoveryValidationError,
   type GrowthEmitter,
+  type OutcomeStore,
   type PipelineStore,
   type PqlStore,
   type SignalDefStore,
@@ -13,6 +14,7 @@ import type {
   PipelineEntryRecord,
   PqlEventRecord,
   SignalDefRecord,
+  ProspectOutcomeRecord,
 } from "../../src/discovery/types.js";
 import type { DiscoveryCaps } from "../../src/discovery/caps.js";
 import {
@@ -41,6 +43,7 @@ function makeHarness() {
   const defs: SignalDefRecord[] = [];
   const pqls: PqlEventRecord[] = [];
   const pipeline: PipelineEntryRecord[] = [];
+  const outcomes: ProspectOutcomeRecord[] = [];
   const emitted: EmittedGrowth[] = [];
 
   const signalStore: SignalStore = {
@@ -135,6 +138,32 @@ function makeHarness() {
     },
   };
 
+  const outcomeStore: OutcomeStore = {
+    async upsert(i) {
+      const existing = outcomes.find(
+        (o) =>
+          o.workspaceId === i.workspaceId &&
+          o.prospectKey === i.prospectKey &&
+          o.ideaId === i.ideaId,
+      );
+      if (existing) {
+        Object.assign(existing, i, { updatedAt: i.closedAt });
+        return existing;
+      }
+      const rec: ProspectOutcomeRecord = {
+        id: nextId(),
+        createdAt: i.closedAt,
+        updatedAt: i.closedAt,
+        ...i,
+      };
+      outcomes.push(rec);
+      return rec;
+    },
+    async list(w, idea) {
+      return outcomes.filter((o) => o.workspaceId === w && (idea === undefined || o.ideaId === idea));
+    },
+  };
+
   const emitter: GrowthEmitter = {
     async record(workspaceId, input) {
       emitted.push({ workspaceId, ...input });
@@ -153,12 +182,13 @@ function makeHarness() {
     defs: defStore,
     pqls: pqlStore,
     pipeline: pipelineStore,
+    outcomes: outcomeStore,
     growth: emitter,
     caps: () => caps,
     now: () => new Date(NOW),
   });
 
-  return { service, signals, defs, pqls, pipeline, emitted };
+  return { service, signals, defs, pqls, pipeline, outcomes, emitted };
 }
 
 describe("DiscoveryService.ingestSignal (signal → PQL event + growth funnel emission)", () => {
@@ -229,6 +259,47 @@ describe("DiscoveryService.queue / pipelineSummary (read-only surfaces)", () => 
     expect(top.likelihoodLabel).toBe("UNVERIFIED");
     expect(top.qualifyingDefs.length).toBeGreaterThanOrEqual(1);
     expect(top.qualifyingSignalKinds.length).toBeGreaterThan(0);
+  });
+
+  it("records a closed prospect outcome with a reason and rolls reason trends up", async () => {
+    const h = makeHarness();
+    await h.service.recordProspectOutcome("ws-1", {
+      prospectKey: "vp-eng",
+      outcome: "won",
+      reason: "security proof landed",
+      source: "sales-call",
+    });
+    await h.service.recordProspectOutcome("ws-1", {
+      prospectKey: "vp-finance",
+      outcome: "lost",
+      reason: "budget freeze",
+      source: "sales-call",
+    });
+    await h.service.recordProspectOutcome("ws-1", {
+      prospectKey: "vp-ops",
+      outcome: "lost",
+      reason: "budget freeze",
+      source: "sales-call",
+    });
+
+    expect(h.outcomes).toHaveLength(3);
+    await expect(
+      h.service.recordProspectOutcome("ws-1", {
+        prospectKey: "no-reason",
+        outcome: "lost",
+        reason: " ",
+      }),
+    ).rejects.toBeInstanceOf(DiscoveryValidationError);
+
+    const trends = await h.service.outcomeTrends("ws-1");
+    expect(trends.totalClosed).toBe(3);
+    expect(trends.byOutcome.find((r) => r.outcome === "won")?.count).toBe(1);
+    expect(trends.byOutcome.find((r) => r.outcome === "lost")?.count).toBe(2);
+    expect(trends.byReason[0]).toMatchObject({
+      outcome: "lost",
+      reason: "budget freeze",
+      count: 2,
+    });
   });
 
   it("summarizes the 5-stage GTM pipeline with the PQL count at the top", async () => {

@@ -139,6 +139,53 @@ export async function discoveryRoutes(
     return service.pipelineSummary(wid, q.ideaId);
   });
 
+  /** Close out a meaningful prospect with a concrete win/loss reason (#612). */
+  app.post("/workspaces/:wid/discovery/outcomes", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+
+    const body = (req.body ?? {}) as {
+      ideaId?: string | null;
+      prospectKey?: string;
+      outcome?: string;
+      reason?: string;
+      source?: string;
+      externalRef?: string | null;
+      closedAt?: string;
+      detail?: Record<string, unknown>;
+    };
+    try {
+      const outcome = await service.recordProspectOutcome(wid, {
+        ideaId: body.ideaId ?? null,
+        prospectKey: body.prospectKey ?? "",
+        outcome: body.outcome ?? "",
+        reason: body.reason ?? "",
+        source: body.source,
+        externalRef: body.externalRef ?? null,
+        closedAt: body.closedAt ? new Date(body.closedAt) : undefined,
+        detail: body.detail,
+      });
+      return reply.code(201).send(outcome);
+    } catch (err) {
+      if (err instanceof DiscoveryValidationError) {
+        return reply.code(400).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  /** Win/loss reason trends for strategist decisions (#612). */
+  app.get("/workspaces/:wid/discovery/outcomes/trends", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const q = (req.query ?? {}) as { ideaId?: string };
+    return service.outcomeTrends(wid, q.ideaId);
+  });
+
   /** The PQL event stream (the stable seam #223/#225 consume). */
   app.get("/workspaces/:wid/discovery/pql-events", async (req, reply) => {
     const id = await requireIdentity(req, reply);

@@ -2,6 +2,7 @@ import {
   DISCOVERY_DEF_KINDS,
   DISCOVERY_SIGNAL_KINDS,
   GTM_STAGES,
+  PROSPECT_OUTCOMES,
 } from "../db/schema/discovery.js";
 
 /**
@@ -21,6 +22,7 @@ import {
 export type DiscoveryDefKind = (typeof DISCOVERY_DEF_KINDS)[number];
 export type DiscoverySignalKind = (typeof DISCOVERY_SIGNAL_KINDS)[number];
 export type GtmStage = (typeof GTM_STAGES)[number];
+export type ProspectOutcome = (typeof PROSPECT_OUTCOMES)[number];
 
 export function isDiscoveryDefKind(v: unknown): v is DiscoveryDefKind {
   return typeof v === "string" && (DISCOVERY_DEF_KINDS as readonly string[]).includes(v);
@@ -30,6 +32,9 @@ export function isDiscoverySignalKind(v: unknown): v is DiscoverySignalKind {
 }
 export function isGtmStage(v: unknown): v is GtmStage {
   return typeof v === "string" && (GTM_STAGES as readonly string[]).includes(v);
+}
+export function isProspectOutcome(v: unknown): v is ProspectOutcome {
+  return typeof v === "string" && (PROSPECT_OUTCOMES as readonly string[]).includes(v);
 }
 
 /** The label a likelihood score always carries until an external receipt confirms it (premortem #200 §2). */

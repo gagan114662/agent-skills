@@ -1,4 +1,4 @@
-import type { DiscoveryDefKind, DiscoverySignalKind, GtmStage } from "./score.js";
+import type { DiscoveryDefKind, DiscoverySignalKind, GtmStage, ProspectOutcome } from "./score.js";
 
 /**
  * Persistence record shapes for the Customer Discovery Engine (#222) — what the repo returns and the
@@ -7,6 +7,7 @@ import type { DiscoveryDefKind, DiscoverySignalKind, GtmStage } from "./score.js
  */
 
 export type { DiscoveryDefKind, DiscoverySignalKind, GtmStage } from "./score.js";
+export type { ProspectOutcome } from "./score.js";
 
 export interface DiscoverySignalRecord {
   id: string;
@@ -63,4 +64,19 @@ export interface PipelineEntryRecord {
   externalRef: string | null;
   enteredAt: Date;
   createdAt: Date;
+}
+
+export interface ProspectOutcomeRecord {
+  id: string;
+  workspaceId: string;
+  ideaId: string | null;
+  prospectKey: string;
+  outcome: ProspectOutcome;
+  reason: string;
+  source: string;
+  externalRef: string | null;
+  closedAt: Date;
+  detail: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
 }

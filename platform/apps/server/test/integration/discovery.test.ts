@@ -123,6 +123,40 @@ describe("customer discovery engine (real Postgres): signal → PQL → ranked q
       expect(stage("conversion").prospects).toBe(1);
       expect(stage("conversion").verifiedProspects).toBe(1);
 
+      // (#612) closed-out prospects must carry outcome + reason, and reasons roll up into trends.
+      const outcomeUrl = "/workspaces/" + w.workspaceId + "/discovery/outcomes";
+      const won = await post(outcomeUrl, {
+        prospectKey: "vp-eng-1",
+        outcome: "won",
+        reason: "security proof landed",
+        source: "sales-call",
+        externalRef: "evt_stripe_42",
+      });
+      expect(won.statusCode).toBe(201);
+      const lost = await post(outcomeUrl, {
+        prospectKey: "tire-kicker",
+        outcome: "lost",
+        reason: "budget freeze",
+        source: "sales-call",
+      });
+      expect(lost.statusCode).toBe(201);
+      const missingReason = await post(outcomeUrl, {
+        prospectKey: "no-reason",
+        outcome: "lost",
+        reason: " ",
+      });
+      expect(missingReason.statusCode).toBe(400);
+      const trends = (await get(outcomeUrl + "/trends")).json();
+      expect(trends.totalClosed).toBe(2);
+      expect(trends.byOutcome.find((r: { outcome: string }) => r.outcome === "won").count).toBe(1);
+      expect(trends.byOutcome.find((r: { outcome: string }) => r.outcome === "lost").count).toBe(1);
+      expect(trends.byReason).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ outcome: "lost", reason: "budget freeze", count: 1 }),
+          expect.objectContaining({ outcome: "won", reason: "security proof landed", count: 1 }),
+        ]),
+      );
+
       // (6) AC2 — the founder-console growth panel now reads NON-ZERO, event-driven counts (not
       // placeholders): a first-seen prospect → acquisition, a PQL → activation, a verified conversion →
       // conversion. The discovery pipeline pane mirrors the per-stage counts.
