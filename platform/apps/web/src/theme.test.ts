@@ -14,7 +14,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 function ruleBody(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = css.match(new RegExp(escaped + "\\s*\\{([^}]*)\\}"));
+  // (?<!:) guards against a leading-colon selector (e.g. ":root") matching the tail of a
+  // pseudo-element (e.g. an invalid "::root"), which would silently grab the wrong rule body.
+  const match = css.match(new RegExp("(?<!:)" + escaped + "\\s*\\{([^}]*)\\}"));
   expect(match, selector + " rule must exist").not.toBeNull();
   return match![1]!;
 }
@@ -86,7 +88,7 @@ describe("dark theme tokens in styles.css", () => {
 
     for (const [body, label] of [[light, "light"], [dark, "dark"]] as const) {
       const bg = token(body, "--bg");
-      for (const name of ["--text", "--text-dim", "--link"]) {
+      for (const name of ["--text", "--text-dim", "--link", "--link-hover"]) {
         expect(contrast(token(body, name), bg), label + " " + name + " contrast").toBeGreaterThanOrEqual(4.5);
       }
     }

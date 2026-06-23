@@ -356,6 +356,9 @@ select:focus-visible {
   padding: 0;
   text-decoration: underline;
 }
+.linklike:hover {
+  color: var(--link-hover);
+}
 
 /* --- splash + auth --- */
 .splash {
