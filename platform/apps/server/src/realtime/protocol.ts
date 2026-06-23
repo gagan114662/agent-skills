@@ -99,14 +99,15 @@ export interface DeployLogEvent {
 }
 
 /**
- * A revenue-rails event for a channel (#98): `link_created` when a payment link is minted for a session's
- * app, `payment_received` when a signature-verified webhook records a real payment. Rides the session's
- * channel key (like #73 deploy events); the durable record is the `payment_links` / `revenue_events` row,
- * this is the live nudge. Carries no secret (amounts only).
+ * A revenue-rails event for a channel (#98/#613): `link_created` when a payment link is minted for a
+ * session's app, `payment_received` when a signature-verified webhook records a real payment, and
+ * `first_customer_won` for the milestone celebration. Rides the session's channel key (like #73 deploy
+ * events); the durable record is the `payment_links` / `revenue_events` / `first_customer_stories` row.
+ * Carries no secret (amounts and draft text only).
  */
 export interface BillingStatusEvent {
   type: "billing_status";
-  kind: "link_created" | "payment_received";
+  kind: "link_created" | "payment_received" | "first_customer_won";
   channelId: string;
   /** The originating session, when known (a webhook may arrive without one). */
   sessionId?: string | null;
@@ -116,6 +117,12 @@ export interface BillingStatusEvent {
   amountCents?: number | null;
   /** ISO 4217 currency code. */
   currency?: string | null;
+  /** Durable first-customer case-study draft (kind `first_customer_won`). */
+  caseStudyDraft?: string | null;
+  /** User-facing celebration title (kind `first_customer_won`). */
+  celebrationTitle?: string | null;
+  /** User-facing celebration message (kind `first_customer_won`). */
+  celebrationMessage?: string | null;
 }
 
 /** Commands a client sends to the gateway over the socket. */

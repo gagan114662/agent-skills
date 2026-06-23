@@ -12,6 +12,8 @@ import {
   type CreatePaymentLinkRow,
   type CreateRevenueEventRow,
   type CreateEvidenceRow,
+  type CreateFirstCustomerStoryRow,
+  type FirstCustomerStory,
 } from "../../src/billing/manager.js";
 import { WebhookVerificationError, signWebhookPayload } from "../../src/billing/webhook.js";
 import { NoneBillingProvider } from "../../src/billing/none-provider.js";
@@ -25,6 +27,7 @@ class MemoryBillingStore implements BillingStore {
   links: PaymentLink[] = [];
   events: RevenueEvent[] = [];
   evidence: RevenueEvidence[] = [];
+  firstCustomerStories: FirstCustomerStory[] = [];
   private seq = 0;
 
   createPaymentLink(input: CreatePaymentLinkRow): Promise<PaymentLink> {
@@ -50,6 +53,16 @@ class MemoryBillingStore implements BillingStore {
   createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence> {
     const row: RevenueEvidence = { id: `ev_${++this.seq}`, createdAt: new Date(), ...input };
     this.evidence.push(row);
+    return Promise.resolve({ ...row });
+  }
+  createFirstCustomerStory(
+    input: CreateFirstCustomerStoryRow,
+  ): Promise<FirstCustomerStory | undefined> {
+    if (this.firstCustomerStories.some((s) => s.workspaceId === input.workspaceId)) {
+      return Promise.resolve(undefined);
+    }
+    const row: FirstCustomerStory = { id: `fcs_${++this.seq}`, createdAt: new Date(), ...input };
+    this.firstCustomerStories.push(row);
     return Promise.resolve({ ...row });
   }
   revenueSummary(workspaceId: string): Promise<RevenueSummary> {
@@ -118,9 +131,9 @@ const LINK_REQ = {
   interval: "month" as const,
 };
 
-function successEvent(extraMeta: Record<string, string> = {}): string {
+function successEvent(extraMeta: Record<string, string> = {}, id = "evt_pay_1"): string {
   return JSON.stringify({
-    id: "evt_pay_1",
+    id,
     type: "checkout.session.completed",
     data: {
       object: {
@@ -190,6 +203,34 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(h.store.evidence[0]?.source).toBe("revenue");
     expect(h.posts.some((b) => /received/i.test(b))).toBe(true);
     expect(h.events.some((e) => e.kind === "payment_received")).toBe(true);
+  });
+
+  it("captures the first paying customer as a case-study draft and visible celebration exactly once", async () => {
+    const first = successEvent(
+      {
+        trackingRef: "ipop_deadbeefdeadbeef",
+        customerJourney: "Founder clicked the launch post, tried the demo, then paid.",
+        quoteRequest: "Ask what made the launch page worth paying for.",
+      },
+      "evt_first_customer",
+    );
+    const firstSig = signWebhookPayload(first, WHSEC, NOW_SEC);
+    await h.manager.ingestWebhook("ws_1", first, firstSig);
+
+    expect(h.store.firstCustomerStories).toHaveLength(1);
+    expect(h.store.firstCustomerStories[0]?.caseStudyDraft).toContain("First paying customer");
+    expect(h.store.firstCustomerStories[0]?.caseStudyDraft).toContain("Founder clicked");
+    expect(h.store.firstCustomerStories[0]?.caseStudyDraft).toContain("Ask what made");
+    expect(h.posts.some((b) => /first paying customer/i.test(b))).toBe(true);
+    expect(h.events.some((e) => e.kind === "first_customer_won")).toBe(true);
+
+    const second = successEvent({ trackingRef: "ipop_feedfacefeedface" }, "evt_second_customer");
+    const secondSig = signWebhookPayload(second, WHSEC, NOW_SEC);
+    await h.manager.ingestWebhook("ws_1", second, secondSig);
+
+    expect(h.store.firstCustomerStories).toHaveLength(1);
+    expect(h.posts.filter((b) => /first paying customer/i.test(b))).toHaveLength(1);
+    expect(h.events.filter((e) => e.kind === "first_customer_won")).toHaveLength(1);
   });
 
   it("persists a sanitized tracking ref from webhook metadata onto the revenue event (#386 slice 3)", async () => {

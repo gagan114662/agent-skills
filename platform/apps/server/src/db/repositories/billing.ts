@@ -1,11 +1,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
-import { paymentLinks, revenueEvents, revenueEvidence } from "../schema/index.js";
+import { firstCustomerStories, paymentLinks, revenueEvents, revenueEvidence } from "../schema/index.js";
 import type {
   BillingStore,
   CreateEvidenceRow,
+  CreateFirstCustomerStoryRow,
   CreatePaymentLinkRow,
   CreateRevenueEventRow,
+  FirstCustomerStory,
   PaymentLink,
   RevenueEvent,
   RevenueEvidence,
@@ -50,8 +52,24 @@ const EVENT_COLUMNS = {
   amountCents: revenueEvents.amountCents,
   currency: revenueEvents.currency,
   status: revenueEvents.status,
+  trackingRef: revenueEvents.trackingRef,
   raw: revenueEvents.raw,
   createdAt: revenueEvents.createdAt,
+} as const;
+
+const FIRST_CUSTOMER_STORY_COLUMNS = {
+  id: firstCustomerStories.id,
+  workspaceId: firstCustomerStories.workspaceId,
+  revenueEventId: firstCustomerStories.revenueEventId,
+  channelId: firstCustomerStories.channelId,
+  sessionId: firstCustomerStories.sessionId,
+  providerEventId: firstCustomerStories.providerEventId,
+  amountCents: firstCustomerStories.amountCents,
+  currency: firstCustomerStories.currency,
+  caseStudyDraft: firstCustomerStories.caseStudyDraft,
+  celebrationTitle: firstCustomerStories.celebrationTitle,
+  celebrationMessage: firstCustomerStories.celebrationMessage,
+  createdAt: firstCustomerStories.createdAt,
 } as const;
 
 /** Coerce a selected `revenue_events` row (raw jsonb holds a JSON string) into the domain type. */
@@ -110,6 +128,17 @@ export const dbBillingStore: BillingStore = {
         createdAt: revenueEvidence.createdAt,
       });
     return row as RevenueEvidence;
+  },
+
+  async createFirstCustomerStory(
+    input: CreateFirstCustomerStoryRow,
+  ): Promise<FirstCustomerStory | undefined> {
+    const [row] = await db
+      .insert(firstCustomerStories)
+      .values(input)
+      .onConflictDoNothing({ target: firstCustomerStories.workspaceId })
+      .returning(FIRST_CUSTOMER_STORY_COLUMNS);
+    return row as FirstCustomerStory | undefined;
   },
 
   async revenueSummary(workspaceId: string, limit = 10): Promise<RevenueSummary> {

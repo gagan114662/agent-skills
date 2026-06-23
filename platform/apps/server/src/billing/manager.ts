@@ -93,6 +93,23 @@ export interface RevenueEvidence extends CreateEvidenceRow {
   createdAt: Date;
 }
 
+export interface CreateFirstCustomerStoryRow {
+  workspaceId: string;
+  revenueEventId: string;
+  channelId: string | null;
+  sessionId: string | null;
+  providerEventId: string;
+  amountCents: number;
+  currency: string;
+  caseStudyDraft: string;
+  celebrationTitle: string;
+  celebrationMessage: string;
+}
+export interface FirstCustomerStory extends CreateFirstCustomerStoryRow {
+  id: string;
+  createdAt: Date;
+}
+
 export interface RevenueSummary {
   currency: string;
   totalCents: number;
@@ -107,6 +124,7 @@ export interface BillingStore {
   findRevenueEvent(workspaceId: string, providerEventId: string): Promise<RevenueEvent | undefined>;
   createRevenueEvent(input: CreateRevenueEventRow): Promise<RevenueEvent>;
   createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence>;
+  createFirstCustomerStory(input: CreateFirstCustomerStoryRow): Promise<FirstCustomerStory | undefined>;
   revenueSummary(workspaceId: string, limit?: number): Promise<RevenueSummary>;
 }
 
@@ -374,6 +392,7 @@ export class BillingManager {
     });
 
     if (isPaymentEvent(parsed.type)) {
+      const beforePaymentSummary = await this.store.revenueSummary(workspaceId, 1);
       await this.store.createEvidence({
         workspaceId,
         sessionId: parsed.metadata.sessionId ?? null,
@@ -384,6 +403,16 @@ export class BillingManager {
         currency: parsed.currency,
         summary: `Real payment of ${formatAmount(parsed.amountCents, parsed.currency)} (${parsed.type})`,
       });
+      const firstCustomerStory =
+        beforePaymentSummary.evidenceCount === 0
+          ? await this.store.createFirstCustomerStory(
+              buildFirstCustomerStory({
+                workspaceId,
+                event,
+                metadata: parsed.metadata,
+              }),
+            )
+          : undefined;
       if (parsed.metadata.channelId && parsed.metadata.agentMemberId) {
         await this.post(
           workspaceId,
@@ -406,6 +435,27 @@ export class BillingManager {
           sessionId: parsed.metadata.sessionId ?? null,
           amountCents: parsed.amountCents,
           currency: parsed.currency,
+        });
+      }
+      if (firstCustomerStory && parsed.metadata.channelId) {
+        if (parsed.metadata.agentMemberId) {
+          await this.post(
+            workspaceId,
+            parsed.metadata.channelId,
+            parsed.metadata.agentMemberId,
+            `🎉 ${firstCustomerStory.celebrationTitle} ${firstCustomerStory.celebrationMessage}`,
+          );
+        }
+        this.publish(parsed.metadata.channelId, {
+          type: "billing_status",
+          kind: "first_customer_won",
+          channelId: parsed.metadata.channelId,
+          sessionId: parsed.metadata.sessionId ?? null,
+          amountCents: parsed.amountCents,
+          currency: parsed.currency,
+          caseStudyDraft: firstCustomerStory.caseStudyDraft,
+          celebrationTitle: firstCustomerStory.celebrationTitle,
+          celebrationMessage: firstCustomerStory.celebrationMessage,
         });
       }
       // #125: a plan checkout payment activates the workspace's plan + updates its caps. Best-effort —
@@ -489,6 +539,69 @@ interface ParsedEvent {
   currency: string;
   status: string;
   metadata: Record<string, string>;
+}
+
+function buildFirstCustomerStory(input: {
+  workspaceId: string;
+  event: RevenueEvent;
+  metadata: Record<string, string>;
+}): CreateFirstCustomerStoryRow {
+  const amount = formatAmount(input.event.amountCents, input.event.currency);
+  const channel = cleanMetadata(input.metadata.channelName) ?? input.event.channelId ?? "Unknown channel";
+  const journey =
+    cleanMetadata(input.metadata.customerJourney) ??
+    cleanMetadata(input.metadata.journey) ??
+    buildJourneyFallback(input.event, input.metadata);
+  const quoteRequest =
+    cleanMetadata(input.metadata.quoteRequest) ??
+    cleanMetadata(input.metadata.customerQuoteRequest) ??
+    "Ask the customer: What changed that made this worth paying for?";
+  const tracking = input.event.trackingRef ? `\n- Tracking ref: ${input.event.trackingRef}` : "";
+  const caseStudyDraft = [
+    "First paying customer case study draft",
+    "",
+    `- Customer milestone: First paying customer paid ${amount}.`,
+    `- Channel: ${channel}`,
+    `- Journey: ${journey}`,
+    `- Quote request: ${quoteRequest}`,
+    `- Proof: ${input.event.type} / ${input.event.providerEventId}.${tracking}`,
+  ].join("\n");
+  return {
+    workspaceId: input.workspaceId,
+    revenueEventId: input.event.id,
+    channelId: input.event.channelId,
+    sessionId: input.event.sessionId,
+    providerEventId: input.event.providerEventId,
+    amountCents: input.event.amountCents,
+    currency: input.event.currency,
+    caseStudyDraft,
+    celebrationTitle: "First paying customer!",
+    celebrationMessage: `${amount} landed. Case study draft captured.`,
+  };
+}
+
+function buildJourneyFallback(event: RevenueEvent, metadata: Record<string, string>): string {
+  const parts = [
+    event.trackingRef ? `tracking ref ${event.trackingRef}` : null,
+    metadata.sessionId ? `session ${metadata.sessionId}` : null,
+    metadata.deploymentId ? `deployment ${metadata.deploymentId}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0
+    ? parts.join(" -> ")
+    : `Payment webhook ${event.providerEventId} became the first paid conversion.`;
+}
+
+function cleanMetadata(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const clean = [...value]
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || code === 127 ? " " : char;
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length > 0 ? clean.slice(0, 1000) : undefined;
 }
 
 /** Whether a webhook event type represents a completed inbound payment. */
