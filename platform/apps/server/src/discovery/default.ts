@@ -3,6 +3,7 @@ import { createDefaultGrowthService } from "../growth/default.js";
 import type { GrowthService } from "../growth/service.js";
 import {
   dbPipelineStore,
+  dbOutcomeStore,
   dbPqlStore,
   dbSignalDefStore,
   dbSignalStore,
@@ -37,6 +38,7 @@ export function createDefaultDiscoveryService(
     defs: dbSignalDefStore,
     pqls: dbPqlStore,
     pipeline: dbPipelineStore,
+    outcomes: dbOutcomeStore,
     growth: emitter,
     caps: (wid) => resolveDiscoveryCaps(loadConfig(wid).discovery),
   });

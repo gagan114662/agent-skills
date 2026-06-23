@@ -2,12 +2,14 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../index.js";
 import {
   discoveryPipelineEntries,
+  discoveryProspectOutcomes,
   discoveryPqlEvents,
   discoverySignalDefs,
   discoverySignals,
 } from "../schema/index.js";
 import type {
   PipelineStore,
+  OutcomeStore,
   PqlStore,
   SignalDefStore,
   SignalStore,
@@ -16,6 +18,7 @@ import { emittedKey } from "../../discovery/score.js";
 import type {
   DiscoverySignalRecord,
   PipelineEntryRecord,
+  ProspectOutcomeRecord,
   PqlEventRecord,
   SignalDefRecord,
 } from "../../discovery/types.js";
@@ -81,6 +84,21 @@ const PIPELINE_COLS = {
   externalRef: discoveryPipelineEntries.externalRef,
   enteredAt: discoveryPipelineEntries.enteredAt,
   createdAt: discoveryPipelineEntries.createdAt,
+} as const;
+
+const OUTCOME_COLS = {
+  id: discoveryProspectOutcomes.id,
+  workspaceId: discoveryProspectOutcomes.workspaceId,
+  ideaId: discoveryProspectOutcomes.ideaId,
+  prospectKey: discoveryProspectOutcomes.prospectKey,
+  outcome: discoveryProspectOutcomes.outcome,
+  reason: discoveryProspectOutcomes.reason,
+  source: discoveryProspectOutcomes.source,
+  externalRef: discoveryProspectOutcomes.externalRef,
+  closedAt: discoveryProspectOutcomes.closedAt,
+  detail: discoveryProspectOutcomes.detail,
+  createdAt: discoveryProspectOutcomes.createdAt,
+  updatedAt: discoveryProspectOutcomes.updatedAt,
 } as const;
 
 export const dbSignalStore: SignalStore = {
@@ -296,6 +314,62 @@ export const dbPipelineStore: PipelineStore = {
   },
 };
 
+export const dbOutcomeStore: OutcomeStore = {
+  async upsert(input) {
+    const [existing] = await db
+      .select({ id: discoveryProspectOutcomes.id })
+      .from(discoveryProspectOutcomes)
+      .where(
+        and(
+          eq(discoveryProspectOutcomes.workspaceId, input.workspaceId),
+          input.ideaId === null
+            ? isNull(discoveryProspectOutcomes.ideaId)
+            : eq(discoveryProspectOutcomes.ideaId, input.ideaId),
+          eq(discoveryProspectOutcomes.prospectKey, input.prospectKey),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      const [row] = await db
+        .update(discoveryProspectOutcomes)
+        .set({
+          outcome: input.outcome,
+          reason: input.reason,
+          source: input.source,
+          externalRef: input.externalRef,
+          closedAt: input.closedAt,
+          detail: input.detail,
+          updatedAt: new Date(),
+        })
+        .where(eq(discoveryProspectOutcomes.id, existing.id))
+        .returning(OUTCOME_COLS);
+      return toOutcome(row!);
+    }
+    const [row] = await db
+      .insert(discoveryProspectOutcomes)
+      .values(input)
+      .returning(OUTCOME_COLS);
+    return toOutcome(row!);
+  },
+  async list(workspaceId, ideaId) {
+    const where =
+      ideaId === undefined
+        ? eq(discoveryProspectOutcomes.workspaceId, workspaceId)
+        : and(
+            eq(discoveryProspectOutcomes.workspaceId, workspaceId),
+            ideaId === null
+              ? isNull(discoveryProspectOutcomes.ideaId)
+              : eq(discoveryProspectOutcomes.ideaId, ideaId),
+          );
+    const rows = await db
+      .select(OUTCOME_COLS)
+      .from(discoveryProspectOutcomes)
+      .where(where)
+      .orderBy(desc(discoveryProspectOutcomes.closedAt));
+    return rows.map(toOutcome);
+  },
+};
+
 function toSignal(row: Record<string, unknown>): DiscoverySignalRecord {
   return {
     id: row.id as string,
@@ -358,5 +432,22 @@ function toPipeline(row: Record<string, unknown>): PipelineEntryRecord {
     externalRef: (row.externalRef as string | null) ?? null,
     enteredAt: row.enteredAt as Date,
     createdAt: row.createdAt as Date,
+  };
+}
+
+function toOutcome(row: Record<string, unknown>): ProspectOutcomeRecord {
+  return {
+    id: row.id as string,
+    workspaceId: row.workspaceId as string,
+    ideaId: (row.ideaId as string | null) ?? null,
+    prospectKey: row.prospectKey as string,
+    outcome: row.outcome as ProspectOutcomeRecord["outcome"],
+    reason: row.reason as string,
+    source: row.source as string,
+    externalRef: (row.externalRef as string | null) ?? null,
+    closedAt: row.closedAt as Date,
+    detail: (row.detail as Record<string, unknown>) ?? {},
+    createdAt: row.createdAt as Date,
+    updatedAt: row.updatedAt as Date,
   };
 }

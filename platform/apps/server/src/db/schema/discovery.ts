@@ -49,6 +49,7 @@ export const GTM_STAGES = [
   "onboarding",
   "post_sales",
 ] as const;
+export const PROSPECT_OUTCOMES = ["won", "lost"] as const;
 
 /**
  * The owner-defined qualifying signal (AC1): what makes a prospect "product-qualified". The owner sets
@@ -204,5 +205,35 @@ export const discoveryPipelineEntries = pgTable(
       t.prospectKey,
       t.stage,
     ),
+  }),
+);
+
+/**
+ * Win/loss close-out ledger (#612): one current outcome + reason per meaningful prospect. This is the
+ * learning signal the strategist reads back as reason trends; no PII, only the opaque prospect key.
+ */
+export const discoveryProspectOutcomes = pgTable(
+  "discovery_prospect_outcomes",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    ideaId: uuid("idea_id"),
+    prospectKey: text("prospect_key").notNull(),
+    outcome: text("outcome", { enum: PROSPECT_OUTCOMES }).notNull(),
+    reason: text("reason").notNull(),
+    source: text("source").notNull().default(""),
+    externalRef: text("external_ref"),
+    closedAt: timestamp("closed_at", { withTimezone: true }).notNull().defaultNow(),
+    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    outcomeCk: check("discovery_prospect_outcomes_outcome_ck", sql`${t.outcome} IN ('won','lost')`),
+    workspaceIdx: index("discovery_prospect_outcomes_workspace_idx").on(t.workspaceId),
+    prospectIdx: index("discovery_prospect_outcomes_prospect_idx").on(t.workspaceId, t.prospectKey),
+    reasonIdx: index("discovery_prospect_outcomes_reason_idx").on(t.workspaceId, t.outcome),
   }),
 );

@@ -8,12 +8,14 @@ import {
   type DiscoverySignalInput,
   type GtmPipelineMetrics,
   type GtmStage,
+  type ProspectOutcome,
   type SignalDefInput,
 } from "./score.js";
-import { isDiscoveryDefKind, isDiscoverySignalKind } from "./score.js";
+import { isDiscoveryDefKind, isDiscoverySignalKind, isProspectOutcome } from "./score.js";
 import type {
   DiscoverySignalRecord,
   PipelineEntryRecord,
+  ProspectOutcomeRecord,
   PqlEventRecord,
   SignalDefRecord,
 } from "./types.js";
@@ -102,6 +104,22 @@ export interface PipelineStore {
   list(workspaceId: string, ideaId?: string): Promise<PipelineEntryRecord[]>;
 }
 
+export interface OutcomeStore {
+  /** Idempotently close out a prospect with the latest outcome + reason. */
+  upsert(input: {
+    workspaceId: string;
+    ideaId: string | null;
+    prospectKey: string;
+    outcome: ProspectOutcome;
+    reason: string;
+    source: string;
+    externalRef: string | null;
+    closedAt: Date;
+    detail: Record<string, unknown>;
+  }): Promise<ProspectOutcomeRecord>;
+  list(workspaceId: string, ideaId?: string): Promise<ProspectOutcomeRecord[]>;
+}
+
 /**
  * OPTIONAL bridge to the growth funnel (#102) — the seam that lights up the founder-console growth panel
  * (#104) with event-driven counts. Absent ⇒ discovery still works (ingest/queue/PQL), the console growth
@@ -125,6 +143,7 @@ export interface DiscoveryDeps {
   defs: SignalDefStore;
   pqls: PqlStore;
   pipeline: PipelineStore;
+  outcomes: OutcomeStore;
   /** Optional growth-funnel bridge (#102 → #104). Absent ⇒ no funnel emission. */
   growth?: GrowthEmitter;
   caps: (workspaceId: string) => DiscoveryCaps;
@@ -148,6 +167,22 @@ export interface GtmPipelineSummary {
   metrics: GtmPipelineMetrics;
   /** Total PQL events emitted (the top of the pipeline). */
   pqlCount: number;
+}
+
+export interface OutcomeTrendRow {
+  outcome: ProspectOutcome;
+  reason: string;
+  count: number;
+  lastClosedAt: Date;
+}
+
+export interface ProspectOutcomeTrends {
+  workspaceId: string;
+  ideaId: string | null;
+  totalClosed: number;
+  byOutcome: Array<{ outcome: ProspectOutcome; count: number }>;
+  byReason: OutcomeTrendRow[];
+  recent: ProspectOutcomeRecord[];
 }
 
 /** Thrown when a signal/definition fails validation (bad kind, empty key, or a PII-looking prospect key). */
@@ -424,6 +459,97 @@ export class DiscoveryService {
     return { workspaceId, ideaId: ideaId ?? null, metrics, pqlCount: pqls.length };
   }
 
+  /** Close out one meaningful prospect with a concrete win/loss reason (#612). */
+  async recordProspectOutcome(
+    workspaceId: string,
+    input: {
+      ideaId?: string | null;
+      prospectKey: string;
+      outcome: string;
+      reason: string;
+      source?: string;
+      externalRef?: string | null;
+      closedAt?: Date;
+      detail?: Record<string, unknown>;
+    },
+  ): Promise<ProspectOutcomeRecord> {
+    assertOpaqueProspectKey(input.prospectKey);
+    if (!isProspectOutcome(input.outcome)) {
+      throw new DiscoveryValidationError("outcome must be one of won, lost");
+    }
+    const reason = cleanReason(input.reason);
+    if (!reason) throw new DiscoveryValidationError("reason is required for a closed prospect");
+    const ideaId = input.ideaId ?? null;
+    const prospectKey = input.prospectKey.trim();
+    const externalRef = input.externalRef && input.externalRef.trim().length > 0
+      ? input.externalRef.trim()
+      : null;
+    const closedAt = input.closedAt ?? this.now();
+
+    const rec = await this.deps.outcomes.upsert({
+      workspaceId,
+      ideaId,
+      prospectKey,
+      outcome: input.outcome,
+      reason,
+      source: (input.source ?? "manual").trim(),
+      externalRef,
+      closedAt,
+      detail: input.detail ?? {},
+    });
+
+    if (input.outcome === "won") {
+      await this.deps.pipeline.enter({
+        workspaceId,
+        ideaId,
+        prospectKey,
+        stage: "conversion",
+        verified: Boolean(externalRef),
+        externalRef,
+        enteredAt: closedAt,
+      });
+    }
+
+    return rec;
+  }
+
+  /** Win/loss reason trend view for strategist decisions (#612). */
+  async outcomeTrends(workspaceId: string, ideaId?: string): Promise<ProspectOutcomeTrends> {
+    const rows = await this.deps.outcomes.list(workspaceId, ideaId);
+    const byOutcome = new Map<ProspectOutcome, number>();
+    const byReason = new Map<string, OutcomeTrendRow>();
+    for (const row of rows) {
+      byOutcome.set(row.outcome, (byOutcome.get(row.outcome) ?? 0) + 1);
+      const key = row.outcome + "\n" + row.reason.toLowerCase();
+      const current = byReason.get(key);
+      if (!current) {
+        byReason.set(key, {
+          outcome: row.outcome,
+          reason: row.reason,
+          count: 1,
+          lastClosedAt: row.closedAt,
+        });
+      } else {
+        current.count += 1;
+        if (row.closedAt > current.lastClosedAt) current.lastClosedAt = row.closedAt;
+      }
+    }
+    const byOutcomeRows = (["won", "lost"] as const)
+      .map((outcome) => ({ outcome, count: byOutcome.get(outcome) ?? 0 }))
+      .filter((row) => row.count > 0);
+    const reasonRows = [...byReason.values()].sort(
+      (a, b) => b.count - a.count || b.lastClosedAt.getTime() - a.lastClosedAt.getTime(),
+    );
+    return {
+      workspaceId,
+      ideaId: ideaId ?? null,
+      totalClosed: rows.length,
+      byOutcome: byOutcomeRows,
+      byReason: reasonRows,
+      recent: [...rows].sort((a, b) => b.closedAt.getTime() - a.closedAt.getTime()).slice(0, 10),
+    };
+  }
+
   /** The PQL event stream (the stable seam #223/#225 consume). Read-only. */
   async listPqlEvents(workspaceId: string, ideaId?: string): Promise<PqlEventRecord[]> {
     return this.deps.pqls.list(workspaceId, ideaId);
@@ -433,4 +559,9 @@ export class DiscoveryService {
 function clampInt(n: number, lo: number, hi: number): number {
   if (!Number.isFinite(n)) return lo;
   return Math.min(hi, Math.max(lo, Math.trunc(n)));
+}
+
+function cleanReason(value: string | undefined): string {
+  if (!value) return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, 500);
 }
