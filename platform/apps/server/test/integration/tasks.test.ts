@@ -73,6 +73,7 @@ describe("Tasks: lifecycle, assignment, auto-routing, links (real Postgres)", ()
     const task = (await createTask(owner, { title: "Ship #14", labels: ["build"] })).json();
     expect(task.status).toBe("backlog");
     expect(task.assigneeMemberId).toBeNull();
+    expect(task.goalAlignment).toMatchObject({ metric: null, flagged: false });
 
     // assign the agent
     const assigned = await app.inject({
@@ -100,6 +101,24 @@ describe("Tasks: lifecycle, assignment, auto-routing, links (real Postgres)", ()
     const fresh = (await app.inject({ method: "GET", url: `/tasks/${task.id}`, cookies: { rid: owner.cookie } })).json();
     expect(fresh.status).toBe("done");
     expect(fresh.assigneeMemberId).toBe(agent.memberId);
+
+    const aligned = (await createTask(owner, { title: "Improve onboarding activation", labels: ["activation"] })).json();
+    const activeAligned = await app.inject({
+      method: "PATCH",
+      url: `/tasks/${aligned.id}/status`,
+      cookies: { rid: owner.cookie },
+      payload: { status: "todo" },
+    });
+    expect(activeAligned.json().goalAlignment).toMatchObject({ metric: "activation", flagged: false });
+
+    const offGoal = (await createTask(owner, { title: "Tidy internal notes", labels: ["internal"] })).json();
+    const activeOffGoal = await app.inject({
+      method: "PATCH",
+      url: `/tasks/${offGoal.id}/status`,
+      cookies: { rid: owner.cookie },
+      payload: { status: "todo" },
+    });
+    expect(activeOffGoal.json().goalAlignment).toMatchObject({ metric: null, flagged: true });
 
     // events: created, assigned, then three status_changed
     const events = (await app.inject({ method: "GET", url: `/tasks/${task.id}/events`, cookies: { rid: owner.cookie } })).json();

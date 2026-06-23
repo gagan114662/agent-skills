@@ -11,6 +11,7 @@ import {
 } from "../schema/index.js";
 import { selectLeastLoaded } from "../../tasks/routing.js";
 import { wouldCreateCycle } from "../../tasks/dependencies.js";
+import { assessGoalAlignment, type GoalAlignment } from "../../tasks/goal-alignment.js";
 import type { TaskStatus } from "../../tasks/status.js";
 
 /** Statuses that don't count toward an assignee's open-task load (round-robin input). */
@@ -27,6 +28,7 @@ export interface Task {
   createdByMemberId: string | null;
   createdAt: Date;
   updatedAt: Date;
+  goalAlignment: GoalAlignment;
 }
 
 export interface TaskEvent {
@@ -67,6 +69,20 @@ const TASK_COLUMNS = {
   updatedAt: tasks.updatedAt,
 } as const;
 
+type TaskRow = Omit<Task, "goalAlignment">;
+
+function withGoalAlignment(row: TaskRow): Task {
+  return {
+    ...row,
+    goalAlignment: assessGoalAlignment({
+      title: row.title,
+      description: row.description,
+      labels: row.labels,
+      status: row.status,
+    }),
+  };
+}
+
 // ---- tasks CRUD + status ----------------------------------------------------
 
 /** Create a task and record the opening events (`created`, plus `assigned` if pre-assigned). */
@@ -90,7 +106,7 @@ export async function createTask(input: {
         assigneeMemberId: input.assigneeMemberId ?? null,
       })
       .returning(TASK_COLUMNS);
-    const task = row as Task;
+    const task = withGoalAlignment(row as TaskRow);
     await tx.insert(taskEvents).values({
       workspaceId: task.workspaceId,
       taskId: task.id,
@@ -113,7 +129,7 @@ export async function createTask(input: {
 
 export async function getTask(id: string): Promise<Task | undefined> {
   const [row] = await db.select(TASK_COLUMNS).from(tasks).where(eq(tasks.id, id)).limit(1);
-  return row as Task | undefined;
+  return row ? withGoalAlignment(row as TaskRow) : undefined;
 }
 
 /** Tasks in a workspace, optionally filtered by status and/or assignee (the by-assignee view). */
@@ -129,7 +145,7 @@ export async function listTasks(
     .from(tasks)
     .where(and(...where))
     .orderBy(asc(tasks.createdAt));
-  return rows as Task[];
+  return (rows as TaskRow[]).map(withGoalAlignment);
 }
 
 /** Board view: every workspace task grouped by status (empty buckets included). */
@@ -172,7 +188,7 @@ export async function updateStatus(
       fromValue: current!.status,
       toValue: toStatus,
     });
-    return row as Task;
+    return withGoalAlignment(row as TaskRow);
   });
 }
 
@@ -197,7 +213,7 @@ export async function assignTask(
       .set({ assigneeMemberId: newAssignee, updatedAt: new Date() })
       .where(eq(tasks.id, taskId))
       .returning(TASK_COLUMNS);
-    const task = row as Task;
+    const task = withGoalAlignment(row as TaskRow);
     if (prev === newAssignee) return task; // no-op: nothing changed, no event
     const type = prev === null ? "assigned" : newAssignee === null ? "unassigned" : "reassigned";
     await tx.insert(taskEvents).values({
@@ -275,7 +291,7 @@ export async function handoffTask(input: {
         });
       }
     }
-    return row as Task;
+    return withGoalAlignment(row as TaskRow);
   });
 }
 
@@ -400,7 +416,7 @@ export async function listTasksLinkingTo(
       ),
     )
     .orderBy(asc(tasks.createdAt));
-  return rows as Task[];
+  return (rows as TaskRow[]).map(withGoalAlignment);
 }
 
 // ---- dependencies / blockers (#515) -----------------------------------------
@@ -504,7 +520,7 @@ export async function listBlockers(taskId: string): Promise<Task[]> {
     .innerJoin(tasks, eq(tasks.id, taskDependencies.blockerTaskId))
     .where(eq(taskDependencies.blockedTaskId, taskId))
     .orderBy(asc(tasks.createdAt));
-  return rows as Task[];
+  return (rows as TaskRow[]).map(withGoalAlignment);
 }
 
 /** The tasks `taskId` blocks (its dependents). */
@@ -515,7 +531,7 @@ export async function listDependents(taskId: string): Promise<Task[]> {
     .innerJoin(tasks, eq(tasks.id, taskDependencies.blockedTaskId))
     .where(eq(taskDependencies.blockerTaskId, taskId))
     .orderBy(asc(tasks.createdAt));
-  return rows as Task[];
+  return (rows as TaskRow[]).map(withGoalAlignment);
 }
 
 /** Just the statuses of `taskId`'s blockers — the input the start-guard counts unsatisfied ones from. */
