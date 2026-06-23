@@ -154,6 +154,21 @@ describe("EverydayShell — transparency + kill switch (#629/#784)", () => {
     expect(within(log).getByText(EVERYDAY.transparency.undone)).toBeInTheDocument();
   });
 
+  it("searches the external-action log without dropping receipt links", () => {
+    render(<EverydayShell data={seedEveryday()} />);
+    const log = screen.getByLabelText(EVERYDAY.transparency.heading);
+    const search = within(log).getByRole("searchbox", { name: EVERYDAY.transparency.searchLabel });
+
+    fireEvent.change(search, { target: { value: "reddit" } });
+    expect(within(log).getByText("11:28 am")).toBeInTheDocument();
+    expect(within(log).getByText(/public reddit threads/i)).toBeInTheDocument();
+    expect(within(log).queryByText(/saved a draft to your gmail/i)).not.toBeInTheDocument();
+    expect(within(log).getByRole("link", { name: EVERYDAY.transparency.viewLink })).toHaveAttribute(
+      "href",
+      "https://reddit.com/r/marketing",
+    );
+  });
+
   it("shows the always-on kill switch as reassurance, not config", () => {
     render(<EverydayShell data={seedEveryday()} />);
     expect(screen.getByText(EVERYDAY.safety.killSwitchTitle)).toBeInTheDocument();
