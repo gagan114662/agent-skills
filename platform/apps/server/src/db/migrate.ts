@@ -26,7 +26,7 @@ const MIGRATIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../d
  * renumber: `_migrations` records the applied filename, so renaming a shipped migration would orphan
  * the ledger row on every deployed database. See drizzle/README.md.
  */
-async function upFiles(): Promise<string[]> {
+export async function expectedMigrationFiles(): Promise<string[]> {
   const entries = await readdir(MIGRATIONS_DIR);
   return entries.filter((f) => f.endsWith(".sql") && !f.endsWith(".down.sql")).sort();
 }
@@ -46,7 +46,7 @@ async function runSqlFile(client: pg.Client, file: string): Promise<void> {
 
 async function up(client: pg.Client): Promise<void> {
   const done = await applied(client);
-  const pending = (await upFiles()).filter((f) => !done.has(f));
+  const pending = (await expectedMigrationFiles()).filter((f) => !done.has(f));
   if (pending.length === 0) {
     console.log("up: nothing pending");
     return;
