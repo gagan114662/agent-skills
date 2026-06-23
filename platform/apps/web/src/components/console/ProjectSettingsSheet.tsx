@@ -7,7 +7,7 @@
  * on their own gated surfaces), so it closes with Done rather than pretending to persist (no-fake-control
  * house rule). Local model row is marked connected per the on-device default.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CONSOLE, FLEET, departmentColor } from "../../brand.js";
 import { fmtCents, type ConsoleProject } from "./model.js";
 
@@ -31,11 +31,19 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "approvals", label: CONSOLE.settings.tabs.approvals },
 ];
 
+function StatusChip({ children }: { children: string }): React.JSX.Element {
+  return <span className="field__status">{children}</span>;
+}
+
 function KeyRow({ label }: { label: string }): React.JSX.Element {
+  const inputId = "settings-key-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
     <div className="field">
-      <label>{label}</label>
-      <input type="password" placeholder={CONSOLE.settings.models.noKey} className="field__mono" />
+      <label htmlFor={inputId}>{label}</label>
+      <div className="field__row">
+        <input id={inputId} type="password" placeholder={CONSOLE.settings.models.noKey} className="field__mono" />
+        <StatusChip>{CONSOLE.settings.models.appliesNextRun}</StatusChip>
+      </div>
       <div className="field__hint">{CONSOLE.settings.models.keysHint}</div>
     </div>
   );
@@ -44,21 +52,27 @@ function KeyRow({ label }: { label: string }): React.JSX.Element {
 export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JSX.Element {
   const { open, project, budgetWindow, spentCents, budgetCents, approverEmail, onClose } = props;
   const [tab, setTab] = useState<Tab>("general");
+  const [projectName, setProjectName] = useState("");
+  const [voice, setVoice] = useState<string>(CONSOLE.settings.general.voiceDefault);
   const name = project?.name ?? "";
+
+  useEffect(() => {
+    setProjectName(name);
+    setVoice(CONSOLE.settings.general.voiceDefault);
+  }, [name]);
 
   return (
     <div className={`sheet${open ? " sheet--show" : ""}`} aria-hidden={!open}>
-      {/* Remount per project so the uncontrolled defaultValue inputs reset to the new project's values
-          (they don't update on prop change otherwise). */}
+      {/* Remount per project so local, immediately-applied edits reset when the selected project changes. */}
       <div
         key={project?.id ?? "none"}
         className="sheet__panel"
         role="dialog"
         aria-modal="true"
-        aria-label={`${CONSOLE.projects.settings} — ${name}`}
+        aria-label={CONSOLE.projects.settings + " — " + (projectName || name)}
       >
         <header className="sheet__head">
-          <h2>{name}</h2>
+          <h2>{projectName || name}</h2>
           <button className="iconbtn" aria-label="Close" onClick={onClose}>
             ✕
           </button>
@@ -82,13 +96,27 @@ export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JS
           {tab === "general" && (
             <>
               <div className="field">
-                <label>{CONSOLE.settings.general.repoLabel}</label>
-                <input defaultValue={name} className="field__mono" />
+                <label htmlFor="settings-project-name">{CONSOLE.settings.general.repoLabel}</label>
+                <div className="field__row">
+                  <input
+                    id="settings-project-name"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    className="field__mono"
+                  />
+                  <StatusChip>{CONSOLE.settings.general.appliedNow}</StatusChip>
+                </div>
                 <div className="field__hint">{CONSOLE.settings.general.repoHint}</div>
               </div>
               <div className="field">
-                <label>{CONSOLE.settings.general.voiceLabel}</label>
-                <textarea rows={3} defaultValue={CONSOLE.settings.general.voiceDefault} />
+                <label htmlFor="settings-brand-voice">{CONSOLE.settings.general.voiceLabel}</label>
+                <textarea
+                  id="settings-brand-voice"
+                  rows={3}
+                  value={voice}
+                  onChange={(e) => setVoice(e.target.value)}
+                />
+                <StatusChip>{CONSOLE.settings.general.appliedNow}</StatusChip>
                 <div className="field__hint">{CONSOLE.settings.general.voiceHint}</div>
               </div>
             </>
@@ -101,6 +129,7 @@ export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JS
                 <div className="field__row">
                   <span className="field__locked">{CONSOLE.settings.models.localHint}</span>
                   <span className="field__connected">{CONSOLE.settings.models.localConnected}</span>
+                  <StatusChip>{CONSOLE.settings.models.restartRequired}</StatusChip>
                 </div>
               </div>
               {CONSOLE.settings.models.providers.map((label) => (

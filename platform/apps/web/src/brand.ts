@@ -1181,6 +1181,7 @@ export const CONSOLE = {
       voiceLabel: "BRAND VOICE",
       voiceHint: "every agent here inherits this",
       voiceDefault: "Warm, a little silly, never smug. Receipts over adjectives.",
+      appliedNow: "applied now",
     },
     models: {
       localLabel: "LOCAL · GEMMA",
@@ -1189,6 +1190,8 @@ export const CONSOLE = {
       keysHint: "keys are sealed per project, write-only — we use them, we can't read them back",
       noKey: "not connected",
       fingerprintPrefix: "saved ·",
+      appliesNextRun: "applies next run",
+      restartRequired: "restart required",
       /** Cloud model providers shown as write-only key rows (brand-facing names live here, not inline). */
       providers: ["Anthropic", "OpenAI", "Google AI"],
     },
