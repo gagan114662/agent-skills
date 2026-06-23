@@ -78,6 +78,8 @@ export const growthExperiments = pgTable(
     ideaId: uuid("idea_id"),
     channel: text("channel").notNull(),
     hypothesis: text("hypothesis").notNull(),
+    variant: text("variant").notNull().default(""),
+    metricKey: text("metric_key").notNull().default(""),
     /** The content engine's measurable target query (e.g. a keyword to rank for); `''` when none. */
     targetQuery: text("target_query").notNull().default(""),
     status: text("status", { enum: EXPERIMENT_STATUSES }).notNull().default("proposed"),
@@ -86,6 +88,8 @@ export const growthExperiments = pgTable(
     /** The #13 approval request gating an external post for this experiment (soft reference), or null. */
     approvalRequestId: uuid("approval_request_id"),
     resultSummary: text("result_summary").notNull().default(""),
+    result: text("result").notNull().default(""),
+    decision: text("decision").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

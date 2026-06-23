@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
-import { GrowthService, GrowthExperimentNotFoundError } from "../growth/service.js";
+import {
+  GrowthService,
+  GrowthExperimentNotFoundError,
+  GrowthExperimentValidationError,
+} from "../growth/service.js";
 import { isGrowthEventKind } from "../growth/types.js";
 import { isMarketingSendKind } from "../marketing/external-send.js";
 
@@ -77,6 +81,8 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
       ideaId?: string;
       channel?: string;
       hypothesis?: string;
+      variant?: string;
+      metricKey?: string;
       targetQuery?: string;
     };
     if (!body.channel || !body.hypothesis) {
@@ -86,6 +92,8 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
       ideaId: body.ideaId ?? null,
       channel: body.channel,
       hypothesis: body.hypothesis,
+      variant: body.variant,
+      metricKey: body.metricKey,
       targetQuery: body.targetQuery,
       proposedByMemberId: id.memberId,
     });
@@ -109,6 +117,31 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
     if (!assertWorkspace(id, wid, reply)) return;
     const paused = await service.autoPauseUnderperformers(wid);
     return reply.send({ paused });
+  });
+
+  /** Complete an experiment with the measured result and the decision it implies (#616). */
+  app.post("/workspaces/:wid/growth/experiments/:eid/complete", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, eid } = req.params as { wid: string; eid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+
+    const body = (req.body ?? {}) as { result?: string; decision?: string };
+    try {
+      const experiment = await service.completeExperiment(wid, eid, {
+        result: body.result ?? "",
+        decision: body.decision ?? "",
+      });
+      return reply.send(experiment);
+    } catch (err) {
+      if (err instanceof GrowthExperimentValidationError) {
+        return reply.code(400).send({ error: err.message });
+      }
+      if (err instanceof GrowthExperimentNotFoundError) {
+        return reply.code(404).send({ error: err.message });
+      }
+      throw err;
+    }
   });
 
   /**

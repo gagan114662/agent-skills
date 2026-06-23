@@ -31,11 +31,15 @@ function experiment(over: Partial<GrowthExperimentRecord> = {}): GrowthExperimen
     ideaId: null,
     channel: "paid-search",
     hypothesis: "Paid search can acquire trial users profitably.",
+    variant: "",
+    metricKey: "",
     targetQuery: "",
     status: "running",
     proposedByMemberId: "member-1",
     approvalRequestId: null,
     resultSummary: "",
+    result: "",
+    decision: "",
     createdAt: CLOCK,
     updatedAt: CLOCK,
     ...over,
@@ -59,6 +63,9 @@ function makeStore(seed: GrowthExperimentRecord[]): GrowthExperimentStore {
       const updated = { ...row, status, resultSummary, updatedAt: now };
       rows.set(id, updated);
       return updated;
+    },
+    complete: async () => {
+      throw new Error("not used");
     },
   };
 }
