@@ -228,15 +228,31 @@ function ApprovalQueue({
 /** The quiet transparency log — every external action, timestamped + linked. Reassurance, not noise. */
 function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): React.JSX.Element {
   const x = EVERYDAY.transparency;
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? actions.filter((act) => `${act.at} ${act.action} ${act.href ?? ""}`.toLowerCase().includes(needle))
+    : actions;
   return (
     <section className="everyday-log" aria-label={x.heading}>
       <h2 className="everyday-serif everyday-log__heading">{x.heading}</h2>
       <p className="everyday-log__subhead">{x.subhead}</p>
+      <label className="everyday-log__search">
+        <span className="sr-only">{x.searchLabel}</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder={x.searchPlaceholder}
+        />
+      </label>
       {actions.length === 0 ? (
         <p className="everyday-empty__line">{x.empty}</p>
+      ) : visible.length === 0 ? (
+        <p className="everyday-empty__line">{x.noResults}</p>
       ) : (
         <ul className="everyday-log__list">
-          {actions.map((act) => (
+          {visible.map((act) => (
             <li key={act.id} className="everyday-log__row">
               <span className="everyday-log__when" aria-label={x.whenLabel}>
                 {act.at}
