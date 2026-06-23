@@ -76,6 +76,12 @@ import {
   shouldShowVentureIntake,
 } from "./venture-intake-flag.js";
 import { VentureBriefPanel } from "./VentureBriefPanel.js";
+import { ShortFormBlitzSurface } from "./ShortFormBlitzSurface.js";
+import {
+  SHORT_FORM_BLITZ_ENABLED,
+  SHORT_FORM_BLITZ_OWNER_WORKSPACE_ID,
+  shouldShowShortFormBlitz,
+} from "./short-form-blitz-flag.js";
 import { ConnectHealthChip } from "./ConnectHealthChip.js";
 import {
   CONNECT_HEALTH_OWNER_WORKSPACE_ID,
@@ -458,6 +464,13 @@ export function ConsoleView(): React.JSX.Element {
   const ventureIntakeEnabled = shouldShowVentureIntake({
     flagOn: VENTURE_INTAKE_ENABLED,
     ownerWorkspaceId: VENTURE_INTAKE_OWNER_WORKSPACE_ID,
+    workspaceId,
+  });
+  // #744 short-form Blitz queue + content calendar: default-OFF and owner-workspace-first, reading through
+  // an injected publishing/video seam. With no env set, the board is unchanged and no seam reads occur.
+  const shortFormBlitzEnabled = shouldShowShortFormBlitz({
+    flagOn: SHORT_FORM_BLITZ_ENABLED,
+    ownerWorkspaceId: SHORT_FORM_BLITZ_OWNER_WORKSPACE_ID,
     workspaceId,
   });
   // #480: mirror the mission-control poll's ACTIVE sessions into the store so each channel can show
@@ -945,6 +958,9 @@ export function ConsoleView(): React.JSX.Element {
                 off (prod / non-owner) this never renders, so the board is byte-for-byte unchanged. */}
             {ventureIntakeEnabled && workspaceId && (
               <VentureBriefPanel workspaceId={workspaceId} />
+            )}
+            {shortFormBlitzEnabled && workspaceId && (
+              <ShortFormBlitzSurface workspaceId={workspaceId} />
             )}
             <Board
               columns={model.columns}
