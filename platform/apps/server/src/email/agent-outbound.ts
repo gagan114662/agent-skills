@@ -14,15 +14,21 @@ import { notify as defaultNotify } from "../notifications/service.js";
  * + body; the owner's per-send "yes" is the only thing that lets it leave the building.
  *
  * This deliberately reuses the existing real-send machinery rather than adding a new lever: the parked
- * request is an `external.send` of `kind: "email"`, so on approval the already-wired acquisition
- * dispatcher (#189) routes it through the suppression / CAN-SPAM-footer / domain-warmup guards to the
- * connected ESP (Postmark, #268) — or, by default (no ESP connected / flag off), records it only with
- * no network egress. So the path is genuinely end-to-end and real when the owner wires it, and safe
- * (recorded-only) until then. The pure helpers are unit-tested offline; the IO is injected.
+ * request is an `external.send` of the canonical send kind `"email.send"`, so on approval the already-wired
+ * acquisition dispatcher (#189) routes it through the suppression / CAN-SPAM-footer / domain-warmup guards
+ * to the connected ESP (Postmark, #268) AND the #196 legal/compliance pack governs it (both key on
+ * `"email.send"`) — or, by default (no ESP connected / flag off), records it only with no network egress.
+ * So the path is genuinely end-to-end and real when the owner wires it, and safe (recorded-only) until then.
+ * The pure helpers are unit-tested offline; the IO is injected.
  */
 
-/** The acquisition dispatcher's channel discriminator for an email send (`channelForKind("email")`). */
-export const OUTBOUND_EMAIL_KIND = "email" as const;
+/**
+ * The canonical acquisition send kind for an email (`channelForKind("email.send") === "email"`). Using the
+ * canonical kind is what makes the path genuinely end-to-end: an earlier value of `"email"` was recognized
+ * by NEITHER the #189 dispatcher (`KIND_TO_CHANNEL`) NOR the #196 legal pack (`GOVERNED_KINDS`), so an
+ * approved agent email silently fell through to recorded-only and never reached a real inbox (#395).
+ */
+export const OUTBOUND_EMAIL_KIND = "email.send" as const;
 
 /** A composed email may not be longer than this — a sanity bound, not a deliverability limit. */
 const SUBJECT_MAX = 200;
