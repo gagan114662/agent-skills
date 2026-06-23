@@ -68,6 +68,8 @@ export interface ExternalAction {
   readonly action: string;
   /** Optional link to the real artifact out in the world. */
   readonly href?: string;
+  /** One-click reversal when the public action is reversible (e.g. unpublish/delete). */
+  readonly undoLabel?: string;
 }
 
 /** Everything the everyday shell renders. */
@@ -194,6 +196,13 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         at: "8:55 am",
         action: "read your site (ipop.ai) to learn the product",
         href: "https://ipop.ai",
+      },
+      {
+        id: "x4",
+        at: "10:02 am",
+        action: "published the launch page update",
+        href: "https://ipop.ai/launch",
+        undoLabel: "unpublish",
       },
       {
         id: "x2",

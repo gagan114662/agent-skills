@@ -7123,6 +7123,25 @@ select:focus-visible {
   outline: 2px solid var(--ed-pop);
   outline-offset: 2px;
 }
+.everyday-log__undo {
+  border: 1px solid var(--ed-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ed-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.everyday-log__undo:hover,
+.everyday-log__undo:focus-visible {
+  border-color: var(--ed-pop);
+  outline: none;
+}
+.everyday-log__undone {
+  color: var(--ed-text-dim);
+  font-size: 13px;
+}
 
 /* Inline deliverables (drafts + diffs). */
 .everyday-deliverable {

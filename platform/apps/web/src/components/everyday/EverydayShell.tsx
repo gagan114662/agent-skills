@@ -229,6 +229,7 @@ function ApprovalQueue({
 function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): React.JSX.Element {
   const x = EVERYDAY.transparency;
   const [query, setQuery] = useState("");
+  const [undone, setUndone] = useState<readonly string[]>([]);
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? actions.filter((act) => `${act.at} ${act.action} ${act.href ?? ""}`.toLowerCase().includes(needle))
@@ -268,6 +269,16 @@ function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): R
                   {x.viewLink}
                 </a>
               )}
+              {act.undoLabel && !undone.includes(act.id) && (
+                <button
+                  type="button"
+                  className="everyday-log__undo"
+                  onClick={() => setUndone((ids) => [...ids, act.id])}
+                >
+                  {act.undoLabel}
+                </button>
+              )}
+              {undone.includes(act.id) && <span className="everyday-log__undone">{x.undone}</span>}
             </li>
           ))}
         </ul>

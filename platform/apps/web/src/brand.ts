@@ -1418,6 +1418,8 @@ export const EVERYDAY = {
     searchPlaceholder: "search actions",
     /** Empty filtered state. */
     noResults: "nothing matches that search.",
+    /** Status suffix shown after a public action has been undone. */
+    undone: "undone",
     /** Link text to the external artifact. */
     viewLink: "see it",
   },
