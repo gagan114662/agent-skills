@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 /**
  * Cloud↔local file sync / mirroring (issue #55, ADR-0032).
@@ -54,9 +54,60 @@ export interface SyncResult {
   unchanged: number;
 }
 
+export interface DurableWriteOps {
+  rename?: (from: string, to: string) => Promise<void>;
+}
+
 /** Stable SHA-256 hex of a file's UTF-8 content — the unit of change detection. */
 export function hashContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+async function fsyncDirectory(path: string): Promise<void> {
+  const dir = await open(path, "r");
+  try {
+    await dir.sync();
+  } finally {
+    await dir.close();
+  }
+}
+
+/**
+ * Crash-safe UTF-8 file replacement: write + fsync a temp file in the destination directory, atomically
+ * rename it over the old file, then fsync the directory entry. Until rename succeeds, readers keep the
+ * last committed file; after rename, a crash cannot expose a half-written JSON/blob.
+ */
+export async function writeFileDurably(
+  path: string,
+  content: string,
+  ops: DurableWriteOps = {},
+): Promise<void> {
+  const dir = dirname(path);
+  await mkdir(dir, { recursive: true });
+  const tmp = join(
+    dir,
+    `.${basename(path)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const handle = await open(tmp, "w");
+  let closed = false;
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+    await handle.close();
+    closed = true;
+    await (ops.rename ?? rename)(tmp, path);
+    await fsyncDirectory(dir);
+  } catch (err) {
+    if (!closed) {
+      try {
+        await handle.close();
+      } catch {
+        // Preserve the original write/rename error.
+      }
+    }
+    await rm(tmp, { force: true }).catch(() => undefined);
+    throw err;
+  }
 }
 
 /** Diff a remote (cloud) manifest against a local one by content hash. Pure + deterministic. */
@@ -177,8 +228,7 @@ export class FsMirrorSink implements MirrorSink {
 
   async write(path: string, content: string): Promise<void> {
     const full = this.safeResolve(path);
-    await mkdir(dirname(full), { recursive: true });
-    await writeFile(full, content, "utf8");
+    await writeFileDurably(full, content);
   }
 
   async remove(path: string): Promise<void> {

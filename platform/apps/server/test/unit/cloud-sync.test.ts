@@ -1,11 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   diffManifests,
   mirror,
   hashContent,
+  writeFileDurably,
   InMemoryMirrorSource,
   InMemoryMirrorSink,
   FsMirrorSink,
@@ -94,5 +95,22 @@ describe("cloud↔local sync — FsMirrorSink writes a real local directory", ()
     const sink = new FsMirrorSink(root);
     await expect(sink.write("../escape.txt", "nope")).rejects.toThrow(/outside/i);
     expect(existsSync(join(root, "..", "escape.txt"))).toBe(false);
+  });
+
+  it("keeps the last committed file intact if a durable write fails before commit", async () => {
+    const root = makeDir();
+    const file = join(root, "state.json");
+
+    await writeFileDurably(file, "{\"version\":1}");
+    await expect(
+      writeFileDurably(file, "{\"version\":2}", {
+        rename: async () => {
+          throw new Error("simulated crash before rename");
+        },
+      }),
+    ).rejects.toThrow(/simulated crash/);
+
+    expect(readFileSync(file, "utf8")).toBe("{\"version\":1}");
+    expect(readdirSync(root).filter((name) => name.includes(".tmp-"))).toEqual([]);
   });
 });
