@@ -4,11 +4,13 @@
  * tab strip (Board / Chat / Founder / Automations / … / Pricing) is gone, the brand shows (not the internal
  * name), and the account utilities that replaced the nav (settings, sign out) live in the left footer.
  */
-import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { Workspace } from "./Workspace.js";
 import { CONSOLE } from "../brand.js";
-import { renderWithStore } from "../test/utils.js";
+import { StoreProvider } from "../store/StoreContext.js";
+import { createStore } from "../store/store.js";
+import { makeFakeDeps, renderWithStore } from "../test/utils.js";
 
 describe("Workspace shell (console v5)", () => {
   it("opens directly on the two-pane console — left projects panel + a guided first-run center (#213)", async () => {
@@ -63,5 +65,32 @@ describe("Workspace shell (console v5)", () => {
 
     expect(screen.getByRole("button", { name: CONSOLE.shell.settings })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: CONSOLE.shell.signOut })).toBeInTheDocument();
+  });
+
+  it("#658 keeps global error toasts visible until dismissed, with a details link", async () => {
+    const { deps } = makeFakeDeps();
+    deps.api.missionControl.stop = vi.fn(async () => {
+      throw new Error("runner stopped responding while cleaning up");
+    });
+    const store = createStore(deps);
+    render(
+      <StoreProvider store={store}>
+        <Workspace />
+      </StoreProvider>,
+    );
+    await store.bootstrap();
+    await screen.findByLabelText("Standup");
+
+    await store.stopSession("sess_1");
+
+    const toast = await screen.findByRole("alert", { name: CONSOLE.errorToast.title });
+    expect(toast).toHaveTextContent("runner stopped responding while cleaning up");
+    expect(screen.getByRole("link", { name: CONSOLE.errorToast.details })).toHaveAttribute(
+      "href",
+      "#workspace-error-details",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: CONSOLE.errorToast.dismiss }));
+    expect(screen.queryByRole("alert", { name: CONSOLE.errorToast.title })).toBeNull();
   });
 });

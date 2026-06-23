@@ -4,7 +4,8 @@
  * full-height `.workspace` frame; every surface, including the few off-board overlays (settings, pricing),
  * lives inside {@link ConsoleView}. The old multi-tab shell was superseded by the #199 → v5 redesign.
  */
-import { useAppState } from "../store/StoreContext.js";
+import { CONSOLE } from "../brand.js";
+import { useAppState, useStore } from "../store/StoreContext.js";
 import { ConsoleView } from "./console/ConsoleView.js";
 import { ExperienceOnboarding } from "./experience/ExperienceOnboarding.js";
 import {
@@ -14,7 +15,8 @@ import {
 } from "./experience/experience-onboarding-flag.js";
 
 export function Workspace(): React.JSX.Element {
-  const { identity } = useAppState();
+  const store = useStore();
+  const { error, identity } = useAppState();
   const showExperienceOnboarding = shouldShowExperienceOnboarding({
     flagOn: IPOP_EXPERIENCE_ONBOARDING_ENABLED,
     ownerWorkspaceId: IPOP_EXPERIENCE_OWNER_WORKSPACE_ID,
@@ -24,6 +26,20 @@ export function Workspace(): React.JSX.Element {
   return (
     <div className="workspace">
       {showExperienceOnboarding ? <ExperienceOnboarding /> : <ConsoleView />}
+      {error && (
+        <aside className="workspace-toast workspace-toast--error" role="alert" aria-label={CONSOLE.errorToast.title}>
+          <div className="workspace-toast__body">
+            <strong>{CONSOLE.errorToast.title}</strong>
+            <p id="workspace-error-details">{error}</p>
+          </div>
+          <a className="workspace-toast__details" href="#workspace-error-details">
+            {CONSOLE.errorToast.details}
+          </a>
+          <button className="workspace-toast__dismiss" type="button" onClick={() => store.dismissError()}>
+            {CONSOLE.errorToast.dismiss}
+          </button>
+        </aside>
+      )}
     </div>
   );
 }

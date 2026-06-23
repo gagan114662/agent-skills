@@ -336,6 +336,8 @@ export interface Store {
   showPaywall(): void;
   /** Dismiss the soft paywall nudge. */
   dismissPaywall(): void;
+  /** Clear the persistent workspace error toast after the user has read it (#658). */
+  dismissError(): void;
   // --- composer message/steering queue (#54), scoped to the active channel ---
   /** Stack a message after everything already pending; drains when the agent is ready. */
   queueMessage(text: string): void;
@@ -760,6 +762,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
     dismissPaywall() {
       set({ paywall: false });
+    },
+
+    dismissError() {
+      set({ error: null });
     },
 
     async openThread(messageId) {
