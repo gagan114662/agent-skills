@@ -62,6 +62,8 @@ export interface Env {
   workflows: WorkflowsEnv;
   /** Durable, single-leader scheduler (#559) — how the recurring ticks above are driven. */
   scheduler: SchedulerEnv;
+  /** Data retention sweeper (#679): old terminal runs/log tails/artifacts. */
+  retention: RetentionEnv;
   /** Slack-native digest tick (#170). */
   slack: SlackEnv;
   /** Notifications (#8). */
@@ -122,6 +124,15 @@ export interface SchedulerEnv {
   backoffBaseMs: number;
   /** Backoff ceiling (`SCHEDULER_BACKOFF_CAP_MS`) — bounds the retry cadence so it can never hang. Default 60s. */
   backoffCapMs: number;
+}
+
+export interface RetentionEnv {
+  /** Terminal run retention in days. 0 disables pruning. */
+  runRetentionDays: number;
+  /** How often to sweep old run data. 0 disables the automatic loop. */
+  intervalMs: number;
+  /** Max terminal sessions to delete per sweep. */
+  batchSize: number;
 }
 
 export interface DrEnv {
@@ -502,6 +513,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       jobTimeoutMs: num(source.SCHEDULER_JOB_TIMEOUT_MS, 300_000),
       backoffBaseMs: num(source.SCHEDULER_BACKOFF_BASE_MS, 1_000),
       backoffCapMs: num(source.SCHEDULER_BACKOFF_CAP_MS, 60_000),
+    },
+    retention: {
+      runRetentionDays: num(source.RELOAD_RUN_RETENTION_DAYS, 30),
+      // Default 0 (off): the retention loop is opt-in so tests/CI can call sweepRetention() deterministically.
+      intervalMs: Number(source.RELOAD_RETENTION_INTERVAL_MS ?? 0) || 0,
+      batchSize: num(source.RELOAD_RETENTION_BATCH_SIZE, 500),
     },
     slack: {
       // Default 0 (off): the Slack digest loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

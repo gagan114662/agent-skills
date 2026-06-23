@@ -70,6 +70,7 @@ import type { SessionManager } from "./runtime/manager.js";
 import { runRoutes } from "./routes/run.js";
 import { createDefaultRunProcessManager } from "./run/default.js";
 import type { RunProcessManager } from "./run/manager.js";
+import { startRetentionLoop } from "./retention/default.js";
 import { deployRoutes } from "./routes/deploy.js";
 import { createDefaultDeployManager } from "./deploy/default.js";
 import type { DeployManager } from "./deploy/manager.js";
@@ -525,6 +526,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // in-flight count as the scrape-time queue-depth signal. With all caps 0 (the default) it admits
   // everything — unchanged #25 behavior.
   const scale = opts.scale ?? createScale(0);
+  const retentionLoop = startRetentionLoop({ logger: app.log });
+  app.addHook("onClose", async () => {
+    retentionLoop.stop();
+  });
   // #113 saturation signals sampled at /metrics scrape time: admission queue depth, PG pool wait, and
   // Redis ping latency (event-loop lag is a process-singleton inside saturation.ts). All fail-soft —
   // a slow/dead dependency degrades the metric, never the scrape (see plugin.ts withTimeout).
