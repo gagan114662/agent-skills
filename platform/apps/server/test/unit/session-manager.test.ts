@@ -179,6 +179,60 @@ class PendingRuntime implements AgentRuntime {
   }
 }
 
+/** Runtime whose start is intentionally delayed so cancel-before-first-step is reproducible. */
+class DelayedStartRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  readonly startedSignals: AbortSignal[] = [];
+  private unblockStart!: () => void;
+  readonly started = new Promise<void>((resolve) => {
+    this.unblockStart = resolve;
+  });
+
+  async start(job: AgentJob): Promise<RunningSession> {
+    this.startedSignals.push(job.signal);
+    await this.started;
+    return {
+      sessionId: job.sessionId,
+      wait: () =>
+        Promise.resolve<RuntimeResult>({
+          status: job.signal.aborted ? "canceled" : "completed",
+          exitCode: job.signal.aborted ? null : 0,
+        }),
+      cancel: () => Promise.resolve(),
+    };
+  }
+
+  unblock(): void {
+    this.unblockStart();
+  }
+}
+
+/** Runtime that emits output before and after cancel so the manager can prove post-stop suppression. */
+class EmitsAfterCancelRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  cancelled = false;
+  private hooks?: RuntimeHooks;
+  private resolveDone!: (r: RuntimeResult) => void;
+
+  start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    this.hooks = hooks;
+    hooks.onOutput("stdout", "before-stop\n");
+    const done = new Promise<RuntimeResult>((resolve) => {
+      this.resolveDone = resolve;
+    });
+    return Promise.resolve({
+      sessionId: job.sessionId,
+      wait: () => done,
+      cancel: (reason: TerminalReason) => {
+        this.cancelled = true;
+        this.hooks?.onOutput("stdout", "after-stop-tool-dispatch\n");
+        this.resolveDone({ status: statusForReason(reason), exitCode: null });
+        return Promise.resolve();
+      },
+    });
+  }
+}
+
 /** A pending runtime whose session supports steering — records the guidance it receives (#53). */
 class SteerablePendingRuntime implements AgentRuntime {
   readonly kind = "local" as const;
@@ -438,6 +492,38 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(store.finalized?.status).toBe("canceled");
     // cancelling an unknown / already-finished session is a no-op
     expect(await manager.cancel(session.id)).toBe(false);
+  });
+
+  it("cancel() before runtime start aborts the session before the first step (#778)", async () => {
+    const runtime = new DelayedStartRuntime();
+    const { manager, store } = makeManager(runtime, caps(), new Secrets({}));
+    const session = await manager.launch(launch);
+
+    expect(await manager.cancel(session.id)).toBe(true);
+    for (let i = 0; i < 20 && runtime.startedSignals.length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    expect(runtime.startedSignals[0]?.aborted).toBe(true);
+    runtime.unblock();
+    await manager.join(session.id);
+
+    expect(store.finalized?.status).toBe("canceled");
+  });
+
+  it("cancel() suppresses any post-stop runtime output or tool dispatch lines (#778)", async () => {
+    const runtime = new EmitsAfterCancelRuntime();
+    const { manager, store, poster } = makeManager(runtime, caps(), new Secrets({}));
+    const session = await manager.launch(launch);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(await manager.cancel(session.id)).toBe(true);
+    await manager.join(session.id);
+
+    expect(runtime.cancelled).toBe(true);
+    expect(store.finalized?.status).toBe("canceled");
+    expect(poster.bodies()).toContain("before-stop");
+    expect(poster.bodies()).not.toContain("after-stop-tool-dispatch");
+    expect(store.finalized?.result).not.toContain("after-stop-tool-dispatch");
   });
 
   it("steer() delivers guidance to a live, steerable session (#53)", async () => {

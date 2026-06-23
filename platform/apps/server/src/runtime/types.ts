@@ -58,6 +58,8 @@ export interface AgentJob {
   egress?: string[];
   /** Hard resource + wall-clock caps for this session. */
   caps: ResourceCaps;
+  /** Hard cancellation signal. Runtimes must abort in-flight work and stop dispatching side effects. */
+  signal: AbortSignal;
 }
 
 export type OutputStream = "stdout" | "stderr";

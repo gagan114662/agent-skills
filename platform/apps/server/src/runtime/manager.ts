@@ -218,6 +218,7 @@ const HEARTBEAT_MIN_INTERVAL_MS = 10_000;
 export class SessionManager {
   private readonly running = new Map<string, RunningSession>();
   private readonly runs = new Map<string, Promise<void>>();
+  private readonly aborts = new Map<string, AbortController>();
   private readonly tracer: AgentTracer;
 
   constructor(private readonly deps: SessionManagerDeps) {
@@ -288,6 +289,8 @@ export class SessionManager {
       throw err;
     }
 
+    const abort = new AbortController();
+    this.aborts.set(session.id, abort);
     const run = this.drive(session, input.task, {
       teamRunId: input.teamRunId,
       parentSpanId: input.parentSpanId,
@@ -296,11 +299,15 @@ export class SessionManager {
       spec: harness.spec,
       decode: harness.decode,
       ticket,
+      abort,
     }).catch(() => {
       /* drive() never throws — terminal failures are persisted as `failed` */
     });
     this.runs.set(session.id, run);
-    void run.finally(() => this.runs.delete(session.id));
+    void run.finally(() => {
+      this.runs.delete(session.id);
+      this.aborts.delete(session.id);
+    });
     return session;
   }
 
@@ -334,9 +341,11 @@ export class SessionManager {
 
   /** Cancel a running session (idempotent; no-op if already terminal). */
   async cancel(id: string): Promise<boolean> {
+    const abort = this.aborts.get(id);
     const running = this.running.get(id);
-    if (!running) return false;
-    await running.cancel("canceled");
+    if (!abort && !running) return false;
+    abort?.abort();
+    await running?.cancel("canceled");
     return true;
   }
 
@@ -377,6 +386,8 @@ export class SessionManager {
       decode: LineDecoder;
       /** Cloud-scale admission ticket (#71): released at teardown. */
       ticket?: AdmissionTicket;
+      /** Hard cancellation signal for explicit user Stop (#778). */
+      abort: AbortController;
     },
   ): Promise<void> {
     const log = this.deps.logger.child({
@@ -405,6 +416,7 @@ export class SessionManager {
           spec: opts.spec,
           decode: opts.decode,
           ticket: opts.ticket,
+          abort: opts.abort,
         }),
     );
   }
@@ -420,6 +432,7 @@ export class SessionManager {
       spec: HarnessSpec;
       decode: LineDecoder;
       ticket?: AdmissionTicket;
+      abort: AbortController;
     },
   ): Promise<AgentSessionOutcome> {
     // Secrets are resolved per tenant at provision and injected as runtime env only. #151: the launching
@@ -429,6 +442,7 @@ export class SessionManager {
       agentMemberId: session.agentMemberId,
     });
     const redact = makeRedactor(secrets);
+    const signal = opts.abort.signal;
     // #151: the per-tenant egress allowlist rides on the job into the sandbox (the kernel-enforcement
     // seam). OFF (default) ⇒ undefined = unrestricted, today's behavior.
     const egressPolicy = resolveEgressPolicy(loadConfig(session.workspaceId).egress);
@@ -437,12 +451,9 @@ export class SessionManager {
     // Post the parent "started" message before any output so streamed lines thread under it. For a
     // subagent invocation (#59) the invoking @mention message is the thread root, so the started
     // message and every streamed line thread under it — the result returns into the parent thread.
-    const start = await this.safePost(
-      session,
-      `🤖 session ${session.id} started: ${task}`,
-      log,
-      opts.parentMessageId,
-    );
+    const start = signal.aborted
+      ? undefined
+      : await this.safePost(session, `🤖 session ${session.id} started: ${task}`, log, opts.parentMessageId);
     const parentMessageId = opts.parentMessageId ?? start?.id;
 
     // Stream state: line-buffer output, keep a redacted tail for the result. Each raw line is run
@@ -460,6 +471,7 @@ export class SessionManager {
     // the chain never breaks.
     let postChain: Promise<unknown> = Promise.resolve();
     const emitLine = (line: string): void => {
+      if (signal.aborted) return;
       const decoded = decode(line);
       // Preserve the raw structured event for run-log / turns consumers — redacted before it lands in
       // the structured log so secrets never persist there either.
@@ -471,7 +483,9 @@ export class SessionManager {
         if (!clean) continue;
         tail.push(clean);
         if (tail.length > RESULT_TAIL_LINES) tail.shift();
-        postChain = postChain.then(() => this.safePost(session, clean, log, parentMessageId));
+        postChain = postChain.then(() =>
+          signal.aborted ? undefined : this.safePost(session, clean, log, parentMessageId),
+        );
       }
     };
 
@@ -527,9 +541,11 @@ export class SessionManager {
           // #151: the session's egress allowlist (undefined when OFF — unrestricted, #25 default).
           egress,
           caps: this.deps.caps,
+          signal,
         },
         {
           onOutput: (_stream, chunk) => {
+            if (signal.aborted) return;
             resetIdle();
             beat();
             buffer += chunk;
@@ -549,9 +565,10 @@ export class SessionManager {
       await this.deps.store.markRunning(session.id, running.sandboxId);
 
       result = await running.wait();
+      if (signal.aborted) result = { status: "canceled", exitCode: null, snapshotId: result.snapshotId };
     } catch (err) {
       log.error({ err: redactError(err, redact) }, "agent session failed to run");
-      result = { status: "failed", exitCode: null };
+      result = signal.aborted ? { status: "canceled", exitCode: null } : { status: "failed", exitCode: null };
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(wallTimer);
@@ -561,7 +578,7 @@ export class SessionManager {
       opts.ticket?.release();
     }
 
-    if (buffer.trim()) emitLine(buffer); // flush a trailing partial line
+    if (!signal.aborted && buffer.trim()) emitLine(buffer); // flush a trailing partial line
     await postChain; // ensure every streamed line is persisted (in order) before the terminal message
 
     const resultText = tail.join("\n").slice(0, RESULT_MAX_CHARS);

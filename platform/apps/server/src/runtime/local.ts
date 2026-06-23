@@ -37,7 +37,13 @@ export class LocalRuntime implements AgentRuntime {
     child.stdout?.on("data", (chunk: string) => hooks.onOutput("stdout", chunk));
     child.stderr?.on("data", (chunk: string) => hooks.onOutput("stderr", chunk));
 
-    return Promise.resolve(new LocalSession(job.sessionId, child));
+    const session = new LocalSession(job.sessionId, child);
+    if (job.signal.aborted) {
+      void session.cancel("canceled");
+    } else {
+      job.signal.addEventListener("abort", () => void session.cancel("canceled"), { once: true });
+    }
+    return Promise.resolve(session);
   }
 }
 
