@@ -99,6 +99,12 @@ export const VOICE = {
   queueTooltip: "Queue this message to send in turn — it goes out after the agent finishes its current reply. (⌘↵)",
   /** Composer Steer button: accessible label + hover tooltip explaining how it differs from Send/Queue (#508). */
   steerTooltip: "Steer the running agent — jump this to the front of the line so it course-corrects next. (⌥↵)",
+  /** Copy-to-clipboard controls (#657). */
+  copy: {
+    label: "Copy",
+    done: "Copied.",
+    failed: "Couldn't copy. Select the text and copy it manually.",
+  },
   /** #509: heading above the clickable starter prompts shown in an empty channel. */
   startersHeading: "Not sure where to start? Tap one to drop it in the box:",
 } as const;

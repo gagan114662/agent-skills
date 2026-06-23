@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { VOICE } from "../../brand.js";
 import { DiffView } from "./DiffView.js";
 
 /** The dependency-free diff renderer (#51) classifies each line so additions/deletions are colored. */
@@ -35,5 +37,20 @@ describe("DiffView", () => {
     );
     expect(getByText("logo.png")).toBeInTheDocument();
     expect(getByText("binary")).toBeInTheDocument();
+  });
+
+  it("#657 copies the full patch and confirms", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const patch = "diff --git a/x.ts b/x.ts\n+added line\n";
+    render(<DiffView patch={patch} files={[{ path: "x.ts", additions: 1, deletions: 0, binary: false }]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: VOICE.copy.label }));
+
+    expect(writeText).toHaveBeenCalledWith(patch);
+    expect(await screen.findByRole("status")).toHaveTextContent(VOICE.copy.done);
   });
 });
