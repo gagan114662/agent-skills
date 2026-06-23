@@ -57,6 +57,13 @@ describe("voice/classify — pure sentiment / churn-risk / category extraction (
     expect(c.churnRisk).toBe("medium");
   });
 
+  it("classifies negative brand mentions so the monitor can flag response-needed items (#618)", () => {
+    const c = classifyFeedback({ sourceKind: "brand_mention", text: "ipop.ai is broken and confusing" });
+    expect(c.sentiment).toBe("negative");
+    expect(c.category).toBe("bug");
+    expect(c.churnRisk).toBe("medium");
+  });
+
   it("is deterministic and total (empty text never throws)", () => {
     const a = classifyFeedback({ sourceKind: "support_ticket", text: "" });
     const b = classifyFeedback({ sourceKind: "support_ticket", text: "" });

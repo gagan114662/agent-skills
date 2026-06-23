@@ -192,6 +192,17 @@ export interface IngestFeedbackInput {
   ventureIdeaId?: string | null;
 }
 
+export interface BrandMentionFeedItem {
+  id: string;
+  sourceRef: string | null;
+  summary: string;
+  sentiment: Sentiment;
+  churnRisk: ChurnRisk;
+  category: string;
+  needsResponse: boolean;
+  createdAt: Date;
+}
+
 function summarize(text: string, max = 200): string {
   const t = (text ?? "").trim().replace(/\s+/g, " ");
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
@@ -367,6 +378,23 @@ export class CustomerVoiceService {
     const metrics = aggregateVoiceMetrics(windowed);
     const needingHuman = await this.needingHuman(workspaceId);
     return buildVoiceDigest({ windowDays, metrics, ticketsNeedingHuman: needingHuman.length });
+  }
+
+  /** Brand-mention feed (#618): classified mentions, newest first, with negative/urgent response flags. */
+  async brandMentions(workspaceId: string): Promise<BrandMentionFeedItem[]> {
+    const insights = await this.deps.insights.list(workspaceId);
+    return insights
+      .filter((i) => i.sourceKind === "brand_mention")
+      .map((i) => ({
+        id: i.id,
+        sourceRef: i.sourceRef,
+        summary: i.summary,
+        sentiment: i.sentiment,
+        churnRisk: i.churnRisk,
+        category: i.category,
+        needsResponse: i.sentiment === "negative" || i.churnRisk === "high",
+        createdAt: i.createdAt,
+      }));
   }
 
   /** The #96 ↔ #114 source: an idea's customer-voice evidence, reduced for the scorecard overlay. */
