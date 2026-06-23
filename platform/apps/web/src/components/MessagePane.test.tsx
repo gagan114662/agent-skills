@@ -13,6 +13,19 @@ describe("MessagePane", () => {
     expect(screen.getByText("Ada")).toBeInTheDocument();
   });
 
+  it("bounds large channel histories to the latest messages in the DOM (#684)", async () => {
+    const messages = Array.from({ length: 1_000 }, (_, i) =>
+      makeMessage({ id: `m-${i}`, body: `history message ${i}` }),
+    );
+    const { store } = renderWithStore(<MessagePane />, { messages });
+    await store.bootstrap();
+
+    expect(await screen.findByText("history message 999")).toBeInTheDocument();
+    expect(screen.queryByText("history message 0")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing latest 200 of 1000 messages")).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(200);
+  });
+
   // #480: a live session in THIS channel shows an in-channel "working…" indicator (not just the global pill).
   it("shows an in-channel 'working…' indicator for a live session in the open channel", async () => {
     const { store } = renderWithStore(<MessagePane />);

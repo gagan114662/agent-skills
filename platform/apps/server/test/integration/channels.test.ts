@@ -63,6 +63,35 @@ describe("channels & DMs (real Postgres)", () => {
     expect(list.json().map((m: { body: string }) => m.body)).toContain("hello world");
   });
 
+  it("tails channel history when a message limit is provided", async () => {
+    const h = await newHuman();
+    const create = await app.inject({
+      method: "POST",
+      url: "/workspaces/" + h.workspaceId + "/channels",
+      cookies: { rid: h.cookie },
+      payload: { name: "history" },
+    });
+    const cid = create.json().id as string;
+
+    for (let i = 0; i < 5; i += 1) {
+      const post = await app.inject({
+        method: "POST",
+        url: "/channels/" + cid + "/messages",
+        cookies: { rid: h.cookie },
+        payload: { body: "message " + i },
+      });
+      expect(post.statusCode).toBe(201);
+    }
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/channels/" + cid + "/messages?limit=2",
+      cookies: { rid: h.cookie },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().map((m: { body: string }) => m.body)).toEqual(["message 3", "message 4"]);
+  });
+
   it("DM get-or-create is idempotent for the same member set", async () => {
     const h = await newHuman();
     const reg = await app.inject({

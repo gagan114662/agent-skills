@@ -5789,6 +5789,9 @@ select:focus-visible {
   font-size: 11px; padding: 1px 8px; border-radius: 999px; cursor: pointer;
 }
 .typingind__stop:hover { color: var(--accent-press); border-color: var(--accent); }
+.messagelist__window { margin: 8px auto 12px; width: fit-content; max-width: calc(100% - 32px);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--text-dim);
+  background: var(--bg-1); font-family: var(--console-mono); font-size: 10px; }
 
 /* ── Live agent theater (#624): watch the fleet work, reasoning → action → artifact ─────────────── */
 .theater {

@@ -54,12 +54,16 @@ export async function getMessage(id: string): Promise<Message | undefined> {
 }
 
 /** Channel messages in chronological order, excluding soft-deleted ones (flat #4 contract). */
-export async function listChannelMessages(channelId: string): Promise<Message[]> {
-  return db
+export async function listChannelMessages(channelId: string, limit?: number): Promise<Message[]> {
+  const boundedLimit = limit && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+  const rows = await db
     .select(messageColumns)
     .from(messages)
     .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-    .orderBy(asc(messages.createdAt)) as Promise<Message[]>;
+    .orderBy(boundedLimit ? desc(messages.createdAt) : asc(messages.createdAt))
+    .limit(boundedLimit ?? 100_000);
+  const out = rows as Message[];
+  return boundedLimit ? out.reverse() : out;
 }
 
 /** A thread's replies (children of `rootId`) in chronological order, excluding deleted. */

@@ -541,8 +541,9 @@ export const api = {
   },
 
   // --- messages & threads ---
-  listMessages(channelId: string): Promise<Message[]> {
-    return request<Message[]>(`/channels/${channelId}/messages`);
+  listMessages(channelId: string, limit?: number): Promise<Message[]> {
+    const suffix = limit && Number.isFinite(limit) && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
+    return request<Message[]>(`/channels/${channelId}/messages${suffix}`);
   },
   postMessage(channelId: string, body: string, parentMessageId?: string): Promise<Message> {
     const payload = parentMessageId ? { body, parentMessageId } : { body };

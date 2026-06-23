@@ -254,6 +254,7 @@ describe("store bootstrap + realtime", () => {
     expect(s.channels).toHaveLength(2);
     expect(s.activeChannelId).toBe("c1");
     expect(s.messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1"]);
+    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c1", 500);
     expect(env.deps.realtime.connect).toHaveBeenCalled();
     expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c1");
     // self is seeded into the directory

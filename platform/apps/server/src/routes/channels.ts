@@ -28,6 +28,15 @@ import { resolveThreadRoot } from "../messaging/threads.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 
 const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
+const MESSAGE_LIST_MAX_LIMIT = 1_000;
+
+function parseMessageLimit(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const raw = Array.isArray(value) ? value[0] : value;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.min(MESSAGE_LIST_MAX_LIMIT, Math.floor(n));
+}
 
 export async function channelRoutes(app: FastifyInstance): Promise<void> {
   // create a public channel (creator auto-joins)
@@ -247,6 +256,7 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return;
     const { cid } = req.params as { cid: string };
     if (!(await requireChannelCapability(id, cid, "read", reply))) return;
-    return listChannelMessages(cid);
+    const limit = parseMessageLimit((req.query as { limit?: string | string[] }).limit);
+    return listChannelMessages(cid, limit);
   });
 }
