@@ -606,6 +606,18 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     }
   }
 
+  /** If a stale approval card opens after someone else resolved it, clear the pending badge/row now. */
+  async function reconcileOpenedRequest(request: ApprovalRequestDto): Promise<void> {
+    if (request.status === "pending") return;
+    if (state.approvals.status === "pending") {
+      const requests = state.approvals.requests.filter((r) => r.id !== request.id);
+      if (requests.length !== state.approvals.requests.length) {
+        setApprovals({ requests, pendingCount: requests.length });
+      }
+    }
+    await refreshPending();
+  }
+
   /** After any decision, reload the visible queue + the badge, and refresh an open detail. */
   async function reconcile(requestId: string): Promise<void> {
     await store.loadApprovals(state.approvals.status);
@@ -925,6 +937,7 @@ export function createStore({ api, realtime }: StoreDeps): Store {
           api.approvals.events(requestId),
         ]);
         setApprovals({ activeRequest: request, activeEvents: events, error: null });
+        await reconcileOpenedRequest(request);
       } catch (e) {
         setApprovals({ error: errMsg(e) });
       }

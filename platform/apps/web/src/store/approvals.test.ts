@@ -81,6 +81,22 @@ describe("store approvals slice", () => {
     expect(store.getState().approvals.activeRequest).toBeNull();
   });
 
+  it("clears the pending badge when an opened approval was already resolved", async () => {
+    const { store, approvals } = await ready({
+      pending: [makeRequest({ id: "r1" })],
+      detail: makeRequest({ id: "r1", status: "executed", decidedAt: "2026-06-08T12:05:00Z" }),
+    });
+    await store.loadApprovals("pending");
+    approvals.setPending([]);
+
+    await store.openRequest("r1");
+
+    const s = store.getState().approvals;
+    expect(s.activeRequest?.status).toBe("executed");
+    expect(s.requests).toEqual([]);
+    expect(s.pendingCount).toBe(0);
+  });
+
   it("loads, adds and removes policies", async () => {
     const { store, approvals } = await ready({ policies: [makePolicy({ id: "p1" })] });
     await store.loadPolicies();
