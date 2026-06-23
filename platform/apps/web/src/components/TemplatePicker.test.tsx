@@ -73,15 +73,16 @@ describe("TemplatePicker (#167 — template variables)", () => {
   });
 });
 
-describe("TemplatePicker (#474 — dismiss + hide-when-empty)", () => {
-  it("hides the control entirely when the channel has no templates", async () => {
+describe("TemplatePicker (#474/#647 — dismiss + empty guidance)", () => {
+  it("shows guidance when the channel has no templates", async () => {
     stubTemplates([]);
     const { store } = renderWithStore(<TemplatePicker onPick={vi.fn()} />);
     await act(async () => {
       await store.bootstrap();
     });
-    // The whole 'Templates ▾' control is gone — no dead button that only ever says "No templates".
-    await waitFor(() => expect(screen.queryByRole("button", { name: /templates/i })).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: /templates/i }));
+    expect(await screen.findByText(/Templates appear for department channels/i)).toBeInTheDocument();
+    expect(screen.getByText(/write the brief directly in chat/i)).toBeInTheDocument();
   });
 
   it("closes the popover on a channel switch (never sticks open over the new channel)", async () => {
