@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
 import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
@@ -383,4 +383,20 @@ export async function listAgentSessions(channelId: string): Promise<AgentSession
     .where(eq(agentSessions.channelId, channelId))
     .orderBy(desc(agentSessions.createdAt));
   return rows as AgentSession[];
+}
+
+const TERMINAL_SESSION_STATUSES: SessionStatus[] = ["completed", "failed", "timeout", "idle_reaped", "canceled"];
+
+/** Delete old terminal sessions in a bounded batch. FKs cascade linked run artifacts/log records. */
+export async function pruneTerminalAgentSessionsBefore(cutoff: Date, limit = 500): Promise<string[]> {
+  const victims = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(and(inArray(agentSessions.status, TERMINAL_SESSION_STATUSES), lt(agentSessions.endedAt, cutoff)))
+    .orderBy(agentSessions.endedAt)
+    .limit(Math.max(1, Math.trunc(limit)));
+  const ids = victims.map((row) => row.id);
+  if (ids.length === 0) return [];
+  const deleted = await db.delete(agentSessions).where(inArray(agentSessions.id, ids)).returning({ id: agentSessions.id });
+  return deleted.map((row) => row.id);
 }
