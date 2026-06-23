@@ -54,6 +54,8 @@ export interface RunProcessManagerDeps {
   logger?: SessionLogger;
   /** How many trailing output lines to retain per run (bounds memory from a chatty dev server). */
   maxLogLines?: number;
+  /** How long to retain a terminal run state for polling after exit/stop/fail. */
+  terminalRetentionMs?: number;
 }
 
 interface RunHandle {
@@ -62,12 +64,14 @@ interface RunHandle {
   child?: ChildProcess;
   /** True once detection (or an explicit port) has resolved the preview URL. */
   resolved: boolean;
+  cleanupTimer?: NodeJS.Timeout;
 }
 
 /** Statuses for which a run is still considered active (start is idempotent against these). */
 const ACTIVE: ReadonlySet<RunStatus> = new Set<RunStatus>(["starting", "running"]);
 
 const DEFAULT_MAX_LOG_LINES = 200;
+const DEFAULT_TERMINAL_RETENTION_MS = 60_000;
 
 export class RunProcessManager {
   private readonly runs = new Map<string, RunHandle>();
@@ -77,6 +81,7 @@ export class RunProcessManager {
   private readonly spawn: SpawnFn;
   private readonly logger?: SessionLogger;
   private readonly maxLogLines: number;
+  private readonly terminalRetentionMs: number;
 
   constructor(deps: RunProcessManagerDeps) {
     this.provisioner = deps.provisioner;
@@ -91,6 +96,7 @@ export class RunProcessManager {
     this.spawn = deps.spawn ?? (nodeSpawn as SpawnFn);
     this.logger = deps.logger;
     this.maxLogLines = deps.maxLogLines ?? DEFAULT_MAX_LOG_LINES;
+    this.terminalRetentionMs = deps.terminalRetentionMs ?? DEFAULT_TERMINAL_RETENTION_MS;
   }
 
   /**
@@ -147,6 +153,7 @@ export class RunProcessManager {
       handle.state.status = "exited";
       handle.state.exitCode = code;
       this.emitStatus(handle);
+      this.scheduleCleanup(handle);
     });
 
     return handle.state;
@@ -166,12 +173,17 @@ export class RunProcessManager {
     if (handle.child) killTree(handle.child);
     handle.state.status = "stopped";
     this.emitStatus(handle);
+    this.scheduleCleanup(handle);
     return true;
   }
 
   /** Kill every run process — called on server shutdown so no preview leaks past close. */
   shutdown(): void {
-    for (const [sessionId] of this.runs) this.stop(sessionId);
+    for (const [sessionId, handle] of this.runs) {
+      if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
+      this.stop(sessionId);
+    }
+    this.runs.clear();
   }
 
   // --- internals ---
@@ -222,6 +234,7 @@ export class RunProcessManager {
     handle.state.error = err instanceof Error ? err.message : String(err);
     this.logger?.warn({ sessionId: handle.state.sessionId, err: handle.state.error }, "run process failed");
     this.emitStatus(handle);
+    this.scheduleCleanup(handle);
     return handle.state;
   }
 
@@ -236,5 +249,14 @@ export class RunProcessManager {
       error: handle.state.error,
     };
     this.publish(handle.channelId, event);
+  }
+
+  private scheduleCleanup(handle: RunHandle): void {
+    if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
+    handle.child = undefined;
+    handle.cleanupTimer = setTimeout(() => {
+      if (this.runs.get(handle.state.sessionId) === handle) this.runs.delete(handle.state.sessionId);
+    }, this.terminalRetentionMs);
+    handle.cleanupTimer.unref?.();
   }
 }
