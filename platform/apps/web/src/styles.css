@@ -19,6 +19,8 @@
   --accent: #ff4524; /* Pop Vermilion */
   --accent-press: #e23a1c;
   --accent-dim: #ffd9cf; /* vermilion wash (selected rows, badges) */
+  --link: #c73618; /* AA text-link vermilion on paper */
+  --link-hover: #a82e15;
   --agent: #b07bff;
   --agent-dim: #ece1ff;
   --online: #2fb170;
@@ -66,6 +68,17 @@
     "Segoe UI",
     system-ui,
     sans-serif;
+}
+
+a {
+  color: var(--link);
+  text-decoration-color: color-mix(in srgb, var(--link) 72%, transparent);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+a:hover {
+  color: var(--link-hover);
+  text-decoration-color: currentColor;
 }
 
 /* ===== #138 pop identity: motion vocabulary + wordmark ===== */
@@ -339,7 +352,7 @@ select:focus-visible {
 .linklike {
   border: none;
   background: none;
-  color: var(--accent);
+  color: var(--link);
   padding: 0;
   text-decoration: underline;
 }
@@ -2777,7 +2790,7 @@ select:focus-visible {
 }
 .deploy__history-row a {
   font-family: ui-monospace, monospace;
-  color: var(--accent);
+  color: var(--link);
 }
 .deploy__history-reason {
   margin-left: auto;
@@ -4419,11 +4432,14 @@ select:focus-visible {
 }
 .site__nav-link {
   font-weight: 700;
-  opacity: 0.78;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.site__nav-link:hover {
+  color: var(--link);
 }
 .site__nav-link--active {
-  opacity: 1;
-  color: var(--vermilion);
+  color: var(--link);
 }
 .site__nav-actions {
   margin-left: auto;
@@ -4596,7 +4612,7 @@ select:focus-visible {
   font-weight: 800;
 }
 .md a {
-  color: var(--vermilion);
+  color: var(--link);
   font-weight: 700;
 }
 
@@ -4781,7 +4797,11 @@ select:focus-visible {
 }
 .landing__nav-link {
   font-weight: 700;
-  opacity: 0.78;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.landing__nav-link:hover {
+  color: var(--link);
 }
 
 @media (max-width: 640px) {
@@ -5881,6 +5901,8 @@ select:focus-visible {
   --accent: #ff5a3c;       /* Pop Vermilion, lifted for contrast on black */
   --accent-press: #ff7559;
   --accent-dim: #2a1812;   /* dark vermilion wash — selected rows / badges */
+  --link: #ff7559;         /* AA text-link vermilion on near-black */
+  --link-hover: #ff9a84;
   --agent: #c39bff;
   --agent-dim: #241a33;
   --online: #34c27a;
