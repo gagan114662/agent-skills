@@ -275,6 +275,55 @@ describe("product planning loop (real Postgres): evidence → ranked backlog →
     },
   );
 
+  it("ingests real user feedback into a triaged backlog item without manual copy-paste (#623)", async () => {
+    const w = await seed();
+    const res = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/planning/feedback`,
+      cookies: { rid: w.cookie },
+      payload: {
+        channel: "support",
+        reporter: "dana@northwind.co",
+        url: "https://helpdesk.local/tickets/42",
+        text: "The checkout is broken and we cannot pay for the team plan.",
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const item = res.json();
+    expect(item).toMatchObject({
+      workspaceId: w.workspaceId,
+      source: "customer_voice",
+      sourceRef: "feedback:support:the-checkout-is-broken-and-we-cannot-pay-for-th",
+      status: "proposed",
+      reach: 1,
+      impact: 3,
+      confidencePct: 100,
+      effort: 2,
+    });
+    expect(item.title).toContain("checkout is broken");
+    expect(item.description).toContain("Reporter: dana@northwind.co");
+    expect(item.description).toContain("Receipt: https://helpdesk.local/tickets/42");
+
+    const backlog = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/planning/backlog`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(backlog).toHaveLength(1);
+    expect(backlog[0]).toMatchObject({ item: { id: item.id, source: "customer_voice" }, position: 1 });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/planning/feedback`,
+      cookies: { rid: w.cookie },
+      payload: { channel: "slack", text: "please add this" },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it("is a no-op when planning is disabled (default-OFF): no spec drafted, no launch", async () => {
     const w = await seed();
     await addItem(w, {
