@@ -126,6 +126,10 @@ export interface RiceBreakdown {
 export interface RankedBacklogItem {
   item: BacklogItemRecord;
   score: number;
+  /** The unsteered RICE score before any natural-language priority boost (#626). */
+  baseScore: number;
+  /** Positive when the active steering directive matched this item (#626). */
+  steeringBoost: number;
   rice: RiceBreakdown;
   /** 1-based rank position in the backlog (1 = highest priority). */
   position: number;

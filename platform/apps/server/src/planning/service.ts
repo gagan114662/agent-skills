@@ -2,6 +2,7 @@ import type { PlanningCaps } from "./caps.js";
 import { decidePlanningDispatch, type PlanningDispatchAction } from "./decide.js";
 import { deriveRice, rankBacklog } from "./rice.js";
 import { draftSpec } from "./spec.js";
+import { parseSteeringIntent, type PlanningSteeringDirective } from "./steering.js";
 import type {
   BacklogEvidence,
   BacklogItemRecord,
@@ -134,6 +135,7 @@ export interface PlanningTickResult {
 export class PlanningService {
   private readonly deps: PlanningDeps;
   private readonly now: () => Date;
+  private readonly steering = new Map<string, PlanningSteeringDirective>();
 
   constructor(deps: PlanningDeps) {
     this.deps = deps;
@@ -179,7 +181,17 @@ export class PlanningService {
 
   /** The RICE-ranked backlog (the #104 roadmap + the route read). Read-only, tenant-scoped. */
   async backlogView(workspaceId: string): Promise<RankedBacklogItem[]> {
-    return rankBacklog(await this.deps.backlog.list(workspaceId));
+    return rankBacklog(await this.deps.backlog.list(workspaceId), this.steering.get(workspaceId));
+  }
+
+  /** Natural-language steering (#626): store the parsed intent and return the newly steered backlog. */
+  async steer(workspaceId: string, intent: string): Promise<{
+    directive: PlanningSteeringDirective;
+    backlog: RankedBacklogItem[];
+  }> {
+    const directive = parseSteeringIntent(intent);
+    this.steering.set(workspaceId, directive);
+    return { directive, backlog: await this.backlogView(workspaceId) };
   }
 
   async listSpecs(workspaceId: string): Promise<PlanningSpecRecord[]> {
@@ -197,7 +209,7 @@ export class PlanningService {
     if (!caps.enabled) return { ...result, skipped: "disabled" };
 
     const now = this.now();
-    const ranked = rankBacklog(await this.deps.backlog.list(workspaceId));
+    const ranked = rankBacklog(await this.deps.backlog.list(workspaceId), this.steering.get(workspaceId));
     // Actionable: still in the funnel (proposed/specced) and not already parked at a human gate.
     const actionable = ranked.filter(
       (r) =>
