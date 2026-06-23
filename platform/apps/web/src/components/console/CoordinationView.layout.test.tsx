@@ -85,6 +85,27 @@ describe("coordination layout (#381 — feed scrolls, composer stays pinned & re
     );
   });
 
+  it("long agent output wraps inside message and log panels instead of widening the page (#652)", () => {
+    const message = ruleBody(".message");
+    expect(message, "message rows must be allowed to shrink inside the feed").toMatch(/min-width\s*:\s*0/);
+    expect(message, "message rows must never exceed the feed width").toMatch(/max-width\s*:\s*100%/);
+
+    const text = ruleBody(".message__text");
+    expect(text).toMatch(/white-space\s*:\s*pre-wrap/);
+    expect(text).toMatch(/overflow-wrap\s*:\s*anywhere/);
+    expect(text).toMatch(/word-break\s*:\s*break-word/);
+
+    for (const selector of [".run__logs", ".deploy__logs", ".diff__patch"]) {
+      const body = ruleBody(selector);
+      expect(body, `${selector} must stay inside its panel`).toMatch(/max-width\s*:\s*100%/);
+      expect(body, `${selector} must own overflow instead of pushing the page`).toMatch(/overflow\s*:\s*auto/);
+    }
+
+    const diffLine = ruleBody(".diff__line");
+    expect(diffLine).toMatch(/white-space\s*:\s*pre-wrap/);
+    expect(diffLine).toMatch(/overflow-wrap\s*:\s*anywhere/);
+  });
+
   it("with 93 messages the composer stays a sibling AFTER the scroll region and is reachable", async () => {
     // 93 messages — the live count the #381 diagnosis captured. All top-level so the channel view shows them.
     const messages = Array.from({ length: 93 }, (_, i) =>

@@ -1291,6 +1291,8 @@ select:focus-visible {
 .message {
   display: flex;
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
   /* #729 premium chrome: roomier rows with a soft hit area and a smooth hover lift. */
   padding: 9px 12px;
   border-radius: var(--radius-md);
@@ -1313,6 +1315,7 @@ select:focus-visible {
 .message__body {
   min-width: 0;
   flex: 1;
+  max-width: 100%;
 }
 .message__meta {
   display: flex;
@@ -1337,7 +1340,9 @@ select:focus-visible {
 }
 .message__text {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
+  max-width: 100%;
   font-size: var(--fs-body);
   line-height: 1.55;
   color: var(--text);
@@ -2216,6 +2221,8 @@ select:focus-visible {
 }
 .copyblock {
   margin-top: 12px;
+  min-width: 0;
+  max-width: 100%;
 }
 .copyblock__head {
   display: flex;
@@ -2295,7 +2302,8 @@ select:focus-visible {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow: auto;
   font-family: ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -2303,7 +2311,9 @@ select:focus-visible {
 }
 .diff__line {
   display: block;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .diff__line--add {
   background: rgba(63, 208, 122, 0.12);
@@ -2609,7 +2619,8 @@ select:focus-visible {
 .run__logs {
   margin-top: 12px;
   max-height: 160px;
-  overflow-y: auto;
+  max-width: 100%;
+  overflow: auto;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2618,6 +2629,8 @@ select:focus-visible {
   font-size: 12px;
   color: var(--text-dim);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .run__annotations-head {
   display: flex;
@@ -2744,7 +2757,8 @@ select:focus-visible {
 .deploy__logs {
   margin-top: 12px;
   max-height: 200px;
-  overflow-y: auto;
+  max-width: 100%;
+  overflow: auto;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2753,6 +2767,8 @@ select:focus-visible {
   font-size: 12px;
   color: var(--text-dim);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .deploy__history {
   margin-top: 16px;
@@ -5762,7 +5778,7 @@ select:focus-visible {
 .peek__msg { padding: 7px 0; animation: swell-pop 0.3s var(--pop-ease) both; }
 .peek__msg--agent { border-left: 3px solid var(--hue, var(--line)); padding-left: 12px; }
 .peek__who { font-size: 11px; font-weight: 700; margin-bottom: 1px; }
-.peek__msg p { color: #2c2620; }
+.peek__msg p { color: #2c2620; overflow-wrap: anywhere; word-break: break-word; }
 .peek__audit { list-style: none; margin: 0; padding: 0; }
 .peek__auditrow { display: flex; align-items: center; gap: 8px; min-height: 26px; font-family: var(--console-mono); font-size: 10.5px; color: var(--text-dim); }
 .peek__auditok { color: var(--online); }
@@ -6073,7 +6089,7 @@ select:focus-visible {
 .theater-step__tool { color: var(--text-faint); font-weight: 500; }
 .theater-step__summary {
   font-size: 13px; line-height: 1.45; color: var(--text); word-break: break-word;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere; white-space: pre-wrap;
 }
 .theater-step--reasoning { border-left-color: var(--agent); }
 .theater-step--action { border-left-color: var(--accent); }
