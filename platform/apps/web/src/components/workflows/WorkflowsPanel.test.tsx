@@ -84,4 +84,14 @@ describe("WorkflowsPanel (#152)", () => {
       ).toBe(true),
     );
   });
+
+  it("explains the empty list and focuses the create CTA (#649)", async () => {
+    stubRoutes({ workflows: [] });
+    const { store } = renderWithStore(<WorkflowsPanel />);
+    await store.bootstrap();
+
+    expect(await screen.findByText(/Workflows appear here after you save/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Name a workflow" }));
+    expect(screen.getByLabelText("Workflow name")).toHaveFocus();
+  });
 });

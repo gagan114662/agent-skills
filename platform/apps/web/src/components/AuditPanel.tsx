@@ -51,7 +51,8 @@ export function AuditPanel(): React.JSX.Element {
           {events.length === 0 && (
             <tr>
               <td colSpan={5} className="muted">
-                No audit events yet.
+                Gated actions, automation runs, and agent launches will appear here; approve or run one to
+                write the first event.
               </td>
             </tr>
           )}

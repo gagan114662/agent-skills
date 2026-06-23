@@ -52,6 +52,16 @@ const FAILED_SESSION: AgentSessionSummary = {
 };
 
 describe("RunPanel (#56 Run tab)", () => {
+  it("explains what creates the empty session and annotation states (#649)", async () => {
+    const rendered = renderWithStore(<RunPanel />, { sessions: [] });
+    await rendered.store.bootstrap();
+
+    expect(await screen.findByText(/Agent sessions appear here after a task starts/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ask an agent in chat/i)).toBeInTheDocument();
+    expect(screen.getByText(/Annotations you place on the preview appear here/i)).toBeInTheDocument();
+    expect(screen.getByText(/Turn on Annotate, click the preview/i)).toBeInTheDocument();
+  });
+
   it("renders the run surface with the annotations rail", async () => {
     await openRunTab();
     expect(await screen.findByRole("heading", { name: "Annotations" })).toBeInTheDocument();

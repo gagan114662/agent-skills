@@ -6,7 +6,7 @@
  * on the server: a created workflow never fires until the `workflows` config is enabled, and every
  * external send an action drafts stays #13-gated (a draft_send becomes a pending approval, never a send).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../../store/StoreContext.js";
 import { api, ApiError } from "../../api/client.js";
 import type { WorkflowDto, WorkflowInsightsDto } from "../../api/types.js";
@@ -47,6 +47,7 @@ export function WorkflowsPanel(): React.JSX.Element {
   const [channelId, setChannelId] = useState("");
   const [taskOrMessage, setTaskOrMessage] = useState("");
   const [sendSummary, setSendSummary] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh(): Promise<void> {
     if (!workspaceId) return;
@@ -151,7 +152,13 @@ export function WorkflowsPanel(): React.JSX.Element {
       )}
 
       <div className="workflow-builder" role="group" aria-label="Build a workflow">
-        <input placeholder="Workflow name" aria-label="Workflow name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          ref={nameInputRef}
+          placeholder="Workflow name"
+          aria-label="Workflow name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <label>
           When
           <select aria-label="Trigger" value={triggerKind} onChange={(e) => setTriggerKind(e.target.value as TriggerKind)}>
@@ -234,7 +241,12 @@ export function WorkflowsPanel(): React.JSX.Element {
       )}
 
       {items.length === 0 ? (
-        <p className="panel__empty">No workflows yet. Build one above.</p>
+        <div className="panel__empty panel__empty--action" role="status">
+          <p>Workflows appear here after you save a trigger, condition, and action.</p>
+          <button className="btn btn--primary" type="button" onClick={() => nameInputRef.current?.focus()}>
+            Name a workflow
+          </button>
+        </div>
       ) : (
         <ul className="workflow-list">
           {items.map((w) => (
