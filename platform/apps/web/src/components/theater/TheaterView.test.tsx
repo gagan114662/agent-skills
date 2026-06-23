@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { TheaterView } from "./TheaterView.js";
+import { api } from "../../api/client.js";
 import { renderWithStore } from "../../test/utils.js";
 
 /**
@@ -126,5 +128,88 @@ describe("TheaterView (#624)", () => {
     act(() => src.emit("done", { runId: "run-1", eventCount: 1 }));
 
     await waitFor(() => expect(screen.getByText(/Done/)).toBeInTheDocument());
+  });
+
+  it("opens a complete stored trace for any streamed run", async () => {
+    vi.spyOn(api.traces, "get").mockResolvedValueOnce({
+      run: {
+        id: "run-1",
+        workspaceId: "w1",
+        sessionId: null,
+        agentMemberId: "ag1",
+        taskId: null,
+        label: "Mark",
+        status: "closed",
+        eventCount: 3,
+        inputTokens: 12,
+        outputTokens: 8,
+        costMicros: 345,
+        startedAt: "2026-06-22T00:00:00.000Z",
+        endedAt: "2026-06-22T00:00:03.000Z",
+      },
+      events: [
+        {
+          id: "e1",
+          runId: "run-1",
+          seq: 0,
+          type: "model_request",
+          turn: 0,
+          label: "claude",
+          payload: { prompt: "Draft launch post" },
+          inputTokens: 12,
+          outputTokens: null,
+          costMicros: 120,
+          occurredAt: "2026-06-22T00:00:01.000Z",
+        },
+        {
+          id: "e2",
+          runId: "run-1",
+          seq: 1,
+          type: "tool_call",
+          turn: 0,
+          label: "publish",
+          payload: { path: "/blog/launch", token: "[REDACTED]" },
+          inputTokens: null,
+          outputTokens: null,
+          costMicros: null,
+          occurredAt: "2026-06-22T00:00:02.000Z",
+        },
+        {
+          id: "e3",
+          runId: "run-1",
+          seq: 2,
+          type: "tool_result",
+          turn: 0,
+          label: "publish",
+          payload: { ok: true, url: "https://ipop.ai/blog/launch" },
+          inputTokens: null,
+          outputTokens: 8,
+          costMicros: 225,
+          occurredAt: "2026-06-22T00:00:03.000Z",
+        },
+      ],
+    });
+
+    const { store } = renderWithStore(<TheaterView />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+    const src = FakeEventSource.instances[0]!;
+
+    act(() => src.emit("run", RUN));
+    await waitFor(() => expect(screen.getByText("Mark")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "Open trace" }));
+
+    expect(await screen.findByRole("region", { name: "Full run trace" })).toBeInTheDocument();
+    expect(api.traces.get).toHaveBeenCalledWith("w1", "run-1");
+    expect(screen.getByText("3 events · closed")).toBeInTheDocument();
+    expect(screen.getByText(/#0 · model_request · turn 0/)).toBeInTheDocument();
+    expect(screen.getByText(/#1 · tool_call · turn 0/)).toBeInTheDocument();
+    expect(screen.getByText(/#2 · tool_result · turn 0/)).toBeInTheDocument();
+    expect(screen.getByText(/Draft launch post/)).toBeInTheDocument();
+    expect(screen.getByText(/\[REDACTED\]/)).toBeInTheDocument();
+    expect(screen.getByText(/https:\/\/ipop.ai\/blog\/launch/)).toBeInTheDocument();
   });
 });

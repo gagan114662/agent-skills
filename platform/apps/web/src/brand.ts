@@ -126,6 +126,13 @@ export const THEATER = {
   phaseAction: "Action",
   phaseArtifact: "Artifact",
   phaseApproval: "Approval",
+  /** Complete per-run trace affordance (#664). */
+  openTrace: "Open trace",
+  refreshTrace: "Refresh trace",
+  traceLoading: "Loading full trace…",
+  traceRegion: "Full run trace",
+  traceEmpty: "No trace events recorded for this run yet.",
+  traceLoadError: "Could not load the full trace.",
   /** Back-to-console link. */
   back: "← Back to console",
   /** Count line in the header: filled with live numbers. */
