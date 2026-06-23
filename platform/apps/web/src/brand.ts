@@ -234,8 +234,8 @@ export const CONNECTIONS = {
 export const GARDEN = {
   title: "Agent Garden",
   hint:
-    "Your department agents. Switch on the ones you want working for you. " +
-    "Outbound agents need your approval before they can act — nothing leaves the building without your yes.",
+    "Your department agents are working for you. Switch off any you don't want. " +
+    "Outbound and spend always wait for your approval — nothing leaves the building without your yes.",
   loading: "Loading your agents…",
   empty: "No agents to show yet.",
   rollout: "The Agent Garden is rolling out for your workspace.",

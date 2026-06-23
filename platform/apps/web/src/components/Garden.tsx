@@ -6,14 +6,18 @@
  * outside the building. Read-only/draft agents switch on directly; an outbound agent needs the owner's
  * approval first, so its control parks a #13 request — reflected as "Awaiting your approval".
  *
- * ON-by-default is the server's call (the #727 autonomy work): the card simply renders the switch in the
- * state the server reports (`a.active`). We never re-derive gating here, and we never echo the server's raw
- * `inactiveReason` string — the off state is shown as a calm, designed "Off", not "switch it on to work".
+ * Autonomy by default (#760): capabilities are ON out of the box and the owner opts OUT of what they don't
+ * want. The card never hardcodes that default — it reads the displayed state from the single web-layer policy
+ * (`resolveGardenDisplay`, mirroring the #727 server policy): a capability with no stored preference shows ON;
+ * a persisted opt-out shows OFF; a money/external-send capability stays ON-but-approval-gated (working, but
+ * real spend/sends wait for the owner's yes — never auto-spend). The kill-switch / suppression / anti-injection
+ * guards are orthogonal and never appear here as toggles. We never echo the server's raw `inactiveReason`.
  *
- * Agent names, summaries, capabilities and the on/off state all come from the server (already sanitized);
+ * Agent names, summaries, capabilities and the persisted state all come from the server (already sanitized);
  * only the chrome copy lives in brand.ts GARDEN (house rule: no hardcoded brand strings in product chrome).
  */
 import { GARDEN, agentColor } from "../brand.js";
+import { resolveGardenDisplay } from "../autonomy/defaults.js";
 import { Avatar } from "./Primitives.js";
 import type { GardenAgentView, GardenResponse } from "../api/types.js";
 
@@ -108,20 +112,23 @@ function GardenAgentCard(props: {
 }): React.JSX.Element {
   const { agent: a, canManage, busy, onEnable, onDisable } = props;
   const hue = agentColor(a.displayName);
-  // The status the card reads as: On (live), Getting ready (toggled on but its agent isn't seeded yet),
-  // Awaiting your approval (an outbound agent parked in #13), or a calm Off. We never render the server's
-  // raw inactiveReason text.
-  const statusLabel = a.active
-    ? GARDEN.on
-    : a.state === "pending_approval"
-      ? GARDEN.pending
-      : a.state === "enabled"
-        ? GARDEN.preparing
-        : GARDEN.off;
-  const statusKind = a.active ? "on" : a.state === "pending_approval" ? "pending" : "off";
-  // Show the "needs approval" hint only where the owner can act on it: an off, outbound agent they could
-  // switch on. Once it's pending or on, the status line already says so.
-  const showNeedsApproval = canManage && a.requiresApprovalToEnable && !a.active && a.state === "disabled";
+  // The displayed state, with the autonomy-by-default policy applied (ON unless the owner opted out). The card
+  // reads on / preparing (toggled on but not seeded yet) / pending (an outbound agent parked in #13) / a calm
+  // off. We never render the server's raw inactiveReason text.
+  const display = resolveGardenDisplay(a);
+  const statusLabel =
+    display.status === "on"
+      ? GARDEN.on
+      : display.status === "pending"
+        ? GARDEN.pending
+        : display.status === "preparing"
+          ? GARDEN.preparing
+          : GARDEN.off;
+  const statusKind = display.status === "pending" ? "pending" : display.on ? "on" : "off";
+  // Surface the "needs approval" hint on any money/external-send capability that is presented as working but
+  // whose real spend/sends still wait for the owner — i.e. ON-but-approval-gated. Pending already says so.
+  const showNeedsApproval =
+    canManage && display.approvalGated && display.on && display.status !== "pending";
 
   return (
     <li
@@ -184,7 +191,9 @@ function GardenToggle(props: {
 }): React.JSX.Element | null {
   const { agent: a, canManage, busy, onEnable, onDisable } = props;
   if (!canManage) return null;
-  const isOn = a.state === "enabled" || a.state === "pending_approval";
+  // The switch reflects the displayed state (ON by default; OFF only when the owner opted out), so switching a
+  // default-ON capability OFF persists the opt-out, and switching a money agent ON parks the #13 approval.
+  const isOn = resolveGardenDisplay(a).on;
   const label = isOn ? GARDEN.disable : GARDEN.enable;
   return (
     <button

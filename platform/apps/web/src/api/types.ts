@@ -139,6 +139,13 @@ export interface GardenAgentView {
   active: boolean;
   /** When not active, the honest reason; otherwise null. */
   inactiveReason: string | null;
+  /**
+   * The owner's EXPLICIT choice for this capability, when one is stored (#760). `undefined` means no choice has
+   * been made — the autonomy-by-default policy then presents the capability ON (money stays approval-gated).
+   * `"off"` is a persisted opt-out and is always respected. The web resolves the displayed state from this via
+   * `resolveGardenDisplay`; it never hardcodes a second default.
+   */
+  userPreference?: "on" | "off";
 }
 
 /** The Agent Garden surface (#284, `GET /me/garden`): whether it can be managed + every agent's view. */
