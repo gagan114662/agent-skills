@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorLabel, createStore, upsertMessage, type StoreDeps } from "./store.js";
 import { ApiError } from "../api/client.js";
 import { makePolicy as pol, makeRequest as req } from "../test/approvals-fixtures.js";
@@ -35,6 +35,20 @@ describe("pure helpers", () => {
 // --- integration with fake deps -------------------------------------------------------------
 
 const identity: Identity = { workspaceId: "w1", memberId: "me1", kind: "human", displayName: "Ada" };
+
+function memoryStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear: () => map.clear(),
+    getItem: (k: string) => (map.has(k) ? (map.get(k) as string) : null),
+    key: (i: number) => Array.from(map.keys())[i] ?? null,
+    removeItem: (k: string) => void map.delete(k),
+    setItem: (k: string, v: string) => void map.set(k, String(v)),
+  };
+}
 
 function fakeRealtime(): Realtime & { fire: (e: ServerEvent) => void } {
   let listener: ((e: ServerEvent) => void) | null = null;
@@ -241,7 +255,11 @@ const prDto = (over: { title: string }) => ({
 describe("store bootstrap + realtime", () => {
   let env: ReturnType<typeof fakeDeps>;
   beforeEach(() => {
+    vi.stubGlobal("localStorage", memoryStorage());
     env = fakeDeps();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("an authenticated bootstrap loads channels, selects the first, and subscribes", async () => {
@@ -259,6 +277,30 @@ describe("store bootstrap + realtime", () => {
     expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c1");
     // self is seeded into the directory
     expect(authorLabel(s.directory, "me1")).toBe("Ada");
+  });
+
+  it("restores the last selected channel across a fresh bootstrap (#650)", async () => {
+    const firstStore = createStore(env.deps);
+    await firstStore.bootstrap();
+    await firstStore.selectChannel("c2");
+
+    env = fakeDeps();
+    const restoredStore = createStore(env.deps);
+    await restoredStore.bootstrap();
+
+    expect(restoredStore.getState().activeChannelId).toBe("c2");
+    expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c2");
+    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c2", 500);
+  });
+
+  it("falls back to the first channel when the saved selection no longer exists (#650)", async () => {
+    localStorage.setItem("reload.workspaceSelection.w1.me1", "missing-channel");
+
+    const store = createStore(env.deps);
+    await store.bootstrap();
+
+    expect(store.getState().activeChannelId).toBe("c1");
+    expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c1");
   });
 
   it("marks the shell ready before non-critical startup reads finish (#681)", async () => {

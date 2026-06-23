@@ -21,6 +21,7 @@ import type {
 import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
 import { isApiUnavailable, isCapHit } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
+import { loadWorkspaceSelection, saveWorkspaceSelection } from "../lib/workspace-selection.js";
 import {
   beginEdit,
   cancelEdit,
@@ -637,12 +638,13 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       kind: identity.kind,
       displayName: identity.displayName,
     };
-    const first = channels[0];
+    const restoredChannelId = loadWorkspaceSelection(identity.workspaceId, identity.memberId);
+    const selected = channels.find((ch) => ch.id === restoredChannelId) ?? channels[0];
     set({
       phase: "ready",
       identity,
       channels,
-      activeChannelId: first?.id ?? state.activeChannelId,
+      activeChannelId: selected?.id ?? state.activeChannelId,
       agents,
       directory: mergeDirectory(state.directory, [selfEntry]),
       presence: { ...state.presence, [identity.memberId]: "online" },
@@ -660,7 +662,7 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       .then((view) => set({ decisionsCaptured: view.rail.decisionsCaptured }))
       .catch(() => undefined);
     void refreshPending();
-    if (first) void store.selectChannel(first.id).catch(() => undefined);
+    if (selected) void store.selectChannel(selected.id).catch(() => undefined);
   }
 
   const store: Store = {
@@ -702,7 +704,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     },
 
     async selectChannel(channelId) {
+      const workspaceId = state.identity?.workspaceId;
+      const memberId = state.identity?.memberId;
       set({ activeChannelId: channelId, thread: null });
+      saveWorkspaceSelection(workspaceId, memberId, channelId);
       realtime.subscribe(channelId);
       const messages = await api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
       set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: messages } });
