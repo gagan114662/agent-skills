@@ -1101,6 +1101,72 @@ describe("SessionManager — bounded inline retry for a transient pre-progress d
   });
 });
 
+/**
+ * A runtime that simulates a WEDGED teardown (#394): it never produces output, its `wait()` never
+ * resolves, and — crucially — its `cancel()` does NOT resolve `wait()` either (it returns, but the
+ * terminal result never lands). This mirrors the prod hang: a sandbox `teardown()` whose cloud
+ * `snapshot()`/`stop()` call hangs, so both `wait()` and the reaper's `cancel()` are stuck and the
+ * run loop would block on `await running.wait()` forever — the row stays `running` until only the
+ * cross-process fleet watchdog reaps it ("the run hung").
+ */
+class WedgedTeardownRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  cancels: TerminalReason[] = [];
+  start(job: AgentJob): Promise<RunningSession> {
+    const session: RunningSession = {
+      sessionId: job.sessionId,
+      // Never resolves — the teardown that would settle it is wedged.
+      wait: () => new Promise<RuntimeResult>(() => {}),
+      cancel: (reason: TerminalReason) => {
+        this.cancels.push(reason);
+        // Deliberately does NOT settle wait() — the hung-teardown simulation.
+        return Promise.resolve();
+      },
+    };
+    return Promise.resolve(session);
+  }
+}
+
+describe("SessionManager — a reaped run never hangs even if teardown wedges (#394)", () => {
+  function makeWedgedManager(c: ResourceCaps) {
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const runtime = new WedgedTeardownRuntime();
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: c,
+      logger: silentLogger,
+      // A tiny grace so the bounded-finalize path is exercised without real wall-clock delay.
+      reapGraceMs: 20,
+    });
+    return { manager, store, runtime };
+  }
+
+  it("idle-reaps a wedged session to idle_reaped within the grace window (no infinite hang)", async () => {
+    const { manager, store, runtime } = makeWedgedManager(caps({ idleMs: 20, wallClockMs: 10_000 }));
+    const session = await manager.launch(launch);
+    await manager.join(session.id); // would hang forever before the fix — wait()/cancel() never settle
+
+    expect(store.finalized?.status).toBe("idle_reaped");
+    expect(runtime.cancels).toContain("idle"); // the reaper still asked the runtime to tear down
+    expect(manager.activeCount).toBe(0); // ticket freed, nothing left running — no leak
+  });
+
+  it("wall-clock-reaps a wedged session to timeout within the grace window", async () => {
+    const { manager, store, runtime } = makeWedgedManager(caps({ wallClockMs: 20, idleMs: 10_000 }));
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(store.finalized?.status).toBe("timeout");
+    expect(runtime.cancels).toContain("timeout");
+    expect(manager.activeCount).toBe(0);
+  });
+});
+
 describe("SessionManager — a session NEVER vanishes silently (#248)", () => {
   /** A secrets resolver that throws BEFORE the run starts (the pre-`try` vanish path). */
   const throwingSecrets = {
