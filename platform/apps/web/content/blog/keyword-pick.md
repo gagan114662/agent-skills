@@ -1,68 +1,66 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Keyword pick Target: 'AI marketing agency for startups' (primary), with secondary pull on 'AI marketing department' and the comparison query 'AI marketing agenc"
-date: 2026-06-22
+description: "Picking the keyword first, then the draft — both in-channel for a human to review. Nothing here publishes. Keyword pick Primary: 'AI marketing agency for startu"
+date: 2026-06-23
 status: published
 ---
 
+Picking the keyword first, then the draft — both in-channel for a human to review. Nothing here publishes.
+
 ## Keyword pick
 
-**Target: "AI marketing agency for startups"** (primary), with secondary pull on "AI marketing department" and the comparison query "AI marketing agency vs hiring."
+**Primary: "AI marketing agency for startups"** (with a comparison angle: *AI agents vs. agency vs. first marketing hire*).
 
-Why this one over the softer options:
-- It's mid-to-bottom funnel. Someone typing "AI marketing agency for startups" isn't curious about what an LLM is — they're sizing up a purchase and weighing us against a freelancer, a real agency, or a hire.
-- It maps to how we already describe ourselves. The homepage leads with "The marketing agency of AI agents — you steer, they ship," and the meta says "Hire a whole marketing department of AI agents." The keyword and the positioning are already holding hands.
-- The buyer is exactly who we name in our own copy: a founder or small team. So intent and ICP line up.
+Why this one, not a fatter head term:
+- It's **bottom-funnel**. Someone typing "AI marketing agency for startups" has already decided AI is on the table and is comparing how to buy. That's a buyer, not a browser. Contrast with "what is AI marketing" (a reader) or "AI marketing tools" (a tire-kicker collecting tabs).
+- It maps to **exactly who the site says we're for** — "a founder or small team who wants real marketing work shipped" (workspace product context), and the homepage promise "you steer, they ship" (https://ipop.ai/).
+- The comparison framing lets us answer the real question a buyer has at this stage — *should I hire someone, retain an agency, or run agents?* — which is where we win on receipts (the human-approval gate, the per-agent specialists, "start free, no card" from https://ipop.ai/pricing).
 
-I avoided pure top-of-funnel ("what is AI marketing") — high volume, low wallet — and avoided branded ("ipop pricing") since that buyer's already on the pricing page anyway.
-
-Below is the draft. Nothing publishes — this is for a human to mark up.
+Runner-ups I passed on: "AI marketing automation" (too MoFu, automation-tool intent), "hire a fractional CMO" (adjacent buyer, wrong product shape), "best AI marketing tools" (listicle intent, we'd be one of 15 bullets).
 
 ---
 
-## DRAFT — blog post
+## DRAFT — for human review
 
-**Working title:** An AI marketing agency for startups, explained without the hand-waving
 **Slug:** `/blog/ai-marketing-agency-for-startups`
+**Meta title:** AI Marketing Agency for Startups: Agents vs. Agency vs. First Hire (2026)
+**Meta description:** Comparing an AI marketing agency, a traditional agency, and your first marketing hire? Here's what each actually ships, what it costs, and where the human stays in charge.
 **Target keyword:** AI marketing agency for startups
-**Meta description (155 char):** Thinking about an AI marketing agency for your startup? Here's what the work actually looks like, where a human steers, and how to tell hype from shipped.
+**Word count:** ~1,050
 
 ---
 
-### You don't need *more* marketing software. You need the marketing done.
+# AI Marketing Agency for Startups: Agents vs. Agency vs. First Hire
 
-If you're a founder, you've probably done the math on marketing at least three times this quarter. A senior generalist hire is real money and a three-month ramp. An agency is a retainer plus a slide deck. A freelancer is great until they're booked. And the dashboards you already pay for? They tell you what *didn't* happen, then ask you to do it yourself.
+You're a founder with a product that works and a marketing function that's currently you, at 11pm, in a Google Doc titled "marketing??". You've got three real options, and they cost wildly different amounts of money and attention. Let's lay them on the table honestly — including ours, with the warts.
 
-"AI marketing agency for startups" is a search a lot of you are running right now. Fair. So let's be straight about what that phrase should mean — and what it shouldn't.
+## The three doors
 
-### What an AI marketing agency actually is (when it's real)
+**Door 1: Your first marketing hire.** A generalist who can do a bit of everything.
 
-The honest version isn't "a chatbot that writes tweets." It's a set of specialists that each own a lane and do the work end to end, the way an agency's org chart would — just without the retainer and the ramp.
+**Door 2: A traditional agency or a few freelancers.** You buy a retainer, you get a team-shaped thing.
 
-At ipop, that's a department of agents:
+**Door 3: An AI marketing agency** — a fleet of AI agents that draft, research, and plan the work, with you approving the parts that matter.
 
-- **Scout** runs SEO and research — finds the keywords worth chasing and the gaps competitors left open.
-- **Quill** (hi, that's the content desk) drafts the posts, pages, and emails.
-- **Echo** and the rest handle brand, ads, and outbound.
+Here's how they actually compare on the things a startup feels day to day.
 
-You steer; they ship. That's the whole shape of it, and it's the line we put on our own homepage because it's the part that matters: the agents draft, research, and plan around the clock — a human decides what goes out.
+## Speed to first shipped thing
 
-### The part most "AI marketing" pitches skip: the human stays on the money
+- **First hire:** ~4–8 weeks to find them, 2–4 weeks to ramp. You're looking at roughly two months before the first campaign ships, and you're paying salary the whole time.
+- **Agency:** 1–2 weeks of onboarding calls, brand questionnaires, and a kickoff deck before anyone writes a word.
+- **AI agents:** drafts the same day. Our agents — Scout on SEO, Quill on content, Echo and the rest — draft, research, and plan around the clock (per how we describe the department at ipop.ai). You're reviewing real work the first afternoon, not scheduling a discovery call.
 
-Here's the line we'd want a startup to hold us to. **Every irreversible or money move waits for a human.** Publishing a page, sending an outbound sequence, pushing ad spend live — those don't happen because an agent felt confident at 2am. They happen because you approved them.
+## Cost, without the hand-waving
 
-That's not us being timid. It's the difference between "autonomous" meaning *you wake up to work that's ready for review* versus *you wake up to a surprise.* For a startup, where one wrong send hits a real audience and a real budget, that distinction is the whole product.
+- **First hire:** a competent generalist is a real salary plus benefits plus the tools they'll ask for. Call it a five-figure monthly commitment before they've shipped anything.
+- **Agency:** retainers for startups typically start in the low thousands per month and climb fast once you add channels.
+- **AI agents:** we start free, no card. You pick a plan when the work has paid for itself, and you can change or cancel any time (that's the actual policy on our pricing page — not a launch promo). The point isn't "cheap." The point is you don't pay for the ramp.
 
-### Is it a fit for *your* startup? A quick gut-check.
+## Breadth vs. depth
 
-It's probably a fit if:
-- You're a founder or a small team, and marketing keeps losing to the rest of the to-do list.
-- You want work shipped — drafts, audits, research, plans — not another tool to learn.
-- You're fine steering and approving, but you don't want to *originate* every piece from a blank page.
+This is the honest tension.
 
-It's probably **not** a fit (yet) if:
-- You need someone to physically shake hands at a conference. Agents don't do hallway track.
-- You want fully hands-off, no-appr
+A **first hire** is one human with one skill set. Great at the thing they're great at, learning-on-your-dime at the rest. Your hire who's brilliant at paid ads is going to be slower on SEO and slower still 
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
