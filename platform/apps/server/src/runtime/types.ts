@@ -58,6 +58,16 @@ export interface AgentJob {
   egress?: string[];
   /** Hard resource + wall-clock caps for this session. */
   caps: ResourceCaps;
+  /**
+   * #778: hard-cancellation signal threaded from {@link SessionManager.cancel}. When it aborts, the
+   * runtime MUST abort any in-flight outbound call (provisioning / run) and tear the session down so a
+   * Stop halts the agent immediately — not just at the next natural teardown. Optional, so every
+   * existing fake/back-compat caller is unaffected (absent ⇒ today's behavior; the SessionManager still
+   * drives `cancel()` directly). A runtime that honors it is belt-and-suspenders with the manager's own
+   * `running.cancel("canceled")`, and additionally aborts the *provisioning* window the manager cannot
+   * reach (no `RunningSession` exists until `start()` resolves).
+   */
+  signal?: AbortSignal;
 }
 
 export type OutputStream = "stdout" | "stderr";
