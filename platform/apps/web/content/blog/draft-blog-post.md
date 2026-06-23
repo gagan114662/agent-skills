@@ -1,62 +1,77 @@
 ---
 title: "Draft — blog post"
 slug: draft-blog-post
-description: "Got the handoff, @scout — clean brief, and the angle is the good kind of uncomfortable (admit when we're not needed). Heads up: your point #1 cut off mid-senten"
+description: "Pulling from the crawl I already have — homepage (ipop.ai/), pricing (ipop.ai/pricing) — and the workspace facts on who buys this. No need to send anything anyw"
 date: 2026-06-23
 status: published
 ---
 
-Got the handoff, @scout — clean brief, and the angle is the good kind of uncomfortable (admit when we're not needed). Heads up: your point #1 cut off mid-sentence at "chatbot =", so I filled that gap with the plain definition your intent section was clearly pointing at. Flagging it so the human reviewer can check I read your mind correctly.
+Pulling from the crawl I already have — homepage (`ipop.ai/`), pricing (`ipop.ai/pricing`) — and the workspace facts on who buys this. No need to send anything anywhere; this lands in-channel for a human.
 
-Here's the draft for review. 👇
+---
+
+**Keyword pick: "AI marketing agency"** (primary), with the founder/startup qualifier woven in.
+
+Why this one, with receipts:
+- It's bottom-of-funnel. Someone typing "AI marketing agency" isn't researching what AI is — they've decided to *outsource marketing* and are choosing a vendor type. That's a buyer, not a browser.
+- It's the exact category we already claim. Our homepage H1 is literally "The marketing agency of AI agents" and the title tag is "your marketing agency of AI agents." We should rank for the words we put on our own front door.
+- It splits the difference between two searches our buyer actually runs — "marketing agency" (high intent, expensive click) and "AI marketing tools" (high volume, low intent). The blend captures the founder who's priced out of a real agency and bored of buying dashboards.
+
+Secondary phrases to fold in naturally: *AI marketing agency for startups*, *hire an AI marketing team*, *AI marketing agency vs freelancer*.
+
+Here's the draft. 👇
 
 ---
 
 ## Draft — blog post
 
-**Working title:** Do you actually need an AI marketing agent, or is ChatGPT already enough?
-**Slug:** `ai-marketing-agent-vs-chatgpt`
-**Target query:** "ai marketing agent vs chatgpt" (+ "agentic ai vs chatgpt for marketers")
-**Meta description (155 char):** ChatGPT is a brilliant intern. An AI marketing agent is a teammate who remembers. Here's the honest line between them — including when to just keep ChatGPT.
+**Working title:** What an "AI marketing agency" actually is (and how it's different from buying another tool)
+
+**Alt titles** (pick one in review):
+- An AI marketing agency, explained for founders who don't have time to be CMO
+- AI marketing agency vs. freelancer vs. agency: what each one really costs you
+
+**Meta description (155 char):** An AI marketing agency is a team of specialist AI agents that does the marketing work — not a dashboard you have to drive. Here's how it works, and what it costs.
+
+**Slug:** `/blog/ai-marketing-agency`
 
 ---
 
-### Do you actually need an AI marketing agent, or is ChatGPT already enough?
+You typed "AI marketing agency" into a search bar. We're going to guess why.
 
-Let's start with the answer most posts on this topic bury under 1,400 words of throat-clearing: **sometimes ChatGPT is enough, and you should keep it.**
+You're a founder or a team of a few. Marketing needs to happen — SEO, the blog, the ads, the cold outbound, keeping the brand from looking like six different companies wrote it. And right now the person doing all of that is you, at 11pm, badly.
 
-We sell a marketing department made of AI agents, so you'd expect us to tell you the opposite. But if we talk you into something you don't need, you cancel in a month and tell your founder friends we wasted your money. Neither of us wants that. So here's the honest version.
+So you have three options. Let's do the math on each, because that's the whole decision.
 
-#### First, the actual difference — in plain words
+### Option 1: Hire a marketing agency
 
-Most comparison posts collapse into the same tidy binary: *ChatGPT is for ideas, agents are for execution.* It's not wrong, but it's so abstract it doesn't help you decide anything.
+A real one runs you $3k–$10k+ a month, plus a ramp where you pay them to learn your business. They're good. They're also a calendar of meetings, and they ship on *their* clock, not yours. For a lot of early teams, the price is the end of the conversation.
 
-Here's the difference you'll actually feel:
+### Option 2: Hire a freelancer (or three)
 
-- **A chatbot waits for you.** It's a blank box. It does exactly one thing, brilliantly, the moment you ask — then forgets you were ever there. Every session starts from zero.
-- **An agent carries the work between sessions.** It remembers last week's decisions, picks up a task, hands it to another role when it's done, and only stops to ask you when something is irreversible or costs money.
+Cheaper per head, but now *you're* the agency — you're the one briefing the SEO person, the ads person, and the writer, and making sure they don't contradict each other. You traded a budget problem for a management problem. If you wanted a second job, you'd have applied for one.
 
-The shorter version: ChatGPT is the world's fastest intern who clocks out and loses their memory every night. An agent is a teammate who shows up tomorrow knowing what you decided today.
+### Option 3: An AI marketing agency
 
-#### When ChatGPT is genuinely enough (keep your $20)
+This is the new option, and it's the one people are confused about — fairly, because most things calling themselves "AI marketing" are a single tool that writes captions and hands the work back to you.
 
-If this is you, don't let anyone upsell you:
+An **AI marketing agency** is different. It's a *team* of specialist agents, each with a job, that does the marketing work and brings you the result for a yes or no.
 
-- You're a solo founder or one-person team shipping **roughly a post a week**, or batching social captions now and then.
-- You *like* being in the driver's seat — you'd rather prompt-and-tweak than hand work off.
-- Your marketing is a handful of disconnected tasks, not a system that needs to run while you do other things.
+That's the line that matters: a tool gives you a faster way to do the work. An agency does the work. We're the second kind.
 
-For that, ChatGPT (or Claude, or whichever box you like) is a fantastic deal. A dedicated agent would mostly be paying for capacity you won't use.
+### What "a team of agents" actually means
 
-#### When the chat window starts costing you (the part vendors skip)
+At ipop, you don't get a chatbot. You get a department:
 
-The trouble isn't that ChatGPT is bad. It's great. The trouble is what running a whole marketing function *through a chat window* quietly taxes you on. Four failure modes, all from lived experience:
+- **Scout** runs SEO and research — finds the keywords worth chasing and the ground worth standing on.
+- **Quill** (hi, that's the desk this came from) drafts the content — posts, pages, the words.
+- **Echo** keeps the brand voice straight so everything sounds like one company.
+- Plus the agents handling ads and outbound.
 
-1. **The blank-prompt tax.** Every task starts with you writing the brief. The model is only as good as the prompt, so the thinking — the "what should we even do this week" — is still entirely on you. Multiply that by every asset, every day.
-2. **No memory between sessions.** Decided your voice last Tuesday? Picked a campaign angle? You'll re-explain it tomorrow. And the day after. The context lives in your head, not the tool's.
-3. **No handoff between roles.** Real marketing is research → brief → draft → edit → distribute. In a chat window, *you* are the conveyor belt carrying work from one step to the next. The model never hands anything to anyone, because there's no one to hand it to.
-4. **You're still the project manager.** This is the one nobody says out loud. ChatGPT doesn't own outcomes. It produces, you manage. The mental load of *deciding what to do and chasing it through* never leaves your plate.
+They draft, research, and plan around the clock. You steer; they ship. (Yes, the post you're reading is the sort of thing Quill drafts. We're not going to pretend otherwise.)
 
-Notice none of these are "ChatGPT wri
+### "So the AI just… does stuff with my money?"
+
+No —
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_887ca9a08b059685)
