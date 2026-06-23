@@ -76,6 +76,18 @@ export async function planningRoutes(app: FastifyInstance, opts: PlanningRoutesO
     return service.backlogView(wid);
   });
 
+  /** Natural-language steering: parse intent and re-rank the next planning work. */
+  app.post("/workspaces/:wid/planning/steer", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const body = (req.body ?? {}) as { intent?: string };
+    const intent = body.intent?.trim();
+    if (!intent) return reply.code(400).send({ error: "intent is required" });
+    return service.steer(wid, intent);
+  });
+
   /** The drafted specs for the workspace (the repo-lifecycle-format bodies). */
   app.get("/workspaces/:wid/planning/specs", async (req, reply) => {
     const id = await requireIdentity(req, reply);

@@ -5,6 +5,7 @@ import type {
   RiceBreakdown,
   RiceItemInputs,
 } from "./types.js";
+import { steeringMatchScore, type PlanningSteeringDirective } from "./steering.js";
 
 /**
  * The Product Planning Loop RICE math (#115, ADR-0115). **Pure + unit-tested**: the service does the IO
@@ -70,9 +71,18 @@ export function scoreRice(inputs: RiceItemInputs): number {
  * score, ties broken by most-recent `createdAt` (the freshest evidence), then `id` for a total order.
  * Stable + non-mutating; assigns 1-based positions and carries the score + breakdown for display.
  */
-export function rankBacklog(items: readonly BacklogItemRecord[]): RankedBacklogItem[] {
+export function rankBacklog(
+  items: readonly BacklogItemRecord[],
+  steering?: PlanningSteeringDirective | null,
+): RankedBacklogItem[] {
+  const maxBase = Math.max(0, ...items.map((item) => scoreRice(item)));
+  const boostUnit = maxBase + 1;
   return [...items]
-    .map((item) => ({ item, score: scoreRice(item), rice: riceBreakdown(item) }))
+    .map((item) => {
+      const baseScore = scoreRice(item);
+      const steeringBoost = steeringMatchScore(item, steering) * boostUnit;
+      return { item, score: baseScore + steeringBoost, baseScore, steeringBoost, rice: riceBreakdown(item) };
+    })
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       const dt = b.item.createdAt.getTime() - a.item.createdAt.getTime();
