@@ -232,7 +232,11 @@ function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): R
   const [undone, setUndone] = useState<readonly string[]>([]);
   const needle = query.trim().toLowerCase();
   const visible = needle
-    ? actions.filter((act) => `${act.at} ${act.action} ${act.href ?? ""}`.toLowerCase().includes(needle))
+    ? actions.filter((act) =>
+        `${act.at} ${act.action} ${act.href} ${act.receiptLabel ?? ""}`
+          .toLowerCase()
+          .includes(needle),
+      )
     : actions;
   return (
     <section className="everyday-log" aria-label={x.heading}>
@@ -259,16 +263,14 @@ function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): R
                 {act.at}
               </span>
               <span className="everyday-log__action">{act.action}</span>
-              {act.href && (
-                <a
-                  className="everyday-log__link"
-                  href={act.href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  {x.viewLink}
-                </a>
-              )}
+              <a
+                className="everyday-log__link"
+                href={act.href}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {act.receiptLabel ?? x.viewLink}
+              </a>
               {act.undoLabel && !undone.includes(act.id) && (
                 <button
                   type="button"

@@ -59,15 +59,17 @@ export interface ApprovalCard {
   readonly amount?: string;
 }
 
-/** A timestamped, linked external action for the quiet transparency log (#629). */
+/** A timestamped external action with a required receipt link for the quiet transparency log (#625/#629). */
 export interface ExternalAction {
   readonly id: string;
   /** Pre-formatted, human time (e.g. "2:14 pm"). */
   readonly at: string;
   /** What we did, plainly (e.g. "replied to a warm lead in gmail"). */
   readonly action: string;
-  /** Optional link to the real artifact out in the world. */
-  readonly href?: string;
+  /** Required link to the real artifact out in the world: live URL, sent email, signup record, etc. */
+  readonly href: string;
+  /** Optional receipt-specific link text when "see it" is too vague. */
+  readonly receiptLabel?: string;
   /** One-click reversal when the public action is reversible (e.g. unpublish/delete). */
   readonly undoLabel?: string;
 }
@@ -196,24 +198,36 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         at: "8:55 am",
         action: "read your site (ipop.ai) to learn the product",
         href: "https://ipop.ai",
+        receiptLabel: "open site",
       },
       {
         id: "x4",
         at: "10:02 am",
         action: "published the launch page update",
         href: "https://ipop.ai/launch",
+        receiptLabel: "open live page",
         undoLabel: "unpublish",
       },
       {
         id: "x2",
         at: "9:10 am",
-        action: "saved a draft to your gmail (not sent — waiting on you)",
+        action: "sent the warm-lead reply to dana@northwind.co",
+        href: "https://mail.google.com/mail/u/0/#sent/ipop-dana-northwind-trial",
+        receiptLabel: "open sent email",
+      },
+      {
+        id: "x5",
+        at: "10:47 am",
+        action: "recorded a new trial signup for Northwind",
+        href: "https://dashboard.stripe.com/customers/cus_northwind_trial",
+        receiptLabel: "open signup",
       },
       {
         id: "x3",
         at: "11:28 am",
         action: "read 3 public reddit threads in r/marketing",
         href: "https://reddit.com/r/marketing",
+        receiptLabel: "open thread",
       },
     ],
   };

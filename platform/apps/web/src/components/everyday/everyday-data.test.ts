@@ -76,4 +76,17 @@ describe("seedEveryday (#784) — the surface contract", () => {
       expect(act.action).toBeTruthy();
     }
   });
+
+  it("requires a clickable receipt for every completed external action (#625)", () => {
+    for (const act of seedEveryday().transparency) {
+      expect(act.href).toMatch(/^https:\/\//);
+    }
+  });
+
+  it("includes receipt examples for published artifacts, sent emails, and signups (#625)", () => {
+    const actions = seedEveryday().transparency;
+    expect(actions.some((act) => act.receiptLabel === "open live page")).toBe(true);
+    expect(actions.some((act) => act.receiptLabel === "open sent email")).toBe(true);
+    expect(actions.some((act) => act.receiptLabel === "open signup")).toBe(true);
+  });
 });

@@ -134,13 +134,23 @@ describe("EverydayShell — money is the one hard gate (#784)", () => {
 });
 
 describe("EverydayShell — transparency + kill switch (#629/#784)", () => {
-  it("lists every external action with a time, and links the ones with a url", () => {
+  it("lists every external action with a time, and links every receipt (#625/#629)", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const log = screen.getByLabelText(EVERYDAY.transparency.heading);
     expect(within(log).getByText("8:55 am")).toBeInTheDocument();
-    expect(
-      within(log).getAllByRole("link", { name: EVERYDAY.transparency.viewLink }).length,
-    ).toBeGreaterThan(0);
+    expect(within(log).getAllByRole("link").length).toBe(seedEveryday().transparency.length);
+    expect(within(log).getByRole("link", { name: "open live page" })).toHaveAttribute(
+      "href",
+      "https://ipop.ai/launch",
+    );
+    expect(within(log).getByRole("link", { name: "open sent email" })).toHaveAttribute(
+      "href",
+      "https://mail.google.com/mail/u/0/#sent/ipop-dana-northwind-trial",
+    );
+    expect(within(log).getByRole("link", { name: "open signup" })).toHaveAttribute(
+      "href",
+      "https://dashboard.stripe.com/customers/cus_northwind_trial",
+    );
   });
 
   it("undoes a reversible public action from the activity log in one click (#628)", () => {
@@ -162,8 +172,8 @@ describe("EverydayShell — transparency + kill switch (#629/#784)", () => {
     fireEvent.change(search, { target: { value: "reddit" } });
     expect(within(log).getByText("11:28 am")).toBeInTheDocument();
     expect(within(log).getByText(/public reddit threads/i)).toBeInTheDocument();
-    expect(within(log).queryByText(/saved a draft to your gmail/i)).not.toBeInTheDocument();
-    expect(within(log).getByRole("link", { name: EVERYDAY.transparency.viewLink })).toHaveAttribute(
+    expect(within(log).queryByText(/warm-lead reply/i)).not.toBeInTheDocument();
+    expect(within(log).getByRole("link", { name: "open thread" })).toHaveAttribute(
       "href",
       "https://reddit.com/r/marketing",
     );
