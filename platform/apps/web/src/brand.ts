@@ -1323,6 +1323,116 @@ export function brailleFrame(tick: number): string {
 }
 
 /**
+ * Everyday workspace shell (#784) — every word of the redesigned, chat-first "everyday shell" lives here so
+ * the component stays copy-free (house rule: brand voice via this module). The voice is Innocent Drinks
+ * dialed CHEEKY: lowercase, warm, a bit of attitude, legible and kind, never mean. Personality lives in the
+ * small places — empty states, nudges, buttons, celebrations. The structure mirrors the surface: a north
+ * star up top (customers + revenue), a calm thread where deliverables and previews land inline, an approval
+ * queue that is a one-glance ship decision, a quiet transparency log of external actions, and a money +
+ * kill-switch line framed as reassurance, not config.
+ */
+export const EVERYDAY = {
+  /** Time-of-day greeting (editorial serif headline). `name` is the signed-in human's first name. */
+  greeting(name: string, partOfDay: "morning" | "afternoon" | "evening"): string {
+    const who = name.trim() || "you";
+    return `${partOfDay}, ${who.toLowerCase()}. right then — what are we making pop today?`;
+  },
+  /** The single ever-present prompt under the greeting. */
+  prompt: "what are we marketing today?",
+  /** Composer placeholder — the one input that starts everything. */
+  composerPlaceholder: "give us a product, a url, or just a vibe…",
+  composerSend: "off you pop",
+
+  /** North star (customers + revenue front and centre, #630). Labels only — numbers come from data. */
+  northStar: {
+    eyebrow: "the only scoreboard that matters",
+    customersLabel: "paying customers",
+    revenueLabel: "revenue",
+    deltaUp: "up and to the right, just how we like it.",
+    deltaFlat: "holding steady. let's go nudge it.",
+    zero: "no customers yet. that's not a problem, that's the whole point of us.",
+  },
+
+  /** Calm thread where work lands inline. */
+  thread: {
+    heading: "today",
+    /** Empty state — bit quiet in here. */
+    empty: "bit quiet in here. give us a product and we'll cause a scene.",
+    /** A nudge when the fleet is idle and waiting on a brief. */
+    nudge: "we've got a whole department twiddling its thumbs. point us at something?",
+    /** An agent is mid-task (in-thread status). `agent` is the agent's name. */
+    working(agent: string): string {
+      return `${agent.toLowerCase()} is nosing through your site. we won't judge. much.`;
+    },
+    /** Agent landed something good. */
+    resultGood: "on it. ok, this one's good.",
+    /** Agent self-corrects. */
+    resultRedo: "yeah, that was rubbish. take two.",
+    /** Label above an inline deliverable preview/diff that landed in the thread. */
+    previewLabel: "here's what we made",
+    /** Label above a before/after diff preview. */
+    diffLabel: "before → after",
+  },
+
+  /** Approval queue = one-glance ship decisions showing the finished deliverable (#572/#574/#632). */
+  approvals: {
+    heading: "your call",
+    /** Sits under the heading — one human, one glance, one decision. */
+    subhead: "the finished thing, not the faff. give it a look and tell us to send it.",
+    /** Empty queue. */
+    empty: "nothing waiting on you. go get a coffee — we've got this.",
+    /** The two buttons (cheeky, decisive). */
+    ship: "ship it",
+    redo: "nah, redo",
+    /** Per-card: what actually happens on approve (consequence line). */
+    consequencePrefix: "approve and we'll",
+    /** The deliverable-card eyebrow so it's clear this is the real artifact, not chatter. */
+    deliverableEyebrow: "finished deliverable",
+  },
+
+  /** Quiet transparency log: every external action, timestamped + linked (#629). */
+  transparency: {
+    heading: "what we did out there",
+    subhead: "every move we made in the real world. timestamped, linked, no surprises.",
+    empty: "we haven't touched the outside world yet. when we do, it all shows up here.",
+    /** Accessible label for the timestamp column. */
+    whenLabel: "when",
+    /** Link text to the external artifact. */
+    viewLink: "see it",
+  },
+
+  /** Money gate + kill-switch, framed as reassurance not config. The hard gate is money; the rest is calm. */
+  safety: {
+    /** Money gate — shown on any spend/send before it goes out. */
+    moneyGate: "this one costs actual money. your call, big spender.",
+    moneyGateApprove: "yep, spend it",
+    moneyGateHold: "hold off",
+    /** The kill-switch line: always on, framed as a hand on the wheel, not a setting. */
+    killSwitchTitle: "your hand's on the wheel",
+    killSwitchBody:
+      "nothing leaves the building or spends a penny without your nod. one tap stops the whole fleet, " +
+      "any time. it's always on — you don't have to do a thing.",
+    killSwitchAction: "stop everything",
+    /** Reassurance footer eyebrow. */
+    eyebrow: "the boring-but-important bit",
+  },
+
+  /** Celebrations — subtle delight on ship, a real party on the first paying customer. */
+  celebrate: {
+    shipped: "sent. that's a real thing in the real world now. nice one.",
+    firstCustomer: "oi. someone just PAID you. go scream into a pillow.",
+    /** Smaller wins. */
+    milestone: "another one ships. the robots are earning their keep.",
+  },
+
+  /** Connect prompt (Cowork-style single Allow), reused if a deliverable needs a tool. `tool` is the name. */
+  connect(tool: string): string {
+    return `lend us your ${tool.toLowerCase()} for a sec? best behaviour, promise.`;
+  },
+  connectAllow: "go on then",
+} as const;
+
+/**
  * Pricing framed as the product's own Settings → Billing screen (#165). The plans mirror `LANDING.plans`
  * (which mirror `billing/plans.ts`, #125); this just dresses them in the app's settings chrome so the
  * visitor sees exactly where they'll land. `currentPlan` is the one shown as the active subscription.

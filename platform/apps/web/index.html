@@ -41,6 +41,16 @@
     <meta name="twitter:description" content="You steer, they ship. Made by robots, steered by humans." />
     <meta name="twitter:image" content="https://ipop.ai/og.svg" />
     <meta name="twitter:image:alt" content="ipop — the marketing agency of AI agents" />
+
+    <!-- #784 everyday workspace shell: Instrument Serif (editorial headlines) + Inter (UI/body). Loaded
+         globally but consumed ONLY under `.everyday-shell` (scoped CSS), so the default app is unaffected.
+         Behind the everyday-shell feature flag; preconnect keeps first paint snappy. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Instrument+Serif&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>
