@@ -9,6 +9,7 @@ import {
   distanceFromBottom,
   isNearBottom,
   decideOnNewMessages,
+  scrollTopForPreservedAnchor,
 } from "./message-scroll.js";
 
 describe("isNearBottom", () => {
@@ -42,6 +43,24 @@ describe("isNearBottom", () => {
 
   it("computes the raw distance from the bottom", () => {
     expect(distanceFromBottom({ scrollTop: 200, scrollHeight: 1000, clientHeight: 120 })).toBe(680);
+  });
+
+  it("#656 preserves the visual anchor when content height changes", () => {
+    expect(
+      scrollTopForPreservedAnchor(
+        { scrollTop: 240, scrollHeight: 1000, clientHeight: 320 },
+        { scrollTop: 240, scrollHeight: 1120, clientHeight: 320 },
+      ),
+    ).toBe(360);
+  });
+
+  it("#656 never returns a negative scrollTop when content shrinks", () => {
+    expect(
+      scrollTopForPreservedAnchor(
+        { scrollTop: 40, scrollHeight: 1000, clientHeight: 320 },
+        { scrollTop: 40, scrollHeight: 900, clientHeight: 320 },
+      ),
+    ).toBe(0);
   });
 });
 

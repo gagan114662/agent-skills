@@ -7217,3 +7217,421 @@ select:focus-visible {
     animation: none;
   }
 }
+
+/* ============================================================================================
+   #784 — the onboarding "experience system". A whole new dark, soulful surface that lives behind
+   the default-OFF onboarding flag, scoped under `.onboard` so it NEVER touches the legacy light app.
+   Exact tokens from the issue: near-black canvas, one coral pop, Instrument Serif greetings + Inter UI,
+   two weights only (400/500). Motion is calm and intentional; all of it gated by prefers-reduced-motion.
+   ============================================================================================ */
+.onboard {
+  /* The #784 palette — local custom properties so nothing leaks into the rest of the app. */
+  --o-canvas: #0f0f12;
+  --o-surface: #17171c;
+  --o-raised: #1e1e25;
+  --o-border: rgba(255, 255, 255, 0.08);
+  --o-text: #f4f3f1;
+  --o-text-dim: #9a9aa2;
+  --o-pop: #ff5470; /* the one accent, used sparingly */
+  --o-pop-ink: #2a0a12; /* text on the accent */
+  --o-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --o-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --o-ease: cubic-bezier(0.22, 0.61, 0.36, 1); /* calm, no bounce */
+
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--o-canvas);
+  color: var(--o-text);
+  font-family: var(--o-sans);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+.onboard__inner {
+  min-height: 100%;
+  width: min(640px, 100% - 48px);
+  margin: 0 auto;
+  padding: 12vh 0 14vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+}
+.onboard__mark {
+  font-size: 30px;
+  --pop-color: var(--o-pop);
+  align-self: flex-start;
+}
+
+/* ---- the door: greeting + ONE input, nothing else ------------------------------------------ */
+.onboard-door {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.onboard-door__greeting {
+  font-family: var(--o-serif);
+  font-weight: 400;
+  font-size: clamp(34px, 6vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  margin: 6px 0 4px;
+  color: var(--o-text);
+}
+.onboard-door__label {
+  font-size: 13px;
+  color: var(--o-text-dim);
+}
+.onboard-door__field {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.onboard-input {
+  flex: 1 1 auto;
+  background: var(--o-surface);
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  color: var(--o-text);
+  font: inherit;
+  font-size: 16px;
+  padding: 14px 16px;
+  transition: border-color 0.16s var(--o-ease);
+}
+.onboard-input::placeholder {
+  color: var(--o-text-dim);
+}
+.onboard-input:focus-visible {
+  outline: none;
+  border-color: var(--o-pop);
+}
+.onboard-door__reassurance {
+  font-size: 12.5px;
+  color: var(--o-text-dim);
+  margin: 2px 0 0;
+}
+
+/* ---- the one coral pop: every primary action ----------------------------------------------- */
+.onboard-cta {
+  align-self: flex-start;
+  background: var(--o-pop);
+  color: var(--o-pop-ink);
+  border: 1px solid var(--o-pop);
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 500;
+  font-size: 15px;
+  padding: 13px 20px;
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--o-ease),
+    opacity 0.18s var(--o-ease);
+}
+.onboard-cta:hover {
+  transform: translateY(-1px);
+}
+.onboard-cta:active {
+  transform: translateY(0);
+}
+.onboard-cta:focus-visible {
+  outline: 2px solid var(--o-pop);
+  outline-offset: 3px;
+}
+.onboard-cta:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+.onboard-cta--ghost {
+  background: transparent;
+  color: var(--o-text-dim);
+  border-color: var(--o-border);
+}
+
+.onboard-error {
+  color: var(--o-pop);
+  font-size: 13px;
+  margin: 0;
+}
+.onboard-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--o-text-dim);
+  margin: 0;
+}
+
+/* ---- the working / reading states ---------------------------------------------------------- */
+.onboard-working {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--o-text-dim);
+  font-size: 14.5px;
+  margin: 0;
+}
+.onboard-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--o-border);
+  border-top-color: var(--o-pop);
+  animation: onboard-spin 0.8s linear infinite;
+  flex: none;
+}
+@keyframes onboard-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.onboard-reading,
+.onboard-connect,
+.onboard-deliverable,
+.onboard-shipped {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.onboard-reading__error {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- the agent thread ---------------------------------------------------------------------- */
+.onboard-thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.onboard-msg {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  animation: onboard-rise 0.4s var(--o-ease) both;
+}
+.onboard-msg__who {
+  color: var(--o-pop);
+  font-weight: 500;
+  font-size: 13px;
+}
+.onboard-msg__line {
+  color: var(--o-text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.onboard-msg--finding .onboard-msg__line {
+  color: var(--o-text);
+}
+@keyframes onboard-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- guided connects + their real payoffs -------------------------------------------------- */
+.onboard-connect__title {
+  font-family: var(--o-serif);
+  font-weight: 400;
+  font-size: clamp(24px, 4vw, 32px);
+  line-height: 1.12;
+  margin: 0 0 4px;
+}
+.onboard-allow {
+  background: var(--o-surface);
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.onboard-allow__prompt {
+  margin: 0;
+  font-size: 16px;
+  color: var(--o-text);
+}
+.onboard-connected {
+  background: var(--o-raised);
+  border: 1px solid var(--o-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: onboard-rise 0.4s var(--o-ease) both;
+}
+.onboard-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--o-pop);
+  background: rgba(255, 84, 112, 0.12);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.onboard-result__lead {
+  margin: 0;
+  color: var(--o-text-dim);
+  font-size: 13.5px;
+}
+.onboard-mail {
+  border-left: 2px solid var(--o-pop);
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.onboard-mail__meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.onboard-mail__from {
+  font-size: 12.5px;
+  color: var(--o-text-dim);
+}
+.onboard-mail__subject {
+  font-weight: 500;
+  font-size: 14.5px;
+}
+.onboard-mail__draft {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--o-text);
+}
+.onboard-threads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.onboard-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-left: 2px solid var(--o-border);
+  padding-left: 14px;
+}
+.onboard-thread__source {
+  font-size: 12px;
+  color: var(--o-pop);
+  font-weight: 500;
+}
+.onboard-thread__title {
+  font-size: 14.5px;
+  color: var(--o-text);
+}
+.onboard-thread__draft {
+  font-size: 13px;
+  color: var(--o-text-dim);
+}
+.onboard-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.onboard-hero__before {
+  margin: 0;
+  font-size: 14px;
+  color: var(--o-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: var(--o-border);
+}
+.onboard-hero__after {
+  margin: 0;
+  font-family: var(--o-serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.25;
+  color: var(--o-text);
+}
+
+/* ---- the first deliverable card ------------------------------------------------------------ */
+.onboard-card {
+  background: var(--o-surface);
+  border: 1px solid var(--o-border);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.onboard-card__title {
+  font-family: var(--o-serif);
+  font-weight: 400;
+  font-size: clamp(22px, 4vw, 28px);
+  line-height: 1.15;
+  margin: 0;
+}
+.onboard-card__body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--o-text);
+}
+.onboard-card__money {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--o-pop);
+}
+.onboard-card__consequence {
+  margin: 0;
+  font-size: 13px;
+  color: var(--o-text-dim);
+}
+.onboard-card__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.onboard-redo {
+  margin: 0;
+  color: var(--o-text-dim);
+  font-size: 14px;
+}
+
+/* ---- shipped: the small, earned delight ---------------------------------------------------- */
+.onboard-shipped {
+  align-items: flex-start;
+}
+.onboard-shipped__headline {
+  font-family: var(--o-serif);
+  font-weight: 400;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.1;
+  margin: 4px 0 0;
+}
+.onboard-shipped__sub {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--o-text-dim);
+  max-width: 46ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboard-spinner,
+  .onboard-msg,
+  .onboard-connected {
+    animation: none;
+  }
+  .onboard-cta:hover {
+    transform: none;
+  }
+}

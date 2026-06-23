@@ -6,7 +6,7 @@ import { authorLabel, type AppState, type DirectoryEntry } from "../store/store.
 import { Avatar, KindBadge } from "./Primitives.js";
 import { EmptyState } from "./EmptyState.js";
 import { Composer } from "./Composer.js";
-import { decideOnNewMessages, isNearBottom } from "./message-scroll.js";
+import { decideOnNewMessages, isNearBottom, scrollTopForPreservedAnchor, type ScrollMetrics } from "./message-scroll.js";
 import { useLiveChannelMessages } from "./console/useLiveChannelMessages.js";
 import type { Message } from "../api/types.js";
 
@@ -55,6 +55,7 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
   const wasNearBottomRef = useRef(true);
   const prevChannelRef = useRef<string | null>(null);
   const prevCountRef = useRef(0);
+  const prevMetricsRef = useRef<ScrollMetrics | null>(null);
   const [unread, setUnread] = useState(0);
   // #509: a tapped starter prompt is handed to the composer as a prefill. The bump nonce lets the same
   // prompt be re-applied on a repeat tap (and resets naturally when the channel/messages change).
@@ -65,15 +66,21 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
     if (el) el.scrollTop = el.scrollHeight;
   }
 
-  function handleScroll(): void {
-    const el = listRef.current;
-    if (!el) return;
-    const near = isNearBottom({
+  function readMetrics(el: HTMLElement): ScrollMetrics {
+    return {
       scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
-    });
+    };
+  }
+
+  function handleScroll(): void {
+    const el = listRef.current;
+    if (!el) return;
+    const metrics = readMetrics(el);
+    const near = isNearBottom(metrics);
     wasNearBottomRef.current = near;
+    prevMetricsRef.current = metrics;
     if (near) setUnread(0);
   }
 
@@ -87,10 +94,13 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
       wasNearBottomRef.current = true;
       setUnread(0);
       scrollToBottom();
+      if (listRef.current) prevMetricsRef.current = readMetrics(listRef.current);
       return;
     }
     const added = count - prevCountRef.current;
     prevCountRef.current = count;
+    const beforeMetrics = prevMetricsRef.current;
+    const afterMetrics = listRef.current ? readMetrics(listRef.current) : null;
     const newest = messages[messages.length - 1];
     const authoredBySelf = !!identity && newest?.authorMemberId === identity.memberId;
     const action = decideOnNewMessages({ added, wasNearBottom: wasNearBottomRef.current, authoredBySelf });
@@ -98,8 +108,12 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
       scrollToBottom();
       setUnread(0);
     } else if (action === "notify") {
+      if (listRef.current && beforeMetrics && afterMetrics) {
+        listRef.current.scrollTop = scrollTopForPreservedAnchor(beforeMetrics, afterMetrics);
+      }
       setUnread((n) => n + added);
     }
+    if (listRef.current) prevMetricsRef.current = readMetrics(listRef.current);
   }, [messages, activeChannelId, identity]);
 
   if (!channel) {
