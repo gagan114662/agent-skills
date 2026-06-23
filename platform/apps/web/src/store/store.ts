@@ -633,10 +633,12 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       kind: identity.kind,
       displayName: identity.displayName,
     };
+    const first = channels[0];
     set({
       phase: "ready",
       identity,
       channels,
+      activeChannelId: first?.id ?? state.activeChannelId,
       agents,
       directory: mergeDirectory(state.directory, [selfEntry]),
       presence: { ...state.presence, [identity.memberId]: "online" },
@@ -653,10 +655,8 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       .view()
       .then((view) => set({ decisionsCaptured: view.rail.decisionsCaptured }))
       .catch(() => undefined);
-    await refreshPending();
-
-    const first = channels[0];
-    if (first) await store.selectChannel(first.id);
+    void refreshPending();
+    if (first) void store.selectChannel(first.id).catch(() => undefined);
   }
 
   const store: Store = {

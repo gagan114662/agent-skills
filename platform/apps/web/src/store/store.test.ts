@@ -260,6 +260,39 @@ describe("store bootstrap + realtime", () => {
     expect(authorLabel(s.directory, "me1")).toBe("Ada");
   });
 
+  it("marks the shell ready before non-critical startup reads finish (#681)", async () => {
+    let resolveMessages!: (messages: Message[]) => void;
+    let resolveApprovals!: () => void;
+    (env.deps.api.listMessages as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise<Message[]>((resolve) => {
+        resolveMessages = resolve;
+      }),
+    );
+    (env.deps.api.approvals.list as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveApprovals = () => resolve([]);
+      }),
+    );
+
+    const store = createStore(env.deps);
+    const result = await Promise.race([
+      store.bootstrap().then(() => "ready"),
+      new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 20)),
+    ]);
+
+    expect(result).toBe("ready");
+    expect(store.getState().phase).toBe("ready");
+    expect(store.getState().activeChannelId).toBe("c1");
+    expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c1");
+    expect(store.getState().messagesByChannel.c1).toBeUndefined();
+
+    resolveMessages([msg({ id: "late" })]);
+    resolveApprovals();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.getState().messagesByChannel.c1?.map((m) => m.id)).toEqual(["late"]);
+  });
+
   it("goes anonymous when /me is unauthorized", async () => {
     (env.deps.api.me as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       Object.assign(new Error("unauthorized"), { name: "ApiError", status: 401 }),
