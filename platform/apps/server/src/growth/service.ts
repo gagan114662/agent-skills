@@ -7,6 +7,7 @@ import {
   scoreGrowth,
 } from "./score.js";
 import type {
+  ExperimentStatus,
   FunnelRates,
   GrowthEventKind,
   GrowthEventRecord,
@@ -51,6 +52,13 @@ export interface GrowthExperimentStore {
     workspaceId: string,
     id: string,
     approvalRequestId: string,
+    now: Date,
+  ): Promise<GrowthExperimentRecord | undefined>;
+  updateStatus(
+    workspaceId: string,
+    id: string,
+    status: ExperimentStatus,
+    resultSummary: string,
     now: Date,
   ): Promise<GrowthExperimentRecord | undefined>;
 }
@@ -101,6 +109,16 @@ export interface GrowthSummary {
   recommendations: GrowthExperimentSuggestion[];
 }
 
+export interface AutoPauseDecision {
+  experiment: GrowthExperimentRecord;
+  acquisitions: number;
+  conversions: number;
+  conversionRate: number;
+  threshold: number;
+  reason: string;
+  notified: true;
+}
+
 export class GrowthExperimentNotFoundError extends Error {
   constructor(id: string) {
     super(`growth experiment not found: ${id}`);
@@ -120,6 +138,42 @@ function topSources(events: readonly GrowthEventRecord[]): SourceWeight[] {
     .map(([source, value]) => ({ source, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
+}
+
+function eventTargetsExperiment(event: GrowthEventRecord, experiment: GrowthExperimentRecord): boolean {
+  const metadata = event.metadata ?? {};
+  return [metadata.experimentId, metadata.campaignId, metadata.contentId].some(
+    (value) => typeof value === "string" && value === experiment.id,
+  );
+}
+
+function pct(value: number): string {
+  return (value * 100).toFixed(1) + "%";
+}
+
+function underperformerReason(input: {
+  experiment: GrowthExperimentRecord;
+  acquisitions: number;
+  conversions: number;
+  conversionRate: number;
+  threshold: number;
+}): string {
+  const noun = input.conversions === 1 ? "conversion" : "conversions";
+  return (
+    "Auto-paused " +
+    input.experiment.channel +
+    " campaign/content because it produced " +
+    input.conversions +
+    " " +
+    noun +
+    " from " +
+    input.acquisitions +
+    " acquisitions (" +
+    pct(input.conversionRate) +
+    "), below the " +
+    pct(input.threshold) +
+    " threshold after the fair-sample floor."
+  );
 }
 
 export class GrowthService {
@@ -202,6 +256,63 @@ export class GrowthService {
 
   async listExperiments(workspaceId: string): Promise<GrowthExperimentRecord[]> {
     return this.deps.experiments.list(workspaceId);
+  }
+
+  /**
+   * Auto-kill losing campaign/content experiments (#617). Conservative by design: the growth loop must be
+   * enabled, the experiment must already be running, and only events explicitly attributed to the same
+   * experiment/campaign/content id count toward the fair sample. The returned decisions are the notification
+   * payload: the caller can show exactly why an item was paused.
+   */
+  async autoPauseUnderperformers(workspaceId: string): Promise<AutoPauseDecision[]> {
+    const caps = this.deps.caps(workspaceId);
+    if (!caps.enabled) return [];
+
+    const [events, experiments] = await Promise.all([
+      this.deps.events.list(workspaceId),
+      this.deps.experiments.list(workspaceId),
+    ]);
+    const decisions: AutoPauseDecision[] = [];
+    for (const experiment of experiments) {
+      if (experiment.status !== "running") continue;
+      const attributed = events.filter((event) => eventTargetsExperiment(event, experiment));
+      const acquisitions = attributed
+        .filter((event) => event.kind === "acquisition")
+        .reduce((sum, event) => sum + Math.max(0, event.value), 0);
+      if (acquisitions < caps.autoPauseMinAcquisitions) continue;
+
+      const conversions = attributed
+        .filter((event) => event.kind === "conversion")
+        .reduce((sum, event) => sum + Math.max(0, event.value), 0);
+      const conversionRate = acquisitions > 0 ? conversions / acquisitions : 0;
+      if (conversionRate >= caps.autoPauseMaxConversionRate) continue;
+
+      const reason = underperformerReason({
+        experiment,
+        acquisitions,
+        conversions,
+        conversionRate,
+        threshold: caps.autoPauseMaxConversionRate,
+      });
+      const paused =
+        (await this.deps.experiments.updateStatus(
+          workspaceId,
+          experiment.id,
+          "paused",
+          reason,
+          this.now(),
+        )) ?? { ...experiment, status: "paused" as const, resultSummary: reason, updatedAt: this.now() };
+      decisions.push({
+        experiment: paused,
+        acquisitions,
+        conversions,
+        conversionRate,
+        threshold: caps.autoPauseMaxConversionRate,
+        reason,
+        notified: true,
+      });
+    }
+    return decisions;
   }
 
   /**

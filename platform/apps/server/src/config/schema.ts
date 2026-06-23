@@ -488,12 +488,18 @@ export const marketingSchema = z.object({
  * nothing surfaces a zeroed growth pane and proposes nothing proactively — event ingest via the API is
  * always available regardless (recording is harmless). `minTrafficForScore` is the acquisition floor
  * below which a funnel score is forced to 0 (a high rate off a handful of visitors is noise).
+ * The auto-pause knobs are conservative: campaigns/content are only killed after a fair acquisition
+ * sample and when conversion stays below the configured ceiling.
  */
 export const growthSchema = z.object({
   /** The growth-loop flag — default OFF. */
   enabled: z.boolean().optional(),
   /** Acquisition count below which the growth score is forced to 0 (not enough signal). */
   minTrafficForScore: z.number().int().nonnegative().optional(),
+  /** Minimum attributed acquisitions before an experiment can be auto-paused. */
+  autoPauseMinAcquisitions: z.number().int().nonnegative().optional(),
+  /** Maximum acceptable conversion rate before an experiment is auto-paused. */
+  autoPauseMaxConversionRate: z.number().min(0).max(1).optional(),
 });
 
 /**

@@ -8,6 +8,7 @@ import {
   getExperiment,
   listExperiments,
   linkExperimentApproval,
+  updateExperimentStatus,
 } from "../db/repositories/growth.js";
 import { createRequest } from "../db/repositories/approvals.js";
 
@@ -45,6 +46,7 @@ export function createDefaultGrowthService(): GrowthService {
       list: listExperiments,
       linkApproval: (workspaceId, id, approvalRequestId, now) =>
         linkExperimentApproval(workspaceId, id, approvalRequestId, now),
+      updateStatus: updateExperimentStatus,
     },
     gate: externalPostGate,
     caps: (workspaceId) => resolveGrowthCaps(loadConfig(workspaceId).growth),
