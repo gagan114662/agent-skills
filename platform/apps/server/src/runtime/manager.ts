@@ -230,6 +230,12 @@ export interface SessionManagerDeps {
    */
   autoModel?: AutoModelResolver;
   /**
+   * Per-agent model override (#662): a persona-specific model, read at launch and applied after an
+   * explicit per-session pin but before the workspace/default model. Absent/null means the workspace
+   * fallback chain wins.
+   */
+  modelForAgent?: (workspaceId: string, agentMemberId: string) => Promise<string | null>;
+  /**
    * Model preflight (#246): the workspace's owner-picked fleet model, read at launch. When set (and no
    * per-session #52 model is pinned), it is injected as the session's `ANTHROPIC_MODEL`, overriding the
    * deployment default. Together with {@link envDefaultModel} it lets the launch gate validate the
@@ -509,7 +515,14 @@ export class SessionManager {
     // class, or an empty "Default" pick) self-heals to that default — the runtime never spawns with an
     // empty or invalid model and is never disabled by a bad value. No-op unless the resolver is wired AND
     // this launch resolves to the real `claude-code` harness.
-    harnessEnv = await this.applyModelPreflight(input.workspaceId, harness.kind, harnessEnv);
+    const modelPreflight = await this.applyModelPreflight(
+      input.workspaceId,
+      input.agentMemberId,
+      harness.kind,
+      harnessEnv,
+    );
+    harnessEnv = modelPreflight.harnessEnv;
+    const effectiveModel = modelPreflight.model;
 
     // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
     // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
@@ -531,7 +544,7 @@ export class SessionManager {
         harness: harness.kind,
         caps,
         provider: selectionRow?.provider ?? null,
-        model: selectionRow?.model ?? null,
+        model: selectionRow?.model ?? effectiveModel,
         effort: selectionRow?.effort ?? null,
         mode: selectionRow?.mode ?? null,
         // Auto-selection "why?" audit (convene-llm-gateway): the routing decision when auto-chosen.
@@ -673,23 +686,31 @@ export class SessionManager {
    */
   private async applyModelPreflight(
     workspaceId: string,
+    agentMemberId: string,
     harnessKind: HarnessKind,
     harnessEnv: Record<string, string> | undefined,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<{ harnessEnv: Record<string, string> | undefined; model: string | null }> {
     // The model only reaches the child via `--model "$ANTHROPIC_MODEL"` on the claude-code harness.
-    if (harnessKind !== "claude-code" || !this.deps.modelForWorkspace) return harnessEnv;
+    if (harnessKind !== "claude-code" || !this.deps.modelForWorkspace) {
+      return { harnessEnv, model: null };
+    }
     const sessionPinned = harnessEnv?.ANTHROPIC_MODEL ?? null;
+    const agentPicked =
+      sessionPinned === null && this.deps.modelForAgent
+        ? await this.deps.modelForAgent(workspaceId, agentMemberId)
+        : null;
     const workspacePicked = await this.deps.modelForWorkspace(workspaceId);
     // Guaranteed-launchable — never throws, never empty. An empty "Default" pick or an unservable id
     // resolves to the managed default here, at the runtime boundary.
     const model = resolveLaunchModel({
       sessionPinned,
+      agentPicked,
       workspacePicked,
       envDefault: this.deps.envDefaultModel ?? null,
     });
     // Always inject the resolved model so the child spawns with a valid `--model`, independent of whether
     // process.env carries (or lacks) a deployment default.
-    return { ...harnessEnv, ANTHROPIC_MODEL: model };
+    return { harnessEnv: { ...harnessEnv, ANTHROPIC_MODEL: model }, model };
   }
 
   /**
@@ -800,6 +821,7 @@ export class SessionManager {
         workspaceId: session.workspaceId,
         agentMemberId: session.agentMemberId,
         runtime: this.deps.runtime.kind,
+        model: session.model,
         task,
         teamRunId: opts.teamRunId,
         parentSpanId: opts.parentSpanId,

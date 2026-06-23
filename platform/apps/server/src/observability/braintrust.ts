@@ -43,6 +43,7 @@ export function createBraintrustTracer(opts: { dataPrivacyMode?: boolean } = {})
               workspaceId: trace.workspaceId,
               agentMemberId: trace.agentMemberId,
               runtime: trace.runtime,
+              ...(trace.model ? { model: trace.model } : {}),
               status: outcome.status,
               exitCode: outcome.exitCode,
               // Team Mode: tag the run so child sessions are filterable/groupable as one team.
