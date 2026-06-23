@@ -1,67 +1,68 @@
 ---
 title: "Keyword pick"
 slug: keyword-pick
-description: "Here's a draft, ready for a human to mark up before anything goes near publish. --- Keyword pick Target: 'AI marketing agency for startups' (primary). Secondary"
+description: "Picking the keyword first, then the draft. No tools needed — this is a write-up, and I'm drafting it right here in #content for a human to review. Nothing publi"
 date: 2026-06-23
 status: published
 ---
 
-Here's a draft, ready for a human to mark up before anything goes near publish.
+Picking the keyword first, then the draft. No tools needed — this is a write-up, and I'm drafting it right here in #content for a human to review. Nothing publishes.
 
 ---
 
 ## Keyword pick
 
-**Target: "AI marketing agency for startups"** (primary). Secondary/long-tail woven in: *AI marketing department*, *AI marketing agents*, *hire AI marketing*.
+**Primary: "AI marketing agency for startups"** — and I'm leaning the post into the comparison the searcher is actually running in their head: *AI agency vs. freelancer vs. in-house hire.*
 
-**Why this one (the receipts):** It's bottom-of-funnel. A founder typing this isn't researching "what is AI marketing" — they've already decided AI might do the job and they're shopping for who. That's exactly ipop's buyer per our own positioning (founder or small team who wants real work shipped, not another dashboard). It also lets us do the comparison work the searcher is actually doing in their head — *agency vs. freelancer vs. this* — which is where we win or lose the click.
+Why this one (the receipts):
+- **Intent is bottom-funnel.** "AI marketing agency" is a commercial-investigation term — people typing it are shopping, not learning what marketing is. Adding "for startups" filters to our exact buyer: the founder/small team from our own positioning ("a founder or small team who wants real marketing work shipped").
+- **It matches what the site already promises.** The homepage sells "the marketing agency of AI agents — you steer, they ship." Ranking for the literal category term we claim is table stakes, and right now the home/pricing pages are the only things indexed for it.
+- **It converts.** The objection a startup has at this stage is cost + control. Our pricing page already answers cost ("Start free — no card") and our whole product answers control ("Every irreversible or money action is held for human approval"). The post can hand the reader straight to those.
 
-I grounded the draft only in what's live on the site today: the homepage and `/pricing` (Starter / Pro / Agency, "start free — no card," "change or cancel any time"), the named agents (Scout, Quill, Echo and the rest), and the human-approval gate. No invented stats.
+Secondary terms to weave in naturally: *AI marketing department*, *marketing agency cost for startups*, *AI marketing vs hiring a marketer*.
+
+> ⚠️ Note for the human: I don't have live volume/difficulty numbers in-channel. Scout should sanity-check this against real keyword data before we commit — I'm picking on intent logic, not a tool pull.
+
+---
+
+## Title + meta options
+
+**SEO title (pick one):**
+1. AI Marketing Agency for Startups: What You Actually Get (and What It Costs)
+2. Should a Startup Hire an AI Marketing Agency? A Straight Answer
+3. AI Marketing Agency vs. Hiring a Marketer: The Founder's Math
+
+**Meta description (155 char):**
+> Weighing an AI marketing agency for your startup? Here's the honest math vs. a freelancer or first hire — what ships, what it costs, and who stays in control.
 
 ---
 
 ## Draft
 
-**Slug:** `/blog/ai-marketing-agency-for-startups`
-**Title tag (≤60):** AI Marketing Agency for Startups: What You Actually Get
-**Meta description (≤155):** Most startups can't afford a marketing team and don't need a dashboard. Here's what an AI marketing agency does, where humans stay in charge, and what it costs.
+# AI Marketing Agency for Startups: What You Actually Get (and What It Costs)
 
----
+You're a founder. Marketing is the thing that's been "next week" for eleven weeks. You've got three options on the whiteboard: hire someone, rent a freelancer, or try one of these AI marketing agencies everyone's suddenly tweeting about.
 
-# AI Marketing Agency for Startups: What You Actually Get
+Let's do the honest math on that third one — including where it's the wrong call.
 
-If you're a founder, you've done this math. A senior marketer is a six-figure hire. An agency wants a retainer and a three-month ramp. A freelancer ghosts after the first invoice. And the "marketing tools" you keep getting pitched all turn out to be dashboards — software that tells *you* to do the work, then charges you for the privilege.
+## What "AI marketing agency" actually means (no hand-waving)
 
-So most early teams do the thing everyone does: marketing becomes the founder's nights-and-weekends job, right up until it quietly stops happening.
+The phrase gets slapped on everything from a single chatbot to a content mill. So here's the version worth your time: **a set of specialist agents that each own a job a real marketing team owns** — SEO, brand, content, ads, outbound — and run them on a schedule instead of when you remember to.
 
-An AI marketing agency is a different shape of answer. Let's be specific about what that means, because the phrase is getting slapped on everything.
+At ipop, that's the department: Scout digs into SEO and research, Quill drafts the words, Echo and the rest cover their lanes. You steer; they ship. The point isn't "an AI wrote a tweet." The point is *the work that usually waits on a hire stops waiting.*
 
-## What an AI marketing agency actually is
+The honest part: it's "made by robots, steered by humans" for a reason. These agents draft, research, and plan around the clock — but a person still points them and signs off.
 
-Not a chatbot. Not a content generator with a marketing-themed prompt. An AI marketing agency is a set of specialist agents that each own a job a real marketing department owns — and actually do the work, not just suggest it.
+## The founder's math: AI agency vs. freelancer vs. first hire
 
-At ipop, that's a department you hire as a unit:
+Here's the trade-off table the way we'd actually explain it to a friend:
 
-- **Scout** handles SEO — keyword research, what your competitors rank for, where the gaps are.
-- **Quill** (hi, that's the content desk) drafts the posts, the pages, the emails.
-- **Echo** and the rest cover the channels around them — brand, ads, outbound.
-
-They draft, research, and plan around the clock. You steer; they ship. The tagline on our own homepage says it plainer than we could here: *made by robots, steered by humans.*
-
-## The part most "AI marketing" pitches skip: who's in charge
-
-Here's the honest catch, and it's the part we think actually makes this work for a startup.
-
-The agents don't get to spend your money or hit "send" on your reputation while you sleep. Every irreversible or money action — publishing, paying, emailing your list — is held for a human to approve. You stay the editor-in-chief. The agents just make sure there's always something good waiting in the queue instead of a blank page.
-
-That's the difference between "autonomous" as a scary word and autonomous as a useful one. The grunt work runs on its own. The decisions that matter still cross your desk.
-
-## Agency vs. freelancer vs. AI department — for a startup specifically
-
-A quick gut-check on the three roads:
-
-- **Traditional agency:** great work, slow start, retainer-priced. Built for companies with a budget line for "marketing partner." Most pre-scale startups aren't there yet.
-- **Freelancer:** flexible and cheaper, but it's one person with one skill and a calendar full of other clients. Coverage gaps are the default.
-- **AI marketing department:** broad coverage (SEO, content, ads, outbound) running continuousl
+| | First marketing hire | Freelancer | AI marketing agency |
+|---|---|---|---|
+| **Ramp time** | Weeks to months | Days | Same day |
+| **Coverage** | One human, one skill set | One lane at a time | Multiple lanes in parallel |
+| **Cost shape** | Salary + equity, hard to undo | Hourly/retainer | Plan you can change or cancel anytime |
+| **Who's in control** | They run with it | You brief, then wait | You approve every meaningful move |
+| **Best when…** | You know exactly what to build and can fund a role | You have one clear, contained project | You 
 
 [Built with ipop](https://ipop.ai/?utm_source=ipop&utm_medium=badge&utm_campaign=builtwith&ref=ipop_a803d949f0cb88f2)
