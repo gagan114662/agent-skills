@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import {
   billingPlanPrices,
@@ -33,13 +33,23 @@ function toActivePlan(row: {
   workspaceId: string;
   planKey: string;
   status: string;
+  renewalStatus: string;
   agentSeats: number;
   monthlySessionBudgetCents: number;
   fleetSize: number;
   providerEventId: string | null;
+  expiresAt: Date;
+  nextBillingAt: Date;
+  retryCount: number;
+  retryScheduledAt: Date | null;
+  lastPaymentFailedAt: Date | null;
   activatedAt: Date;
 }): ActivePlan {
-  return { ...row, planKey: row.planKey as PlanKey };
+  return {
+    ...row,
+    planKey: row.planKey as PlanKey,
+    renewalStatus: row.renewalStatus as ActivePlan["renewalStatus"],
+  };
 }
 
 function toPricingExperiment(
@@ -118,10 +128,16 @@ export const dbWorkspacePlanStore: WorkspacePlanStore = {
         workspaceId: workspacePlans.workspaceId,
         planKey: workspacePlans.planKey,
         status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
         agentSeats: workspacePlans.agentSeats,
         monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
         fleetSize: workspacePlans.fleetSize,
         providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
         activatedAt: workspacePlans.activatedAt,
       })
       .from(workspacePlans)
@@ -139,6 +155,12 @@ export const dbWorkspacePlanStore: WorkspacePlanStore = {
       monthlySessionBudgetCents: input.caps.monthlySessionBudgetCents,
       fleetSize: input.caps.fleetSize,
       providerEventId: input.providerEventId,
+      expiresAt: input.expiresAt,
+      nextBillingAt: input.nextBillingAt,
+      renewalStatus: "active",
+      retryCount: 0,
+      retryScheduledAt: null,
+      lastPaymentFailedAt: null,
       updatedAt: new Date(),
     };
     const [row] = await db
@@ -153,6 +175,12 @@ export const dbWorkspacePlanStore: WorkspacePlanStore = {
           monthlySessionBudgetCents: values.monthlySessionBudgetCents,
           fleetSize: values.fleetSize,
           providerEventId: values.providerEventId,
+          expiresAt: values.expiresAt,
+          nextBillingAt: values.nextBillingAt,
+          renewalStatus: values.renewalStatus,
+          retryCount: values.retryCount,
+          retryScheduledAt: values.retryScheduledAt,
+          lastPaymentFailedAt: values.lastPaymentFailedAt,
           updatedAt: values.updatedAt,
         },
       })
@@ -160,13 +188,98 @@ export const dbWorkspacePlanStore: WorkspacePlanStore = {
         workspaceId: workspacePlans.workspaceId,
         planKey: workspacePlans.planKey,
         status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
         agentSeats: workspacePlans.agentSeats,
         monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
         fleetSize: workspacePlans.fleetSize,
         providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
         activatedAt: workspacePlans.activatedAt,
       });
     return toActivePlan(row!);
+  },
+
+  async recordPaymentFailure(input): Promise<ActivePlan | undefined> {
+    const [row] = await db
+      .update(workspacePlans)
+      .set({
+        renewalStatus: "past_due",
+        providerEventId: input.providerEventId,
+        retryCount: sql`${workspacePlans.retryCount} + 1`,
+        retryScheduledAt: input.retryScheduledAt,
+        lastPaymentFailedAt: input.now,
+        updatedAt: input.now,
+      })
+      .where(eq(workspacePlans.workspaceId, input.workspaceId))
+      .returning({
+        workspaceId: workspacePlans.workspaceId,
+        planKey: workspacePlans.planKey,
+        status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
+        agentSeats: workspacePlans.agentSeats,
+        monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
+        fleetSize: workspacePlans.fleetSize,
+        providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
+        activatedAt: workspacePlans.activatedAt,
+      });
+    return row ? toActivePlan(row) : undefined;
+  },
+
+  async markExpired(input): Promise<ActivePlan | undefined> {
+    const [row] = await db
+      .update(workspacePlans)
+      .set({ renewalStatus: "expired", status: "canceled", updatedAt: input.now })
+      .where(eq(workspacePlans.workspaceId, input.workspaceId))
+      .returning({
+        workspaceId: workspacePlans.workspaceId,
+        planKey: workspacePlans.planKey,
+        status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
+        agentSeats: workspacePlans.agentSeats,
+        monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
+        fleetSize: workspacePlans.fleetSize,
+        providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
+        activatedAt: workspacePlans.activatedAt,
+      });
+    return row ? toActivePlan(row) : undefined;
+  },
+
+  async dueForRetry(now): Promise<ActivePlan[]> {
+    const rows = await db
+      .select({
+        workspaceId: workspacePlans.workspaceId,
+        planKey: workspacePlans.planKey,
+        status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
+        agentSeats: workspacePlans.agentSeats,
+        monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
+        fleetSize: workspacePlans.fleetSize,
+        providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
+        activatedAt: workspacePlans.activatedAt,
+      })
+      .from(workspacePlans)
+      .where(and(eq(workspacePlans.renewalStatus, "past_due"), lte(workspacePlans.retryScheduledAt, now)))
+      .orderBy(asc(workspacePlans.retryScheduledAt));
+    return rows.map(toActivePlan);
   },
 };
 

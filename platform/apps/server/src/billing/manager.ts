@@ -34,6 +34,7 @@ const PAYMENT_EVENT_TYPES: readonly string[] = [
   "invoice.paid",
   "invoice.payment_succeeded",
 ];
+const PAYMENT_FAILURE_EVENT_TYPES: readonly string[] = ["invoice.payment_failed", "charge.failed"];
 
 // --- row + input types (the repository implements the store seam over these) --------------------------
 
@@ -197,6 +198,7 @@ export interface PlanActivator {
     metadata?: Record<string, string>,
     amountCents?: number,
   ): Promise<unknown>;
+  recordPaymentFailure?(workspaceId: string, providerEventId: string): Promise<unknown>;
 }
 
 /**
@@ -496,6 +498,21 @@ export class BillingManager {
         }
       }
     }
+    if (isPaymentFailureEvent(parsed.type) && this.planActivator?.recordPaymentFailure) {
+      try {
+        await this.planActivator.recordPaymentFailure(workspaceId, parsed.id);
+        if (parsed.metadata.channelId && parsed.metadata.agentMemberId) {
+          await this.post(
+            workspaceId,
+            parsed.metadata.channelId,
+            parsed.metadata.agentMemberId,
+            `Payment renewal failed; retry has been scheduled for this workspace.`,
+          );
+        }
+      } catch (err) {
+        this.logger?.warn({ workspaceId, err }, "billing: payment failure recovery failed");
+      }
+    }
 
     return { deduped: false, event };
   }
@@ -621,6 +638,10 @@ export function isPaymentEvent(type: string): boolean {
   return PAYMENT_EVENT_TYPES.includes(type);
 }
 
+export function isPaymentFailureEvent(type: string): boolean {
+  return PAYMENT_FAILURE_EVENT_TYPES.includes(type);
+}
+
 /**
  * Tolerantly parse a provider webhook body into the fields we persist. Stripe nests the resource under
  * `data.object`; amount may be `amount_total` (checkout), `amount` (charge), or `amount_received`
@@ -638,7 +659,7 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
     | Record<string, unknown>
     | undefined;
   const amount =
-    num(data?.amount_total) ?? num(data?.amount) ?? num(data?.amount_received) ?? 0;
+    num(data?.amount_total) ?? num(data?.amount_due) ?? num(data?.amount) ?? num(data?.amount_received) ?? 0;
   const metadataRaw = (data?.metadata as Record<string, unknown> | undefined) ?? {};
   const metadata: Record<string, string> = {};
   for (const [k, v] of Object.entries(metadataRaw)) {

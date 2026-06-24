@@ -21,6 +21,7 @@ function makeService(
     central: opts.central ?? new EmptyCentralCredentialResolver(),
     centralConnected: opts.centralConnected ?? (async () => false),
     usage,
+    planActive: opts.planActive,
     now: opts.now ?? (() => 1000),
   });
   return { svc, recorded };
@@ -69,6 +70,21 @@ describe("ProvisioningService", () => {
     const { svc } = makeService(resolveProvisioningCaps(undefined));
     const res = await svc.resolveCredential("any-ws", "keyword_data");
     expect(res.status).toBe("disabled");
+  });
+
+  it("blocks provisioned capabilities when the billing plan is expired or past due", async () => {
+    const { svc } = makeService(enabled, {
+      central: new StaticCentralCredentialResolver({ mock: { DATA_API_KEY: "secret-xyz" } }),
+      planActive: async () => false,
+    });
+    const res = await svc.resolveCredential(OWNER, "keyword_data");
+    expect(res).toEqual({
+      status: "disabled",
+      capabilityId: "keyword_data",
+      reason: "billing plan expired or past due",
+    });
+    const statuses = await svc.status(OWNER);
+    expect(statuses.every((s) => s.state === "disabled")).toBe(true);
   });
 
   it("status read surface NEVER exposes a key — only provider id + a human detail", async () => {

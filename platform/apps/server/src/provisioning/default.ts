@@ -14,6 +14,7 @@ import {
   resolveServiceSecrets,
 } from "../db/repositories/external-credentials.js";
 import { dbProvisioningUsageStore } from "../db/repositories/provisioning-usage.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
 import { resolveProvisioningCaps, type ProvisioningCaps } from "./caps.js";
 import { centralServiceKey } from "./registry.js";
 import { EmptyCentralCredentialResolver, type CentralCredentialResolver } from "./provider.js";
@@ -59,6 +60,10 @@ export function createDefaultProvisioningService(): ProvisioningService {
       return status?.connected === true;
     },
     usage: dbProvisioningUsageStore,
+    planActive: async (workspaceId) => {
+      const plan = await dbWorkspacePlanStore.getActive(workspaceId);
+      return Boolean(plan && plan.renewalStatus === "active" && plan.expiresAt > new Date());
+    },
   });
 }
 
