@@ -20,6 +20,8 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+export const CAPABILITY_TOKEN_DEFAULT_KEY_ID = "capability-token:v1";
+
 /** What a capability token authorizes a single action to do. `read` is reversible; `write` is an outward
  * mutation (send/post/spend) that must be pre-committed behind a #13 approval. */
 export type TokenVerb = "read" | "write";
@@ -38,6 +40,8 @@ export interface DelegationChain {
 
 /** The signed claims of a capability token. Everything the seam authorizes is here and nowhere else. */
 export interface CapabilityTokenClaims {
+  /** Non-secret signing key id used for rotation/audit. */
+  kid: string;
   workspaceId: string;
   /** The connection (and #192 vault `service_key`) this token acts through — the SERVICE in the chain. */
   connectionId: string;
@@ -102,6 +106,7 @@ export function verifyCapabilityToken(
   const p = parsed as Record<string, unknown>;
   const delegation = p.delegation;
   if (
+    typeof p.kid !== "string" ||
     typeof p.workspaceId !== "string" ||
     typeof p.connectionId !== "string" ||
     typeof p.capability !== "string" ||
@@ -121,6 +126,7 @@ export function verifyCapabilityToken(
   if (p.exp <= now || p.iat > now + 60_000) return null;
   const d = delegation as Record<string, unknown>;
   return {
+    kid: p.kid,
     workspaceId: p.workspaceId,
     connectionId: p.connectionId,
     capability: p.capability,

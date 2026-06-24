@@ -20,6 +20,7 @@ import {
   isCapabilityTokenExpired,
   signCapabilityToken,
   verifyCapabilityToken,
+  CAPABILITY_TOKEN_DEFAULT_KEY_ID,
   type CapabilityTokenClaims,
   type TokenVerb,
 } from "./token.js";
@@ -66,13 +67,15 @@ export interface CapabilityTokenDeps {
   provider(connectionId: string): CapabilityTokenProvider;
   /** The HMAC secret the token is signed with (read live, like `loadStateSecret`). */
   signingSecret(): string;
+  /** Non-secret signing key id carried by new tokens and logged for rotation audits. */
+  signingKeyId?(): string;
   /** Idempotency persistence (an in-memory TTL store in prod; a fake in tests). */
   store: MintRecordStore;
   /** Emit the delegation record into the #13 audit trail. Returns the recorded request id. */
   recordMint(input: MintAuditInput): Promise<{ id: string }>;
   now(): number;
   /** Optional logger so an audit/store hiccup is observable without throwing out of a correct mint. */
-  log?: { warn?: (obj: unknown, msg?: string) => void };
+  log?: { warn?: (obj: unknown, msg?: string) => void; info?: (obj: unknown, msg?: string) => void };
 }
 
 export interface MintForActionInput {
@@ -152,7 +155,9 @@ export class CapabilityTokenService {
     }
 
     const grant = decision.grant;
+    const kid = this.deps.signingKeyId?.() ?? CAPABILITY_TOKEN_DEFAULT_KEY_ID;
     const claims: CapabilityTokenClaims = {
+      kid,
       workspaceId: input.workspaceId,
       connectionId: grant.connectionId,
       capability: grant.capability,
@@ -164,6 +169,7 @@ export class CapabilityTokenService {
       iat: now,
       exp: now + grant.ttlSeconds * 1000,
     };
+    this.deps.log?.info?.({ kid, workspaceId: input.workspaceId, connectionId: grant.connectionId }, "capability-token signed");
     const token = signCapabilityToken(claims, this.deps.signingSecret());
 
     // Production-grounded verification (premortem §3): prove the token works against the real API. The
