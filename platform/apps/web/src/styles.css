@@ -5473,6 +5473,15 @@ select:focus-visible {
 }
 .contact-form__submit { align-self: flex-start; }
 .contact-form__sent { margin: 0; font-size: 14px; color: var(--dept-email); font-weight: 600; }
+.contact-form__error {
+  margin: 0;
+  border-left: 3px solid var(--vermilion);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--vermilion) 10%, #fff);
+  color: var(--vermilion);
+  font-size: 14px;
+  font-weight: 700;
+}
 
 /* ============================ richer footer ============================ */
 .landing__footer { flex-direction: column; align-items: stretch; }

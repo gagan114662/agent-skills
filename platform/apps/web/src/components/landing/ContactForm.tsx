@@ -35,10 +35,11 @@ export function ContactForm(): React.JSX.Element {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
+        console.error("Inbound lead capture failed", { status: res.status });
         setStatus("error");
         return;
       }
-      const body = await res.json().catch(() => null) as { nextStep?: Partial<NextStep> } | null;
+      const body = (await res.json().catch(() => null)) as { nextStep?: Partial<NextStep> } | null;
       const maybeNextStep = body?.nextStep;
       setNextStep(
         typeof maybeNextStep?.label === "string" && typeof maybeNextStep.href === "string"
@@ -47,13 +48,18 @@ export function ContactForm(): React.JSX.Element {
       );
       form.reset();
       setStatus("sent");
-    } catch {
+    } catch (err) {
+      console.error("Inbound lead capture request failed", err);
       setStatus("error");
     }
   }
 
   return (
-    <section id="contact" className="landing__section landing__contact" aria-labelledby="contact-title">
+    <section
+      id="contact"
+      className="landing__section landing__contact"
+      aria-labelledby="contact-title"
+    >
       <div className="landing__contact-inner">
         <p className="landing__eyebrow">{CONTACT.eyebrow}</p>
         <h2 id="contact-title" className="landing__section-title landing__contact-title">
