@@ -1,4 +1,14 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  index,
+  uniqueIndex,
+  check,
+  integer,
+  jsonb,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -29,6 +39,7 @@ export const OUTREACH_MESSAGE_STATUSES = [
   "failed",
 ] as const;
 export const OUTREACH_RECEIPT_KINDS = ["reply", "meeting", "signup"] as const;
+export const OUTREACH_SPAM_RISK_LEVELS = ["clean", "review", "block"] as const;
 
 export const outreachMessages = pgTable(
   "outreach_messages",
@@ -48,6 +59,11 @@ export const outreachMessages = pgTable(
     body: text("body").notNull(),
     recipientLabel: text("recipient_label").notNull().default(""),
     recipientRef: text("recipient_ref").notNull(),
+    spamRiskScore: integer("spam_risk_score").notNull().default(0),
+    spamRiskLevel: text("spam_risk_level", { enum: OUTREACH_SPAM_RISK_LEVELS })
+      .notNull()
+      .default("clean"),
+    spamRiskReasons: jsonb("spam_risk_reasons").$type<string[]>().notNull().default([]),
     experimentKey: text("experiment_key").notNull(),
     status: text("status", { enum: OUTREACH_MESSAGE_STATUSES }).notNull(),
     approvalRequestId: uuid("approval_request_id"),
@@ -63,10 +79,7 @@ export const outreachMessages = pgTable(
       t.createdAt,
     ),
     byExperiment: index("outreach_messages_experiment_idx").on(t.workspaceId, t.experimentKey),
-    channelCk: check(
-      "outreach_messages_channel_ck",
-      sql`${t.channel} IN ('email','linkedin','x')`,
-    ),
+    channelCk: check("outreach_messages_channel_ck", sql`${t.channel} IN ('email','linkedin','x')`),
     variantCk: check(
       "outreach_messages_variant_ck",
       sql`${t.variant} IN ('time_saved','productivity','cost')`,
@@ -74,6 +87,14 @@ export const outreachMessages = pgTable(
     statusCk: check(
       "outreach_messages_status_ck",
       sql`${t.status} IN ('drafted','blocked','pending_approval','sent','failed')`,
+    ),
+    spamRiskScoreCk: check(
+      "outreach_messages_spam_risk_score_ck",
+      sql`${t.spamRiskScore} BETWEEN 0 AND 100`,
+    ),
+    spamRiskLevelCk: check(
+      "outreach_messages_spam_risk_level_ck",
+      sql`${t.spamRiskLevel} IN ('clean','review','block')`,
     ),
   }),
 );
@@ -106,9 +127,6 @@ export const outreachReceipts = pgTable(
       t.kind,
       t.externalRef,
     ),
-    kindCk: check(
-      "outreach_receipts_kind_ck",
-      sql`${t.kind} IN ('reply','meeting','signup')`,
-    ),
+    kindCk: check("outreach_receipts_kind_ck", sql`${t.kind} IN ('reply','meeting','signup')`),
   }),
 );
