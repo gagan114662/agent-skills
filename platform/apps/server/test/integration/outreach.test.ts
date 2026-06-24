@@ -181,7 +181,9 @@ describe("outreach engine (#225) — owner-gated send, never autonomous", () => 
       request!,
       app.log,
     );
-    expect(executed.status).toBe("executed");
+    expect(executed.outcome).toBe("executed");
+    if (executed.outcome !== "executed") throw new Error("expected execution");
+    expect(executed.request.status).toBe("executed");
 
     messages = await service.listMessages(w.workspaceId);
     expect(sentBodies).toEqual([msg.body]);

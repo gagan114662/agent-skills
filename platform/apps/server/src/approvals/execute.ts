@@ -1,7 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { ExecutorRegistry } from "./executor.js";
 import { ActionExecutionError } from "./runtime.js";
-import { recordExecution, type ApprovalRequest } from "../db/repositories/approvals.js";
+import { getRequest, recordExecution, type ApprovalRequest } from "../db/repositories/approvals.js";
+
+export type ApprovalExecutionOutcome =
+  | { outcome: "executed"; request: ApprovalRequest }
+  | { outcome: "failed"; request: ApprovalRequest }
+  | { outcome: "conflict"; request?: ApprovalRequest };
 
 /**
  * Run an approved request's executor AS the requester and record the outcome (#13). Extracted from the
@@ -13,25 +18,40 @@ export async function executeApprovedRequest(
   registry: ExecutorRegistry,
   request: ApprovalRequest,
   log: FastifyBaseLogger,
-): Promise<ApprovalRequest> {
-  const executor = registry.get(request.actionType);
+): Promise<ApprovalExecutionOutcome> {
+  const current = await getRequest(request.id);
+  if (!current || current.workspaceId !== request.workspaceId) return { outcome: "conflict" };
+  if (current.status !== "pending" && current.status !== "approved") {
+    return { outcome: "conflict", request: current };
+  }
+
+  const executor = registry.get(current.actionType);
   if (!executor) {
-    return recordExecution(request.id, request.workspaceId, {
+    const recorded = await recordExecution(current.id, current.workspaceId, {
       ok: false,
-      error: `no executor for ${request.actionType}`,
+      error: `no executor for ${current.actionType}`,
     });
+    return recorded.outcome === "recorded"
+      ? { outcome: "failed", request: recorded.request }
+      : { outcome: "conflict", request: recorded.request };
   }
   try {
-    const result = await executor.execute(request.payload, {
-      workspaceId: request.workspaceId,
-      requesterMemberId: request.requesterMemberId,
+    const result = await executor.execute(current.payload, {
+      workspaceId: current.workspaceId,
+      requesterMemberId: current.requesterMemberId,
       log,
-      requestId: request.id,
+      requestId: current.id,
     });
-    return recordExecution(request.id, request.workspaceId, { ok: true, result });
+    const recorded = await recordExecution(current.id, current.workspaceId, { ok: true, result });
+    return recorded.outcome === "recorded"
+      ? { outcome: "executed", request: recorded.request }
+      : { outcome: "conflict", request: recorded.request };
   } catch (err) {
     const error = err instanceof ActionExecutionError ? err.message : "execution failed";
     if (!(err instanceof ActionExecutionError)) log.error({ err }, "approval execution failed");
-    return recordExecution(request.id, request.workspaceId, { ok: false, error });
+    const recorded = await recordExecution(current.id, current.workspaceId, { ok: false, error });
+    return recorded.outcome === "recorded"
+      ? { outcome: "failed", request: recorded.request }
+      : { outcome: "conflict", request: recorded.request };
   }
 }
