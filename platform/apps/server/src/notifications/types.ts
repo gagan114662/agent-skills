@@ -8,7 +8,15 @@
  * The activity kinds that become a notification. `approval` backs both pending-review and terminal
  * approval updates so open queues can refresh live (ADR-0008).
  */
-export const NOTIFICATION_TYPES = ["mention", "dm", "reply", "assignment", "approval", "inbound_lead"] as const;
+export const NOTIFICATION_TYPES = [
+  "mention",
+  "dm",
+  "reply",
+  "assignment",
+  "approval",
+  "inbound_lead",
+  "deliverable_feedback",
+] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export function isNotificationType(value: unknown): value is NotificationType {
