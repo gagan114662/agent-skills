@@ -223,20 +223,19 @@ export class FinanceService {
     // Burn basis = the COMPLETED periods (anchor at the previous month) — the partial current month
     // would understate burn and make runway look longer than it is (optimistic, the wrong direction).
     const incompletePeriodKeys: string[] = [];
-    const periods = burnPeriodKeys.flatMap((periodKey) => {
+    const periods: Array<{ periodKey: string; netCents: number; verifiedNetCents: number }> = [];
+    for (const periodKey of burnPeriodKeys) {
       const p = byPeriod.get(periodKey);
       if (!p) {
         incompletePeriodKeys.push(periodKey);
-        return [];
+        continue;
       }
-      return [
-        {
-          periodKey,
-          netCents: p.netCents,
-          verifiedNetCents: p.verifiedRevenueCents - p.verifiedCostCents,
-        },
-      ];
-    });
+      periods.push({
+        periodKey,
+        netCents: p.netCents,
+        verifiedNetCents: p.verifiedRevenueCents - p.verifiedCostCents,
+      });
+    }
     return runwayForecast(
       {
         workspaceId,

@@ -186,6 +186,20 @@ describe("runwayForecast", () => {
     expect(f.incompletePeriodKeys).toEqual(["2025-11", "2025-12"]);
   });
 
+  it("derives the lookback size from incomplete keys when not passed explicitly", () => {
+    const f = runwayForecast({
+      workspaceId: "ws1",
+      currency: "usd",
+      cashPositionCents: 30000,
+      currentPeriodKey: "2026-02",
+      periods: [{ periodKey: "2026-01", netCents: -10000, verifiedNetCents: -5000 }],
+      incompletePeriodKeys: ["2025-11", "2025-12"],
+    });
+
+    expect(f.lookbackPeriodCount).toBe(3);
+    expect(f.incompletePeriodCount).toBe(2);
+  });
+
   it("is healthy and has no breach when not burning", () => {
     const f = runwayForecast({
       workspaceId: "ws1",

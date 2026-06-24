@@ -320,8 +320,8 @@ const DAYS_PER_MONTH = 30;
 export function runwayForecast(input: RunwayInput, atRiskMonths = 3): RunwayForecast {
   const floor = input.floorCents ?? 0;
   const n = input.periods.length;
-  const lookbackPeriodCount = Math.max(input.lookbackPeriodCount ?? n, n);
   const incompletePeriodKeys = input.incompletePeriodKeys ?? [];
+  const lookbackPeriodCount = Math.max(input.lookbackPeriodCount ?? (n + incompletePeriodKeys.length), n);
   const sum = input.periods.reduce((a, p) => a + p.netCents, 0);
   const verifiedSum = input.periods.reduce((a, p) => a + p.verifiedNetCents, 0);
   const monthlyNetCents = n > 0 ? Math.round(sum / n) : 0;
