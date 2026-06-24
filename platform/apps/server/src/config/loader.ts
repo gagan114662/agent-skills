@@ -434,8 +434,8 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     };
   }
   // #225 outreach engine: let the deployment env turn the proactive posture on + pick a sender without a
-  // managed.toml — the owner workspace opts in first. Hard default stays OFF (vars unset → no block ⇒ the
-  // sender stays `dryrun`, recorded-only, no network egress). A managed layer still wins as the lock.
+  // managed.toml — the owner workspace opts in first. Hard default stays OFF; `dryrun` is an explicit
+  // no-network sender, while `postmark` requires connected #192 credentials. A managed layer still wins.
   const outreachEnabled = env.RELOAD_OUTREACH_ENABLED;
   const outreachProvider = env.RELOAD_OUTREACH_SEND_PROVIDER;
   const outreachCap = env.RELOAD_OUTREACH_PER_CHANNEL_DAILY_CAP;

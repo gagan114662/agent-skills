@@ -111,6 +111,7 @@ export interface OutreachMessageRecord {
   status: OutreachMessageStatus;
   approvalRequestId: string | null;
   provider: string;
+  externalId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -15,6 +15,7 @@ import { OUTREACH_SEND_ACTION } from "../../src/approvals/policy.js";
 import { buildDefaultRegistry } from "../../src/approvals/runtime.js";
 import { executeApprovedRequest } from "../../src/approvals/execute.js";
 import type { ServiceKind } from "../../src/onboarding/types.js";
+import type { OutreachSendDispatcher } from "../../src/outreach/send-dispatcher.js";
 
 /**
  * #225 — the outreach engine end-to-end on a real Postgres. Proves the acceptance facts the issue calls out:
@@ -164,15 +165,31 @@ describe("outreach engine (#225) — owner-gated send, never autonomous", () => 
     // AUTONOMOUS SEND IS BLOCKED: nothing is sent by queueing.
     expect(messages.every((m) => m.status !== "sent")).toBe(true);
 
-    // 2) The owner approves → the post-approval executor performs the (recorded-only) send.
+    // 2) The owner approves → the post-approval executor invokes the configured sender with this body.
     const request = await getRequest(queued.approvalRequestId);
     expect(request?.actionType).toBe(OUTREACH_SEND_ACTION);
     expect(request?.status).toBe("pending");
-    const executed = await executeApprovedRequest(buildDefaultRegistry(), request!, app.log);
+    const sentBodies: string[] = [];
+    const sender: OutreachSendDispatcher = {
+      async dispatch(_workspaceId, message) {
+        sentBodies.push(message.body);
+        return { provider: "postmark", externalId: "pm-outreach-1", detail: "sent via postmark" };
+      },
+    };
+    const executed = await executeApprovedRequest(
+      buildDefaultRegistry(undefined, undefined, undefined, undefined, undefined, sender),
+      request!,
+      app.log,
+    );
     expect(executed.status).toBe("executed");
 
     messages = await service.listMessages(w.workspaceId);
-    expect(messages.find((m) => m.id === queued.messageId)!.status).toBe("sent");
+    expect(sentBodies).toEqual([msg.body]);
+    expect(messages.find((m) => m.id === queued.messageId)).toMatchObject({
+      status: "sent",
+      provider: "postmark",
+      externalId: "pm-outreach-1",
+    });
 
     // 3) An EXTERNAL receipt (a reply) routes into the conversion step + advances the #222 pipeline.
     const receipt = await service.recordReceipt(w.workspaceId, {

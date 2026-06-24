@@ -52,6 +52,8 @@ export const outreachMessages = pgTable(
     status: text("status", { enum: OUTREACH_MESSAGE_STATUSES }).notNull(),
     approvalRequestId: uuid("approval_request_id"),
     provider: text("provider").notNull().default("dryrun"),
+    /** Provider message id when the approved send leaves the building, else null. */
+    externalId: text("external_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

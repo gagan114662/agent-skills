@@ -1,13 +1,13 @@
 /**
  * Outreach engine — IO orchestrator (#225, ADR-0225). Consumes the ranked discovery queue (#222) + the
  * buyer brief (#223) as DATA, composes a problem-led, channel-specific message (pure {@link composeMessage}),
- * and PARKS it at the #13 gate for one-tap owner approval. It NEVER sends — the byte-push happens only in
- * the post-approval `outreach.send` executor, after a human approves.
+ * and PARKS it at the #13 gate for one-tap owner approval. The byte-push happens only in the post-approval
+ * `outreach.send` executor, after a human approves.
  *
  * GUARDRAILS — the dependency surface is the proof:
  *   - #200 (sends are IRREVERSIBLE: deliverability/brand): there is NO send/provider seam on this service.
- *     Every `queue()` call ends at a PENDING #13 request (pre-commitment, never post-hoc). No autonomous
- *     send exists, by construction, regardless of workspace policy.
+ *     Every `queue()` call ends at a PENDING #13 request (pre-commitment, never post-hoc); the approval
+ *     executor owns the real ESP call and records the provider id.
  *   - #223 (injection-quarantine end-to-end): there is NO live profile reader here — the brief is consumed
  *     as already-sanitized DATA, the recipient is built ONLY from structured identity (never read text),
  *     and the compose step is pure DATA→DATA. A poisoned enrichment read can place sanitized text on an

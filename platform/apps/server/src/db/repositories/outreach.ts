@@ -38,6 +38,7 @@ function toMessage(r: typeof outreachMessages.$inferSelect): OutreachMessageReco
     status: r.status as OutreachMessageRecord["status"],
     approvalRequestId: r.approvalRequestId,
     provider: r.provider,
+    externalId: r.externalId,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -127,15 +128,30 @@ export const dbMessageStore: MessageStore = {
   },
 };
 
-/** Flip a message to `sent` (the post-approval executor's only write). Tenant-scoped. */
+/** Flip a message to `sent` after the approved channel adapter returns a provider id. Tenant-scoped. */
 export async function markMessageSent(
+  workspaceId: string,
+  id: string,
+  provider: string,
+  externalId: string,
+): Promise<OutreachMessageRecord | undefined> {
+  const [row] = await db
+    .update(outreachMessages)
+    .set({ status: "sent", provider, externalId, updatedAt: new Date() })
+    .where(and(eq(outreachMessages.workspaceId, workspaceId), eq(outreachMessages.id, id)))
+    .returning();
+  return row ? toMessage(row) : undefined;
+}
+
+/** Record an approved send attempt that could not be delivered. Tenant-scoped. */
+export async function markMessageFailed(
   workspaceId: string,
   id: string,
   provider: string,
 ): Promise<OutreachMessageRecord | undefined> {
   const [row] = await db
     .update(outreachMessages)
-    .set({ status: "sent", provider, updatedAt: new Date() })
+    .set({ status: "failed", provider, externalId: null, updatedAt: new Date() })
     .where(and(eq(outreachMessages.workspaceId, workspaceId), eq(outreachMessages.id, id)))
     .returning();
   return row ? toMessage(row) : undefined;

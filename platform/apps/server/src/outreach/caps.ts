@@ -2,8 +2,8 @@ import type { OutreachConfig } from "../config/schema.js";
 
 /**
  * Resolved outreach engine policy (#225). Fills the hard defaults the config partial omits. Default OFF +
- * `dryrun` sender: the engine composes messages and PARKS them at the #13 gate, but the post-approval send
- * touches nothing in the world (recorded-only) until an owner opts in and connects the channel accounts.
+ * `dryrun` sender: the engine composes messages and PARKS them at the #13 gate; the post-approval executor
+ * attempts delivery through the configured sender and records the provider id.
  * `perChannelDailyCap` is the rate ceiling per channel (premortem #200: deliverability/brand protection).
  */
 export interface OutreachCaps {
