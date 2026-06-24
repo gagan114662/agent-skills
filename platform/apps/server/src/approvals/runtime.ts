@@ -42,8 +42,13 @@ import type { AcquisitionDispatcher } from "../acquisition/execution.js";
 import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
 import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
+import type { SocialPublishDispatcher } from "../social/dispatcher.js";
+import { buildSocialPublishDispatcher } from "../social/default.js";
 import { dbMessageStore, markMessageFailed, markMessageSent } from "../db/repositories/outreach.js";
-import { createDefaultOutreachSendDispatcher, type OutreachSendDispatcher } from "../outreach/send-dispatcher.js";
+import {
+  createDefaultOutreachSendDispatcher,
+  type OutreachSendDispatcher,
+} from "../outreach/send-dispatcher.js";
 import {
   FINANCE_DISBURSEMENT_ACTION,
   MONETIZATION_ACTIVATE_PRICE_ACTION,
@@ -154,7 +159,12 @@ const chatPostMessage: ActionExecutor = {
       throw new ActionExecutionError("channel not found in this workspace");
     }
     const isMember = await isChannelMember(channelId, ctx.requesterMemberId);
-    const explicit = await getCapability(ctx.workspaceId, ctx.requesterMemberId, "channel", channelId);
+    const explicit = await getCapability(
+      ctx.workspaceId,
+      ctx.requesterMemberId,
+      "channel",
+      channelId,
+    );
     const effective = effectiveCapability(explicit, isMember);
     if (!effective || !satisfies(effective, "write")) {
       throw new ActionExecutionError("requester lacks write capability on the channel");
@@ -232,6 +242,34 @@ function makeHostedPublish(hosted?: HostedPublishDispatcher): ActionExecutor {
       const ack = { acknowledged: true, pageId: String(payload.pageId) };
       if (hosted) {
         const shipped = await hosted.ship(payload, {
+          workspaceId: ctx.workspaceId,
+          approvalRequestId: ctx.requestId ?? "",
+        });
+        if (shipped) return { ...ack, ...shipped };
+      }
+      return ack;
+    },
+  };
+}
+
+/**
+ * social.publish_post (#924): the OWNER's approval is the publish trigger for Echo social posts.
+ * Without a dispatcher this remains a pure acknowledgement for tests/disabled deployments; with the
+ * production dispatcher wired, approval fans the post out and returns the per-network receipts.
+ */
+function makeSocialPublishPost(social?: SocialPublishDispatcher): ActionExecutor {
+  return {
+    actionType: SOCIAL_PUBLISH_POST_ACTION,
+    validate: validateRecordedApprovalPayload,
+    summarize: (p) =>
+      "social publish: " + String(p.postId ?? p.summary ?? "owner approval").slice(0, 100),
+    async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+      const ack = {
+        acknowledged: true,
+        postId: typeof payload.postId === "string" ? payload.postId : null,
+      };
+      if (social) {
+        const shipped = await social.ship(payload, {
           workspaceId: ctx.workspaceId,
           approvalRequestId: ctx.requestId ?? "",
         });
@@ -343,7 +381,8 @@ const billingRefund: ActionExecutor = {
 const browserAction: ActionExecutor = {
   actionType: "browser.action",
   validate: validateBrowserAction,
-  summarize: (p) => `browser ${String(p.tool)}${p.target ? ` on ${String(p.target)}` : ""}: ${String(p.summary).slice(0, 80)}`,
+  summarize: (p) =>
+    `browser ${String(p.tool)}${p.target ? ` on ${String(p.target)}` : ""}: ${String(p.summary).slice(0, 80)}`,
   execute(payload): Promise<Record<string, unknown>> {
     return Promise.resolve({
       recorded: true,
@@ -419,7 +458,10 @@ const monetizationPayoutSettings: ActionExecutor = {
   actionType: MONETIZATION_PAYOUT_SETTINGS_ACTION,
   validate: validateMonetizationPayoutSettings,
   summarize: (p) =>
-    `payout settings for ${String(p.ventureName ?? p.ventureId)} → ${String(p.destination)}`.slice(0, 140),
+    `payout settings for ${String(p.ventureName ?? p.ventureId)} → ${String(p.destination)}`.slice(
+      0,
+      140,
+    ),
   execute(payload): Promise<Record<string, unknown>> {
     return Promise.resolve({
       recorded: true,
@@ -453,8 +495,14 @@ function makeOutreachSend(dispatcher: OutreachSendDispatcher): ActionExecutor {
       if (!message) throw new ActionExecutionError("outreach message not found in this workspace");
       try {
         const sent = await dispatcher.dispatch(ctx.workspaceId, message);
-        const updated = await markMessageSent(ctx.workspaceId, messageId, sent.provider, sent.externalId);
-        if (!updated) throw new ActionExecutionError("outreach message not found in this workspace");
+        const updated = await markMessageSent(
+          ctx.workspaceId,
+          messageId,
+          sent.provider,
+          sent.externalId,
+        );
+        if (!updated)
+          throw new ActionExecutionError("outreach message not found in this workspace");
         return {
           recorded: true,
           executed: true,
@@ -538,7 +586,10 @@ const ozLoopsPublishProposal: ActionExecutor = {
   actionType: OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   validate: validateOzLoopsPublish,
   summarize: (p) =>
-    `publish ${String(p.loop ?? "?")} proposal: ${String(p.summary ?? "").slice(0, 100)}`.slice(0, 160),
+    `publish ${String(p.loop ?? "?")} proposal: ${String(p.summary ?? "").slice(0, 100)}`.slice(
+      0,
+      160,
+    ),
   execute(payload): Promise<Record<string, unknown>> {
     return Promise.resolve({
       recorded: true,
@@ -616,19 +667,36 @@ function makeRecordedOnlyApproval(actionType: string, label: string): ActionExec
   };
 }
 
-const setupExternalAccount = makeRecordedOnlyApproval(SETUP_EXTERNAL_ACCOUNT_ACTION, "external account setup");
+const setupExternalAccount = makeRecordedOnlyApproval(
+  SETUP_EXTERNAL_ACCOUNT_ACTION,
+  "external account setup",
+);
 const ventureBootstrap = makeRecordedOnlyApproval(VENTURE_BOOTSTRAP_ACTION, "venture bootstrap");
-const ventureDomainPurchase = makeRecordedOnlyApproval(VENTURE_DOMAIN_PURCHASE_ACTION, "venture domain purchase");
+const ventureDomainPurchase = makeRecordedOnlyApproval(
+  VENTURE_DOMAIN_PURCHASE_ACTION,
+  "venture domain purchase",
+);
 const ventureAdSpend = makeRecordedOnlyApproval(VENTURE_AD_SPEND_ACTION, "venture ad spend");
-const venturePaymentMethod = makeRecordedOnlyApproval(VENTURE_PAYMENT_METHOD_ACTION, "venture payment method");
+const venturePaymentMethod = makeRecordedOnlyApproval(
+  VENTURE_PAYMENT_METHOD_ACTION,
+  "venture payment method",
+);
 const ventureDeploy = makeRecordedOnlyApproval(VENTURE_DEPLOY_ACTION, "venture deploy");
 const realworldPublish = makeRecordedOnlyApproval(REALWORLD_PUBLISH_ACTION, "real-world publish");
-const socialPublishPost = makeRecordedOnlyApproval(SOCIAL_PUBLISH_POST_ACTION, "social publish");
 const emailLiveSend = makeRecordedOnlyApproval(EMAIL_LIVE_SEND_ACTION, "email live send");
 const capabilityMint = makeRecordedOnlyApproval(CAPABILITY_MINT_ACTION, "capability mint");
-const searchConsoleSubmit = makeRecordedOnlyApproval(SEARCH_CONSOLE_SUBMIT_ACTION, "search console submit");
-const gardenEnableAgent = makeRecordedOnlyApproval(GARDEN_ENABLE_AGENT_ACTION, "garden enable agent");
-const enterpriseBudgetBreach = makeRecordedOnlyApproval(ENTERPRISE_BUDGET_BREACH_ACTION, "enterprise budget breach");
+const searchConsoleSubmit = makeRecordedOnlyApproval(
+  SEARCH_CONSOLE_SUBMIT_ACTION,
+  "search console submit",
+);
+const gardenEnableAgent = makeRecordedOnlyApproval(
+  GARDEN_ENABLE_AGENT_ACTION,
+  "garden enable agent",
+);
+const enterpriseBudgetBreach = makeRecordedOnlyApproval(
+  ENTERPRISE_BUDGET_BREACH_ACTION,
+  "enterprise budget breach",
+);
 const autonomyComplete = makeRecordedOnlyApproval(AUTONOMY_COMPLETE_ACTION, "autonomy completion");
 const drRestore = makeRecordedOnlyApproval(DR_RESTORE_ACTION, "disaster recovery restore");
 const portfolioSunset = makeRecordedOnlyApproval(PORTFOLIO_SUNSET_ACTION, "portfolio sunset");
@@ -649,6 +717,7 @@ export function buildDefaultRegistry(
   delivery?: DeliveryDispatcher,
   hosted?: HostedPublishDispatcher,
   outreachDispatcher: OutreachSendDispatcher = createDefaultOutreachSendDispatcher(),
+  social?: SocialPublishDispatcher,
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
@@ -674,7 +743,7 @@ export function buildDefaultRegistry(
     venturePaymentMethod,
     ventureDeploy,
     realworldPublish,
-    socialPublishPost,
+    makeSocialPublishPost(social),
     emailLiveSend,
     capabilityMint,
     searchConsoleSubmit,
@@ -696,4 +765,6 @@ export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry(
   undefined,
   undefined,
   buildHostedPublishDispatcher(),
+  undefined,
+  buildSocialPublishDispatcher(),
 );
