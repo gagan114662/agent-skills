@@ -70,6 +70,20 @@ export async function getIdea(
   return row as VentureIdea | undefined;
 }
 
+/**
+ * Resolve a venture by its globally unique id for signature-verified public callbacks. Normal app reads
+ * stay workspace-scoped through {@link getIdea}; webhook routes need this only to recover the workspace
+ * before the per-venture Stripe secret can verify the raw delivery.
+ */
+export async function getIdeaById(ideaId: string): Promise<VentureIdea | undefined> {
+  const [row] = await db
+    .select(IDEA_COLS)
+    .from(ventureIdeas)
+    .where(eq(ventureIdeas.id, ideaId))
+    .limit(1);
+  return row as VentureIdea | undefined;
+}
+
 export class InvalidIdeaStatusTransitionError extends Error {
   constructor(
     readonly from: IdeaStatus,

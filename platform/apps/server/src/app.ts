@@ -120,7 +120,7 @@ import { CustomerVoiceService } from "./voice/service.js";
 import { moatRoutes } from "./routes/moat.js";
 import { MoatService } from "./moat/service.js";
 import { createDefaultMoatService } from "./moat/default.js";
-import { listEvaluations } from "./db/repositories/venture.js";
+import { getIdeaById, listEvaluations } from "./db/repositories/venture.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
@@ -1228,7 +1228,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const ventureService =
     opts.venture ??
     createDefaultVentureService(undefined, demandService, constitutionGuard, voiceService);
-  app.register(ventureRoutes, { service: ventureService });
+  app.register(ventureRoutes, {
+    service: ventureService,
+    monetization,
+    resolveVentureWorkspaceId: async (ventureIdeaId) => (await getIdeaById(ventureIdeaId))?.workspaceId,
+  });
   // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
   // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.
   app.register(demandRoutes, { service: demandService });
