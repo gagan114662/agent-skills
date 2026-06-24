@@ -33,8 +33,11 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.DR_S3_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.DR_S3_REGION }}
       AWS_ENDPOINT_URL: ${{ secrets.DR_S3_ENDPOINT_URL }} # set for R2/B2/MinIO; empty for AWS S3
+      SRE_WEBHOOK_URL: ${{ secrets.SRE_WEBHOOK_URL }}
+      DR_ALERT_FAILURE_THRESHOLD: "3"
     steps:
       - name: Guard — skip cleanly when DR backup is not configured
+        id: guard
         run: |
           if [ -z "$DR_S3_BUCKET" ] || [ -z "$DATABASE_URL" ]; then
             echo "::notice title=DR backup not configured::set DR_S3_BUCKET + DR_DATABASE_URL (and DR_S3_* creds) to enable off-site backups — skipping."
@@ -44,12 +47,13 @@ jobs:
           fi
 
       - name: Install postgresql-client
-        if: env.DR_CONFIGURED == 'true'
+        if: env.DATABASE_URL != ''
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
       - name: Dump + gzip (timed — the measured RPO input)
+        id: dump
         if: env.DR_CONFIGURED == 'true'
         run: |
           set -euo pipefail
@@ -63,20 +67,173 @@ jobs:
           end=$(date +%s)
           bytes=$(stat -c%s "$file")
           echo "DUMP_FILE=${file}" >> "$GITHUB_ENV"
+          echo "DUMP_BYTES=${bytes}" >> "$GITHUB_ENV"
+          echo "DUMP_DURATION_MS=$(((end - start) * 1000))" >> "$GITHUB_ENV"
           echo "::notice title=DR dump complete::${file} — $((end - start))s, ${bytes} bytes gzipped (measured RPO input)"
 
       - name: Upload to off-site object storage (S3-compatible, vendor-independent)
+        id: upload
         if: env.DR_CONFIGURED == 'true'
         run: |
           set -euo pipefail
           dest="s3://${DR_S3_BUCKET}/dumps/${DUMP_FILE}"
+          start=$(date +%s)
           if [ -n "${AWS_ENDPOINT_URL:-}" ]; then
             aws s3 cp "$DUMP_FILE" "$dest" --endpoint-url "$AWS_ENDPOINT_URL"
           else
             aws s3 cp "$DUMP_FILE" "$dest"
           fi
+          end=$(date +%s)
+          echo "UPLOAD_LATENCY_MS=$(((end - start) * 1000))" >> "$GITHUB_ENV"
+          echo "BACKUP_DESTINATION=${dest}" >> "$GITHUB_ENV"
           echo "::notice title=DR backup uploaded::${dest}"
 
       - name: Scrub the local dump
         if: always() && env.DR_CONFIGURED == 'true'
         run: rm -f reload-*.sql.gz
+
+      - name: Report DR backup status
+        if: always()
+        env:
+          DUMP_OUTCOME: ${{ steps.dump.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+
+          status="success"
+          reason="uploaded"
+          if [ "${DR_CONFIGURED:-false}" != "true" ]; then
+            status="skipped"
+            reason="not_configured"
+          elif [ "${DUMP_OUTCOME:-skipped}" != "success" ]; then
+            status="failure"
+            reason="dump_failed"
+          elif [ "${UPLOAD_OUTCOME:-skipped}" != "success" ]; then
+            status="failure"
+            reason="upload_failed"
+          fi
+
+          dump_bytes="${DUMP_BYTES:-0}"
+          dump_duration_ms="${DUMP_DURATION_MS:-0}"
+          upload_latency_ms="${UPLOAD_LATENCY_MS:-0}"
+          destination="${BACKUP_DESTINATION:-}"
+          threshold="${DR_ALERT_FAILURE_THRESHOLD:-3}"
+          consecutive_failures=0
+          last_success_at="unknown"
+
+          if [ -n "${DATABASE_URL:-}" ]; then
+            set +e
+            psql "$DATABASE_URL" <<'SQL'
+          CREATE TABLE IF NOT EXISTS backup_events (
+            id bigserial PRIMARY KEY,
+            pipeline text NOT NULL,
+            status text NOT NULL CHECK (status IN ('success', 'failure', 'skipped')),
+            reason text NOT NULL,
+            dump_bytes bigint NOT NULL DEFAULT 0,
+            dump_duration_ms bigint NOT NULL DEFAULT 0,
+            upload_latency_ms bigint NOT NULL DEFAULT 0,
+            destination text,
+            run_id text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE INDEX IF NOT EXISTS backup_events_pipeline_created_idx
+            ON backup_events (pipeline, created_at DESC);
+          SQL
+            schema_rc=$?
+
+            if [ "$schema_rc" -eq 0 ]; then
+              psql "$DATABASE_URL" \
+                -v pipeline="dr-backup" \
+                -v status="$status" \
+                -v reason="$reason" \
+                -v dump_bytes="$dump_bytes" \
+                -v dump_duration_ms="$dump_duration_ms" \
+                -v upload_latency_ms="$upload_latency_ms" \
+                -v destination="$destination" \
+                -v run_id="${GITHUB_RUN_ID}" <<'SQL'
+          INSERT INTO backup_events (
+            pipeline, status, reason, dump_bytes, dump_duration_ms, upload_latency_ms, destination, run_id
+          )
+          VALUES (
+            :'pipeline', :'status', :'reason', :dump_bytes, :dump_duration_ms, :upload_latency_ms,
+            NULLIF(:'destination', ''), :'run_id'
+          );
+          SQL
+              insert_rc=$?
+            else
+              insert_rc=$schema_rc
+            fi
+
+            if [ "$insert_rc" -eq 0 ]; then
+              consecutive_failures="$(
+                psql "$DATABASE_URL" -At <<'SQL'
+          WITH ordered AS (
+            SELECT status, created_at
+            FROM backup_events
+            WHERE pipeline = 'dr-backup'
+            ORDER BY created_at DESC
+          ),
+          streak AS (
+            SELECT status
+            FROM ordered
+            WHERE created_at > COALESCE((SELECT max(created_at) FROM ordered WHERE status = 'success'), '-infinity'::timestamptz)
+          )
+          SELECT count(*) FROM streak WHERE status IN ('failure', 'skipped');
+          SQL
+              )"
+              last_success_at="$(
+                psql "$DATABASE_URL" -At <<'SQL'
+          SELECT COALESCE(max(created_at)::text, 'never')
+          FROM backup_events
+          WHERE pipeline = 'dr-backup' AND status = 'success';
+          SQL
+              )"
+            else
+              echo "::warning title=DR backup event not recorded::could not write backup_events; alerting still proceeds."
+            fi
+            set -e
+          else
+            echo "::warning title=DR backup event not recorded::DR_DATABASE_URL is unset; cannot persist backup_events."
+          fi
+
+          should_alert=false
+          if [ "$status" != "success" ]; then
+            should_alert=true
+          elif [ "${consecutive_failures:-0}" -ge "$threshold" ]; then
+            should_alert=true
+          fi
+
+          if [ "$should_alert" = "true" ]; then
+            payload="$(
+              jq -nc \
+                --arg pipeline "dr-backup" \
+                --arg status "$status" \
+                --arg reason "$reason" \
+                --arg runUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                --argjson dumpBytes "$dump_bytes" \
+                --argjson uploadLatencyMs "$upload_latency_ms" \
+                --argjson consecutiveFailures "${consecutive_failures:-0}" \
+                '{pipeline:$pipeline,status:$status,reason:$reason,runUrl:$runUrl,dumpBytes:$dumpBytes,uploadLatencyMs:$uploadLatencyMs,consecutiveFailures:$consecutiveFailures}'
+            )"
+
+            if [ -n "${SRE_WEBHOOK_URL:-}" ]; then
+              curl --fail-with-body --silent --show-error \
+                -H "content-type: application/json" \
+                --data "$payload" \
+                "$SRE_WEBHOOK_URL"
+            else
+              echo "::warning title=DR backup alert unsent::SRE_WEBHOOK_URL is unset; payload=${payload}"
+            fi
+          fi
+
+          {
+            echo "### DR backup status"
+            echo
+            echo "| Pipeline | Status | Reason | Last successful backup | Consecutive failures/skips | Dump bytes | Upload latency ms |"
+            echo "| --- | --- | --- | --- | ---: | ---: | ---: |"
+            echo "| dr-backup | ${status} | ${reason} | ${last_success_at} | ${consecutive_failures:-0} | ${dump_bytes} | ${upload_latency_ms} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" = "failure" ]; then
+            exit 1
+          fi
