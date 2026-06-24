@@ -7,6 +7,11 @@ import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { channelPoster } from "../../src/runtime/default.js";
 import { AutonomyEngine } from "../../src/autonomy/engine.js";
+import {
+  getAutonomy,
+  refundActionsUsed,
+  tryReserveActionsUsed,
+} from "../../src/db/repositories/autonomy.js";
 import type { SessionLogger } from "../../src/runtime/manager.js";
 
 /** A no-op logger so the engine's logging doesn't spam the test output. */
@@ -112,6 +117,29 @@ async function bodies(w: World, channelId = w.channelId): Promise<string[]> {
 }
 
 describe("cross-team agent pooling + autonomy loop (real Postgres + Redis, #17)", () => {
+  it("atomically reserves action budget under concurrent ticks", async () => {
+    const w = await seed();
+    await poolAndEnable(w, [{ memberId: w.researcher, roles: ["researcher"] }], {
+      maxActionsPerTick: 5,
+      actionBudget: 2,
+    });
+    const autonomy = await getAutonomy(w.workspaceId, w.researcher);
+    expect(autonomy).toBeTruthy();
+
+    const results = await Promise.all([
+      tryReserveActionsUsed(autonomy!.id),
+      tryReserveActionsUsed(autonomy!.id),
+      tryReserveActionsUsed(autonomy!.id),
+    ]);
+
+    expect(results).toEqual(expect.arrayContaining([true, true, false]));
+    expect(results.filter(Boolean)).toHaveLength(2);
+    expect((await getAutonomy(w.workspaceId, w.researcher))!.actionsUsed).toBe(2);
+
+    await refundActionsUsed(autonomy!.id);
+    expect((await getAutonomy(w.workspaceId, w.researcher))!.actionsUsed).toBe(1);
+  });
+
   it("AC1: an agent progresses an assigned task without human prompting", async () => {
     const w = await seed();
     await poolAndEnable(w, [{ memberId: w.researcher, roles: ["researcher"] }]);

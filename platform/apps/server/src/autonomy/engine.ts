@@ -8,7 +8,8 @@ import { upsertMemory } from "../db/repositories/memories.js";
 import {
   getControls,
   getAutonomy,
-  incrementActionsUsed,
+  tryReserveActionsUsed,
+  refundActionsUsed,
   listActiveWorkflows,
   listActiveWorkflowWorkspaces,
   advanceWorkflowStage,
@@ -232,8 +233,18 @@ export class AutonomyEngine {
         continue;
       }
 
-      await this.apply(wf, task.id, task.title, agentMemberId, decision.action, log);
-      await incrementActionsUsed(autonomy.id);
+      const reserved = await tryReserveActionsUsed(autonomy.id);
+      if (!reserved) {
+        recordAutonomyAction("noop:budget_exhausted");
+        actions.push({ workflowId: wf.id, action: "noop", reason: "budget_exhausted" });
+        continue;
+      }
+      try {
+        await this.apply(wf, task.id, task.title, agentMemberId, decision.action, log);
+      } catch (err) {
+        await refundActionsUsed(autonomy.id);
+        throw err;
+      }
       perAgentThisTick.set(agentMemberId, usedThisTick + 1);
       recordAutonomyAction(decision.action);
       actions.push({ workflowId: wf.id, action: decision.action, reason: decision.reason });

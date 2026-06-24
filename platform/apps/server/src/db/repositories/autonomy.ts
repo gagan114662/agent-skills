@@ -235,6 +235,37 @@ export async function incrementActionsUsed(id: string, by = 1): Promise<void> {
     .where(eq(agentAutonomy.id, id));
 }
 
+/**
+ * Atomically reserve one (or more) action-budget slots. Returns false when the live row would exceed
+ * its configured budget, so concurrent ticks cannot all pass a stale read and spend the same slot.
+ */
+export async function tryReserveActionsUsed(id: string, by = 1): Promise<boolean> {
+  if (by <= 0) return true;
+  const rows = await db
+    .update(agentAutonomy)
+    .set({ actionsUsed: sql`${agentAutonomy.actionsUsed} + ${by}`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(agentAutonomy.id, id),
+        sql`${agentAutonomy.actionsUsed} + ${by} <= ${agentAutonomy.actionBudget}`,
+      ),
+    )
+    .returning({ id: agentAutonomy.id });
+  return rows.length > 0;
+}
+
+/** Compensate a reserved action slot when the action fails before it is actually applied. */
+export async function refundActionsUsed(id: string, by = 1): Promise<void> {
+  if (by <= 0) return;
+  await db
+    .update(agentAutonomy)
+    .set({
+      actionsUsed: sql`GREATEST(0, ${agentAutonomy.actionsUsed} - ${by})`,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentAutonomy.id, id));
+}
+
 // ---- controls (kill switch) -------------------------------------------------
 
 export interface AutonomyControls {

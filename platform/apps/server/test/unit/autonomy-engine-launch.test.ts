@@ -15,7 +15,8 @@ import type { AgentWorkflow } from "../../src/db/repositories/autonomy.js";
 const getControls = vi.fn();
 const getAutonomy = vi.fn();
 const listActiveWorkflows = vi.fn();
-const incrementActionsUsed = vi.fn(() => Promise.resolve());
+const tryReserveActionsUsed = vi.fn(() => Promise.resolve(true));
+const refundActionsUsed = vi.fn(() => Promise.resolve());
 const bumpWorkflowAction = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
 const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
@@ -27,7 +28,8 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   getControls,
   getAutonomy,
   listActiveWorkflows,
-  incrementActionsUsed,
+  tryReserveActionsUsed,
+  refundActionsUsed,
   bumpWorkflowAction,
   setWorkflowStatus,
   createApproval,
@@ -160,6 +162,33 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     const action = result.actions.find((a) => a.workflowId === "wf_1");
     expect(action?.action).toBe("noop");
     expect(action?.reason).toBe("budget_exhausted");
+    expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
+  it("does NOT launch when the atomic budget reservation loses a concurrent race", async () => {
+    tryReserveActionsUsed.mockResolvedValueOnce(false);
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    const result = await engine.tick("ws_1");
+
+    const action = result.actions.find((a) => a.workflowId === "wf_1");
+    expect(action?.action).toBe("noop");
+    expect(action?.reason).toBe("budget_exhausted");
+    expect(tryReserveActionsUsed).toHaveBeenCalledWith("au_1");
+    expect(launcher.launch).not.toHaveBeenCalled();
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("refunds the reserved budget slot when applying the action fails", async () => {
+    updateStatus.mockRejectedValueOnce(new Error("write failed"));
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await expect(engine.tick("ws_1")).rejects.toThrow("write failed");
+
+    expect(tryReserveActionsUsed).toHaveBeenCalledWith("au_1");
+    expect(refundActionsUsed).toHaveBeenCalledWith("au_1");
     expect(launcher.launch).not.toHaveBeenCalled();
   });
 
