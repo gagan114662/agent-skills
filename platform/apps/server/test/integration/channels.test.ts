@@ -6,6 +6,7 @@ import { db, closeDb } from "../../src/db/index.js";
 import { messages, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { MAX_MESSAGE_BODY_LENGTH } from "../../src/messaging/limits.js";
+import { MAX_DM_MEMBER_IDS } from "../../src/routes/channels.js";
 
 let app: FastifyInstance;
 const slugs: string[] = [];
@@ -173,6 +174,19 @@ describe("channels & DMs (real Postgres)", () => {
     });
     expect(dm1.statusCode).toBe(200);
     expect(dm1.json().id).toBe(dm2.json().id); // same DM, not a duplicate
+  });
+
+  it("rejects oversized DM member sets before repository lookup (#977)", async () => {
+    const h = await newHuman();
+
+    const rejected = await app.inject({
+      method: "POST",
+      url: `/workspaces/${h.workspaceId}/dms`,
+      cookies: { rid: h.cookie },
+      payload: { memberIds: Array.from({ length: MAX_DM_MEMBER_IDS + 1 }, () => newId()) },
+    });
+
+    expect(rejected.statusCode).toBe(400);
   });
 
   it("archived channels are hidden from the list and reject new messages", async () => {

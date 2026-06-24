@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { channels, channelMembers } from "../schema/index.js";
 
@@ -77,28 +77,30 @@ export async function getOrCreateDm(
   memberIds: string[],
 ): Promise<Channel> {
   const wanted = [...new Set(memberIds)].sort();
+  const wantedSql = sql.join(
+    wanted.map((memberId) => sql`${memberId}`),
+    sql`, `,
+  );
   return db.transaction(async (tx) => {
-    const dmChannels = await tx
+    const [existing] = await tx
       .select()
       .from(channels)
-      .where(and(eq(channels.workspaceId, workspaceId), eq(channels.kind, "dm")));
-    for (const c of dmChannels) {
-      const mem = await tx
-        .select({ memberId: channelMembers.memberId })
-        .from(channelMembers)
-        .where(eq(channelMembers.channelId, c.id));
-      const have = mem.map((m) => m.memberId).sort();
-      if (have.length === wanted.length && have.every((v, i) => v === wanted[i])) {
-        return c as Channel;
-      }
-    }
+      .where(
+        and(
+          eq(channels.workspaceId, workspaceId),
+          eq(channels.kind, "dm"),
+          sql`(select count(*)::int from ${channelMembers} where ${channelMembers.channelId} = ${channels.id}) = ${wanted.length}`,
+          sql`(select count(*)::int from ${channelMembers} where ${channelMembers.channelId} = ${channels.id} and ${channelMembers.memberId} in (${wantedSql})) = ${wanted.length}`,
+        ),
+      )
+      .limit(1);
+    if (existing) return existing as Channel;
+
     const [created] = await tx
       .insert(channels)
       .values({ workspaceId, kind: "dm", name: null })
       .returning();
-    for (const memberId of wanted) {
-      await tx.insert(channelMembers).values({ channelId: created!.id, memberId });
-    }
+    await tx.insert(channelMembers).values(wanted.map((memberId) => ({ channelId: created!.id, memberId })));
     return created as Channel;
   });
 }
