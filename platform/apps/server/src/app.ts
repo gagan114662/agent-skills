@@ -81,6 +81,7 @@ import { createDefaultBilling } from "./billing/default.js";
 import { billingStatus, type BillingStatus } from "./billing/mode.js";
 import type { BillingManager } from "./billing/manager.js";
 import type { PlanBillingService } from "./billing/plan-service.js";
+import type { TrialNurtureService } from "./billing/trial-nurture.js";
 import { createGitWorkspaceFromEnv } from "./git/default.js";
 import type { GitWorkspaceService } from "./git/workspace.js";
 import { GitWorktreeReaper } from "./git/reaper.js";
@@ -361,6 +362,8 @@ export interface BuildAppOptions {
   billingManager?: BillingManager;
   /** #125 Pricing: tests inject a PlanBillingService over the none provider; default builds one from env. */
   planService?: PlanBillingService;
+  /** #607 Trial nurture: tests inject a deterministic service; default builds one with billing. */
+  trialNurture?: TrialNurtureService;
   /** #481 Go-live: override the billing status (provider/mode/live) the status route reports; default from env. */
   billingStatus?: BillingStatus;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
@@ -788,13 +791,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // demand overlay (so the scorecard's demand dimension consumes only this externally-attributed evidence).
   const demandService = opts.demand ?? createDefaultDemandService(app.log);
   const billingDefaults =
-    !opts.billingManager || !opts.planService ? createDefaultBilling(app.log, demandService) : null;
+    !opts.billingManager || !opts.planService || !opts.trialNurture
+      ? createDefaultBilling(app.log, demandService)
+      : null;
   const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
   const planService = opts.planService ?? billingDefaults!.planService;
+  const trialNurture = opts.trialNurture ?? billingDefaults!.trialNurture;
   // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
   const billingStatusValue =
     opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
-  app.register(billingRoutes, { billingManager, planService, status: billingStatusValue });
+  app.register(billingRoutes, { billingManager, planService, trialNurture, status: billingStatusValue });
   // #104 founder console: ONE read-only aggregation endpoint that gives the owner fleet status, the
   // venture pipeline (#96), revenue/willingness-to-pay (#98), budget burn (#71), the pending #13
   // approval queue (with decision-SLA ages), and the kill/maintenance switches — the whole daily

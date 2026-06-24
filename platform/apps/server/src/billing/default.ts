@@ -4,10 +4,12 @@ import { channelPoster } from "../runtime/default.js";
 import { dbBillingStore } from "../db/repositories/billing.js";
 import { dbDeploymentStore } from "../db/repositories/deployments.js";
 import { dbPlanPriceStore, dbPricingExperimentStore, dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { dbTrialNurtureStore } from "../db/repositories/trial-nurture.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { createBillingProvider } from "./factory.js";
 import { BillingManager, type DeploymentLookup, type DemandSignalIngestor } from "./manager.js";
 import { PlanBillingService } from "./plan-service.js";
+import { TrialNurtureService } from "./trial-nurture.js";
 import { billingStatus, type BillingStatus } from "./mode.js";
 
 /**
@@ -23,6 +25,7 @@ export function createDefaultBilling(
 ): {
   billingManager: BillingManager;
   planService: PlanBillingService;
+  trialNurture: TrialNurtureService;
   /** #481 go-live snapshot (provider + declared mode + whether real money is on) for the status route. */
   status: BillingStatus;
 } {
@@ -37,11 +40,13 @@ export function createDefaultBilling(
     latestForSession: (sessionId, channelId) =>
       dbDeploymentStore.latestForSession(sessionId, channelId),
   };
+  const trialNurture = new TrialNurtureService(dbTrialNurtureStore);
   const planService = new PlanBillingService({
     provider,
     prices: dbPlanPriceStore,
     plans: dbWorkspacePlanStore,
     pricingExperiments: dbPricingExperimentStore,
+    trialNurture,
     secrets,
     logger,
   });
@@ -57,7 +62,7 @@ export function createDefaultBilling(
     toleranceSec: env.billing.webhookToleranceSeconds,
     logger,
   });
-  return { billingManager, planService, status };
+  return { billingManager, planService, trialNurture, status };
 }
 
 /** Back-compat helper: just the BillingManager (consumed by the founder console #104). */
