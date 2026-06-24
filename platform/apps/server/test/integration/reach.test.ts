@@ -3,7 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";
-import { workspaces, reachSends, reachContacts, reachRuns, reachReceipts } from "../../src/db/schema/index.js";
+import {
+  workspaces,
+  reachSends,
+  reachContacts,
+  reachRuns,
+  reachReceipts,
+} from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { ReachService, type ReachDeps } from "../../src/reach/service.js";
 import {
@@ -21,6 +27,7 @@ import { REACH_DEFAULTS, type ReachCaps } from "../../src/reach/caps.js";
 import { createRequest, getRequest } from "../../src/db/repositories/approvals.js";
 import { REACH_DATA_CREDIT_ACTION } from "../../src/approvals/policy.js";
 import type { ProspectSource } from "../../src/reach/prospect-source.js";
+import type { SenderAuthInput } from "../../src/email/deliverability.js";
 
 /**
  * #280 — the Reach outbound loop end-to-end on a real Postgres. Proves the acceptance facts:
@@ -35,6 +42,11 @@ import type { ProspectSource } from "../../src/reach/prospect-source.js";
 const app = buildApp();
 const NOW = new Date(Date.UTC(2026, 5, 16, 15, 0, 0));
 const slugs: string[] = [];
+const DELIVERABLE_AUTH: SenderAuthInput = {
+  spf: { published: true, includesEsp: true },
+  dkim: { published: true, verified: true },
+  dmarc: { published: true, policy: "reject" },
+};
 
 afterAll(async () => {
   for (const slug of slugs) await db.delete(workspaces).where(eq(workspaces.slug, slug));
@@ -80,14 +92,31 @@ function service(
     source ?? createMockProspectSource({ now: () => NOW.getTime() });
   return new ReachService({
     now: () => NOW,
-    icp: { async seed() { return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] }; } },
+    icp: {
+      async seed() {
+        return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] };
+      },
+    },
     resolveSource,
-    channels: { email: createEmailChannel(sender ? { sender } : undefined), linkedin: createLinkedInChannel() },
+    channels: {
+      email: createEmailChannel(sender ? { sender } : undefined),
+      linkedin: createLinkedInChannel(),
+    },
     contacts: dbReachContactStore,
     sends: dbReachSendStore,
     receipts: dbReachReceiptStore,
     runs: dbReachRunStore,
     suppressions: { loadSuppressed: (w) => dbSuppressionStore.loadSuppressed(w) },
+    ...(sender
+      ? {
+          deliverability: {
+            proof: async () => ({
+              auth: DELIVERABLE_AUTH,
+              authResultsHeader: "spf=pass; dkim=pass; dmarc=pass",
+            }),
+          },
+        }
+      : {}),
     caps: () => caps(capsOver),
     approvals: {
       async submitDataCreditSpend(input) {
@@ -95,7 +124,11 @@ function service(
           workspaceId,
           requesterMemberId: memberId,
           actionType: REACH_DATA_CREDIT_ACTION,
-          payload: { provider: input.provider, amountCents: input.amountCents, prospectCount: input.prospectCount },
+          payload: {
+            provider: input.provider,
+            amountCents: input.amountCents,
+            prospectCount: input.prospectCount,
+          },
           amount: input.amountCents,
           summary: input.summary,
           status: "pending",
@@ -117,9 +150,15 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     expect(run1.status).toBe("completed");
     expect(run1.messagesSent).toBe(5);
 
-    const sent = await db.select().from(reachSends).where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent")));
+    const sent = await db
+      .select()
+      .from(reachSends)
+      .where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent")));
     expect(sent).toHaveLength(5);
-    const enrolled = await db.select().from(reachContacts).where(eq(reachContacts.workspaceId, workspaceId));
+    const enrolled = await db
+      .select()
+      .from(reachContacts)
+      .where(eq(reachContacts.workspaceId, workspaceId));
     expect(enrolled).toHaveLength(5);
     const runs = await db.select().from(reachRuns).where(eq(reachRuns.workspaceId, workspaceId));
     expect(runs[0]?.tuningReport).toBeTruthy();
@@ -128,7 +167,10 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     const firstKeys = new Set(enrolled.map((c) => c.contactKey));
     const run2 = await svc.runBatch(workspaceId);
     expect(run2.messagesSent).toBe(5);
-    const allContacts = await db.select().from(reachContacts).where(eq(reachContacts.workspaceId, workspaceId));
+    const allContacts = await db
+      .select()
+      .from(reachContacts)
+      .where(eq(reachContacts.workspaceId, workspaceId));
     expect(allContacts).toHaveLength(10);
     expect(allContacts.filter((c) => !firstKeys.has(c.contactKey))).toHaveLength(5);
 
@@ -143,9 +185,16 @@ describe("Reach outbound loop on Postgres (#280)", () => {
       replySubject: "Re: hello",
     });
     expect(r.recorded).toBe(true);
-    const dup = await svc.recordReceipt(workspaceId, { contactKey: target, kind: "reply", externalRef: "evt-reply-1" });
+    const dup = await svc.recordReceipt(workspaceId, {
+      contactKey: target,
+      kind: "reply",
+      externalRef: "evt-reply-1",
+    });
     expect(dup.recorded).toBe(false); // idempotent
-    const receipts = await db.select().from(reachReceipts).where(eq(reachReceipts.workspaceId, workspaceId));
+    const receipts = await db
+      .select()
+      .from(reachReceipts)
+      .where(eq(reachReceipts.workspaceId, workspaceId));
     expect(receipts).toHaveLength(1);
     expect(receipts[0]?.replyBody).toBe("Interested, can you send times?");
     const threads = await svc.replyThreads(workspaceId);
@@ -154,7 +203,10 @@ describe("Reach outbound loop on Postgres (#280)", () => {
       replyBody: "Interested, can you send times?",
       replyFrom: "buyer@example.com",
     });
-    const stopped = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, target)));
+    const stopped = await db
+      .select()
+      .from(reachContacts)
+      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, target)));
     expect(stopped[0]?.status).toBe("replied");
 
     const summary = await svc.summary(workspaceId);
@@ -168,7 +220,10 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     const run = await svc.runBatch(workspaceId);
     expect(run.messagesSent).toBe(2);
     expect(run.rateLimited).toBe(3);
-    const rl = await db.select().from(reachSends).where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "rate_limited")));
+    const rl = await db
+      .select()
+      .from(reachSends)
+      .where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "rate_limited")));
     expect(rl).toHaveLength(3);
   });
 
@@ -188,7 +243,10 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     expect(run.status).toBe("completed");
     expect(run.messagesSent).toBe(2);
 
-    const sent = await db.select().from(reachSends).where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent")));
+    const sent = await db
+      .select()
+      .from(reachSends)
+      .where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent")));
     expect(sent).toHaveLength(2);
     expect(sent.map((s) => s.externalId)).toEqual(["pm-live-1", "pm-live-2"]);
     expect(sent.every((s) => !s.externalId?.startsWith("dryrun-"))).toBe(true);
@@ -218,20 +276,31 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     expect(imported.statusCode).toBe(201);
     expect(imported.json()).toMatchObject({ imported: 10, updated: 0, skipped: 0 });
 
-    const queued = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "imported")));
+    const queued = await db
+      .select()
+      .from(reachContacts)
+      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "imported")));
     expect(queued).toHaveLength(10);
 
     const importedSource = createImportedProspectSource(workspaceId, {
       loadImportedProspects: ({ workspaceId, limit, excludeKeys }) =>
         dbReachContactStore.importedProspects(workspaceId, limit, excludeKeys),
     });
-    const svc = service(workspaceId, memberId, { batchSize: 10, prospectSource: "imported" }, importedSource);
+    const svc = service(
+      workspaceId,
+      memberId,
+      { batchSize: 10, prospectSource: "imported" },
+      importedSource,
+    );
     const run = await svc.runBatch(workspaceId);
     expect(run.status).toBe("completed");
     expect(run.prospectsFound).toBe(10);
     expect(run.messagesSent).toBe(10);
 
-    const enrolled = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "active")));
+    const enrolled = await db
+      .select()
+      .from(reachContacts)
+      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "active")));
     expect(enrolled).toHaveLength(10);
   });
 

@@ -1,13 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { createEmailChannel, dryRunEspSender, type EspSender } from "../../../src/reach/channels/email.js";
-import { createLinkedInChannel, type LinkedInSender } from "../../../src/reach/channels/linkedin.js";
+import {
+  createEmailChannel,
+  dryRunEspSender,
+  type EspSender,
+} from "../../../src/reach/channels/email.js";
+import {
+  createLinkedInChannel,
+  type LinkedInSender,
+} from "../../../src/reach/channels/linkedin.js";
 import type { ChannelSendContext } from "../../../src/reach/channel.js";
 import type { ReachMessage } from "../../../src/reach/types.js";
+import type { SenderAuthInput } from "../../../src/email/deliverability.js";
 
 const FOOTER = {
   brandName: "ipop",
   postalAddress: "1 Market St, SF, CA",
   unsubscribeUrl: "https://ipop.ai/u",
+};
+
+const DELIVERABLE_AUTH: SenderAuthInput = {
+  spf: { published: true, includesEsp: true },
+  dkim: { published: true, verified: true },
+  dmarc: { published: true, policy: "reject" },
+};
+
+const DELIVERABLE = {
+  auth: DELIVERABLE_AUTH,
+  authResultsHeader: "mx.test; spf=pass smtp.mailfrom=ipop.ai; dkim=pass; dmarc=pass",
 };
 
 function emailMsg(over: Partial<ReachMessage> = {}): ReachMessage {
@@ -39,7 +58,10 @@ describe("email channel — suppression + compliance (#280)", () => {
         return { externalId: "x" };
       },
     };
-    const out = await createEmailChannel({ sender }).send(emailMsg(), ctx());
+    const out = await createEmailChannel({ sender }).send(
+      emailMsg(),
+      ctx({ deliverability: DELIVERABLE }),
+    );
     expect(out.status).toBe("sent");
     expect(capturedBody).toContain("Unsubscribe: https://ipop.ai/u?u="); // working, per-recipient link
     expect(capturedBody).toContain("1 Market St"); // postal address (CAN-SPAM)
@@ -48,12 +70,18 @@ describe("email channel — suppression + compliance (#280)", () => {
   });
 
   it("blocks a suppressed/opted-out recipient", async () => {
-    const out = await createEmailChannel().send(emailMsg(), ctx({ suppressed: new Set(["jane@acme.com"]) }));
+    const out = await createEmailChannel().send(
+      emailMsg(),
+      ctx({ suppressed: new Set(["jane@acme.com"]) }),
+    );
     expect(out.status).toBe("suppressed");
   });
 
   it("skips when footer facts are incomplete (no unlawful send)", async () => {
-    const out = await createEmailChannel().send(emailMsg(), ctx({ footerInfo: { brandName: "ipop" } }));
+    const out = await createEmailChannel().send(
+      emailMsg(),
+      ctx({ footerInfo: { brandName: "ipop" } }),
+    );
     expect(out.status).toBe("skipped");
     expect(out.detail).toContain("CAN-SPAM");
   });
@@ -70,7 +98,10 @@ describe("email channel — suppression + compliance (#280)", () => {
         throw new Error("smtp down");
       },
     };
-    const out = await createEmailChannel({ sender }).send(emailMsg(), ctx());
+    const out = await createEmailChannel({ sender }).send(
+      emailMsg(),
+      ctx({ deliverability: DELIVERABLE }),
+    );
     expect(out.status).toBe("failed");
     expect(out.detail).toContain("smtp down");
   });
@@ -88,12 +119,54 @@ describe("email channel — suppression + compliance (#280)", () => {
         seen.push(ctx.workspaceId);
         return sender;
       },
-    }).send(emailMsg(), ctx({ workspaceId: "ws-live" }));
+    }).send(emailMsg(), ctx({ workspaceId: "ws-live", deliverability: DELIVERABLE }));
 
     expect(out.status).toBe("sent");
     expect(out.externalId).toBe("pm-live-1");
     expect(out.detail).toBe("sent via postmark");
     expect(seen).toEqual(["ws-live"]);
+  });
+
+  it("blocks real ESP sends until deliverability is confirmed", async () => {
+    let sent = false;
+    const sender: EspSender = {
+      kind: "postmark",
+      async send() {
+        sent = true;
+        return { externalId: "pm-live-1" };
+      },
+    };
+    const out = await createEmailChannel({ sender }).send(emailMsg(), ctx());
+    expect(out.status).toBe("skipped");
+    expect(out.detail).toContain("deliverability not confirmed");
+    expect(sent).toBe(false);
+  });
+
+  it("calls the deliverability gate before a real ESP send", async () => {
+    const calls: unknown[] = [];
+    let sent = false;
+    const sender: EspSender = {
+      kind: "postmark",
+      async send() {
+        sent = true;
+        return { externalId: "pm-live-1" };
+      },
+    };
+    const out = await createEmailChannel({
+      sender,
+      confirmDeliverability(input) {
+        calls.push(input);
+        return {
+          deliverable: true,
+          config: { spf: "pass", dkim: "pass", dmarc: "pass", aligned: true, reasons: [] },
+          headers: { spf: "pass", dkim: "pass", dmarc: "pass" },
+          reasons: [],
+        };
+      },
+    }).send(emailMsg(), ctx({ deliverability: DELIVERABLE }));
+    expect(out.status).toBe("sent");
+    expect(sent).toBe(true);
+    expect(calls).toEqual([DELIVERABLE]);
   });
 
   it("dryRunEspSender does no network and is deterministic", async () => {
@@ -123,14 +196,22 @@ describe("linkedin channel — permitted-API only, else queue (#280)", () => {
   });
 
   it("sends through an official API when one is wired", async () => {
-    const sender: LinkedInSender = { kind: "linkedin-api", async send() { return { externalId: "urn:li:1" }; } };
+    const sender: LinkedInSender = {
+      kind: "linkedin-api",
+      async send() {
+        return { externalId: "urn:li:1" };
+      },
+    };
     const out = await createLinkedInChannel({ sender }).send(liMsg, ctx());
     expect(out.status).toBe("sent");
     expect(out.externalId).toBe("urn:li:1");
   });
 
   it("honours the opt-out list", async () => {
-    const out = await createLinkedInChannel().send(liMsg, ctx({ suppressed: new Set(["https://linkedin.com/in/jane"]) }));
+    const out = await createLinkedInChannel().send(
+      liMsg,
+      ctx({ suppressed: new Set(["https://linkedin.com/in/jane"]) }),
+    );
     expect(out.status).toBe("suppressed");
   });
 });

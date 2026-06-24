@@ -1,4 +1,5 @@
 import type { FooterInfo } from "../acquisition/compliance.js";
+import type { SenderAuthInput } from "../email/deliverability.js";
 import type { ReachChannel, ReachMessage, ReachSendOutcome } from "./types.js";
 
 /**
@@ -19,6 +20,11 @@ export interface ChannelSendContext {
   suppressed: ReadonlySet<string>;
   /** CAN-SPAM/GDPR footer facts (brand, postal address, unsubscribe). Incomplete ⇒ email cannot send. */
   footerInfo: Partial<FooterInfo> | undefined;
+  /** Production-grounded sender authentication proof. Required before any real email sender is called. */
+  deliverability?: {
+    auth: SenderAuthInput;
+    authResultsHeader?: string | null;
+  } | null;
 }
 
 export interface ReachChannelAdapter {
