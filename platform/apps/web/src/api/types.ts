@@ -711,6 +711,20 @@ export interface StatusPageDto {
   generatedAt: string;
 }
 
+export interface PublicSupportTicketStatusDto {
+  ticketId: string;
+  status: "open" | "triaged" | "awaiting_approval" | "replied" | "closed";
+  subject: string | null;
+  channel: string;
+  createdAt: string;
+  updatedAt: string;
+  firstResponseSlaMinutes: number;
+  slaDueAt: string;
+  slaBreached: boolean;
+  responseState: "waiting" | "reply_pending_approval" | "replied" | "closed";
+  events: { type: string; at: string; detail: string | null }[];
+}
+
 /** Events the `/ws` gateway sends to the client. */
 export type ServerEvent =
   | { type: "ready"; memberId: string; workspaceId: string }
@@ -1017,8 +1031,19 @@ export interface DepartmentBriefResult {
   department: string;
   channelId: string;
   messageId: string;
-  launched: Array<{ personaId: string; handle: string; department: string; sessionId: string; taskId: string }>;
-  connectPrompted: Array<{ personaId: string; handle: string; department: string; messageId: string }>;
+  launched: Array<{
+    personaId: string;
+    handle: string;
+    department: string;
+    sessionId: string;
+    taskId: string;
+  }>;
+  connectPrompted: Array<{
+    personaId: string;
+    handle: string;
+    department: string;
+    messageId: string;
+  }>;
 }
 
 /** A deliverable card in the #300 read-only sample workspace. */

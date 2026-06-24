@@ -24,16 +24,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Only EXTERNAL receipt kinds are accepted from a provider webhook; `auto_sent` is an internal-only marker.
 const EXTERNAL_RECEIPT_KINDS = RECEIPT_KINDS.filter((k) => k !== "auto_sent");
 
-export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOptions): Promise<void> {
+export async function supportRoutes(
+  app: FastifyInstance,
+  opts: SupportRoutesOptions,
+): Promise<void> {
   const { service } = opts;
 
   // ---- inbound signed hooks (raw-body scope) --------------------------------------------------------
   await app.register(async (webhookScope) => {
-    webhookScope.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) =>
-      done(null, body),
+    webhookScope.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_req, body, done) => done(null, body),
     );
 
-    async function verify(wid: string, raw: string, sig: unknown): Promise<{ ok: true } | { code: number; error: string }> {
+    async function verify(
+      wid: string,
+      raw: string,
+      sig: unknown,
+    ): Promise<{ ok: true } | { code: number; error: string }> {
       const secret = await service.webhookSecret(wid);
       if (!secret) return { code: 503, error: "support webhook not configured for this workspace" };
       try {
@@ -51,7 +60,10 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
       const raw = req.body instanceof Buffer ? req.body.toString("utf8") : String(req.body ?? "");
       const v = await verify(wid, raw, req.headers["support-signature"]);
       if (!("ok" in v) && v.code === 400) {
-        req.log.warn({ provider: "support", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        req.log.warn(
+          { provider: "support", workspaceId: wid, reason: v.error },
+          "webhook signature verification failed",
+        );
         recordWebhookSignatureFailure("support", v.error);
       }
       if (!("ok" in v)) return reply.code(v.code).send({ error: v.error });
@@ -93,13 +105,35 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
       });
     });
 
+    /**
+     * Customer-facing ticket status. Requires the ticket id AND original widget sourceRef; staff identity is
+     * deliberately not required, while a guessed ticket id alone still returns 404.
+     */
+    webhookScope.get("/support/widget/:wid/tickets/:tid/status", async (req, reply) => {
+      const { wid, tid } = req.params as { wid: string; tid: string };
+      const { sourceRef } = req.query as { sourceRef?: string };
+      const ref = typeof sourceRef === "string" ? sourceRef.trim() : "";
+      if (!UUID_RE.test(tid)) return reply.code(400).send({ error: "ticket id must be a UUID" });
+      if (!ref) return reply.code(400).send({ error: "sourceRef is required" });
+      try {
+        return reply.send(await service.publicTicketStatus(wid, tid, ref));
+      } catch (err) {
+        if (err instanceof SupportNotFoundError)
+          return reply.code(404).send({ error: err.message });
+        throw err;
+      }
+    });
+
     /** A provider delivery/resolution receipt — the ONLY trustworthy resolution signal (premortem §2). */
     webhookScope.post("/support/receipts/:wid", async (req, reply) => {
       const { wid } = req.params as { wid: string };
       const raw = req.body instanceof Buffer ? req.body.toString("utf8") : String(req.body ?? "");
       const v = await verify(wid, raw, req.headers["support-signature"]);
       if (!("ok" in v) && v.code === 400) {
-        req.log.warn({ provider: "support", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        req.log.warn(
+          { provider: "support", workspaceId: wid, reason: v.error },
+          "webhook signature verification failed",
+        );
         recordWebhookSignatureFailure("support", v.error);
       }
       if (!("ok" in v)) return reply.code(v.code).send({ error: v.error });
@@ -113,7 +147,9 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
       const kind = String(payload.kind ?? "");
       const providerRef = typeof payload.providerRef === "string" ? payload.providerRef.trim() : "";
       if (!(EXTERNAL_RECEIPT_KINDS as readonly string[]).includes(kind)) {
-        return reply.code(400).send({ error: `kind must be one of ${EXTERNAL_RECEIPT_KINDS.join(" | ")}` });
+        return reply
+          .code(400)
+          .send({ error: `kind must be one of ${EXTERNAL_RECEIPT_KINDS.join(" | ")}` });
       }
       if (!providerRef) return reply.code(400).send({ error: "providerRef is required" });
       let ticketId: string | null = null;
@@ -130,7 +166,9 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
         providerRef,
         detail: typeof payload.detail === "string" ? payload.detail : null,
       });
-      return reply.code(result.deduped ? 200 : 201).send({ receiptId: result.receipt.id, deduped: result.deduped });
+      return reply
+        .code(result.deduped ? 200 : 201)
+        .send({ receiptId: result.receipt.id, deduped: result.deduped });
     });
   });
 
@@ -189,7 +227,9 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
     if (!assertWorkspace(id, wid, reply)) return;
     const b = (req.body ?? {}) as { minCount?: unknown };
     const minCount =
-      typeof b.minCount === "number" && Number.isFinite(b.minCount) ? Math.trunc(b.minCount) : undefined;
+      typeof b.minCount === "number" && Number.isFinite(b.minCount)
+        ? Math.trunc(b.minCount)
+        : undefined;
     const result = await service.refreshObjectionFaq(wid, {
       minCount,
       createdByMemberId: id.memberId,
@@ -231,7 +271,9 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
     if (!resolution) return reply.code(400).send({ error: "resolution is required" });
     try {
       const { entry, deduped } = await service.learnFromResolved(wid, tid, resolution, id.memberId);
-      return reply.code(deduped ? 200 : 201).send({ kbEntryId: entry.id, slug: entry.slug, deduped });
+      return reply
+        .code(deduped ? 200 : 201)
+        .send({ kbEntryId: entry.id, slug: entry.slug, deduped });
     } catch (err) {
       if (err instanceof SupportNotFoundError) return reply.code(404).send({ error: err.message });
       throw err;

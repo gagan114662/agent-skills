@@ -2,10 +2,14 @@
 import { AuthGate } from "./components/AuthGate.js";
 import { Workspace } from "./components/Workspace.js";
 import { StatusPage } from "./components/StatusPage.js";
+import { SupportTicketStatus } from "./components/SupportTicketStatus.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
-import { ONBOARDING_V2_ENABLED, shouldShowOnboardingV2 } from "./components/onboarding/onboarding-flag.js";
+import {
+  ONBOARDING_V2_ENABLED,
+  shouldShowOnboardingV2,
+} from "./components/onboarding/onboarding-flag.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import {
   EVERYDAY_SHELL_ENABLED,
@@ -18,6 +22,8 @@ import { navigate, useRoute } from "./routing.js";
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
  * needs no session (path-based, keeping the no-router shell). Everything else is the authed app. */
 const STATUS_PATH = /^\/status\/([^/]+)\/?$/;
+/** Public support-ticket status page (#919), linked from widget confirmations. */
+const SUPPORT_STATUS_PATH = /^\/support\/status\/?$/;
 /** The no-signup instant demo / sandbox (#610) — a PUBLIC surface at `/demo` (or `/sandbox`), rendered
  * BEFORE the auth boundary: a prospect watches a personalized deliverable build with zero account. */
 const DEMO_PATH = /^\/(?:demo|sandbox)\/?$/;
@@ -56,6 +62,7 @@ export function App(): React.JSX.Element {
   const path = useRoute();
   const status = STATUS_PATH.exec(path);
   if (status) return <StatusPage slug={decodeURIComponent(status[1]!)} />;
+  if (SUPPORT_STATUS_PATH.test(path)) return <SupportTicketStatus />;
 
   // #784: the onboarding experience is the default public landing at root `/` and `/welcome`. It renders
   // before the auth boundary (no session needed); "take me in" carries the visitor into the everyday shell.

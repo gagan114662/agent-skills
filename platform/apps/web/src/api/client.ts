@@ -78,6 +78,7 @@ import type {
   GardenResponse,
   SampleConsoleResponse,
   StatusPageDto,
+  PublicSupportTicketStatusDto,
   TaskTemplateDto,
   SiteDocDetail,
   SiteDocMeta,
@@ -233,7 +234,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         : `request failed (${res.status})`;
     // #221: surface the server's `Retry-After` (whole seconds) so a rate-limited caller can hold its retry.
     const retryAfterRaw = Number(res.headers.get("retry-after"));
-    const retryAfterSeconds = Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : undefined;
+    const retryAfterSeconds =
+      Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : undefined;
     throw new ApiError(message, res.status, retryAfterSeconds);
   }
 
@@ -258,7 +260,10 @@ function del(path: string): Promise<unknown> {
 }
 
 function patch(path: string, body?: unknown): Promise<unknown> {
-  return request(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
+  return request(path, {
+    method: "PATCH",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 /** Query flag the hosted checkout appends when sending a paid customer back into the app. */
@@ -371,7 +376,9 @@ export const api = {
     return request<RealworldReadiness>("/me/realworld");
   },
   // File the need (so the checklist records the kind), then seal the secret — both gated by onboarding.
-  async connectExternalAccount(input: ExternalAccountConnectInput): Promise<ExternalAccountsChecklist> {
+  async connectExternalAccount(
+    input: ExternalAccountConnectInput,
+  ): Promise<ExternalAccountsChecklist> {
     await post("/me/external-services", {
       required: [
         {
@@ -398,7 +405,10 @@ export const api = {
     return request<ConnectionsResponse>("/me/connections");
   },
   // Internal/admin paste connect (the GitHub site-publish connection). Owner-gated on the server.
-  async connectInternal(id: string, input: { repo: string; token: string; baseBranch?: string }): Promise<ConnectionsResponse> {
+  async connectInternal(
+    id: string,
+    input: { repo: string; token: string; baseBranch?: string },
+  ): Promise<ConnectionsResponse> {
     await request(`/me/connections/${encodeURIComponent(id)}/connect`, {
       method: "POST",
       body: JSON.stringify(input),
@@ -444,7 +454,10 @@ export const api = {
   // route is gated server-side behind the default-OFF owner-first `ventureIntake` flag (409 when off); the
   // web only surfaces this when its own VITE flag resolves on for the workspace. No money path is added.
   submitVenture(workspaceId: string, input: VentureIdeaInput): Promise<VentureIdeaDto> {
-    return post(`/workspaces/${encodeURIComponent(workspaceId)}/ventures`, input) as Promise<VentureIdeaDto>;
+    return post(
+      `/workspaces/${encodeURIComponent(workspaceId)}/ventures`,
+      input,
+    ) as Promise<VentureIdeaDto>;
   },
 
   // --- brand kit (#271): the owner's one-time brand identity the fleet draws from ---
@@ -460,7 +473,10 @@ export const api = {
     return request<MarketingTargetState>("/me/marketing-target");
   },
   setMarketingTarget(input: MarketingTargetInputDto): Promise<MarketingTargetState> {
-    return request<MarketingTargetState>("/me/marketing-target", { method: "PUT", body: JSON.stringify(input) });
+    return request<MarketingTargetState>("/me/marketing-target", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
   },
 
   // --- channels ---
@@ -482,7 +498,9 @@ export const api = {
   },
 
   // --- inbound leads (#898): owner queue for captured hand-raises + 24h SLA state ---
-  getInboundLeads(params: { status?: InboundLeadStatus; sinceMs?: number; limit?: number } = {}): Promise<InboundLeadsResponse> {
+  getInboundLeads(
+    params: { status?: InboundLeadStatus; sinceMs?: number; limit?: number } = {},
+  ): Promise<InboundLeadsResponse> {
     const qs = new URLSearchParams();
     if (params.status) qs.set("status", params.status);
     if (params.sinceMs !== undefined) qs.set("sinceMs", String(params.sinceMs));
@@ -490,8 +508,13 @@ export const api = {
     const suffix = qs.size ? `?${qs.toString()}` : "";
     return request<InboundLeadsResponse>(`/me/inbound/leads${suffix}`);
   },
-  updateInboundLead(leadId: string, input: InboundLeadUpdateInput): Promise<{ lead: InboundLeadDto }> {
-    return patch(`/me/inbound/leads/${encodeURIComponent(leadId)}`, input) as Promise<{ lead: InboundLeadDto }>;
+  updateInboundLead(
+    leadId: string,
+    input: InboundLeadUpdateInput,
+  ): Promise<{ lead: InboundLeadDto }> {
+    return patch(`/me/inbound/leads/${encodeURIComponent(leadId)}`, input) as Promise<{
+      lead: InboundLeadDto;
+    }>;
   },
 
   // --- founder briefings (#173): the daily brief, weekly P&L report, and decision queue ---
@@ -527,6 +550,16 @@ export const api = {
   getStatusPage(slug: string): Promise<StatusPageDto> {
     return request<StatusPageDto>(`/status/${encodeURIComponent(slug)}`);
   },
+  getPublicSupportTicketStatus(
+    workspaceId: string,
+    ticketId: string,
+    sourceRef: string,
+  ): Promise<PublicSupportTicketStatusDto> {
+    const qs = new URLSearchParams({ sourceRef });
+    return request<PublicSupportTicketStatusDto>(
+      `/support/widget/${encodeURIComponent(workspaceId)}/tickets/${encodeURIComponent(ticketId)}/status?${qs}`,
+    );
+  },
 
   // --- pricing + checkout (#125) ---
   billing: {
@@ -560,7 +593,8 @@ export const api = {
 
   // --- messages & threads ---
   listMessages(channelId: string, limit?: number): Promise<Message[]> {
-    const suffix = limit && Number.isFinite(limit) && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
+    const suffix =
+      limit && Number.isFinite(limit) && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
     return request<Message[]>(`/channels/${channelId}/messages${suffix}`);
   },
   postMessage(channelId: string, body: string, parentMessageId?: string): Promise<Message> {
@@ -655,7 +689,11 @@ export const api = {
      * Retry a FAILED run (#634): re-launch the same agent + model selection on a re-briefed task. The
      * original task is not persisted server-side, so the caller re-supplies it. Returns the new run.
      */
-    retrySession(channelId: string, sessionId: string, input: { task: string }): Promise<LaunchSessionResult> {
+    retrySession(
+      channelId: string,
+      sessionId: string,
+      input: { task: string },
+    ): Promise<LaunchSessionResult> {
       return post(
         `/channels/${channelId}/agent-sessions/${sessionId}/retry`,
         input,
@@ -824,11 +862,21 @@ export const api = {
       const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
       return request<CatalogEntryDto[]>(`/workspaces/${workspaceId}/catalog${qs}`);
     },
-    create(workspaceId: string, input: Record<string, unknown> & { kind: string; name: string }): Promise<CatalogEntryDto> {
+    create(
+      workspaceId: string,
+      input: Record<string, unknown> & { kind: string; name: string },
+    ): Promise<CatalogEntryDto> {
       return post(`/workspaces/${workspaceId}/catalog`, input) as Promise<CatalogEntryDto>;
     },
-    update(workspaceId: string, id: string, patchBody: Record<string, unknown>): Promise<CatalogEntryDto> {
-      return patch(`/workspaces/${workspaceId}/catalog/${id}`, patchBody) as Promise<CatalogEntryDto>;
+    update(
+      workspaceId: string,
+      id: string,
+      patchBody: Record<string, unknown>,
+    ): Promise<CatalogEntryDto> {
+      return patch(
+        `/workspaces/${workspaceId}/catalog/${id}`,
+        patchBody,
+      ) as Promise<CatalogEntryDto>;
     },
     remove(workspaceId: string, id: string): Promise<unknown> {
       return del(`/workspaces/${workspaceId}/catalog/${id}`);
@@ -839,11 +887,16 @@ export const api = {
     list(workspaceId: string): Promise<WorkflowDto[]> {
       return request<WorkflowDto[]>(`/workspaces/${workspaceId}/workflows`);
     },
-    create(workspaceId: string, input: Record<string, unknown> & { name: string }): Promise<WorkflowDto> {
+    create(
+      workspaceId: string,
+      input: Record<string, unknown> & { name: string },
+    ): Promise<WorkflowDto> {
       return post(`/workspaces/${workspaceId}/workflows`, input) as Promise<WorkflowDto>;
     },
     setEnabled(workspaceId: string, id: string, enabled: boolean): Promise<WorkflowDto> {
-      return post(`/workspaces/${workspaceId}/workflows/${id}/enable`, { enabled }) as Promise<WorkflowDto>;
+      return post(`/workspaces/${workspaceId}/workflows/${id}/enable`, {
+        enabled,
+      }) as Promise<WorkflowDto>;
     },
     run(workspaceId: string, id: string): Promise<WorkflowRunDto> {
       return post(`/workspaces/${workspaceId}/workflows/${id}/run`) as Promise<WorkflowRunDto>;
@@ -869,7 +922,10 @@ export const api = {
      * (idempotent, human-auth). With `welcomeTasks`, each lead launches its first real welcome session —
      * so a dead first-run board lights up with running work. The same seam #187's bootstrap reuses.
      */
-    seed(workspaceId: string, opts: { welcomeTasks?: boolean } = {}): Promise<DepartmentSeedResult> {
+    seed(
+      workspaceId: string,
+      opts: { welcomeTasks?: boolean } = {},
+    ): Promise<DepartmentSeedResult> {
       return post(`/workspaces/${workspaceId}/department/seed`, {
         welcomeTasks: opts.welcomeTasks ?? false,
       }) as Promise<DepartmentSeedResult>;
@@ -879,8 +935,14 @@ export const api = {
      * path. Returns the launched sessions (or a connect-prompt when no Claude is connected). Throws ApiError
      * on a 4xx/5xx (e.g. 409 fleet-not-seeded, 402/429 budget/kill-switch) — callers reconcile.
      */
-    brief(workspaceId: string, input: { lead: string; goal: string }): Promise<DepartmentBriefResult> {
-      return post(`/workspaces/${workspaceId}/department/brief`, input) as Promise<DepartmentBriefResult>;
+    brief(
+      workspaceId: string,
+      input: { lead: string; goal: string },
+    ): Promise<DepartmentBriefResult> {
+      return post(
+        `/workspaces/${workspaceId}/department/brief`,
+        input,
+      ) as Promise<DepartmentBriefResult>;
     },
     /**
      * #371 named-department roster: the reload.chat "team" view — the members-rail footer
@@ -949,7 +1011,9 @@ export const api = {
     },
     /** Request a cap RAISE (parked pending — takes effect only once a human approves). */
     requestRaise(workspaceId: string, toCents: number): Promise<{ raise: CapRaiseDto }> {
-      return post(`/workspaces/${workspaceId}/budget/cap/raise`, { toCents }) as Promise<{ raise: CapRaiseDto }>;
+      return post(`/workspaces/${workspaceId}/budget/cap/raise`, { toCents }) as Promise<{
+        raise: CapRaiseDto;
+      }>;
     },
     /** Lower the cap immediately (tightening never needs approval). */
     lower(workspaceId: string, toCents: number): Promise<{ status: BudgetStatusDto }> {
@@ -958,14 +1022,22 @@ export const api = {
       }>;
     },
     /** Approve a pending cap-raise (the recorded human approval). */
-    approveRaise(workspaceId: string, raiseId: string, reason?: string): Promise<RaiseDecisionResult> {
+    approveRaise(
+      workspaceId: string,
+      raiseId: string,
+      reason?: string,
+    ): Promise<RaiseDecisionResult> {
       return post(
         `/workspaces/${workspaceId}/budget/raises/${raiseId}/approve`,
         reason ? { reason } : undefined,
       ) as Promise<RaiseDecisionResult>;
     },
     /** Reject a pending cap-raise (the cap is unchanged). */
-    rejectRaise(workspaceId: string, raiseId: string, reason?: string): Promise<RaiseDecisionResult> {
+    rejectRaise(
+      workspaceId: string,
+      raiseId: string,
+      reason?: string,
+    ): Promise<RaiseDecisionResult> {
       return post(
         `/workspaces/${workspaceId}/budget/raises/${raiseId}/reject`,
         reason ? { reason } : undefined,
