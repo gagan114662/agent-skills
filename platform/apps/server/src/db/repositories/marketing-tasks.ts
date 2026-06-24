@@ -8,7 +8,7 @@ import { marketingTasks } from "../schema/index.js";
  * record's status. Workspace-scoped reads carry the #3 IDOR boundary.
  */
 
-export type MarketingTaskKind = "welcome" | "mention";
+export type MarketingTaskKind = "welcome" | "mention" | "discovery";
 export type MarketingTaskStatus = "launched" | "done" | "failed" | "blocked";
 
 export interface MarketingTask {
