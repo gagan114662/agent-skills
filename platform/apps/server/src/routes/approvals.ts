@@ -27,6 +27,8 @@ import {
   createRequest,
   listRequests,
   listRequestEvents,
+  clampApprovalEventListLimit,
+  clampApprovalRequestListLimit,
   listHumanReviewers,
   approveAndLock,
   rejectRequest,
@@ -56,6 +58,8 @@ export interface ApprovalRoutesOptions {
 }
 
 export const MAX_APPROVAL_AMOUNT = 100_000_000;
+export const MAX_APPROVAL_EDIT_FIELD_LENGTH = 200;
+export const MAX_APPROVAL_EDIT_VALUE_LENGTH = 2_000;
 
 export function parseApprovalAmount(
   value: unknown,
@@ -69,6 +73,23 @@ export function parseApprovalAmount(
     return { ok: false, error: field + " must be between 0 and " + MAX_APPROVAL_AMOUNT };
   }
   return { ok: true, value };
+}
+
+export function parseApprovalEdit(
+  edit: unknown,
+): { ok: true; value: { field: string; value: string } | null } | { ok: false; error: string } {
+  if (!edit) return { ok: true, value: null };
+  if (typeof edit !== "object") return { ok: true, value: null };
+  const field = (edit as { field?: unknown }).field;
+  const value = (edit as { value?: unknown }).value;
+  if (typeof field !== "string" || typeof value !== "string") return { ok: true, value: null };
+  if (field.length === 0 || field.length > MAX_APPROVAL_EDIT_FIELD_LENGTH) {
+    return { ok: false, error: "edit.field must be between 1 and " + MAX_APPROVAL_EDIT_FIELD_LENGTH + " characters" };
+  }
+  if (value.length > MAX_APPROVAL_EDIT_VALUE_LENGTH) {
+    return { ok: false, error: "edit.value must be at most " + MAX_APPROVAL_EDIT_VALUE_LENGTH + " characters" };
+  }
+  return { ok: true, value: { field, value } };
 }
 
 /** A decision (approve/reject) is restricted to human members — "humans only on critical decisions". */
@@ -360,15 +381,17 @@ export async function approvalRoutes(
       return reply.code(400).send({ error: "invalid status filter" });
     }
     const status = isApprovalStatus(q.status) ? q.status : undefined;
-    const requests = await listRequests(wid, { status, limit: typeof q.limit === "string" ? Number(q.limit) : undefined });
+    const limit = clampApprovalRequestListLimit(typeof q.limit === "string" ? Number(q.limit) : undefined);
+    const requests = await listRequests(wid, { status, limit });
     // #322: collapse duplicate Spend-Approval deliverable drafts (the dozen near-identical "audit"
     // cards the duplicate-launch bug produced) to ONE card per real objective — but only for the
     // PENDING queue and only when dedup is enabled for this workspace (DEFAULT-OFF, owner-first). Other
     // statuses and non-deliverable approvals are returned untouched, so governance is never masked.
     if (status === "pending" && resolveDedupeEnabled(loadConfig(wid).marketing, wid)) {
-      return collapseDuplicateDeliverables(requests).map(approvalRequestView);
+      const items = collapseDuplicateDeliverables(requests).map(approvalRequestView);
+      return { items, hasMore: requests.length === limit };
     }
-    return requests.map(approvalRequestView);
+    return { items: requests.map(approvalRequestView), hasMore: requests.length === limit };
   });
 
   app.get("/approvals/:rid", async (req, reply) => {
@@ -386,7 +409,10 @@ export async function approvalRoutes(
     const { rid } = req.params as { rid: string };
     const request = await requireApprovalInWorkspace(id, rid, reply);
     if (!request) return;
-    return listRequestEvents(rid);
+    const q = req.query as { limit?: string };
+    const limit = clampApprovalEventListLimit(typeof q.limit === "string" ? Number(q.limit) : undefined);
+    const events = await listRequestEvents(rid, limit);
+    return { items: events, hasMore: events.length === limit };
   });
 
   // --- decisions (humans only) ---
@@ -408,16 +434,10 @@ export async function approvalRoutes(
     // #119: an optional edit to a drafted-content field — when present the executor runs the EDITED
     // draft and the decision is recorded as `edited` (with its Levenshtein distance) rather than
     // `approved`, the per-action correction signal the evidence pricer reads.
-    const rawEdit = (req.body as { edit?: unknown })?.edit;
-    const edit =
-      rawEdit &&
-      typeof rawEdit === "object" &&
-      typeof (rawEdit as { field?: unknown }).field === "string" &&
-      typeof (rawEdit as { value?: unknown }).value === "string"
-        ? { field: (rawEdit as { field: string }).field, value: (rawEdit as { value: string }).value }
-        : null;
+    const edit = parseApprovalEdit((req.body as { edit?: unknown })?.edit);
+    if (!edit.ok) return reply.code(400).send({ error: edit.error });
 
-    const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit);
+    const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit.value);
     if (decision.outcome === "conflict") {
       return reply.code(409).send(approvalConflict("request already decided", request));
     }

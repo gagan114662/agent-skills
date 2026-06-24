@@ -205,7 +205,7 @@ describe("shared decision store (real Postgres)", () => {
       cookies: { rid: owner.cookie },
     });
     expect(pending.statusCode).toBe(200);
-    expect(pending.json().some((r: { id: string }) => r.id === approvalRequestId)).toBe(true);
+    expect(pending.json().items.some((r: { id: string }) => r.id === approvalRequestId)).toBe(true);
   });
 
   it("the department 'decisions captured' counter is backed by the real store", async () => {

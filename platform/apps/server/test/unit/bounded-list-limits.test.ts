@@ -16,6 +16,8 @@ import {
   MAX_MARKETING_TASK_LIST_LIMIT,
 } from "../../src/db/repositories/marketing-tasks.js";
 import {
+  clampApprovalEventListLimit,
+  MAX_APPROVAL_EVENT_LIST_LIMIT,
   clampApprovalRequestListLimit,
   MAX_APPROVAL_REQUEST_LIST_LIMIT,
 } from "../../src/db/repositories/approvals.js";
@@ -42,6 +44,13 @@ describe("bounded list limits", () => {
     expect(clampApprovalRequestListLimit(100)).toBe(100);
     expect(clampApprovalRequestListLimit(50_000)).toBe(MAX_APPROVAL_REQUEST_LIST_LIMIT);
     expect(clampApprovalRequestListLimit(0)).toBe(MAX_APPROVAL_REQUEST_LIST_LIMIT);
+  });
+
+  it("caps approval event listings", () => {
+    expect(clampApprovalEventListLimit()).toBe(MAX_APPROVAL_EVENT_LIST_LIMIT);
+    expect(clampApprovalEventListLimit(100)).toBe(100);
+    expect(clampApprovalEventListLimit(50_000)).toBe(MAX_APPROVAL_EVENT_LIST_LIMIT);
+    expect(clampApprovalEventListLimit(0)).toBe(MAX_APPROVAL_EVENT_LIST_LIMIT);
   });
 
   it("caps autonomy workflow and approval listings", () => {

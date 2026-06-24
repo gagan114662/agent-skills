@@ -136,7 +136,7 @@ describe("#153 publishing ships autonomously (#243 money-only)", () => {
         url: `/workspaces/${owner.workspaceId}/approvals?status=pending`,
         cookies: { rid: owner.cookie },
       })
-    ).json();
+    ).json().items;
     expect(pending).toHaveLength(0);
   });
 });
