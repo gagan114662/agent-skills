@@ -7,6 +7,7 @@ import { newId } from "../db/id.js";
 import { buildAgentCard, toA2ATask, a2aMessage, partsToText } from "../protocols/a2a/map.js";
 import { departmentForHandle } from "../marketing/blueprint.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
+import { observeBridgeResult } from "../agent-channel-bridge/observe.js";
 import {
   JSONRPC_ERRORS,
   type A2AMessage,
@@ -102,21 +103,36 @@ export async function a2aRoutes(app: FastifyInstance): Promise<void> {
         // unaffected (the task is already created above — this only narrates it).
         const receiverDept = departmentForHandle(receiver.displayName.toLowerCase());
         if (receiverDept) {
-          await coordinationBridge.post(identity.workspaceId, {
+          const handoffEvent = {
             kind: "handoff",
             channel: receiverDept.channel,
             agentHandle: identity.displayName,
             toHandle: receiver.displayName,
             task: text,
-          });
-          await coordinationBridge.post(identity.workspaceId, {
+          } as const;
+          observeBridgeResult(
+            req.log,
+            identity.workspaceId,
+            handoffEvent,
+            await coordinationBridge.post(identity.workspaceId, handoffEvent),
+            { taskId: task.id },
+          );
+
+          const taskCreatedEvent = {
             kind: "task_created",
             channel: receiverDept.channel,
             agentHandle: receiver.displayName,
             taskId: task.id,
             title,
             assigneeHandle: receiver.displayName,
-          });
+          } as const;
+          observeBridgeResult(
+            req.log,
+            identity.workspaceId,
+            taskCreatedEvent,
+            await coordinationBridge.post(identity.workspaceId, taskCreatedEvent),
+            { taskId: task.id },
+          );
         }
         const history = [
           a2aMessage({

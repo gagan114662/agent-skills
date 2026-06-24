@@ -14,6 +14,7 @@ import { formatApprovalExpiry, normalizeTimeZone } from "../approvals/expiry-tim
 import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
 import { departmentForHandle } from "../marketing/blueprint.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
+import { observeBridgeResult } from "../agent-channel-bridge/observe.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
 import { executeApprovedRequest, type ApprovalExecutionOutcome } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
@@ -351,19 +352,20 @@ export async function approvalRoutes(
     if (id.kind === "agent") {
       const dept = departmentForHandle(id.displayName.toLowerCase());
       if (dept) {
-        await coordinationBridge.post(wid, {
+        const approvalRequiredEvent = {
           kind: "approval_required",
           channel: dept.channel,
           agentHandle: id.displayName,
           approvalRequestId: request.id,
           summary,
-        }).catch((err) => {
-          recordAsyncSideEffectFailure("approval_pending_coordination");
-          req.log.error(
-            { err, workspaceId: wid, approvalRequestId: request.id, channel: dept.channel },
-            "approval pending coordination post failed after durable request write",
-          );
-        });
+        } as const;
+        observeBridgeResult(
+          req.log,
+          wid,
+          approvalRequiredEvent,
+          await coordinationBridge.post(wid, approvalRequiredEvent),
+          { approvalRequestId: request.id },
+        );
       }
     }
     return reply.code(202).send({ status: "pending", reason: decision.reason, request: approvalRequestView(request) });

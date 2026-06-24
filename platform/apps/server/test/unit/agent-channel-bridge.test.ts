@@ -4,6 +4,7 @@ import { CoordinationChannelBridge } from "../../src/agent-channel-bridge/bridge
 import type { CoordinationBridgeDeps } from "../../src/agent-channel-bridge/bridge.js";
 import type { CoordinationEvent } from "../../src/agent-channel-bridge/events.js";
 import type { AgentChannelPostingCaps } from "../../src/agent-channel-bridge/caps.js";
+import { observeBridgeResult } from "../../src/agent-channel-bridge/observe.js";
 
 /**
  * #370 — the pure composer turns coordination events into sanitized, text-only channel lines, and the
@@ -212,5 +213,85 @@ describe("CoordinationChannelBridge (#370) — gated, fail-closed, best-effort",
     });
     const bridge = new CoordinationChannelBridge(deps);
     expect(await bridge.post("owner-ws", LEAD_PLAN)).toEqual({ posted: false, reason: "error" });
+  });
+});
+
+describe("observeBridgeResult (#933) — failed bridge posts are visible", () => {
+  const events: CoordinationEvent[] = [
+    {
+      kind: "handoff",
+      channel: "content",
+      agentHandle: "scout",
+      toHandle: "quill",
+      task: "draft the launch blog",
+    },
+    {
+      kind: "task_created",
+      channel: "content",
+      agentHandle: "quill",
+      taskId: "task-1",
+      title: "Draft launch blog",
+      assigneeHandle: "quill",
+    },
+    {
+      kind: "approval_required",
+      channel: "ads",
+      agentHandle: "bid",
+      approvalRequestId: "req-1",
+      summary: "Spend $500",
+    },
+    {
+      kind: "lead_plan",
+      channel: "seo",
+      agentHandle: "scout",
+      goal: "Find paying founders",
+    },
+  ];
+
+  it.each(events.map((event) => [event.kind, event] as const))(
+    "logs %s delivery failures with the bridge reason",
+    (_kind, event) => {
+      const warnings: Array<{ fields: Record<string, unknown>; message: string }> = [];
+      observeBridgeResult(
+        {
+          warn(fields, message) {
+            warnings.push({ fields, message });
+          },
+        },
+        "ws-1",
+        event,
+        { posted: false, reason: "no-channel" },
+        { taskId: "task-1" },
+      );
+
+      expect(warnings).toEqual([
+        {
+          fields: {
+            taskId: "task-1",
+            workspaceId: "ws-1",
+            kind: event.kind,
+            channel: event.channel,
+            reason: "no-channel",
+          },
+          message: "coordination bridge post not delivered",
+        },
+      ]);
+    },
+  );
+
+  it("stays quiet for delivered posts", () => {
+    const warnings: unknown[] = [];
+    observeBridgeResult(
+      {
+        warn(fields, message) {
+          warnings.push({ fields, message });
+        },
+      },
+      "ws-1",
+      events[0]!,
+      { posted: true, messageId: "msg-1", channelId: "chan-1", authorMemberId: "m-1" },
+    );
+
+    expect(warnings).toHaveLength(0);
   });
 });
