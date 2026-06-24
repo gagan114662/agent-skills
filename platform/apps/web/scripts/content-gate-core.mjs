@@ -209,7 +209,7 @@ export function lintPost(opts) {
         message: `description is ${description.length} characters; keep it between ${DESCRIPTION_MIN_CHARS} and ${DESCRIPTION_MAX_CHARS}`,
       });
     }
-    const bodyStart = body.replace(/^#\s+.*(?:\n|$)/, "").replace(/[#*_\[\]()>-]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+    const bodyStart = body.replace(/^#\s+.*(?:\n|$)/, "").replace(/[#*_[\]()>-]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
     if (bodyStart.startsWith(description.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80))) {
       violations.push({
         code: "description-duplicates-body",
