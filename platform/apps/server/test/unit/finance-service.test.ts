@@ -152,6 +152,35 @@ describe("FinanceService.close + runway", () => {
     expect(f.health).toBe("breached"); // already below floor 0
   });
 
+  it("excludes missing lookback periods from burn and marks the estimate incomplete (#948)", async () => {
+    const store = new MemoryFinanceStore();
+    store.packs.push({
+      id: newId(),
+      workspaceId: WS,
+      ventureIdeaId: null,
+      periodKey: "2026-01",
+      currency: "usd",
+      revenueCents: 0,
+      costCents: 10000,
+      verifiedRevenueCents: 0,
+      verifiedCostCents: 0,
+      netCents: -10000,
+      verifiedShareBps: 0,
+      entryCount: 1,
+      unitEconomics: { cacCents: null, ltvCents: null, marginBps: null, ltvToCacX100: null },
+      closedAtMs: 0,
+    });
+    const svc = makeService({ store, receipts: [], usageCents: 0, caps: { lookbackMonths: 3 } });
+
+    const f = await svc.runway(WS);
+
+    expect(f.monthlyBurnCents).toBe(10000);
+    expect(f.lookbackPeriodCount).toBe(3);
+    expect(f.closedPeriodCount).toBe(1);
+    expect(f.incompletePeriodCount).toBe(2);
+    expect(f.incompletePeriodKeys).toEqual(["2025-11", "2025-12"]);
+  });
+
   it("computes runway without loading historical close packs (#988)", async () => {
     const store = new MemoryFinanceStore();
     const unitEconomics = { cacCents: null, ltvCents: null, marginBps: null, ltvToCacX100: null };
