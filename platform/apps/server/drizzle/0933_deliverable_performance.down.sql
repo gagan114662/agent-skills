@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS deliverable_performance_receipt_measured_idx;
+DROP INDEX IF EXISTS deliverable_performance_workspace_measured_idx;
+DROP TABLE IF EXISTS deliverable_performance;

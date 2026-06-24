@@ -2,7 +2,9 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../index.js";
 import {
   DELIVERABLE_FEEDBACK_CATEGORIES,
+  DELIVERABLE_PERFORMANCE_SOURCES,
   deliverableFeedback,
+  deliverablePerformance,
   deliveryReceipts,
 } from "../schema/index.js";
 import type { DeliveryReceiptInput, DeliveryReceiptStore } from "../../delivery/dispatcher.js";
@@ -47,6 +49,7 @@ export interface DeliveryReceiptRow {
 }
 
 export type DeliverableFeedbackCategory = (typeof DELIVERABLE_FEEDBACK_CATEGORIES)[number];
+export type DeliverablePerformanceSource = (typeof DELIVERABLE_PERFORMANCE_SOURCES)[number];
 
 export interface DeliverableFeedbackRow {
   id: string;
@@ -79,6 +82,104 @@ function toFeedbackRow(row: typeof deliverableFeedback.$inferSelect): Deliverabl
   };
 }
 
+export interface DeliverablePerformanceRow {
+  id: string;
+  workspaceId: string;
+  deliveryReceiptId: string;
+  source: DeliverablePerformanceSource;
+  views: number;
+  engagements: number;
+  conversions: number;
+  externalMetricRef: string | null;
+  measuredAtMs: number;
+  createdAtMs: number;
+}
+
+export interface DeliverablePerformanceSummary {
+  deliveryReceiptId: string;
+  receipt: DeliveryReceiptRow | null;
+  totals: {
+    views: number;
+    engagements: number;
+    conversions: number;
+    engagementRate: number | null;
+    conversionRate: number | null;
+  };
+  latest: DeliverablePerformanceRow | null;
+  readings: DeliverablePerformanceRow[];
+}
+
+export interface RankedDeliverablePerformance {
+  deliveryReceiptId: string;
+  receipt: DeliveryReceiptRow;
+  views: number;
+  engagements: number;
+  conversions: number;
+  engagementRate: number | null;
+  conversionRate: number | null;
+  latestMeasuredAtMs: number | null;
+}
+
+function toReceiptRow(row: typeof deliveryReceipts.$inferSelect): DeliveryReceiptRow {
+  return {
+    id: row.id,
+    approvalRequestId: row.approvalRequestId,
+    sessionId: row.sessionId,
+    channel: row.channel,
+    reversibility: row.reversibility,
+    provider: row.provider,
+    live: row.live,
+    externalRef: row.externalRef,
+    status: row.status,
+    shippedAtMs: row.shippedAt.getTime(),
+  };
+}
+
+function toPerformanceRow(row: typeof deliverablePerformance.$inferSelect): DeliverablePerformanceRow {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    deliveryReceiptId: row.deliveryReceiptId,
+    source: row.source as DeliverablePerformanceSource,
+    views: row.views,
+    engagements: row.engagements,
+    conversions: row.conversions,
+    externalMetricRef: row.externalMetricRef,
+    measuredAtMs: row.measuredAt.getTime(),
+    createdAtMs: row.createdAt.getTime(),
+  };
+}
+
+function rate(numerator: number, denominator: number): number | null {
+  return denominator > 0 ? Math.round((numerator / denominator) * 10_000) / 10_000 : null;
+}
+
+function summarizeRows(
+  deliveryReceiptId: string,
+  receipt: DeliveryReceiptRow | null,
+  rows: DeliverablePerformanceRow[],
+): DeliverablePerformanceSummary {
+  const totals = rows.reduce(
+    (acc, row) => ({
+      views: acc.views + row.views,
+      engagements: acc.engagements + row.engagements,
+      conversions: acc.conversions + row.conversions,
+    }),
+    { views: 0, engagements: 0, conversions: 0 },
+  );
+  return {
+    deliveryReceiptId,
+    receipt,
+    totals: {
+      ...totals,
+      engagementRate: rate(totals.engagements, totals.views),
+      conversionRate: rate(totals.conversions, totals.views),
+    },
+    latest: rows[0] ?? null,
+    readings: rows,
+  };
+}
+
 /** The most recent delivery receipts for a workspace (the console's "what shipped" feed). */
 export async function listDeliveryReceipts(
   workspaceId: string,
@@ -90,18 +191,106 @@ export async function listDeliveryReceipts(
     .where(eq(deliveryReceipts.workspaceId, workspaceId))
     .orderBy(desc(deliveryReceipts.shippedAt))
     .limit(limit);
-  return rows.map((r) => ({
-    id: r.id,
-    approvalRequestId: r.approvalRequestId,
-    sessionId: r.sessionId,
-    channel: r.channel,
-    reversibility: r.reversibility,
-    provider: r.provider,
-    live: r.live,
-    externalRef: r.externalRef,
-    status: r.status,
-    shippedAtMs: r.shippedAt.getTime(),
-  }));
+  return rows.map(toReceiptRow);
+}
+
+export async function recordDeliverablePerformance(input: {
+  workspaceId: string;
+  deliveryReceiptId: string;
+  source: DeliverablePerformanceSource;
+  views: number;
+  engagements: number;
+  conversions: number;
+  externalMetricRef: string | null;
+  measuredAt: Date;
+}): Promise<{ performance: DeliverablePerformanceRow; receipt: DeliveryReceiptRow } | null> {
+  const [receipt] = await db
+    .select()
+    .from(deliveryReceipts)
+    .where(and(eq(deliveryReceipts.workspaceId, input.workspaceId), eq(deliveryReceipts.id, input.deliveryReceiptId)))
+    .limit(1);
+  if (!receipt || receipt.status !== "shipped") return null;
+
+  const [row] = await db
+    .insert(deliverablePerformance)
+    .values({
+      workspaceId: receipt.workspaceId,
+      deliveryReceiptId: receipt.id,
+      source: input.source,
+      views: input.views,
+      engagements: input.engagements,
+      conversions: input.conversions,
+      externalMetricRef: input.externalMetricRef,
+      measuredAt: input.measuredAt,
+    })
+    .returning();
+  return row ? { performance: toPerformanceRow(row), receipt: toReceiptRow(receipt) } : null;
+}
+
+export async function getDeliverablePerformance(
+  workspaceId: string,
+  deliveryReceiptId: string,
+  limit = 100,
+): Promise<DeliverablePerformanceSummary | null> {
+  const [receipt] = await db
+    .select()
+    .from(deliveryReceipts)
+    .where(and(eq(deliveryReceipts.workspaceId, workspaceId), eq(deliveryReceipts.id, deliveryReceiptId)))
+    .limit(1);
+  if (!receipt) return null;
+  const rows = await db
+    .select()
+    .from(deliverablePerformance)
+    .where(
+      and(
+        eq(deliverablePerformance.workspaceId, workspaceId),
+        eq(deliverablePerformance.deliveryReceiptId, deliveryReceiptId),
+      ),
+    )
+    .orderBy(desc(deliverablePerformance.measuredAt))
+    .limit(limit);
+  return summarizeRows(deliveryReceiptId, toReceiptRow(receipt), rows.map(toPerformanceRow));
+}
+
+export async function listRankedDeliverablePerformance(
+  workspaceId: string,
+  limit = 25,
+): Promise<RankedDeliverablePerformance[]> {
+  const receipts = await listDeliveryReceipts(workspaceId, 200);
+  const rows = await db
+    .select()
+    .from(deliverablePerformance)
+    .where(eq(deliverablePerformance.workspaceId, workspaceId))
+    .orderBy(desc(deliverablePerformance.measuredAt))
+    .limit(1_000);
+  const byReceipt = new Map<string, DeliverablePerformanceRow[]>();
+  for (const row of rows.map(toPerformanceRow)) {
+    const bucket = byReceipt.get(row.deliveryReceiptId) ?? [];
+    bucket.push(row);
+    byReceipt.set(row.deliveryReceiptId, bucket);
+  }
+  return receipts
+    .map((receipt) => {
+      const summary = summarizeRows(receipt.id, receipt, byReceipt.get(receipt.id) ?? []);
+      return {
+        deliveryReceiptId: receipt.id,
+        receipt,
+        views: summary.totals.views,
+        engagements: summary.totals.engagements,
+        conversions: summary.totals.conversions,
+        engagementRate: summary.totals.engagementRate,
+        conversionRate: summary.totals.conversionRate,
+        latestMeasuredAtMs: summary.latest?.measuredAtMs ?? null,
+      };
+    })
+    .filter((row) => row.views > 0 || row.engagements > 0 || row.conversions > 0)
+    .sort((a, b) =>
+      b.conversions - a.conversions ||
+      b.engagements - a.engagements ||
+      b.views - a.views ||
+      (b.latestMeasuredAtMs ?? 0) - (a.latestMeasuredAtMs ?? 0),
+    )
+    .slice(0, limit);
 }
 
 export async function recordDeliverableFeedback(input: {

@@ -30,6 +30,7 @@ export const DELIVERABLE_FEEDBACK_CATEGORIES = [
   "unclear",
   "other",
 ] as const;
+export const DELIVERABLE_PERFORMANCE_SOURCES = ["analytics", "search_console", "provider", "manual"] as const;
 
 export const deliveryReceipts = pgTable(
   "delivery_receipts",
@@ -90,5 +91,36 @@ export const deliverableFeedback = pgTable(
       "deliverable_feedback_category_ck",
       sql`${t.category} IN ('helpful','off_brand','inaccurate','unclear','other')`,
     ),
+  }),
+);
+
+export const deliverablePerformance = pgTable(
+  "deliverable_performance",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    deliveryReceiptId: uuid("delivery_receipt_id")
+      .notNull()
+      .references(() => deliveryReceipts.id, { onDelete: "cascade" }),
+    source: text("source", { enum: DELIVERABLE_PERFORMANCE_SOURCES }).notNull().default("manual"),
+    views: integer("views").notNull().default(0),
+    engagements: integer("engagements").notNull().default(0),
+    conversions: integer("conversions").notNull().default(0),
+    externalMetricRef: text("external_metric_ref"),
+    measuredAt: timestamp("measured_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byWorkspaceMeasured: index("deliverable_performance_workspace_measured_idx").on(t.workspaceId, t.measuredAt),
+    byReceiptMeasured: index("deliverable_performance_receipt_measured_idx").on(t.deliveryReceiptId, t.measuredAt),
+    sourceCk: check(
+      "deliverable_performance_source_ck",
+      sql`${t.source} IN ('analytics','search_console','provider','manual')`,
+    ),
+    viewsCk: check("deliverable_performance_views_ck", sql`${t.views} >= 0`),
+    engagementsCk: check("deliverable_performance_engagements_ck", sql`${t.engagements} >= 0`),
+    conversionsCk: check("deliverable_performance_conversions_ck", sql`${t.conversions} >= 0`),
   }),
 );

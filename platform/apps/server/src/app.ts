@@ -152,6 +152,7 @@ import { scaleRoutes } from "./routes/scale.js";
 import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
 import { deliverableFeedbackRoutes } from "./routes/deliverable-feedback.js";
+import { deliverablePerformanceRoutes } from "./routes/deliverable-performance.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
 import type { FounderConsoleService } from "./founder-console/service.js";
 import { founderBriefingsRoutes } from "./routes/founder-briefings.js";
@@ -973,6 +974,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
   app.register(deliverableFeedbackRoutes);
+  app.register(deliverablePerformanceRoutes);
   // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
   // (Stripe events + the #71 usage estimate) into a per-venture ledger, closes the monthly books, and
   // forecasts runway. Read routes are caps-gated (409 when off); the opt-in tick (FINANCE_INTERVAL_MS,
