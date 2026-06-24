@@ -147,6 +147,8 @@ export interface MarketingMentionDeps {
    * Only the LAUNCHED task is enriched; the durable `marketing_tasks` row keeps the original goal.
    */
   enrichTask?(workspaceId: string, task: string): Promise<string>;
+  /** Best-effort diagnostics for enrichment failures; launch denials still propagate via invoke. */
+  logger?: { warn(obj: Record<string, unknown>, msg: string): void };
   /** #68: optional subscription-first auth gate. Absent → no gate (demo/local default). */
   auth?: MarketingAuthGate;
   /** #246: optional model preflight gate. Absent → no gate (demo/local default). */
@@ -295,9 +297,23 @@ export class MarketingMentionService {
       // brand voice) so the agent has real facts to act on instead of returning a placeholder. The raw
       // task is preserved for the durable `marketing_tasks` record below. Enrichment is a no-op when
       // injection is OFF / nothing is on file (the default posture), so this never changes today's behavior.
-      const launchTask = this.deps.enrichTask
-        ? await this.deps.enrichTask(identity.workspaceId, task)
-        : task;
+      let launchTask = task;
+      if (this.deps.enrichTask) {
+        try {
+          launchTask = await this.deps.enrichTask(identity.workspaceId, task);
+        } catch (err) {
+          this.deps.logger?.warn(
+            {
+              err,
+              workspaceId: identity.workspaceId,
+              channelId: input.channelId,
+              messageId: input.messageId,
+              personaId: persona.id,
+            },
+            "marketing task enrichment failed; launching raw task",
+          );
+        }
+      }
       // A denial (kill switch / budget) throws out of `invoke` and propagates — no task is recorded.
       const result = await this.deps.invoke(identity, {
         personaId: persona.id,

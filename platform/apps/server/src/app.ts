@@ -711,7 +711,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // over REST or MCP — without this, the launch only ran via the unused `/marketing` endpoint and a
   // real @mention silently did nothing (sessionsStarted stayed 0). The trigger gates itself (human
   // author, marketing channel, mentioned persona) and runs best-effort over the SAME SessionManager.
-  setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager));
+  setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager, app.log));
   // #417 visible governed handoffs: when an agent's deliverable @mentions a fleet teammate, launch that
   // teammate through the EXISTING governed a2a path (depth/cycle/capability-bounded by `decideA2ACall`)
   // and visibly narrate it in-channel via the #370 bridge. Wired here AFTER both the SessionManager and
