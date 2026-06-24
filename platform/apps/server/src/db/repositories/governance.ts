@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { newId } from "../id.js";
 import { members } from "../schema/identities.js";
@@ -28,6 +28,13 @@ export interface InviteRow {
   acceptedMemberId: string | null;
   createdAt: Date;
   acceptedAt: Date | null;
+}
+
+export const MAX_GOVERNANCE_INVITE_LIST_LIMIT = 500;
+
+export function clampGovernanceInviteListLimit(limit?: number): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return MAX_GOVERNANCE_INVITE_LIST_LIMIT;
+  return Math.min(MAX_GOVERNANCE_INVITE_LIST_LIMIT, Math.floor(limit));
 }
 
 /** The caller's role in a workspace, or null when they have no role row (the default). */
@@ -112,13 +119,13 @@ export async function hasAnyOwner(workspaceId: string): Promise<boolean> {
 
 /** How many owners the workspace has right now — the last-owner guard (#151 review fix). */
 export async function countOwners(workspaceId: string): Promise<number> {
-  const rows = await db
-    .select({ memberId: workspaceMemberRoles.memberId })
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
     .from(workspaceMemberRoles)
     .where(
       and(eq(workspaceMemberRoles.workspaceId, workspaceId), eq(workspaceMemberRoles.role, "owner")),
     );
-  return rows.length;
+  return row?.count ?? 0;
 }
 
 /** Create a pending email invite. The raw token is the caller's to share; only its hash is stored. */
@@ -194,10 +201,11 @@ export async function revokeInvite(workspaceId: string, inviteId: string): Promi
 }
 
 /** List invites for a workspace (governance read). */
-export async function listInvites(workspaceId: string): Promise<InviteRow[]> {
+export async function listInvites(workspaceId: string, limit?: number): Promise<InviteRow[]> {
   const rows = await db
     .select()
     .from(workspaceInvites)
-    .where(eq(workspaceInvites.workspaceId, workspaceId));
+    .where(eq(workspaceInvites.workspaceId, workspaceId))
+    .limit(clampGovernanceInviteListLimit(limit));
   return rows as InviteRow[];
 }

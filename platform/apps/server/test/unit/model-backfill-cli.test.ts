@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { runModelBackfill, type ModelBackfillDeps } from "../../src/runtime/model-backfill-cli.js";
+import {
+  readAllModelOverrideBatches,
+  runModelBackfill,
+  type ModelBackfillDeps,
+} from "../../src/runtime/model-backfill-cli.js";
 import { type WorkspaceModelRow } from "../../src/runtime/model-backfill.js";
 import { DEFAULT_AGENT_MODEL } from "../../src/runtime/models.js";
 
@@ -16,6 +20,25 @@ const BAD_ROWS: WorkspaceModelRow[] = [
 ];
 
 describe("runModelBackfill (#293 — dry-run by default, apply with read-back receipts)", () => {
+  it("reads model overrides in bounded cursor batches", async () => {
+    const rows: WorkspaceModelRow[] = Array.from({ length: 1_205 }, (_, i) => ({
+      workspaceId: "ws-" + String(i).padStart(4, "0"),
+      model: "claude-fable-5",
+    }));
+    const readBatch = vi.fn(async ({ afterWorkspaceId, limit }: { afterWorkspaceId?: string; limit?: number }) => {
+      const start = afterWorkspaceId ? rows.findIndex((row) => row.workspaceId === afterWorkspaceId) + 1 : 0;
+      return rows.slice(start, start + (limit ?? 500));
+    });
+
+    const all = await readAllModelOverrideBatches(readBatch, 500);
+
+    expect(all).toHaveLength(1_205);
+    expect(readBatch).toHaveBeenCalledTimes(3);
+    expect(readBatch.mock.calls.map(([arg]) => arg.limit)).toEqual([500, 500, 500]);
+    expect(readBatch.mock.calls[1]![0].afterWorkspaceId).toBe("ws-0499");
+    expect(readBatch.mock.calls[2]![0].afterWorkspaceId).toBe("ws-0999");
+  });
+
   it("DRY-RUN (default) reports the exact rows it would change and writes NOTHING", async () => {
     const applyChange = vi.fn<ModelBackfillDeps["applyChange"]>(async () => {});
     const report = await runModelBackfill({
