@@ -10,7 +10,12 @@
  */
 import type { SkillEditProposal, SkillOptCycleResult, TaskCluster, TranscriptSample } from "./contract.js";
 import { mineRecurringTasks } from "./mine.js";
-import { decideSkillOptCycle, type ClusterCandidate, type RevenueReweight } from "./cycle.js";
+import {
+  decideSkillOptCycle,
+  type ClusterCandidate,
+  type EvalRegressionReweight,
+  type RevenueReweight,
+} from "./cycle.js";
 import { isSkillOptEnabledForWorkspace, type SkillOptCaps } from "./caps.js";
 import { improvementRatio } from "./gate.js";
 import type { RevenueReward } from "../attribution/reward.js";
@@ -98,6 +103,15 @@ export interface SkillOptDeps {
    * frequency-only ranking is byte-for-byte unchanged. No money / no irreversible action — a read + ranking.
    */
   revenueRewardFor?(workspaceId: string): Promise<RevenueReward | null>;
+  /**
+   * OPTIONAL #889 negative learning seam. It lets SkillOpt see recent eval regressions before proposing a
+   * runbook edit. Cluster-scoped regressions are down-ranked; unscoped agent regressions may block staging.
+   */
+  evalRegressionReweightFor?(input: {
+    workspaceId: string;
+    agentHandle: string;
+    clusters: readonly TaskCluster[];
+  }): Promise<EvalRegressionReweight | null>;
 }
 
 /** The outcome of running the cycle for one agent (the decision + the staged request id, if any). */
@@ -177,6 +191,14 @@ export class SkillOptService {
   ): Promise<{ outcome: SkillOptAgentOutcome; record: SkillOptOutcomeRecord }> {
     const samples = await this.deps.harvest(identity.workspaceId, agent.handle);
     const clusters = mineRecurringTasks(samples, agent.handle, { minRecurrence: caps.minRecurrence });
+    const evalRegressionReweight =
+      clusters.length === 0
+        ? undefined
+        : ((await this.deps.evalRegressionReweightFor?.({
+            workspaceId: identity.workspaceId,
+            agentHandle: agent.handle,
+            clusters,
+          })) ?? undefined);
     const candidates =
       clusters.length === 0
         ? []
@@ -200,6 +222,8 @@ export class SkillOptService {
       maxAppendChars: caps.maxAppendChars,
       // #390: present only when attribution is on AND real receipts attributed (else undefined ⇒ frequency-only).
       revenueReweight,
+      // #889: negative eval signal prevents self-improvement from reinforcing recent regressions.
+      evalRegressionReweight,
     });
 
     let requestId: string | null = null;

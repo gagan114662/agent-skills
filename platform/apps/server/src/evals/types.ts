@@ -83,5 +83,7 @@ export interface EvalRunRecord {
   failed: number;
   passRate: number;
   tokens: number;
+  /** True when this run dropped beyond the configured eval regression tolerance. */
+  regressed: boolean;
   createdAt: Date;
 }

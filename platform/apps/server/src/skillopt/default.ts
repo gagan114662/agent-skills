@@ -15,6 +15,7 @@
  */
 import { createHash } from "node:crypto";
 import { createRequest } from "../db/repositories/approvals.js";
+import { listEvalRuns } from "../db/repositories/evals.js";
 import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketing-tasks.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { alreadyProposed, recordSkillOptRun } from "../db/repositories/skillopt-runs.js";
@@ -31,6 +32,7 @@ import { dbRevenueReader } from "../finance/default.js";
 import { reduceMarketingTasksToSamples } from "./harvest.js";
 import { resolveSkillOptCaps } from "./caps.js";
 import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./service.js";
+import type { EvalRegressionReweight } from "./cycle.js";
 
 /** The fleet agents the loop improves: each registry agent's runbook (its #155 procedure doc). */
 export function skillOptAgentTargets(): SkillOptAgentTarget[] {
@@ -62,6 +64,22 @@ async function liveRevenueRewardFor(workspaceId: string): Promise<RevenueReward 
   return revenueRewardByChannel(projection.attributed);
 }
 
+/**
+ * Build the #889 negative learning signal from recent persisted evals. Eval runs are currently agent-scoped,
+ * not cluster-scoped, so production fails closed when a recent run regressed: do not stage a SkillOpt edit
+ * for that agent until the regression is investigated. Tests can inject cluster keys for finer downranking.
+ */
+async function liveEvalRegressionReweightFor(input: {
+  workspaceId: string;
+  agentHandle: string;
+}): Promise<EvalRegressionReweight | null> {
+  const recent = await listEvalRuns(input.workspaceId, input.agentHandle, 10);
+  if (!recent.some((run) => run.regressed)) return null;
+  return {
+    blockReason: `recent eval regression for ${input.agentHandle}; awaiting regression repair before staging SkillOpt edits`,
+  };
+}
+
 /** Build the production-wired SkillOpt service. */
 export function createDefaultSkillOptService(): SkillOptService {
   const deps: SkillOptDeps = {
@@ -87,6 +105,9 @@ export function createDefaultSkillOptService(): SkillOptService {
     // #390 (ADR-0390): build the live revenue reward from the #386 projection so the cycle learns toward
     // what earns. Gated default-OFF, owner-first inside the helper; null/empty ⇒ frequency-only, unchanged.
     revenueRewardFor: (workspaceId) => liveRevenueRewardFor(workspaceId),
+    // #889: read recent eval runs before staging proposals. If the only safe signal is agent-level
+    // regression, fail closed rather than reinforcing the current runbook.
+    evalRegressionReweightFor: (input) => liveEvalRegressionReweightFor(input),
     // #283 persistence: the idempotency guard — never re-stage an edit already proposed against this doc.
     alreadyStaged: (input) =>
       alreadyProposed(input.workspaceId, input.agentHandle, input.clusterKey, input.currentDocSha),
