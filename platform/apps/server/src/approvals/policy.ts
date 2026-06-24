@@ -530,18 +530,30 @@ export function evaluatePolicy(
   rules: PolicyRule[],
   caps: AutonomyCaps = resolveAutonomyCaps(),
 ): PolicyDecision {
+  if (action.amount !== null && action.amount !== undefined) {
+    if (!Number.isFinite(action.amount)) {
+      return {
+        requiresApproval: true,
+        reason: action.actionType + " has an undetermined cost — owner approval required (never auto-spend on uncertainty)",
+      };
+    }
+    if (action.amount < 0) {
+      return {
+        requiresApproval: true,
+        reason: action.actionType + " has an invalid negative amount — owner approval required",
+      };
+    }
+  }
   const rule = rules.find((r) => r.actionType === action.actionType);
   if (rule) {
     if (rule.requiresApproval) {
       return { requiresApproval: true, reason: `policy: ${action.actionType} requires approval` };
     }
-    // Conservative even under an auto-approve rule: a provided cost we cannot interpret (NaN / ±Infinity)
-    // must NOT slip through — `NaN > maxAutoAmount` is false, which would auto-approve an indeterminate
-    // spend. Never auto-spend on uncertainty (#243). A determinate spend over the cap re-gates as before.
-    if (action.amount !== null && action.amount !== undefined && !Number.isFinite(action.amount)) {
+    // Conservative even under an auto-approve rule: an invalid stored cap must not invert the gate.
+    if (rule.maxAutoAmount !== null && (!Number.isFinite(rule.maxAutoAmount) || rule.maxAutoAmount < 0)) {
       return {
         requiresApproval: true,
-        reason: `${action.actionType} has an undetermined cost — owner approval required (never auto-spend on uncertainty)`,
+        reason: action.actionType + " has an invalid auto-approve limit — owner approval required",
       };
     }
     if (
