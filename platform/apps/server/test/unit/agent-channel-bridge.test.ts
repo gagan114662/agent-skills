@@ -112,17 +112,24 @@ const ENABLED: AgentChannelPostingCaps = {
 
 function makeDeps(over: Partial<CoordinationBridgeDeps> = {}): {
   deps: CoordinationBridgeDeps;
-  posts: Array<{ channelId: string; authorMemberId: string; body: string }>;
+  posts: Array<{ channelId: string; authorMemberId: string; body: string; parentMessageId?: string }>;
 } {
-  const posts: Array<{ channelId: string; authorMemberId: string; body: string }> = [];
+  const posts: Array<{ channelId: string; authorMemberId: string; body: string; parentMessageId?: string }> = [];
   const deps: CoordinationBridgeDeps = {
     caps: () => ENABLED,
     resolveChannelId: async (_w, name) => (name === "seo" ? "chan-seo" : undefined),
-    resolveAgentMember: async (_w, handle) => (handle === "scout" ? { memberId: "m-scout" } : undefined),
+    resolveAgentMember: async (_w, handle) =>
+      handle === "scout" ? { memberId: "m-scout" } : handle === "quill" ? { memberId: "m-quill" } : undefined,
     resolveOwnerName: async () => "Gagan",
     post: async (input) => {
-      posts.push({ channelId: input.channelId, authorMemberId: input.authorMemberId, body: input.body });
-      return { id: "msg-1" };
+      const id = "msg-" + String(posts.length + 1);
+      posts.push({
+        channelId: input.channelId,
+        authorMemberId: input.authorMemberId,
+        body: input.body,
+        parentMessageId: input.parentMessageId,
+      });
+      return { id };
     },
     ...over,
   };
@@ -149,6 +156,30 @@ describe("CoordinationChannelBridge (#370) — gated, fail-closed, best-effort",
     });
     expect(posts).toHaveLength(1);
     expect(posts[0]!.authorMemberId).toBe("m-scout");
+  });
+
+  it("handoff posts a threaded child acknowledgement from the receiving agent (#1052)", async () => {
+    const { deps, posts } = makeDeps({ resolveChannelId: async () => "chan-seo" });
+    const bridge = new CoordinationChannelBridge(deps);
+    const res = await bridge.post("owner-ws", {
+      kind: "handoff",
+      channel: "seo",
+      agentHandle: "scout",
+      toHandle: "quill",
+      task: "draft the launch blog",
+    });
+
+    expect(res).toMatchObject({ posted: true, messageId: "msg-1" });
+    expect(posts).toHaveLength(2);
+    expect(posts[0]).toMatchObject({
+      authorMemberId: "m-scout",
+      body: expect.stringContaining("@quill"),
+    });
+    expect(posts[1]).toMatchObject({
+      authorMemberId: "m-quill",
+      parentMessageId: "msg-1",
+      body: "Received from @scout: draft the launch blog",
+    });
   });
 
   it("no-ops for a non-owner workspace (owner-first) without touching the channel", async () => {

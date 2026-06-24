@@ -37,6 +37,7 @@ export function createCoordinationChannelBridge(): CoordinationChannelBridge {
         channelId: input.channelId,
         authorMemberId: input.authorMemberId,
         body: input.body,
+        parentMessageId: input.parentMessageId,
       });
       // #419: broadcast the coordination line to the #5 realtime fan-out so kickoff/handoff/status messages
       // appear in the open channel INSTANTLY (the same publish-on-write the runtime channelPoster does), not

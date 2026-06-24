@@ -16,7 +16,7 @@
  */
 import type { AgentChannelPostingCaps } from "./caps.js";
 import { isAgentChannelPostingEnabledForWorkspace } from "./caps.js";
-import { composePost } from "./compose.js";
+import { composePost, sanitizeData } from "./compose.js";
 import type { BridgeResult, CoordinationEvent } from "./events.js";
 
 export interface CoordinationBridgeDeps {
@@ -37,6 +37,7 @@ export interface CoordinationBridgeDeps {
     channelId: string;
     authorMemberId: string;
     body: string;
+    parentMessageId?: string;
   }): Promise<{ id: string }>;
 }
 
@@ -72,6 +73,22 @@ export class CoordinationChannelBridge {
         authorMemberId: author.memberId,
         body: composed.body,
       });
+      if (event.kind === "handoff") {
+        const receiver = await this.deps.resolveAgentMember(workspaceId, event.toHandle);
+        if (receiver) {
+          try {
+            await this.deps.post({
+              workspaceId,
+              channelId,
+              authorMemberId: receiver.memberId,
+              parentMessageId: message.id,
+              body: "Received from @" + event.agentHandle + ": " + sanitizeData(event.task),
+            });
+          } catch {
+            // Best-effort child link: the root handoff is already persisted and remains the source of truth.
+          }
+        }
+      }
       return { posted: true, messageId: message.id, channelId, authorMemberId: author.memberId };
     } catch {
       // Best-effort: the bridge sits on top of audited paths and must never fail the underlying write.
