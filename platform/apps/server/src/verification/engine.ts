@@ -81,6 +81,12 @@ export interface Deliverable {
   workerMemberId: string;
   /** The content to grade (free-form; redacted in evidence, never persisted raw). */
   content: string;
+  /** Owner-configured brand voice or campaign voice direction, used by the default content grader. */
+  brandVoice?: string;
+  /** Claims the brand has pre-approved; used by the default brand/fact gate. */
+  brandClaims?: string[];
+  /** Known source texts/URLs to compare against for originality checks. */
+  originalitySources?: Array<{ id: string; text: string }>;
 }
 
 /**
