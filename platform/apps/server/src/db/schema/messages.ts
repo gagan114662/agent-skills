@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   index,
+  check,
   customType,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -13,6 +14,7 @@ import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 import { channels } from "./channels.js";
 import { members } from "./identities.js";
+import { MAX_MESSAGE_BODY_LENGTH } from "../../messaging/limits.js";
 
 /**
  * Postgres `tsvector` (#7). DB-managed only: `body_tsv` is a GENERATED … STORED column,
@@ -56,5 +58,9 @@ export const messages = pgTable(
     byChannel: index("messages_channel_created_idx").on(t.channelId, t.createdAt),
     byParent: index("messages_parent_idx").on(t.parentMessageId),
     byBodyTsv: index("messages_body_tsv_idx").using("gin", t.bodyTsv),
+    bodyLengthCk: check(
+      "messages_body_length_ck",
+      sql`char_length(${t.body}) <= ${MAX_MESSAGE_BODY_LENGTH}`,
+    ),
   }),
 );

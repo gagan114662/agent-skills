@@ -24,6 +24,7 @@ import {
   listThreadReplies,
   countReplies,
 } from "../db/repositories/messages.js";
+import { MAX_MESSAGE_BODY_LENGTH } from "../messaging/limits.js";
 import { resolveThreadRoot } from "../messaging/threads.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 
@@ -36,6 +37,22 @@ function parseMessageLimit(value: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return Math.min(MESSAGE_LIST_MAX_LIMIT, Math.floor(n));
+}
+
+function parseMessageBody(value: unknown):
+  | { ok: true; body: string }
+  | { ok: false; statusCode: 400 | 413; error: string } {
+  if (typeof value !== "string" || value.length === 0) {
+    return { ok: false, statusCode: 400, error: "body required" };
+  }
+  if (value.length > MAX_MESSAGE_BODY_LENGTH) {
+    return {
+      ok: false,
+      statusCode: 413,
+      error: "body too long (max " + MAX_MESSAGE_BODY_LENGTH + " characters)",
+    };
+  }
+  return { ok: true, body: value };
 }
 
 export async function channelRoutes(app: FastifyInstance): Promise<void> {
@@ -187,7 +204,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
     const b = req.body as { body?: string; parentMessageId?: string };
-    if (!b.body) return reply.code(400).send({ error: "body required" });
+    const body = parseMessageBody(b.body);
+    if (!body.ok) return reply.code(body.statusCode).send({ error: body.error });
     // If this is a reply, validate the parent and flatten nesting to the thread root (#6).
     let parentMessageId: string | undefined;
     if (b.parentMessageId) {
@@ -199,7 +217,7 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       workspaceId: id.workspaceId,
       channelId: cid,
       authorMemberId: id.memberId,
-      body: b.body,
+      body: body.body,
       parentMessageId,
     });
     // Realtime broadcast (#5) + mention (#6/#8) + DM (#8) fan-out, shared with the MCP
@@ -217,7 +235,8 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
     const b = req.body as { body?: string; alsoSendToChannel?: boolean };
-    if (!b.body) return reply.code(400).send({ error: "body required" });
+    const body = parseMessageBody(b.body);
+    if (!body.ok) return reply.code(body.statusCode).send({ error: body.error });
     // Flatten nesting: a reply always attaches to the thread root (Slack semantics, #6).
     const root = await resolveThreadRoot(mid, cid);
     if (!root) return reply.code(404).send({ error: "parent message not found in this channel" });
@@ -225,7 +244,7 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
       workspaceId: id.workspaceId,
       channelId: cid,
       authorMemberId: id.memberId,
-      body: b.body,
+      body: body.body,
       parentMessageId: root.id,
       alsoSentToChannel: b.alsoSendToChannel ?? false,
     });
