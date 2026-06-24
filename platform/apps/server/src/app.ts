@@ -29,6 +29,8 @@ import { tracesRoutes } from "./routes/traces.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { buildAcquisitionRegistry } from "./acquisition/default.js";
+import { createDefaultApprovalExpiryEngine } from "./approvals/default.js";
+import type { ApprovalExpiryEngine } from "./approvals/expiry-engine.js";
 import { governanceRoutes } from "./routes/governance.js";
 import { agentSessionRoutes } from "./routes/agent-sessions.js";
 import { preflightRoutes } from "./routes/preflight.js";
@@ -282,6 +284,8 @@ declare module "fastify" {
   interface FastifyInstance {
     /** The #17 autonomy engine; `index.ts` starts its opt-in background timer. */
     autonomyEngine: AutonomyEngine;
+    /** The #951 approval-expiry sweeper; `index.ts` starts its opt-in background timer. */
+    approvalExpiryEngine: ApprovalExpiryEngine;
     /** The #96 venture engine; `index.ts` starts its opt-in background tick (VENTURE_INTERVAL_MS). */
     ventureEngine: VentureEngine;
     /** The #105 fleet watchdog; `index.ts` starts its opt-in supervisor tick (WATCHDOG_INTERVAL_MS). */
@@ -368,6 +372,8 @@ export interface BuildAppOptions {
   billingStatus?: BillingStatus;
   /** Tests inject an AutonomyEngine and drive `tick()` deterministically (#17). */
   autonomyEngine?: AutonomyEngine;
+  /** Tests inject an approval-expiry sweeper and drive `tickAll()` deterministically (#951). */
+  approvalExpiryEngine?: ApprovalExpiryEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
@@ -634,6 +640,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // dispatcher so an approved ads/email/social/SEO campaign actually runs. Default-OFF: with the
   // acquisition flag off (the default) the dispatcher returns null and the executor stays recorded-only.
   app.register(approvalRoutes, { registry: buildAcquisitionRegistry(verificationEngine) });
+  const approvalExpiryEngine = opts.approvalExpiryEngine ?? createDefaultApprovalExpiryEngine(app.log);
+  app.addHook("onClose", async () => {
+    approvalExpiryEngine.stop();
+  });
+  app.decorate("approvalExpiryEngine", approvalExpiryEngine);
   // #151 governance & trust: workspace roles (owner/approver/viewer), email invites, egress report.
   app.register(governanceRoutes);
   app.register(searchRoutes);

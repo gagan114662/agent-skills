@@ -48,6 +48,12 @@ startBackgroundLoop("autonomy", env.autonomy.intervalMs, (intervalMs) => app.aut
   critical: true,
 });
 
+// #951 approval expiry: start the opt-in background sweep (APPROVAL_SWEEP_INTERVAL_MS; default 0 = off).
+// The engine enforces pending-request TTLs without requiring a manual sweep endpoint.
+startBackgroundLoop("approval_expiry", env.approval.sweepIntervalMs, (intervalMs) =>
+  app.approvalExpiryEngine.start(intervalMs),
+);
+
 // #96 venture loop: start the opt-in scheduled tick (VENTURE_INTERVAL_MS; default 0 = off) that
 // advances active evaluations on infrastructure time. Stopped on server close via buildApp's hook.
 app.ventureEngine.start(env.venture.intervalMs);
