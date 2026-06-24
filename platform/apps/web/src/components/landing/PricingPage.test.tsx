@@ -40,10 +40,18 @@ describe("PricingPage (#214)", () => {
   it("answers pricing-specific FAQ questions surfaced from the shared FAQ", () => {
     render(<PricingPage />);
     const matched = FAQ.items.filter((item) => PRICING.faqMatch.some((re) => re.test(item.q)));
-    expect(matched.length).toBeGreaterThan(0);
+    expect(matched.map((item) => item.q)).toEqual(
+      expect.arrayContaining([
+        "What does it cost, and what's the difference between Starter and Pro?",
+        "What do priority autonomy and deploy-to-live mean?",
+      ]),
+    );
     for (const item of matched) {
       expect(screen.getByText(item.q)).toBeInTheDocument();
     }
+    expect(screen.getByText(/starter is \$49\/month for proving the loop/i)).toBeInTheDocument();
+    expect(screen.getByText(/priority autonomy means pro work gets/i)).toBeInTheDocument();
+    expect(screen.getByText(/deploy-to-live means approved site or venture changes/i)).toBeInTheDocument();
   });
 
   it("offers a way back to the homepage", () => {

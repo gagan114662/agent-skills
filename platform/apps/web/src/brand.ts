@@ -662,8 +662,8 @@ export const PRICING = {
   planCta: "Start free",
   /** Reassurance under the grid (honest: free trial, no card, you set the ceiling). */
   footnote: "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it.",
-  /** A couple of pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
-  faqMatch: [/cost/i, /free/i] as readonly RegExp[],
+  /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
+  faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
   /** Back to the full story. */
   backLabel: "← Back to the homepage",
@@ -1533,8 +1533,12 @@ export const FAQ = {
       a: "Every request is scoped to your workspace; tenants are fully isolated. Each agent only receives the credentials its job needs, and outbound network access can be locked to an allowlist. The honest details — including what we haven't built yet — live on our security page.",
     },
     {
-      q: "What does it cost, and can I try it first?",
-      a: "Start free, no card. Paid plans run from $49 to $499 a month, and agent compute is billed against a cap you set — we never cross it. You can change or cancel any time from the billing screen.",
+      q: "What does it cost, and what's the difference between Starter and Pro?",
+      a: "Start free, no card. Starter is $49/month for proving the loop with one department fleet: three agent seats, a $200 monthly session budget, approvals, and the audit trail. Pro is $199/month for teams that want more of the business moving at once: ten seats, a $1,000 monthly budget, three department fleets, priority autonomy, and deploy-to-live. Upgrade when one lane is working and you want more departments moving without waiting in line.",
+    },
+    {
+      q: "What do priority autonomy and deploy-to-live mean?",
+      a: "Priority autonomy means Pro work gets a larger budget and earlier background-run capacity, so agents can keep planning, drafting, and checking without you restarting every step. Deploy-to-live means approved site or venture changes can move from preview to the live customer URL through the product flow, with receipts and rollback paths instead of a manual handoff.",
     },
     {
       q: "What happens if an agent gets something wrong?",

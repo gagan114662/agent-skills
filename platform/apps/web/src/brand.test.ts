@@ -279,7 +279,14 @@ describe("pricing page + trial framing copy (#214)", () => {
 
   it("its faq filters surface at least one real pricing question from the shared FAQ", () => {
     const matched = FAQ.items.filter((item) => PRICING.faqMatch.some((re) => re.test(item.q)));
-    expect(matched.length).toBeGreaterThan(0);
+    expect(matched.map((item) => item.q)).toEqual(
+      expect.arrayContaining([
+        "What does it cost, and what's the difference between Starter and Pro?",
+        "What do priority autonomy and deploy-to-live mean?",
+      ]),
+    );
+    expect(matched.some((item) => /three agent seats|ten seats|department fleet/i.test(item.a))).toBe(true);
+    expect(matched.some((item) => /priority autonomy|deploy-to-live/i.test(item.a))).toBe(true);
   });
 });
 
