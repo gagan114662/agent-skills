@@ -340,6 +340,14 @@ export interface SupportSlaSnapshot {
   resolvedUnverified: number;
 }
 
+/** Customer lifecycle workflow roll-up (#914): proactive retention actions waiting on an owner/operator. */
+export interface LifecycleSnapshot {
+  dormantWorkspaces: number;
+  highChurnEscalations: number;
+  renewalReminders: number;
+  cancellationOffers: number;
+}
+
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
   killSwitch: boolean;
@@ -398,6 +406,8 @@ export interface FounderConsoleInput {
   voice?: VoiceSnapshot;
   /** Support Desk SLA roll-up (#190) — optional so the console works before the support desk is wired. */
   supportSla?: SupportSlaSnapshot;
+  /** Customer lifecycle workflow roll-up (#914). Optional ⇒ zeroed (loop off / unwired). */
+  lifecycle?: LifecycleSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
@@ -1080,6 +1090,24 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   }
   if (supportSla.breaches > 0) {
     reasons.push(`${pluralize(supportSla.breaches, "support ticket")} past first-response SLA`);
+  }
+  const lifecycle = input.lifecycle ?? {
+    dormantWorkspaces: 0,
+    highChurnEscalations: 0,
+    renewalReminders: 0,
+    cancellationOffers: 0,
+  };
+  if (lifecycle.dormantWorkspaces > 0) {
+    reasons.push(`${pluralize(lifecycle.dormantWorkspaces, "workspace")} dormant (retention check due)`);
+  }
+  if (lifecycle.highChurnEscalations > 0) {
+    reasons.push(`${pluralize(lifecycle.highChurnEscalations, "high-churn signal")} need same-day escalation`);
+  }
+  if (lifecycle.renewalReminders > 0) {
+    reasons.push(`${pluralize(lifecycle.renewalReminders, "renewal")} need reminder or right-size offer`);
+  }
+  if (lifecycle.cancellationOffers > 0) {
+    reasons.push(`${pluralize(lifecycle.cancellationOffers, "cancellation")} need save offer`);
   }
   if (portfolio.enabled && portfolio.sunsetsPendingApproval > 0) {
     reasons.push(`${pluralize(portfolio.sunsetsPendingApproval, "venture sunset")} awaiting approval`);

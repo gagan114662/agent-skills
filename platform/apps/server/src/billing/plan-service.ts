@@ -160,6 +160,13 @@ export interface WorkspacePlanStore {
     now: Date;
   }): Promise<ActivePlan | undefined>;
   markExpired(input: { workspaceId: string; now: Date }): Promise<ActivePlan | undefined>;
+  cancel(input: { workspaceId: string; now: Date }): Promise<ActivePlan | undefined>;
+  downgrade(input: {
+    workspaceId: string;
+    planKey: PlanKey;
+    caps: PlanCaps;
+    now: Date;
+  }): Promise<ActivePlan | undefined>;
   dueForRetry(now: Date): Promise<ActivePlan[]>;
 }
 
@@ -379,6 +386,21 @@ export class PlanBillingService implements PlanActivator {
     const now = new Date();
     if (!current || current.renewalStatus !== "active" || current.expiresAt > now) return current;
     return this.store.markExpired({ workspaceId, now });
+  }
+
+  async cancel(workspaceId: string): Promise<ActivePlan | undefined> {
+    return this.store.cancel({ workspaceId, now: new Date() });
+  }
+
+  async downgrade(workspaceId: string, planKey: string): Promise<ActivePlan | undefined> {
+    const plan = getPlan(planKey);
+    if (!plan) throw new UnknownPlanError(planKey);
+    return this.store.downgrade({
+      workspaceId,
+      planKey: plan.key,
+      caps: planCaps(plan),
+      now: new Date(),
+    });
   }
 
   async createPricingExperiment(input: CreatePricingExperimentInput): Promise<PricingExperiment> {
