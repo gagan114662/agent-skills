@@ -1,5 +1,7 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
+import { getChannel } from "../db/repositories/channels.js";
+import { getWorkspaceMember } from "../db/repositories/members.js";
 import { isFeedbackChannel } from "../planning/feedback.js";
 import type { PlanningService } from "../planning/service.js";
 import { isBacklogSource, type BacklogEvidence } from "../planning/types.js";
@@ -25,6 +27,32 @@ function readEvidence(raw: unknown): BacklogEvidence {
     corroboratingSources: num(e.corroboratingSources, 0),
     effortPoints: num(e.effortPoints, 1),
   };
+}
+
+async function validateDispatchTargets(
+  workspaceId: string,
+  input: { targetChannelId?: string | null; targetAgentMemberId?: string | null },
+  reply: FastifyReply,
+): Promise<boolean> {
+  if (input.targetChannelId) {
+    const channel = await getChannel(input.targetChannelId);
+    if (!channel || channel.workspaceId !== workspaceId) {
+      await reply.code(404).send({ error: "targetChannelId not found" });
+      return false;
+    }
+  }
+  if (input.targetAgentMemberId) {
+    const member = await getWorkspaceMember(input.targetAgentMemberId, workspaceId);
+    if (!member) {
+      await reply.code(404).send({ error: "targetAgentMemberId not found" });
+      return false;
+    }
+    if (member.kind !== "agent") {
+      await reply.code(400).send({ error: "targetAgentMemberId must reference an agent member" });
+      return false;
+    }
+  }
+  return true;
 }
 
 export async function planningRoutes(app: FastifyInstance, opts: PlanningRoutesOptions): Promise<void> {
@@ -54,6 +82,7 @@ export async function planningRoutes(app: FastifyInstance, opts: PlanningRoutesO
         .code(400)
         .send({ error: "source must be one of customer_voice, growth, verifier, manual" });
     }
+    if (!(await validateDispatchTargets(wid, body, reply))) return;
     const item = await service.addItem(wid, {
       title: body.title,
       description: body.description,

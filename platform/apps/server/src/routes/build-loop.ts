@@ -1,6 +1,8 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import type { BuildLoopEngine } from "../build-loop/engine.js";
+import { getChannel } from "../db/repositories/channels.js";
+import { getWorkspaceMember } from "../db/repositories/members.js";
 
 /**
  * Self-Shipping Loop routes (#172, ADR-0172) under `/workspaces/:wid/build-loop`. Thin adapters over
@@ -11,6 +13,32 @@ import type { BuildLoopEngine } from "../build-loop/engine.js";
  */
 export interface BuildLoopRoutesOptions {
   engine: BuildLoopEngine;
+}
+
+async function validateDispatchTargets(
+  workspaceId: string,
+  input: { targetChannelId?: string | null; targetAgentMemberId?: string | null },
+  reply: FastifyReply,
+): Promise<boolean> {
+  if (input.targetChannelId) {
+    const channel = await getChannel(input.targetChannelId);
+    if (!channel || channel.workspaceId !== workspaceId) {
+      await reply.code(404).send({ error: "targetChannelId not found" });
+      return false;
+    }
+  }
+  if (input.targetAgentMemberId) {
+    const member = await getWorkspaceMember(input.targetAgentMemberId, workspaceId);
+    if (!member) {
+      await reply.code(404).send({ error: "targetAgentMemberId not found" });
+      return false;
+    }
+    if (member.kind !== "agent") {
+      await reply.code(400).send({ error: "targetAgentMemberId must reference an agent member" });
+      return false;
+    }
+  }
+  return true;
 }
 
 export async function buildLoopRoutes(app: FastifyInstance, opts: BuildLoopRoutesOptions): Promise<void> {
@@ -34,6 +62,7 @@ export async function buildLoopRoutes(app: FastifyInstance, opts: BuildLoopRoute
     };
     if (!body.issueRef) return reply.code(400).send({ error: "issueRef is required" });
     if (!body.issueTitle) return reply.code(400).send({ error: "issueTitle is required" });
+    if (!(await validateDispatchTargets(wid, body, reply))) return;
     const run = await engine.recordIssue(wid, {
       issueRef: body.issueRef,
       issueTitle: body.issueTitle,

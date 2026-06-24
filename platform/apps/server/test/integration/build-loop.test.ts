@@ -45,6 +45,7 @@ afterAll(async () => {
 
 interface World {
   workspaceId: string;
+  cookie: string;
   channelId: string;
   agentMemberId: string;
 }
@@ -74,6 +75,7 @@ async function seed(): Promise<World> {
   });
   return {
     workspaceId: me.workspaceId,
+    cookie,
     channelId: channel.json().id,
     agentMemberId: agent.json().memberId,
   };
@@ -187,6 +189,42 @@ function makeEngine(opts: {
 }
 
 describe("self-shipping loop (real Postgres): issue → build → review → merge within guardrails", () => {
+  it("rejects cross-workspace dispatch targets before persisting a build-loop run", async () => {
+    const w = await seed();
+    const other = await seed();
+
+    const crossChannel = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/build-loop/issues`,
+      cookies: { rid: w.cookie },
+      payload: {
+        issueRef: "github:acme/web#9821",
+        issueTitle: "Cross-tenant channel",
+        agentOk: true,
+        targetChannelId: other.channelId,
+        targetAgentMemberId: w.agentMemberId,
+      },
+    });
+    expect(crossChannel.statusCode).toBe(404);
+
+    const crossAgent = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/build-loop/issues`,
+      cookies: { rid: w.cookie },
+      payload: {
+        issueRef: "github:acme/web#9822",
+        issueTitle: "Cross-tenant agent",
+        agentOk: true,
+        targetChannelId: w.channelId,
+        targetAgentMemberId: other.agentMemberId,
+      },
+    });
+    expect(crossAgent.statusCode).toBe(404);
+
+    expect(await buildLoopRunStore.getByIssueRef(w.workspaceId, "github:acme/web#9821")).toBeNull();
+    expect(await buildLoopRunStore.getByIssueRef(w.workspaceId, "github:acme/web#9822")).toBeNull();
+  });
+
   it(
     "dedups an issue, dispatches under the concurrency cap, auto-merges a clean PR, skips on the kill " +
       "switch, and never touches a disabled workspace",
