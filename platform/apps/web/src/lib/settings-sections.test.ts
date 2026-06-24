@@ -7,6 +7,10 @@ import {
 
 describe("settings deep-linking (#506)", () => {
   describe("firstRunSettingsSection — which section a checklist CTA lands on", () => {
+    it("deep-links 'Set target' to the marketing target section", () => {
+      expect(firstRunSettingsSection("target")).toBe("marketing");
+    });
+
     it("deep-links 'Set brand' to the Brand kit section, not the top of settings", () => {
       // The acceptance criterion: the brand step targets the brand section.
       expect(firstRunSettingsSection("brand")).toBe("brand");

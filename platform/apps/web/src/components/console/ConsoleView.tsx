@@ -194,6 +194,7 @@ export function ConsoleView({
   const [pricingOpen, setPricingOpen] = useState(false);
   // #479 first-run checklist: real setup signals (brand kit set / an account connected). Fetched once; the
   // run + approve signals come from already-loaded state below.
+  const [targetSet, setTargetSet] = useState(false);
   const [brandSet, setBrandSet] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
   // #505: the checklist's dismissed/docked state is a per-user UI preference, hydrated from storage once we
@@ -500,12 +501,16 @@ export function ConsoleView({
     store.setLiveSessions(active);
   }, [mc, store]);
 
-  // #479 first-run checklist: fetch the two setup signals that aren't already in state (brand kit + any
-  // connected account), once, only on the coordination surface — so the board (prod) makes no extra fetch.
+  // #479/#950 first-run checklist: fetch the setup signals that aren't already in state (marketing target,
+  // brand kit, any connected account), once, only on the coordination surface — so the board makes no extra
+  // fetch when the checklist is not mounted. A failure leaves the step actionable.
   // Re-runs only when the surface flips on; a failure leaves the signal false (the step stays actionable).
   useEffect(() => {
     if (!showCoordinationSurface || !workspaceId) return;
     let live = true;
+    void api.getMarketingTarget().then((t) => {
+      if (live) setTargetSet(t.configured);
+    }).catch(() => {});
     void api.getBrandKit().then((b) => {
       if (live) setBrandSet(b.connected);
     }).catch(() => {});
@@ -535,6 +540,7 @@ export function ConsoleView({
     pending.length > 0 ||
     Object.values(messagesByChannel).some((ms) => ms.some((m) => directory[m.authorMemberId]?.kind === "agent"));
   const firstRunSteps = deriveFirstRunChecklist({
+    targetSet,
     brandSet,
     hasConnection,
     agentRan,

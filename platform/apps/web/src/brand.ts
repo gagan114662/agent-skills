@@ -1159,6 +1159,11 @@ export const CONSOLE = {
     collapse: "Collapse",
     expand: "Expand",
     steps: {
+      target: {
+        label: "Tell us what to market",
+        hint: "Goals, audience, positioning, and competitors so agents stop guessing.",
+        cta: "Set target",
+      },
       brand: { label: "Set your brand", hint: "Name, palette, and voice so the team sounds like you.", cta: "Set brand" },
       connect: { label: "Connect an account", hint: "Link one place your work goes out — the agents take it from there.", cta: "Connect" },
       run: { label: "Run an agent", hint: "Ask a teammate in any channel, e.g. “@scout audit our homepage.”", cta: "Got it" },

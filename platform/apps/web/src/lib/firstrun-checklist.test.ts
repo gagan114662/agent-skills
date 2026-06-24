@@ -6,16 +6,35 @@ import {
   type FirstRunSignals,
 } from "./firstrun-checklist.js";
 
-const none: FirstRunSignals = { brandSet: false, hasConnection: false, agentRan: false, resultApproved: false };
+const none: FirstRunSignals = {
+  targetSet: false,
+  brandSet: false,
+  hasConnection: false,
+  agentRan: false,
+  resultApproved: false,
+};
 
 describe("deriveFirstRunChecklist (#479)", () => {
-  it("returns the four steps in setup order", () => {
-    expect(deriveFirstRunChecklist(none).map((s) => s.key)).toEqual(["brand", "connect", "run", "approve"]);
+  it("returns the five steps in setup order", () => {
+    expect(deriveFirstRunChecklist(none).map((s) => s.key)).toEqual([
+      "target",
+      "brand",
+      "connect",
+      "run",
+      "approve",
+    ]);
   });
 
   it("maps each signal to its step's done-state", () => {
-    const steps = deriveFirstRunChecklist({ brandSet: true, hasConnection: false, agentRan: true, resultApproved: false });
+    const steps = deriveFirstRunChecklist({
+      targetSet: true,
+      brandSet: true,
+      hasConnection: false,
+      agentRan: true,
+      resultApproved: false,
+    });
     expect(steps).toEqual([
+      { key: "target", done: true },
       { key: "brand", done: true },
       { key: "connect", done: false },
       { key: "run", done: true },
@@ -24,17 +43,23 @@ describe("deriveFirstRunChecklist (#479)", () => {
   });
 
   it("progress counts only the real, done steps", () => {
-    expect(firstRunProgress(deriveFirstRunChecklist(none))).toEqual({ done: 0, total: 4 });
+    expect(firstRunProgress(deriveFirstRunChecklist(none))).toEqual({ done: 0, total: 5 });
     expect(
-      firstRunProgress(deriveFirstRunChecklist({ ...none, brandSet: true, hasConnection: true })),
-    ).toEqual({ done: 2, total: 4 });
+      firstRunProgress(deriveFirstRunChecklist({ ...none, targetSet: true, brandSet: true, hasConnection: true })),
+    ).toEqual({ done: 3, total: 5 });
   });
 
   it("is complete only when every step is real", () => {
     expect(firstRunComplete(deriveFirstRunChecklist(none))).toBe(false);
     expect(
       firstRunComplete(
-        deriveFirstRunChecklist({ brandSet: true, hasConnection: true, agentRan: true, resultApproved: true }),
+        deriveFirstRunChecklist({
+          targetSet: true,
+          brandSet: true,
+          hasConnection: true,
+          agentRan: true,
+          resultApproved: true,
+        }),
       ),
     ).toBe(true);
   });
