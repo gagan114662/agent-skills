@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { DiscoveryService } from "../discovery/service.js";
 import { recordLead } from "../db/repositories/inbound-leads.js";
 import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
+import type { InboundLeadFollowup } from "../leads/default.js";
 
 /**
  * Inbound lead capture route (GAP 1 of the leads centre, ADR-0400). ONE PUBLIC (unauth) endpoint,
@@ -21,6 +22,8 @@ import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
  */
 export interface InboundLeadsRoutesOptions {
   discovery: DiscoveryService;
+  /** Best-effort warm-lead automation: import into Reach and run the opener/cadence loop. */
+  warmLeadFollowup?: InboundLeadFollowup;
   /**
    * The workspace a public landing lead belongs to (the marketing-owner workspace). When unset, the public
    * form is not wired to a workspace and the route 503s — but a `workspaceId` in the body is still honored
@@ -35,7 +38,7 @@ export async function inboundLeadsRoutes(
   app: FastifyInstance,
   opts: InboundLeadsRoutesOptions,
 ): Promise<void> {
-  const { discovery, ownerWorkspaceId } = opts;
+  const { discovery, ownerWorkspaceId, warmLeadFollowup } = opts;
 
   app.post("/inbound/leads", async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -74,11 +77,21 @@ export async function inboundLeadsRoutes(
       trackingRef: lead.trackingRef,
     });
 
-    // Best-effort: feed the captured lead into the #222 discovery engine so the fleet can rank + work it.
-    // The prospect key is an OPAQUE hash of the email (discovery refuses an email-looking key — no PII).
+    // Best-effort: seed the default warm-lead definition, then feed the captured lead into #222 so a fresh
+    // workspace qualifies hand-raises into the outreach stage without owner setup. The prospect key is an
+    // OPAQUE hash of the email (discovery refuses an email-looking key — no PII).
     try {
       const prospectKeyHash = createHash("sha256").update(lead.email).digest("hex").slice(0, 32);
       const signal = toDiscoverySignal(lead, prospectKeyHash);
+      await discovery.defineSignal(workspaceId, {
+        kind: "role_match",
+        label: "inbound_lead_default",
+        role: "inbound_lead",
+        threshold: 1,
+        windowDays: 30,
+        weight: 100,
+        enabled: true,
+      });
       await discovery.ingestSignal(workspaceId, {
         prospectKey: signal.prospectKey,
         kind: signal.kind,
@@ -89,6 +102,12 @@ export async function inboundLeadsRoutes(
     } catch (err) {
       // A discovery hiccup never fails the capture — the lead is already persisted.
       req.log.warn({ err, leadId: id }, "inbound lead captured but discovery ingest failed");
+    }
+
+    try {
+      await warmLeadFollowup?.handle({ workspaceId, leadId: id, lead });
+    } catch (err) {
+      req.log.warn({ err, leadId: id }, "inbound lead captured but warm follow-up failed");
     }
 
     return reply.code(202).send({ received: true });
