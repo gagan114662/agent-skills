@@ -13,6 +13,7 @@ import {
 import { verifySlackSignature, SlackVerificationError } from "../slack/verify.js";
 import { createDefaultSlackService } from "../slack/default.js";
 import type { SlackEventService } from "../slack/service.js";
+import { recordWebhookSignatureFailure } from "../observability/metrics.js";
 
 /**
  * Slack-native routes (issue #170, ADR-0170). Two surfaces:
@@ -164,6 +165,10 @@ export async function slackRoutes(app: FastifyInstance, opts: SlackRoutesOptions
     webhookScope.post("/slack/events/:wid", async (req, reply) => {
       const { wid } = req.params as { wid: string };
       const v = await verify(wid, req.body, req.headers as Record<string, unknown>);
+      if (!v.ok && v.code === 400) {
+        req.log.warn({ provider: "slack", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        recordWebhookSignatureFailure("slack", v.error);
+      }
       if (!v.ok) return reply.code(v.code).send({ error: v.error });
       let payload: { type?: string; challenge?: string; event_id?: string; event?: Record<string, unknown> };
       try {
@@ -186,6 +191,10 @@ export async function slackRoutes(app: FastifyInstance, opts: SlackRoutesOptions
     webhookScope.post("/slack/interact/:wid", async (req, reply) => {
       const { wid } = req.params as { wid: string };
       const v = await verify(wid, req.body, req.headers as Record<string, unknown>);
+      if (!v.ok && v.code === 400) {
+        req.log.warn({ provider: "slack", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        recordWebhookSignatureFailure("slack", v.error);
+      }
       if (!v.ok) return reply.code(v.code).send({ error: v.error });
       const form = new URLSearchParams(v.raw);
       const payloadStr = form.get("payload");

@@ -475,7 +475,12 @@ export async function rejectRequest(
  * Bulk-expire every pending request whose TTL has passed (the housekeeping sweep, ADR-0013 §6).
  * Appends an `expired` event per request in one transaction. Returns the number expired.
  */
-export async function sweepExpired(workspaceId: string): Promise<number> {
+export interface SweepExpiredResult {
+  count: number;
+  requestIds: string[];
+}
+
+export async function sweepExpiredDetailed(workspaceId: string): Promise<SweepExpiredResult> {
   return db.transaction(async (tx) => {
     const due = await tx
       .update(approvalRequests)
@@ -495,6 +500,10 @@ export async function sweepExpired(workspaceId: string): Promise<number> {
         type: "expired",
       });
     }
-    return due.length;
+    return { count: due.length, requestIds: due.map((r) => r.id) };
   });
+}
+
+export async function sweepExpired(workspaceId: string): Promise<number> {
+  return (await sweepExpiredDetailed(workspaceId)).count;
 }
