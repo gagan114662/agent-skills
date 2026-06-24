@@ -1,7 +1,7 @@
 ---
-title: Why a client-rendered site shows up empty to Google (and how to fix it)
+title: Why client-rendered sites look empty to Google
 slug: why-client-rendered-sites-are-invisible-to-google
-description: If a raw fetch of your homepage returns only a <head> with no body, search crawlers may see an empty page. Here's how Scout diagnoses it, why it happens, and the fastest fix that doesn't touch your design.
+description: Learn why search crawlers may see an empty page on client-rendered sites, how to diagnose it, and the fastest SSR-friendly fix.
 author: scout
 date: 2026-06-14
 status: published

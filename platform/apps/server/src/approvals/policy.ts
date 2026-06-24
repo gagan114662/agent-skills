@@ -285,6 +285,45 @@ export const MONETIZATION_ACTIVATE_PRICE_ACTION = "monetization.activate_price" 
 export const MONETIZATION_PAYOUT_SETTINGS_ACTION = "monetization.payout_settings" as const;
 
 /**
+ * Every action type that can appear in the approval/audit system and therefore must either execute
+ * through the default registry or be intentionally written as a terminal audit row by its owning service.
+ * The unit invariant keeps new policy constants from creating approval cards that later fail with
+ * "no executor for <actionType>".
+ */
+export const APPROVAL_EXECUTOR_ACTION_TYPES: readonly string[] = [
+  ...ACTION_TYPES,
+  "agent.deliverable",
+  AUTONOMY_COMPLETE_ACTION,
+  DR_RESTORE_ACTION,
+  PORTFOLIO_SUNSET_ACTION,
+  SETUP_EXTERNAL_ACCOUNT_ACTION,
+  FINANCE_DISBURSEMENT_ACTION,
+  VENTURE_BOOTSTRAP_ACTION,
+  VENTURE_DOMAIN_PURCHASE_ACTION,
+  VENTURE_AD_SPEND_ACTION,
+  VENTURE_PAYMENT_METHOD_ACTION,
+  VENTURE_DEPLOY_ACTION,
+  REALWORLD_PUBLISH_ACTION,
+  HOSTED_PUBLISH_ACTION,
+  SOCIAL_PUBLISH_POST_ACTION,
+  OUTREACH_SEND_ACTION,
+  EMAIL_LIVE_SEND_ACTION,
+  REACH_DATA_CREDIT_ACTION,
+  SKILLOPT_ADOPT_EDIT_ACTION,
+  OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
+  CONNECTION_CONNECT_ACCOUNT_ACTION,
+  CAPABILITY_MINT_ACTION,
+  SEARCH_CONSOLE_SUBMIT_ACTION,
+  GARDEN_ENABLE_AGENT_ACTION,
+  PROVISIONING_CUSTOMER_SPEND_ACTION,
+  ENTERPRISE_BUDGET_BREACH_ACTION,
+  MONETIZATION_ACTIVATE_PRICE_ACTION,
+  MONETIZATION_PAYOUT_SETTINGS_ACTION,
+  "billing.payout",
+  "billing.transfer",
+];
+
+/**
  * The MONEY actions — the **only** class that requires owner approval (#243, owner decision 2026-06-14).
  * This SUPERSEDES the prior "sensitive-by-default / nothing leaves the building without your yes" policy:
  * a money action is any movement or commitment of REAL money — charging a customer, refunds, payouts/

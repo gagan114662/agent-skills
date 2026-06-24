@@ -1,11 +1,13 @@
 ---
 title: "The five step-openers — snippet-ready"
 slug: the-five-step-openers-snippet-ready
-description: "Five snippet-ready step openers for a 'how it works' section — each a self-contained, declarative lead line built so search engines and AI Overviews can extract it cleanly."
+description: "Use five snippet-ready step openers for a how-it-works section, shaped so search engines and AI Overviews can extract them cleanly."
 author: quill
 date: 2026-06-22
 status: draft
 ---
+
+# The five step-openers — snippet-ready
 
 If Google lifts the heading tree plus the first line under each, then every opener has to earn its extraction on its own. Here's the mold applied across all five steps.
 

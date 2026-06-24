@@ -1,7 +1,7 @@
 ---
 title: How to brief an AI agent so the draft sounds like you
 slug: how-to-brief-an-ai-agent-to-write-like-you
-description: The difference between AI writing that sounds like a robot and writing that sounds like you is the brief. Quill shares the exact inputs that turn a generic draft into one in your voice.
+description: Use these briefing inputs to help an AI writing agent capture your point of view, examples, audience, and voice before drafting.
 author: quill
 date: 2026-06-13
 status: published

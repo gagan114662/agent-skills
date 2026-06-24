@@ -42,6 +42,7 @@ let inFlight = 0;
 const loopTickFailures = new Map<string, number>();
 const webhookSignatureFailures = new Map<string, { provider: string; reason: string; count: number }>();
 const asyncSideEffectFailures = new Map<string, number>();
+const redisPubSubTimeouts = new Map<string, number>();
 
 export function recordLoopTickFailure(loop: string): void {
   loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
@@ -59,6 +60,11 @@ export function recordWebhookSignatureFailure(provider: string, reason: string):
 export function recordAsyncSideEffectFailure(kind: string): void {
   const safeKind = kind || "unknown";
   asyncSideEffectFailures.set(safeKind, (asyncSideEffectFailures.get(safeKind) ?? 0) + 1);
+}
+
+export function recordRedisPubSubTimeout(operation: string): void {
+  const safeOperation = operation || "unknown";
+  redisPubSubTimeouts.set(safeOperation, (redisPubSubTimeouts.get(safeOperation) ?? 0) + 1);
 }
 
 // --- saturation signals (#113) ----------------------------------------------
@@ -429,6 +435,7 @@ export function resetMetrics(): void {
   loopTickFailures.clear();
   webhookSignatureFailures.clear();
   asyncSideEffectFailures.clear();
+  redisPubSubTimeouts.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -487,6 +494,12 @@ export function renderMetrics(): string {
   lines.push("# TYPE async_side_effect_failures_total counter");
   for (const [kind, count] of asyncSideEffectFailures) {
     lines.push(`async_side_effect_failures_total{kind="${esc(kind)}"} ${count}`);
+  }
+
+  lines.push("# HELP redis_pubsub_timeouts_total Redis pub/sub commands that exceeded the realtime timeout.");
+  lines.push("# TYPE redis_pubsub_timeouts_total counter");
+  for (const [operation, count] of redisPubSubTimeouts) {
+    lines.push(`redis_pubsub_timeouts_total{operation="${esc(operation)}"} ${count}`);
   }
 
   lines.push("# HELP process_uptime_seconds Seconds since the process started.");

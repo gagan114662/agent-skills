@@ -37,6 +37,31 @@ export interface EspSuppression {
   recipient: string;
   reason: SuppressionReason;
   source: string;
+  providerEventId: string | null;
+}
+
+function cleanEventId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 160);
+}
+
+function eventIdFromWebhook(ev: Record<string, unknown>): string | null {
+  return (
+    cleanEventId(ev.sg_event_id) ??
+    cleanEventId(ev.event_id) ??
+    cleanEventId(ev.EventID) ??
+    cleanEventId(ev.MessageID) ??
+    cleanEventId(ev.MessageId) ??
+    cleanEventId(ev.ID) ??
+    cleanEventId(ev.id)
+  );
+}
+
+function sourceForEvent(type: string, providerEventId: string | null): string {
+  const kind = type.toLowerCase();
+  return providerEventId ? `esp:${kind}:${providerEventId}` : `esp:${kind}`;
 }
 
 /**
@@ -71,7 +96,8 @@ export function decideEspSuppressions(events: unknown): EspSuppression[] {
     const recipient = normalizeRecipient(email);
     if (!recipient || seen.has(recipient)) continue;
     seen.add(recipient);
-    out.push({ recipient, reason, source: `esp:${type.toLowerCase()}` });
+    const providerEventId = eventIdFromWebhook(ev);
+    out.push({ recipient, reason, source: sourceForEvent(type, providerEventId), providerEventId });
   }
   return out;
 }

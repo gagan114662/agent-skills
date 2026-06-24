@@ -8,6 +8,7 @@ import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING } from "../../bra
 afterEach(() => {
   vi.unstubAllGlobals();
   act(() => navigate("/")); // reset the route between click tests
+  document.documentElement.lang = "en";
 });
 
 /** jsdom has no matchMedia; stub one that reports the given reduced-motion preference. */
@@ -143,11 +144,29 @@ describe("Landing", () => {
 
   it("exposes sticky in-page anchor nav linking to the page's sections", () => {
     render(<Landing />);
-    const nav = screen.getByRole("navigation", { name: /on this page/i });
+    const nav = screen.getAllByRole("navigation", { name: /on this page/i }).find((el) =>
+      el.classList.contains("landing__nav-links"),
+    )!;
     for (const anchor of LANDING.anchors) {
       expect(
         within(nav).getByRole("link", { name: anchor.label }),
       ).toHaveAttribute("href", anchor.href);
     }
+  });
+
+  it("keeps in-page section navigation reachable through the mobile menu", () => {
+    render(<Landing />);
+    const mobileNav = screen.getAllByRole("navigation", { name: /on this page/i })[0]!;
+    for (const anchor of LANDING.anchors) {
+      expect(within(mobileNav).getByRole("link", { name: anchor.label })).toHaveAttribute("href", anchor.href);
+    }
+  });
+
+  it("renders the French landing copy when ?lang=fr is present", () => {
+    act(() => navigate("/?lang=fr"));
+    render(<Landing />);
+    expect(screen.getByText("Une equipe marketing IA complete")).toBeInTheDocument();
+    expect(screen.getAllByRole("navigation", { name: /sur cette page/i })).toHaveLength(2);
+    expect(document.documentElement.lang).toBe("fr");
   });
 });

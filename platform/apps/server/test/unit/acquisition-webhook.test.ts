@@ -37,8 +37,8 @@ describe("decideEspSuppressions", () => {
       { email: "ok@x.com", RecordType: "Delivered" },
     ]);
     expect(out).toEqual([
-      { recipient: "a@x.com", reason: "bounce", source: "esp:bounce" },
-      { recipient: "b@x.com", reason: "complaint", source: "esp:spamcomplaint" },
+      { recipient: "a@x.com", reason: "bounce", source: "esp:bounce", providerEventId: null },
+      { recipient: "b@x.com", reason: "complaint", source: "esp:spamcomplaint", providerEventId: null },
     ]);
   });
 
@@ -56,6 +56,22 @@ describe("decideEspSuppressions", () => {
       "nope",
     ]);
     expect(out).toHaveLength(1);
+  });
+
+  it("carries ESP event IDs into the suppression source for replay-stable audit trails", () => {
+    const out = decideEspSuppressions([
+      { email: "a@x.com", event: "bounce", sg_event_id: "sg_evt_1" },
+      { email: "b@x.com", RecordType: "SpamComplaint", MessageID: "pm_evt_2" },
+    ]);
+    expect(out).toEqual([
+      { recipient: "a@x.com", reason: "bounce", source: "esp:bounce:sg_evt_1", providerEventId: "sg_evt_1" },
+      {
+        recipient: "b@x.com",
+        reason: "complaint",
+        source: "esp:spamcomplaint:pm_evt_2",
+        providerEventId: "pm_evt_2",
+      },
+    ]);
   });
 
   it("returns [] for a non-array", () => {

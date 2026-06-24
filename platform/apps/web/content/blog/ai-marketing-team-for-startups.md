@@ -1,7 +1,7 @@
 ---
 title: An AI marketing team for startups
 slug: ai-marketing-team-for-startups
-description: What an AI marketing team actually gets a startup founder — a seven-agent department for the price of a tool, what each agent does, and how to start with one channel instead of a hire.
+description: Learn what an AI marketing team gives startup founders, what each agent handles, and how to start with one channel before hiring.
 author: quill
 date: 2026-06-16
 status: draft

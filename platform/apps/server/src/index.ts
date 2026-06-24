@@ -10,17 +10,44 @@ import {
   type BackgroundLoopName,
 } from "./ops/loop-liveness.js";
 
-const env = loadEnv();
+function bootstrapErrorPayload(phase: string, err: unknown): Record<string, unknown> {
+  return {
+    level: "fatal",
+    event: "bootstrap_failed",
+    phase,
+    errorName: err instanceof Error ? err.name : "Error",
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
+function logBootstrapError(phase: string, err: unknown): void {
+  process.stderr.write(`${JSON.stringify(bootstrapErrorPayload(phase, err))}\n`);
+}
+
+let env: ReturnType<typeof loadEnv>;
+try {
+  env = loadEnv();
+} catch (err) {
+  logBootstrapError("load_env", err);
+  process.exit(1);
+}
 
 try {
   await assertDatabaseSchemaCompatible(getPool());
 } catch (err) {
-  console.error(err);
+  logBootstrapError("schema_compat", err);
   await closeDb();
   process.exit(1);
 }
 
-const app = buildApp();
+let app: ReturnType<typeof buildApp>;
+try {
+  app = buildApp();
+} catch (err) {
+  logBootstrapError("build_app", err);
+  await Promise.allSettled([closeDb(), closeRedis()]);
+  process.exit(1);
+}
 
 function startBackgroundLoop(
   name: BackgroundLoopName,

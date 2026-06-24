@@ -315,3 +315,12 @@ export function validateMonetizationPayoutSettings(payload: unknown): Validation
   if (!nonEmptyString(p.destination)) return { ok: false, error: "destination required" };
   return { ok: true };
 }
+
+/**
+ * Validate parked approval payloads whose live side effect belongs to a feature service, not the generic
+ * approval runtime. The approval executor records the owner's decision and never reaches out; owning
+ * services can re-check the terminal approval row before doing their own work.
+ */
+export function validateRecordedApprovalPayload(payload: unknown): ValidationResult {
+  return asRecord(payload) ? { ok: true } : { ok: false, error: "payload must be an object" };
+}
