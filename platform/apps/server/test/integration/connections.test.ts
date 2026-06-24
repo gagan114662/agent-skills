@@ -140,12 +140,12 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     ]);
     expect(credentialEvents[0]).toMatchObject({
       actorMemberId: expect.any(String),
-      summary: "email credentials revoked scopes=email.send",
+      summary: "email credentials revoked scopes=send_email",
       status: "revoked",
     });
     expect(credentialEvents[1]).toMatchObject({
       actorMemberId: expect.any(String),
-      summary: "email credentials connected scopes=email.send",
+      summary: "email credentials connected scopes=send_email",
       status: "connected",
     });
   });
