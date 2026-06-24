@@ -9,7 +9,21 @@ import Fastify, { type FastifyInstance } from "fastify";
  */
 
 const recordLead = vi.fn(async () => ({ id: "lead-1" }));
-vi.mock("../../src/db/repositories/inbound-leads.js", () => ({ recordLead, listLeads: vi.fn() }));
+const listLeads = vi.fn(async () => []);
+const getLead = vi.fn(async () => null);
+const updateLead = vi.fn(async () => null);
+const markSlaNotified = vi.fn(async () => true);
+const getWorkspaceOwnerMemberId = vi.fn(async () => "33333333-2222-3333-4444-555555555555");
+const notify = vi.fn(async () => ({ id: "notif-1" }));
+vi.mock("../../src/db/repositories/inbound-leads.js", () => ({ recordLead, listLeads, getLead, updateLead, markSlaNotified }));
+vi.mock("../../src/db/repositories/members.js", () => ({ getWorkspaceOwnerMemberId }));
+vi.mock("../../src/notifications/service.js", () => ({ notify }));
+vi.mock("../../src/auth/guard.js", () => ({
+  requireIdentity: vi.fn(async () => ({
+    workspaceId: "11111111-2222-3333-4444-555555555555",
+    memberId: "22222222-2222-3333-4444-555555555555",
+  })),
+}));
 
 const { inboundLeadsRoutes } = await import("../../src/routes/inbound-leads.js");
 
@@ -44,6 +58,12 @@ function fakeDiscovery(impl?: () => Promise<unknown>): FakeDiscovery {
 
 beforeEach(() => {
   recordLead.mockClear();
+  listLeads.mockClear();
+  getLead.mockClear();
+  updateLead.mockClear();
+  markSlaNotified.mockClear();
+  getWorkspaceOwnerMemberId.mockClear();
+  notify.mockClear();
 });
 
 describe("POST /inbound/leads (public capture)", () => {
@@ -83,6 +103,12 @@ describe("POST /inbound/leads (public capture)", () => {
       leadId: "lead-1",
       lead: expect.objectContaining({ email: "ada@example.com", message: "fix our SEO" }),
     });
+    expect(notify).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      workspaceId: OWNER_WID,
+      recipientMemberId: "33333333-2222-3333-4444-555555555555",
+      type: "inbound_lead",
+      excerpt: expect.stringContaining("New inbound lead from Ada <ada@example.com>"),
+    }));
     await app.close();
   });
 
@@ -154,6 +180,70 @@ describe("POST /inbound/leads (public capture)", () => {
     expect(res.statusCode).toBe(202);
     expect(recordLead).toHaveBeenCalledTimes(1);
     expect(followup.handle).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("lists workspace-scoped inbound leads with status/since/limit filters", async () => {
+    listLeads.mockResolvedValueOnce([{ id: "lead-1", email: "ada@example.com", status: "new" }]);
+    const app = await buildRoute(OWNER_WID, fakeDiscovery());
+    const res = await app.inject({ method: "GET", url: "/me/inbound/leads?status=new&sinceMs=123&limit=25" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().leads).toHaveLength(1);
+    expect(listLeads).toHaveBeenCalledWith(OWNER_WID, { status: "new", sinceMs: 123, limit: 25 });
+    await app.close();
+  });
+
+  it("notifies the owner once for breached 24h SLA leads", async () => {
+    listLeads.mockResolvedValueOnce([{
+      id: "lead-1",
+      name: "Ada",
+      email: "ada@example.com",
+      message: "Need a reply",
+      status: "new",
+      slaBreached: true,
+      slaNotifiedAtMs: null,
+    }]);
+    const app = await buildRoute(OWNER_WID, fakeDiscovery());
+    const res = await app.inject({ method: "GET", url: "/me/inbound/leads" });
+    expect(res.statusCode).toBe(200);
+    expect(notify).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      type: "inbound_lead",
+      excerpt: expect.stringContaining("24h SLA breached"),
+    }));
+    expect(markSlaNotified).toHaveBeenCalledWith(OWNER_WID, "lead-1");
+    await app.close();
+  });
+
+  it("returns one full lead and patches status/assignee/next action", async () => {
+    getLead.mockResolvedValueOnce({ id: "lead-1", message: "full message", status: "new" });
+    updateLead.mockResolvedValueOnce({ id: "lead-1", status: "working", assigneeMemberId: "22222222-2222-3333-4444-555555555555" });
+    const app = await buildRoute(OWNER_WID, fakeDiscovery());
+    const got = await app.inject({ method: "GET", url: "/me/inbound/leads/lead-1" });
+    expect(got.statusCode).toBe(200);
+    expect(got.json().lead.message).toBe("full message");
+    const patched = await app.inject({
+      method: "PATCH",
+      url: "/me/inbound/leads/lead-1",
+      payload: {
+        status: "working",
+        assigneeMemberId: "22222222-2222-3333-4444-555555555555",
+        nextAction: "Reply today",
+      },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(updateLead).toHaveBeenCalledWith(OWNER_WID, "lead-1", expect.objectContaining({
+      status: "working",
+      assigneeMemberId: "22222222-2222-3333-4444-555555555555",
+      nextAction: "Reply today",
+    }));
+    await app.close();
+  });
+
+  it("rejects invalid lead status updates", async () => {
+    const app = await buildRoute(OWNER_WID, fakeDiscovery());
+    const res = await app.inject({ method: "PATCH", url: "/me/inbound/leads/lead-1", payload: { status: "lost" } });
+    expect(res.statusCode).toBe(400);
+    expect(updateLead).not.toHaveBeenCalled();
     await app.close();
   });
 });

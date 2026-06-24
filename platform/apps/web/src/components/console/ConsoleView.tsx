@@ -76,6 +76,7 @@ import {
   shouldShowVentureIntake,
 } from "./venture-intake-flag.js";
 import { VentureBriefPanel } from "./VentureBriefPanel.js";
+import { InboundLeadsPanel } from "./InboundLeadsPanel.js";
 import { ShortFormBlitzSurface } from "./ShortFormBlitzSurface.js";
 import {
   SHORT_FORM_BLITZ_ENABLED,
@@ -962,6 +963,7 @@ export function ConsoleView(): React.JSX.Element {
             {shortFormBlitzEnabled && workspaceId && (
               <ShortFormBlitzSurface workspaceId={workspaceId} />
             )}
+            <InboundLeadsPanel />
             <Board
               columns={model.columns}
               onPeek={(item) => dive(item, "transcript")}

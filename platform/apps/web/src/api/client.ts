@@ -45,6 +45,10 @@ import type {
   DepartmentSeedResult,
   EffortLevel,
   FounderConsoleDto,
+  InboundLeadDto,
+  InboundLeadsResponse,
+  InboundLeadStatus,
+  InboundLeadUpdateInput,
   DailyBriefDto,
   WeeklyReportDto,
   VentureIdeaInput,
@@ -475,6 +479,19 @@ export const api = {
   // --- founder console (#104) ---
   getFounderConsole(workspaceId: string): Promise<FounderConsoleDto> {
     return request<FounderConsoleDto>(`/workspaces/${workspaceId}/founder-console`);
+  },
+
+  // --- inbound leads (#898): owner queue for captured hand-raises + 24h SLA state ---
+  getInboundLeads(params: { status?: InboundLeadStatus; sinceMs?: number; limit?: number } = {}): Promise<InboundLeadsResponse> {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set("status", params.status);
+    if (params.sinceMs !== undefined) qs.set("sinceMs", String(params.sinceMs));
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    const suffix = qs.size ? `?${qs.toString()}` : "";
+    return request<InboundLeadsResponse>(`/me/inbound/leads${suffix}`);
+  },
+  updateInboundLead(leadId: string, input: InboundLeadUpdateInput): Promise<{ lead: InboundLeadDto }> {
+    return patch(`/me/inbound/leads/${encodeURIComponent(leadId)}`, input) as Promise<{ lead: InboundLeadDto }>;
   },
 
   // --- founder briefings (#173): the daily brief, weekly P&L report, and decision queue ---

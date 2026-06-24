@@ -1,0 +1,171 @@
+/**
+ * Inbound lead queue (#898): the console's owner-facing notification + lifecycle surface for public hand-
+ * raises captured by `POST /inbound/leads`. It reads the durable lead API, highlights 24h SLA breaches,
+ * shows the full message, and lets the owner assign / set next action / move new → working → converted or
+ * archived without creating duplicate Reach enrolments.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../../api/client.js";
+import type { InboundLeadDto, InboundLeadStatus } from "../../api/types.js";
+
+const STATUSES: InboundLeadStatus[] = ["new", "working", "converted", "archived"];
+
+function formatWhen(ms: number): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+}
+
+function statusLabel(status: InboundLeadStatus): string {
+  return status[0]!.toUpperCase() + status.slice(1);
+}
+
+function preview(message: string): string {
+  return message.length > 96 ? `${message.slice(0, 93)}...` : message;
+}
+
+export function InboundLeadsPanel(): React.JSX.Element {
+  const [leads, setLeads] = useState<InboundLeadDto[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [assignee, setAssignee] = useState("");
+  const [nextAction, setNextAction] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load(): Promise<void> {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getInboundLeads({ limit: 50 });
+      setLeads(res.leads);
+      setSelectedId((prev) => prev ?? res.leads[0]?.id ?? null);
+    } catch {
+      setError("Inbound leads are not available right now.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const selected = useMemo(
+    () => leads.find((lead) => lead.id === selectedId) ?? leads[0] ?? null,
+    [leads, selectedId],
+  );
+  const openCount = leads.filter((lead) => lead.status === "new" || lead.status === "working").length;
+  const breachCount = leads.filter((lead) => lead.slaBreached && lead.status !== "converted" && lead.status !== "archived").length;
+
+  useEffect(() => {
+    setAssignee(selected?.assigneeMemberId ?? "");
+    setNextAction(selected?.nextAction ?? "");
+  }, [selected?.id, selected?.assigneeMemberId, selected?.nextAction]);
+
+  async function save(update: { status?: InboundLeadStatus; assign?: boolean }): Promise<void> {
+    if (!selected || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { lead } = await api.updateInboundLead(selected.id, {
+        status: update.status,
+        assigneeMemberId: update.assign ? assignee || null : undefined,
+        nextAction: update.assign ? nextAction || null : undefined,
+      });
+      setLeads((prev) => prev.map((item) => (item.id === lead.id ? lead : item)));
+      setSelectedId(lead.id);
+    } catch {
+      setError("Could not update that lead.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="inbound-leads" aria-labelledby="inbound-leads-title">
+      <div className="inbound-leads__head">
+        <div>
+          <p className="inbound-leads__eyebrow">Inbound leads</p>
+          <h2 id="inbound-leads-title" className="inbound-leads__title">Captured hand-raises</h2>
+        </div>
+        <div className="inbound-leads__counts" aria-label={`${openCount} open, ${breachCount} breached`}>
+          <span>{openCount} open</span>
+          <span className={breachCount ? "inbound-leads__breach" : ""}>{breachCount} SLA</span>
+        </div>
+      </div>
+
+      {error && <p className="inbound-leads__error" role="alert">{error}</p>}
+
+      {loading ? (
+        <p className="inbound-leads__empty">Loading inbound leads...</p>
+      ) : leads.length === 0 ? (
+        <p className="inbound-leads__empty">No captured leads yet.</p>
+      ) : (
+        <div className="inbound-leads__grid">
+          <ul className="inbound-leads__list" aria-label="Captured inbound leads">
+            {leads.map((lead) => {
+              const active = lead.id === selected?.id;
+              return (
+                <li key={lead.id}>
+                  <button
+                    type="button"
+                    className={`inbound-leads__row${active ? " inbound-leads__row--active" : ""}`}
+                    onClick={() => setSelectedId(lead.id)}
+                  >
+                    <span className="inbound-leads__rowtop">
+                      <b>{lead.name ?? lead.email}</b>
+                      <em className={`inbound-leads__status inbound-leads__status--${lead.status}`}>{statusLabel(lead.status)}</em>
+                    </span>
+                    <span className="inbound-leads__meta">{lead.email} · {formatWhen(lead.createdAtMs)}</span>
+                    <span className="inbound-leads__preview">{preview(lead.message)}</span>
+                    {lead.slaBreached && lead.status !== "converted" && lead.status !== "archived" && (
+                      <span className="inbound-leads__sla">24h SLA breached</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {selected && (
+            <article className="inbound-leads__detail" aria-label="Lead details">
+              <div className="inbound-leads__detailhead">
+                <div>
+                  <h3>{selected.name ?? selected.email}</h3>
+                  <p>{selected.email}</p>
+                </div>
+                <span className={`inbound-leads__status inbound-leads__status--${selected.status}`}>{statusLabel(selected.status)}</span>
+              </div>
+              <dl className="inbound-leads__facts">
+                <div><dt>Source</dt><dd>{selected.source}</dd></div>
+                <div><dt>SLA due</dt><dd>{formatWhen(selected.slaDueAtMs)}</dd></div>
+                <div><dt>Reach key</dt><dd>{selected.reachContactKey}</dd></div>
+              </dl>
+              <p className="inbound-leads__message">{selected.message}</p>
+              <label className="inbound-leads__field">
+                <span>Assignee member ID</span>
+                <input value={assignee} onChange={(e) => setAssignee(e.target.value.trim())} placeholder="Member UUID" />
+              </label>
+              <label className="inbound-leads__field">
+                <span>Next action</span>
+                <textarea rows={2} value={nextAction} onChange={(e) => setNextAction(e.target.value)} placeholder="Reply, qualify, book meeting..." />
+              </label>
+              <div className="inbound-leads__actions" aria-label="Lead actions">
+                <button type="button" onClick={() => void save({ assign: true })} disabled={saving}>Save</button>
+                {STATUSES.map((status) => (
+                  <button
+                    type="button"
+                    key={status}
+                    onClick={() => void save({ status })}
+                    disabled={saving || selected.status === status}
+                  >
+                    {statusLabel(status)}
+                  </button>
+                ))}
+              </div>
+            </article>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}

@@ -1,5 +1,6 @@
 import type { DeployStatus, PullRequestDto, ReviewCommentDto, RunStatus, TeamEvent } from "@reload/shared";
 import type { Message } from "../db/repositories/messages.js";
+import type { NotificationType } from "../notifications/types.js";
 
 /** Presence states a member can be in within a workspace (#5). */
 export type PresenceStatus = "online" | "away" | "offline";
@@ -24,7 +25,7 @@ export interface MentionEvent {
  */
 export interface NotificationEvent {
   id: string;
-  type: "mention" | "dm" | "reply" | "assignment" | "approval";
+  type: NotificationType;
   recipientMemberId: string;
   actorMemberId: string | null;
   channelId: string | null;

@@ -9,7 +9,7 @@
  * primitive — it's part of the model/transport so the surface is complete, but no in-repo
  * trigger emits it yet (ADR-0008).
  */
-export const NOTIFICATION_TYPES = ["mention", "dm", "reply", "assignment", "approval"] as const;
+export const NOTIFICATION_TYPES = ["mention", "dm", "reply", "assignment", "approval", "inbound_lead"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export function isNotificationType(value: unknown): value is NotificationType {
