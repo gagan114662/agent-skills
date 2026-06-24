@@ -5,6 +5,7 @@ import {
   growthToVentureSignal,
   recommendExperiments,
   scoreGrowth,
+  sourceMetricsFromEvents,
 } from "./score.js";
 import type {
   ExperimentStatus,
@@ -14,6 +15,7 @@ import type {
   GrowthExperimentRecord,
   GrowthExperimentSuggestion,
   GrowthFunnel,
+  GrowthSourceMetric,
 } from "./types.js";
 
 /**
@@ -46,6 +48,7 @@ export interface GrowthExperimentStore {
     variant: string;
     metricKey: string;
     targetQuery: string;
+    targetSource: string;
     proposedByMemberId: string | null;
   }): Promise<GrowthExperimentRecord>;
   get(workspaceId: string, id: string): Promise<GrowthExperimentRecord | undefined>;
@@ -113,6 +116,8 @@ export interface GrowthSummary {
   ventureSignal: number;
   /** Top acquisition sources by weight, descending. */
   topSources: SourceWeight[];
+  /** Per-source funnel and conversion-rate readout for cohort quality. */
+  sourceMetrics: GrowthSourceMetric[];
   experiments: GrowthExperimentRecord[];
   /** Up to three next experiments, weakest funnel stage first (the growth tick's "next 3"). */
   recommendations: GrowthExperimentSuggestion[];
@@ -244,6 +249,7 @@ export class GrowthService {
       score,
       ventureSignal: growthToVentureSignal(score),
       topSources: topSources(events),
+      sourceMetrics: sourceMetricsFromEvents(events),
       experiments: scopedExperiments,
       recommendations: recommendExperiments(funnel),
     };
@@ -259,6 +265,7 @@ export class GrowthService {
       variant?: string;
       metricKey?: string;
       targetQuery?: string;
+      targetSource?: string;
       proposedByMemberId?: string | null;
     },
   ): Promise<GrowthExperimentRecord> {
@@ -270,6 +277,7 @@ export class GrowthService {
       variant: input.variant ?? "",
       metricKey: input.metricKey ?? "",
       targetQuery: input.targetQuery ?? "",
+      targetSource: input.targetSource ?? "",
       proposedByMemberId: input.proposedByMemberId ?? null,
     });
   }

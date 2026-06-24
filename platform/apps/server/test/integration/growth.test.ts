@@ -59,7 +59,8 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
       await record(w.workspaceId, w.cookie, "acquisition", "producthunt", 80);
       await record(w.workspaceId, w.cookie, "acquisition", "organic", 20);
       await record(w.workspaceId, w.cookie, "activation", "", 40);
-      await record(w.workspaceId, w.cookie, "conversion", "", 10);
+      await record(w.workspaceId, w.cookie, "conversion", "producthunt", 4);
+      await record(w.workspaceId, w.cookie, "conversion", "organic", 6);
       await record(w.workspaceId, w.cookie, "retention", "", 20);
 
       const bad = await app.inject({
@@ -84,6 +85,11 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
       expect(summary.score).toBeCloseTo(37.25, 1);
       expect(summary.ventureSignal).toBeCloseTo(3.725, 2);
       expect(summary.topSources[0]).toEqual({ source: "producthunt", value: 80 });
+      expect(summary.sourceMetrics).toEqual([
+        expect.objectContaining({ source: "producthunt", acquisition: 80, conversion: 4, conversionRate: 0.05 }),
+        expect.objectContaining({ source: "organic", acquisition: 20, conversion: 6, conversionRate: 0.3 }),
+        expect.objectContaining({ source: "(unattributed)", activation: 40, retention: 20 }),
+      ]);
       expect(summary.recommendations).toHaveLength(3);
       // conversionRate (.25) is the weakest stage → first recommendation.
       expect(summary.recommendations[0].stage).toBe("conversion");
@@ -93,11 +99,17 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
         method: "POST",
         url: `/workspaces/${w.workspaceId}/growth/experiments`,
         cookies: { rid: w.cookie },
-        payload: { channel: "producthunt", hypothesis: "Launch lifts conversion", targetQuery: "ai agent platform" },
+        payload: {
+          channel: "producthunt",
+          hypothesis: "Launch lifts conversion",
+          targetQuery: "ai agent platform",
+          targetSource: "producthunt",
+        },
       });
       expect(proposed.statusCode).toBe(201);
       const experimentId = proposed.json().id;
       expect(proposed.json().status).toBe("proposed");
+      expect(proposed.json().targetSource).toBe("producthunt");
 
       // (4) promote it to an external post → a PENDING #13 approval is created (gated, NOT executed);
       // an agent never publishes autonomously. The route answers 202 with the gated request id.
@@ -141,7 +153,7 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
           cookies: { rid: w.cookie },
         })
       ).json();
-      expect(console.growth.totalEvents).toBe(5);
+      expect(console.growth.totalEvents).toBe(6);
       expect(console.growth.acquisition).toBe(100);
       expect(console.growth.score).toBeCloseTo(37.25, 1);
       expect(console.growth.topSource).toBe("producthunt");

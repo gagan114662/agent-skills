@@ -14,6 +14,8 @@ function experiment(over: Partial<GrowthExperimentRecord> = {}): GrowthExperimen
     hypothesis: "A team-priced package lifts paid conversion.",
     variant: "team package",
     metricKey: "trial_to_paid",
+    targetQuery: "",
+    targetSource: "",
     status: "running",
     proposedByMemberId: "member-1",
     approvalRequestId: null,
@@ -38,6 +40,8 @@ function makeStore(seed: GrowthExperimentRecord[] = []): GrowthExperimentStore {
         hypothesis: input.hypothesis,
         variant: input.variant,
         metricKey: input.metricKey,
+        targetQuery: input.targetQuery,
+        targetSource: input.targetSource,
         status: "proposed",
         proposedByMemberId: input.proposedByMemberId,
       });
@@ -97,6 +101,7 @@ describe("Growth experiment registry (#616)", () => {
       hypothesis: "A team-priced package lifts paid conversion.",
       variant: "team package",
       metricKey: "trial_to_paid",
+      targetSource: "producthunt",
       proposedByMemberId: "member-1",
     });
 
@@ -104,6 +109,7 @@ describe("Growth experiment registry (#616)", () => {
       hypothesis: "A team-priced package lifts paid conversion.",
       variant: "team package",
       metricKey: "trial_to_paid",
+      targetSource: "producthunt",
       result: "",
       decision: "",
       status: "proposed",

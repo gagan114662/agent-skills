@@ -34,6 +34,7 @@ function experiment(over: Partial<GrowthExperimentRecord> = {}): GrowthExperimen
     variant: "",
     metricKey: "",
     targetQuery: "",
+    targetSource: "",
     status: "running",
     proposedByMemberId: "member-1",
     approvalRequestId: null,

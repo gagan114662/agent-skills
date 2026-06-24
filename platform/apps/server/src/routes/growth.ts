@@ -84,6 +84,7 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
       variant?: string;
       metricKey?: string;
       targetQuery?: string;
+      targetSource?: string;
     };
     if (!body.channel || !body.hypothesis) {
       return reply.code(400).send({ error: "channel and hypothesis are required" });
@@ -95,6 +96,7 @@ export async function growthRoutes(app: FastifyInstance, opts: GrowthRoutesOptio
       variant: body.variant,
       metricKey: body.metricKey,
       targetQuery: body.targetQuery,
+      targetSource: body.targetSource,
       proposedByMemberId: id.memberId,
     });
     return reply.code(201).send(experiment);

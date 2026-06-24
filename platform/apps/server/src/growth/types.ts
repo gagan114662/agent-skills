@@ -64,6 +64,8 @@ export interface GrowthExperimentRecord {
   metricKey: string;
   /** The content engine's measurable target query (e.g. a keyword to rank for); `''` when none. */
   targetQuery: string;
+  /** Optional source cohort this experiment is meant to measure (e.g. `producthunt`). */
+  targetSource: string;
   status: ExperimentStatus;
   /** The marketing agent member that proposed it (soft reference), or null. */
   proposedByMemberId: string | null;
@@ -111,4 +113,14 @@ export interface GrowthExperimentSuggestion {
   stage: ExperimentStage;
   channel: string;
   hypothesis: string;
+}
+
+/** Per-source cohort readout for acquisition quality. */
+export interface GrowthSourceMetric {
+  source: string;
+  acquisition: number;
+  activation: number;
+  conversion: number;
+  retention: number;
+  conversionRate: number;
 }

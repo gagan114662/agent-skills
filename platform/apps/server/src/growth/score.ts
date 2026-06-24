@@ -7,6 +7,7 @@ import {
   type GrowthExperimentSuggestion,
   type GrowthFunnel,
   type GrowthScore,
+  type GrowthSourceMetric,
 } from "./types.js";
 
 /**
@@ -49,6 +50,26 @@ export function funnelRates(funnel: GrowthFunnel): FunnelRates {
     conversionRate: ratio(funnel.conversion, funnel.activation),
     retentionRate: ratio(funnel.retention, funnel.activation),
   };
+}
+
+/** Aggregate the same funnel by source cohort so volume and quality can be compared by channel. */
+export function sourceMetricsFromEvents(events: readonly GrowthEventRecord[]): GrowthSourceMetric[] {
+  const bySource = new Map<string, GrowthFunnel>();
+  for (const e of events) {
+    if (!isGrowthEventKind(e.kind)) continue;
+    if (typeof e.value !== "number" || e.value <= 0) continue;
+    const source = e.source || "(unattributed)";
+    const funnel = bySource.get(source) ?? { acquisition: 0, activation: 0, conversion: 0, retention: 0 };
+    funnel[e.kind] += e.value;
+    bySource.set(source, funnel);
+  }
+  return [...bySource.entries()]
+    .map(([source, funnel]) => ({
+      source,
+      ...funnel,
+      conversionRate: ratio(funnel.conversion, funnel.acquisition),
+    }))
+    .sort((a, b) => b.acquisition - a.acquisition || b.conversionRate - a.conversionRate || a.source.localeCompare(b.source));
 }
 
 /**
