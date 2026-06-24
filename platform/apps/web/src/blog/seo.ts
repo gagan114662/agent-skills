@@ -29,6 +29,8 @@ export interface PrerenderPage {
    * the structured-data helpers; it must already be HTML-safe (see `renderJsonLd`).
    */
   headExtra?: string;
+  /** HTML language for the document root. */
+  lang?: string;
 }
 
 /** The production origin. Overridable for previews via SITE_ORIGIN; trailing slash stripped. */
@@ -73,6 +75,10 @@ function setCanonical(html: string, href: string): string {
   return html.replace(/(<link\s+rel="canonical"\s+href=")[\s\S]*?(")/i, `$1${escapeHtml(href)}$2`);
 }
 
+function setHtmlLang(html: string, lang: string): string {
+  return html.replace(/(<html\s+lang=")[^"]*(")/i, `$1${escapeHtml(lang)}$2`);
+}
+
 /**
  * Produce the final static HTML for one page: inject the SSR body into `#root` and rewrite the head meta
  * (title / description / canonical / Open Graph / Twitter) for this specific URL. The built shell's tags
@@ -80,6 +86,7 @@ function setCanonical(html: string, href: string): string {
  */
 export function injectPage(template: string, page: PrerenderPage, origin: string): string {
   let out = template.replace(/<div id="root">\s*<\/div>/, `<div id="root">${page.html}</div>`);
+  out = setHtmlLang(out, page.lang ?? "en");
 
   const canonical = canonicalUrl(origin, page.urlPath);
   out = setCanonical(out, canonical);

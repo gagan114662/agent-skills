@@ -2,7 +2,7 @@
  * Blog component + routing tests (#252): the index lists posts, a post renders its markdown body, an
  * unknown slug degrades gracefully, and the path → slug parsing is correct.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import Blog, { BlogIndex, BlogPostPage, blogSlug } from "./Blog.js";
 import { listPostMeta } from "./posts.js";
@@ -33,6 +33,13 @@ describe("BlogIndex", () => {
       expect(screen.getByRole("heading", { level: 2, name: post.title })).toBeInTheDocument();
       expect(container.querySelector(`a[href="${BLOG.path}/${post.slug}"]`)).toBeTruthy();
     }
+  });
+
+  it("formats dates with the visitor locale instead of always en-US", () => {
+    vi.stubGlobal("navigator", { language: "fr-FR" });
+    render(<BlogIndex />);
+    expect(screen.getAllByText(/juin 2026/i).length).toBeGreaterThan(0);
+    vi.unstubAllGlobals();
   });
 });
 

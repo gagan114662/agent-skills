@@ -73,6 +73,13 @@ describe("shell layout overflow guards (#169)", () => {
     expect(decl(me, "white-space")).toBe("nowrap");
   });
 
+  it("auth and onboarding cards fit narrow phones instead of forcing a 360px viewport", () => {
+    const card = ruleBody(".auth__card");
+    expect(decl(card, "width")).toBe("360px");
+    expect(decl(card, "max-width")).toBe("calc(100vw - 32px)");
+    expect(decl(card, "box-sizing")).toBe("border-box");
+  });
+
   it("the Deploy two-column grid can shrink its tracks below their content width", () => {
     expect(decl(ruleBody(".deploy__sidebar,\n.deploy__main"), "min-width")).toBe("0");
   });

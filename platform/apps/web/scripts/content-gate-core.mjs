@@ -18,6 +18,9 @@ export const REQUIRED_KEYS = ["title", "slug", "description", "author", "date", 
 
 /** The only statuses a post may carry. */
 export const VALID_STATUSES = ["draft", "published"];
+export const TITLE_MAX_CHARS = 60;
+export const DESCRIPTION_MIN_CHARS = 110;
+export const DESCRIPTION_MAX_CHARS = 160;
 
 /**
  * Internal agent / channel markers that must never appear in a committed artifact (title, description, or
@@ -162,6 +165,8 @@ export function lintPost(opts) {
 
   const slug = meta.slug ?? "";
   const expectedSlug = slugFromPath(path);
+  const title = meta.title ?? "";
+  const description = meta.description ?? "";
 
   // 2. Slug must match the filename (catches the truncation/drift that ships a slug ≠ its file).
   if (slug && slug !== expectedSlug) {
@@ -184,11 +189,36 @@ export function lintPost(opts) {
   }
 
   // 4. No internal agent / channel markers in any public field.
-  const haystack = `${meta.title ?? ""}\n${meta.description ?? ""}\n${body}`;
+  const haystack = `${title}\n${description}\n${body}`;
   for (const marker of INTERNAL_MARKERS) {
     if (marker.pattern.test(haystack)) {
       violations.push({ code: "internal-marker", message: `contains internal agent/channel marker: "${marker.label}"` });
     }
+  }
+
+  if (title && title.length > TITLE_MAX_CHARS) {
+    violations.push({
+      code: "title-too-long",
+      message: `title is ${title.length} characters; keep it at or below ${TITLE_MAX_CHARS}`,
+    });
+  }
+  if (description) {
+    if (description.length < DESCRIPTION_MIN_CHARS || description.length > DESCRIPTION_MAX_CHARS) {
+      violations.push({
+        code: "description-length",
+        message: `description is ${description.length} characters; keep it between ${DESCRIPTION_MIN_CHARS} and ${DESCRIPTION_MAX_CHARS}`,
+      });
+    }
+    const bodyStart = body.replace(/^#\s+.*(?:\n|$)/, "").replace(/[#*_\[\]()>-]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+    if (bodyStart.startsWith(description.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80))) {
+      violations.push({
+        code: "description-duplicates-body",
+        message: "description duplicates the body opener; write a specific search snippet instead",
+      });
+    }
+  }
+  if (!/^#\s+\S+/m.test(body)) {
+    violations.push({ code: "missing-h1", message: "body must include one H1 heading" });
   }
 
   // 5. Topic duplication against the existing corpus (exact slug, then near-duplicate).
