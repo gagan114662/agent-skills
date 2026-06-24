@@ -5,6 +5,7 @@ import {
   type GoogleTokens,
   type GoogleUserInfo,
 } from "./google-oauth.js";
+import { isTransientHttpStatus, retryWithBackoff } from "../reliability/retry-backoff.js";
 
 /**
  * The thin IO seam for the #260 Google flow: exchange the authorization code for tokens, and read the
@@ -31,11 +32,19 @@ export class GoogleOAuthError extends Error {
    * only marks "needs re-auth" when re-auth is genuinely required, never on a blip.
    */
   readonly reauthRequired: boolean;
-  constructor(message: string, options?: { reauthRequired?: boolean }) {
+  readonly status: number | undefined;
+  constructor(message: string, options?: { reauthRequired?: boolean; status?: number }) {
     super(message);
     this.name = "GoogleOAuthError";
     this.reauthRequired = options?.reauthRequired ?? false;
+    this.status = options?.status;
   }
+}
+
+function shouldRetryGoogleTokenError(err: unknown): boolean {
+  if (!(err instanceof GoogleOAuthError)) return true;
+  if (err.reauthRequired) return false;
+  return err.status === undefined || isTransientHttpStatus(err.status);
 }
 
 /** The real client: standard OAuth 2.0 code exchange + OpenID Connect userinfo. No SDK dependency. */
@@ -57,14 +66,21 @@ export function createGoogleOAuthClient(config: GoogleOAuthConfig): GoogleOAuthC
         token_type?: string;
       };
       try {
-        const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body,
-        });
-        if (!res.ok) throw new GoogleOAuthError(`token exchange returned ${res.status}`);
-        // Parse inside the try so a non-JSON error body (HTML/plaintext during an outage) is wrapped too.
-        json = (await res.json()) as typeof json;
+        json = await retryWithBackoff(
+          async () => {
+            const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body,
+            });
+            if (!res.ok) {
+              throw new GoogleOAuthError(`token exchange returned ${res.status}`, { status: res.status });
+            }
+            // Parse inside the try so a non-JSON error body (HTML/plaintext during an outage) is wrapped too.
+            return (await res.json()) as typeof json;
+          },
+          { maxAttempts: 3, baseDelayMs: 50, shouldRetry: shouldRetryGoogleTokenError },
+        );
       } catch (err) {
         if (err instanceof GoogleOAuthError) throw err;
         throw new GoogleOAuthError(`token exchange failed: ${(err as Error).message}`);
@@ -94,22 +110,28 @@ export function createGoogleOAuthClient(config: GoogleOAuthConfig): GoogleOAuthC
         error?: string;
       };
       try {
-        const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body,
-        });
-        json = (await res.json().catch(() => ({}))) as typeof json;
-        if (!res.ok) {
-          // Google returns 400 `invalid_grant` when the refresh token is revoked/expired, and 401 for a
-          // bad client — both mean re-auth is required. Other statuses (5xx) are transient.
-          const reauthRequired =
-            res.status === 401 || (res.status === 400 && json.error === "invalid_grant");
-          throw new GoogleOAuthError(
-            `token refresh returned ${res.status}${json.error ? ` (${json.error})` : ""}`,
-            { reauthRequired },
-          );
-        }
+        json = await retryWithBackoff(
+          async () => {
+            const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body,
+            });
+            const parsed = (await res.json().catch(() => ({}))) as typeof json;
+            if (!res.ok) {
+              // Google returns 400 `invalid_grant` when the refresh token is revoked/expired, and 401 for a
+              // bad client — both mean re-auth is required. Other statuses (5xx) are transient.
+              const reauthRequired =
+                res.status === 401 || (res.status === 400 && parsed.error === "invalid_grant");
+              throw new GoogleOAuthError(
+                `token refresh returned ${res.status}${parsed.error ? ` (${parsed.error})` : ""}`,
+                { reauthRequired, status: res.status },
+              );
+            }
+            return parsed;
+          },
+          { maxAttempts: 3, baseDelayMs: 50, shouldRetry: shouldRetryGoogleTokenError },
+        );
       } catch (err) {
         if (err instanceof GoogleOAuthError) throw err;
         throw new GoogleOAuthError(`token refresh failed: ${(err as Error).message}`);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import {
   CLAUDE_CONNECT_SERVICE_KEY,
@@ -16,11 +16,24 @@ import {
   LiveClaudeConnectProvider,
   createClaudeConnectProvider,
   CLAUDE_OAUTH_DEFAULT_SCOPES,
+  ClaudeConnectError,
 } from "../../src/auth/claude-connect.js";
 
 const SECRET = "test-connect-secret";
 const OWNER = "ws-owner";
 const OTHER = "ws-other";
+
+function res(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as unknown as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("connectClaude caps (#262) — default OFF, owner-workspace-first", () => {
   it("defaults to disabled + owner-workspace-first when no config block is set", () => {
@@ -233,6 +246,43 @@ describe("LiveClaudeConnectProvider (#262) — only constructed when a real clie
     expect(url.origin + url.pathname).toBe("https://auth.example.test/authorize");
     expect(url.searchParams.get("state")).toBe("st-9");
     expect(url.searchParams.get("client_id")).toBe("client-123");
+  });
+
+  it("retries a transient token exchange failure and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(res(503, {}))
+      .mockResolvedValueOnce(res(200, { access_token: "sk-ant-oat-ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const p = new LiveClaudeConnectProvider(cfg);
+    await expect(p.exchange({ code: "ac_ok", state: "st" })).resolves.toEqual({
+      token: "sk-ant-oat-ok",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the provider error after persistent token exchange failures", async () => {
+    const fetchMock = vi.fn(async () => res(503, {}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const p = new LiveClaudeConnectProvider(cfg);
+    await expect(p.exchange({ code: "ac_ok", state: "st" })).rejects.toMatchObject({
+      name: "ClaudeConnectError",
+      message: "token exchange returned 503",
+    } satisfies Partial<ClaudeConnectError>);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry a non-transient OAuth rejection", async () => {
+    const fetchMock = vi.fn(async () => res(400, { error: "invalid_grant" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const p = new LiveClaudeConnectProvider(cfg);
+    await expect(p.exchange({ code: "ac_bad", state: "st" })).rejects.toThrow(
+      "token exchange returned 400",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
