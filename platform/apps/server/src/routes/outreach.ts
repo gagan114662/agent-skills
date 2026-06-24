@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { OutreachService, OutreachValidationError } from "../outreach/service.js";
+import { clampOutreachMessagesLimit } from "../db/repositories/outreach.js";
 
 /**
  * Outreach engine routes (#225, ADR-0225) under `/workspaces/:wid/outreach`. Thin adapters over
@@ -126,7 +127,7 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     const q = req.query as { ideaId?: string; limit?: string };
-    const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
+    const limit = clampOutreachMessagesLimit(q.limit ? Number.parseInt(q.limit, 10) : undefined);
     return service.listMessages(wid, { ideaId: q.ideaId, limit });
   });
 
