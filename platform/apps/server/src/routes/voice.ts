@@ -7,6 +7,7 @@ import {
   VoiceStateError,
 } from "../voice/service.js";
 import type { VoiceSourceKind } from "../voice/classify.js";
+import { recordWebhookSignatureFailure } from "../observability/metrics.js";
 
 /**
  * Customer Voice Loop routes (#114, ADR-0114). Inbound is a signed webhook (`POST /voice/webhook/:wid`,
@@ -48,7 +49,11 @@ export async function voiceRoutes(app: FastifyInstance, opts: VoiceRoutesOptions
       try {
         verifyWebhookSignature(raw, typeof signature === "string" ? signature : undefined, secret);
       } catch (err) {
-        if (err instanceof WebhookVerificationError) return reply.code(400).send({ error: err.message });
+        if (err instanceof WebhookVerificationError) {
+          req.log.warn({ provider: "voice", workspaceId: wid, reason: err.message }, "webhook signature verification failed");
+          recordWebhookSignatureFailure("voice", err.message);
+          return reply.code(400).send({ error: err.message });
+        }
         throw err;
       }
 

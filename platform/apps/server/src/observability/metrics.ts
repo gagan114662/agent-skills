@@ -40,9 +40,19 @@ let inFlight = 0;
 // Top-level tick failures can happen before any per-workspace tick counter increments
 // (maintenance/listing/signal reads). Keep labels bounded to known loop names.
 const loopTickFailures = new Map<string, number>();
+const webhookSignatureFailures = new Map<string, { provider: string; reason: string; count: number }>();
 
 export function recordLoopTickFailure(loop: string): void {
   loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
+}
+
+export function recordWebhookSignatureFailure(provider: string, reason: string): void {
+  const safeProvider = provider || "unknown";
+  const safeReason = reason || "invalid_signature";
+  const key = `${safeProvider}|${safeReason}`;
+  const existing = webhookSignatureFailures.get(key);
+  if (existing) existing.count += 1;
+  else webhookSignatureFailures.set(key, { provider: safeProvider, reason: safeReason, count: 1 });
 }
 
 // --- saturation signals (#113) ----------------------------------------------
@@ -411,6 +421,7 @@ export function resetMetrics(): void {
   regionSessions.clear();
   saturationSample = null;
   loopTickFailures.clear();
+  webhookSignatureFailures.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -455,6 +466,14 @@ export function renderMetrics(): string {
   lines.push("# TYPE loop_tick_failures_total counter");
   for (const [loop, count] of loopTickFailures) {
     lines.push(`loop_tick_failures_total{loop="${esc(loop)}"} ${count}`);
+  }
+
+  lines.push("# HELP webhook_signature_failures_total Signature verification failures on unauthenticated inbound webhooks.");
+  lines.push("# TYPE webhook_signature_failures_total counter");
+  for (const s of webhookSignatureFailures.values()) {
+    lines.push(
+      `webhook_signature_failures_total{provider="${esc(s.provider)}",reason="${esc(s.reason)}"} ${s.count}`,
+    );
   }
 
   lines.push("# HELP process_uptime_seconds Seconds since the process started.");
