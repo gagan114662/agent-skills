@@ -7,6 +7,7 @@ import { autonomyLauncherFrom } from "../autonomy/default.js";
 import { ventureGatedLauncher } from "../venture/admission.js";
 import { createVentureAdmission } from "../venture/default.js";
 import { createDefaultVentureMemoryService } from "../venture-memory/default.js";
+import { createWorkspaceTaskEnricher } from "../marketing/default.js";
 import {
   insertBacklogItem,
   getBacklogItem,
@@ -26,6 +27,7 @@ import { getUsage, recordSessionCompute } from "../db/repositories/tenant-usage.
 import { getControls } from "../db/repositories/autonomy.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
 import type { SessionManager } from "../runtime/manager.js";
+import type { AutonomyLauncher } from "../autonomy/engine.js";
 
 /**
  * Production wiring for the Product Planning Loop (#115, ADR-0115). Default-OFF (config
@@ -57,14 +59,27 @@ async function autoDispatchAllowed(workspaceId: string): Promise<boolean> {
 const ventureMemoryForBrief = createDefaultVentureMemoryService();
 
 /** The #92 launcher (venture-gated #96), adapted to launch a build agent into the item's target. */
-function specDispatcherFrom(sessionManager: SessionManager): SpecDispatcher {
-  const launcher = ventureGatedLauncher(autonomyLauncherFrom(sessionManager), createVentureAdmission());
+export interface PlanningDispatcherDeps {
+  launcher?: Pick<AutonomyLauncher, "launch">;
+  enrichTask?: (workspaceId: string, task: string) => Promise<string>;
+  logger?: { warn(obj: Record<string, unknown>, msg: string): void };
+}
+
+export function specDispatcherFrom(
+  sessionManager: SessionManager,
+  deps: PlanningDispatcherDeps = {},
+): SpecDispatcher {
+  const launcher =
+    deps.launcher ??
+    ventureGatedLauncher(autonomyLauncherFrom(sessionManager), createVentureAdmission());
   return {
     dispatch: async ({ workspaceId, item, spec }) => {
       if (!item.targetChannelId || !item.targetAgentMemberId) {
         // An item with no launch target can never auto-dispatch — the operator must supply one (or it
         // stays #13-gated). Fail loud: the dispatch decision should never route such an item to auto.
-        throw new Error("planning: cannot auto-dispatch a backlog item with no target channel/agent");
+        throw new Error(
+          "planning: cannot auto-dispatch a backlog item with no target channel/agent",
+        );
       }
       let task = `Implement the spec "${spec.title}" (backlog item ${item.id}).\n\n${spec.body}`;
       // #197 AC1: a venture build session starts with the venture's durable memory + OKR drift, so the
@@ -75,6 +90,19 @@ function specDispatcherFrom(sessionManager: SessionManager): SpecDispatcher {
           if (brief) task = `${brief}\n\n---\n\n${task}`;
         } catch {
           // memory retrieval is non-critical; dispatch proceeds without the brief
+        }
+      }
+      // #962: autonomy planning dispatch must brief agents with the same workspace-context preamble used by
+      // @mention launches, or autonomous output loses site URL, positioning, and brand voice. Best-effort:
+      // enrichment is context only, never dispatch authority.
+      if (deps.enrichTask) {
+        try {
+          task = await deps.enrichTask(workspaceId, task);
+        } catch (err) {
+          deps.logger?.warn(
+            { err, workspaceId, backlogItemId: item.id, specId: spec.id },
+            "planning task enrichment failed; launching raw task",
+          );
         }
       }
       return launcher.launch({
@@ -95,7 +123,10 @@ function specDispatcherFrom(sessionManager: SessionManager): SpecDispatcher {
  * an FK to members (the SRE-loop gotcha), so a metric-sourced item with no target still needs a real
  * member to anchor the approval.
  */
-async function resolveRequester(workspaceId: string, targetAgentMemberId: string | null): Promise<string> {
+async function resolveRequester(
+  workspaceId: string,
+  targetAgentMemberId: string | null,
+): Promise<string> {
   if (targetAgentMemberId) return targetAgentMemberId;
   const members = await listWorkspaceMembers(workspaceId);
   const human = members.find((m) => m.kind === "human");
@@ -111,7 +142,12 @@ const specApprovalQueue: SpecApprovalQueue = {
       workspaceId,
       requesterMemberId: await resolveRequester(workspaceId, item.targetAgentMemberId),
       actionType: PLANNING_DISPATCH_ACTION,
-      payload: { backlogItemId: item.id, specId: spec.id, source: item.source, sourceRef: item.sourceRef },
+      payload: {
+        backlogItemId: item.id,
+        specId: spec.id,
+        source: item.source,
+        sourceRef: item.sourceRef,
+      },
       amount: null,
       summary:
         `Planning dispatch (${reason}): "${item.title}" — propose a build session for spec ` +
@@ -125,6 +161,7 @@ const specApprovalQueue: SpecApprovalQueue = {
 };
 
 export function createDefaultPlanningService(sessionManager: SessionManager): PlanningService {
+  const enrichTask = createWorkspaceTaskEnricher();
   return new PlanningService({
     backlog: {
       insert: insertBacklogItem,
@@ -139,7 +176,7 @@ export function createDefaultPlanningService(sessionManager: SessionManager): Pl
       linkSession: linkSpecSession,
       linkApproval: linkSpecApproval,
     },
-    dispatcher: specDispatcherFrom(sessionManager),
+    dispatcher: specDispatcherFrom(sessionManager, { enrichTask }),
     approvals: specApprovalQueue,
     caps: (workspaceId) => resolvePlanningCaps(loadConfig(workspaceId).planning),
     autoDispatchAllowed,

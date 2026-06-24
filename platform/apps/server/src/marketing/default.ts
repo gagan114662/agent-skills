@@ -25,7 +25,10 @@ import { loadConfig } from "../config/loader.js";
 import { loadEnv } from "../env.js";
 import { harnessRequiresAuth } from "../runtime/agent-auth.js";
 import { createAgentAuthResolver } from "../runtime/auth-default.js";
-import { getWorkspaceClaudeModel, recordClaudeAuthFailure } from "../db/repositories/agent-credentials.js";
+import {
+  getWorkspaceClaudeModel,
+  recordClaudeAuthFailure,
+} from "../db/repositories/agent-credentials.js";
 import { effectiveModel, isKnownModel } from "../runtime/models.js";
 import { buildConnectPrompt, buildModelPrompt } from "./connect-prompt.js";
 import type { MarketingMentionTrigger } from "../messaging/delivery.js";
@@ -33,7 +36,11 @@ import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blue
 import { resolveMarketingCaps } from "./caps.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import { observeBridgeResult } from "../agent-channel-bridge/observe.js";
-import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
+import {
+  seedMarketingDepartment,
+  type MarketingSeedDeps,
+  type MarketingSeedResult,
+} from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
 import { handleHumanMentionPost, type AddressedPersona } from "./mention-trigger.js";
@@ -70,6 +77,63 @@ function ventureGatedSubagentLauncher(sessionManager: SessionManager): SubagentL
       await gate.check(input.workspaceId);
       return sessionManager.launch(input);
     },
+  };
+}
+
+export interface WorkspaceTaskEnricherDeps {
+  siteReader?: { read(url: string): Promise<Parameters<typeof composeSiteFactsBlock>[0]> };
+  decisionService?: {
+    priorDecisionsBlock(
+      workspaceId: string,
+      input: { topic: string; limit: number },
+    ): Promise<string | null>;
+  };
+}
+
+/**
+ * Shared workspace-context task enrichment used by both @mention launches and autonomy planning dispatch.
+ * The behavior is still owner-first/default-OFF through the marketing config gates; callers get the raw
+ * task back unless the workspace has explicitly supplied marketable context.
+ */
+export function createWorkspaceTaskEnricher(deps: WorkspaceTaskEnricherDeps = {}) {
+  const siteReader =
+    deps.siteReader ?? createSiteReader({ provider: new LiveSiteReaderProvider() });
+  const decisionService = deps.decisionService ?? createDefaultDecisionService();
+  return async (workspaceId: string, task: string): Promise<string> => {
+    const marketing = loadConfig(workspaceId).marketing;
+    const onboarding = await getWorkspaceOnboarding(workspaceId);
+    if (!shouldInjectForWorkspace(marketing, workspaceId, onboarding)) return task;
+    const facts = resolveWorkspaceFacts({
+      workspaceId,
+      ownerWorkspaceId: marketing.ownerWorkspaceId,
+      configuredSiteUrl: marketing.siteUrl,
+      domain: onboarding?.domain ?? null,
+      productContext: onboarding?.productContext ?? null,
+      productName: onboarding?.targetName ?? null,
+      positioning: onboarding?.targetPositioning ?? null,
+      audience: onboarding?.targetAudience ?? null,
+      competitors: onboarding?.targetCompetitors ?? null,
+      brandVoice: BRAND_VOICE_LINE,
+    });
+    if (facts.siteUrl && shouldReadSiteContent(marketing, workspaceId)) {
+      try {
+        const siteFacts = await siteReader.read(facts.siteUrl);
+        const block = composeSiteFactsBlock(siteFacts);
+        if (block) facts.siteContentBlock = block;
+      } catch {
+        // A briefed launch never fails on a crawl error.
+      }
+    }
+    try {
+      const block = await decisionService.priorDecisionsBlock(workspaceId, {
+        topic: task,
+        limit: 5,
+      });
+      if (block) facts.priorDecisionsBlock = block;
+    } catch {
+      // Decision recall is best-effort; the typed workspace facts are still enough context.
+    }
+    return enrichTaskWithContext(task, facts);
   };
 }
 
@@ -210,7 +274,9 @@ export async function maybeAutoSeedOnSignup(
  * the launcher-free `baseSeedDeps`, `postWelcomeTasks: false`) so it cannot spend; best-effort per
  * workspace via `runMarketingBackfill`. Returns counts for the boot log.
  */
-export async function backfillMarketingDepartments(log: FastifyBaseLogger): Promise<MarketingBackfillResult> {
+export async function backfillMarketingDepartments(
+  log: FastifyBaseLogger,
+): Promise<MarketingBackfillResult> {
   const deps = baseSeedDeps();
   return runMarketingBackfill({
     listWorkspaceIds,
@@ -218,13 +284,18 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
       (await listWorkspaceMembers(workspaceId)).find((m) => m.kind === "human")?.id,
     isEnabled: (workspaceId) => resolveMarketingCaps(loadConfig(workspaceId).marketing).enabled,
     seed: ({ workspaceId, createdByMemberId }) =>
-      seedMarketingDepartment({ workspaceId, createdByMemberId, postWelcomeTasks: false }, deps).then(() => undefined),
+      seedMarketingDepartment(
+        { workspaceId, createdByMemberId, postWelcomeTasks: false },
+        deps,
+      ).then(() => undefined),
     // #226: an account activated before #221 has welcome tasks but no venture row — its console used to sit
     // on the empty desk forever. Conservatively stand up the missing venture ONLY for such already-activated
     // workspaces (those with ≥1 welcome task), so a merely auto-seeded tenant that never activated keeps its
     // genuine first-run empty desk.
     backfillVenture: async ({ workspaceId, createdByMemberId }) => {
-      const welcomeTasks = (await listMarketingTasks(workspaceId)).filter((t) => t.kind === "welcome");
+      const welcomeTasks = (await listMarketingTasks(workspaceId)).filter(
+        (t) => t.kind === "welcome",
+      );
       if (welcomeTasks.length === 0) return { created: false };
       const { ideaId, created } = await ensureFoundingVenture(workspaceId, createdByMemberId);
       // #230: an account activated before this fix has a venture row that was never driven through the
@@ -254,11 +325,13 @@ export function createMarketingMentionService(
   const siteReader = createSiteReader({ provider: new LiveSiteReaderProvider() });
   // #513: recall the workspace's prior decisions to brief a launched agent (read-only; no send/spend).
   const decisionService = createDefaultDecisionService();
+  const enrichTask = createWorkspaceTaskEnricher({ siteReader, decisionService });
   const subagents = new SubagentService({
     getPersona,
     getChannelWorkspace: async (channelId) => (await getChannel(channelId))?.workspaceId,
     channelCapabilityFor: effectiveChannelCapabilityFor,
-    mentionedMemberIds: async (messageId) => (await listMentionsOnMessage(messageId)).map((m) => m.memberId),
+    mentionedMemberIds: async (messageId) =>
+      (await listMentionsOnMessage(messageId)).map((m) => m.memberId),
     resolveSkills: (persona) => skillsForHandle(persona.name), // #155: load the agent's skill kit per session
     extraToolsForWorkspace: spawnToolsForWorkspace, // #319: gated subagent-spawn tool (default OFF, owner-first)
     launcher: ventureGatedSubagentLauncher(sessionManager),
@@ -292,53 +365,7 @@ export function createMarketingMentionService(
     // owner-workspace-first (`shouldInjectWorkspaceContext`): a deployment that hasn't opted in returns the
     // task unchanged, so every existing launch is byte-for-byte the same. Facts are read from the existing
     // `workspace_onboarding` row + `marketing.*` config — no new authority, no send/spend reachable.
-    enrichTask: async (workspaceId, task) => {
-      const marketing = loadConfig(workspaceId).marketing;
-      // #502: read the onboarding row up front so the gate can see whether this workspace has set an explicit
-      // marketing target. We inject when EITHER the #320 owner-first flag is on OR the workspace has told the
-      // fleet what to market — that second arm is what lets ipop market ANY company, not just itself. A
-      // workspace that has done neither returns the task unchanged (byte-for-byte the prior behaviour).
-      const onboarding = await getWorkspaceOnboarding(workspaceId);
-      if (!shouldInjectForWorkspace(marketing, workspaceId, onboarding)) return task;
-      const facts = resolveWorkspaceFacts({
-        workspaceId,
-        ownerWorkspaceId: marketing.ownerWorkspaceId,
-        configuredSiteUrl: marketing.siteUrl,
-        domain: onboarding?.domain ?? null,
-        productContext: onboarding?.productContext ?? null,
-        // #502: the structured marketing target — what the fleet is marketing, the single source of truth.
-        productName: onboarding?.targetName ?? null,
-        positioning: onboarding?.targetPositioning ?? null,
-        audience: onboarding?.targetAudience ?? null,
-        competitors: onboarding?.targetCompetitors ?? null,
-        brandVoice: BRAND_VOICE_LINE,
-      });
-      // #363: connect the real public-site data source. Behind a second default-OFF, owner-first gate
-      // (`shouldReadSiteContent`), crawl the resolved site read-only and append the distilled pages as a
-      // sanitized, DATA-framed block — so a briefed SEO audit cites real ipop.ai content. Never throws:
-      // a crawl failure just yields no block (the preamble degrades to the typed facts). The fetched
-      // bytes are untrusted DATA, sanitized by the distill core — never instructions (#200 FM#6).
-      if (facts.siteUrl && shouldReadSiteContent(marketing, workspaceId)) {
-        try {
-          const siteFacts = await siteReader.read(facts.siteUrl);
-          const block = composeSiteFactsBlock(siteFacts);
-          if (block) facts.siteContentBlock = block;
-        } catch {
-          // read() is defensive, but belt-and-suspenders: a briefed launch never fails on a crawl error.
-        }
-      }
-      // #513 shared memory: surface the workspace's prior decisions so a briefed agent reuses what a
-      // teammate decided instead of re-deriving it. Recalled by the task topic, capped, and DATA-framed by
-      // the decisions seam. Best-effort: a recall error just yields no block (the preamble degrades to the
-      // typed facts), and an empty store is a no-op — every existing launch stays byte-for-byte the same.
-      try {
-        const block = await decisionService.priorDecisionsBlock(workspaceId, { topic: task, limit: 5 });
-        if (block) facts.priorDecisionsBlock = block;
-      } catch {
-        // recall is defensive; a briefed launch never fails on a decision-store hiccup.
-      }
-      return enrichTaskWithContext(task, facts);
-    },
+    enrichTask,
     // #68 subscription-first auth gate: when the deployment runs a REAL harness (claude-code/codex) and
     // a workspace hasn't connected a Claude account, the persona posts a friendly connect prompt
     // instead of launching — no session, no admission slot, no budget. For the default demo harness
@@ -501,7 +528,9 @@ export function buildMarketingMentionTrigger(
           (await personaMentionsOnMessage(workspaceId, messageId))
             .map((p) => {
               const dept = departmentForHandle(p.name);
-              return dept ? { agentMemberId: p.agentMemberId, name: p.name, homeChannel: dept.channel } : null;
+              return dept
+                ? { agentMemberId: p.agentMemberId, name: p.name, homeChannel: dept.channel }
+                : null;
             })
             .filter((p): p is AddressedPersona => p !== null),
         postNotice: async (input) => {
