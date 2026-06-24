@@ -16,7 +16,10 @@ describe("decidePublishToIpop (#250) — pure plan", () => {
   const opts = { contentDir: "content/blog" };
 
   it("derives a slugged, traversal-proof path + branch from the title", () => {
-    const plan = decidePublishToIpop({ title: "Why AI Marketing Wins!", content: "# Hi" }, opts);
+    const plan = decidePublishToIpop(
+      { title: "Why AI Marketing Wins!", content: "# Why AI marketing wins\n\nAI marketing wins because it scales personalization." },
+      opts,
+    );
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.slug).toBe("why-ai-marketing-wins");
@@ -27,7 +30,10 @@ describe("decidePublishToIpop (#250) — pure plan", () => {
   });
 
   it("a malicious title/slug can never escape the content dir (no traversal, charset [a-z0-9-])", () => {
-    const plan = decidePublishToIpop({ title: "../../etc/passwd", content: "x", slug: "../../../secret" }, opts);
+    const plan = decidePublishToIpop(
+      { title: "../../etc/passwd", content: "This is a complete, publishable body.", slug: "../../../secret" },
+      opts,
+    );
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.path.startsWith("content/blog/")).toBe(true);
@@ -36,21 +42,72 @@ describe("decidePublishToIpop (#250) — pure plan", () => {
   });
 
   it("honors an explicit slug + extension", () => {
-    const plan = decidePublishToIpop({ title: "Post", content: "x", slug: "My Post", extension: "mdx" }, opts);
+    const plan = decidePublishToIpop(
+      { title: "Post", content: "A complete body sentence.", slug: "My Post", extension: "mdx" },
+      opts,
+    );
     expect(plan.ok && plan.path).toBe("content/blog/my-post.mdx");
   });
 
   it("normalises a content dir, stripping stray slashes and traversal segments", () => {
-    const plan = decidePublishToIpop({ title: "Post", content: "x" }, { contentDir: "/content/../blog/" });
+    const plan = decidePublishToIpop(
+      { title: "Post", content: "A complete body sentence." },
+      { contentDir: "/content/../blog/" },
+    );
     // `..` is stripped (not resolved) — traversal-proof; the remaining segments are kept verbatim.
     expect(plan.ok && plan.path).toBe("content/blog/post.md");
   });
 
   it("rejects an empty title, empty content, an unknown extension, and an unslugglable title", () => {
-    expect(decidePublishToIpop({ title: "", content: "x" }, opts)).toMatchObject({ ok: false });
+    expect(decidePublishToIpop({ title: "", content: "A complete body." }, opts)).toMatchObject({ ok: false });
     expect(decidePublishToIpop({ title: "t", content: "  " }, opts)).toMatchObject({ ok: false });
-    expect(decidePublishToIpop({ title: "t", content: "x", extension: "exe" }, opts)).toMatchObject({ ok: false });
-    expect(decidePublishToIpop({ title: "!!!", content: "x" }, opts)).toMatchObject({ ok: false });
+    expect(decidePublishToIpop({ title: "t", content: "A complete body.", extension: "exe" }, opts)).toMatchObject({ ok: false });
+    expect(decidePublishToIpop({ title: "!!!", content: "A complete body." }, opts)).toMatchObject({ ok: false });
+  });
+
+  it("rejects a body that carries agent working-notes / chatter markers (#250 — debris draft)", () => {
+    // A self-publish body that still contains A2A handoff chatter or an SEO planning scratchpad is an
+    // internal artifact, not a finished post — it must never become a blog PR.
+    const chatter = [
+      "Here is a real intro sentence.\n\n@scout can you confirm the angle?",
+      "Intro.\n\n@quill draft the body please.",
+      "Body.\n\n[A2A handoff: writer → editor]",
+      "Body text.\n\nhandoff-chain: scout -> strategist -> writer",
+      "Keyword pick: best ai marketing tools",
+      "Target keyword: ai marketing\n\nIntro.",
+      "Meta description: a punchy summary goes here.",
+      "Suggested URL: /blog/ai-marketing",
+      "Nothing publishes without a human flip.",
+      "This is a draft only — do not ship.",
+      "Looks good, leaving this for a human to review.",
+      "Notes for the human reviewer: tighten the intro.",
+    ];
+    for (const content of chatter) {
+      const res = decidePublishToIpop({ title: "A Good Title", content }, opts);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.reason).toMatch(/internal draft/i);
+    }
+  });
+
+  it("rejects a truncated body (final visible line lacks sentence-ending punctuation) (#250)", () => {
+    // Cut off mid-thought — the classic incomplete debris draft.
+    const res = decidePublishToIpop(
+      { title: "A Good Title", content: "# Heading\n\nThis sentence is cut off and never quite finishes" },
+      opts,
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toMatch(/truncated/i);
+
+    // A real post that ends in a sentence followed ONLY by a trailing badge/link line is NOT truncated:
+    // the trailing markdown link line is ignored before the punctuation check.
+    const withBadge = decidePublishToIpop(
+      {
+        title: "A Good Title",
+        content: "# Heading\n\nThis is the complete final sentence.\n\n[![Built with ipop](badge.svg)](https://ipop.ai)",
+      },
+      opts,
+    );
+    expect(withBadge.ok).toBe(true);
   });
 
   it("slugify is deterministic and capped", () => {
@@ -196,7 +253,7 @@ describe("IpopSitePublishService (#250) — autonomous, no #13 gate", () => {
     const artifacts = fakeArtifacts();
     const svc = new IpopSitePublishService({ provider, contentDir: "content/blog", artifacts });
 
-    const res = await svc.publish({ workspaceId: "w1", request: { title: "Post", content: "# body" } });
+    const res = await svc.publish({ workspaceId: "w1", request: { title: "Post", content: "# Post\n\nThis is the complete body." } });
     expect(res).toMatchObject({ status: "published", prUrl: "https://github.com/ipop/site/pull/9", path: "content/blog/post.md" });
     // The provider was handed the planned commit — proving the autonomous path actually actuated.
     expect(provider.calls[0]?.path).toBe("content/blog/post.md");
@@ -216,7 +273,7 @@ describe("IpopSitePublishService (#250) — autonomous, no #13 gate", () => {
     const provider = fakeProvider({ status: "error", error: "github 500" });
     const artifacts = fakeArtifacts();
     const svc = new IpopSitePublishService({ provider, contentDir: "content/blog", artifacts });
-    const res = await svc.publish({ workspaceId: "w1", request: { title: "Post", content: "x" } });
+    const res = await svc.publish({ workspaceId: "w1", request: { title: "Post", content: "A complete body sentence." } });
     expect(res).toMatchObject({ status: "failed", error: "github 500" });
     expect(artifacts.records.at(-1)).toMatchObject({ tool: "publish_site", status: "failed" });
   });

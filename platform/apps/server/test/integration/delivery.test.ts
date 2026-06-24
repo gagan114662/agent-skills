@@ -129,7 +129,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       workspaceId: ws.workspaceId,
       requesterMemberId: ws.memberId,
       actionType: "agent.deliverable",
-      payload: { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# new copy" },
+      payload: { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity." },
       amount: null,
       summary: "Deliverable ready for review",
       status: "pending",
@@ -138,7 +138,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
     });
 
     const result = await dispatcher({ ...ALL_ON, site_pr: true }).ship(
-      { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# new copy" },
+      { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity." },
       { workspaceId: ws.workspaceId, approvalRequestId: req.id },
     );
     // dry-run publisher: a deterministic fake PR url, opened nowhere real → honestly live:false.
