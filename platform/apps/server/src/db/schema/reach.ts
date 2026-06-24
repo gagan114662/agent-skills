@@ -112,6 +112,9 @@ export const reachReceipts = pgTable(
     kind: text("kind", { enum: REACH_RECEIPT_KINDS }).notNull(),
     /** The proof it is external (provider/event id) — non-empty. */
     externalRef: text("external_ref").notNull(),
+    replyBody: text("reply_body"),
+    replyFrom: text("reply_from"),
+    replySubject: text("reply_subject"),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

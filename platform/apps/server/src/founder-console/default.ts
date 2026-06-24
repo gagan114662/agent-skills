@@ -310,6 +310,7 @@ export function createDefaultFounderConsoleService(deps: {
               replies: s.replies,
               meetings: s.meetings,
               signups: s.signups,
+              recentReplies: s.recentReplies,
             };
           },
         }

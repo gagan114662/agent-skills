@@ -179,8 +179,23 @@ describe("outreach engine (#225) — owner-gated send, never autonomous", () => 
       messageId: queued.messageId,
       kind: "reply",
       externalRef: `evt-${newId()}`,
+      replyBody: "Yes, let's talk next week.",
+      replyFrom: "dana@example.com",
+      replySubject: "Re: Bolt",
     });
     expect(receipt.created).toBe(true);
+    expect(receipt.receipt.replyBody).toBe("Yes, let's talk next week.");
+
+    const threads = await service.replyThreads(w.workspaceId);
+    expect(threads[0]?.receipt.replyBody).toBe("Yes, let's talk next week.");
+    expect(threads[0]?.message.id).toBe(queued.messageId);
+
+    const consoleSummary = await service.summary(w.workspaceId);
+    expect(consoleSummary.recentReplies[0]).toMatchObject({
+      messageId: queued.messageId,
+      replyBody: "Yes, let's talk next week.",
+      replyFrom: "dana@example.com",
+    });
 
     const pipeline = await discovery.pipelineSummary(w.workspaceId);
     const conversion = pipeline.metrics.stages.find((s) => s.stage === "conversion");

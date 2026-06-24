@@ -82,7 +82,14 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const b = (req.body ?? {}) as { messageId?: string; kind?: string; externalRef?: string };
+    const b = (req.body ?? {}) as {
+      messageId?: string;
+      kind?: string;
+      externalRef?: string;
+      replyBody?: string | null;
+      replyFrom?: string | null;
+      replySubject?: string | null;
+    };
     if (!b.messageId || !b.kind || !b.externalRef) {
       return reply.code(400).send({ error: "messageId, kind, and externalRef are required" });
     }
@@ -91,6 +98,9 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
         messageId: b.messageId,
         kind: b.kind,
         externalRef: b.externalRef,
+        replyBody: typeof b.replyBody === "string" ? b.replyBody : null,
+        replyFrom: typeof b.replyFrom === "string" ? b.replyFrom : null,
+        replySubject: typeof b.replySubject === "string" ? b.replySubject : null,
       });
       return reply.code(201).send({ receipt, created });
     } catch (err) {
@@ -118,5 +128,13 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
     const q = req.query as { ideaId?: string; limit?: string };
     const limit = q.limit ? Number.parseInt(q.limit, 10) : undefined;
     return service.listMessages(wid, { ideaId: q.ideaId, limit });
+  });
+
+  app.get("/workspaces/:wid/outreach/replies", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    return { replies: await service.replyThreads(wid) };
   });
 }

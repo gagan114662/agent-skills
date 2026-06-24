@@ -123,6 +123,14 @@ export interface OutreachReceiptRecord {
   kind: OutreachReceiptKind;
   /** The proof the receipt is external (a provider event id, a calendar link, a signup id). Non-empty. */
   externalRef: string;
+  replyBody: string | null;
+  replyFrom: string | null;
+  replySubject: string | null;
   occurredAt: Date;
   createdAt: Date;
+}
+
+export interface OutreachReplyThread {
+  receipt: OutreachReceiptRecord;
+  message: OutreachMessageRecord;
 }

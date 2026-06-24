@@ -256,6 +256,7 @@ export interface OutreachSnapshot {
   replies: number;
   meetings: number;
   signups: number;
+  recentReplies?: OutreachReplyView[];
 }
 
 /** One ranked backlog item (#115) reduced to what the roadmap pane shows. */
@@ -558,6 +559,17 @@ export interface OutreachView {
   replies: number;
   meetings: number;
   signups: number;
+  recentReplies: OutreachReplyView[];
+}
+
+export interface OutreachReplyView {
+  receiptId: string;
+  messageId: string;
+  recipientLabel: string;
+  replyBody: string | null;
+  replyFrom: string | null;
+  replySubject: string | null;
+  occurredAt: Date;
 }
 
 /** One roadmap row (#115): a ranked backlog item with its why-ranked-here evidence link. */
@@ -911,6 +923,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     replies: input.outreach?.replies ?? 0,
     meetings: input.outreach?.meetings ?? 0,
     signups: input.outreach?.signups ?? 0,
+    recentReplies: input.outreach?.recentReplies ?? [],
   };
 
   // #115 product planning loop: reshape the ranked backlog into the roadmap pane — each row carries its

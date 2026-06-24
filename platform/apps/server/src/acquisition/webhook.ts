@@ -89,3 +89,60 @@ export function parseEspBody(rawBody: string): unknown {
   if (parsed && typeof parsed === "object") return [parsed];
   return [];
 }
+
+export interface InboundEmailReply {
+  externalRef: string;
+  from: string | null;
+  subject: string | null;
+  body: string | null;
+  inReplyTo: string | null;
+  outreachMessageId: string | null;
+  outreachRecipientRef: string | null;
+  reachContactKey: string | null;
+  occurredAt: Date | null;
+}
+
+function stringField(ev: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = ev[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function metadataField(ev: Record<string, unknown>, key: string): string | null {
+  const metadata = ev.Metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function nestedStringField(ev: Record<string, unknown>, objectKey: string, fieldKey: string): string | null {
+  const object = ev[objectKey];
+  if (!object || typeof object !== "object") return null;
+  const value = (object as Record<string, unknown>)[fieldKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function parseInboundEmailReply(raw: unknown): InboundEmailReply | null {
+  if (!raw || typeof raw !== "object") return null;
+  const ev = raw as Record<string, unknown>;
+  const recordType = stringField(ev, "RecordType", "type", "event");
+  if (recordType && !recordType.toLowerCase().includes("inbound")) return null;
+  const externalRef = stringField(ev, "MessageID", "MessageId", "messageId", "ID");
+  if (!externalRef) return null;
+  const body = stringField(ev, "StrippedTextReply", "TextBody", "HtmlBody", "Body");
+  const occurredRaw = stringField(ev, "Date", "ReceivedAt", "receivedAt");
+  const occurredAt = occurredRaw ? new Date(occurredRaw) : null;
+  return {
+    externalRef,
+    from: nestedStringField(ev, "FromFull", "Email") ?? stringField(ev, "From", "Email"),
+    subject: stringField(ev, "Subject"),
+    body,
+    inReplyTo: stringField(ev, "InReplyTo", "In-Reply-To", "OriginalMessageID"),
+    outreachMessageId: metadataField(ev, "outreachMessageId"),
+    outreachRecipientRef: metadataField(ev, "outreachRecipientRef"),
+    reachContactKey: metadataField(ev, "reachContactKey") ?? stringField(ev, "MailboxHash"),
+    occurredAt: occurredAt && !Number.isNaN(occurredAt.getTime()) ? occurredAt : null,
+  };
+}

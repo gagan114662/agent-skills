@@ -1029,7 +1029,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #189 acquisition execution: the email suppression list (read + manual add) + the signature-verified
   // ESP bounce/complaint webhook that keeps deliverability enforced in code. Default-OFF (the writes 409
   // until the workspace opts into acquisition email; the webhook secret lives in the #192 vault).
-  app.register(acquisitionRoutes);
+  app.register(acquisitionRoutes, { outreach: outreachService, reach: reachService });
   app.register(growthRoutes, { service: growthService });
   // #223 decision-maker resolver: target account (#222) -> the right buyer + a buyer brief (who, a
   // falsifiable why, what they care about, cited angle hooks). Enrichment runs in a QUARANTINED reader
