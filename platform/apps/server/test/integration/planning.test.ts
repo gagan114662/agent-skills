@@ -140,6 +140,43 @@ const tick = (w: World) =>
   app.inject({ method: "POST", url: `/workspaces/${w.workspaceId}/planning/tick`, cookies: { rid: w.cookie } });
 
 describe("product planning loop (real Postgres): evidence → ranked backlog → spec → proposed session", () => {
+  it("rejects cross-workspace dispatch targets before persisting a backlog item", async () => {
+    const w = await seed();
+    const other = await seed();
+
+    const crossChannel = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/planning/items`,
+      cookies: { rid: w.cookie },
+      payload: {
+        title: "Cross-tenant channel",
+        source: "manual",
+        targetChannelId: other.channelId,
+        targetAgentMemberId: w.agentMemberId,
+      },
+    });
+    expect(crossChannel.statusCode).toBe(404);
+
+    const crossAgent = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/planning/items`,
+      cookies: { rid: w.cookie },
+      payload: {
+        title: "Cross-tenant agent",
+        source: "manual",
+        targetChannelId: w.channelId,
+        targetAgentMemberId: other.agentMemberId,
+      },
+    });
+    expect(crossAgent.statusCode).toBe(404);
+
+    const rows = await db
+      .select({ id: backlogItems.id })
+      .from(backlogItems)
+      .where(eq(backlogItems.workspaceId, w.workspaceId));
+    expect(rows).toHaveLength(0);
+  });
+
   it(
     "derives RICE from evidence, ranks the backlog, auto-dispatches the top small item through the " +
       "(fake) launcher, #13-gates a pivot and a non-#95-allowed item, surfaces the roadmap, isolates tenants",
