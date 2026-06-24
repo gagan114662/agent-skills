@@ -887,11 +887,15 @@ export interface AuditEventDto {
 }
 
 /** A live session row, from `GET /workspaces/:wid/mission-control`. */
+export type AgentActivityStatus = "thinking" | "drafting" | "waiting" | "handoff" | "idle" | "done";
+
 export interface LiveSessionDto {
   id: string;
   channelId: string;
   agentMemberId: string;
   status: string;
+  /** What the agent is doing now (#1050), separate from lifecycle status. */
+  agentStatus: AgentActivityStatus;
   elapsedMs: number;
   estimatedCostCents: number;
   startedAt: string | null;

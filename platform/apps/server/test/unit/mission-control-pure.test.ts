@@ -9,6 +9,7 @@ function session(over: Partial<MissionSessionInput>): MissionSessionInput {
     channelId: "c1",
     agentMemberId: "m1",
     status: "running",
+    agentStatus: "thinking",
     createdAt: new Date("2026-06-08T09:00:00.000Z"),
     startedAt: new Date("2026-06-08T09:30:00.000Z"),
     progressAt: new Date("2026-06-08T09:55:00.000Z"),
@@ -22,6 +23,7 @@ describe("mission control build (#147)", () => {
     expect(mc.count).toBe(1);
     // 09:30 → 10:00 = 30 min → 30 × 2 = 60 cents
     expect(mc.sessions[0].elapsedMs).toBe(30 * 60_000);
+    expect(mc.sessions[0].agentStatus).toBe("thinking");
     expect(mc.sessions[0].estimatedCostCents).toBe(60);
     expect(mc.totalEstimatedCostCents).toBe(60);
     expect(mc.costIsEstimate).toBe(true);

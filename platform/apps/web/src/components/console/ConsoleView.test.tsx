@@ -24,6 +24,7 @@ const mcDto = (over: Partial<MissionControlDto> = {}): MissionControlDto => ({
       channelId: "c1",
       agentMemberId: "ag1",
       status: "running",
+      agentStatus: "thinking",
       elapsedMs: 720_000,
       estimatedCostCents: 84,
       startedAt: null,

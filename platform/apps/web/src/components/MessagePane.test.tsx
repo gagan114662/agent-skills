@@ -33,15 +33,16 @@ describe("MessagePane", () => {
     await screen.findByText("first post"); // channel c1 is open
 
     act(() => {
-      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "drafting" }]);
     });
-    expect(await screen.findByText(/Atlas is working/i)).toBeInTheDocument();
+    expect(await screen.findByText("Atlas")).toBeInTheDocument();
+    expect(screen.getByText("drafting")).toBeInTheDocument();
 
     // A session in a DIFFERENT channel does not show here.
     act(() => {
-      store.setLiveSessions([{ id: "s2", channelId: "c2", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s2", channelId: "c2", agentMemberId: "ag1", status: "running", agentStatus: "drafting" }]);
     });
-    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByText("drafting")).toBeNull());
   });
 
   // #469: the user can cancel a run in-channel — the Stop button clears the indicator and calls the stop API.
@@ -51,13 +52,13 @@ describe("MessagePane", () => {
     await screen.findByText("first post");
 
     act(() => {
-      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "thinking" }]);
     });
     const stop = await screen.findByRole("button", { name: /stop this run/i });
     await userEvent.click(stop);
 
     // The indicator clears optimistically and the session is no longer live.
-    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByText("thinking")).toBeNull());
     expect(store.getState().liveSessions).toEqual([]);
   });
 

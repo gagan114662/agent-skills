@@ -6272,7 +6272,21 @@ select:focus-visible {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
   40% { transform: scale(1); opacity: 1; }
 }
-.typingind__label { font-style: italic; }
+.typingind__label { display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.typingind__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-style: normal;
+}
+.typingind__pill strong { font-weight: 700; }
+.typingind__pill span { color: var(--text-dim); }
 .typingind__stop {
   margin-left: 6px; background: none; border: 1px solid var(--border); color: var(--text-dim);
   font-size: 11px; padding: 1px 8px; border-radius: 999px; cursor: pointer;
