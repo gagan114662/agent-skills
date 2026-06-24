@@ -23,6 +23,7 @@ class FakeStore implements SessionStore {
   created?: AgentSession;
   finalized?: { status: SessionStatus };
   region?: string | null;
+  constructor(private readonly failCreate = false) {}
   create(input: {
     workspaceId: string;
     channelId: string;
@@ -33,6 +34,7 @@ class FakeStore implements SessionStore {
     caps: ResourceCaps;
     region?: string | null;
   }): Promise<AgentSession> {
+    if (this.failCreate) return Promise.reject(new Error("create failed"));
     this.createdCount += 1;
     this.region = input.region ?? null;
     this.created = {
@@ -136,8 +138,9 @@ function makeManager(over: {
   runtime?: AgentRuntime;
   admission?: AdmissionController;
   usage?: UsageRecorder;
+  failCreate?: boolean;
 }): { manager: SessionManager; store: FakeStore } {
-  const store = new FakeStore();
+  const store = new FakeStore(over.failCreate);
   const manager = new SessionManager({
     runtime: over.runtime ?? new CapturingRuntime(),
     store,
@@ -197,6 +200,18 @@ describe("SessionManager × scale (#71 — admission gate, placement, usage, slo
     expect(usage.computes).toHaveLength(1);
     expect(usage.computes[0]?.workspaceId).toBe("ws_1");
     expect(usage.computes[0]?.seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not record a usage start when session creation fails (#949)", async () => {
+    const usage = new FakeUsage();
+    const admission = new FakeAdmission({});
+    const { manager, store } = makeManager({ admission, usage, failCreate: true });
+
+    await expect(manager.launch(launch)).rejects.toThrow("create failed");
+
+    expect(store.createdCount).toBe(0);
+    expect(usage.starts).toEqual([]);
+    expect(admission.released).toBe(1);
   });
 
   it("works exactly as before when no admission/usage deps are wired (#25 unchanged)", async () => {
