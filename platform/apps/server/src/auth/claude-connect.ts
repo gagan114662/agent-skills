@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isTransientHttpStatus, retryWithBackoff } from "../reliability/retry-backoff.js";
 import type { ConnectClaudeConfig } from "../config/schema.js";
 
 /**
@@ -287,10 +288,18 @@ export class DryRunClaudeConnectProvider implements ClaudeConnectProvider {
 
 /** A small error so the route can map a Claude OAuth failure to a friendly redirect instead of a 500. */
 export class ClaudeConnectError extends Error {
-  constructor(message: string) {
+  readonly status: number | undefined;
+
+  constructor(message: string, options?: { status?: number }) {
     super(message);
     this.name = "ClaudeConnectError";
+    this.status = options?.status;
   }
+}
+
+function shouldRetryClaudeConnectError(err: unknown): boolean {
+  if (!(err instanceof ClaudeConnectError)) return true;
+  return err.status === undefined || isTransientHttpStatus(err.status);
 }
 
 /**
@@ -314,13 +323,20 @@ export class LiveClaudeConnectProvider implements ClaudeConnectProvider {
       grant_type: "authorization_code",
     });
     try {
-      const res = await fetch(this.config.tokenUrl, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body,
-      });
-      if (!res.ok) throw new ClaudeConnectError(`token exchange returned ${res.status}`);
-      return mapClaudeTokenResponse(await res.json());
+      return await retryWithBackoff(
+        async () => {
+          const res = await fetch(this.config.tokenUrl, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body,
+          });
+          if (!res.ok) {
+            throw new ClaudeConnectError(`token exchange returned ${res.status}`, { status: res.status });
+          }
+          return mapClaudeTokenResponse(await res.json());
+        },
+        { maxAttempts: 3, baseDelayMs: 50, shouldRetry: shouldRetryClaudeConnectError },
+      );
     } catch (err) {
       if (err instanceof ClaudeConnectError) throw err;
       throw new ClaudeConnectError(`token exchange failed: ${(err as Error).message}`);

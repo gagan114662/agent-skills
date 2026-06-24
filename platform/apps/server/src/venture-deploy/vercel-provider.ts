@@ -3,6 +3,7 @@ import type {
   ProvisionTargetOutcome,
   VentureInfraProvider,
 } from "./provider.js";
+import { isTransientHttpStatus, retryWithBackoff, RetryableHttpError } from "../reliability/retry-backoff.js";
 
 /**
  * Production adapter that provisions a venture's target as a Vercel project (managed HTTPS, preview +
@@ -36,11 +37,28 @@ export class VercelInfraProvider implements VentureInfraProvider {
 
   async provisionTarget(input: ProvisionTargetInput): Promise<ProvisionTargetOutcome> {
     input.onLog(`▸ provisioning vercel project for ${input.slug}`);
-    const res = await fetch(`${this.api}/v9/projects${this.teamQuery()}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.token()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: input.slug }),
-    });
+    const res = await retryWithBackoff(
+      async () => {
+        const response = await fetch(`${this.api}/v9/projects${this.teamQuery()}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.token()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: input.slug }),
+        });
+        if (!response.ok && response.status !== 409 && isTransientHttpStatus(response.status)) {
+          const body = await response.text().catch(() => "");
+          throw new RetryableHttpError(
+            `vercel project create failed for ${input.slug}: ${response.status} ${body.slice(0, 200)}`,
+            response.status,
+          );
+        }
+        return response;
+      },
+      {
+        maxAttempts: 3,
+        baseDelayMs: 50,
+        shouldRetry: (err) => err instanceof RetryableHttpError,
+      },
+    );
     if (!res.ok && res.status !== 409) {
       const body = await res.text().catch(() => "");
       throw new Error(`vercel project create failed for ${input.slug}: ${res.status} ${body.slice(0, 200)}`);

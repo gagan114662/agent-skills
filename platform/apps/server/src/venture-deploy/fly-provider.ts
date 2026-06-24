@@ -3,6 +3,7 @@ import type {
   ProvisionTargetOutcome,
   VentureInfraProvider,
 } from "./provider.js";
+import { isTransientHttpStatus, retryWithBackoff, RetryableHttpError } from "../reliability/retry-backoff.js";
 
 /**
  * Production adapter that provisions a venture's target on Fly.io — the same backend ipop itself runs on
@@ -34,11 +35,29 @@ export class FlyInfraProvider implements VentureInfraProvider {
 
   private async createApp(appName: string, onLog: (line: string) => void): Promise<void> {
     const org = process.env.VENTURE_DEPLOY_FLY_ORG ?? "personal";
-    const res = await fetch(`${this.api}/apps`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.token()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ app_name: appName, org_slug: org }),
-    });
+    const token = this.token();
+    const res = await retryWithBackoff(
+      async () => {
+        const response = await fetch(`${this.api}/apps`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ app_name: appName, org_slug: org }),
+        });
+        if (!response.ok && response.status !== 409 && isTransientHttpStatus(response.status)) {
+          const body = await response.text().catch(() => "");
+          throw new RetryableHttpError(
+            `fly app create failed for ${appName}: ${response.status} ${body.slice(0, 200)}`,
+            response.status,
+          );
+        }
+        return response;
+      },
+      {
+        maxAttempts: 3,
+        baseDelayMs: 50,
+        shouldRetry: (err) => err instanceof RetryableHttpError,
+      },
+    );
     if (res.ok || res.status === 409) {
       onLog(`✓ fly app ${appName} ${res.status === 409 ? "exists" : "created"}`);
       return;
