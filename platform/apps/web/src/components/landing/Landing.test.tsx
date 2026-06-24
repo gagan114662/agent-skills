@@ -3,7 +3,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "./Landing.js";
 import { navigate } from "../../routing.js";
-import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING } from "../../brand.js";
+import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING, PUBLIC_PROOF } from "../../brand.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -109,6 +109,18 @@ describe("Landing", () => {
     expect(screen.getByLabelText(/mission control/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^approvals$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/decision log/i)).toBeInTheDocument();
+  });
+
+  it("surfaces a consent-gated public proof path to /stories (#939)", () => {
+    render(<Landing />);
+    const proof = screen.getByRole("region", { name: PUBLIC_PROOF.title });
+    expect(within(proof).getByText(PUBLIC_PROOF.consentLabel)).toBeInTheDocument();
+    expect(within(proof).getByText(PUBLIC_PROOF.pendingLabel)).toBeInTheDocument();
+    expect(within(proof).getByText(PUBLIC_PROOF.emptyBody)).toBeInTheDocument();
+    expect(within(proof).getByRole("link", { name: PUBLIC_PROOF.cta })).toHaveAttribute("href", "/stories");
+    for (const tile of PUBLIC_PROOF.tiles) {
+      expect(within(proof).getByRole("article", { name: tile.customer })).toBeInTheDocument();
+    }
   });
 
   it("introduces every member of the department with its personality", () => {

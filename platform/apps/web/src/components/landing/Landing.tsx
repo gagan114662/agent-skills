@@ -17,6 +17,7 @@ import {
   CONTACT,
   FLEET,
   LANDING,
+  PUBLIC_PROOF,
   SECURITY,
   STORY,
   VOICE,
@@ -50,6 +51,7 @@ export function Landing(): React.JSX.Element {
       <main>
         <Hero landing={landing} />
         <StorySections />
+        <PublicProof />
         <HowItWorks landing={landing} />
         <Department landing={landing} />
         <Pricing landing={landing} />
@@ -131,6 +133,44 @@ function Hero({ landing }: { landing: LandingCopy }): React.JSX.Element {
         <PopMark burst className="landing__popmark" />
         <WorkspaceSim />
       </div>
+    </section>
+  );
+}
+
+function PublicProof(): React.JSX.Element {
+  return (
+    <section id={PUBLIC_PROOF.id} className="landing__section landing__proof" aria-labelledby="proof-title">
+      <p className="landing__eyebrow landing__proof-eyebrow">{PUBLIC_PROOF.eyebrow}</p>
+      <h2 id="proof-title" className="landing__section-title">
+        {PUBLIC_PROOF.title}
+      </h2>
+      <p className="landing__section-sub">{PUBLIC_PROOF.sub}</p>
+      <div className="landing__proof-grid">
+        {PUBLIC_PROOF.tiles.map((tile) => (
+          <article
+            key={tile.customer}
+            className={`landing__proof-tile${tile.consented ? "" : " landing__proof-tile--pending"}`}
+            aria-label={tile.customer}
+          >
+            <div className="landing__proof-head">
+              <span className="landing__proof-customer">{tile.customer}</span>
+              <span className="landing__proof-status">
+                {tile.consented ? PUBLIC_PROOF.consentLabel : PUBLIC_PROOF.pendingLabel}
+              </span>
+            </div>
+            <h3 className="landing__proof-metric">
+              {tile.consented ? tile.metric : PUBLIC_PROOF.emptyTitle}
+            </h3>
+            <p className="landing__proof-result">
+              {tile.consented ? tile.result : PUBLIC_PROOF.emptyBody}
+            </p>
+            {tile.consented && <p className="landing__proof-source">{tile.source}</p>}
+          </article>
+        ))}
+      </div>
+      <Link href="/stories" className="btn landing__proof-link">
+        {PUBLIC_PROOF.cta}
+      </Link>
     </section>
   );
 }
