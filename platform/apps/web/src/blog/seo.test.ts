@@ -64,6 +64,12 @@ describe("injectPage", () => {
     expect(out).not.toContain('<div id="root"></div>');
   });
 
+  it("updates the document lang for localized prerender pages", () => {
+    const page: PrerenderPage = { outFile: "fr/index.html", urlPath: "/", html: "<h1>Accueil</h1>", lang: "fr" };
+    const out = injectPage(SHELL, page, origin);
+    expect(out).toContain('<html lang="fr">');
+  });
+
   it("keeps the shell's head meta for the home page (no overrides)", () => {
     const page: PrerenderPage = { outFile: "index.html", urlPath: "/", html: "<h1>Home</h1>" };
     const out = injectPage(SHELL, page, origin);

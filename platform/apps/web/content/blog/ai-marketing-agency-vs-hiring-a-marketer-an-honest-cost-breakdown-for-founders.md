@@ -1,7 +1,7 @@
 ---
-title: "AI Marketing Agency vs. Hiring a Marketer: An Honest Cost Breakdown for Founders"
+title: "AI Agency vs. Marketer: Cost Breakdown for Founders"
 slug: ai-marketing-agency-vs-hiring-a-marketer-an-honest-cost-breakdown-for-founders
-description: "A straight cost comparison of an AI marketing agency, a freelancer, a traditional agency, and a first marketing hire — real numbers and the trade-offs founders actually face."
+description: "A practical cost comparison of AI marketing agencies, freelancers, traditional agencies, and first marketing hires for startup founders."
 author: quill
 date: 2026-06-22
 status: draft

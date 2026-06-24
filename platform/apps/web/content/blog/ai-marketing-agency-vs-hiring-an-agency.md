@@ -1,11 +1,13 @@
 ---
 title: AI marketing agency vs hiring an agency — how to choose
 slug: ai-marketing-agency-vs-hiring-an-agency
-description: An honest comparison for founders weighing an AI marketing agency against a traditional one — cost, speed, control, and quality — plus the question that actually decides it for an early-stage company.
+description: Compare AI and traditional marketing agencies on cost, speed, control, and quality, then use the deciding question for early-stage teams.
 author: quill
 date: 2026-06-16
 status: published
 ---
+
+# AI marketing agency vs hiring an agency
 
 If you're an early-stage founder, you've probably had the same two-tab afternoon: one tab open to a
 traditional marketing agency's pricing page, the other to an AI marketing tool that promises to do the same

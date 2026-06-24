@@ -21,6 +21,7 @@ import { SectionPage } from "./components/site/SectionPage.js";
 import { Brand } from "./components/site/Brand.js";
 import { BlogIndex, BlogPostPage } from "./blog/Blog.js";
 import { listPostMeta, type BlogPostMeta } from "./blog/posts.js";
+import { hreflangLinks } from "./i18n.js";
 import { resolveOrigin, escapeHtml, type PrerenderPage } from "./blog/seo.js";
 import {
   organizationLd,
@@ -100,8 +101,11 @@ function marketingPages(): PrerenderPage[] {
       html: renderToStaticMarkup(body[urlPath]),
       title: seo.title,
       description: seo.description,
-      priority: priority[urlPath] ?? 0.6,
-      headExtra: renderJsonLd(
+    priority: priority[urlPath] ?? 0.6,
+      headExtra:
+        hreflangLinks(ORIGIN, urlPath) +
+        "\n" +
+        renderJsonLd(
         breadcrumbLd(ORIGIN, [
           [BRAND.name, "/"],
           [seo.name, urlPath],
@@ -126,7 +130,10 @@ export function prerenderPages(): PrerenderPage[] {
     html: renderToStaticMarkup(<Landing />),
     lastmod: posts[0]?.date,
     priority: 1.0,
-    headExtra: renderJsonLd([organizationLd(ORIGIN), websiteLd(ORIGIN), softwareApplicationLd(ORIGIN)]),
+    headExtra:
+      hreflangLinks(ORIGIN, "/") +
+      "\n" +
+      renderJsonLd([organizationLd(ORIGIN), websiteLd(ORIGIN), softwareApplicationLd(ORIGIN)]),
   });
 
   // The pricing page + the five content-site sections (#467) — each with its own front-loaded head meta.
@@ -141,7 +148,10 @@ export function prerenderPages(): PrerenderPage[] {
     description: BLOG.sub,
     lastmod: posts[0]?.date,
     priority: 0.8,
-    headExtra: renderJsonLd([
+    headExtra:
+      hreflangLinks(ORIGIN, "/blog") +
+      "\n" +
+      renderJsonLd([
       blogLd(ORIGIN, posts),
       breadcrumbLd(ORIGIN, [
         [BRAND.name, "/"],
@@ -162,6 +172,8 @@ export function prerenderPages(): PrerenderPage[] {
       priority: 0.7,
       ogType: "article",
       headExtra:
+        hreflangLinks(ORIGIN, `/blog/${post.slug}`) +
+        "\n" +
         renderJsonLd([
           blogPostingLd(ORIGIN, post),
           breadcrumbLd(ORIGIN, [
