@@ -18,4 +18,21 @@ describe("global error handler", () => {
     expect(res.payload).not.toContain("stack");
     await app.close();
   });
+
+  it("passes client (4xx) errors through unchanged instead of masking them as a 500", async () => {
+    const app = buildApp();
+    app.get("/__test/bad", async () => {
+      const err = new Error("missing required field: name") as Error & { statusCode?: number };
+      err.statusCode = 400;
+      throw err;
+    });
+
+    const res = await app.inject({ method: "GET", url: "/__test/bad" });
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.message).toBe("missing required field: name");
+    // A client error is not rewritten into the sanitized server-fault shape.
+    expect(body.error).not.toBe("internal_error");
+    await app.close();
+  });
 });

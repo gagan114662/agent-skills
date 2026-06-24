@@ -607,6 +607,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     if (err instanceof VentureAdmissionError) {
       return reply.code(403).send({ error: err.message, reason: err.reason });
     }
+    // Client errors (schema-validation 400, 404, etc.) carry an explicit sub-500 status. Pass them
+    // through unchanged — sanitizing them into a 500 would wrongly mask a caller mistake as a server fault.
+    const statusCode = (err as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === "number" && statusCode < 500) {
+      return reply.send(err);
+    }
     req.log.error({ err, requestId: req.id }, "unhandled request error");
     return reply.header("x-request-id", req.id).code(500).send({ error: "internal_error", requestId: req.id });
   });
