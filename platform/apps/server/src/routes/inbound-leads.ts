@@ -38,6 +38,10 @@ export interface InboundLeadsRoutesOptions {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INBOUND_LEAD_NEXT_STEP = {
+  label: "Start a free trial now",
+  href: "/start?source=inbound_lead",
+} as const;
 
 function leadStatus(value: unknown): InboundLeadStatus | undefined {
   return typeof value === "string" && (INBOUND_LEAD_STATUSES as readonly string[]).includes(value)
@@ -209,6 +213,6 @@ export async function inboundLeadsRoutes(
       req.log.error({ err, workspaceId, leadId: id }, "inbound lead warm follow-up failed after durable lead write");
     }
 
-    return reply.code(202).send({ received: true });
+    return reply.code(202).send({ received: true, nextStep: INBOUND_LEAD_NEXT_STEP });
   });
 }

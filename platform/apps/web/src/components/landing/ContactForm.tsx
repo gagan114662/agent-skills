@@ -10,9 +10,11 @@ import { CONTACT } from "../../brand.js";
 import { apiUrl } from "../../api/config.js";
 
 type Status = "idle" | "sending" | "sent" | "error";
+type NextStep = { label: string; href: string };
 
 export function ContactForm(): React.JSX.Element {
   const [status, setStatus] = useState<Status>("idle");
+  const [nextStep, setNextStep] = useState<NextStep | null>(null);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -36,6 +38,13 @@ export function ContactForm(): React.JSX.Element {
         setStatus("error");
         return;
       }
+      const body = await res.json().catch(() => null) as { nextStep?: Partial<NextStep> } | null;
+      const maybeNextStep = body?.nextStep;
+      setNextStep(
+        typeof maybeNextStep?.label === "string" && typeof maybeNextStep.href === "string"
+          ? { label: maybeNextStep.label, href: maybeNextStep.href }
+          : null,
+      );
       form.reset();
       setStatus("sent");
     } catch {
@@ -76,6 +85,12 @@ export function ContactForm(): React.JSX.Element {
           {status === "sent" && (
             <p className="contact-form__sent" role="status">
               {CONTACT.sentNote}
+              {nextStep && (
+                <>
+                  {" "}
+                  {CONTACT.nextStepIntro} <a href={nextStep.href}>{nextStep.label}</a>
+                </>
+              )}
             </p>
           )}
           {status === "error" && (

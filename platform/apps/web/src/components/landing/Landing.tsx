@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import {
   BRAND,
+  CONTACT,
   FLEET,
   LANDING,
   SECURITY,
@@ -121,6 +122,9 @@ function Hero({ landing }: { landing: LandingCopy }): React.JSX.Element {
           <Link href="/login" className="btn landing__cta landing__cta--ghost">
             {landing.hero.ctaSecondary}
           </Link>
+          <a href="#contact" className="btn landing__cta landing__cta--ghost">
+            {CONTACT.trialLinkLabel}
+          </a>
         </div>
       </div>
       <div className="landing__hero-stage">
