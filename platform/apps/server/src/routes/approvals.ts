@@ -17,6 +17,7 @@ import { createCoordinationChannelBridge } from "../agent-channel-bridge/default
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
 import { executeApprovedRequest, type ApprovalExecutionOutcome } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
+import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 import { getWorkspaceTimeZone } from "../db/repositories/workspaces.js";
 import {
   upsertPolicy,
@@ -283,17 +284,31 @@ export async function approvalRoutes(
     // Best-effort: alert every other human member that a decision is needed (never fails the write).
     const reviewers = await listHumanReviewers(wid, id.memberId);
     for (const recipientMemberId of reviewers) {
-      await notify(req.log, {
-        workspaceId: wid,
-        recipientMemberId,
-        type: "approval",
-        actorMemberId: id.memberId,
-        excerpt: `Approval needed: ${summary}`,
-      });
+      try {
+        await notify(req.log, {
+          workspaceId: wid,
+          recipientMemberId,
+          type: "approval",
+          actorMemberId: id.memberId,
+          excerpt: `Approval needed: ${summary}`,
+        });
+      } catch (err) {
+        recordAsyncSideEffectFailure("approval_pending_notification");
+        req.log.error(
+          { err, workspaceId: wid, approvalRequestId: request.id, recipientMemberId },
+          "approval pending notification failed after durable request write",
+        );
+      }
     }
     // #170: also DM the owner the Approve/Reject buttons in Slack, if connected (best-effort; the hook
     // is a no-op when no Slack bridge is registered, so the #13 gate is unchanged).
-    await fireApprovalPending(req.log, request);
+    await fireApprovalPending(req.log, request).catch((err) => {
+      recordAsyncSideEffectFailure("approval_pending_slack");
+      req.log.error(
+        { err, workspaceId: wid, approvalRequestId: request.id },
+        "approval pending Slack hook failed after durable request write",
+      );
+    });
     // #370: if the requester is an agent in a department channel, it @mentions the owner in-channel so the
     // pending gate is visible in the coordination view (best-effort; no-op unless posting is enabled).
     if (id.kind === "agent") {
@@ -305,6 +320,12 @@ export async function approvalRoutes(
           agentHandle: id.displayName,
           approvalRequestId: request.id,
           summary,
+        }).catch((err) => {
+          recordAsyncSideEffectFailure("approval_pending_coordination");
+          req.log.error(
+            { err, workspaceId: wid, approvalRequestId: request.id, channel: dept.channel },
+            "approval pending coordination post failed after durable request write",
+          );
         });
       }
     }

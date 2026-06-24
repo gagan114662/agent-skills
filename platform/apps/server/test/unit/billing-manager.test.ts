@@ -21,6 +21,7 @@ import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { CONFIG_DEFAULTS, type ResolvedConfig } from "../../src/config/schema.js";
 import type { ChannelPoster } from "../../src/runtime/manager.js";
 import type { BillingStatusEvent } from "../../src/realtime/protocol.js";
+import { renderMetrics, resetMetrics } from "../../src/observability/metrics.js";
 
 /** A hermetic in-memory billing store — stands in for Postgres (no DB). */
 class MemoryBillingStore implements BillingStore {
@@ -92,7 +93,7 @@ interface Harness {
   logs: Array<{ obj: unknown; msg?: string }>;
 }
 
-function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
+function makeHarness(cfg: Partial<ResolvedConfig> = {}, planActivate: () => Promise<void> = async () => {}): Harness {
   const store = new MemoryBillingStore();
   const provider = new NoneBillingProvider();
   const events: BillingStatusEvent[] = [];
@@ -117,7 +118,7 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
     }),
     deployments: { latestForSession: () => Promise.resolve({ id: "dep_1" }) },
     planActivator: {
-      activate: async () => {},
+      activate: planActivate,
       recordPaymentFailure: async (_workspaceId, providerEventId) => {
         failures.push(providerEventId);
       },
@@ -195,6 +196,7 @@ function failureEvent(extraMeta: Record<string, string> = {}, id = "evt_fail_1")
 describe("BillingManager (#98 — inbound payment link + signed webhook → revenue → evidence)", () => {
   let h: Harness;
   beforeEach(() => {
+    resetMetrics();
     h = makeHarness();
   });
 
@@ -242,6 +244,21 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(h.store.evidence[0]?.source).toBe("revenue");
     expect(h.posts.some((b) => /received/i.test(b))).toBe(true);
     expect(h.events.some((e) => e.kind === "payment_received")).toBe(true);
+  });
+
+  it("records a metric when plan activation fails after the revenue event is durable (#993)", async () => {
+    const failing = makeHarness({}, async () => {
+      throw new Error("activation down");
+    });
+    const raw = successEvent({ kind: "plan_checkout", planKey: "pro" });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const res = await failing.manager.ingestWebhook("ws_1", raw, sig);
+
+    expect(res.deduped).toBe(false);
+    expect(failing.store.events).toHaveLength(1);
+    expect(renderMetrics()).toContain('async_side_effect_failures_total{kind="billing_plan_activation"} 1');
+    expect(failing.logs.some((l) => l.msg?.includes("plan activation failed after durable revenue event"))).toBe(true);
   });
 
   it("captures the first paying customer as a case-study draft and visible celebration exactly once", async () => {

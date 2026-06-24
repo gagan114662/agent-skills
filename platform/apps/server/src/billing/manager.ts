@@ -9,6 +9,7 @@ import type { BillingStatusEvent } from "../realtime/protocol.js";
 import type { BillingProvider, PriceInterval } from "./provider.js";
 import { verifyWebhookSignature } from "./webhook.js";
 import { sanitizeTrackingRef } from "../attribution/tracking.js";
+import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 
 /**
  * BillingManager (#98, ADR-0043) — turns a session's deployed app into a revenue rail through a swappable
@@ -490,7 +491,17 @@ export class BillingManager {
             parsed.amountCents,
           );
         } catch (err) {
-          this.logger?.warn({ workspaceId, err }, "billing: plan activation failed");
+          recordAsyncSideEffectFailure("billing_plan_activation");
+          this.logger?.error?.(
+            {
+              workspaceId,
+              revenueEventId: event.id,
+              providerEventId: parsed.id,
+              planKey: parsed.metadata.planKey,
+              err,
+            },
+            "billing: plan activation failed after durable revenue event",
+          );
         }
       }
       // #101: a demand smoke-test checkout is the apex external willingness-to-pay signal. Hand it to the

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+import { renderMetrics, resetMetrics } from "../../src/observability/metrics.js";
 
 /**
  * Hermetic unit test of the public inbound-lead capture route (GAP 1 of the leads centre, ADR-0400). The
@@ -57,6 +58,7 @@ function fakeDiscovery(impl?: () => Promise<unknown>): FakeDiscovery {
 }
 
 beforeEach(() => {
+  resetMetrics();
   recordLead.mockClear();
   listLeads.mockClear();
   getLead.mockClear();
@@ -166,6 +168,7 @@ describe("POST /inbound/leads (public capture)", () => {
     });
     expect(res.statusCode).toBe(202);
     expect(recordLead).toHaveBeenCalledTimes(1); // the lead was persisted before discovery ran
+    expect(renderMetrics()).toContain('async_side_effect_failures_total{kind="inbound_lead_discovery_ingest"} 1');
     await app.close();
   });
 
