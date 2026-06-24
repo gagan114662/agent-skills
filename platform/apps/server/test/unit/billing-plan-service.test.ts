@@ -86,6 +86,27 @@ function memPlanStore(): WorkspacePlanStore {
       row.status = "canceled";
       return Promise.resolve(row);
     },
+    cancel({ workspaceId }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.renewalStatus = "canceled";
+      row.status = "canceled";
+      row.retryScheduledAt = null;
+      return Promise.resolve(row);
+    },
+    downgrade({ workspaceId, planKey, caps }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.planKey = planKey;
+      row.status = "active";
+      row.renewalStatus = "active";
+      row.agentSeats = caps.agentSeats;
+      row.monthlySessionBudgetCents = caps.monthlySessionBudgetCents;
+      row.fleetSize = caps.fleetSize;
+      row.retryScheduledAt = null;
+      row.lastPaymentFailedAt = null;
+      return Promise.resolve(row);
+    },
     dueForRetry(now) {
       return Promise.resolve(
         [...rows.values()].filter(
@@ -284,6 +305,22 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     const listing = await service.listPlans(WS);
     expect(listing.current?.renewalStatus).toBe("expired");
     expect(listing.current?.status).toBe("canceled");
+  });
+
+  it("supports self-serve cancel and downgrade over the active workspace plan (#914)", async () => {
+    const { service } = makeService();
+    await service.activate(WS, "agency", "evt_paid");
+
+    const downgraded = await service.downgrade(WS, "starter");
+    expect(downgraded).toMatchObject({
+      planKey: "starter",
+      status: "active",
+      renewalStatus: "active",
+      fleetSize: planCaps(getPlan("starter")!).fleetSize,
+    });
+
+    const canceled = await service.cancel(WS);
+    expect(canceled).toMatchObject({ planKey: "starter", status: "canceled", renewalStatus: "canceled" });
   });
 
   it("rejects checkout for an unknown plan key", async () => {

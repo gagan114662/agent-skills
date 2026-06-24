@@ -258,6 +258,69 @@ export const dbWorkspacePlanStore: WorkspacePlanStore = {
     return row ? toActivePlan(row) : undefined;
   },
 
+  async cancel(input): Promise<ActivePlan | undefined> {
+    const [row] = await db
+      .update(workspacePlans)
+      .set({
+        status: "canceled",
+        renewalStatus: "canceled",
+        retryScheduledAt: null,
+        updatedAt: input.now,
+      })
+      .where(eq(workspacePlans.workspaceId, input.workspaceId))
+      .returning({
+        workspaceId: workspacePlans.workspaceId,
+        planKey: workspacePlans.planKey,
+        status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
+        agentSeats: workspacePlans.agentSeats,
+        monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
+        fleetSize: workspacePlans.fleetSize,
+        providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
+        activatedAt: workspacePlans.activatedAt,
+      });
+    return row ? toActivePlan(row) : undefined;
+  },
+
+  async downgrade(input): Promise<ActivePlan | undefined> {
+    const [row] = await db
+      .update(workspacePlans)
+      .set({
+        planKey: input.planKey,
+        status: "active",
+        renewalStatus: "active",
+        agentSeats: input.caps.agentSeats,
+        monthlySessionBudgetCents: input.caps.monthlySessionBudgetCents,
+        fleetSize: input.caps.fleetSize,
+        retryScheduledAt: null,
+        lastPaymentFailedAt: null,
+        updatedAt: input.now,
+      })
+      .where(eq(workspacePlans.workspaceId, input.workspaceId))
+      .returning({
+        workspaceId: workspacePlans.workspaceId,
+        planKey: workspacePlans.planKey,
+        status: workspacePlans.status,
+        renewalStatus: workspacePlans.renewalStatus,
+        agentSeats: workspacePlans.agentSeats,
+        monthlySessionBudgetCents: workspacePlans.monthlySessionBudgetCents,
+        fleetSize: workspacePlans.fleetSize,
+        providerEventId: workspacePlans.providerEventId,
+        expiresAt: workspacePlans.expiresAt,
+        nextBillingAt: workspacePlans.nextBillingAt,
+        retryCount: workspacePlans.retryCount,
+        retryScheduledAt: workspacePlans.retryScheduledAt,
+        lastPaymentFailedAt: workspacePlans.lastPaymentFailedAt,
+        activatedAt: workspacePlans.activatedAt,
+      });
+    return row ? toActivePlan(row) : undefined;
+  },
+
   async dueForRetry(now): Promise<ActivePlan[]> {
     const rows = await db
       .select({

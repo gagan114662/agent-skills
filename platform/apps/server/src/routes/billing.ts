@@ -391,6 +391,33 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     }
   });
 
+  app.post("/workspaces/:wid/billing/cancel", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const updated = await planService.cancel(wid);
+    if (!updated) return reply.code(404).send({ error: "active plan not found" });
+    return reply.send(toActivePlanDto(updated));
+  });
+
+  app.post("/workspaces/:wid/billing/downgrade", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const body = (req.body ?? {}) as { planKey?: unknown };
+    const planKey = typeof body.planKey === "string" ? body.planKey : "";
+    if (!planKey) return reply.code(400).send({ error: "planKey required" });
+    try {
+      const updated = await planService.downgrade(wid, planKey);
+      if (!updated) return reply.code(404).send({ error: "active plan not found" });
+      return reply.send(toActivePlanDto(updated));
+    } catch (err) {
+      return mapError(err, reply);
+    }
+  });
+
   // Revenue-per-venture summary for the usage dashboard (#71).
   app.get("/workspaces/:wid/billing/revenue", async (req, reply) => {
     const id = await requireIdentity(req, reply);
