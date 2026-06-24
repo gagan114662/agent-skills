@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { requireIdentity } from "../auth/guard.js";
+import { assertWorkspace, requireIdentity } from "../auth/guard.js";
 import type { DiscoveryService } from "../discovery/service.js";
 import {
   getLead,
@@ -83,6 +83,62 @@ function leadRejectionContext(body: Record<string, unknown>): { email: string; s
   return { email, source: source || "unknown" };
 }
 
+function listQuery(query: unknown): {
+  status?: InboundLeadStatus;
+  sinceMs?: number;
+  limit?: number;
+} {
+  const q = (query ?? {}) as { status?: unknown; sinceMs?: unknown; limit?: unknown };
+  const sinceMs = typeof q.sinceMs === "string" ? Number.parseInt(q.sinceMs, 10) : undefined;
+  const limit = typeof q.limit === "string" ? Number.parseInt(q.limit, 10) : undefined;
+  return {
+    status: leadStatus(q.status),
+    sinceMs: Number.isFinite(sinceMs) ? sinceMs : undefined,
+    limit: Number.isFinite(limit) ? limit : undefined,
+  };
+}
+
+function csvField(value: string | number | null): string {
+  const text = value === null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function leadsCsv(leads: Awaited<ReturnType<typeof listLeads>>): string {
+  const header = [
+    "id",
+    "email",
+    "name",
+    "message",
+    "source",
+    "trackingRef",
+    "status",
+    "assigneeMemberId",
+    "nextAction",
+    "createdAtMs",
+    "respondedAtMs",
+    "slaDueAtMs",
+  ];
+  const rows = leads.map((lead) =>
+    [
+      lead.id,
+      lead.email,
+      lead.name,
+      lead.message,
+      lead.source,
+      lead.trackingRef,
+      lead.status,
+      lead.assigneeMemberId,
+      lead.nextAction,
+      lead.createdAtMs,
+      lead.respondedAtMs,
+      lead.slaDueAtMs,
+    ]
+      .map(csvField)
+      .join(","),
+  );
+  return [header.join(","), ...rows].join("\n") + "\n";
+}
+
 function rejectInboundLead(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -120,20 +176,33 @@ export async function inboundLeadsRoutes(
   app.get("/me/inbound/leads", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const q = (req.query ?? {}) as { status?: unknown; sinceMs?: unknown; limit?: unknown };
-    const sinceMs = typeof q.sinceMs === "string" ? Number.parseInt(q.sinceMs, 10) : undefined;
-    const limit = typeof q.limit === "string" ? Number.parseInt(q.limit, 10) : undefined;
-    const leads = await listLeads(id.workspaceId, {
-      status: leadStatus(q.status),
-      sinceMs: Number.isFinite(sinceMs) ? sinceMs : undefined,
-      limit: Number.isFinite(limit) ? limit : undefined,
-    });
+    const leads = await listLeads(id.workspaceId, listQuery(req.query));
     for (const lead of leads) {
       if (!lead.slaBreached || lead.slaNotifiedAtMs !== null) continue;
       await notifyOwner(app, id.workspaceId, leadExcerpt("sla", lead));
       await markSlaNotified(id.workspaceId, lead.id);
     }
     return { leads };
+  });
+
+  app.get("/workspaces/:wid/leads", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const leads = await listLeads(wid, listQuery(req.query));
+    return { leads };
+  });
+
+  app.get("/workspaces/:wid/leads/export.csv", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const leads = await listLeads(wid, listQuery(req.query));
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", 'attachment; filename="inbound-leads.csv"');
+    return reply.send(leadsCsv(leads));
   });
 
   app.get("/me/inbound/leads/:leadId", async (req, reply) => {

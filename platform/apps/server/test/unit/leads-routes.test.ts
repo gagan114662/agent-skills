@@ -26,6 +26,17 @@ vi.mock("../../src/db/repositories/inbound-leads.js", () => ({
 vi.mock("../../src/db/repositories/members.js", () => ({ getWorkspaceOwnerMemberId }));
 vi.mock("../../src/notifications/service.js", () => ({ notify }));
 vi.mock("../../src/auth/guard.js", () => ({
+  assertWorkspace: vi.fn(
+    (
+      identity: { workspaceId: string },
+      workspaceId: string,
+      reply: { code: (status: number) => { send: (body: unknown) => void } },
+    ) => {
+      if (identity.workspaceId === workspaceId) return true;
+      reply.code(403).send({ error: "wrong workspace" });
+      return false;
+    },
+  ),
   requireIdentity: vi.fn(async () => ({
     workspaceId: "11111111-2222-3333-4444-555555555555",
     memberId: "22222222-2222-3333-4444-555555555555",
@@ -67,7 +78,8 @@ function fakeDiscovery(impl?: () => Promise<unknown>): FakeDiscovery {
 beforeEach(() => {
   resetMetrics();
   recordLead.mockClear();
-  listLeads.mockClear();
+  listLeads.mockReset();
+  listLeads.mockResolvedValue([]);
   getLead.mockClear();
   updateLead.mockClear();
   markSlaNotified.mockClear();
@@ -249,6 +261,103 @@ describe("POST /inbound/leads (public capture)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().leads).toHaveLength(1);
     expect(listLeads).toHaveBeenCalledWith(OWNER_WID, { status: "new", sinceMs: 123, limit: 25 });
+    await app.close();
+  });
+
+  it("lists captured leads from the authenticated workspace endpoint", async () => {
+    listLeads.mockResolvedValueOnce([
+      {
+        id: "lead-1",
+        workspaceId: OWNER_WID,
+        name: "Ada",
+        email: "ada@example.com",
+        message: "Need help turning leads into revenue",
+        source: "landing_form",
+        trackingRef: "utm-1",
+        status: "new",
+        assigneeMemberId: null,
+        nextAction: null,
+        respondedAtMs: null,
+        slaDueAtMs: 123456,
+        slaNotifiedAtMs: null,
+        slaBreached: false,
+        reachContactKey: "email:ada@example.com",
+        createdAtMs: 123000,
+      },
+    ]);
+    const { app } = await buildRoute(OWNER_WID, fakeDiscovery());
+    const res = await app.inject({
+      method: "GET",
+      url: `/workspaces/${OWNER_WID}/leads?status=new&sinceMs=100&limit=10`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().leads).toEqual([
+      expect.objectContaining({
+        id: "lead-1",
+        email: "ada@example.com",
+        message: "Need help turning leads into revenue",
+        status: "new",
+      }),
+    ]);
+    expect(listLeads).toHaveBeenCalledWith(OWNER_WID, { status: "new", sinceMs: 100, limit: 10 });
+    await app.close();
+  });
+
+  it("exports captured leads as authenticated workspace CSV", async () => {
+    listLeads.mockResolvedValueOnce([
+      {
+        id: "lead-1",
+        workspaceId: OWNER_WID,
+        name: "Ada, CEO",
+        email: "ada@example.com",
+        message: 'Need "sales" help\nthis week',
+        source: "landing_form",
+        trackingRef: null,
+        status: "working",
+        assigneeMemberId: null,
+        nextAction: "Reply today",
+        respondedAtMs: null,
+        slaDueAtMs: 123456,
+        slaNotifiedAtMs: null,
+        slaBreached: false,
+        reachContactKey: "email:ada@example.com",
+        createdAtMs: 123000,
+      },
+    ]);
+    const { app } = await buildRoute(OWNER_WID, fakeDiscovery());
+    const res = await app.inject({
+      method: "GET",
+      url: `/workspaces/${OWNER_WID}/leads/export.csv?status=working`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/csv");
+    expect(res.headers["content-disposition"]).toBe('attachment; filename="inbound-leads.csv"');
+    expect(res.body).toContain("id,email,name,message,source,trackingRef,status");
+    expect(res.body).toContain('"Ada, CEO"');
+    expect(res.body).toContain('"Need ""sales"" help\nthis week"');
+    expect(res.body).toContain(",working,");
+    expect(listLeads).toHaveBeenCalledWith(OWNER_WID, {
+      status: "working",
+      sinceMs: undefined,
+      limit: undefined,
+    });
+    await app.close();
+  });
+
+  it("rejects cross-workspace lead reads and exports", async () => {
+    const { app } = await buildRoute(OWNER_WID, fakeDiscovery());
+    const otherWid = "99999999-2222-3333-4444-555555555555";
+    const list = await app.inject({ method: "GET", url: `/workspaces/${otherWid}/leads` });
+    const csv = await app.inject({
+      method: "GET",
+      url: `/workspaces/${otherWid}/leads/export.csv`,
+    });
+
+    expect(list.statusCode).toBe(403);
+    expect(csv.statusCode).toBe(403);
+    expect(listLeads).not.toHaveBeenCalled();
     await app.close();
   });
 
