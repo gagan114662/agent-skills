@@ -3,6 +3,7 @@ import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { getAgentSessionStatus } from "../db/repositories/agent-sessions.js";
 import { listPolicyRulesWithId } from "../db/repositories/approvals.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
+import type { LoopFailureRecorder } from "../observability/loop-failures.js";
 import { AutonomyEngine, type AutonomyLauncher } from "./engine.js";
 
 /**
@@ -35,6 +36,7 @@ export function createDefaultAutonomyEngine(
   logger: SessionLogger,
   sessionManager?: SessionManager,
   launcher?: AutonomyLauncher,
+  failureRecorder?: LoopFailureRecorder,
 ): AutonomyEngine {
   return new AutonomyEngine({
     poster: channelPoster,
@@ -45,5 +47,6 @@ export function createDefaultAutonomyEngine(
     completionPolicies: (workspaceId) => listPolicyRulesWithId(workspaceId),
     // #99: pause the loop while the platform is in maintenance (same Redis flag the write-gate reads).
     maintenancePaused: () => isMaintenanceActive(),
+    failureRecorder,
   });
 }

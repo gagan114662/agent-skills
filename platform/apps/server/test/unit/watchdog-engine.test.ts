@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fingerprintFailure } from "../../src/flywheel/fingerprint.js";
 import { renderMetrics, resetMetrics } from "../../src/observability/metrics.js";
 import { WATCHDOG_DEFAULTS, type WatchdogCaps } from "../../src/watchdog/caps.js";
 import {
@@ -49,7 +50,10 @@ function record(over: Partial<RevivalRecord> = {}): RevivalRecord {
 }
 
 /** Build the engine over fakes; override any seam per test. Enabled caps by default. */
-function build(over: Partial<WatchdogEngineDeps> = {}, caps: WatchdogCaps = { ...WATCHDOG_DEFAULTS, enabled: true }) {
+function build(
+  over: Partial<WatchdogEngineDeps> = {},
+  caps: WatchdogCaps = { ...WATCHDOG_DEFAULTS, enabled: true },
+) {
   const reviver = { launch: vi.fn(async () => ({ id: "sess_2" })) };
   const escalator = { escalate: vi.fn(async () => ({ id: "appr_1" })) };
   const finalizeDead = vi.fn(async () => {});
@@ -107,7 +111,10 @@ describe("WatchdogEngine", () => {
 
     await expect(engine.tickAll()).resolves.toBeUndefined();
 
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), "watchdog tickAll failed");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      "watchdog tickAll failed",
+    );
     expect(renderMetrics()).toContain('loop_tick_failures_total{loop="watchdog"} 1');
   });
 
@@ -138,9 +145,15 @@ describe("WatchdogEngine", () => {
     expect(finalizeDead).toHaveBeenCalledWith("sess_1", "failed");
     expect(reviver.launch).toHaveBeenCalledTimes(1);
     const launchArg = reviver.launch.mock.calls[0][0];
-    expect(launchArg).toMatchObject({ workspaceId: "ws_1", channelId: "chan_1", agentMemberId: "agent_1" });
+    expect(launchArg).toMatchObject({
+      workspaceId: "ws_1",
+      channelId: "chan_1",
+      agentMemberId: "agent_1",
+    });
     expect(revivals.recordRevival).toHaveBeenCalledTimes(1);
-    expect(result.actions).toEqual([{ sessionId: "sess_1", action: "revive", reason: "stale_session" }]);
+    expect(result.actions).toEqual([
+      { sessionId: "sess_1", action: "revive", reason: "stale_session" },
+    ]);
   });
 
   it("escalates instead of reviving once the per-window limit is reached", async () => {
@@ -184,12 +197,17 @@ describe("WatchdogEngine", () => {
     const result = await engine.tickWorkspace("ws_1", [liveSession({ status: "canceled" })], NOW);
     expect(reviver.launch).not.toHaveBeenCalled();
     expect(escalator.escalate).toHaveBeenCalledTimes(1);
-    expect(result.actions[0]).toMatchObject({ action: "escalate", reason: "non_retryable_failure" });
+    expect(result.actions[0]).toMatchObject({
+      action: "escalate",
+      reason: "non_retryable_failure",
+    });
   });
 
   it("isolates workspaces: A's stale session never drives action in B", async () => {
     const caps = (wid: string): WatchdogCaps =>
-      wid === "ws_A" ? { ...WATCHDOG_DEFAULTS, enabled: true } : { ...WATCHDOG_DEFAULTS, enabled: false };
+      wid === "ws_A"
+        ? { ...WATCHDOG_DEFAULTS, enabled: true }
+        : { ...WATCHDOG_DEFAULTS, enabled: false };
     const { engine, reviver } = build({
       listLiveSessions: vi.fn(async () => [
         liveSession({ id: "a1", workspaceId: "ws_A" }),
@@ -201,6 +219,31 @@ describe("WatchdogEngine", () => {
     // Only ws_A is enabled, so exactly one revive (its own session) — ws_B is untouched.
     expect(reviver.launch).toHaveBeenCalledTimes(1);
     expect(reviver.launch.mock.calls[0][0]).toMatchObject({ workspaceId: "ws_A" });
+  });
+
+  it("records recurring workspace tick infrastructure failures with one flywheel signature", async () => {
+    const seen = new Map<string, number>();
+    const failureRecorder = vi.fn(async (event) => {
+      const { signature } = fingerprintFailure(event);
+      seen.set(signature, (seen.get(signature) ?? 0) + 1);
+    });
+    const { engine } = build({
+      caps: () => {
+        throw new Error("redis timeout for session 5d8b3a1c-6334-4b24-9c74-c536a48c95e8");
+      },
+      failureRecorder,
+    });
+
+    await engine.tickAll();
+    await engine.tickAll();
+
+    expect(failureRecorder).toHaveBeenCalledTimes(2);
+    expect(failureRecorder.mock.calls[0][0]).toMatchObject({
+      workspaceId: "ws_1",
+      failureClass: "watchdog_revival",
+      source: "loop:watchdog",
+    });
+    expect([...seen.values()]).toEqual([2]);
   });
 
   it("start() is a no-op at interval 0 (default OFF)", () => {

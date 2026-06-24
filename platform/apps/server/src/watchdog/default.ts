@@ -11,6 +11,7 @@ import { getUsage } from "../db/repositories/tenant-usage.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { createRequest } from "../db/repositories/approvals.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
+import type { LoopFailureRecorder } from "../observability/loop-failures.js";
 import { channelPoster } from "../runtime/default.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import type { SessionManager } from "../runtime/manager.js";
@@ -51,6 +52,7 @@ const approvalEscalator: WatchdogEscalator = {
 export function createDefaultWatchdogEngine(
   logger: SessionLogger,
   sessionManager: SessionManager,
+  failureRecorder?: LoopFailureRecorder,
 ): WatchdogEngine {
   // #248: starting the supervisor timer (WATCHDOG_INTERVAL_MS > 0) is the operator's opt-in, so it ALSO
   // enables the per-workspace caps by default — otherwise the timer would run but reap nothing (the
@@ -91,6 +93,7 @@ export function createDefaultWatchdogEngine(
     poster: channelPoster,
     // #99: pause the supervisor during maintenance (same Redis flag the write-gate + autonomy loop read).
     maintenancePaused: () => isMaintenanceActive(),
+    failureRecorder,
     logger,
   });
 }

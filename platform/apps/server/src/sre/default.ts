@@ -22,6 +22,7 @@ import { snapshotHttpMetrics } from "../observability/metrics.js";
 import { pingDb } from "../db/index.js";
 import { pingRedis } from "../redis/index.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
+import type { LoopFailureRecorder } from "../observability/loop-failures.js";
 import { channelPoster } from "../runtime/default.js";
 import { createReliabilityNotifier } from "../reliability/default.js";
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
@@ -61,7 +62,14 @@ async function readSignals(): Promise<Map<string, ServiceSignal>> {
 }
 
 function healthOnly(service: string, healthy: boolean): ServiceSignal {
-  return { service, windowRequests: 0, windowErrors: 0, p95LatencyMs: 0, queueLagSeconds: 0, healthy };
+  return {
+    service,
+    windowRequests: 0,
+    windowErrors: 0,
+    p95LatencyMs: 0,
+    queueLagSeconds: 0,
+    healthy,
+  };
 }
 
 /**
@@ -158,6 +166,7 @@ const filePostmortemWriter: PostmortemWriter = {
 export function createDefaultSreEngine(
   logger: SessionLogger,
   sessionManager: SessionManager,
+  failureRecorder?: LoopFailureRecorder,
 ): SreEngine {
   return new SreEngine({
     readSignals,
@@ -188,6 +197,7 @@ export function createDefaultSreEngine(
     postmortems: filePostmortemWriter,
     // #99: pause the loop during maintenance (same Redis flag the write-gate + other loops read).
     maintenancePaused: () => isMaintenanceActive(),
+    failureRecorder,
     logger,
   });
 }
