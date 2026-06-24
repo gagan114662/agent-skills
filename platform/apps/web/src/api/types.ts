@@ -560,6 +560,39 @@ export interface FounderConsoleDto {
   attention: { required: boolean; reasons: string[] };
 }
 
+/** Captured inbound lead lifecycle (#898), from `GET /me/inbound/leads`. */
+export type InboundLeadStatus = "new" | "working" | "converted" | "archived";
+
+export interface InboundLeadDto {
+  id: string;
+  workspaceId: string;
+  name: string | null;
+  email: string;
+  message: string;
+  source: string;
+  trackingRef: string | null;
+  status: InboundLeadStatus;
+  assigneeMemberId: string | null;
+  nextAction: string | null;
+  respondedAtMs: number | null;
+  slaDueAtMs: number;
+  slaNotifiedAtMs: number | null;
+  slaBreached: boolean;
+  reachContactKey: string;
+  createdAtMs: number;
+}
+
+export interface InboundLeadsResponse {
+  leads: InboundLeadDto[];
+}
+
+export interface InboundLeadUpdateInput {
+  status?: InboundLeadStatus;
+  assigneeMemberId?: string | null;
+  nextAction?: string | null;
+  respondedAt?: string | null;
+}
+
 /** One owner-decision in the unified queue (#173): approval / guardrail escalation / constitution. */
 export interface DecisionQueueItemDto {
   kind: "approval" | "guardrail_escalation" | "constitution";

@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { requireIdentity } from "../auth/guard.js";
 import type { DiscoveryService } from "../discovery/service.js";
-import { recordLead } from "../db/repositories/inbound-leads.js";
+import { getLead, listLeads, markSlaNotified, recordLead, updateLead } from "../db/repositories/inbound-leads.js";
+import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
+import { INBOUND_LEAD_STATUSES, type InboundLeadStatus } from "../db/schema/index.js";
 import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
 import type { InboundLeadFollowup } from "../leads/default.js";
+import { notify } from "../notifications/service.js";
 
 /**
  * Inbound lead capture route (GAP 1 of the leads centre, ADR-0400). ONE PUBLIC (unauth) endpoint,
@@ -34,11 +38,96 @@ export interface InboundLeadsRoutesOptions {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function leadStatus(value: unknown): InboundLeadStatus | undefined {
+  return typeof value === "string" && (INBOUND_LEAD_STATUSES as readonly string[]).includes(value)
+    ? value as InboundLeadStatus
+    : undefined;
+}
+
+function nullableText(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function leadExcerpt(kind: "arrived" | "sla", lead: { name: string | null; email: string; message: string }): string {
+  const who = lead.name ? `${lead.name} <${lead.email}>` : lead.email;
+  const shortMessage = lead.message.length > 140 ? `${lead.message.slice(0, 137)}...` : lead.message;
+  return kind === "arrived"
+    ? `New inbound lead from ${who}: ${shortMessage}`
+    : `24h SLA breached for inbound lead ${who}: ${shortMessage}`;
+}
+
+async function notifyOwner(app: FastifyInstance, workspaceId: string, excerpt: string): Promise<void> {
+  const ownerMemberId = await getWorkspaceOwnerMemberId(workspaceId);
+  if (!ownerMemberId) return;
+  await notify(app.log, {
+    workspaceId,
+    recipientMemberId: ownerMemberId,
+    type: "inbound_lead",
+    excerpt,
+  });
+}
+
 export async function inboundLeadsRoutes(
   app: FastifyInstance,
   opts: InboundLeadsRoutesOptions,
 ): Promise<void> {
   const { discovery, ownerWorkspaceId, warmLeadFollowup } = opts;
+
+  app.get("/me/inbound/leads", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const q = (req.query ?? {}) as { status?: unknown; sinceMs?: unknown; limit?: unknown };
+    const sinceMs = typeof q.sinceMs === "string" ? Number.parseInt(q.sinceMs, 10) : undefined;
+    const limit = typeof q.limit === "string" ? Number.parseInt(q.limit, 10) : undefined;
+    const leads = await listLeads(id.workspaceId, {
+      status: leadStatus(q.status),
+      sinceMs: Number.isFinite(sinceMs) ? sinceMs : undefined,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    for (const lead of leads) {
+      if (!lead.slaBreached || lead.slaNotifiedAtMs !== null) continue;
+      await notifyOwner(app, id.workspaceId, leadExcerpt("sla", lead));
+      await markSlaNotified(id.workspaceId, lead.id);
+    }
+    return { leads };
+  });
+
+  app.get("/me/inbound/leads/:leadId", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { leadId } = req.params as { leadId: string };
+    const lead = await getLead(id.workspaceId, leadId);
+    if (!lead) return reply.code(404).send({ error: "lead not found" });
+    return { lead };
+  });
+
+  app.patch("/me/inbound/leads/:leadId", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { leadId } = req.params as { leadId: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const status = body.status === undefined ? undefined : leadStatus(body.status);
+    if (body.status !== undefined && !status) return reply.code(400).send({ error: "invalid lead status" });
+    const assigneeMemberId = body.assigneeMemberId === undefined ? undefined : nullableText(body.assigneeMemberId);
+    if (assigneeMemberId && !UUID_RE.test(assigneeMemberId)) return reply.code(400).send({ error: "invalid assigneeMemberId" });
+    const nextAction = body.nextAction === undefined ? undefined : nullableText(body.nextAction);
+    const respondedAt = body.respondedAt === undefined
+      ? undefined
+      : body.respondedAt === null
+        ? null
+        : typeof body.respondedAt === "string"
+          ? new Date(body.respondedAt)
+          : undefined;
+    if (respondedAt instanceof Date && Number.isNaN(respondedAt.getTime())) {
+      return reply.code(400).send({ error: "invalid respondedAt" });
+    }
+    const lead = await updateLead(id.workspaceId, leadId, { status, assigneeMemberId, nextAction, respondedAt });
+    if (!lead) return reply.code(404).send({ error: "lead not found" });
+    return { lead };
+  });
 
   app.post("/inbound/leads", async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -76,6 +165,12 @@ export async function inboundLeadsRoutes(
       source: lead.source,
       trackingRef: lead.trackingRef,
     });
+
+    try {
+      await notifyOwner(app, workspaceId, leadExcerpt("arrived", lead));
+    } catch (err) {
+      req.log.warn({ err, leadId: id }, "inbound lead captured but owner notification failed");
+    }
 
     // Best-effort: seed the default warm-lead definition, then feed the captured lead into #222 so a fresh
     // workspace qualifies hand-raises into the outreach stage without owner setup. The prospect key is an

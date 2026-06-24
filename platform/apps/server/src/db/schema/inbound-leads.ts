@@ -36,9 +36,16 @@ export const inboundLeads = pgTable(
     // Reserved for #386 attribution: the recovered tracking ref so a future payment credits this lead.
     trackingRef: text("tracking_ref"),
     status: text("status", { enum: INBOUND_LEAD_STATUSES }).notNull().default("new"),
+    assigneeMemberId: uuid("assignee_member_id"),
+    nextAction: text("next_action"),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
+    slaNotifiedAt: timestamp("sla_notified_at", { withTimezone: true }),
+    reachContactKey: text("reach_contact_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     byWorkspace: index("inbound_leads_workspace_idx").on(t.workspaceId, t.createdAt),
+    byWorkspaceStatus: index("inbound_leads_workspace_status_idx").on(t.workspaceId, t.status, t.createdAt),
   }),
 );
