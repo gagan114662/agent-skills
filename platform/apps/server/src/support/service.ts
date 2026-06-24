@@ -12,7 +12,7 @@
  * autonomous (§4). Resolution metrics count external receipts only (§2).
  */
 import type { IngestTicketInput, ReplyGate, SupportTicket, TicketStore } from "../voice/service.js";
-import { buildAnswerWithReceipts, kbEntryFromResolvedTicket, type KbEntry, type NewKbEntry } from "./kb.js";
+import { buildAnswerWithReceipts, kbEntryFromResolvedTicket, kbSlug, type KbEntry, type NewKbEntry } from "./kb.js";
 import { decideSupportRouting, type SupportRoute } from "./routing.js";
 import { fingerprintComplaint } from "./recurrence.js";
 import { buildRefundDraft, buildSupportReply } from "./reply.js";
@@ -127,6 +127,23 @@ export interface TriageOutcome {
   /** The KB entry ids the draft cited (the receipts). Empty when the desk had no confident answer. */
   receipts: string[];
   escalationReasons: string[];
+}
+
+export interface ObjectionFaqDraft {
+  signature: string;
+  question: string;
+  count: number;
+  ticketIds: string[];
+  kbEntryId: string;
+  slug: string;
+  deduped: boolean;
+}
+
+export interface ObjectionFaqRefresh {
+  workspaceId: string;
+  generatedAt: Date;
+  minCount: number;
+  drafts: ObjectionFaqDraft[];
 }
 
 export class SupportDeskService {
@@ -373,6 +390,62 @@ export class SupportDeskService {
     return this.deps.kb.upsert({ ...newEntry, createdByMemberId: memberId });
   }
 
+  /**
+   * Mine recurring real prospect/customer questions into objection FAQ entries (#609). The output is a
+   * published KB row with traceable ticket provenance; sends/publishing outside the KB remain untouched.
+   */
+  async refreshObjectionFaq(
+    workspaceId: string,
+    opts: { minCount?: number; createdByMemberId?: string | null } = {},
+  ): Promise<ObjectionFaqRefresh> {
+    const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
+    const tickets = await this.deps.tickets.list(workspaceId);
+    const groups = new Map<string, { question: string; tickets: SupportTicket[] }>();
+    for (const ticket of tickets) {
+      const mined = mineObjectionQuestion(ticket);
+      if (!mined) continue;
+      const group = groups.get(mined.signature);
+      if (group) {
+        group.tickets.push(ticket);
+      } else {
+        groups.set(mined.signature, { question: mined.question, tickets: [ticket] });
+      }
+    }
+
+    const drafts: ObjectionFaqDraft[] = [];
+    for (const [signature, group] of groups.entries()) {
+      if (group.tickets.length < minCount) continue;
+      const question = group.question;
+      const entry = {
+        workspaceId,
+        ventureIdeaId: group.tickets.find((t) => t.ventureIdeaId)?.ventureIdeaId ?? null,
+        slug: kbSlug("FAQ " + question),
+        title: "FAQ: " + question,
+        body: buildObjectionFaqAnswer(question, group.tickets),
+        category: "objection",
+        source: "manual" as const,
+        sourceTicketId: null,
+        provenance: "objection_miner:" + signature + ":" + group.tickets.map((t) => t.id).join(","),
+      };
+      const { entry: saved, deduped } = await this.deps.kb.upsert({
+        ...entry,
+        createdByMemberId: opts.createdByMemberId ?? null,
+      });
+      drafts.push({
+        signature,
+        question,
+        count: group.tickets.length,
+        ticketIds: group.tickets.map((t) => t.id),
+        kbEntryId: saved.id,
+        slug: saved.slug,
+        deduped,
+      });
+    }
+
+    drafts.sort((a, b) => b.count - a.count || a.question.localeCompare(b.question));
+    return { workspaceId, generatedAt: this.now(), minCount, drafts };
+  }
+
   // ---- SLA + resolution metrics ---------------------------------------------------------------------
 
   /** First-response SLA breaches (read-only, for the founder brief). */
@@ -395,4 +468,65 @@ export class SupportDeskService {
       receipts,
     );
   }
+}
+
+const OBJECTION_KEYWORDS = [
+  "soc2",
+  "security",
+  "privacy",
+  "data",
+  "price",
+  "pricing",
+  "cost",
+  "budget",
+  "integration",
+  "integrations",
+  "cancel",
+  "refund",
+  "contract",
+] as const;
+
+function mineObjectionQuestion(ticket: SupportTicket): { signature: string; question: string } | null {
+  const text = ((ticket.subject ?? "") + " " + ticket.body).trim();
+  if (!text.includes("?")) return null;
+  const lower = text.toLowerCase();
+  const keyword = OBJECTION_KEYWORDS.find((k) => lower.includes(k));
+  if (!keyword) return null;
+  const question = firstQuestion(ticket.subject, ticket.body);
+  return { signature: keyword, question };
+}
+
+function firstQuestion(subject: string | null, body: string): string {
+  const source = body.includes("?") ? body : (subject ?? "") + " " + body;
+  const text = source.replace(/\s+/g, " ").trim();
+  const idx = text.indexOf("?");
+  const sentence = idx >= 0 ? text.slice(0, idx + 1) : text;
+  return sentence.slice(0, 140) || "Common prospect objection";
+}
+
+function buildObjectionFaqAnswer(question: string, tickets: SupportTicket[]): string {
+  const examples = tickets.slice(0, 3).map((t) => "- " + summarize(t.body, 120)).join("\n");
+  return [
+    "Short answer: " + draftShortAnswer(question),
+    "",
+    "Why this comes up:",
+    examples,
+    "",
+    "How to handle it:",
+    "Acknowledge the concern directly, explain the current safeguard or path, and offer the next proof step before asking for commitment.",
+  ].join("\n");
+}
+
+function draftShortAnswer(question: string): string {
+  const lower = question.toLowerCase();
+  if (lower.includes("soc2") || lower.includes("security") || lower.includes("privacy") || lower.includes("data")) {
+    return "Security and customer-data handling are valid buying criteria; share the current controls, roadmap, and any available proof before the prospect commits.";
+  }
+  if (lower.includes("price") || lower.includes("pricing") || lower.includes("cost") || lower.includes("budget")) {
+    return "Anchor the answer in the business outcome, the smallest starting package, and what proof the prospect needs before paying more.";
+  }
+  if (lower.includes("integration")) {
+    return "Confirm the exact workflow they need, name the supported integration path, and offer a scoped setup step.";
+  }
+  return "Treat this as a real objection, answer with the clearest current proof, and name the next step that removes the risk.";
 }

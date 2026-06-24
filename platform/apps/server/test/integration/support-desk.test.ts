@@ -177,6 +177,42 @@ describe("Support Desk (#190 — real Postgres + Redis, default-safe: no autonom
     expect(res.statusCode).toBe(403);
   });
 
+  it("mines recurring real prospect questions into objection FAQ KB entries", async () => {
+    const app = await startApp();
+    const w = await seed(app);
+    const first = await ingestWidget(app, w.workspaceId, {
+      body: "Is SOC2 required before we can use this with customer data?",
+      contact: "buyer-a@example.com",
+    });
+    expect(first.statusCode).toBe(202);
+    const second = await ingestWidget(app, w.workspaceId, {
+      body: "Do you have SOC2 before we put customer data in it?",
+      contact: "buyer-b@example.com",
+    });
+    expect(second.statusCode).toBe(202);
+
+    const refresh = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/support/objections/refresh`,
+      cookies: { rid: w.cookie },
+      payload: { minCount: 2 },
+    });
+    expect(refresh.statusCode).toBe(200);
+    expect(refresh.json().drafts[0]).toMatchObject({ signature: "soc2", count: 2 });
+
+    const kb = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/support/kb?category=objection`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(kb).toHaveLength(1);
+    expect(kb[0].title).toContain("SOC2");
+    expect(kb[0].body).toContain("Short answer");
+    expect(kb[0].provenance).toContain("objection_miner:soc2");
+  });
+
   it("KB curation is deduped on slug (re-curating updates in place)", async () => {
     const app = await startApp();
     const w = await seed(app);

@@ -172,6 +172,22 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
     return reply.code(deduped ? 200 : 201).send({ id: entry.id, slug: entry.slug, deduped });
   });
 
+  /** Mine recurring real prospect questions into objection FAQ KB drafts (#609). */
+  app.post("/workspaces/:wid/support/objections/refresh", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = (req.body ?? {}) as { minCount?: unknown };
+    const minCount =
+      typeof b.minCount === "number" && Number.isFinite(b.minCount) ? Math.trunc(b.minCount) : undefined;
+    const result = await service.refreshObjectionFaq(wid, {
+      minCount,
+      createdByMemberId: id.memberId,
+    });
+    return reply.code(200).send(result);
+  });
+
   /** Manually (re)triage a ticket as the calling member — routes per the bounded-autonomy gate. */
   app.post("/workspaces/:wid/support/tickets/:tid/triage", async (req, reply) => {
     const id = await requireIdentity(req, reply);
