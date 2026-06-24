@@ -10,6 +10,10 @@ import {
 import {
   PlanBillingService,
   type PlanPriceStore,
+  type PricingAssignment,
+  type PricingExperiment,
+  type PricingExperimentStore,
+  type PricingExperimentVariant,
   type WorkspacePlanStore,
   type ActivePlan,
 } from "../../src/billing/plan-service.js";
@@ -62,6 +66,92 @@ function memPlanStore(): WorkspacePlanStore {
   };
 }
 
+function memExperimentStore(): PricingExperimentStore {
+  const experiments = new Map<string, PricingExperiment>();
+  const assignments = new Map<string, PricingAssignment>();
+  let seq = 0;
+  return {
+    create(input) {
+      const id = `exp-${++seq}`;
+      const experiment: PricingExperiment = {
+        id,
+        workspaceId: input.workspaceId,
+        name: input.name,
+        status: "active",
+        controlVariantKey: input.controlVariantKey,
+        minSampleSize: input.minSampleSize,
+        variants: input.variants,
+        createdAt: new Date(0),
+      };
+      experiments.set(id, experiment);
+      return Promise.resolve(experiment);
+    },
+    active(workspaceId) {
+      return Promise.resolve(
+        [...experiments.values()].find((e) => e.workspaceId === workspaceId && e.status === "active"),
+      );
+    },
+    get(workspaceId, experimentId) {
+      const e = experiments.get(experimentId);
+      return Promise.resolve(e?.workspaceId === workspaceId ? e : undefined);
+    },
+    assignment(experimentId, subjectKey) {
+      return Promise.resolve(
+        [...assignments.values()].find((a) => a.experimentId === experimentId && a.subjectKey === subjectKey),
+      );
+    },
+    assign(input: {
+      workspaceId: string;
+      experimentId: string;
+      subjectKey: string;
+      variant: PricingExperimentVariant;
+    }) {
+      const existing = [...assignments.values()].find(
+        (a) => a.experimentId === input.experimentId && a.subjectKey === input.subjectKey,
+      );
+      if (existing) return Promise.resolve(existing);
+      const row: PricingAssignment = {
+        id: `asg-${++seq}`,
+        workspaceId: input.workspaceId,
+        experimentId: input.experimentId,
+        subjectKey: input.subjectKey,
+        variantKey: input.variant.key,
+        planKey: input.variant.planKey,
+        checkoutStartedAt: null,
+        convertedAt: null,
+        revenueEventId: null,
+        revenueCents: 0,
+        createdAt: new Date(0),
+      };
+      assignments.set(row.id, row);
+      return Promise.resolve(row);
+    },
+    getAssignment(workspaceId, assignmentId) {
+      const row = assignments.get(assignmentId);
+      return Promise.resolve(row?.workspaceId === workspaceId ? row : undefined);
+    },
+    markCheckout(workspaceId, assignmentId) {
+      const row = assignments.get(assignmentId);
+      if (row?.workspaceId === workspaceId) row.checkoutStartedAt = new Date(1);
+      return Promise.resolve();
+    },
+    markConversion(input) {
+      const row = assignments.get(input.assignmentId);
+      if (row?.workspaceId === input.workspaceId && row.experimentId === input.experimentId) {
+        row.convertedAt = new Date(2);
+        row.revenueEventId = input.providerEventId;
+        row.revenueCents = input.revenueCents;
+      }
+      return Promise.resolve();
+    },
+    assignments(workspaceId, experimentId) {
+      return Promise.resolve(
+        [...assignments.values()].filter((a) => a.workspaceId === workspaceId && a.experimentId === experimentId),
+      );
+    },
+  };
+}
+
 function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
   const provider = new NoneBillingProvider();
   const prices = memPriceStore();
@@ -75,6 +165,7 @@ function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
     provider,
     prices,
     plans,
+    pricingExperiments: memExperimentStore(),
     secrets: new StaticSecretsResolver({ STRIPE_SECRET_KEY: STRIPE_KEY }),
     loadConfig,
   });
@@ -168,5 +259,55 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
         expect((err as Error).message).not.toContain(STRIPE_KEY);
         expect((err as Error).message).toContain("‹redacted›");
       });
+  });
+
+  it("runs a sticky pricing cohort, honors the assigned plan at checkout, and reports revenue lift", async () => {
+    const { service, provider } = makeService();
+    const experiment = await service.createPricingExperiment({
+      workspaceId: WS,
+      name: "Starter vs Pro packaging",
+      controlVariantKey: "starter",
+      minSampleSize: 1,
+      variants: [
+        { key: "starter", planKey: "starter", label: "Starter card", weightBps: 5000 },
+        { key: "pro", planKey: "pro", label: "Pro card", weightBps: 5000 },
+      ],
+    });
+
+    const first = await service.listPlans(WS, { subjectKey: "visitor-pro" });
+    const again = await service.listPlans(WS, { subjectKey: "visitor-pro" });
+    expect(first.pricingExperiment?.assignmentId).toBe(again.pricingExperiment?.assignmentId);
+    expect(first.pricingExperiment?.variantKey).toBe(again.pricingExperiment?.variantKey);
+
+    const assignedPlan = first.pricingExperiment!.planKey;
+    const otherPlan = assignedPlan === "pro" ? "starter" : "pro";
+    await expect(
+      service.createCheckout({
+        workspaceId: WS,
+        planKey: otherPlan,
+        pricingAssignmentId: first.pricingExperiment!.assignmentId,
+      }),
+    ).rejects.toThrow(/assigned pricing experiment/i);
+
+    await service.createCheckout({
+      workspaceId: WS,
+      planKey: assignedPlan,
+      pricingAssignmentId: first.pricingExperiment!.assignmentId,
+    });
+    const link = provider.links.at(-1)!;
+    expect(link.metadata).toMatchObject({
+      pricingExperimentId: experiment.id,
+      pricingAssignmentId: first.pricingExperiment!.assignmentId,
+      pricingVariantKey: first.pricingExperiment!.variantKey,
+    });
+
+    await service.activate(WS, assignedPlan, "evt_pricing_1", link.metadata, getPlan(assignedPlan)!.priceCents);
+    const report = await service.pricingExperimentReport(WS, experiment.id);
+    const winner = report.variants.find((v) => v.variantKey === first.pricingExperiment!.variantKey)!;
+    expect(winner.assignments).toBe(1);
+    expect(winner.checkouts).toBe(1);
+    expect(winner.conversions).toBe(1);
+    expect(winner.revenueCents).toBe(getPlan(assignedPlan)!.priceCents);
+    expect(winner.significance).toBe("directional");
   });
 });
