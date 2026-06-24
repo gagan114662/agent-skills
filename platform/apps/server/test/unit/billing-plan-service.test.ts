@@ -49,19 +49,49 @@ function memPlanStore(): WorkspacePlanStore {
     getActive(ws) {
       return Promise.resolve(rows.get(ws));
     },
-    activate({ workspaceId, planKey, caps, providerEventId }) {
+    activate({ workspaceId, planKey, caps, providerEventId, expiresAt, nextBillingAt }) {
       const row: ActivePlan = {
         workspaceId,
         planKey,
         status: "active",
+        renewalStatus: "active",
         agentSeats: caps.agentSeats,
         monthlySessionBudgetCents: caps.monthlySessionBudgetCents,
         fleetSize: caps.fleetSize,
         providerEventId: providerEventId ?? null,
+        expiresAt,
+        nextBillingAt,
+        retryCount: 0,
+        retryScheduledAt: null,
+        lastPaymentFailedAt: null,
         activatedAt: new Date(0),
       };
       rows.set(workspaceId, row);
       return Promise.resolve(row);
+    },
+    recordPaymentFailure({ workspaceId, providerEventId, retryScheduledAt, now }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.renewalStatus = "past_due";
+      row.providerEventId = providerEventId;
+      row.retryCount += 1;
+      row.retryScheduledAt = retryScheduledAt;
+      row.lastPaymentFailedAt = now;
+      return Promise.resolve(row);
+    },
+    markExpired({ workspaceId }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.renewalStatus = "expired";
+      row.status = "canceled";
+      return Promise.resolve(row);
+    },
+    dueForRetry(now) {
+      return Promise.resolve(
+        [...rows.values()].filter(
+          (row) => row.renewalStatus === "past_due" && row.retryScheduledAt !== null && row.retryScheduledAt <= now,
+        ),
+      );
     },
   };
 }
@@ -227,6 +257,33 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     const current = (await service.listPlans(WS)).current;
     expect(current?.planKey).toBe("agency");
     expect(current?.fleetSize).toBe(planCaps(getPlan("agency")!).fleetSize);
+  });
+
+  it("sets a renewal window on activation and moves failed renewals into dunning", async () => {
+    const { service } = makeService();
+    const active = await service.activate(WS, "pro", "evt_paid");
+    expect(active.renewalStatus).toBe("active");
+    expect(active.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(active.nextBillingAt.getTime()).toBe(active.expiresAt.getTime());
+
+    const failed = await service.recordPaymentFailure(WS, "evt_failed");
+    expect(failed).toMatchObject({ renewalStatus: "past_due", retryCount: 1, providerEventId: "evt_failed" });
+    expect(failed?.retryScheduledAt).toBeInstanceOf(Date);
+  });
+
+  it("expires active plans when the billing window has passed", async () => {
+    const { service, plans } = makeService();
+    await plans.activate({
+      workspaceId: WS,
+      planKey: "starter",
+      caps: planCaps(getPlan("starter")!),
+      providerEventId: "evt_old",
+      expiresAt: new Date(0),
+      nextBillingAt: new Date(0),
+    });
+    const listing = await service.listPlans(WS);
+    expect(listing.current?.renewalStatus).toBe("expired");
+    expect(listing.current?.status).toBe("canceled");
   });
 
   it("rejects checkout for an unknown plan key", async () => {

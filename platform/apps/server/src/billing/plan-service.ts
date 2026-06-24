@@ -31,10 +31,16 @@ export interface ActivePlan {
   workspaceId: string;
   planKey: PlanKey;
   status: string;
+  renewalStatus: "active" | "past_due" | "expired" | "canceled";
   agentSeats: number;
   monthlySessionBudgetCents: number;
   fleetSize: number;
   providerEventId: string | null;
+  expiresAt: Date;
+  nextBillingAt: Date;
+  retryCount: number;
+  retryScheduledAt: Date | null;
+  lastPaymentFailedAt: Date | null;
   activatedAt: Date;
 }
 
@@ -144,7 +150,17 @@ export interface WorkspacePlanStore {
     planKey: PlanKey;
     caps: PlanCaps;
     providerEventId: string | null;
+    expiresAt: Date;
+    nextBillingAt: Date;
   }): Promise<ActivePlan>;
+  recordPaymentFailure(input: {
+    workspaceId: string;
+    providerEventId: string;
+    retryScheduledAt: Date;
+    now: Date;
+  }): Promise<ActivePlan | undefined>;
+  markExpired(input: { workspaceId: string; now: Date }): Promise<ActivePlan | undefined>;
+  dueForRetry(now: Date): Promise<ActivePlan[]>;
 }
 
 export interface PricingExperimentStore {
@@ -255,7 +271,7 @@ export class PlanBillingService implements PlanActivator {
 
   /** The `/pricing` payload: the static catalog + the workspace's currently active plan (or null). */
   async listPlans(workspaceId: string, opts: { subjectKey?: string | null } = {}): Promise<PlanListing> {
-    const current = await this.store.getActive(workspaceId);
+    const current = await this.expireIfPastDue(workspaceId);
     const pricingExperiment = await this.assignPricingExperiment(workspaceId, opts.subjectKey ?? null);
     return { plans: PLANS, current: current ?? null, pricingExperiment };
   }
@@ -328,6 +344,8 @@ export class PlanBillingService implements PlanActivator {
       planKey: plan.key,
       caps: planCaps(plan),
       providerEventId,
+      expiresAt: addDays(new Date(), 30),
+      nextBillingAt: addDays(new Date(), 30),
     });
     if (metadata.pricingExperimentId && metadata.pricingAssignmentId && this.pricingExperiments) {
       await this.pricingExperiments.markConversion({
@@ -340,6 +358,27 @@ export class PlanBillingService implements PlanActivator {
     }
     await this.trialNurture?.markPaid(workspaceId, providerEventId, amountCents);
     return active;
+  }
+
+  async recordPaymentFailure(workspaceId: string, providerEventId: string): Promise<ActivePlan | undefined> {
+    const now = new Date();
+    return this.store.recordPaymentFailure({
+      workspaceId,
+      providerEventId,
+      now,
+      retryScheduledAt: addDays(now, 1),
+    });
+  }
+
+  async renewalRetryQueue(): Promise<ActivePlan[]> {
+    return this.store.dueForRetry(new Date());
+  }
+
+  async expireIfPastDue(workspaceId: string): Promise<ActivePlan | undefined> {
+    const current = await this.store.getActive(workspaceId);
+    const now = new Date();
+    if (!current || current.renewalStatus !== "active" || current.expiresAt > now) return current;
+    return this.store.markExpired({ workspaceId, now });
   }
 
   async createPricingExperiment(input: CreatePricingExperimentInput): Promise<PricingExperiment> {
@@ -488,6 +527,10 @@ function normalizeVariants(input: CreatePricingExperimentInput["variants"]): Pri
     seen.add(variant.key);
   }
   return variants;
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function cleanKey(key: string): string {

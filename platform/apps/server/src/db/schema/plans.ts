@@ -25,9 +25,22 @@ export const workspacePlans = pgTable("workspace_plans", {
   fleetSize: integer("fleet_size").notNull(),
   /** The webhook event id that activated this plan (audit; nullable for manual/seed activation). */
   providerEventId: text("provider_event_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  nextBillingAt: timestamp("next_billing_at", { withTimezone: true }).notNull(),
+  renewalStatus: text("renewal_status").notNull().default("active"),
+  retryCount: integer("retry_count").notNull().default(0),
+  retryScheduledAt: timestamp("retry_scheduled_at", { withTimezone: true }),
+  lastPaymentFailedAt: timestamp("last_payment_failed_at", { withTimezone: true }),
   activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  renewalIdx: index("workspace_plans_renewal_idx").on(t.renewalStatus, t.retryScheduledAt),
+  renewalStatusCk: check(
+    "workspace_plans_renewal_status_ck",
+    sql`${t.renewalStatus} IN ('active','past_due','expired','canceled')`,
+  ),
+  retryCountCk: check("workspace_plans_retry_count_ck", sql`${t.retryCount} >= 0`),
+}));
 
 /**
  * The idempotent product/price registry. The composite PK `(workspace_id, plan_key, provider)` is what

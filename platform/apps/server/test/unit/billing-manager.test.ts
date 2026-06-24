@@ -88,6 +88,7 @@ interface Harness {
   provider: NoneBillingProvider;
   events: BillingStatusEvent[];
   posts: string[];
+  failures: string[];
 }
 
 function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
@@ -95,6 +96,7 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
   const provider = new NoneBillingProvider();
   const events: BillingStatusEvent[] = [];
   const posts: string[] = [];
+  const failures: string[] = [];
   const poster: ChannelPoster = {
     post: (input) => {
       posts.push(input.body);
@@ -112,11 +114,17 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
       ...cfg,
     }),
     deployments: { latestForSession: () => Promise.resolve({ id: "dep_1" }) },
+    planActivator: {
+      activate: async () => {},
+      recordPaymentFailure: async (_workspaceId, providerEventId) => {
+        failures.push(providerEventId);
+      },
+    },
     publish: (_cid, event) => events.push(event),
     now: () => NOW,
     toleranceSec: 300,
   });
-  return { manager, store, provider, events, posts };
+  return { manager, store, provider, events, posts, failures };
 }
 
 const LINK_REQ = {
@@ -146,6 +154,29 @@ function successEvent(extraMeta: Record<string, string> = {}, id = "evt_pay_1"):
           channelId: "chan_1",
           sessionId: "sess_1",
           agentMemberId: "agent_1",
+          ...extraMeta,
+        },
+      },
+    },
+  });
+}
+
+function failureEvent(extraMeta: Record<string, string> = {}, id = "evt_fail_1"): string {
+  return JSON.stringify({
+    id,
+    type: "invoice.payment_failed",
+    data: {
+      object: {
+        amount_due: 2500,
+        currency: "usd",
+        status: "open",
+        metadata: {
+          workspaceId: "ws_1",
+          channelId: "chan_1",
+          sessionId: "sess_1",
+          agentMemberId: "agent_1",
+          kind: "plan_checkout",
+          planKey: "pro",
           ...extraMeta,
         },
       },
@@ -297,5 +328,19 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     await h.manager.ingestWebhook("ws_1", raw, sig);
     expect(h.store.events.length).toBe(1); // still recorded...
     expect(h.store.evidence.length).toBe(0); // ...but not willingness-to-pay evidence
+  });
+
+  it("routes failed renewal webhooks into plan dunning and owner notification (#852)", async () => {
+    const raw = failureEvent();
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+    await h.manager.ingestWebhook("ws_1", raw, sig);
+    expect(h.store.events[0]).toMatchObject({
+      providerEventId: "evt_fail_1",
+      type: "invoice.payment_failed",
+      amountCents: 2500,
+    });
+    expect(h.store.evidence).toHaveLength(0);
+    expect(h.failures).toEqual(["evt_fail_1"]);
+    expect(h.posts.some((body) => /retry has been scheduled/i.test(body))).toBe(true);
   });
 });

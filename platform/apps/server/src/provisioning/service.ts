@@ -42,6 +42,7 @@ export interface ProvisioningServiceDeps {
   centralConnected: (provider: string) => Promise<boolean>;
   /** Persist a metered usage row (production: the `provisioning_usage` repo). */
   usage: UsageStore;
+  planActive?: (workspaceId: string) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -83,12 +84,19 @@ export class ProvisioningService {
     return decideProvision(capabilityId, this.deps.loadCaps(workspaceId), workspaceId);
   }
 
+  private async planAllowsAccess(workspaceId: string): Promise<boolean> {
+    return this.deps.planActive ? this.deps.planActive(workspaceId) : true;
+  }
+
   /**
    * Resolve a usable credential for a capability. For a `provisioned` decision this reads the central
    * credential server-side; an empty read (key not connected) degrades to `unavailable` so the adapter
    * falls back to mock instead of failing. Every other decision passes through with NO credential.
    */
   async resolveCredential(workspaceId: string, capabilityId: string): Promise<ResolvedProvision> {
+    if (!(await this.planAllowsAccess(workspaceId))) {
+      return { status: "disabled", capabilityId, reason: "billing plan expired or past due" };
+    }
     const decision = this.decide(workspaceId, capabilityId);
     switch (decision.status) {
       case "provisioned": {
@@ -127,8 +135,20 @@ export class ProvisioningService {
   async status(workspaceId: string): Promise<ProvisioningCapabilityStatus[]> {
     const caps = this.deps.loadCaps(workspaceId);
     const enabled = isProvisioningEnabledForWorkspace(caps, workspaceId);
+    const planActive = await this.planAllowsAccess(workspaceId);
     const out: ProvisioningCapabilityStatus[] = [];
     for (const descriptor of listCapabilityDescriptors()) {
+      if (!planActive) {
+        out.push({
+          capabilityId: descriptor.id,
+          label: descriptor.label,
+          costClass: descriptor.costClass,
+          state: "disabled",
+          provider: null,
+          detail: "Billing plan expired or past due.",
+        });
+        continue;
+      }
       if (descriptor.costClass === "customer_spend") {
         out.push({
           capabilityId: descriptor.id,
