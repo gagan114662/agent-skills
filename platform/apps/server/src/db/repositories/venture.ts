@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "../index.js";
 import {
   ventureIdeas,
@@ -70,15 +70,54 @@ export async function getIdea(
   return row as VentureIdea | undefined;
 }
 
+export class InvalidIdeaStatusTransitionError extends Error {
+  constructor(
+    readonly from: IdeaStatus,
+    readonly to: IdeaStatus,
+  ) {
+    super(`invalid venture idea status transition: ${from} -> ${to}`);
+  }
+}
+
+function allowedIdeaStatusPredecessors(next: IdeaStatus): IdeaStatus[] {
+  switch (next) {
+    case "intake":
+      return ["intake"];
+    case "scoring":
+      return ["intake", "iterating", "scoring"];
+    case "iterating":
+      return ["scoring", "iterating"];
+    case "funded":
+      return ["scoring", "iterating", "funded"];
+    case "escalated":
+      return ["scoring", "iterating", "escalated"];
+    case "killed":
+      // A funded venture can be sunset by the portfolio loop; killed remains otherwise terminal.
+      return ["intake", "scoring", "iterating", "funded", "killed"];
+  }
+}
+
 export async function updateIdeaStatus(
   workspaceId: string,
   ideaId: string,
   status: IdeaStatus,
 ): Promise<void> {
-  await db
+  const [updated] = await db
     .update(ventureIdeas)
     .set({ status })
-    .where(and(eq(ventureIdeas.id, ideaId), eq(ventureIdeas.workspaceId, workspaceId)));
+    .where(
+      and(
+        eq(ventureIdeas.id, ideaId),
+        eq(ventureIdeas.workspaceId, workspaceId),
+        inArray(ventureIdeas.status, allowedIdeaStatusPredecessors(status)),
+      ),
+    )
+    .returning({ status: ventureIdeas.status });
+  if (updated) return;
+
+  const current = await getIdea(workspaceId, ideaId);
+  if (!current) return;
+  throw new InvalidIdeaStatusTransitionError(current.status, status);
 }
 
 export async function setIdeaEpic(
