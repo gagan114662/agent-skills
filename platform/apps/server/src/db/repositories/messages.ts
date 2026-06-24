@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, count } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "../index.js";
 import { messages } from "../schema/index.js";
 import { MAX_MESSAGE_BODY_LENGTH } from "../../messaging/limits.js";
@@ -28,6 +28,13 @@ const messageColumns = {
   alsoSentToChannel: messages.alsoSentToChannel,
   body: messages.body,
 };
+
+export const MAX_MESSAGE_READ_LIMIT = 500;
+
+export function clampMessageReadLimit(limit?: number, fallback = MAX_MESSAGE_READ_LIMIT): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return fallback;
+  return Math.min(Math.floor(limit), MAX_MESSAGE_READ_LIMIT);
+}
 
 export async function postMessage(input: {
   workspaceId: string;
@@ -64,24 +71,26 @@ export async function getMessage(id: string): Promise<Message | undefined> {
 
 /** Channel messages in chronological order, excluding soft-deleted ones (flat #4 contract). */
 export async function listChannelMessages(channelId: string, limit?: number): Promise<Message[]> {
-  const boundedLimit = limit && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+  const boundedLimit = clampMessageReadLimit(limit);
   const rows = await db
     .select(messageColumns)
     .from(messages)
     .where(and(eq(messages.channelId, channelId), isNull(messages.deletedAt)))
-    .orderBy(boundedLimit ? desc(messages.createdAt) : asc(messages.createdAt))
-    .limit(boundedLimit ?? 100_000);
+    .orderBy(desc(messages.createdAt))
+    .limit(boundedLimit);
   const out = rows as Message[];
-  return boundedLimit ? out.reverse() : out;
+  return out.reverse();
 }
 
 /** A thread's replies (children of `rootId`) in chronological order, excluding deleted. */
-export async function listThreadReplies(rootId: string): Promise<Message[]> {
-  return db
+export async function listThreadReplies(rootId: string, limit?: number): Promise<Message[]> {
+  const rows = await db
     .select(messageColumns)
     .from(messages)
     .where(and(eq(messages.parentMessageId, rootId), isNull(messages.deletedAt)))
-    .orderBy(asc(messages.createdAt)) as Promise<Message[]>;
+    .orderBy(desc(messages.createdAt))
+    .limit(clampMessageReadLimit(limit));
+  return (rows as Message[]).reverse();
 }
 
 /** Number of non-deleted replies under a root message. */

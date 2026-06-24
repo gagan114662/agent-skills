@@ -297,12 +297,12 @@ export async function approvalRoutes(
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const q = req.query as { status?: string };
+    const q = req.query as { status?: string; limit?: string };
     if (q.status && !isApprovalStatus(q.status)) {
       return reply.code(400).send({ error: "invalid status filter" });
     }
     const status = isApprovalStatus(q.status) ? q.status : undefined;
-    const requests = await listRequests(wid, { status });
+    const requests = await listRequests(wid, { status, limit: typeof q.limit === "string" ? Number(q.limit) : undefined });
     // #322: collapse duplicate Spend-Approval deliverable drafts (the dozen near-identical "audit"
     // cards the duplicate-launch bug produced) to ONE card per real objective — but only for the
     // PENDING queue and only when dedup is enabled for this workspace (DEFAULT-OFF, owner-first). Other
