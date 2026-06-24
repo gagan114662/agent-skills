@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { AdsService, type AdsServiceDeps } from "../../src/ads/service.js";
 import { ADS_DEFAULTS } from "../../src/ads/caps.js";
-import type { AdsAccountSnapshot } from "../../src/ads/provider.js";
+import type { AdsAccountSnapshot, AdsProviderId } from "../../src/ads/provider.js";
 import { PROVISIONING_CUSTOMER_SPEND_ACTION } from "../../src/approvals/policy.js";
 
 /**
@@ -10,7 +10,12 @@ import { PROVISIONING_CUSTOMER_SPEND_ACTION } from "../../src/approvals/policy.j
  * exact amount, and never crossing the hard per-action cap.
  */
 const OWNER = "ws-owner";
-const identity = { workspaceId: OWNER, memberId: "m1", kind: "human" as const, displayName: "Owner" };
+const identity = {
+  workspaceId: OWNER,
+  memberId: "m1",
+  kind: "human" as const,
+  displayName: "Owner",
+};
 
 const account: AdsAccountSnapshot = {
   accountRef: "acct-1",
@@ -34,7 +39,12 @@ const account: AdsAccountSnapshot = {
 function makeService(over: Partial<AdsServiceDeps> = {}): { svc: AdsService; parked: unknown[] } {
   const parked: unknown[] = [];
   const deps: AdsServiceDeps = {
-    caps: () => ({ ...ADS_DEFAULTS, enabled: true, ownerWorkspaceId: OWNER, perActionCapCents: 50_000 }),
+    caps: () => ({
+      ...ADS_DEFAULTS,
+      enabled: true,
+      ownerWorkspaceId: OWNER,
+      perActionCapCents: 50_000,
+    }),
     connectedConnectionIds: async () => new Set<string>(["google_ads"]),
     readAccount: async () => account,
     park: async (input) => {
@@ -73,12 +83,33 @@ describe("AdsService.status (#272)", () => {
     expect(s.connected).toBe(true);
     expect(s.account).toBeNull();
   });
+
+  it("routes Meta Ads connections through the Meta provider id", async () => {
+    const providerIds: AdsProviderId[] = [];
+    const { svc } = makeService({
+      connectedConnectionIds: async () => new Set<string>(["meta_ads"]),
+      readAccount: async (_workspaceId, providerId) => {
+        providerIds.push(providerId);
+        return account;
+      },
+    });
+
+    const s = await svc.status(OWNER);
+
+    expect(s.connected).toBe(true);
+    expect(s.account?.totalSpentCents).toBe(1_200);
+    expect(providerIds).toEqual(["meta_ads"]);
+  });
 });
 
 describe("AdsService.requestSpend (#272)", () => {
   it("parks a money-gated owner approval with the exact amount + money action", async () => {
     const { svc, parked } = makeService();
-    const r = await svc.requestSpend(identity, { kind: "campaign_launch", amountCents: 5_000, campaignRef: "c1" });
+    const r = await svc.requestSpend(identity, {
+      kind: "campaign_launch",
+      amountCents: 5_000,
+      campaignRef: "c1",
+    });
     expect(r.status).toBe("pending_approval");
     if (r.status !== "pending_approval") return;
     expect(r.requestId).toBe("req-1");
