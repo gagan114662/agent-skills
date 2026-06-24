@@ -242,7 +242,10 @@ export async function backfillMarketingDepartments(log: FastifyBaseLogger): Prom
 }
 
 /** Build the @mention → real session trigger over the audited #59 gate + venture-gated launcher. */
-export function createMarketingMentionService(sessionManager: SessionManager): MarketingMentionService {
+export function createMarketingMentionService(
+  sessionManager: SessionManager,
+  logger?: { warn(obj: Record<string, unknown>, msg: string): void },
+): MarketingMentionService {
   const authResolver = createAgentAuthResolver();
   // #363: a process-local, TTL-cached reader of the owner's OWN public site (the lowest-friction real data
   // source — no OAuth/secret). Only ever consulted behind `shouldReadSiteContent` (default OFF, owner-first,
@@ -261,6 +264,7 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
   });
 
   return new MarketingMentionService({
+    logger,
     getChannel: async (channelId) => {
       const c = await getChannel(channelId);
       return c ? { id: c.id, workspaceId: c.workspaceId, name: c.name } : undefined;
@@ -410,8 +414,11 @@ export function createMarketingMentionService(sessionManager: SessionManager): M
  * post via the repo directly (so the post-time fan-out trigger does NOT also fire — no double launch) and
  * persist the @mention ourselves, then delegate the launch. No new launch authority.
  */
-export function createMarketingBriefService(sessionManager: SessionManager): MarketingBriefService {
-  const mention = createMarketingMentionService(sessionManager);
+export function createMarketingBriefService(
+  sessionManager: SessionManager,
+  logger?: { warn(obj: Record<string, unknown>, msg: string): void },
+): MarketingBriefService {
+  const mention = createMarketingMentionService(sessionManager, logger);
   // #370: the bridge narrates the lead's kickoff into its channel. Self-gating (default-OFF, owner-first):
   // posts nothing unless agent→channel posting is enabled for the workspace, so prod channels stay quiet.
   const coordinationBridge = createCoordinationChannelBridge();
@@ -466,8 +473,11 @@ export function createMarketingBriefService(sessionManager: SessionManager): Mar
  * (#68 auth gate → #59 SubagentService → #96 venture gate → #71 admission → session). No mentioned
  * persona → `{ok:false}`, a harmless no-op. The fan-out invokes this best-effort and swallows denials.
  */
-export function buildMarketingMentionTrigger(sessionManager: SessionManager): MarketingMentionTrigger {
-  const mention = createMarketingMentionService(sessionManager);
+export function buildMarketingMentionTrigger(
+  sessionManager: SessionManager,
+  logger?: { warn(obj: Record<string, unknown>, msg: string): void },
+): MarketingMentionTrigger {
+  const mention = createMarketingMentionService(sessionManager, logger);
   return async (identity, channel, message) => {
     if (identity.kind !== "human") return;
     // #468: delegate to the pure handler so a department channel LAUNCHES, a denial is SURFACED, and an agent

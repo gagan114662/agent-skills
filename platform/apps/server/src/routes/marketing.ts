@@ -31,8 +31,8 @@ export interface MarketingRoutesOptions {
  */
 export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoutesOptions): Promise<void> {
   const { sessionManager } = opts;
-  const mention = createMarketingMentionService(sessionManager);
-  const brief = createMarketingBriefService(sessionManager);
+  const mention = createMarketingMentionService(sessionManager, app.log);
+  const brief = createMarketingBriefService(sessionManager, app.log);
   // #588: the central campaign brief — the single source of truth every agent reads at task start. Read +
   // edit only; the agent-read seam (`enrichTask`) is the library other modules call. Distinct from `brief`
   // above (the #235 owner→session launcher) despite the shared word.

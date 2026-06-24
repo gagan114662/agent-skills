@@ -97,6 +97,31 @@ describe("#123 MarketingMentionService", () => {
     expect(recordTask).toHaveBeenCalledWith(expect.objectContaining({ task: "audit homepage" }));
   });
 
+  it("#967 logs and falls back to the raw task when enrichment throws", async () => {
+    const enrichTask = vi.fn(async () => {
+      throw new Error("config read failed");
+    });
+    const logger = { warn: vi.fn() };
+    const { deps, recordTask, invoke } = baseDeps({ enrichTask, logger });
+    const svc = new MarketingMentionService(deps);
+
+    const res = await svc.launch(identity, { channelId: "c-seo", messageId: "m-1", task: "audit homepage" });
+
+    expect(res.ok).toBe(true);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.any(Error),
+        workspaceId: "ws-1",
+        channelId: "c-seo",
+        messageId: "m-1",
+        personaId: "p-scout",
+      }),
+      "marketing task enrichment failed; launching raw task",
+    );
+    expect(invoke).toHaveBeenCalledWith(identity, expect.objectContaining({ task: "audit homepage" }));
+    expect(recordTask).toHaveBeenCalledWith(expect.objectContaining({ task: "audit homepage" }));
+  });
+
   it("#320 with no enrichTask dep the launched task is the raw goal (default posture unchanged)", async () => {
     const { deps, invoke } = baseDeps();
     await new MarketingMentionService(deps).launch(identity, { channelId: "c-seo", messageId: "m-1", task: "go" });
