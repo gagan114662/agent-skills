@@ -32,6 +32,7 @@ import type { MarketingMentionTrigger } from "../messaging/delivery.js";
 import { MARKETING_CHANNELS, departmentForHandle, skillsForHandle } from "./blueprint.js";
 import { resolveMarketingCaps } from "./caps.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
+import { observeBridgeResult } from "../agent-channel-bridge/observe.js";
 import { seedMarketingDepartment, type MarketingSeedDeps, type MarketingSeedResult } from "./seed.js";
 import { runMarketingBackfill, type MarketingBackfillResult } from "./backfill.js";
 import { MarketingMentionService } from "./mention.js";
@@ -451,12 +452,18 @@ export function createMarketingBriefService(
         systemAuthorized: input.systemAuthorized,
       }),
     notifyKickoff: async (input) => {
-      await coordinationBridge.post(input.workspaceId, {
+      const leadPlanEvent = {
         kind: "lead_plan",
         channel: input.channel,
         agentHandle: input.agentHandle,
         goal: input.goal,
-      });
+      } as const;
+      observeBridgeResult(
+        logger,
+        input.workspaceId,
+        leadPlanEvent,
+        await coordinationBridge.post(input.workspaceId, leadPlanEvent),
+      );
     },
   });
 }
