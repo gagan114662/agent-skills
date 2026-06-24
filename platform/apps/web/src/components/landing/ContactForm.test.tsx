@@ -18,6 +18,21 @@ async function submit(): Promise<void> {
 }
 
 describe("ContactForm failure visibility (#938)", () => {
+  it("posts the hidden honeypot field empty for human submissions (#929)", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () => new Response(JSON.stringify({}), { status: 202 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    render(<ContactForm />);
+    await submit();
+
+    expect(fetch).toHaveBeenCalled();
+    const [, init] = fetch.mock.calls[0]!;
+    const body = JSON.parse(String(init?.body));
+    expect(body).toMatchObject({ email: "ada@example.com", companyWebsite: "" });
+  });
+
   it("logs non-2xx captures and shows the accessible error alert", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubGlobal(

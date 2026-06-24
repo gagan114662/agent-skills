@@ -201,6 +201,7 @@ import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
 import { inboundLeadsRoutes } from "./routes/inbound-leads.js";
 import {
+  createDefaultInboundLeadConfirmationSender,
   createDefaultInboundLeadFollowup,
   resolveInboundLeadsOwnerWorkspaceId,
 } from "./leads/default.js";
@@ -1093,13 +1094,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // the ranked prospect queue / PQL events / GTM pipeline. Always-live ingest + reads (READ-ONLY surface).
   app.register(discoveryRoutes, { service: discoveryService });
   // GAP 1 leads centre: the autonomous loop's INBOUND mouth (ADR-0400). The public landing form posts to a
-  // PUBLIC (unauth) `POST /inbound/leads` which persists the lead, best-effort qualifies it into #222, and
-  // hands it to Reach for the opener/cadence loop. Capture is the safe default, ON whenever an owner
-  // workspace is resolved (marketing.ownerWorkspaceId); 503 until then.
+  // PUBLIC (unauth) `POST /inbound/leads` which persists an unverified lead, sends a signed confirmation,
+  // then best-effort qualifies it into #222 and hands it to Reach only after the address verifies. Capture is
+  // the safe default, ON whenever an owner workspace is resolved (marketing.ownerWorkspaceId); 503 until then.
   app.register(inboundLeadsRoutes, {
     discovery: discoveryService,
     ownerWorkspaceId: opts.inboundLeadsOwnerWorkspaceId ?? resolveInboundLeadsOwnerWorkspaceId(),
     warmLeadFollowup: createDefaultInboundLeadFollowup(reachService),
+    confirmation: createDefaultInboundLeadConfirmationSender(),
   });
   // #225 outreach engine: preview drafts, PARK a message for one-tap owner approval (never auto-sent),
   // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send

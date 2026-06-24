@@ -14,7 +14,7 @@ export const SIGNUP_PUBLIC_RATE_LIMIT = {
 } as const;
 
 export const INBOUND_LEAD_PUBLIC_RATE_LIMIT = {
-  max: 10,
+  max: 5,
   timeWindow: "1 hour",
   windowMs: 3_600_000,
 } as const;

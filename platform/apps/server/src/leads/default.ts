@@ -1,4 +1,5 @@
 import { loadConfig } from "../config/loader.js";
+import { dryRunEspSender, type EspSender } from "../reach/channels/email.js";
 import type { ReachService } from "../reach/service.js";
 import type { SanitizedLead } from "./inbound.js";
 
@@ -23,6 +24,14 @@ export interface InboundLeadFollowupInput {
 
 export interface InboundLeadFollowup {
   handle(input: InboundLeadFollowupInput): Promise<void>;
+}
+
+export interface InboundLeadConfirmationSender {
+  send(input: {
+    to: string;
+    name: string | null;
+    confirmationUrl: string;
+  }): Promise<void>;
 }
 
 function domainCompany(email: string): { company: string; companyDomain: string } {
@@ -59,6 +68,33 @@ export function createDefaultInboundLeadFollowup(
         observedAtMs: Date.now(),
       }]);
       await reach.runBatch(workspaceId);
+    },
+  };
+}
+
+/**
+ * Send the verification email through the repo's existing ESP seam. The default remains dry-run/no-network
+ * until a deployment supplies a live sender, but the route still exercises a real confirmation-send path.
+ */
+export function createDefaultInboundLeadConfirmationSender(
+  sender: EspSender = dryRunEspSender,
+): InboundLeadConfirmationSender {
+  return {
+    async send({ to, name, confirmationUrl }) {
+      const displayName = name?.trim();
+      const greeting = displayName ? "Hi " + displayName + "," : "Hi,";
+      await sender.send({
+        to,
+        subject: "Confirm your ipop.ai request",
+        body: [
+          greeting,
+          "",
+          "Please confirm this email address so the ipop.ai team can follow up on your request:",
+          confirmationUrl,
+          "",
+          "If you did not submit the form, you can ignore this email.",
+        ].join("\n"),
+      });
     },
   };
 }

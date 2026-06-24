@@ -25,6 +25,7 @@ export function ContactForm(): React.JSX.Element {
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
       message: String(data.get("message") ?? ""),
+      companyWebsite: String(data.get("companyWebsite") ?? ""),
       source: "landing_form",
     };
     setStatus("sending");
@@ -80,6 +81,10 @@ export function ContactForm(): React.JSX.Element {
           <label className="field">
             {CONTACT.messageLabel}
             <textarea name="message" rows={3} placeholder={CONTACT.messagePlaceholder} required />
+          </label>
+          <label className="contact-form__honeypot" aria-hidden="true">
+            Company website
+            <input type="text" name="companyWebsite" tabIndex={-1} autoComplete="off" />
           </label>
           <button
             className="btn btn--primary contact-form__submit"
