@@ -1,4 +1,4 @@
-import { eq, isNotNull } from "drizzle-orm";
+import { asc, and, eq, gt, isNotNull } from "drizzle-orm";
 import { db } from "../index.js";
 import { workspaceAgentCredentials } from "../schema/index.js";
 import { seal, open, tokenFingerprint, loadEncKey } from "../../crypto/secretbox.js";
@@ -31,6 +31,13 @@ export interface CredentialStatus {
    * when none observed. Drives the `expired` connection-health state. Never a token — only a timestamp.
    */
   lastAuthFailureAt: Date | null;
+}
+
+export const MAX_WORKSPACE_MODEL_OVERRIDE_BATCH = 500;
+
+export function clampWorkspaceModelOverrideBatch(limit?: number): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return MAX_WORKSPACE_MODEL_OVERRIDE_BATCH;
+  return Math.min(MAX_WORKSPACE_MODEL_OVERRIDE_BATCH, Math.floor(limit));
 }
 
 /** Connect (or re-connect) a workspace's Claude subscription token. Last write wins. */
@@ -111,11 +118,18 @@ export async function setWorkspaceClaudeModel(
  * non-secret `model` column for rows that actually set one (`model IS NOT NULL`) — a null override needs
  * no repair, so it is excluded to keep the scan small.
  */
-export async function listWorkspaceModelOverrides(): Promise<WorkspaceModelRow[]> {
+export async function listWorkspaceModelOverrides(options: {
+  afterWorkspaceId?: string;
+  limit?: number;
+} = {}): Promise<WorkspaceModelRow[]> {
+  const where = [isNotNull(workspaceAgentCredentials.model)];
+  if (options.afterWorkspaceId) where.push(gt(workspaceAgentCredentials.workspaceId, options.afterWorkspaceId));
   const rows = await db
     .select({ workspaceId: workspaceAgentCredentials.workspaceId, model: workspaceAgentCredentials.model })
     .from(workspaceAgentCredentials)
-    .where(isNotNull(workspaceAgentCredentials.model));
+    .where(and(...where))
+    .orderBy(asc(workspaceAgentCredentials.workspaceId))
+    .limit(clampWorkspaceModelOverrideBatch(options.limit));
   return rows.map((r) => ({ workspaceId: r.workspaceId, model: r.model }));
 }
 

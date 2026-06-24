@@ -48,6 +48,20 @@ export interface ModelBackfillReport {
   ok: boolean;
 }
 
+export async function readAllModelOverrideBatches(
+  readBatch: (options: { afterWorkspaceId?: string; limit?: number }) => Promise<WorkspaceModelRow[]>,
+  batchSize: number,
+): Promise<WorkspaceModelRow[]> {
+  const rows: WorkspaceModelRow[] = [];
+  let afterWorkspaceId: string | undefined;
+  for (;;) {
+    const batch = await readBatch({ afterWorkspaceId, limit: batchSize });
+    rows.push(...batch);
+    if (batch.length < batchSize) return rows;
+    afterWorkspaceId = batch[batch.length - 1]!.workspaceId;
+  }
+}
+
 /**
  * Run the backfill. Dry-run by default: compute + print the plan, write nothing. When `apply` is true,
  * write each change, then read the rows back and re-plan to PROVE zero unservable overrides remain; the
@@ -122,7 +136,7 @@ if (invokedPath.endsWith("model-backfill-cli.ts") || invokedPath.endsWith("model
         console.log("[model-backfill] dry-run (set MODEL_BACKFILL_APPLY=1 to apply).");
       }
       const report = await runModelBackfill({
-        readRows: () => listWorkspaceModelOverrides(),
+        readRows: () => readAllModelOverrideBatches(listWorkspaceModelOverrides, 500),
         applyChange: (workspaceId, model) => backfillWorkspaceModel(workspaceId, model),
         apply,
       });

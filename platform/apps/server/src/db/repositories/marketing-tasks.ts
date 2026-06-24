@@ -27,6 +27,13 @@ export interface MarketingTask {
   updatedAt: Date;
 }
 
+export const MAX_MARKETING_TASK_LIST_LIMIT = 500;
+
+export function clampMarketingTaskListLimit(limit?: number): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return MAX_MARKETING_TASK_LIST_LIMIT;
+  return Math.min(MAX_MARKETING_TASK_LIST_LIMIT, Math.floor(limit));
+}
+
 export async function createMarketingTask(input: {
   workspaceId: string;
   channelId: string;
@@ -57,12 +64,13 @@ export async function createMarketingTask(input: {
 }
 
 /** A workspace's task records, newest first (the team panel's activity feed). */
-export async function listMarketingTasks(workspaceId: string): Promise<MarketingTask[]> {
+export async function listMarketingTasks(workspaceId: string, limit?: number): Promise<MarketingTask[]> {
   const rows = await db
     .select()
     .from(marketingTasks)
     .where(eq(marketingTasks.workspaceId, workspaceId))
-    .orderBy(desc(marketingTasks.createdAt));
+    .orderBy(desc(marketingTasks.createdAt))
+    .limit(clampMarketingTaskListLimit(limit));
   return rows as MarketingTask[];
 }
 
@@ -81,7 +89,7 @@ export async function listRecentMarketingTasksByDepartment(
     .from(marketingTasks)
     .where(and(eq(marketingTasks.workspaceId, workspaceId), eq(marketingTasks.department, department)))
     .orderBy(desc(marketingTasks.createdAt))
-    .limit(limit);
+    .limit(clampMarketingTaskListLimit(limit));
   return rows as MarketingTask[];
 }
 

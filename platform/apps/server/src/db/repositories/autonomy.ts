@@ -366,22 +366,31 @@ export async function getWorkflow(
   return row as AgentWorkflow | undefined;
 }
 
-export async function listWorkflowsInChannel(channelId: string): Promise<AgentWorkflow[]> {
+export const MAX_AUTONOMY_LIST_LIMIT = 500;
+
+export function clampAutonomyListLimit(limit?: number): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return MAX_AUTONOMY_LIST_LIMIT;
+  return Math.min(MAX_AUTONOMY_LIST_LIMIT, Math.floor(limit));
+}
+
+export async function listWorkflowsInChannel(channelId: string, limit?: number): Promise<AgentWorkflow[]> {
   const rows = await db
     .select(WORKFLOW_COLS)
     .from(agentWorkflows)
     .where(eq(agentWorkflows.channelId, channelId))
-    .orderBy(desc(agentWorkflows.createdAt));
+    .orderBy(desc(agentWorkflows.createdAt))
+    .limit(clampAutonomyListLimit(limit));
   return rows as AgentWorkflow[];
 }
 
 /** The engine's work-list: every `running` workflow in a workspace, oldest first (fair order). */
-export async function listActiveWorkflows(workspaceId: string): Promise<AgentWorkflow[]> {
+export async function listActiveWorkflows(workspaceId: string, limit?: number): Promise<AgentWorkflow[]> {
   const rows = await db
     .select(WORKFLOW_COLS)
     .from(agentWorkflows)
     .where(and(eq(agentWorkflows.workspaceId, workspaceId), eq(agentWorkflows.status, "running")))
-    .orderBy(asc(agentWorkflows.createdAt));
+    .orderBy(asc(agentWorkflows.createdAt))
+    .limit(clampAutonomyListLimit(limit));
   return rows as AgentWorkflow[];
 }
 
@@ -489,7 +498,7 @@ export async function getApproval(
 
 export async function listApprovals(
   workspaceId: string,
-  filter: { status?: "pending" | "approved" | "rejected" } = {},
+  filter: { status?: "pending" | "approved" | "rejected"; limit?: number } = {},
 ): Promise<AgentApproval[]> {
   const where = [eq(agentApprovals.workspaceId, workspaceId)];
   if (filter.status) where.push(eq(agentApprovals.status, filter.status));
@@ -497,7 +506,8 @@ export async function listApprovals(
     .select(APPROVAL_COLS)
     .from(agentApprovals)
     .where(and(...where))
-    .orderBy(desc(agentApprovals.createdAt));
+    .orderBy(desc(agentApprovals.createdAt))
+    .limit(clampAutonomyListLimit(filter.limit));
   return rows as AgentApproval[];
 }
 
