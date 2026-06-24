@@ -614,6 +614,7 @@ export const LANDING = {
   ] as readonly PlanTeaser[],
   /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
   anchors: [
+    { href: "#proof", label: "Proof" },
     { href: "#how", label: "How it works" },
     { href: "#agents", label: "Agents" },
     { href: "#pricing", label: "Pricing" },
@@ -896,6 +897,53 @@ export const STORY: readonly StorySection[] = [
     visual: "memory",
   },
 ];
+
+export interface PublicProofTile {
+  readonly customer: string;
+  readonly customerType: "dogfood" | "external";
+  readonly metric: string;
+  readonly result: string;
+  readonly source: string;
+  readonly href: string;
+  readonly consented: boolean;
+}
+
+/**
+ * Public proof rail (#939). A tile may show a metric only when it is a real, consented outcome. External
+ * customer slots render as guarded empty states until a customer approves publication.
+ */
+export const PUBLIC_PROOF = {
+  id: "proof",
+  eyebrow: "Proof",
+  title: "Receipts before reach",
+  sub:
+    "The homepage now has a public proof rail: real outcomes can ship here and into /stories, but only after the customer consents.",
+  cta: "Read customer stories",
+  emptyTitle: "External customer proof slot",
+  emptyBody: "Appears here after a paying customer approves the outcome, metric, and source for publication.",
+  consentLabel: "Consented outcome",
+  pendingLabel: "Awaiting consent",
+  tiles: [
+    {
+      customer: "ipop.ai",
+      customerType: "dogfood",
+      metric: "Published story",
+      result: "Site, pricing, FAQ, and proof scorecard shipped through the product",
+      source: "Internal dogfood story",
+      href: "/stories",
+      consented: true,
+    },
+    {
+      customer: "Next real customer",
+      customerType: "external",
+      metric: "External-customer outcome",
+      result: "",
+      source: "",
+      href: "/stories",
+      consented: false,
+    },
+  ] as readonly PublicProofTile[],
+} as const;
 
 /** The remembered-decisions ledger (story 04 visual): an append-only audit row sample. */
 export const MEMORY_LEDGER = {
