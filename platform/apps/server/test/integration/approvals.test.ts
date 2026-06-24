@@ -124,7 +124,7 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     // audit: requested → approved → executed
     const events = (
       await app.inject({ method: "GET", url: `/approvals/${requestId}/events`, cookies: { rid: owner.cookie } })
-    ).json();
+    ).json().items;
     expect(events.map((e: { type: string }) => e.type)).toEqual(["requested", "approved", "executed"]);
 
     // re-approving a decided request is a 409
@@ -230,7 +230,7 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     // and the audit records the expiry; the channel stayed empty
     const events = (
       await app.inject({ method: "GET", url: `/approvals/${requestId}/events`, cookies: { rid: owner.cookie } })
-    ).json();
+    ).json().items;
     expect(events.map((e: { type: string }) => e.type)).toEqual(["requested", "expired"]);
     expect(
       (await app.inject({ method: "GET", url: `/channels/${channelId}/messages`, cookies: { rid: owner.cookie } })).json(),
@@ -353,7 +353,7 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
         url: `/workspaces/${owner.workspaceId}/approvals?status=pending`,
         cookies: { rid: owner.cookie },
       })
-    ).json();
+    ).json().items;
     expect(pending).toHaveLength(0);
   });
 
@@ -383,7 +383,7 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
         url: `/workspaces/${owner.workspaceId}/approvals?status=pending`,
         cookies: { rid: owner.cookie },
       })
-    ).json();
+    ).json().items;
     expect(pending).toHaveLength(0);
   });
 

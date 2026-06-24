@@ -236,13 +236,19 @@ export async function listRequests(
 }
 
 export const MAX_APPROVAL_REQUEST_LIST_LIMIT = 500;
+export const MAX_APPROVAL_EVENT_LIST_LIMIT = 500;
 
 export function clampApprovalRequestListLimit(limit?: number, fallback = MAX_APPROVAL_REQUEST_LIST_LIMIT): number {
   if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return fallback;
   return Math.min(Math.floor(limit), MAX_APPROVAL_REQUEST_LIST_LIMIT);
 }
 
-export async function listRequestEvents(requestId: string): Promise<ApprovalEvent[]> {
+export function clampApprovalEventListLimit(limit?: number, fallback = MAX_APPROVAL_EVENT_LIST_LIMIT): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return fallback;
+  return Math.min(Math.floor(limit), MAX_APPROVAL_EVENT_LIST_LIMIT);
+}
+
+export async function listRequestEvents(requestId: string, limit?: number): Promise<ApprovalEvent[]> {
   const rows = await db
     .select({
       id: approvalEvents.id,
@@ -254,7 +260,8 @@ export async function listRequestEvents(requestId: string): Promise<ApprovalEven
     })
     .from(approvalEvents)
     .where(eq(approvalEvents.requestId, requestId))
-    .orderBy(asc(approvalEvents.createdAt), asc(approvalEvents.id));
+    .orderBy(asc(approvalEvents.createdAt), asc(approvalEvents.id))
+    .limit(clampApprovalEventListLimit(limit));
   return rows as ApprovalEvent[];
 }
 

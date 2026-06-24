@@ -298,7 +298,7 @@ describe("Slack interactivity → #13 decision round-trip (#170)", () => {
     expect(request.decidedByMemberId).toBe(owner.memberId);
     const events = (
       await app.inject({ method: "GET", url: `/approvals/${rid}/events`, cookies: { rid: owner.cookie } })
-    ).json();
+    ).json().items;
     expect(events.map((e: { type: string }) => e.type)).toEqual(["requested", "approved", "executed"]);
   });
 

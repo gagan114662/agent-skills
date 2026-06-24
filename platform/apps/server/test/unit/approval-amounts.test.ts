@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MAX_APPROVAL_AMOUNT, parseApprovalAmount } from "../../src/routes/approvals.js";
+import {
+  MAX_APPROVAL_AMOUNT,
+  MAX_APPROVAL_EDIT_FIELD_LENGTH,
+  MAX_APPROVAL_EDIT_VALUE_LENGTH,
+  parseApprovalAmount,
+  parseApprovalEdit,
+} from "../../src/routes/approvals.js";
 
 describe("approval route amount bounds", () => {
   it.each([
@@ -22,6 +28,18 @@ describe("approval route amount bounds", () => {
     expect(parseApprovalAmount(MAX_APPROVAL_AMOUNT, "amount")).toEqual({
       ok: true,
       value: MAX_APPROVAL_AMOUNT,
+    });
+  });
+
+  it("rejects oversized approval edits before they reach the persisted payload", () => {
+    expect(parseApprovalEdit({ field: "x".repeat(MAX_APPROVAL_EDIT_FIELD_LENGTH + 1), value: "ok" }).ok).toBe(false);
+    expect(parseApprovalEdit({ field: "body", value: "x".repeat(MAX_APPROVAL_EDIT_VALUE_LENGTH + 1) }).ok).toBe(false);
+  });
+
+  it("accepts normal approval edits unchanged", () => {
+    expect(parseApprovalEdit({ field: "body", value: "ship it" })).toEqual({
+      ok: true,
+      value: { field: "body", value: "ship it" },
     });
   });
 });
