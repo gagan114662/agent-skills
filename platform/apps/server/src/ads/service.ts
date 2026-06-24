@@ -22,8 +22,10 @@ import { isAdsEnabledForWorkspace, adsPerActionCapCents } from "./caps.js";
 import { decideAdsSpend, type AdsSpendRequest } from "./spend.js";
 import {
   ADS_CAPABILITY,
+  adsProviderIdForConnectedIds,
   sanitizeAccountSnapshot,
   type AdsAccountSnapshot,
+  type AdsProviderId,
   type SafeAdsAccount,
 } from "./provider.js";
 import {
@@ -33,16 +35,13 @@ import {
   type CreativeReviewSummary,
 } from "./creative-review.js";
 
-/** The structural provider id for the ads connector (set by the routing decision, never read from a body). */
-const ADS_PROVIDER_ID = "google_ads";
-
 export interface AdsServiceDeps {
   /** Resolve the per-workspace ads caps (the spend flag + owner-first + hard cap). */
   caps(workspaceId: string): AdsCaps;
   /** Which connection ids the workspace has connected (#192 vault) — used to gate the `ads` capability. */
   connectedConnectionIds(workspaceId: string): Promise<ReadonlySet<string>>;
   /** Read back the account's campaign + spend state from the provider (null ⇒ nothing real to read). */
-  readAccount(workspaceId: string): Promise<AdsAccountSnapshot | null>;
+  readAccount(workspaceId: string, providerId: AdsProviderId): Promise<AdsAccountSnapshot | null>;
   /** Park a PENDING `provisioning.customer_spend` #13 request; returns its id. */
   park(input: {
     workspaceId: string;
@@ -71,7 +70,13 @@ export interface AdsStatus {
 }
 
 export type RequestSpendResult =
-  | { status: "pending_approval"; requestId: string; amountCents: number; capCents: number; summary: string }
+  | {
+      status: "pending_approval";
+      requestId: string;
+      amountCents: number;
+      capCents: number;
+      summary: string;
+    }
   | { status: "no_spend"; reason: string }
   | { status: "blocked"; reason: string };
 
@@ -81,20 +86,23 @@ export class AdsService {
   async status(workspaceId: string): Promise<AdsStatus> {
     const caps = this.deps.caps(workspaceId);
     const connectedIds = await this.deps.connectedConnectionIds(workspaceId);
-    const connected = hasConnectedCapability({
-      descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds,
-      capability: ADS_CAPABILITY,
-    });
+    const providerId = adsProviderIdForConnectedIds(connectedIds);
+    const connected =
+      providerId !== null &&
+      hasConnectedCapability({
+        descriptors: CONNECTION_DESCRIPTORS,
+        connectedIds,
+        capability: ADS_CAPABILITY,
+      });
     const enabled = isAdsEnabledForWorkspace(caps, workspaceId);
     const perActionCapCents = adsPerActionCapCents(caps);
 
     let account: SafeAdsAccount | null = null;
     let creativeReviews: CreativeReviewDecision[] = [];
-    if (connected) {
-      const snapshot = await this.deps.readAccount(workspaceId);
+    if (connected && providerId) {
+      const snapshot = await this.deps.readAccount(workspaceId, providerId);
       if (snapshot) {
-        account = sanitizeAccountSnapshot(ADS_PROVIDER_ID, snapshot).data;
+        account = sanitizeAccountSnapshot(providerId, snapshot).data;
         creativeReviews = account.campaigns.flatMap((c) =>
           c.creatives.map((cr) =>
             decideCreativeReview({
@@ -124,13 +132,16 @@ export class AdsService {
    */
   async requestSpend(identity: Identity, request: AdsSpendRequest): Promise<RequestSpendResult> {
     const connectedIds = await this.deps.connectedConnectionIds(identity.workspaceId);
-    const connected = hasConnectedCapability({
-      descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds,
-      capability: ADS_CAPABILITY,
-    });
+    const providerId = adsProviderIdForConnectedIds(connectedIds);
+    const connected =
+      providerId !== null &&
+      hasConnectedCapability({
+        descriptors: CONNECTION_DESCRIPTORS,
+        connectedIds,
+        capability: ADS_CAPABILITY,
+      });
     if (!connected) {
-      return { status: "blocked", reason: "connect a Google Ads account before releasing any spend" };
+      return { status: "blocked", reason: "connect an ads account before releasing any spend" };
     }
     const caps = this.deps.caps(identity.workspaceId);
     const decision = decideAdsSpend(request, {

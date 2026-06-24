@@ -18,6 +18,16 @@ import {
 
 /** The capability id the ads connection unlocks (matches the `google_ads` connector's `capabilities`). */
 export const ADS_CAPABILITY = "ads";
+export const GOOGLE_ADS_PROVIDER_ID = "google_ads";
+export const META_ADS_PROVIDER_ID = "meta_ads";
+export const ADS_PROVIDER_IDS = [GOOGLE_ADS_PROVIDER_ID, META_ADS_PROVIDER_ID] as const;
+export type AdsProviderId = (typeof ADS_PROVIDER_IDS)[number];
+
+export function adsProviderIdForConnectedIds(
+  connectedIds: ReadonlySet<string>,
+): AdsProviderId | null {
+  return ADS_PROVIDER_IDS.find((id) => connectedIds.has(id)) ?? null;
+}
 
 /** A single campaign's state as read back from the provider. */
 export interface AdsCampaignSnapshot {
@@ -53,7 +63,10 @@ export interface AdsProvider {
   /** Whether this provider can read back real data. The service degrades to "not connected" when false. */
   readonly live: boolean;
   /** Read back the account's campaign + spend state. Returns null when nothing real can be read. */
-  getAccountState(input: { workspaceId: string; accountRef: string }): Promise<AdsAccountSnapshot | null>;
+  getAccountState(input: {
+    workspaceId: string;
+    accountRef: string;
+  }): Promise<AdsAccountSnapshot | null>;
 }
 
 /** The conservative production default: reads back NOTHING, so an unwired deployment is honestly empty. */

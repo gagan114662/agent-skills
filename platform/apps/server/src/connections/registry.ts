@@ -95,7 +95,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   {
     id: EMAIL_CONNECTION_ID,
     label: "Connect email",
-    summary: "Let your fleet send email on your behalf — drafts come to you, and every send waits for your approval.",
+    summary:
+      "Let your fleet send email on your behalf — drafts come to you, and every send waits for your approval.",
     provider: "email",
     kind: "esp",
     audience: "customer",
@@ -108,7 +109,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   {
     id: "google",
     label: "Sign in with Google",
-    summary: "One consent connects Search Console + Analytics — Scout owns verification, sitemaps & indexing.",
+    summary:
+      "One consent connects Search Console + Analytics — Scout owns verification, sitemaps & indexing.",
     provider: "google",
     kind: "analytics",
     audience: "customer",
@@ -124,7 +126,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   {
     id: "website",
     label: "Connect your website",
-    summary: "Connect Webflow, WordPress, or your CMS — Quill publishes pages to your own domain, no setup.",
+    summary:
+      "Connect Webflow, WordPress, or your CMS — Quill publishes pages to your own domain, no setup.",
     provider: "website",
     kind: "hosting",
     audience: "customer",
@@ -183,7 +186,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     // #13 money-gated owner yes (ADR-0272). The live redirect is a follow-up, so it renders `coming_soon`.
     id: "google_ads",
     label: "Connect Google Ads",
-    summary: "One consent lets Bid run campaigns on your ad account — every spend stays your money-gated yes.",
+    summary:
+      "One consent lets Bid run campaigns on your ad account — every spend stays your money-gated yes.",
     provider: "google",
     kind: "ad_account",
     audience: "customer",
@@ -191,6 +195,22 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     status: "coming_soon",
     capabilities: ["ads"],
     oauthScopes: ["https://www.googleapis.com/auth/adwords"],
+    envKeys: [],
+  },
+  {
+    // #885 — Meta Ads is a paid-ad account connector, separate from the social-posting aggregator. It unlocks
+    // the same Bid ads capability; every proposed spend still parks a #13 money approval before execution.
+    id: "meta_ads",
+    label: "Connect Meta Ads",
+    summary:
+      "One consent lets Bid read Meta campaigns and propose paid reach — every spend stays your money-gated yes.",
+    provider: "meta",
+    kind: "ad_account",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["ads"],
+    oauthScopes: ["ads_read", "ads_management", "business_management"],
     envKeys: [],
   },
 ];
@@ -208,7 +228,5 @@ export function getConnectionDescriptor(id: string): ConnectionDescriptor | unde
 export function listConnectionDescriptors(
   opts: { audience?: ConnectionAudience } = {},
 ): ConnectionDescriptor[] {
-  return CONNECTION_DESCRIPTORS.filter(
-    (d) => !opts.audience || d.audience === opts.audience,
-  );
+  return CONNECTION_DESCRIPTORS.filter((d) => !opts.audience || d.audience === opts.audience);
 }

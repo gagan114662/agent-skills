@@ -15,12 +15,21 @@ import { createRequest } from "../db/repositories/approvals.js";
 import { listServiceStatuses } from "../db/repositories/external-credentials.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveAdsCaps } from "./caps.js";
-import { DryRunAdsProvider, type AdsProvider } from "./provider.js";
+import {
+  ADS_PROVIDER_IDS,
+  DryRunAdsProvider,
+  GOOGLE_ADS_PROVIDER_ID,
+  type AdsProvider,
+  type AdsProviderId,
+} from "./provider.js";
 import { AdsService, type AdsServiceDeps } from "./service.js";
 
 /** Build the production-wired ads service. */
 export function createDefaultAdsService(): AdsService {
-  const provider: AdsProvider = new DryRunAdsProvider();
+  const providers: Record<AdsProviderId, AdsProvider> = {
+    [GOOGLE_ADS_PROVIDER_ID]: new DryRunAdsProvider(),
+    meta_ads: new DryRunAdsProvider(),
+  };
   const deps: AdsServiceDeps = {
     caps: (workspaceId) => resolveAdsCaps(loadConfig(workspaceId).ads),
     connectedConnectionIds: async (workspaceId) => {
@@ -28,7 +37,11 @@ export function createDefaultAdsService(): AdsService {
       return new Set(rows.filter((r) => r.connected).map((r) => r.serviceKey));
     },
     // Dry-run by default: no live ads-API client is wired in this slice, so we read back nothing real.
-    readAccount: (workspaceId) => provider.getAccountState({ workspaceId, accountRef: "" }),
+    readAccount: (workspaceId, providerId) =>
+      (providers[providerId] ?? providers[ADS_PROVIDER_IDS[0]]).getAccountState({
+        workspaceId,
+        accountRef: "",
+      }),
     park: async (input) => {
       const req = await createRequest({
         workspaceId: input.workspaceId,
@@ -48,7 +61,11 @@ export function createDefaultAdsService(): AdsService {
         events: [
           {
             type: "requested",
-            detail: { source: "ads", capabilityId: input.capabilityId, amountCents: input.amountCents },
+            detail: {
+              source: "ads",
+              capabilityId: input.capabilityId,
+              amountCents: input.amountCents,
+            },
           },
         ],
       });
