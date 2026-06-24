@@ -98,6 +98,7 @@ export interface ReachSendStore {
   insert(input: SendInsert): Promise<{ id: string }>;
   /** The most recent send for a contact (to attach a receipt to). */
   latestSendId(workspaceId: string, contactKey: string): Promise<string | null>;
+  findByExternalId?(workspaceId: string, externalId: string): Promise<{ id: string; contactKey: string } | null>;
   /** Flattened sent rows since `since`, for measurement. */
   sendsSince(workspaceId: string, since: Date): Promise<SendDatum[]>;
 }
@@ -108,6 +109,9 @@ export interface ReceiptInsert {
   contactKey: string;
   kind: ReachReceiptKind;
   externalRef: string;
+  replyBody?: string | null;
+  replyFrom?: string | null;
+  replySubject?: string | null;
   occurredAt: Date;
 }
 
@@ -116,6 +120,7 @@ export interface ReachReceiptStore {
   record(input: ReceiptInsert): Promise<{ recorded: boolean }>;
   /** Receipts since `since`, pre-attributed to the originating send's variant/signal/hour. */
   receiptData(workspaceId: string, since: Date): Promise<ReceiptDatum[]>;
+  replyThreads?(workspaceId: string, limit?: number): Promise<ReachReplyThread[]>;
 }
 
 export interface RunInsert {
@@ -196,6 +201,18 @@ export interface ReachSummary {
   messagesSent: number;
   replies: number;
   booked: number;
+}
+
+export interface ReachReplyThread {
+  receiptId: string;
+  sendId: string;
+  contactKey: string;
+  externalRef: string;
+  replyBody: string | null;
+  replyFrom: string | null;
+  replySubject: string | null;
+  occurredAt: Date;
+  createdAt: Date;
 }
 
 export class ReachService {
@@ -470,7 +487,15 @@ export class ReachService {
    */
   async recordReceipt(
     workspaceId: string,
-    input: { contactKey: string; kind: ReachReceiptKind; externalRef: string; occurredAt?: Date },
+    input: {
+      contactKey: string;
+      kind: ReachReceiptKind;
+      externalRef: string;
+      occurredAt?: Date;
+      replyBody?: string | null;
+      replyFrom?: string | null;
+      replySubject?: string | null;
+    },
   ): Promise<{ recorded: boolean }> {
     if (!input.externalRef.trim()) {
       return { recorded: false };
@@ -483,12 +508,51 @@ export class ReachService {
       contactKey: input.contactKey,
       kind: input.kind,
       externalRef: input.externalRef.trim(),
+      replyBody: input.replyBody ?? null,
+      replyFrom: input.replyFrom ?? null,
+      replySubject: input.replySubject ?? null,
       occurredAt: input.occurredAt ?? this.now(),
     });
     if (res.recorded && input.kind === "reply") {
       await this.deps.contacts.markStatus(workspaceId, input.contactKey, "replied");
     }
     return res;
+  }
+
+  async recordInboundReply(
+    workspaceId: string,
+    input: {
+      externalRef: string;
+      inReplyTo?: string | null;
+      contactKey?: string | null;
+      replyBody?: string | null;
+      replyFrom?: string | null;
+      replySubject?: string | null;
+      occurredAt?: Date;
+    },
+  ): Promise<{ matched: boolean; recorded: boolean; contactKey?: string }> {
+    const externalRef = input.externalRef.trim();
+    if (!externalRef) return { matched: false, recorded: false };
+    let contactKey = input.contactKey?.trim() || null;
+    if (!contactKey && input.inReplyTo && this.deps.sends.findByExternalId) {
+      const send = await this.deps.sends.findByExternalId(workspaceId, input.inReplyTo.trim());
+      contactKey = send?.contactKey ?? null;
+    }
+    if (!contactKey) return { matched: false, recorded: false };
+    const result = await this.recordReceipt(workspaceId, {
+      contactKey,
+      kind: "reply",
+      externalRef,
+      replyBody: input.replyBody,
+      replyFrom: input.replyFrom,
+      replySubject: input.replySubject,
+      occurredAt: input.occurredAt,
+    });
+    return { matched: true, recorded: result.recorded, contactKey };
+  }
+
+  async replyThreads(workspaceId: string, limit = 50): Promise<ReachReplyThread[]> {
+    return this.deps.receipts.replyThreads?.(workspaceId, limit) ?? [];
   }
 
   /** Full metrics over a trailing window (default 30d) for the console / proof tile. */

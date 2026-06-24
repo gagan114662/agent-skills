@@ -5,6 +5,7 @@ import {
   EspWebhookVerificationError,
   decideEspSuppressions,
   parseEspBody,
+  parseInboundEmailReply,
 } from "../../src/acquisition/webhook.js";
 
 const secret = "whsec_test";
@@ -72,5 +73,36 @@ describe("parseEspBody", () => {
   });
   it("returns [] for malformed JSON", () => {
     expect(parseEspBody("not json")).toEqual([]);
+  });
+});
+
+describe("parseInboundEmailReply", () => {
+  it("normalizes a Postmark inbound reply with matching metadata and body", () => {
+    const parsed = parseInboundEmailReply({
+      RecordType: "Inbound",
+      MessageID: "pm-inbound-1",
+      FromFull: { Email: "buyer@example.com" },
+      Subject: "Re: quick question",
+      StrippedTextReply: "Yes, let's talk.",
+      InReplyTo: "pm-send-1",
+      Date: "2026-06-24T01:00:00Z",
+      Metadata: {
+        outreachMessageId: "msg-1",
+        outreachRecipientRef: "email:c-champ",
+        reachContactKey: "email:buyer@example.com",
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      externalRef: "pm-inbound-1",
+      from: "buyer@example.com",
+      subject: "Re: quick question",
+      body: "Yes, let's talk.",
+      inReplyTo: "pm-send-1",
+      outreachMessageId: "msg-1",
+      outreachRecipientRef: "email:c-champ",
+      reachContactKey: "email:buyer@example.com",
+    });
+    expect(parsed?.occurredAt?.toISOString()).toBe("2026-06-24T01:00:00.000Z");
   });
 });

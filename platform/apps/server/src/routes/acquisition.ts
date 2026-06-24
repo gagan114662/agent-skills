@@ -7,6 +7,7 @@ import {
   verifyEspSignature,
   parseEspBody,
   decideEspSuppressions,
+  parseInboundEmailReply,
 } from "../acquisition/webhook.js";
 import {
   addSuppression,
@@ -15,6 +16,8 @@ import {
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { SUPPRESSION_REASONS, type SuppressionReason } from "../acquisition/compliance.js";
 import { decideOneClickUnsubscribe } from "../email/one-click-unsubscribe.js";
+import type { OutreachService } from "../outreach/service.js";
+import type { ReachService } from "../reach/service.js";
 
 /**
  * Acquisition execution routes (#189, ADR-0189).
@@ -27,7 +30,15 @@ import { decideOneClickUnsubscribe } from "../email/one-click-unsubscribe.js";
  *
  * The webhook secret is resolved from the #192 sealed vault (the ESP service credentials), never config.
  */
-export async function acquisitionRoutes(app: FastifyInstance): Promise<void> {
+export interface AcquisitionRoutesOptions {
+  outreach?: OutreachService;
+  reach?: ReachService;
+}
+
+export async function acquisitionRoutes(
+  app: FastifyInstance,
+  opts: AcquisitionRoutesOptions = {},
+): Promise<void> {
   function caps(workspaceId: string) {
     return resolveAcquisitionCaps(loadConfig(workspaceId).acquisition);
   }
@@ -109,6 +120,69 @@ export async function acquisitionRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       return reply.code(200).send({ received: true, suppressed: suppressions.length });
+    });
+
+    webhookScope.post("/acquisition/esp/inbound/:wid", async (req, reply) => {
+      const { wid } = req.params as { wid: string };
+      const c = caps(wid);
+      if (!c.enabled || !c.channels.email) {
+        return reply.code(409).send({ error: "acquisition email not enabled for this workspace" });
+      }
+      const signature = req.headers["x-esp-signature"];
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
+      const secrets = await resolveServiceSecrets(wid, c.espProvider);
+      const secret = secrets.ESP_WEBHOOK_SECRET ?? "";
+      try {
+        verifyEspSignature(rawBody, typeof signature === "string" ? signature : undefined, secret);
+      } catch (err) {
+        if (err instanceof EspWebhookVerificationError) {
+          return reply.code(400).send({ error: "invalid signature" });
+        }
+        throw err;
+      }
+      const events = parseEspBody(rawBody);
+      const inbound = Array.isArray(events) ? parseInboundEmailReply(events[0]) : null;
+      if (!inbound) return reply.code(202).send({ received: true, matched: false });
+
+      const outreach = opts.outreach
+        ? await opts.outreach.recordInboundReply(wid, {
+            externalRef: inbound.externalRef,
+            messageId: inbound.outreachMessageId,
+            recipientRef: inbound.outreachRecipientRef,
+            replyBody: inbound.body,
+            replyFrom: inbound.from,
+            replySubject: inbound.subject,
+            occurredAt: inbound.occurredAt ?? undefined,
+          })
+        : { matched: false, created: false };
+      if (outreach.matched) {
+        return reply.code(outreach.created ? 201 : 200).send({
+          received: true,
+          matched: true,
+          source: "outreach",
+          created: outreach.created,
+          messageId: outreach.messageId,
+        });
+      }
+
+      const reach = opts.reach
+        ? await opts.reach.recordInboundReply(wid, {
+            externalRef: inbound.externalRef,
+            inReplyTo: inbound.inReplyTo,
+            contactKey: inbound.reachContactKey,
+            replyBody: inbound.body,
+            replyFrom: inbound.from,
+            replySubject: inbound.subject,
+            occurredAt: inbound.occurredAt ?? undefined,
+          })
+        : { matched: false, recorded: false };
+      return reply.code(reach.matched && reach.recorded ? 201 : 200).send({
+        received: true,
+        matched: reach.matched,
+        source: reach.matched ? "reach" : null,
+        created: reach.recorded,
+        contactKey: reach.contactKey,
+      });
     });
 
     // The RFC 8058 one-click unsubscribe receiver (#268). The mailbox provider POSTs the `List-Unsubscribe`

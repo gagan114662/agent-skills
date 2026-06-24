@@ -36,6 +36,12 @@ export async function reachRoutes(app: FastifyInstance, opts: ReachRoutesOptions
     return service.summary(id.workspaceId);
   });
 
+  app.get("/me/reach/replies", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return { replies: await service.replyThreads(id.workspaceId) };
+  });
+
   app.post("/me/reach/receipts", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
@@ -43,6 +49,9 @@ export async function reachRoutes(app: FastifyInstance, opts: ReachRoutesOptions
       contactKey?: unknown;
       kind?: unknown;
       externalRef?: unknown;
+      replyBody?: unknown;
+      replyFrom?: unknown;
+      replySubject?: unknown;
       occurredAt?: unknown;
     };
     if (!body.contactKey || !body.kind || !body.externalRef) {
@@ -66,6 +75,9 @@ export async function reachRoutes(app: FastifyInstance, opts: ReachRoutesOptions
       contactKey: body.contactKey,
       kind: body.kind,
       externalRef: body.externalRef,
+      replyBody: typeof body.replyBody === "string" ? body.replyBody : null,
+      replyFrom: typeof body.replyFrom === "string" ? body.replyFrom : null,
+      replySubject: typeof body.replySubject === "string" ? body.replySubject : null,
       occurredAt: occurredAt && !Number.isNaN(occurredAt.getTime()) ? occurredAt : undefined,
     });
   });

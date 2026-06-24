@@ -130,6 +130,15 @@ export const dbReachSendStore: ReachSendStore = {
       .limit(1);
     return row?.id ?? null;
   },
+  async findByExternalId(workspaceId, externalId): Promise<{ id: string; contactKey: string } | null> {
+    const [row] = await db
+      .select({ id: reachSends.id, contactKey: reachSends.contactKey })
+      .from(reachSends)
+      .where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.externalId, externalId)))
+      .orderBy(desc(reachSends.createdAt))
+      .limit(1);
+    return row ?? null;
+  },
   async sendsSince(workspaceId, since): Promise<SendDatum[]> {
     const rows = await db
       .select({
@@ -161,6 +170,9 @@ export const dbReachReceiptStore: ReachReceiptStore = {
         contactKey: input.contactKey,
         kind: input.kind,
         externalRef: input.externalRef,
+        replyBody: input.replyBody ?? null,
+        replyFrom: input.replyFrom ?? null,
+        replySubject: input.replySubject ?? null,
         occurredAt: input.occurredAt,
       })
       .onConflictDoNothing({
@@ -186,6 +198,25 @@ export const dbReachReceiptStore: ReachReceiptStore = {
       signalKind: toSignalKind(r.signalKind),
       sentHourUtc: r.sentHourUtc,
     }));
+  },
+  async replyThreads(workspaceId, limit = 50) {
+    const rows = await db
+      .select({
+        receiptId: reachReceipts.id,
+        sendId: reachReceipts.sendId,
+        contactKey: reachReceipts.contactKey,
+        externalRef: reachReceipts.externalRef,
+        replyBody: reachReceipts.replyBody,
+        replyFrom: reachReceipts.replyFrom,
+        replySubject: reachReceipts.replySubject,
+        occurredAt: reachReceipts.occurredAt,
+        createdAt: reachReceipts.createdAt,
+      })
+      .from(reachReceipts)
+      .where(and(eq(reachReceipts.workspaceId, workspaceId), eq(reachReceipts.kind, "reply")))
+      .orderBy(desc(reachReceipts.occurredAt))
+      .limit(limit);
+    return rows;
   },
 };
 

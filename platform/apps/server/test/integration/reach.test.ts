@@ -127,12 +127,26 @@ describe("Reach outbound loop on Postgres (#280)", () => {
 
     // Record an external reply on the first contact → receipt persisted + cadence stopped.
     const target = [...firstKeys][0]!;
-    const r = await svc.recordReceipt(workspaceId, { contactKey: target, kind: "reply", externalRef: "evt-reply-1" });
+    const r = await svc.recordReceipt(workspaceId, {
+      contactKey: target,
+      kind: "reply",
+      externalRef: "evt-reply-1",
+      replyBody: "Interested, can you send times?",
+      replyFrom: "buyer@example.com",
+      replySubject: "Re: hello",
+    });
     expect(r.recorded).toBe(true);
     const dup = await svc.recordReceipt(workspaceId, { contactKey: target, kind: "reply", externalRef: "evt-reply-1" });
     expect(dup.recorded).toBe(false); // idempotent
     const receipts = await db.select().from(reachReceipts).where(eq(reachReceipts.workspaceId, workspaceId));
     expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.replyBody).toBe("Interested, can you send times?");
+    const threads = await svc.replyThreads(workspaceId);
+    expect(threads[0]).toMatchObject({
+      contactKey: target,
+      replyBody: "Interested, can you send times?",
+      replyFrom: "buyer@example.com",
+    });
     const stopped = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, target)));
     expect(stopped[0]?.status).toBe("replied");
 

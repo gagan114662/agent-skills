@@ -42,6 +42,7 @@ import {
   type OutreachMessageRecord,
   type OutreachReceiptKind,
   type OutreachReceiptRecord,
+  type OutreachReplyThread,
   type ValuePropVariant,
 } from "./types.js";
 
@@ -107,6 +108,7 @@ export interface MessageInsertInput {
 export interface MessageStore {
   insert(input: MessageInsertInput): Promise<OutreachMessageRecord>;
   get(workspaceId: string, id: string): Promise<OutreachMessageRecord | undefined>;
+  findByRecipientRef?(workspaceId: string, recipientRef: string): Promise<OutreachMessageRecord | undefined>;
   setApproval(
     workspaceId: string,
     id: string,
@@ -126,6 +128,9 @@ export interface ReceiptStore {
     messageId: string;
     kind: OutreachReceiptKind;
     externalRef: string;
+    replyBody?: string | null;
+    replyFrom?: string | null;
+    replySubject?: string | null;
     occurredAt: Date;
   }): Promise<{ record: OutreachReceiptRecord; created: boolean }>;
   list(workspaceId: string, opts?: { ideaId?: string }): Promise<OutreachReceiptRecord[]>;
@@ -201,6 +206,15 @@ export interface OutreachSummary {
   replies: number;
   meetings: number;
   signups: number;
+  recentReplies: Array<{
+    receiptId: string;
+    messageId: string;
+    recipientLabel: string;
+    replyBody: string | null;
+    replyFrom: string | null;
+    replySubject: string | null;
+    occurredAt: Date;
+  }>;
 }
 
 function briefToBuyer(brief: BuyerBriefRecord): ComposeBuyer {
@@ -460,7 +474,15 @@ export class OutreachService {
    */
   async recordReceipt(
     workspaceId: string,
-    input: { messageId: string; kind: string; externalRef: string; occurredAt?: Date },
+    input: {
+      messageId: string;
+      kind: string;
+      externalRef: string;
+      occurredAt?: Date;
+      replyBody?: string | null;
+      replyFrom?: string | null;
+      replySubject?: string | null;
+    },
   ): Promise<{ receipt: OutreachReceiptRecord; created: boolean }> {
     if (!isOutreachReceiptKind(input.kind)) {
       throw new OutreachValidationError("kind must be one of reply, meeting, signup");
@@ -479,6 +501,9 @@ export class OutreachService {
       messageId: input.messageId,
       kind: input.kind,
       externalRef,
+      replyBody: input.replyBody ?? null,
+      replyFrom: input.replyFrom ?? null,
+      replySubject: input.replySubject ?? null,
       occurredAt: input.occurredAt ?? this.now(),
     });
 
@@ -492,6 +517,53 @@ export class OutreachService {
       });
     }
     return { receipt: record, created };
+  }
+
+  async replyThreads(workspaceId: string): Promise<OutreachReplyThread[]> {
+    const [messages, receipts] = await Promise.all([
+      this.deps.messages.list(workspaceId, { limit: 500 }),
+      this.deps.receipts.list(workspaceId),
+    ]);
+    const byId = new Map(messages.map((message) => [message.id, message]));
+    return receipts
+      .filter((receipt) => receipt.kind === "reply")
+      .map((receipt) => {
+        const message = byId.get(receipt.messageId);
+        return message ? { receipt, message } : null;
+      })
+      .filter((thread): thread is OutreachReplyThread => thread !== null);
+  }
+
+  async recordInboundReply(
+    workspaceId: string,
+    input: {
+      externalRef: string;
+      messageId?: string | null;
+      recipientRef?: string | null;
+      replyBody?: string | null;
+      replyFrom?: string | null;
+      replySubject?: string | null;
+      occurredAt?: Date;
+    },
+  ): Promise<{ matched: boolean; created: boolean; messageId?: string }> {
+    const externalRef = input.externalRef.trim();
+    if (!externalRef) return { matched: false, created: false };
+    let message = input.messageId ? await this.deps.messages.get(workspaceId, input.messageId) : undefined;
+    const recipientRef = input.recipientRef?.trim();
+    if (!message && recipientRef && this.deps.messages.findByRecipientRef) {
+      message = await this.deps.messages.findByRecipientRef(workspaceId, recipientRef);
+    }
+    if (!message) return { matched: false, created: false };
+    const { created } = await this.recordReceipt(workspaceId, {
+      messageId: message.id,
+      kind: "reply",
+      externalRef,
+      replyBody: input.replyBody,
+      replyFrom: input.replyFrom,
+      replySubject: input.replySubject,
+      occurredAt: input.occurredAt,
+    });
+    return { matched: true, created, messageId: message.id };
   }
 
   /** Compute every running/concluded message experiment from external receipts (AC2). Read-only. */
@@ -564,6 +636,22 @@ export class OutreachService {
       else if (r.kind === "meeting") meetings += 1;
       else if (r.kind === "signup") signups += 1;
     }
+    const messageById = new Map(messages.map((message) => [message.id, message]));
+    const recentReplies = receipts
+      .filter((receipt) => receipt.kind === "reply")
+      .slice(0, 10)
+      .map((receipt) => {
+        const message = messageById.get(receipt.messageId);
+        return {
+          receiptId: receipt.id,
+          messageId: receipt.messageId,
+          recipientLabel: message?.recipientLabel ?? "",
+          replyBody: receipt.replyBody,
+          replyFrom: receipt.replyFrom,
+          replySubject: receipt.replySubject,
+          occurredAt: receipt.occurredAt,
+        };
+      });
     return {
       experimentsRunning: experiments.filter((e) => e.status === "running").length,
       experimentsConcluded: experiments.filter((e) => e.status === "concluded").length,
@@ -573,6 +661,7 @@ export class OutreachService {
       replies,
       meetings,
       signups,
+      recentReplies,
     };
   }
 

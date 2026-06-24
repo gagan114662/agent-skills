@@ -78,6 +78,16 @@ export const dbMessageStore: MessageStore = {
     return row ? toMessage(row) : undefined;
   },
 
+  async findByRecipientRef(workspaceId, recipientRef): Promise<OutreachMessageRecord | undefined> {
+    const [row] = await db
+      .select()
+      .from(outreachMessages)
+      .where(and(eq(outreachMessages.workspaceId, workspaceId), eq(outreachMessages.recipientRef, recipientRef)))
+      .orderBy(desc(outreachMessages.createdAt))
+      .limit(1);
+    return row ? toMessage(row) : undefined;
+  },
+
   async setApproval(workspaceId, id, update): Promise<void> {
     await db
       .update(outreachMessages)
@@ -138,6 +148,9 @@ function toReceipt(r: typeof outreachReceipts.$inferSelect): OutreachReceiptReco
     messageId: r.messageId,
     kind: r.kind as OutreachReceiptKind,
     externalRef: r.externalRef,
+    replyBody: r.replyBody,
+    replyFrom: r.replyFrom,
+    replySubject: r.replySubject,
     occurredAt: r.occurredAt,
     createdAt: r.createdAt,
   };
@@ -152,6 +165,9 @@ export const dbReceiptStore: ReceiptStore = {
         messageId: input.messageId,
         kind: input.kind,
         externalRef: input.externalRef,
+        replyBody: input.replyBody ?? null,
+        replyFrom: input.replyFrom ?? null,
+        replySubject: input.replySubject ?? null,
         occurredAt: input.occurredAt,
       })
       .onConflictDoNothing()
