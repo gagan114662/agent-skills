@@ -6,6 +6,7 @@ import {
   selectCadenceQuery,
   type ContentCadenceConfigInput,
 } from "./decide.js";
+import type { KeywordPrevalidationSignal } from "./prevalidation.js";
 
 /**
  * ContentCadenceEngine (#416, with #415) — the scheduled tick that gives the fleet a NEW marketing
@@ -36,6 +37,8 @@ export interface ContentCadenceEngineDeps {
     identity: { workspaceId: string; memberId: string },
     input: { lead: string; goal: string; systemAuthorized: true },
   ) => Promise<{ ok: boolean; code?: number; error?: string }>;
+  /** Optional pre-publication SEO signal shown in the owner-visible brief before drafting begins. */
+  prevalidateKeyword?: (workspaceId: string, query: string) => Promise<KeywordPrevalidationSignal>;
   /** Optional maintenance-pause check (#99). True ⇒ skip the whole pass. */
   maintenancePaused?: () => Promise<boolean>;
   logger: SessionLogger;
@@ -116,7 +119,10 @@ export class ContentCadenceEngine {
 
     const ownerMemberId = await this.deps.resolveOwnerMemberId(workspaceId);
     if (!ownerMemberId) {
-      this.deps.logger.warn({ workspaceId }, "content-cadence: no owner member to brief as; skipping");
+      this.deps.logger.warn(
+        { workspaceId },
+        "content-cadence: no owner member to brief as; skipping",
+      );
       return { workspaceId, briefed: null, reason: "no-owner" };
     }
 
@@ -124,7 +130,8 @@ export class ContentCadenceEngine {
     // a brief spends compute; never double-spend on a retry loop). A transient failure simply waits a day.
     this.briefedDay.set(workspaceId, day);
 
-    const goal = composeContentBrief(query);
+    const prevalidation = await this.resolvePrevalidation(workspaceId, query);
+    const goal = composeContentBrief(query, prevalidation);
     const result = await this.deps.brief(
       { workspaceId, memberId: ownerMemberId },
       { lead: flags.lead, goal, systemAuthorized: true },
@@ -136,7 +143,26 @@ export class ContentCadenceEngine {
       );
       return { workspaceId, briefed: null, reason: "launch-failed" };
     }
-    this.deps.logger.info({ workspaceId, query, lead: flags.lead }, "content-cadence: briefed next content objective");
+    this.deps.logger.info(
+      { workspaceId, query, lead: flags.lead },
+      "content-cadence: briefed next content objective",
+    );
     return { workspaceId, briefed: query, reason: "briefed" };
+  }
+
+  private async resolvePrevalidation(
+    workspaceId: string,
+    query: string,
+  ): Promise<KeywordPrevalidationSignal | undefined> {
+    if (!this.deps.prevalidateKeyword) return undefined;
+    try {
+      return await this.deps.prevalidateKeyword(workspaceId, query);
+    } catch (err) {
+      this.deps.logger.warn(
+        { err, workspaceId, query },
+        "content-cadence: keyword prevalidation failed",
+      );
+      return undefined;
+    }
   }
 }

@@ -1,8 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { ContentCadenceEngine, type ContentCadenceEngineDeps } from "../../src/marketing/content-cadence/engine.js";
+import {
+  ContentCadenceEngine,
+  type ContentCadenceEngineDeps,
+} from "../../src/marketing/content-cadence/engine.js";
 import type { ContentCadenceConfigInput } from "../../src/marketing/content-cadence/decide.js";
 
-const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as unknown as ContentCadenceEngineDeps["logger"];
+const silentLogger = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+} as unknown as ContentCadenceEngineDeps["logger"];
 
 function makeEngine(overrides: Partial<ContentCadenceEngineDeps> = {}) {
   const brief = overrides.brief ?? vi.fn(async () => ({ ok: true }));
@@ -43,6 +51,25 @@ describe("ContentCadenceEngine (#416)", () => {
     expect(input.lead).toBe("scout"); // #359: Scout leads (research), hands off to Quill
     expect(input.systemAuthorized).toBe(true);
     expect(input.goal.toLowerCase()).toContain("publish");
+  });
+
+  it("injects pre-publication SEO validation into the owner-visible brief", async () => {
+    const { engine, brief } = makeEngine({
+      prevalidateKeyword: vi.fn(async () => ({
+        query: "alpha query",
+        verdict: "needs_review",
+        summary: "Below page one; owner should confirm winnability.",
+        evidence: ["bestPosition=42", "volume=unavailable until provider is connected"],
+      })),
+    });
+
+    await engine.tickWorkspace("ws-1", DAY0);
+
+    const [, input] = (brief as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(input.goal).toContain("SEO pre-publication validation");
+    expect(input.goal).toContain("verdict: needs_review");
+    expect(input.goal).toContain("bestPosition=42");
+    expect(input.goal.indexOf("verdict: needs_review")).toBeLessThan(input.goal.indexOf("@scout:"));
   });
 
   it("is a no-op on a second tick the same day (watermark)", async () => {

@@ -1,3 +1,5 @@
+import { renderKeywordPrevalidation, type KeywordPrevalidationSignal } from "./prevalidation.js";
+
 /**
  * #416 (with #415) — the missing CADENCE BRAIN.
  *
@@ -71,7 +73,9 @@ export function resolveContentCadenceFlags(
     }
   }
   if (queries.length === 0) return FLAGS_OFF;
-  const lead = (config.lead ?? DEFAULT_CADENCE_LEAD).trim().replace(/^@/, "").toLowerCase() || DEFAULT_CADENCE_LEAD;
+  const lead =
+    (config.lead ?? DEFAULT_CADENCE_LEAD).trim().replace(/^@/, "").toLowerCase() ||
+    DEFAULT_CADENCE_LEAD;
   return { enabled: true, queries, lead };
 }
 
@@ -100,15 +104,27 @@ export function selectCadenceQuery(queries: readonly string[], dayNumber: number
  * open a PR (the agent can't; the platform opens it). The query is owner-authored DATA after a fixed prefix;
  * publishing is handled downstream, so the agent only has to produce the post body.
  */
-export function composeContentBrief(query: string): string {
+export function composeContentBrief(
+  query: string,
+  prevalidation?: KeywordPrevalidationSignal,
+): string {
   const q = query.trim().replace(/\s+/g, " ");
+  const validationBlock = prevalidation
+    ? `${renderKeywordPrevalidation(prevalidation)}\n\n`
+    : "SEO pre-publication validation:\n" +
+      "- verdict: unvalidated\n" +
+      "- summary: No SERP, volume, intent, or rank proof was available before this brief.\n\n";
   // A COORDINATED brief (#359/#417): Scout does the research, then hands off to Quill to write — so the team
   // visibly works together. The closing "@quill …" line is what fires the #417 handoff (the deliverable is
   // scanned for @mentions), launching Quill with this context. Quill's brief (the second half) tells it to
   // OUTPUT the complete post as its message (the live PR #453 lesson) — that post is what publishes.
   return (
+    `${validationBlock}` +
     `@scout: research the search query "${q}" — the search intent, the angle competitors miss, and the 3-5 ` +
-    `points a genuinely useful post must hit. Keep it short (a tight brief, not an audit). Then hand off to ` +
+    `points a genuinely useful post must hit. First, validate winnability: SERP shape, estimated volume, ` +
+    `audience/ICP fit, and whether this site has a realistic path to page one. If the validation verdict above ` +
+    `is not "validated", call out the risk clearly for the owner before the writing handoff. Keep it short ` +
+    `(a tight brief, not an audit). Then hand off to ` +
     `your teammate so the post actually gets written:\n\n` +
     `@quill: using Scout's brief above, write a focused, genuinely useful blog post that targets "${q}". ` +
     `Output the COMPLETE post as your final message — a markdown H1 title line ("# …") then the full body ` +
