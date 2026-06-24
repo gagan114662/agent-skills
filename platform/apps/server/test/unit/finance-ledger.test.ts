@@ -162,6 +162,28 @@ describe("runwayForecast", () => {
     expect(f.breachPeriodKey).toBe("2026-05"); // feb + 3
     expect(f.health).toBe("at_risk"); // within 3 months
     expect(f.verifiedMonthlyNetCents).toBe(-2000);
+    expect(f.closedPeriodCount).toBe(2);
+    expect(f.incompletePeriodCount).toBe(0);
+  });
+
+  it("averages burn over closed periods and flags an incomplete lookback", () => {
+    const f = runwayForecast({
+      workspaceId: "ws1",
+      currency: "usd",
+      cashPositionCents: 30000,
+      currentPeriodKey: "2026-02",
+      periods: [{ periodKey: "2026-01", netCents: -10000, verifiedNetCents: -5000 }],
+      lookbackPeriodCount: 3,
+      incompletePeriodKeys: ["2025-11", "2025-12"],
+    });
+
+    expect(f.monthlyNetCents).toBe(-10000);
+    expect(f.monthlyBurnCents).toBe(10000);
+    expect(f.runwayDays).toBe(90);
+    expect(f.lookbackPeriodCount).toBe(3);
+    expect(f.closedPeriodCount).toBe(1);
+    expect(f.incompletePeriodCount).toBe(2);
+    expect(f.incompletePeriodKeys).toEqual(["2025-11", "2025-12"]);
   });
 
   it("is healthy and has no breach when not burning", () => {

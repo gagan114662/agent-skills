@@ -270,6 +270,10 @@ export interface RunwayInput {
   cashPositionCents: number;
   /** Recent CLOSED periods oldest→newest — the burn-rate basis. Each has its net + verified net. */
   periods: Array<{ periodKey: string; netCents: number; verifiedNetCents: number }>;
+  /** Number of periods requested for the burn-rate lookback, including any missing close packs. */
+  lookbackPeriodCount?: number;
+  /** Lookback period keys that had no close pack and were excluded from the burn-rate average. */
+  incompletePeriodKeys?: string[];
   /** The current period (the forecast projects from here). */
   currentPeriodKey: string;
   /** Floor the balance must stay above; a breach is predicted when the projection crosses it. Cents. */
@@ -286,6 +290,14 @@ export interface RunwayForecast {
   monthlyNetCents: number;
   /** Mean monthly net counting ONLY verified flows — how much of the trend rests on receipts. */
   verifiedMonthlyNetCents: number;
+  /** Requested lookback size for the burn basis. */
+  lookbackPeriodCount: number;
+  /** Closed periods actually used in the burn average. */
+  closedPeriodCount: number;
+  /** Missing/incomplete lookback periods excluded from the burn average. */
+  incompletePeriodCount: number;
+  /** Specific lookback period keys excluded because no close pack exists. */
+  incompletePeriodKeys: string[];
   /** Monthly burn (positive number) when net is negative; 0 when net ≥ 0 (not burning). */
   monthlyBurnCents: number;
   /** Estimated runway in days from the cash position at the current burn; `null` when not burning. */
@@ -308,6 +320,8 @@ const DAYS_PER_MONTH = 30;
 export function runwayForecast(input: RunwayInput, atRiskMonths = 3): RunwayForecast {
   const floor = input.floorCents ?? 0;
   const n = input.periods.length;
+  const lookbackPeriodCount = Math.max(input.lookbackPeriodCount ?? n, n);
+  const incompletePeriodKeys = input.incompletePeriodKeys ?? [];
   const sum = input.periods.reduce((a, p) => a + p.netCents, 0);
   const verifiedSum = input.periods.reduce((a, p) => a + p.verifiedNetCents, 0);
   const monthlyNetCents = n > 0 ? Math.round(sum / n) : 0;
@@ -337,6 +351,10 @@ export function runwayForecast(input: RunwayInput, atRiskMonths = 3): RunwayFore
     cashPositionCents: input.cashPositionCents,
     monthlyNetCents,
     verifiedMonthlyNetCents,
+    lookbackPeriodCount,
+    closedPeriodCount: n,
+    incompletePeriodCount: Math.max(0, lookbackPeriodCount - n),
+    incompletePeriodKeys,
     monthlyBurnCents,
     runwayDays,
     breachPeriodKey,
