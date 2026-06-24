@@ -10,6 +10,7 @@ import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { classifyRisk, gateWithRisk, type RiskModel } from "../approvals/risk-classifier.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
+import { broadcastApprovalCompletion } from "../approvals/notifications.js";
 import { formatApprovalExpiry, normalizeTimeZone } from "../approvals/expiry-timezone.js";
 import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
 import { departmentForHandle } from "../marketing/blueprint.js";
@@ -463,9 +464,11 @@ export async function approvalRoutes(
     const finished = execution.request;
     if (finished.status === "failed") {
       req.log.info(approvalDecisionLog(finished, "failed"), "approval execution failed");
+      await broadcastApprovalCompletion(req.log, finished, id.memberId, "failed");
       return reply.code(502).send({ status: "failed", error: finished.error, request: approvalRequestView(finished) });
     }
     req.log.info(approvalDecisionLog(finished, "executed"), "approval execution completed");
+    await broadcastApprovalCompletion(req.log, finished, id.memberId, "executed");
     return reply.code(200).send({ status: "executed", result: finished.result, request: approvalRequestView(finished) });
   });
 
@@ -494,6 +497,7 @@ export async function approvalRoutes(
       });
     }
     req.log.info(approvalDecisionLog(decision.request, "rejected"), "approval decision recorded");
+    await broadcastApprovalCompletion(req.log, decision.request, id.memberId, "rejected");
     return reply.code(200).send({ status: "rejected", request: approvalRequestView(decision.request) });
   });
 
