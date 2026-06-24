@@ -1,12 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  text,
-  integer,
-  timestamp,
-  index,
-  unique,
-} from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, index, unique } from "drizzle-orm/pg-core";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 import { members } from "./identities.js";
@@ -21,10 +13,22 @@ import { ventureIdeas } from "./venture.js";
  */
 
 export const TICKET_CHANNELS = ["email", "webhook", "widget"] as const;
-export const TICKET_STATUSES = ["open", "triaged", "awaiting_approval", "replied", "closed"] as const;
+export const TICKET_STATUSES = [
+  "open",
+  "triaged",
+  "awaiting_approval",
+  "replied",
+  "closed",
+] as const;
 export const VOICE_SENTIMENTS = ["positive", "neutral", "negative"] as const;
 export const VOICE_CHURN_RISKS = ["low", "medium", "high"] as const;
-export const VOICE_SOURCE_KINDS = ["support_ticket", "checkout_abandon", "cancellation", "nps", "brand_mention"] as const;
+export const VOICE_SOURCE_KINDS = [
+  "support_ticket",
+  "checkout_abandon",
+  "cancellation",
+  "nps",
+  "brand_mention",
+] as const;
 
 /** The inbound support inbox. One row per inbound message; deduped on (workspace, channel, source_ref). */
 export const supportTickets = pgTable(
@@ -34,7 +38,9 @@ export const supportTickets = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    ventureIdeaId: uuid("venture_idea_id").references(() => ventureIdeas.id, { onDelete: "set null" }),
+    ventureIdeaId: uuid("venture_idea_id").references(() => ventureIdeas.id, {
+      onDelete: "set null",
+    }),
     channel: text("channel").notNull(),
     sourceRef: text("source_ref").notNull(),
     contact: text("contact"),
@@ -47,7 +53,12 @@ export const supportTickets = pgTable(
     draftReply: text("draft_reply"),
     replyApprovalRequestId: uuid("reply_approval_request_id"),
     triageSessionId: uuid("triage_session_id"),
-    createdByMemberId: uuid("created_by_member_id").references(() => members.id, { onDelete: "set null" }),
+    csatScore: integer("csat_score"),
+    csatComment: text("csat_comment"),
+    csatSubmittedAt: timestamp("csat_submitted_at", { withTimezone: true }),
+    createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -72,7 +83,9 @@ export const voiceInsights = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    ventureIdeaId: uuid("venture_idea_id").references(() => ventureIdeas.id, { onDelete: "set null" }),
+    ventureIdeaId: uuid("venture_idea_id").references(() => ventureIdeas.id, {
+      onDelete: "set null",
+    }),
     ticketId: uuid("ticket_id").references(() => supportTickets.id, { onDelete: "set null" }),
     kind: text("kind").notNull().default("user_voice"),
     sourceKind: text("source_kind", { enum: VOICE_SOURCE_KINDS }).notNull(),

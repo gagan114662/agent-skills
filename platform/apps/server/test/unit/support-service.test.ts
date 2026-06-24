@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   SupportDeskService,
+  SupportCsatRequiredError,
   SupportNotFoundError,
   type SupportDeskServiceDeps,
   type KbStore,
@@ -31,6 +32,9 @@ function makeTicket(over: Partial<SupportTicket> = {}): SupportTicket {
     draftReply: null,
     replyApprovalRequestId: null,
     triageSessionId: null,
+    csatScore: null,
+    csatComment: null,
+    csatSubmittedAt: null,
     createdByMemberId: null,
     createdAt: new Date("2026-06-13T10:00:00Z"),
     updatedAt: new Date("2026-06-13T10:00:00Z"),
@@ -435,7 +439,7 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("learnFromResolved distills a resolved ticket into a KB entry", async () => {
-    const { svc, kb } = build();
+    const { svc, kb } = build({}, new Map([["tic-1", makeTicket({ csatScore: 5 })]]));
     const res = await svc.learnFromResolved(
       "ws-1",
       "tic-1",
@@ -445,6 +449,33 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
     expect(res.entry.source).toBe("resolved_ticket");
     expect(res.entry.sourceTicketId).toBe("tic-1");
     expect(kb.entries.some((e) => e.source === "resolved_ticket")).toBe(true);
+  });
+
+  it("captures customer CSAT against the matching widget sourceRef", async () => {
+    const { svc, ticketsMap } = build();
+    const ticket = await svc.submitCsat("ws-1", "tic-1", "src-1", {
+      score: 5,
+      comment: "That fixed it",
+    });
+
+    expect(ticket.csatScore).toBe(5);
+    expect(ticket.csatComment).toBe("That fixed it");
+    expect(ticket.csatSubmittedAt?.toISOString()).toBe("2026-06-13T12:00:00.000Z");
+    expect(ticketsMap.get("tic-1")!.csatScore).toBe(5);
+  });
+
+  it("holds KB promotion for unconfirmed or low-CSAT resolutions", async () => {
+    const { svc, kb } = build();
+    await expect(
+      svc.learnFromResolved("ws-1", "tic-1", "Open settings and click Export.", "mem-1"),
+    ).rejects.toBeInstanceOf(SupportCsatRequiredError);
+    expect(kb.entries.some((e) => e.source === "resolved_ticket")).toBe(false);
+
+    await svc.submitCsat("ws-1", "tic-1", "src-1", { score: 2, comment: "Still broken" });
+    await expect(
+      svc.learnFromResolved("ws-1", "tic-1", "Open settings and click Export.", "mem-1"),
+    ).rejects.toBeInstanceOf(SupportCsatRequiredError);
+    expect(kb.entries.some((e) => e.source === "resolved_ticket")).toBe(false);
   });
 
   it("resolutionMetrics counts external receipts as verified, status-only as UNVERIFIED", async () => {

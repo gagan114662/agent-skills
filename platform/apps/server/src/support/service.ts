@@ -136,6 +136,13 @@ export class SupportNotFoundError extends Error {
   }
 }
 
+export class SupportCsatRequiredError extends Error {
+  constructor(message = "support ticket needs confirmed helpful CSAT") {
+    super(message);
+    this.name = "SupportCsatRequiredError";
+  }
+}
+
 export interface TriageOutcome {
   ticket: SupportTicket;
   route: SupportRoute;
@@ -526,6 +533,25 @@ export class SupportDeskService {
     return this.deps.kb.upsert(input);
   }
 
+  async submitCsat(
+    workspaceId: string,
+    ticketId: string,
+    sourceRef: string,
+    input: { score: number; comment?: string | null },
+  ): Promise<SupportTicket> {
+    const ticket = await this.deps.tickets.get(workspaceId, ticketId);
+    if (!ticket || ticket.sourceRef !== sourceRef)
+      throw new SupportNotFoundError("ticket not found");
+    const score = Math.trunc(input.score);
+    if (score < 1 || score > 5)
+      throw new SupportCsatRequiredError("csat score must be between 1 and 5");
+    return this.patch(ticket, {
+      csatScore: score,
+      csatComment: input.comment?.trim() || null,
+      csatSubmittedAt: this.now(),
+    });
+  }
+
   /** Distill a resolved ticket into a KB entry (AC4 — the desk learns). */
   async learnFromResolved(
     workspaceId: string,
@@ -535,6 +561,16 @@ export class SupportDeskService {
   ): Promise<{ entry: KbEntry; deduped: boolean }> {
     const ticket = await this.deps.tickets.get(workspaceId, ticketId);
     if (!ticket) throw new SupportNotFoundError("ticket not found");
+    if (ticket.csatScore === null) {
+      throw new SupportCsatRequiredError(
+        "ticket resolution is unconfirmed; capture CSAT before KB promotion",
+      );
+    }
+    if (ticket.csatScore < 4) {
+      throw new SupportCsatRequiredError(
+        "ticket resolution was not confirmed helpful; hold for review",
+      );
+    }
     const newEntry = kbEntryFromResolvedTicket(
       {
         id: ticket.id,
