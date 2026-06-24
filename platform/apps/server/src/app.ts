@@ -199,7 +199,10 @@ import { discoveryRoutes } from "./routes/discovery.js";
 import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
 import { inboundLeadsRoutes } from "./routes/inbound-leads.js";
-import { createDefaultInboundLeadFollowup, resolveInboundLeadsOwnerWorkspaceId } from "./leads/default.js";
+import {
+  createDefaultInboundLeadFollowup,
+  resolveInboundLeadsOwnerWorkspaceId,
+} from "./leads/default.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
 import { createDefaultReachService } from "./reach/default.js";
@@ -614,7 +617,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       return reply.send(err);
     }
     req.log.error({ err, requestId: req.id }, "unhandled request error");
-    return reply.header("x-request-id", req.id).code(500).send({ error: "internal_error", requestId: req.id });
+    return reply
+      .header("x-request-id", req.id)
+      .code(500)
+      .send({ error: "internal_error", requestId: req.id });
   });
   app.register(healthRoutes);
   // #153 public marketing-site content API (CMS-lite over repo markdown) — unauthenticated, published-only.
@@ -653,7 +659,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // dispatcher so an approved ads/email/social/SEO campaign actually runs. Default-OFF: with the
   // acquisition flag off (the default) the dispatcher returns null and the executor stays recorded-only.
   app.register(approvalRoutes, { registry: buildAcquisitionRegistry(verificationEngine) });
-  const approvalExpiryEngine = opts.approvalExpiryEngine ?? createDefaultApprovalExpiryEngine(app.log);
+  const approvalExpiryEngine =
+    opts.approvalExpiryEngine ?? createDefaultApprovalExpiryEngine(app.log);
   app.addHook("onClose", async () => {
     approvalExpiryEngine.stop();
   });
@@ -747,14 +754,20 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     }
     const collab = resolveAgentCollaborationCaps(loadConfig(workspaceId).agentCollaboration);
     if (!isSpawnEnabledForWorkspace(collab, workspaceId)) {
-      app.log.info({ workspaceId, agentMemberId, reason: "collaboration-disabled" }, "handoff hook: skipped");
+      app.log.info(
+        { workspaceId, agentMemberId, reason: "collaboration-disabled" },
+        "handoff hook: skipped",
+      );
       return;
     }
     // Resolve the caller's @handle from its member id (a persona's `name` IS its fleet @handle).
     const persona = await getPersonaByAgentMember(workspaceId, agentMemberId);
     const callerHandle = persona?.name;
     if (!callerHandle) {
-      app.log.warn({ workspaceId, agentMemberId, reason: "no-caller-handle" }, "handoff hook: skipped");
+      app.log.warn(
+        { workspaceId, agentMemberId, reason: "no-caller-handle" },
+        "handoff hook: skipped",
+      );
       return;
     }
     // The chain marker is OUR structural prefix on the task WE assigned the caller's session (#200) — read
@@ -785,7 +798,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // agent-reply mirror (`setChannelPostHook`) and the pending-approval DM (`setApprovalPendingHook`).
   // Both are no-ops unless a workspace has connected Slack. The digest tick is opt-in (started in
   // index.ts) and default-OFF.
-  const slackService = opts.slack ?? createDefaultSlackService(app.log, { client: opts.slackClient });
+  const slackService =
+    opts.slack ?? createDefaultSlackService(app.log, { client: opts.slackClient });
   app.register(slackRoutes, { service: slackService });
   setChannelPostHook((post) => slackService.handleAgentPost(post));
   setApprovalPendingHook((request) => slackService.notifyApprovalPending(request));
@@ -834,7 +848,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
   const billingStatusValue =
     opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
-  app.register(billingRoutes, { billingManager, planService, trialNurture, status: billingStatusValue });
+  app.register(billingRoutes, {
+    billingManager,
+    planService,
+    trialNurture,
+    status: billingStatusValue,
+  });
   // #104 founder console: ONE read-only aggregation endpoint that gives the owner fleet status, the
   // venture pipeline (#96), revenue/willingness-to-pay (#98), budget burn (#71), the pending #13
   // approval queue (with decision-SLA ages), and the kill/maintenance switches — the whole daily
@@ -860,7 +879,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // AutoApprover is wired — the default has none, so every reply is still a #13 human gate), escalation
   // (anger/legal/refund→MONEY queue/unknown), SLA timers, and reality-grounded resolution metrics. Shares
   // the voice service so intake reuses #114 classification. Built before the console so it surfaces the SLA pane.
-  const supportDeskService = opts.supportDesk ?? createDefaultSupportDeskService(undefined, voiceService);
+  const supportDeskService =
+    opts.supportDesk ?? createDefaultSupportDeskService(undefined, voiceService);
   app.register(supportRoutes, { service: supportDeskService });
   // #196 legal & compliance pack: per-venture ToS/privacy generation (published via a pending #13 owner
   // approval), the name/trademark+domain pre-check the (#187) factory calls, the suppression/consent
@@ -1123,6 +1143,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const ventureMemoryService = opts.ventureMemory ?? createDefaultVentureMemoryService();
   app.register(ventureMemoryRoutes, { service: ventureMemoryService });
   app.decorate("ventureMemoryEngine", ventureMemoryService);
+  // #117 self-healing flywheel: create the recorder before downstream loops capture it so infrastructure
+  // failures can fingerprint into the same durable failure stream.
+  const flywheelEngine = opts.flywheel ?? createDefaultFlywheelEngine(app.log, sessionManager);
+  const recordFailureToFlywheel = (event: Parameters<typeof flywheelEngine.record>[0]) =>
+    flywheelEngine.record(event);
+  app.addHook("onClose", async () => {
+    flywheelEngine.stop();
+  });
+  app.decorate("flywheelEngine", flywheelEngine);
   // #172 self-shipping loop: agent-ok issues → cloud build sessions → auto-review against the house
   // rubric → auto-merge ONLY within guardrails (reviewer PASS, CI green, no protected-path touched,
   // diff under cap, agent-ok) → rebase-train → post-merge verify (proposing, never executing, a revert).
@@ -1130,11 +1159,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // the #17 kill switch, and out-of-guardrail steps escalate via the #13 queue. Default-OFF; the repo
   // host defaults to a no-op (no GitHub) so CI never ships. The timer is started in index.ts.
   // #195 venture deploys: a merged VENTURE run goes through the deploy → smoke → promote/rollback release
-  // pipeline as the build loop's post-merge verifier. The flywheel recorder is lazy (the engine is created
-  // below). For agent-skills' OWN self-shipping the verifier resolves no venture, so it is a byte-for-byte
-  // no-op — wiring venture repos through the loop (the `resolveVenture` registry) is a follow-up seam.
+  // pipeline as the build loop's post-merge verifier. For agent-skills' OWN self-shipping the verifier
+  // resolves no venture, so it is a byte-for-byte no-op — wiring venture repos through the loop (the
+  // `resolveVenture` registry) is a follow-up seam.
   const ventureReleaseVerifier = releasePipelineAsPostMergeVerifier(
-    createDefaultVentureReleasePipeline({ flywheelRecord: (event) => app.flywheelEngine.record(event) }),
+    createDefaultVentureReleasePipeline({
+      flywheelRecord: (event) => app.flywheelEngine.record(event),
+    }),
     () => null,
   );
   const buildLoopEngine =
@@ -1189,7 +1220,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // guard scores nothing and behavior is unchanged.
   const constitutionGuard = createConstitutionGuard({
     demand: demandService,
-    flywheelRecord: (event) => app.flywheelEngine.record(event),
+    flywheelRecord: recordFailureToFlywheel,
     logger: app.log,
   });
   // #114 customer-voice overlay is also threaded into the venture service so real post-launch voice can
@@ -1215,7 +1246,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   );
   const autonomyEngine =
     opts.autonomyEngine ??
-    createDefaultAutonomyEngine(app.log, sessionManager, gatedAutonomyLauncher);
+    createDefaultAutonomyEngine(
+      app.log,
+      sessionManager,
+      gatedAutonomyLauncher,
+      recordFailureToFlywheel,
+    );
   app.register(autonomyRoutes, { engine: autonomyEngine });
   app.addHook("onClose", async () => {
     autonomyEngine.stop();
@@ -1228,7 +1264,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // off) and started in index.ts; tests inject the engine and drive `tickWorkspace()`. It is config
   // default-OFF (`watchdog.enabled`), so wiring it changes nothing until a deployment opts in. Stopped
   // on server close so no timer leaks past shutdown.
-  const watchdogEngine = opts.watchdog ?? createDefaultWatchdogEngine(app.log, sessionManager);
+  const watchdogEngine =
+    opts.watchdog ?? createDefaultWatchdogEngine(app.log, sessionManager, recordFailureToFlywheel);
   app.addHook("onClose", async () => {
     watchdogEngine.stop();
   });
@@ -1242,7 +1279,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // is opt-in (SRE_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
   // drive `tickWorkspace()`. Config default-OFF (`sre.enabled`), so wiring it changes nothing until a
   // deployment opts in. Stopped on server close so no timer leaks past shutdown. Read-only routes.
-  const sreEngine = opts.sre ?? createDefaultSreEngine(app.log, sessionManager);
+  const sreEngine =
+    opts.sre ?? createDefaultSreEngine(app.log, sessionManager, recordFailureToFlywheel);
   app.addHook("onClose", async () => {
     sreEngine.stop();
   });
@@ -1270,23 +1308,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // time, like the venture/watchdog ticks); tests drive `tick()` directly. Decorated for that access.
   const gatePricingService = opts.gatePricing ?? createDefaultGatePricingService(app.log);
   app.decorate("gatePricingService", gatePricingService);
-  // #117 self-healing flywheel: the second infrastructure-time supervisor. It fingerprints + dedups
-  // every agent failure (redacted via #25), synthesizes ONE GitHub issue per fingerprint via the #57
-  // path on a kill-switch-gated tick, and dispatches budget-/concurrency-capped fix sessions through
-  // the SAME #92 launcher (auto only for #95-allowed classes, else queued for #104). It is config
-  // default-OFF (`flywheel.enabled`) + the timer is opt-in (FLYWHEEL_INTERVAL_MS, started in index.ts),
-  // so wiring it changes nothing until a deployment opts in. Stopped on server close.
-  const flywheelEngine = opts.flywheel ?? createDefaultFlywheelEngine(app.log, sessionManager);
-  app.addHook("onClose", async () => {
-    flywheelEngine.stop();
-  });
-  app.decorate("flywheelEngine", flywheelEngine);
   // #171 self-QA loop: a synthetic user E2E-tests the LIVE product on a schedule and files its own
   // deduped bug issues. Findings flow through the #117 flywheel above (recorded as `qa_failure`) and,
   // on the CI path, into GitHub via the #57 provider; criticals page the owner through the #148 seam.
   // Tenant-locked to the reserved synthetic workspace, budget-capped, config default-OFF + opt-in timer
   // (SELFQA_INTERVAL_MS, started in index.ts) — the always-on entry is the `selfqa:run` CLI. Stopped on close.
-  const selfqaEngine = opts.selfqa ?? createDefaultSelfQaEngine(app.log, (event) => app.flywheelEngine.record(event));
+  const selfqaEngine = opts.selfqa ?? createDefaultSelfQaEngine(app.log, recordFailureToFlywheel);
   app.addHook("onClose", async () => {
     selfqaEngine.stop();
   });
@@ -1302,7 +1329,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Stopped on close. Read-only routes surface the open incidents (the console fleet-health signal).
   const selfHealingEngine =
     opts.selfHealing ??
-    createDefaultSelfHealingEngine(app.log, sessionManager, (event) => app.flywheelEngine.record(event));
+    createDefaultSelfHealingEngine(app.log, sessionManager, (event) =>
+      app.flywheelEngine.record(event),
+    );
   app.addHook("onClose", async () => {
     selfHealingEngine.stop();
   });
@@ -1313,7 +1342,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // uses (so #96/#71 gating + #13-gated sends are inherited), recording a durable run. Run-now + the
   // public webhook route share `runAutomation`. The timer is opt-in (AUTOMATIONS_INTERVAL_MS, started
   // in index.ts). Mission control + the audit trail are read-only viewers over existing rows.
-  const automationEngine = opts.automations ?? createDefaultAutomationEngine(app.log, sessionManager);
+  const automationEngine =
+    opts.automations ?? createDefaultAutomationEngine(app.log, sessionManager);
   app.register(automationRoutes, { engine: automationEngine, store: automationStore });
   app.addHook("onClose", async () => {
     automationEngine.stop();
@@ -1327,7 +1357,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // `workflows.enabled`); the tick is opt-in (WORKFLOWS_INTERVAL_MS, registered on the #559 scheduler in
   // index.ts). A catalog mutation fires the workflow's `catalog_change` triggers (best-effort, never awaited).
   const workflowEngine =
-    opts.workflows ?? createDefaultWorkflowEngine(app.log, sessionManager, (event) => flywheelEngine.record(event));
+    opts.workflows ??
+    createDefaultWorkflowEngine(app.log, sessionManager, (event) => flywheelEngine.record(event));
   app.register(catalogRoutes, { workflowEngine });
   app.register(workflowRoutes, { engine: workflowEngine, store: workflowStore });
   app.decorate("workflowEngine", workflowEngine);

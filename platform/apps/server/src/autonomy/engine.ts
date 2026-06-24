@@ -1,6 +1,14 @@
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
-import { recordAutonomyAction, recordAutonomyTick, recordLoopTickFailure } from "../observability/metrics.js";
+import {
+  recordAutonomyAction,
+  recordAutonomyTick,
+  recordLoopTickFailure,
+} from "../observability/metrics.js";
+import {
+  recordLoopWorkspaceFailure,
+  type LoopFailureRecorder,
+} from "../observability/loop-failures.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
 import { getTask, updateStatus, assignTask, addTaskLink } from "../db/repositories/tasks.js";
 import { canTransition } from "../tasks/status.js";
@@ -90,6 +98,8 @@ export interface AutonomyEngineDeps {
   maintenancePaused?: () => Promise<boolean>;
   /** Workspace lister override (defaults to the repository fn); tests inject a spy. */
   listActiveWorkspaces?: () => Promise<string[]>;
+  /** Optional #117 flywheel recorder for deduped per-workspace loop infrastructure failures (#887). */
+  failureRecorder?: LoopFailureRecorder;
 }
 
 /** Compose the task/prompt handed to the harness for a stage (data, never argv). */
@@ -150,6 +160,12 @@ export class AutonomyEngine {
         try {
           await this.tick(workspaceId);
         } catch (err) {
+          await recordLoopWorkspaceFailure({
+            recorder: this.deps.failureRecorder,
+            loop: "autonomy",
+            workspaceId,
+            err,
+          });
           this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
         }
       }
@@ -250,7 +266,10 @@ export class AutonomyEngine {
       actions.push({ workflowId: wf.id, action: decision.action, reason: decision.reason });
     }
 
-    log.info({ count: actions.filter((a) => a.action !== "noop").length }, "autonomy tick complete");
+    log.info(
+      { count: actions.filter((a) => a.action !== "noop").length },
+      "autonomy tick complete",
+    );
     return { workspaceId, killSwitch: false, actions };
   }
 
@@ -401,7 +420,16 @@ export class AutonomyEngine {
       try {
         await this.deps.launcher!.join(sessionId);
         const status = await this.deps.launcher!.status(sessionId);
-        await this.onSessionSettled(wf, taskId, taskTitle, stageIndex, agentMemberId, sessionId, status, log);
+        await this.onSessionSettled(
+          wf,
+          taskId,
+          taskTitle,
+          stageIndex,
+          agentMemberId,
+          sessionId,
+          status,
+          log,
+        );
       } catch (err) {
         log.error({ err, sessionId, workflowId: wf.id }, "autonomy session tracking failed");
       }
@@ -550,7 +578,12 @@ export class AutonomyEngine {
       await setWorkflowStatus(approval.workflowId, "completed");
       const wf = await getWorkflow(approval.workflowId, workspaceId);
       if (wf) {
-        await this.post(wf, humanMemberId, `✅ approved & completed by a human reviewer.`, this.deps.logger);
+        await this.post(
+          wf,
+          humanMemberId,
+          `✅ approved & completed by a human reviewer.`,
+          this.deps.logger,
+        );
       }
     }
     return { ok: true };

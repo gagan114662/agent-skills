@@ -1,18 +1,16 @@
 import type { SessionLogger } from "../runtime/manager.js";
 import { recordLoopTickFailure, recordSreAction, recordSreTick } from "../observability/metrics.js";
+import {
+  recordLoopWorkspaceFailure,
+  type LoopFailureRecorder,
+} from "../observability/loop-failures.js";
 import { evaluateSlo, observeService } from "./slo.js";
 import { decideAlert } from "./decide.js";
 import { cooldownElapsed } from "./guards.js";
 import { composeFailureBundle } from "./bundle.js";
 import { draftPostmortem, postmortemPath, type PostmortemTimelineEntry } from "./postmortem.js";
 import type { SreCaps } from "./caps.js";
-import type {
-  BundleContext,
-  IncidentRecord,
-  ServiceSignal,
-  SloKind,
-  SreAction,
-} from "./types.js";
+import type { BundleContext, IncidentRecord, ServiceSignal, SloKind, SreAction } from "./types.js";
 
 /**
  * SreEngine (#112, ADR-0112) — the agent on-call loop. Modelled on the #17 AutonomyEngine / #105
@@ -124,6 +122,8 @@ export interface SreEngineDeps {
   logger: SessionLogger;
   /** Clock seam — defaults to `Date.now` based; tests inject a fixed clock. */
   now?: () => Date;
+  /** Optional #117 flywheel recorder for deduped per-workspace loop infrastructure failures (#887). */
+  failureRecorder?: LoopFailureRecorder;
 }
 
 export interface AppliedAlert {
@@ -181,6 +181,12 @@ export class SreEngine {
         try {
           await this.tickWorkspace(workspaceId, signals, now);
         } catch (err) {
+          await recordLoopWorkspaceFailure({
+            recorder: this.deps.failureRecorder,
+            loop: "sre",
+            workspaceId,
+            err,
+          });
           this.deps.logger.error({ err, workspaceId }, "sre tickAll: workspace tick failed");
         }
       }
@@ -233,8 +239,23 @@ export class SreEngine {
             : false,
         });
 
-        await this.apply(workspaceId, svc.service, target.kind, evaluation, open, decision.action, decision.reason, now, log);
-        actions.push({ service: svc.service, sloKind: target.kind, action: decision.action, reason: decision.reason });
+        await this.apply(
+          workspaceId,
+          svc.service,
+          target.kind,
+          evaluation,
+          open,
+          decision.action,
+          decision.reason,
+          now,
+          log,
+        );
+        actions.push({
+          service: svc.service,
+          sloKind: target.kind,
+          action: decision.action,
+          reason: decision.reason,
+        });
       }
     }
 
@@ -247,7 +268,13 @@ export class SreEngine {
     workspaceId: string,
     service: string,
     sloKind: SloKind,
-    evaluation: { observedValue?: number; value: number; target: number; severity: IncidentRecord["severity"]; budgetRemaining: number },
+    evaluation: {
+      observedValue?: number;
+      value: number;
+      target: number;
+      severity: IncidentRecord["severity"];
+      budgetRemaining: number;
+    },
     open: IncidentRecord | null,
     action: SreAction,
     reason: string,
@@ -337,7 +364,10 @@ export class SreEngine {
       { at: open.openedAt.toISOString(), event: `incident opened (${open.sloKind} breached)` },
     ];
     if (open.triageSessionId) {
-      timeline.push({ at: open.openedAt.toISOString(), event: `triage agent launched (${open.triageSessionId})` });
+      timeline.push({
+        at: open.openedAt.toISOString(),
+        event: `triage agent launched (${open.triageSessionId})`,
+      });
     }
     timeline.push({ at: now.toISOString(), event: "SLO recovered — incident resolved" });
 

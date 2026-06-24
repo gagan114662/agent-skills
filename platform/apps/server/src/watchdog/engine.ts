@@ -1,6 +1,14 @@
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
-import { recordLoopTickFailure, recordWatchdogAction, recordWatchdogTick } from "../observability/metrics.js";
+import {
+  recordLoopTickFailure,
+  recordWatchdogAction,
+  recordWatchdogTick,
+} from "../observability/metrics.js";
+import {
+  recordLoopWorkspaceFailure,
+  type LoopFailureRecorder,
+} from "../observability/loop-failures.js";
 import { decideRevival } from "./decide.js";
 import { windowExpired } from "./guards.js";
 import { classifyFailure } from "./taxonomy.js";
@@ -116,6 +124,8 @@ export interface WatchdogEngineDeps {
   logger: SessionLogger;
   /** Clock seam — defaults to `Date.now` based; tests inject a fixed clock. */
   now?: () => Date;
+  /** Optional #117 flywheel recorder for deduped per-workspace loop infrastructure failures (#887). */
+  failureRecorder?: LoopFailureRecorder;
 }
 
 export interface AppliedRevival {
@@ -181,6 +191,12 @@ export class WatchdogEngine {
         try {
           await this.tickWorkspace(workspaceId, sessions, now);
         } catch (err) {
+          await recordLoopWorkspaceFailure({
+            recorder: this.deps.failureRecorder,
+            loop: "watchdog",
+            workspaceId,
+            err,
+          });
           this.deps.logger.error({ err, workspaceId }, "watchdog tickAll: workspace tick failed");
         }
       }
@@ -236,11 +252,23 @@ export class WatchdogEngine {
         thresholds,
       });
 
-      await this.apply(workspaceId, session, record, decision.action, decision.reason, caps, now, log);
+      await this.apply(
+        workspaceId,
+        session,
+        record,
+        decision.action,
+        decision.reason,
+        caps,
+        now,
+        log,
+      );
       actions.push({ sessionId: session.id, action: decision.action, reason: decision.reason });
     }
 
-    log.info({ count: actions.filter((a) => a.action !== "noop").length }, "watchdog tick complete");
+    log.info(
+      { count: actions.filter((a) => a.action !== "noop").length },
+      "watchdog tick complete",
+    );
     return { workspaceId, actions };
   }
 
