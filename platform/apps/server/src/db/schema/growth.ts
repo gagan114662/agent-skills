@@ -82,6 +82,8 @@ export const growthExperiments = pgTable(
     metricKey: text("metric_key").notNull().default(""),
     /** The content engine's measurable target query (e.g. a keyword to rank for); `''` when none. */
     targetQuery: text("target_query").notNull().default(""),
+    /** Optional source cohort this experiment targets, e.g. producthunt vs organic. */
+    targetSource: text("target_source").notNull().default(""),
     status: text("status", { enum: EXPERIMENT_STATUSES }).notNull().default("proposed"),
     /** The marketing agent member that proposed it (soft reference), or null. */
     proposedByMemberId: uuid("proposed_by_member_id"),

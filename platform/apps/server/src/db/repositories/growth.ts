@@ -75,6 +75,7 @@ const EXPERIMENT_COLS = {
   variant: growthExperiments.variant,
   metricKey: growthExperiments.metricKey,
   targetQuery: growthExperiments.targetQuery,
+  targetSource: growthExperiments.targetSource,
   status: growthExperiments.status,
   proposedByMemberId: growthExperiments.proposedByMemberId,
   approvalRequestId: growthExperiments.approvalRequestId,
@@ -93,6 +94,7 @@ export async function insertExperiment(input: {
   variant: string;
   metricKey: string;
   targetQuery: string;
+  targetSource: string;
   proposedByMemberId: string | null;
 }): Promise<GrowthExperimentRecord> {
   const [row] = await db
@@ -105,6 +107,7 @@ export async function insertExperiment(input: {
       variant: input.variant,
       metricKey: input.metricKey,
       targetQuery: input.targetQuery,
+      targetSource: input.targetSource,
       proposedByMemberId: input.proposedByMemberId,
     })
     .returning(EXPERIMENT_COLS);

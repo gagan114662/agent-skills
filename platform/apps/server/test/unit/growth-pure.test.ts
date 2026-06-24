@@ -5,6 +5,7 @@ import {
   scoreGrowth,
   growthToVentureSignal,
   recommendExperiments,
+  sourceMetricsFromEvents,
   DEFAULT_GROWTH_WEIGHTS,
 } from "../../src/growth/score.js";
 import { resolveGrowthCaps, GROWTH_DEFAULTS } from "../../src/growth/caps.js";
@@ -75,6 +76,22 @@ describe("funnelRates (guarded ratios in [0,1])", () => {
   it("clamps an over-unity ratio (more activations than acquisitions) to 1", () => {
     const r = funnelRates({ acquisition: 10, activation: 50, conversion: 0, retention: 0 });
     expect(r.activationRate).toBe(1);
+  });
+});
+
+describe("sourceMetricsFromEvents (#905 source cohort quality)", () => {
+  it("exposes conversion rate per acquisition source", () => {
+    const metrics = sourceMetricsFromEvents([
+      ev({ kind: "acquisition", source: "producthunt", value: 80 }),
+      ev({ kind: "conversion", source: "producthunt", value: 8 }),
+      ev({ kind: "acquisition", source: "organic", value: 20 }),
+      ev({ kind: "conversion", source: "organic", value: 6 }),
+    ]);
+
+    expect(metrics).toEqual([
+      expect.objectContaining({ source: "producthunt", acquisition: 80, conversion: 8, conversionRate: 0.1 }),
+      expect.objectContaining({ source: "organic", acquisition: 20, conversion: 6, conversionRate: 0.3 }),
+    ]);
   });
 });
 
