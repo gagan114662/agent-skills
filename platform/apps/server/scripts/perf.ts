@@ -78,6 +78,7 @@ function capacityMarkdown(results: PerfResult[], vcpus: number): string {
 }
 
 async function main(): Promise<void> {
+  process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_perf_nonsecret";
   const app = buildApp();
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
