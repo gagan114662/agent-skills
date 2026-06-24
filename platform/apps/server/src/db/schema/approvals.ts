@@ -73,6 +73,7 @@ export const approvalRequests = pgTable(
     }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
+    expiresAtTimezone: text("expires_at_timezone").notNull().default("UTC"),
     result: jsonb("result").$type<Record<string, unknown>>(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

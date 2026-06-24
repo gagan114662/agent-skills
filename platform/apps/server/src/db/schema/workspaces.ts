@@ -6,5 +6,6 @@ export const workspaces = pgTable("workspaces", {
   id: uuid("id").primaryKey().$defaultFn(newId),
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
+  timezone: text("timezone").notNull().default("UTC"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
