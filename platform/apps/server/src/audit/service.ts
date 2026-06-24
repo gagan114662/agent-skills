@@ -2,6 +2,7 @@ import {
   normalizeAuditEvents,
   type AuditEvent,
   type ApprovalAuditRow,
+  type CredentialAuditRow,
   type RunAuditRow,
   type LaunchAuditRow,
 } from "./normalize.js";
@@ -16,6 +17,7 @@ export interface AuditDeps {
   listApprovals: (workspaceId: string) => Promise<ApprovalAuditRow[]>;
   listRuns: (workspaceId: string) => Promise<RunAuditRow[]>;
   listLaunches: (workspaceId: string) => Promise<LaunchAuditRow[]>;
+  listCredentials?: (workspaceId: string) => Promise<CredentialAuditRow[]>;
   listMembers: (workspaceId: string) => Promise<{ id: string; displayName: string }[]>;
 }
 
@@ -24,10 +26,11 @@ export class AuditService {
 
   /** The workspace's audit feed (newest first), capped at `limit`. */
   async get(workspaceId: string, limit = 200): Promise<AuditEvent[]> {
-    const [approvals, runs, launches, members] = await Promise.all([
+    const [approvals, runs, launches, credentials, members] = await Promise.all([
       this.deps.listApprovals(workspaceId),
       this.deps.listRuns(workspaceId),
       this.deps.listLaunches(workspaceId),
+      this.deps.listCredentials?.(workspaceId) ?? Promise.resolve([]),
       this.deps.listMembers(workspaceId),
     ]);
     const labels = new Map(members.map((m) => [m.id, m.displayName]));
@@ -35,6 +38,7 @@ export class AuditService {
       approvals,
       runs,
       launches,
+      credentials,
       labelFor: (memberId) => (memberId && labels.get(memberId)) || "system",
       limit,
     });

@@ -40,12 +40,24 @@ export interface LaunchAuditRow {
   createdAt: Date;
 }
 
+/** A #928 external-credential lifecycle event, projected to the audit shape. */
+export interface CredentialAuditRow {
+  id: string;
+  serviceKey: string;
+  action: "connected" | "revoked";
+  actorMemberId: string | null;
+  fingerprint: string | null;
+  envKeys: string[];
+  scopes: string[];
+  createdAt: Date;
+}
+
 /** One normalized audit event — the unit the pane renders. */
 export interface AuditEvent {
   at: string;
   /** A dotted kind, e.g. `approval.external.send`, `automation.schedule`, `agent.mention`. */
   kind: string;
-  source: "approval" | "automation" | "agent";
+  source: "approval" | "automation" | "agent" | "credential";
   actorMemberId: string | null;
   actorLabel: string;
   summary: string;
@@ -60,6 +72,7 @@ export interface AuditInput {
   approvals: ApprovalAuditRow[];
   runs: RunAuditRow[];
   launches: LaunchAuditRow[];
+  credentials?: CredentialAuditRow[];
   /** Resolve a member's display label (null/unknown → "system"). */
   labelFor: (memberId: string | null) => string;
   /** Max events returned (newest first). Default 200. */
@@ -117,6 +130,22 @@ export function normalizeAuditEvents(input: AuditInput): AuditEvent[] {
       gatedBy: "venture+budget",
       status: l.status,
       ref: l.id,
+    });
+  }
+
+  for (const c of input.credentials ?? []) {
+    const scopeText = c.scopes.length ? ` scopes=${c.scopes.join(",")}` : "";
+    const envText = c.envKeys.length ? ` env=${c.envKeys.join(",")}` : "";
+    events.push({
+      at: c.createdAt.toISOString(),
+      kind: `credential.${c.action}`,
+      source: "credential",
+      actorMemberId: c.actorMemberId,
+      actorLabel: input.labelFor(c.actorMemberId),
+      summary: `${c.serviceKey} credentials ${c.action}${scopeText}${envText}`,
+      gatedBy: "none",
+      status: c.action,
+      ref: c.id,
     });
   }
 

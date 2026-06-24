@@ -1,10 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
-import {
-  CONNECTION_DESCRIPTORS,
-  getConnectionDescriptor,
-} from "../connections/registry.js";
+import { CONNECTION_DESCRIPTORS, getConnectionDescriptor } from "../connections/registry.js";
 import {
   decideConnectionView,
   decideInternalConnect,
@@ -127,7 +124,12 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const decision = decideWaitlist({ descriptor: getConnectionDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     req.log.info(
-      { event: "connection_waitlist", connectionId: decision.connectionId, provider: decision.provider, workspaceId: identity.workspaceId },
+      {
+        event: "connection_waitlist",
+        connectionId: decision.connectionId,
+        provider: decision.provider,
+        workspaceId: identity.workspaceId,
+      },
       "connection waitlist interest recorded",
     );
     return reply.code(202).send({ status: "waitlisted", id: decision.connectionId });
@@ -179,7 +181,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (descriptor?.audience === "internal" && !isOwnerWorkspace(identity.workspaceId)) {
       return reply.code(403).send({ error: "internal connection — admin only" });
     }
-    await revokeServiceCredentials(identity.workspaceId, id);
+    await revokeServiceCredentials(identity.workspaceId, id, identity.memberId);
     return { revoked: true, id };
   });
 }

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { normalizeAuditEvents, type AuditInput } from "../../src/audit/normalize.js";
 
-const labelFor = (id: string | null) => (id === "m1" ? "Alice" : id === "agent1" ? "Scout" : "system");
+const labelFor = (id: string | null) =>
+  id === "m1" ? "Alice" : id === "agent1" ? "Scout" : "system";
 
 const base: AuditInput = {
   approvals: [
@@ -46,21 +47,52 @@ const base: AuditInput = {
       createdAt: new Date("2026-06-08T10:00:00.000Z"),
     },
   ],
+  credentials: [
+    {
+      id: "cred1",
+      serviceKey: "email",
+      action: "connected",
+      actorMemberId: "m1",
+      fingerprint: "fp_secretless",
+      envKeys: ["SENDGRID_API_KEY"],
+      scopes: ["email.send"],
+      createdAt: new Date("2026-06-08T10:30:00.000Z"),
+    },
+  ],
   labelFor,
 };
 
 describe("audit normalize (#147)", () => {
   it("merges three sources, newest first, resolving actor labels + gates", () => {
     const events = normalizeAuditEvents(base);
-    expect(events.map((e) => e.ref)).toEqual(["l1", "r1", "ap1", "r2"]);
-    expect(events[0]).toMatchObject({
+    expect(events.map((e) => e.ref)).toEqual(["cred1", "l1", "r1", "ap1", "r2"]);
+    expect(events[1]).toMatchObject({
       source: "agent",
       kind: "agent.mention",
       actorLabel: "Scout",
       gatedBy: "venture+budget",
     });
     const approval = events.find((e) => e.ref === "ap1")!;
-    expect(approval).toMatchObject({ source: "approval", kind: "approval.external.send", gatedBy: "approval", actorLabel: "Alice" });
+    expect(approval).toMatchObject({
+      source: "approval",
+      kind: "approval.external.send",
+      gatedBy: "approval",
+      actorLabel: "Alice",
+    });
+  });
+
+  it("surfaces credential lifecycle events without secrets", () => {
+    const credential = normalizeAuditEvents(base).find((e) => e.ref === "cred1")!;
+    expect(credential).toMatchObject({
+      source: "credential",
+      kind: "credential.connected",
+      actorMemberId: "m1",
+      actorLabel: "Alice",
+      gatedBy: "none",
+      status: "connected",
+      summary: "email credentials connected scopes=email.send env=SENDGRID_API_KEY",
+    });
+    expect(JSON.stringify(credential)).not.toContain("fp_secretless");
   });
 
   it("summarizes a launched run vs a skipped run distinctly", () => {
@@ -82,6 +114,7 @@ describe("audit normalize (#147)", () => {
       })),
       runs: [],
       launches: [],
+      credentials: [],
       limit: 3,
     });
     expect(events).toHaveLength(3);
@@ -90,6 +123,8 @@ describe("audit normalize (#147)", () => {
   });
 
   it("handles all-empty inputs", () => {
-    expect(normalizeAuditEvents({ approvals: [], runs: [], launches: [], labelFor })).toEqual([]);
+    expect(
+      normalizeAuditEvents({ approvals: [], runs: [], launches: [], credentials: [], labelFor }),
+    ).toEqual([]);
   });
 });
