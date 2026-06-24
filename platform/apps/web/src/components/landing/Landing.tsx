@@ -75,7 +75,12 @@ function LandingNav({ landing }: { landing: LandingCopy }): React.JSX.Element {
         </summary>
         <nav className="landing__mobile-nav-links" aria-label={copy.navLabel}>
           {landing.anchors.map((item) => (
-            <a key={item.href} href={item.href} className="linklike landing__nav-link">
+            <a
+              key={item.href}
+              href={item.href}
+              className="linklike landing__nav-link"
+              onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")}
+            >
               {item.label}
             </a>
           ))}

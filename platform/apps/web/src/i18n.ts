@@ -106,8 +106,12 @@ export function dateLocale(locale: Locale): string {
 
 export function hreflangLinks(origin: string, path: string): string {
   const cleanPath = path === "/" ? "/" : path.replace(/\/+$/, "");
-  return LOCALES.map((locale) => {
-    const href = `${origin}${cleanPath === "/" ? "/" : cleanPath}${locale === DEFAULT_LOCALE ? "" : `?lang=${locale}`}`;
+  const base = `${origin}${cleanPath === "/" ? "/" : cleanPath}`;
+  const perLocale = LOCALES.map((locale) => {
+    const href = `${base}${locale === DEFAULT_LOCALE ? "" : `?lang=${locale}`}`;
     return `  <link rel="alternate" hreflang="${locale}" href="${href}" />`;
-  }).join("\n");
+  });
+  // x-default points search engines at the unparameterised default-locale URL for unmatched languages.
+  perLocale.push(`  <link rel="alternate" hreflang="x-default" href="${base}" />`);
+  return perLocale.join("\n");
 }
