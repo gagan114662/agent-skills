@@ -36,6 +36,15 @@ const httpTotals = new Map<string, HttpSeries>();
 const durations = new Map<string, DurationSeries>();
 let inFlight = 0;
 
+// --- background loop liveness (#876) ----------------------------------------
+// Top-level tick failures can happen before any per-workspace tick counter increments
+// (maintenance/listing/signal reads). Keep labels bounded to known loop names.
+const loopTickFailures = new Map<string, number>();
+
+export function recordLoopTickFailure(loop: string): void {
+  loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
+}
+
 // --- saturation signals (#113) ----------------------------------------------
 // The four signals that predict a melting box — queue depth, event-loop lag, PG pool wait, Redis ping
 // latency — sampled at scrape time (see observability/saturation.ts + plugin.ts) and stored here as the
@@ -401,6 +410,7 @@ export function resetMetrics(): void {
   admissionDenials.clear();
   regionSessions.clear();
   saturationSample = null;
+  loopTickFailures.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -440,6 +450,12 @@ export function renderMetrics(): string {
   lines.push("# HELP http_requests_in_flight HTTP requests currently being served.");
   lines.push("# TYPE http_requests_in_flight gauge");
   lines.push(`http_requests_in_flight ${inFlight}`);
+
+  lines.push("# HELP loop_tick_failures_total Background loop top-level tick failures by loop.");
+  lines.push("# TYPE loop_tick_failures_total counter");
+  for (const [loop, count] of loopTickFailures) {
+    lines.push(`loop_tick_failures_total{loop="${esc(loop)}"} ${count}`);
+  }
 
   lines.push("# HELP process_uptime_seconds Seconds since the process started.");
   lines.push("# TYPE process_uptime_seconds gauge");

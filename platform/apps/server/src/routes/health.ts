@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { HealthResponse, LivenessResponse, ReadinessResponse, VersionResponse } from "@reload/shared";
 import { pingDb } from "../db/index.js";
 import { pingRedis } from "../redis/index.js";
+import { getBackgroundLoopReadiness } from "../ops/loop-liveness.js";
 
 /**
  * Health & probe endpoints. None read tenant data, so all are unauthenticated —
@@ -30,13 +31,21 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/readyz", async (_req, reply): Promise<ReadinessResponse> => {
     const [db, redis] = await Promise.all([pingDb(), pingRedis()]);
-    const ready = db && redis;
+    const loopReadiness = getBackgroundLoopReadiness();
+    const ready = db && redis && loopReadiness.ready;
     reply.code(ready ? 200 : 503);
-    return {
+    const body: ReadinessResponse = {
       status: ready ? "ready" : "not_ready",
       db: db ? "up" : "down",
       redis: redis ? "up" : "down",
     };
+    if (loopReadiness.loops.length > 0) {
+      body.loops = {
+        status: loopReadiness.ready ? "ready" : "not_ready",
+        disabledCritical: loopReadiness.disabledCritical.map((loop) => loop.name),
+      };
+    }
+    return body;
   });
 
   app.get("/version", async (): Promise<VersionResponse> => {

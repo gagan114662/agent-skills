@@ -5,6 +5,10 @@ import { assertDatabaseSchemaCompatible } from "./db/schema-compat.js";
 import { closeRedis } from "./redis/index.js";
 import { isMaintenanceActive } from "./maintenance/flag.js";
 import { backfillMarketingDepartments } from "./marketing/default.js";
+import {
+  registerBackgroundLoop,
+  type BackgroundLoopName,
+} from "./ops/loop-liveness.js";
 
 const env = loadEnv();
 
@@ -18,9 +22,31 @@ try {
 
 const app = buildApp();
 
+function startBackgroundLoop(
+  name: BackgroundLoopName,
+  intervalMs: number,
+  start: (intervalMs: number) => void,
+  opts: { critical?: boolean } = {},
+): void {
+  const state = registerBackgroundLoop({ name, intervalMs, critical: opts.critical });
+  const level = state.enabled ? "info" : state.critical ? "warn" : "info";
+  app.log[level](
+    {
+      loop: state.name,
+      enabled: state.enabled,
+      intervalMs: state.intervalMs,
+      critical: state.critical,
+    },
+    state.enabled ? "background loop enabled" : "background loop disabled",
+  );
+  start(intervalMs);
+}
+
 // #17 autonomy: start the opt-in background loop (AUTONOMY_INTERVAL_MS; default 0 = off). The
 // engine is stopped on server close via the onClose hook registered in buildApp.
-app.autonomyEngine.start(env.autonomy.intervalMs);
+startBackgroundLoop("autonomy", env.autonomy.intervalMs, (intervalMs) => app.autonomyEngine.start(intervalMs), {
+  critical: true,
+});
 
 // #96 venture loop: start the opt-in scheduled tick (VENTURE_INTERVAL_MS; default 0 = off) that
 // advances active evaluations on infrastructure time. Stopped on server close via buildApp's hook.
@@ -28,20 +54,28 @@ app.ventureEngine.start(env.venture.intervalMs);
 
 // #105 fleet watchdog: start the opt-in supervisor tick (WATCHDOG_INTERVAL_MS; default 0 = off) that
 // detects stalled sessions and revives/escalates them. Stopped on server close via buildApp's hook.
-app.watchdogEngine.start(env.watchdog.intervalMs);
+startBackgroundLoop("watchdog", env.watchdog.intervalMs, (intervalMs) => app.watchdogEngine.start(intervalMs), {
+  critical: true,
+});
 
 // #112 SRE loop: start the opt-in on-call tick (SRE_INTERVAL_MS; default 0 = off) that evaluates SLOs
 // off /metrics + health, opens incidents, launches triage, and drafts postmortems. Self-gates on the
 // #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp's hook.
-app.sreEngine.start(env.sre.intervalMs);
+startBackgroundLoop("sre", env.sre.intervalMs, (intervalMs) => app.sreEngine.start(intervalMs), {
+  critical: true,
+});
 // #193 self-healing ops: start the opt-in tick (SELF_HEALING_INTERVAL_MS; default 0 = off) that probes
 // every live venture surface, evaluates per-venture uptime/error/queue thresholds, and dispatches
 // bounded remediation (restart auto, rollback/scale #13-gated), self-filing postmortems on escalation.
 // Self-gates on the #99 maintenance flag + the #17 kill switch. Stopped on server close via buildApp.
-app.selfHealingEngine.start(env.selfHealing.intervalMs);
+startBackgroundLoop(
+  "self_healing",
+  env.selfHealing.intervalMs,
+  (intervalMs) => app.selfHealingEngine.start(intervalMs),
+);
 // #117 self-healing flywheel: start the opt-in tick (FLYWHEEL_INTERVAL_MS; default 0 = off) that turns
 // deduped failures into GitHub issues and dispatches fix agents. Stopped on server close via buildApp.
-app.flywheelEngine.start(env.flywheel.intervalMs);
+startBackgroundLoop("flywheel", env.flywheel.intervalMs, (intervalMs) => app.flywheelEngine.start(intervalMs));
 // #171 self-QA loop: start the opt-in tick (SELFQA_INTERVAL_MS; default 0 = off) that drives the
 // synthetic-user E2E QA pass against the live product and files its own deduped bug issues. The always-on
 // entry is the `selfqa:run` CLI in CI; the timer is for an in-process nightly. Stopped on close via buildApp.
@@ -99,7 +133,7 @@ app.skilloptEngine.start(env.skillopt.intervalMs);
 // #172 self-shipping loop: start the opt-in tick (BUILDLOOP_INTERVAL_MS; default 0 = off) that picks
 // the next agent-ok issue, dispatches a cloud build session, auto-reviews the PR against the house
 // rubric, and auto-merges within guardrails (else escalates). Stopped on server close via buildApp.
-app.buildLoopEngine.start(env.buildLoop.intervalMs);
+startBackgroundLoop("build_loop", env.buildLoop.intervalMs, (intervalMs) => app.buildLoopEngine.start(intervalMs));
 
 // #173 founder briefings: start the opt-in reporting tick (BRIEFINGS_INTERVAL_MS; default 0 = off) that
 // delivers each workspace's daily brief + weekly P&L report to the owner (the idempotency watermark

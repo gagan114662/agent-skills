@@ -89,3 +89,71 @@ groups:
         annotations:
           summary: "Admission in-flight queue above 200"
           description: "{{ $value }} sessions in flight for >5m — the fleet is near its concurrency ceiling."
+
+  # Background-loop liveness (#876): customer work depends on these counters moving. The readiness
+  # probe catches production-critical loops disabled at startup; these alerts catch loops that started
+  # and then stopped advancing.
+  - name: reload-background-loop-liveness
+    rules:
+      - alert: ReloadAutonomyLoopStalled
+        expr: rate(autonomy_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Autonomy loop tick counter stopped"
+          description: "autonomy_ticks_total has not advanced for >5m; customer workflows may be frozen."
+
+      - alert: ReloadWatchdogLoopStalled
+        expr: rate(watchdog_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watchdog loop tick counter stopped"
+          description: "watchdog_ticks_total has not advanced for >5m; stalled sessions may not be revived."
+
+      - alert: ReloadSreLoopStalled
+        expr: rate(sre_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SRE loop tick counter stopped"
+          description: "sre_ticks_total has not advanced for >5m; SLO breaches may not page or file incidents."
+
+      - alert: ReloadSelfHealingLoopStalled
+        expr: rate(self_healing_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Self-healing loop tick counter stopped"
+          description: "self_healing_ticks_total has not advanced for >5m; venture remediations may not run."
+
+      - alert: ReloadFlywheelLoopStalled
+        expr: rate(flywheel_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flywheel loop tick counter stopped"
+          description: "flywheel_ticks_total has not advanced for >5m; repeated failures may not become fixes."
+
+      - alert: ReloadBuildLoopStalled
+        expr: rate(build_loop_ticks_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Build-loop tick counter stopped"
+          description: "build_loop_ticks_total has not advanced for >5m; agent-ok fixes may stop shipping."
+
+      - alert: ReloadBackgroundLoopTickFailures
+        expr: increase(loop_tick_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Background loop top-level tick failure"
+          description: "{{ $labels.loop }} recorded {{ $value }} top-level tick failure(s) in 5m."

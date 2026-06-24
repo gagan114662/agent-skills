@@ -26,6 +26,10 @@ export interface ReadinessResponse {
   status: "ready" | "not_ready";
   db: DependencyState;
   redis: DependencyState;
+  loops?: {
+    status: "ready" | "not_ready";
+    disabledCritical: string[];
+  };
 }
 
 /**

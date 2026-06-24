@@ -1,5 +1,5 @@
 import type { SessionLogger } from "../runtime/manager.js";
-import { recordBuildLoopAction, recordBuildLoopTick } from "../observability/metrics.js";
+import { recordBuildLoopAction, recordBuildLoopTick, recordLoopTickFailure } from "../observability/metrics.js";
 import type { BuildLoopCaps } from "./caps.js";
 import {
   decideDispatch,
@@ -263,18 +263,23 @@ export class BuildLoopEngine {
 
   /** One pass over every workspace with non-terminal runs. */
   async tickAll(): Promise<void> {
-    // #99: a maintenance window stops the whole loop BEFORE any DB call.
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "build-loop tickAll skipped: maintenance mode active");
-      return;
-    }
-    const now = this.clock();
-    for (const workspaceId of await this.deps.activeWorkspaces()) {
-      try {
-        await this.tickWorkspace(workspaceId, now);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
+    try {
+      // #99: a maintenance window stops the whole loop BEFORE any DB call.
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "build-loop tickAll skipped: maintenance mode active");
+        return;
       }
+      const now = this.clock();
+      for (const workspaceId of await this.deps.activeWorkspaces()) {
+        try {
+          await this.tickWorkspace(workspaceId, now);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("build_loop");
+      this.deps.logger.error({ err }, "build-loop tickAll failed");
     }
   }
 

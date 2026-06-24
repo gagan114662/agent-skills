@@ -1,6 +1,6 @@
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
-import { recordAutonomyAction, recordAutonomyTick } from "../observability/metrics.js";
+import { recordAutonomyAction, recordAutonomyTick, recordLoopTickFailure } from "../observability/metrics.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
 import { getTask, updateStatus, assignTask, addTaskLink } from "../db/repositories/tasks.js";
 import { canTransition } from "../tasks/status.js";
@@ -136,20 +136,25 @@ export class AutonomyEngine {
 
   /** One pass over every workspace that currently has a running workflow. */
   async tickAll(): Promise<void> {
-    // #99: maintenance pauses the loop on the same Redis flag the HTTP write-gate reads. Checked
-    // BEFORE any DB call so a maintenance window stops all autonomy work immediately.
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "autonomy tickAll skipped: maintenance mode active");
-      return;
-    }
-    const listWorkspaces = this.deps.listActiveWorkspaces ?? listActiveWorkflowWorkspaces;
-    const workspaceIds = await listWorkspaces();
-    for (const workspaceId of workspaceIds) {
-      try {
-        await this.tick(workspaceId);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
+    try {
+      // #99: maintenance pauses the loop on the same Redis flag the HTTP write-gate reads. Checked
+      // BEFORE any DB call so a maintenance window stops all autonomy work immediately.
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "autonomy tickAll skipped: maintenance mode active");
+        return;
       }
+      const listWorkspaces = this.deps.listActiveWorkspaces ?? listActiveWorkflowWorkspaces;
+      const workspaceIds = await listWorkspaces();
+      for (const workspaceId of workspaceIds) {
+        try {
+          await this.tick(workspaceId);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("autonomy");
+      this.deps.logger.error({ err }, "autonomy tickAll failed");
     }
   }
 
