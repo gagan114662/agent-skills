@@ -10,12 +10,14 @@ import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { classifyRisk, gateWithRisk, type RiskModel } from "../approvals/risk-classifier.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
+import { formatApprovalExpiry, normalizeTimeZone } from "../approvals/expiry-timezone.js";
 import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketing/dedup.js";
 import { departmentForHandle } from "../marketing/blueprint.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
 import { executeApprovedRequest, type ApprovalExecutionOutcome } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
+import { getWorkspaceTimeZone } from "../db/repositories/workspaces.js";
 import {
   upsertPolicy,
   listPolicies,
@@ -76,6 +78,15 @@ export function approvalDecisionLog(
     outcome,
     reason: request.reason,
     edited: outcome === "edited",
+  };
+}
+
+type ApprovalRequestView = Omit<ApprovalRequest, "expiresAt"> & ReturnType<typeof formatApprovalExpiry>;
+
+function approvalRequestView(request: ApprovalRequest): ApprovalRequestView {
+  return {
+    ...request,
+    ...formatApprovalExpiry(request.expiresAt, request.expiresAtTimezone),
   };
 }
 
@@ -233,7 +244,7 @@ export async function approvalRoutes(
           result,
           events: [{ type: "requested", detail: { reason: decision.reason } }, { type: "executed", detail: result }],
         });
-        return reply.code(200).send({ status: "executed", result, request });
+        return reply.code(200).send({ status: "executed", result, request: approvalRequestView(request) });
       } catch (err) {
         const error = err instanceof ActionExecutionError ? err.message : "execution failed";
         if (!(err instanceof ActionExecutionError)) req.log.error({ err }, "auto-action failed");
@@ -246,6 +257,7 @@ export async function approvalRoutes(
       typeof b.ttlSeconds === "number" && Number.isFinite(b.ttlSeconds) && b.ttlSeconds >= 0
         ? b.ttlSeconds
         : loadEnv().approval.defaultTtlSeconds;
+    const expiresAtTimezone = normalizeTimeZone(await getWorkspaceTimeZone(wid));
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
     const request = await createRequest({
       workspaceId: wid,
@@ -256,6 +268,7 @@ export async function approvalRoutes(
       summary,
       status: "pending",
       expiresAt,
+      expiresAtTimezone,
       events: [{ type: "requested", detail: { reason: decision.reason } }],
     });
 
@@ -287,7 +300,7 @@ export async function approvalRoutes(
         });
       }
     }
-    return reply.code(202).send({ status: "pending", reason: decision.reason, request });
+    return reply.code(202).send({ status: "pending", reason: decision.reason, request: approvalRequestView(request) });
   });
 
   // --- review queue ---
@@ -308,9 +321,9 @@ export async function approvalRoutes(
     // PENDING queue and only when dedup is enabled for this workspace (DEFAULT-OFF, owner-first). Other
     // statuses and non-deliverable approvals are returned untouched, so governance is never masked.
     if (status === "pending" && resolveDedupeEnabled(loadConfig(wid).marketing, wid)) {
-      return collapseDuplicateDeliverables(requests);
+      return collapseDuplicateDeliverables(requests).map(approvalRequestView);
     }
-    return requests;
+    return requests.map(approvalRequestView);
   });
 
   app.get("/approvals/:rid", async (req, reply) => {
@@ -319,7 +332,7 @@ export async function approvalRoutes(
     const { rid } = req.params as { rid: string };
     const request = await requireApprovalInWorkspace(id, rid, reply);
     if (!request) return;
-    return request;
+    return approvalRequestView(request);
   });
 
   app.get("/approvals/:rid/events", async (req, reply) => {
@@ -365,7 +378,11 @@ export async function approvalRoutes(
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
-      return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
+      return reply.code(409).send({
+        status: "expired",
+        error: "request expired",
+        request: approvalRequestView(decision.request),
+      });
     }
     req.log.info(
       approvalDecisionLog(decision.request, edit ? "edited" : "approved"),
@@ -374,15 +391,18 @@ export async function approvalRoutes(
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
     const execution = await execute(req, decision.request);
     if (execution.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already executed", request: execution.request });
+      return reply.code(409).send({
+        error: "request already executed",
+        request: execution.request ? approvalRequestView(execution.request) : undefined,
+      });
     }
     const finished = execution.request;
     if (finished.status === "failed") {
       req.log.info(approvalDecisionLog(finished, "failed"), "approval execution failed");
-      return reply.code(502).send({ status: "failed", error: finished.error, request: finished });
+      return reply.code(502).send({ status: "failed", error: finished.error, request: approvalRequestView(finished) });
     }
     req.log.info(approvalDecisionLog(finished, "executed"), "approval execution completed");
-    return reply.code(200).send({ status: "executed", result: finished.result, request: finished });
+    return reply.code(200).send({ status: "executed", result: finished.result, request: approvalRequestView(finished) });
   });
 
   app.post("/approvals/:rid/reject", async (req, reply) => {
@@ -403,10 +423,14 @@ export async function approvalRoutes(
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
-      return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
+      return reply.code(409).send({
+        status: "expired",
+        error: "request expired",
+        request: approvalRequestView(decision.request),
+      });
     }
     req.log.info(approvalDecisionLog(decision.request, "rejected"), "approval decision recorded");
-    return reply.code(200).send({ status: "rejected", request: decision.request });
+    return reply.code(200).send({ status: "rejected", request: approvalRequestView(decision.request) });
   });
 
   app.post("/workspaces/:wid/approvals/sweep-expired", async (req, reply) => {

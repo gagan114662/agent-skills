@@ -154,6 +154,7 @@ describe("SlackEventService.handleInteractivity (#170 — #13 round-trip, guards
     decidedByMemberId: null,
     decidedAt: null,
     expiresAt: null,
+    expiresAtTimezone: "UTC",
     result: null,
     error: null,
     createdAt: new Date(),

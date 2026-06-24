@@ -119,6 +119,7 @@ export interface ApprovalRequest {
   decidedByMemberId: string | null;
   decidedAt: Date | null;
   expiresAt: Date | null;
+  expiresAtTimezone: string;
   result: Record<string, unknown> | null;
   error: string | null;
   createdAt: Date;
@@ -138,6 +139,7 @@ const REQUEST_COLUMNS = {
   decidedByMemberId: approvalRequests.decidedByMemberId,
   decidedAt: approvalRequests.decidedAt,
   expiresAt: approvalRequests.expiresAt,
+  expiresAtTimezone: approvalRequests.expiresAtTimezone,
   result: approvalRequests.result,
   error: approvalRequests.error,
   createdAt: approvalRequests.createdAt,
@@ -175,6 +177,7 @@ export async function createRequest(input: {
   summary: string;
   status: ApprovalStatus;
   expiresAt: Date | null;
+  expiresAtTimezone?: string;
   result?: Record<string, unknown> | null;
   events: { type: ApprovalEventType; detail?: Record<string, unknown> }[];
 }): Promise<ApprovalRequest> {
@@ -190,6 +193,7 @@ export async function createRequest(input: {
         summary: input.summary,
         status: input.status,
         expiresAt: input.expiresAt,
+        expiresAtTimezone: input.expiresAtTimezone ?? "UTC",
         result: input.result ?? null,
       })
       .returning(REQUEST_COLUMNS);
