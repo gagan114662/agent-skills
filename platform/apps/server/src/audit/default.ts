@@ -1,5 +1,6 @@
 import { listRequests } from "../db/repositories/approvals.js";
 import { listAutomationRuns } from "../db/repositories/automations.js";
+import { listCredentialAuditEvents } from "../db/repositories/external-credentials.js";
 import { listMarketingTasks } from "../db/repositories/marketing-tasks.js";
 import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { AuditService } from "./service.js";
@@ -40,6 +41,17 @@ export function createDefaultAuditService(): AuditService {
         status: t.status,
         createdByMemberId: t.createdByMemberId,
         createdAt: t.createdAt,
+      })),
+    listCredentials: async (workspaceId) =>
+      (await listCredentialAuditEvents(workspaceId)).map((e) => ({
+        id: e.id,
+        serviceKey: e.serviceKey,
+        action: e.action,
+        actorMemberId: e.actorMemberId,
+        fingerprint: e.fingerprint,
+        envKeys: e.envKeys,
+        scopes: e.scopes,
+        createdAt: e.createdAt,
       })),
     listMembers: (workspaceId) => listWorkspaceMembers(workspaceId),
   });

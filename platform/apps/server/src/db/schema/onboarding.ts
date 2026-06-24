@@ -1,4 +1,15 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, unique, check, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  unique,
+  check,
+  primaryKey,
+  index,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -26,6 +37,7 @@ export const SERVICE_KINDS = [
 export const SETUP_REVERSIBILITY_CLASSES = ["reversible", "cheap", "irreversible"] as const;
 export const SETUP_REQUEST_STATUSES = ["requested", "connected", "dismissed"] as const;
 export const EXTERNAL_CREDENTIAL_STATUSES = ["connected", "revoked"] as const;
+export const EXTERNAL_CREDENTIAL_AUDIT_ACTIONS = ["connected", "revoked"] as const;
 export const DNS_RECEIPT_PURPOSES = ["dns", "ssl", "spf", "dkim", "dmarc", "verification"] as const;
 export const DNS_RECEIPT_STATUSES = ["configured", "verified", "failed"] as const;
 
@@ -46,7 +58,9 @@ export const externalSetupRequests = pgTable(
     serviceKind: text("service_kind", { enum: SERVICE_KINDS }).notNull(),
     displayName: text("display_name").notNull(),
     plan: text("plan"),
-    scopes: jsonb("scopes").notNull().default(sql`'[]'::jsonb`),
+    scopes: jsonb("scopes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     reason: text("reason").notNull(),
     projectedCostCents: integer("projected_cost_cents").notNull().default(0),
     reversibility: text("reversibility", { enum: SETUP_REVERSIBILITY_CLASSES }).notNull(),
@@ -92,11 +106,17 @@ export const externalCredentials = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     serviceKey: text("service_key").notNull(),
     /** { ENV_VAR: 'enc:...'|'raw:...' } — values SEALED; NEVER returned by any API. */
-    secrets: jsonb("secrets").notNull().default(sql`'{}'::jsonb`),
+    secrets: jsonb("secrets")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** Non-secret list of env var names present (so the resolver injects without decrypting status). */
-    envKeys: jsonb("env_keys").notNull().default(sql`'[]'::jsonb`),
+    envKeys: jsonb("env_keys")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     fingerprint: text("fingerprint").notNull(),
-    scopes: jsonb("scopes").notNull().default(sql`'[]'::jsonb`),
+    scopes: jsonb("scopes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     status: text("status", { enum: EXTERNAL_CREDENTIAL_STATUSES }).notNull().default("connected"),
     rotationReminderDays: integer("rotation_reminder_days").notNull().default(0),
     connectedByMemberId: uuid("connected_by_member_id").references(() => members.id, {
@@ -108,9 +128,45 @@ export const externalCredentials = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.workspaceId, t.serviceKey] }),
-    statusCk: check(
-      "external_credentials_status_ck",
-      sql`${t.status} IN ('connected','revoked')`,
+    statusCk: check("external_credentials_status_ck", sql`${t.status} IN ('connected','revoked')`),
+  }),
+);
+
+/**
+ * Append-only credential lifecycle audit (#928). Unlike `external_credentials`, this never overwrites on
+ * reconnect: every connect/revoke transition keeps the actor, timestamp, service, scopes, and non-secret
+ * fingerprint so compliance and incident response can answer what was held when.
+ */
+export const externalCredentialAuditEvents = pgTable(
+  "external_credential_audit_events",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    serviceKey: text("service_key").notNull(),
+    action: text("action", { enum: EXTERNAL_CREDENTIAL_AUDIT_ACTIONS }).notNull(),
+    actorMemberId: uuid("actor_member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    fingerprint: text("fingerprint"),
+    envKeys: jsonb("env_keys")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    scopes: jsonb("scopes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byWorkspace: index("external_credential_audit_events_workspace_idx").on(
+      t.workspaceId,
+      t.createdAt,
+    ),
+    byService: index("external_credential_audit_events_service_idx").on(t.serviceKey, t.createdAt),
+    actionCk: check(
+      "external_credential_audit_events_action_ck",
+      sql`${t.action} IN ('connected','revoked')`,
     ),
   }),
 );
@@ -134,7 +190,9 @@ export const dnsReceipts = pgTable(
     purpose: text("purpose", { enum: DNS_RECEIPT_PURPOSES }).notNull(),
     status: text("status", { enum: DNS_RECEIPT_STATUSES }).notNull(),
     provider: text("provider").notNull(),
-    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    detail: jsonb("detail")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

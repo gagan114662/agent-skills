@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../index.js";
-import { externalCredentials } from "../schema/index.js";
+import { externalCredentialAuditEvents, externalCredentials } from "../schema/index.js";
 import { seal, open, tokenFingerprint, loadEncKey } from "../../crypto/secretbox.js";
 
 /**
@@ -24,6 +24,18 @@ export interface ServiceCredentialRow {
   rotationReminderDays: number;
   connectedAtMs: number;
   revokedAtMs: number | null;
+}
+
+export interface CredentialAuditEventRow {
+  id: string;
+  workspaceId: string;
+  serviceKey: string;
+  action: "connected" | "revoked";
+  actorMemberId: string | null;
+  fingerprint: string | null;
+  envKeys: string[];
+  scopes: string[];
+  createdAt: Date;
 }
 
 /** Connect (or re-connect) a service's credentials. The secret values are sealed; last write wins. */
@@ -83,6 +95,16 @@ export async function setServiceCredentials(input: {
         revokedAt: null,
       },
     });
+  await appendCredentialAuditEvent({
+    workspaceId: input.workspaceId,
+    serviceKey: input.serviceKey,
+    action: "connected",
+    actorMemberId: input.connectedByMemberId ?? null,
+    fingerprint,
+    envKeys,
+    scopes,
+    createdAt: now,
+  });
   return {
     serviceKey: input.serviceKey,
     connected: true,
@@ -199,8 +221,10 @@ export async function listServiceStatuses(workspaceId: string): Promise<ServiceC
 export async function revokeServiceCredentials(
   workspaceId: string,
   serviceKey: string,
+  actorMemberId?: string | null,
 ): Promise<void> {
   const now = new Date();
+  const before = await getServiceStatus(workspaceId, serviceKey);
   await db
     .update(externalCredentials)
     .set({ status: "revoked", secrets: {}, updatedAt: now, revokedAt: now })
@@ -210,6 +234,98 @@ export async function revokeServiceCredentials(
         eq(externalCredentials.serviceKey, serviceKey),
       ),
     );
+  await appendCredentialAuditEvent({
+    workspaceId,
+    serviceKey,
+    action: "revoked",
+    actorMemberId: actorMemberId ?? null,
+    fingerprint: before?.fingerprint ?? null,
+    envKeys: before?.envKeys ?? [],
+    scopes: before?.scopes ?? [],
+    createdAt: now,
+  });
+}
+
+/** Append a non-secret, immutable credential lifecycle audit event (#928). */
+export async function appendCredentialAuditEvent(input: {
+  workspaceId: string;
+  serviceKey: string;
+  action: "connected" | "revoked";
+  actorMemberId?: string | null;
+  fingerprint?: string | null;
+  envKeys?: string[];
+  scopes?: string[];
+  createdAt?: Date;
+}): Promise<CredentialAuditEventRow> {
+  const now = input.createdAt ?? new Date();
+  const [row] = await db
+    .insert(externalCredentialAuditEvents)
+    .values({
+      workspaceId: input.workspaceId,
+      serviceKey: input.serviceKey,
+      action: input.action,
+      actorMemberId: input.actorMemberId ?? null,
+      fingerprint: input.fingerprint ?? null,
+      envKeys: input.envKeys ?? [],
+      scopes: input.scopes ?? [],
+      createdAt: now,
+    })
+    .returning({
+      id: externalCredentialAuditEvents.id,
+      workspaceId: externalCredentialAuditEvents.workspaceId,
+      serviceKey: externalCredentialAuditEvents.serviceKey,
+      action: externalCredentialAuditEvents.action,
+      actorMemberId: externalCredentialAuditEvents.actorMemberId,
+      fingerprint: externalCredentialAuditEvents.fingerprint,
+      envKeys: externalCredentialAuditEvents.envKeys,
+      scopes: externalCredentialAuditEvents.scopes,
+      createdAt: externalCredentialAuditEvents.createdAt,
+    });
+  return mapAuditEventRow(row!);
+}
+
+/** Tenant-scoped credential lifecycle history, newest first (#928). */
+export async function listCredentialAuditEvents(
+  workspaceId: string,
+): Promise<CredentialAuditEventRow[]> {
+  const rows = await db
+    .select({
+      id: externalCredentialAuditEvents.id,
+      workspaceId: externalCredentialAuditEvents.workspaceId,
+      serviceKey: externalCredentialAuditEvents.serviceKey,
+      action: externalCredentialAuditEvents.action,
+      actorMemberId: externalCredentialAuditEvents.actorMemberId,
+      fingerprint: externalCredentialAuditEvents.fingerprint,
+      envKeys: externalCredentialAuditEvents.envKeys,
+      scopes: externalCredentialAuditEvents.scopes,
+      createdAt: externalCredentialAuditEvents.createdAt,
+    })
+    .from(externalCredentialAuditEvents)
+    .where(eq(externalCredentialAuditEvents.workspaceId, workspaceId))
+    .orderBy(desc(externalCredentialAuditEvents.createdAt));
+  return rows.map(mapAuditEventRow);
+}
+
+/** Cross-workspace service history for operator incident response (#928), newest first. */
+export async function listCredentialAuditEventsForService(
+  serviceKey: string,
+): Promise<CredentialAuditEventRow[]> {
+  const rows = await db
+    .select({
+      id: externalCredentialAuditEvents.id,
+      workspaceId: externalCredentialAuditEvents.workspaceId,
+      serviceKey: externalCredentialAuditEvents.serviceKey,
+      action: externalCredentialAuditEvents.action,
+      actorMemberId: externalCredentialAuditEvents.actorMemberId,
+      fingerprint: externalCredentialAuditEvents.fingerprint,
+      envKeys: externalCredentialAuditEvents.envKeys,
+      scopes: externalCredentialAuditEvents.scopes,
+      createdAt: externalCredentialAuditEvents.createdAt,
+    })
+    .from(externalCredentialAuditEvents)
+    .where(eq(externalCredentialAuditEvents.serviceKey, serviceKey))
+    .orderBy(desc(externalCredentialAuditEvents.createdAt));
+  return rows.map(mapAuditEventRow);
 }
 
 function mapStatusRow(row: {
@@ -232,5 +348,29 @@ function mapStatusRow(row: {
     rotationReminderDays: row.rotationReminderDays,
     connectedAtMs: row.connectedAt.getTime(),
     revokedAtMs: row.revokedAt ? row.revokedAt.getTime() : null,
+  };
+}
+
+function mapAuditEventRow(row: {
+  id: string;
+  workspaceId: string;
+  serviceKey: string;
+  action: string;
+  actorMemberId: string | null;
+  fingerprint: string | null;
+  envKeys: unknown;
+  scopes: unknown;
+  createdAt: Date;
+}): CredentialAuditEventRow {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    serviceKey: row.serviceKey,
+    action: row.action as "connected" | "revoked",
+    actorMemberId: row.actorMemberId,
+    fingerprint: row.fingerprint,
+    envKeys: (row.envKeys as string[]) ?? [],
+    scopes: (row.scopes as string[]) ?? [],
+    createdAt: row.createdAt,
   };
 }
