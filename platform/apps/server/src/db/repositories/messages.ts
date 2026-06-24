@@ -1,6 +1,14 @@
 import { and, asc, desc, eq, gt, isNull, count } from "drizzle-orm";
 import { db } from "../index.js";
 import { messages } from "../schema/index.js";
+import { MAX_MESSAGE_BODY_LENGTH } from "../../messaging/limits.js";
+
+export class MessageBodyTooLongError extends Error {
+  constructor() {
+    super("message body exceeds " + MAX_MESSAGE_BODY_LENGTH + " characters");
+    this.name = "MessageBodyTooLongError";
+  }
+}
 
 export interface Message {
   id: string;
@@ -29,6 +37,7 @@ export async function postMessage(input: {
   parentMessageId?: string;
   alsoSentToChannel?: boolean;
 }): Promise<Message> {
+  if (input.body.length > MAX_MESSAGE_BODY_LENGTH) throw new MessageBodyTooLongError();
   const [row] = await db
     .insert(messages)
     .values({

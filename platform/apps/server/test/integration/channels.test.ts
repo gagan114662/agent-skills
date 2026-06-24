@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { messages, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
+import { MAX_MESSAGE_BODY_LENGTH } from "../../src/messaging/limits.js";
 
 let app: FastifyInstance;
 const slugs: string[] = [];
@@ -61,6 +62,62 @@ describe("channels & DMs (real Postgres)", () => {
     });
     expect(list.statusCode).toBe(200);
     expect(list.json().map((m: { body: string }) => m.body)).toContain("hello world");
+  });
+
+  it("accepts message bodies at the limit and rejects oversized bodies (#989)", async () => {
+    const h = await newHuman();
+    const create = await app.inject({
+      method: "POST",
+      url: `/workspaces/${h.workspaceId}/channels`,
+      cookies: { rid: h.cookie },
+      payload: { name: "bounded" },
+    });
+    const cid = create.json().id as string;
+    const atLimit = "x".repeat(MAX_MESSAGE_BODY_LENGTH);
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: `/channels/${cid}/messages`,
+      cookies: { rid: h.cookie },
+      payload: { body: atLimit },
+    });
+    expect(accepted.statusCode).toBe(201);
+    expect(accepted.json().body).toBe(atLimit);
+
+    const rejected = await app.inject({
+      method: "POST",
+      url: `/channels/${cid}/messages`,
+      cookies: { rid: h.cookie },
+      payload: { body: atLimit + "!" },
+    });
+    expect(rejected.statusCode).toBe(413);
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/channels/${cid}/messages`,
+      cookies: { rid: h.cookie },
+    });
+    expect(list.json().map((m: { body: string }) => m.body)).toEqual([atLimit]);
+  });
+
+  it("rejects oversized direct message inserts at the database layer (#989)", async () => {
+    const h = await newHuman();
+    const create = await app.inject({
+      method: "POST",
+      url: `/workspaces/${h.workspaceId}/channels`,
+      cookies: { rid: h.cookie },
+      payload: { name: "db-bounded" },
+    });
+    const cid = create.json().id as string;
+
+    await expect(
+      db.insert(messages).values({
+        workspaceId: h.workspaceId,
+        channelId: cid,
+        authorMemberId: h.memberId,
+        body: "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1),
+      }),
+    ).rejects.toThrow(/messages_body_length_ck|violates check constraint/);
   });
 
   it("tails channel history when a message limit is provided", async () => {

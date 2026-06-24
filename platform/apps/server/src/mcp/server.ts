@@ -51,6 +51,7 @@ import { isStatus, canTransition } from "../tasks/status.js";
 import { notify } from "../notifications/service.js";
 import { resolveThreadRoot } from "../messaging/threads.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
+import { MAX_MESSAGE_BODY_LENGTH } from "../messaging/limits.js";
 import { captureReply } from "./reply-capture.js";
 import {
   createOutboundEmailSubmitter,
@@ -218,7 +219,11 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         "mentioned members.",
       inputSchema: {
         channelId: z.string().describe("The channel id (must be in your workspace)."),
-        body: z.string().min(1).describe("The message text. May contain @handle mentions."),
+        body: z
+          .string()
+          .min(1)
+          .max(MAX_MESSAGE_BODY_LENGTH)
+          .describe("The message text. May contain @handle mentions."),
         parentMessageId: z.string().optional().describe("Reply target (flattened to the thread root)."),
       },
     },
@@ -261,7 +266,11 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
       inputSchema: {
         channelId: z.string().describe("The channel id (must be in your workspace)."),
         messageId: z.string().describe("The message to reply to (its thread root is used)."),
-        body: z.string().min(1).describe("The reply text. May contain @handle mentions."),
+        body: z
+          .string()
+          .min(1)
+          .max(MAX_MESSAGE_BODY_LENGTH)
+          .describe("The reply text. May contain @handle mentions."),
         alsoSendToChannel: z
           .boolean()
           .optional()
