@@ -55,6 +55,22 @@ export interface ApprovalRoutesOptions {
   riskModel?: RiskModel | null;
 }
 
+export const MAX_APPROVAL_AMOUNT = 100_000_000;
+
+export function parseApprovalAmount(
+  value: unknown,
+  field: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { ok: false, error: field + " must be a number" };
+  }
+  if (value < 0 || value > MAX_APPROVAL_AMOUNT) {
+    return { ok: false, error: field + " must be between 0 and " + MAX_APPROVAL_AMOUNT };
+  }
+  return { ok: true, value };
+}
+
 /** A decision (approve/reject) is restricted to human members — "humans only on critical decisions". */
 function requireHuman(id: Identity, reply: FastifyReply): boolean {
   if (id.kind !== "human") {
@@ -153,10 +169,9 @@ export async function approvalRoutes(
     }
     let maxAutoAmount: number | null = null;
     if (b.maxAutoAmount !== undefined && b.maxAutoAmount !== null) {
-      if (typeof b.maxAutoAmount !== "number" || !Number.isFinite(b.maxAutoAmount)) {
-        return reply.code(400).send({ error: "maxAutoAmount must be a number" });
-      }
-      maxAutoAmount = b.maxAutoAmount;
+      const parsed = parseApprovalAmount(b.maxAutoAmount, "maxAutoAmount");
+      if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+      maxAutoAmount = parsed.value;
     }
     const policy = await upsertPolicy({
       workspaceId: wid,
@@ -210,10 +225,9 @@ export async function approvalRoutes(
 
     let amount: number | null = null;
     if (b.amount !== undefined && b.amount !== null) {
-      if (typeof b.amount !== "number" || !Number.isFinite(b.amount)) {
-        return reply.code(400).send({ error: "amount must be a number" });
-      }
-      amount = b.amount;
+      const parsed = parseApprovalAmount(b.amount, "amount");
+      if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+      amount = parsed.value;
     }
 
     const rules = await listPolicyRules(wid);

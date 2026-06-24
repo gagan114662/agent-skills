@@ -191,6 +191,24 @@ describe("evaluatePolicy (gating engine)", () => {
     ).toBe(true);
   });
 
+  it("rejects negative amounts and invalid negative policy caps instead of inverting the gate (#971)", () => {
+    const rules: PolicyRule[] = [
+      { actionType: "external.send", requiresApproval: false, maxAutoAmount: 100 },
+    ];
+    const negativeAmount = evaluatePolicy({ actionType: "external.send", amount: -1 }, rules);
+    expect(negativeAmount.requiresApproval).toBe(true);
+    expect(negativeAmount.reason).toMatch(/negative amount/i);
+
+    const invalidCap: PolicyRule[] = [
+      { actionType: "external.send", requiresApproval: false, maxAutoAmount: -100 },
+    ];
+    const validSpend = evaluatePolicy({ actionType: "external.send", amount: 50 }, invalidCap);
+    expect(validSpend.requiresApproval).toBe(true);
+    expect(validSpend.reason).toMatch(/invalid auto-approve limit/i);
+
+    expect(evaluatePolicy({ actionType: "external.send", amount: 50 }, rules).requiresApproval).toBe(false);
+  });
+
   it("a workspace rule can still opt a non-money action back into a gate (#243)", () => {
     // The fleet is autonomous by default, but a cautious workspace can re-gate any action explicitly.
     const gated: PolicyRule[] = [
