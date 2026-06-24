@@ -4,6 +4,7 @@ import { verifyWebhookSignature, WebhookVerificationError } from "../billing/web
 import { SupportDeskService, SupportNotFoundError } from "../support/service.js";
 import { kbSlug } from "../support/kb.js";
 import { RECEIPT_KINDS } from "../db/schema/support.js";
+import { recordWebhookSignatureFailure } from "../observability/metrics.js";
 
 /**
  * Support Desk routes (#190, ADR-0190). Two signed inbound hooks (the #98 HMAC pattern) — the embeddable
@@ -49,6 +50,10 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
       const { wid } = req.params as { wid: string };
       const raw = req.body instanceof Buffer ? req.body.toString("utf8") : String(req.body ?? "");
       const v = await verify(wid, raw, req.headers["support-signature"]);
+      if (!("ok" in v) && v.code === 400) {
+        req.log.warn({ provider: "support", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        recordWebhookSignatureFailure("support", v.error);
+      }
       if (!("ok" in v)) return reply.code(v.code).send({ error: v.error });
 
       let payload: Record<string, unknown>;
@@ -93,6 +98,10 @@ export async function supportRoutes(app: FastifyInstance, opts: SupportRoutesOpt
       const { wid } = req.params as { wid: string };
       const raw = req.body instanceof Buffer ? req.body.toString("utf8") : String(req.body ?? "");
       const v = await verify(wid, raw, req.headers["support-signature"]);
+      if (!("ok" in v) && v.code === 400) {
+        req.log.warn({ provider: "support", workspaceId: wid, reason: v.error }, "webhook signature verification failed");
+        recordWebhookSignatureFailure("support", v.error);
+      }
       if (!("ok" in v)) return reply.code(v.code).send({ error: v.error });
 
       let payload: Record<string, unknown>;

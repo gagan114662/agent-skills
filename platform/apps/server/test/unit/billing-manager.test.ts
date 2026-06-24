@@ -89,6 +89,7 @@ interface Harness {
   events: BillingStatusEvent[];
   posts: string[];
   failures: string[];
+  logs: Array<{ obj: unknown; msg?: string }>;
 }
 
 function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
@@ -97,6 +98,7 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
   const events: BillingStatusEvent[] = [];
   const posts: string[] = [];
   const failures: string[] = [];
+  const logs: Array<{ obj: unknown; msg?: string }> = [];
   const poster: ChannelPoster = {
     post: (input) => {
       posts.push(input.body);
@@ -121,10 +123,16 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}): Harness {
       },
     },
     publish: (_cid, event) => events.push(event),
+    logger: {
+      child: () => ({ child: () => undefined as never, info: () => {}, warn: () => {}, error: () => {} }),
+      info: (obj, msg) => logs.push({ obj, msg }),
+      warn: (obj, msg) => logs.push({ obj, msg }),
+      error: (obj, msg) => logs.push({ obj, msg }),
+    },
     now: () => NOW,
     toleranceSec: 300,
   });
-  return { manager, store, provider, events, posts, failures };
+  return { manager, store, provider, events, posts, failures, logs };
 }
 
 const LINK_REQ = {
@@ -300,6 +308,14 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(second.deduped).toBe(true);
     expect(h.store.events.length).toBe(1); // no second row
     expect(h.store.evidence.length).toBe(1); // no second evidence row
+    expect(h.logs).toContainEqual({
+      obj: expect.objectContaining({
+        workspaceId: "ws_1",
+        providerEventId: "evt_pay_1",
+        amountCents: 2500,
+      }),
+      msg: "billing webhook deduped",
+    });
   });
 
   it("rejects a webhook with a bad signature (no row persisted)", async () => {

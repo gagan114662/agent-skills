@@ -27,7 +27,7 @@ import {
   listHumanReviewers,
   approveAndLock,
   rejectRequest,
-  sweepExpired,
+  sweepExpiredDetailed,
   type ApprovalRequest,
 } from "../db/repositories/approvals.js";
 
@@ -67,6 +67,24 @@ function approvalConflict(error: string, request: ApprovalRequest): {
   request: ApprovalRequest;
 } {
   return { status: "conflict", error, request };
+}
+
+export function approvalDecisionLog(
+  request: ApprovalRequest,
+  outcome: "approved" | "edited" | "rejected" | "expired" | "executed" | "failed",
+): Record<string, unknown> {
+  return {
+    requestId: request.id,
+    workspaceId: request.workspaceId,
+    requesterMemberId: request.requesterMemberId,
+    decidedByMemberId: request.decidedByMemberId,
+    actionType: request.actionType,
+    amount: request.amount,
+    summary: request.summary,
+    outcome,
+    reason: request.reason,
+    edited: outcome === "edited",
+  };
 }
 
 export async function approvalRoutes(
@@ -354,8 +372,13 @@ export async function approvalRoutes(
       return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
+      req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
       return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
     }
+    req.log.info(
+      approvalDecisionLog(decision.request, edit ? "edited" : "approved"),
+      "approval decision recorded before execution",
+    );
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
     const execution = await execute(req, decision.request);
     if (execution.outcome === "conflict") {
@@ -363,8 +386,10 @@ export async function approvalRoutes(
     }
     const finished = execution.request;
     if (finished.status === "failed") {
+      req.log.info(approvalDecisionLog(finished, "failed"), "approval execution failed");
       return reply.code(502).send({ status: "failed", error: finished.error, request: finished });
     }
+    req.log.info(approvalDecisionLog(finished, "executed"), "approval execution completed");
     return reply.code(200).send({ status: "executed", result: finished.result, request: finished });
   });
 
@@ -385,8 +410,10 @@ export async function approvalRoutes(
       return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
+      req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
       return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
     }
+    req.log.info(approvalDecisionLog(decision.request, "rejected"), "approval decision recorded");
     return reply.code(200).send({ status: "rejected", request: decision.request });
   });
 
@@ -396,6 +423,10 @@ export async function approvalRoutes(
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     if (!requireHuman(id, reply)) return;
-    return { expired: await sweepExpired(wid) };
+    const result = await sweepExpiredDetailed(wid);
+    for (const requestId of result.requestIds) {
+      req.log.info({ workspaceId: wid, requestId, outcome: "expired" }, "approval request expired by sweep");
+    }
+    return { expired: result.count };
   });
 }

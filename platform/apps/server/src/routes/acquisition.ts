@@ -18,6 +18,7 @@ import { SUPPRESSION_REASONS, type SuppressionReason } from "../acquisition/comp
 import { decideOneClickUnsubscribe } from "../email/one-click-unsubscribe.js";
 import type { OutreachService } from "../outreach/service.js";
 import type { ReachService } from "../reach/service.js";
+import { recordWebhookSignatureFailure } from "../observability/metrics.js";
 
 /**
  * Acquisition execution routes (#189, ADR-0189).
@@ -106,6 +107,8 @@ export async function acquisitionRoutes(
         verifyEspSignature(rawBody, typeof signature === "string" ? signature : undefined, secret);
       } catch (err) {
         if (err instanceof EspWebhookVerificationError) {
+          req.log.warn({ provider: c.espProvider, workspaceId: wid, reason: err.message }, "webhook signature verification failed");
+          recordWebhookSignatureFailure(c.espProvider, err.message);
           return reply.code(400).send({ error: "invalid signature" });
         }
         throw err;
