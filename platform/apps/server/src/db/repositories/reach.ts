@@ -1,15 +1,16 @@
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, ne } from "drizzle-orm";
 import { db } from "../index.js";
 import { reachContacts, reachReceipts, reachRuns, reachSends } from "../schema/index.js";
 import type {
   ActiveEnrollment,
+  ImportedProspectInput,
   ReachContactStore,
   ReachReceiptStore,
   ReachRunStore,
   ReachSendStore,
 } from "../../reach/service.js";
 import type { ReceiptDatum, SendDatum } from "../../reach/measure.js";
-import type { ReachChannel, ReachReceiptKind, ReachSendStatus, ReachSignalKind, ReachVariant } from "../../reach/types.js";
+import type { RawProspect, ReachChannel, ReachReceiptKind, ReachSendStatus, ReachSignalKind, ReachVariant } from "../../reach/types.js";
 import { isReachSignalKind, type ReachRunStatus } from "../../reach/types.js";
 import type { ReachTuningConfig } from "../../reach/self-tune.js";
 
@@ -23,13 +24,142 @@ function toSignalKind(value: string | null): ReachSignalKind | null {
   return value && isReachSignalKind(value) ? value : null;
 }
 
+function clean(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function contactKey(input: Pick<ImportedProspectInput, "email" | "linkedinUrl" | "fullName" | "company">): string | null {
+  const email = clean(input.email)?.toLowerCase();
+  if (email) return `email:${email}`;
+  const linkedin = clean(input.linkedinUrl)?.toLowerCase();
+  if (linkedin) return `linkedin:${linkedin}`;
+  const fullName = clean(input.fullName)?.toLowerCase();
+  const company = clean(input.company)?.toLowerCase();
+  if (fullName && company) return `id:${fullName}|${company}`;
+  return null;
+}
+
+function importedSignals(input: ImportedProspectInput, fallbackMs: number): RawProspect["signals"] {
+  if (!input.signalKind || !isReachSignalKind(input.signalKind)) return [];
+  return [{
+    kind: input.signalKind,
+    summary: clean(input.signalSummary) ?? "Imported prospect",
+    observedAtMs: input.observedAtMs && Number.isFinite(input.observedAtMs) ? input.observedAtMs : fallbackMs,
+  }];
+}
+
+function rawSignals(value: unknown): RawProspect["signals"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const rec = item as { kind?: unknown; summary?: unknown; observedAtMs?: unknown };
+    if (typeof rec.kind !== "string" || !isReachSignalKind(rec.kind)) return [];
+    return [{
+      kind: rec.kind,
+      summary: typeof rec.summary === "string" && rec.summary.trim() ? rec.summary.trim() : "Imported prospect",
+      observedAtMs: typeof rec.observedAtMs === "number" && Number.isFinite(rec.observedAtMs) ? rec.observedAtMs : Date.now(),
+    }];
+  });
+}
+
 export const dbReachContactStore: ReachContactStore = {
   async contactedKeys(workspaceId: string): Promise<Set<string>> {
     const rows = await db
       .select({ contactKey: reachContacts.contactKey })
       .from(reachContacts)
-      .where(eq(reachContacts.workspaceId, workspaceId));
+      .where(and(eq(reachContacts.workspaceId, workspaceId), ne(reachContacts.status, "imported")));
     return new Set(rows.map((r) => r.contactKey));
+  },
+  async importProspects(workspaceId, prospects, now): Promise<{ imported: number; updated: number; skipped: number }> {
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    for (const prospect of prospects) {
+      const key = contactKey(prospect);
+      const fullName = clean(prospect.fullName);
+      const company = clean(prospect.company);
+      if (!key || !fullName || !company) {
+        skipped += 1;
+        continue;
+      }
+      const [existing] = await db
+        .select({ id: reachContacts.id })
+        .from(reachContacts)
+        .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, key)))
+        .limit(1);
+      const channel: ReachChannel = clean(prospect.email) ? "email" : "linkedin";
+      await db
+        .insert(reachContacts)
+        .values({
+          workspaceId,
+          contactKey: key,
+          recipientLabel: `${fullName} · ${company}`,
+          channel,
+          status: "imported",
+          currentStep: 0,
+          lastStepAt: null,
+          score: 0,
+          signalKind: prospect.signalKind && isReachSignalKind(prospect.signalKind) ? prospect.signalKind : null,
+          fullName,
+          title: clean(prospect.title),
+          company,
+          companyDomain: clean(prospect.companyDomain),
+          email: clean(prospect.email)?.toLowerCase() ?? null,
+          linkedinUrl: clean(prospect.linkedinUrl),
+          industry: clean(prospect.industry),
+          companySize: clean(prospect.companySize),
+          signals: importedSignals(prospect, now.getTime()),
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [reachContacts.workspaceId, reachContacts.contactKey],
+          set: {
+            recipientLabel: `${fullName} · ${company}`,
+            channel,
+            fullName,
+            title: clean(prospect.title),
+            company,
+            companyDomain: clean(prospect.companyDomain),
+            email: clean(prospect.email)?.toLowerCase() ?? null,
+            linkedinUrl: clean(prospect.linkedinUrl),
+            industry: clean(prospect.industry),
+            companySize: clean(prospect.companySize),
+            signals: importedSignals(prospect, now.getTime()),
+            updatedAt: now,
+          },
+        });
+      if (existing) updated += 1;
+      else imported += 1;
+    }
+    return { imported, updated, skipped };
+  },
+  async importedProspects(workspaceId, limit, excludeKeys): Promise<RawProspect[]> {
+    const rows = await db
+      .select()
+      .from(reachContacts)
+      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "imported")))
+      .orderBy(desc(reachContacts.updatedAt))
+      .limit(Math.max(1, limit * 3));
+    const prospects: RawProspect[] = [];
+    for (const row of rows) {
+      if (prospects.length >= limit) break;
+      if (excludeKeys.has(row.contactKey)) continue;
+      if (!row.fullName || !row.company || (!row.email && !row.linkedinUrl)) continue;
+      prospects.push({
+        fullName: row.fullName,
+        title: row.title ?? "",
+        company: row.company,
+        companyDomain: row.companyDomain ?? "",
+        email: row.email,
+        linkedinUrl: row.linkedinUrl,
+        industry: row.industry,
+        companySize: row.companySize,
+        signals: rawSignals(row.signals),
+        sourceKind: "imported",
+      });
+    }
+    return prospects;
   },
   async upsertEnrollment(input): Promise<void> {
     await db

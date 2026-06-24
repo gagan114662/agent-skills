@@ -127,14 +127,14 @@ describe("scoring + dedupe (#280)", () => {
 });
 
 describe("resolveReachCaps (#280)", () => {
-  it("defaults OFF, mock source, dryrun sender", () => {
+  it("defaults OFF, imported source, dryrun sender", () => {
     const caps = resolveReachCaps(undefined);
-    expect(caps).toMatchObject({ enabled: false, prospectSource: "mock", sendProvider: "dryrun" });
+    expect(caps).toMatchObject({ enabled: false, prospectSource: "imported", sendProvider: "dryrun" });
     expect(caps.perDomainDailyCap).toBe(REACH_DEFAULTS.perDomainDailyCap);
   });
 
   it("rejects an unknown prospect source, keeps positive ints", () => {
-    expect(resolveReachCaps({ prospectSource: "scrapey" }).prospectSource).toBe("mock");
+    expect(resolveReachCaps({ prospectSource: "scrapey" }).prospectSource).toBe("imported");
     expect(resolveReachCaps({ prospectSource: "clay", perDomainDailyCap: 10 })).toMatchObject({
       prospectSource: "clay",
       perDomainDailyCap: 10,

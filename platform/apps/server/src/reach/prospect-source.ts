@@ -8,7 +8,7 @@ import type { Icp, ProspectSourceKind, RawProspect } from "./types.js";
  *
  * MONEY boundary: a provider declares whether it is `paid` and what a search COSTS ({@link
  * ProspectSource.estimateCostCents}). The service money-gates any non-zero cost (a `data.credit_spend`
- * #13 action) BEFORE the call — buying data credits is the money action. A free provider (the `mock`
+ * #13 action) BEFORE the call — buying data credits is the money action. A free provider (the `imported`
  * default) runs autonomously.
  */
 

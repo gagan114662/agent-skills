@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createMockProspectSource } from "../../../src/reach/sources/mock.js";
 import { createClaySource } from "../../../src/reach/sources/clay.js";
-import { createProspectSource } from "../../../src/reach/sources/index.js";
+import { createImportedProspectSource, createProspectSource } from "../../../src/reach/sources/index.js";
 import { ProspectSourceUnavailableError } from "../../../src/reach/prospect-source.js";
 import type { HttpFetch, HttpResponse } from "../../../src/reach/sources/http.js";
 import { deriveIcp } from "../../../src/reach/icp.js";
@@ -33,6 +33,37 @@ describe("MockProspectSource (#280)", () => {
     const exclude = new Set(first.prospects.map((p) => `email:${p.email}`));
     const second = await src.search({ icp, limit: 3, excludeKeys: exclude });
     for (const p of second.prospects) expect(exclude.has(`email:${p.email}`)).toBe(false);
+  });
+});
+
+describe("ImportedProspectSource (#895)", () => {
+  it("loads owner-imported prospects and never fabricates when the list is empty", async () => {
+    const src = createImportedProspectSource("ws1", {
+      async loadImportedProspects({ workspaceId, limit }) {
+        expect(workspaceId).toBe("ws1");
+        expect(limit).toBe(2);
+        return [{
+          fullName: "Ava Founder",
+          title: "Founder",
+          company: "Acme",
+          companyDomain: "acme.com",
+          email: "ava@acme.com",
+          linkedinUrl: null,
+          industry: "saas",
+          companySize: "11-50",
+          signals: [{ kind: "funding_round", summary: "raised seed", observedAtMs: NOW }],
+          sourceKind: "imported",
+        }];
+      },
+    });
+    const out = await src.search({ icp, limit: 2, excludeKeys: new Set() });
+    expect(out.prospects).toHaveLength(1);
+    expect(out.prospects[0]?.sourceKind).toBe("imported");
+
+    const empty = createImportedProspectSource("ws1", { loadImportedProspects: async () => [] });
+    await expect(empty.search({ icp, limit: 2, excludeKeys: new Set() })).rejects.toBeInstanceOf(
+      ProspectSourceUnavailableError,
+    );
   });
 });
 
@@ -92,6 +123,7 @@ describe("createProspectSource resolver (#280)", () => {
       },
       now: () => NOW,
     };
+    expect(createProspectSource("imported", deps, "ws1").paid).toBe(false);
     expect(createProspectSource("mock", deps).paid).toBe(false);
     const clay = createProspectSource("clay", deps);
     expect(clay.kind).toBe("clay");

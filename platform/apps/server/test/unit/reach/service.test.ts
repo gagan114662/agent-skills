@@ -34,7 +34,13 @@ function fakes() {
     channels: { email: createEmailChannel(), linkedin: createLinkedInChannel() },
     contacts: {
       async contactedKeys() {
-        return new Set(contacts.keys());
+        return new Set([...contacts.entries()].filter(([, c]) => c.status !== "imported").map(([k]) => k));
+      },
+      async importProspects() {
+        return { imported: 0, updated: 0, skipped: 0 };
+      },
+      async importedProspects() {
+        return [];
       },
       async upsertEnrollment(input) {
         contacts.set(input.contactKey, {

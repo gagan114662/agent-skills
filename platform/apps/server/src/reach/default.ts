@@ -106,11 +106,13 @@ export function createDefaultReachService(log?: FastifyBaseLogger): ReachService
     resolveSource: (workspaceId, kind) =>
       createProspectSource(kind, {
         httpFetch: realHttpFetch,
+        loadImportedProspects: (input) =>
+          dbReachContactStore.importedProspects(input.workspaceId, input.limit, input.excludeKeys),
         loadApiKey: async (serviceKey, envKey) => {
           const secrets = await resolveServiceSecrets(workspaceId, serviceKey);
           return secrets[envKey] ?? null;
         },
-      }),
+      }, workspaceId),
     channels,
     contacts: dbReachContactStore,
     sends: dbReachSendStore,
