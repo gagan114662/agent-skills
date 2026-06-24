@@ -103,12 +103,18 @@ export interface MessageInsertInput {
   experimentKey: string;
   status: OutreachMessageRecord["status"];
   provider: string;
+  spamRiskScore: number;
+  spamRiskLevel: OutreachMessageRecord["spamRiskLevel"];
+  spamRiskReasons: string[];
 }
 
 export interface MessageStore {
   insert(input: MessageInsertInput): Promise<OutreachMessageRecord>;
   get(workspaceId: string, id: string): Promise<OutreachMessageRecord | undefined>;
-  findByRecipientRef?(workspaceId: string, recipientRef: string): Promise<OutreachMessageRecord | undefined>;
+  findByRecipientRef?(
+    workspaceId: string,
+    recipientRef: string,
+  ): Promise<OutreachMessageRecord | undefined>;
   setApproval(
     workspaceId: string,
     id: string,
@@ -193,7 +199,12 @@ export interface DraftResult {
 export type QueueResult =
   | { status: "blocked"; reason: string; missingAccounts: ServiceKind[]; messageId: string }
   | { status: "rate_limited"; channel: OutreachChannel; cap: number }
-  | { status: "pending_approval"; approvalRequestId: string; messageId: string; channel: OutreachChannel };
+  | {
+      status: "pending_approval";
+      approvalRequestId: string;
+      messageId: string;
+      channel: OutreachChannel;
+    };
 
 /** The founder-console outreach roll-up (#104/#222 growth surface). All counts are real, never placeholders. */
 export interface OutreachSummary {
@@ -303,7 +314,12 @@ export class OutreachService {
    */
   async draft(
     workspaceId: string,
-    input: { prospectKey: string; buyerBriefId: string; ideaId?: string | null; productName?: string },
+    input: {
+      prospectKey: string;
+      buyerBriefId: string;
+      ideaId?: string | null;
+      productName?: string;
+    },
   ): Promise<DraftResult> {
     const ideaId = input.ideaId ?? null;
     const { brief, signalKinds } = await this.resolve(
@@ -394,6 +410,9 @@ export class OutreachService {
         body: message.body,
         recipientLabel: message.recipientLabel,
         recipientRef: message.recipientRef,
+        spamRiskScore: message.spamRisk.score,
+        spamRiskLevel: message.spamRisk.level,
+        spamRiskReasons: message.spamRisk.reasons,
         experimentKey,
         status: "blocked",
         provider: caps.sendProvider,
@@ -426,6 +445,9 @@ export class OutreachService {
       body: message.body,
       recipientLabel: message.recipientLabel,
       recipientRef: message.recipientRef,
+      spamRiskScore: message.spamRisk.score,
+      spamRiskLevel: message.spamRisk.level,
+      spamRiskReasons: message.spamRisk.reasons,
       experimentKey,
       status: "drafted",
       provider: caps.sendProvider,
@@ -433,8 +455,10 @@ export class OutreachService {
 
     // ALWAYS park — outreach is pre-committed/owner-gated, never autonomous (premortem #200). The exact
     // recipient + content live on the card; the read-derived grounding rides along as DATA for the owner.
+    const riskPrefix =
+      message.spamRisk.level === "clean" ? "" : `[${message.spamRisk.level} spam risk] `;
     const summary =
-      `Send ${channel} to ${message.recipientLabel}: ` +
+      `${riskPrefix}Send ${channel} to ${message.recipientLabel}: ` +
       `${(message.subject || message.body).slice(0, 80)}`;
     const approval = await this.deps.approvals.submit({
       workspaceId,
@@ -451,6 +475,7 @@ export class OutreachService {
         subject: message.subject,
         body: message.body,
         groundingEvidence: message.groundingEvidence,
+        spamRisk: message.spamRisk,
       },
     });
     await this.deps.messages.setApproval(workspaceId, stored.id, {
@@ -494,7 +519,8 @@ export class OutreachService {
       );
     }
     const message = await this.deps.messages.get(workspaceId, input.messageId);
-    if (!message) throw new OutreachValidationError(`outreach message not found: ${input.messageId}`);
+    if (!message)
+      throw new OutreachValidationError(`outreach message not found: ${input.messageId}`);
 
     const { record, created } = await this.deps.receipts.insert({
       workspaceId,
@@ -548,7 +574,9 @@ export class OutreachService {
   ): Promise<{ matched: boolean; created: boolean; messageId?: string }> {
     const externalRef = input.externalRef.trim();
     if (!externalRef) return { matched: false, created: false };
-    let message = input.messageId ? await this.deps.messages.get(workspaceId, input.messageId) : undefined;
+    let message = input.messageId
+      ? await this.deps.messages.get(workspaceId, input.messageId)
+      : undefined;
     const recipientRef = input.recipientRef?.trim();
     if (!message && recipientRef && this.deps.messages.findByRecipientRef) {
       message = await this.deps.messages.findByRecipientRef(workspaceId, recipientRef);
@@ -572,7 +600,10 @@ export class OutreachService {
       this.deps.messages.list(workspaceId, { ideaId }),
       this.deps.receipts.list(workspaceId, { ideaId }),
     ]);
-    const variantByMessage = new Map<string, { experimentKey: string; variant: ValuePropVariant }>();
+    const variantByMessage = new Map<
+      string,
+      { experimentKey: string; variant: ValuePropVariant }
+    >();
     // key: `${experimentKey} ${variant}` → tally
     const tallies = new Map<string, VariantTally>();
     const experimentKeys = new Set<string>();
@@ -665,7 +696,10 @@ export class OutreachService {
     };
   }
 
-  async listMessages(workspaceId: string, opts?: { ideaId?: string; limit?: number }): Promise<OutreachMessageRecord[]> {
+  async listMessages(
+    workspaceId: string,
+    opts?: { ideaId?: string; limit?: number },
+  ): Promise<OutreachMessageRecord[]> {
     return this.deps.messages.list(workspaceId, opts);
   }
 }

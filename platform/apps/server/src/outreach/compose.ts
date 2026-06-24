@@ -17,6 +17,7 @@ import {
   OUTREACH_CHANNELS,
   VALUE_PROP_VARIANTS,
   type OutreachChannel,
+  type OutreachSpamRisk,
   type ValuePropVariant,
   type ComposedMessage,
 } from "./types.js";
@@ -30,6 +31,7 @@ const MAX_BODY_CHARS = 700;
 const MAX_LABEL_CHARS = 140;
 const MAX_EVIDENCE_CHARS = 200;
 const MAX_GROUNDING = 3;
+const MAX_SPAM_REASONS = 8;
 
 /** Strip control chars, collapse whitespace, trim, and cap length. Quoted DATA, never executed. */
 export function sanitizeLine(text: string, max: number): string {
@@ -40,6 +42,99 @@ export function sanitizeLine(text: string, max: number): string {
     out += ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? " " : ch;
   }
   return out.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Spam / phishing risk scoring (#931). Pure DATA->DATA so routes, services, and tests all see one truth.
+// ---------------------------------------------------------------------------------------------------
+
+const SPAM_TRIGGER_PATTERNS: Array<[RegExp, string, number]> = [
+  [
+    /\b(act now|limited time|urgent|winner|guaranteed|risk[- ]?free|free trial|click here)\b/i,
+    "spam trigger language",
+    25,
+  ],
+  [
+    /\b(make money fast|double your revenue|no obligation|exclusive offer)\b/i,
+    "promotional trigger language",
+    20,
+  ],
+];
+
+const PHISHING_PATTERNS: Array<[RegExp, string, number]> = [
+  [
+    /\b(confirm|verify|update)\s+(your\s+)?(account|password|payment|billing)\b/i,
+    "credential-verification phrasing",
+    35,
+  ],
+  [
+    /\b(lose access|account suspended|security alert|unusual activity)\b/i,
+    "account-threat phrasing",
+    35,
+  ],
+  [/\b(password|one[- ]?time code|2fa|mfa|wire transfer)\b/i, "sensitive-action phrasing", 25],
+];
+
+const HOMOGLYPH_PATTERNS: Array<[RegExp, string, number]> = [
+  [/\b[a-z]*[0@$!][a-z]*\b/i, "homoglyph substitution", 25],
+  [/\b(?:acc0unt|l0gin|passw0rd|verif[y1]|b[i1]ll[i1]ng)\b/i, "credential homoglyph", 30],
+];
+
+function addReason(reasons: string[], reason: string): void {
+  if (!reasons.includes(reason) && reasons.length < MAX_SPAM_REASONS) reasons.push(reason);
+}
+
+function capsRatio(text: string): number {
+  const letters = [...text].filter((ch) => /[A-Za-z]/.test(ch));
+  if (letters.length < 8) return 0;
+  const caps = letters.filter((ch) => ch >= "A" && ch <= "Z").length;
+  return caps / letters.length;
+}
+
+export function checkSpamRisk(input: { subject?: string; body: string }): OutreachSpamRisk {
+  const subject = sanitizeLine(input.subject ?? "", MAX_SUBJECT_CHARS);
+  const body = sanitizeLine(input.body, MAX_BODY_CHARS);
+  const joined = `${subject} ${body}`.trim();
+  let score = 0;
+  const reasons: string[] = [];
+
+  for (const [pattern, reason, weight] of SPAM_TRIGGER_PATTERNS) {
+    if (pattern.test(joined)) {
+      score += weight;
+      addReason(reasons, reason);
+    }
+  }
+  for (const [pattern, reason, weight] of PHISHING_PATTERNS) {
+    if (pattern.test(joined)) {
+      score += weight;
+      addReason(reasons, reason);
+    }
+  }
+  for (const [pattern, reason, weight] of HOMOGLYPH_PATTERNS) {
+    if (pattern.test(joined)) {
+      score += weight;
+      addReason(reasons, reason);
+    }
+  }
+
+  const subjectCaps = capsRatio(subject);
+  const bodyCaps = capsRatio(body);
+  if (subjectCaps >= 0.65) {
+    score += 25;
+    addReason(reasons, "all-caps subject");
+  }
+  if (bodyCaps >= 0.45) {
+    score += 15;
+    addReason(reasons, "all-caps body");
+  }
+  if (/[!?]{3,}/.test(joined)) {
+    score += 10;
+    addReason(reasons, "excessive punctuation");
+  }
+
+  const boundedScore = Math.min(100, score);
+  const level = boundedScore >= 80 ? "block" : boundedScore >= 35 ? "review" : "clean";
+  return { score: boundedScore, level, reasons };
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -173,9 +268,7 @@ export function composeMessage(input: ComposeInput): ComposedMessage {
   const opener = `I noticed ${account} is likely wrestling with ${problem}.`;
   const value = sanitizeLine(valuePropLine(input.variant, input.productName, problem), 240);
   const isEmail = input.channel === "email";
-  const cta = isEmail
-    ? "Open to a 15-minute look at whether it'd help?"
-    : "Worth a quick chat?";
+  const cta = isEmail ? "Open to a 15-minute look at whether it'd help?" : "Worth a quick chat?";
 
   const bodyParts = isEmail
     ? [`Hi ${name},`, opener, value, cta]
@@ -193,6 +286,7 @@ export function composeMessage(input: ComposeInput): ComposedMessage {
       : prose;
 
   const subject = isEmail ? sanitizeLine(`${problem} at ${account}`, MAX_SUBJECT_CHARS) : "";
+  const spamRisk = checkSpamRisk({ subject, body });
 
   const roleOrTitle = sanitizeLine(buyer.buyerTitle || buyer.buyerRole, 60);
   const recipientLabel = sanitizeLine(
@@ -217,6 +311,7 @@ export function composeMessage(input: ComposeInput): ComposedMessage {
     recipientLabel,
     signalKinds: input.signalKinds.map((s) => sanitizeLine(s, 40)).filter((s) => s.length > 0),
     groundingEvidence,
+    spamRisk,
   };
 }
 

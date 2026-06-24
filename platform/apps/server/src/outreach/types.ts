@@ -48,6 +48,15 @@ export const OUTREACH_MESSAGE_STATUSES = [
 ] as const;
 export type OutreachMessageStatus = (typeof OUTREACH_MESSAGE_STATUSES)[number];
 
+export const OUTREACH_SPAM_RISK_LEVELS = ["clean", "review", "block"] as const;
+export type OutreachSpamRiskLevel = (typeof OUTREACH_SPAM_RISK_LEVELS)[number];
+
+export interface OutreachSpamRisk {
+  score: number;
+  level: OutreachSpamRiskLevel;
+  reasons: string[];
+}
+
 /**
  * The kinds of EXTERNAL receipt that conclude an experiment (premortem #200 §2: metrics are external
  * receipts only). A reply, a booked meeting, a signup — each must carry a non-empty `externalRef` (the
@@ -89,6 +98,8 @@ export interface ComposedMessage {
   signalKinds: string[];
   /** Grounding shown to the owner on the approval card — sanitized DATA, never injected into the body. */
   groundingEvidence: string[];
+  /** Spam/phishing risk review packet, computed from the final subject/body and persisted for audit. */
+  spamRisk: OutreachSpamRisk;
 }
 
 /** A persisted outreach message (one row per attempt; the audit + experiment denominator). */
@@ -106,6 +117,9 @@ export interface OutreachMessageRecord {
   body: string;
   recipientLabel: string;
   recipientRef: string;
+  spamRiskScore: number;
+  spamRiskLevel: OutreachSpamRiskLevel;
+  spamRiskReasons: string[];
   /** Groups messages into one experiment (per idea + channel) so variants are compared like-for-like. */
   experimentKey: string;
   status: OutreachMessageStatus;

@@ -1,16 +1,13 @@
 import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "../index.js";
 import { outreachMessages, outreachReceipts } from "../schema/index.js";
-import type {
-  MessageInsertInput,
-  MessageStore,
-  ReceiptStore,
-} from "../../outreach/service.js";
+import type { MessageInsertInput, MessageStore, ReceiptStore } from "../../outreach/service.js";
 import type {
   OutreachChannel,
   OutreachMessageRecord,
   OutreachReceiptKind,
   OutreachReceiptRecord,
+  OutreachSpamRiskLevel,
 } from "../../outreach/types.js";
 
 export const OUTREACH_MESSAGES_DEFAULT_LIMIT = 200;
@@ -37,6 +34,11 @@ function toMessage(r: typeof outreachMessages.$inferSelect): OutreachMessageReco
     body: r.body,
     recipientLabel: r.recipientLabel,
     recipientRef: r.recipientRef,
+    spamRiskScore: r.spamRiskScore,
+    spamRiskLevel: r.spamRiskLevel as OutreachSpamRiskLevel,
+    spamRiskReasons: Array.isArray(r.spamRiskReasons)
+      ? r.spamRiskReasons.filter((reason): reason is string => typeof reason === "string")
+      : [],
     experimentKey: r.experimentKey,
     status: r.status as OutreachMessageRecord["status"],
     approvalRequestId: r.approvalRequestId,
@@ -48,7 +50,8 @@ function toMessage(r: typeof outreachMessages.$inferSelect): OutreachMessageReco
 }
 
 export function clampOutreachMessagesLimit(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return OUTREACH_MESSAGES_DEFAULT_LIMIT;
+  if (limit === undefined || !Number.isFinite(limit) || limit <= 0)
+    return OUTREACH_MESSAGES_DEFAULT_LIMIT;
   return Math.min(OUTREACH_MESSAGES_MAX_LIMIT, Math.floor(limit));
 }
 
@@ -69,6 +72,9 @@ export const dbMessageStore: MessageStore = {
         body: input.body,
         recipientLabel: input.recipientLabel,
         recipientRef: input.recipientRef,
+        spamRiskScore: input.spamRiskScore,
+        spamRiskLevel: input.spamRiskLevel,
+        spamRiskReasons: input.spamRiskReasons,
         experimentKey: input.experimentKey,
         status: input.status,
         provider: input.provider,
@@ -91,7 +97,12 @@ export const dbMessageStore: MessageStore = {
     const [row] = await db
       .select()
       .from(outreachMessages)
-      .where(and(eq(outreachMessages.workspaceId, workspaceId), eq(outreachMessages.recipientRef, recipientRef)))
+      .where(
+        and(
+          eq(outreachMessages.workspaceId, workspaceId),
+          eq(outreachMessages.recipientRef, recipientRef),
+        ),
+      )
       .orderBy(desc(outreachMessages.createdAt))
       .limit(1);
     return row ? toMessage(row) : undefined;
