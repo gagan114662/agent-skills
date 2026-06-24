@@ -40,9 +40,13 @@ let inFlight = 0;
 // Top-level tick failures can happen before any per-workspace tick counter increments
 // (maintenance/listing/signal reads). Keep labels bounded to known loop names.
 const loopTickFailures = new Map<string, number>();
-const webhookSignatureFailures = new Map<string, { provider: string; reason: string; count: number }>();
+const webhookSignatureFailures = new Map<
+  string,
+  { provider: string; reason: string; count: number }
+>();
 const asyncSideEffectFailures = new Map<string, number>();
 const redisPubSubTimeouts = new Map<string, number>();
+const inboundLeadRejections = new Map<string, number>();
 
 export function recordLoopTickFailure(loop: string): void {
   loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
@@ -60,6 +64,11 @@ export function recordWebhookSignatureFailure(provider: string, reason: string):
 export function recordAsyncSideEffectFailure(kind: string): void {
   const safeKind = kind || "unknown";
   asyncSideEffectFailures.set(safeKind, (asyncSideEffectFailures.get(safeKind) ?? 0) + 1);
+}
+
+export function recordInboundLeadRejection(reason: string): void {
+  const safeReason = reason || "unknown";
+  inboundLeadRejections.set(safeReason, (inboundLeadRejections.get(safeReason) ?? 0) + 1);
 }
 
 export function recordRedisPubSubTimeout(operation: string): void {
@@ -254,7 +263,8 @@ export function snapshotHttpMetrics(): HttpMetricsSnapshot {
   let aggInf = 0;
   let aggCount = 0;
   for (const d of durations.values()) {
-    for (let i = 0; i < DURATION_BUCKETS.length; i++) agg[i] = (agg[i] ?? 0) + (d.bucketCounts[i] ?? 0);
+    for (let i = 0; i < DURATION_BUCKETS.length; i++)
+      agg[i] = (agg[i] ?? 0) + (d.bucketCounts[i] ?? 0);
     aggInf += d.inf;
     aggCount += d.count;
   }
@@ -271,7 +281,8 @@ export function snapshotHttpMetrics(): HttpMetricsSnapshot {
         break;
       }
     }
-    if (!found && aggInf > 0) p95LatencyMs = (DURATION_BUCKETS[DURATION_BUCKETS.length - 1] ?? 0) * 1000;
+    if (!found && aggInf > 0)
+      p95LatencyMs = (DURATION_BUCKETS[DURATION_BUCKETS.length - 1] ?? 0) * 1000;
   }
 
   return { requests, errors, p95LatencyMs };
@@ -482,7 +493,9 @@ export function renderMetrics(): string {
     lines.push(`loop_tick_failures_total{loop="${esc(loop)}"} ${count}`);
   }
 
-  lines.push("# HELP webhook_signature_failures_total Signature verification failures on unauthenticated inbound webhooks.");
+  lines.push(
+    "# HELP webhook_signature_failures_total Signature verification failures on unauthenticated inbound webhooks.",
+  );
   lines.push("# TYPE webhook_signature_failures_total counter");
   for (const s of webhookSignatureFailures.values()) {
     lines.push(
@@ -490,13 +503,25 @@ export function renderMetrics(): string {
     );
   }
 
-  lines.push("# HELP async_side_effect_failures_total Durable writes whose downstream side effect failed.");
+  lines.push(
+    "# HELP async_side_effect_failures_total Durable writes whose downstream side effect failed.",
+  );
   lines.push("# TYPE async_side_effect_failures_total counter");
   for (const [kind, count] of asyncSideEffectFailures) {
     lines.push(`async_side_effect_failures_total{kind="${esc(kind)}"} ${count}`);
   }
 
-  lines.push("# HELP redis_pubsub_timeouts_total Redis pub/sub commands that exceeded the realtime timeout.");
+  lines.push(
+    "# HELP inbound_lead_rejections_total Public inbound lead capture rejections by bounded reason.",
+  );
+  lines.push("# TYPE inbound_lead_rejections_total counter");
+  for (const [reason, count] of inboundLeadRejections) {
+    lines.push(`inbound_lead_rejections_total{reason="${esc(reason)}"} ${count}`);
+  }
+
+  lines.push(
+    "# HELP redis_pubsub_timeouts_total Redis pub/sub commands that exceeded the realtime timeout.",
+  );
   lines.push("# TYPE redis_pubsub_timeouts_total counter");
   for (const [operation, count] of redisPubSubTimeouts) {
     lines.push(`redis_pubsub_timeouts_total{operation="${esc(operation)}"} ${count}`);
@@ -515,7 +540,9 @@ export function renderMetrics(): string {
   // capacity signals the #112 alerts + the #105 watchdog consume; thresholds live in saturation.ts.
   if (saturationSample) {
     const s = saturationSample;
-    lines.push("# HELP queue_depth Sessions the fleet currently has in flight (admission work queue).");
+    lines.push(
+      "# HELP queue_depth Sessions the fleet currently has in flight (admission work queue).",
+    );
     lines.push("# TYPE queue_depth gauge");
     lines.push(`queue_depth ${s.queueDepth}`);
 
@@ -565,7 +592,9 @@ export function renderMetrics(): string {
     let cumulative = 0;
     for (let i = 0; i < SPINUP_BUCKETS.length; i++) {
       cumulative += s.bucketCounts[i] ?? 0;
-      lines.push(`agent_sandbox_spinup_seconds_bucket{${labels},le="${SPINUP_BUCKETS[i]}"} ${cumulative}`);
+      lines.push(
+        `agent_sandbox_spinup_seconds_bucket{${labels},le="${SPINUP_BUCKETS[i]}"} ${cumulative}`,
+      );
     }
     cumulative += s.inf;
     lines.push(`agent_sandbox_spinup_seconds_bucket{${labels},le="+Inf"} ${cumulative}`);
@@ -668,7 +697,9 @@ export function renderMetrics(): string {
   lines.push("# HELP scale_warm_hits_total Launches served from the warm pool (fast bind path).");
   lines.push("# TYPE scale_warm_hits_total counter");
   lines.push(`scale_warm_hits_total ${warmHits}`);
-  lines.push("# HELP scale_warm_misses_total Launches that cold-provisioned (empty buffer or resume).");
+  lines.push(
+    "# HELP scale_warm_misses_total Launches that cold-provisioned (empty buffer or resume).",
+  );
   lines.push("# TYPE scale_warm_misses_total counter");
   lines.push(`scale_warm_misses_total ${warmMisses}`);
 

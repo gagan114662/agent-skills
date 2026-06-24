@@ -1,14 +1,23 @@
 import { createHash } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import type { DiscoveryService } from "../discovery/service.js";
-import { getLead, listLeads, markSlaNotified, recordLead, updateLead } from "../db/repositories/inbound-leads.js";
+import {
+  getLead,
+  listLeads,
+  markSlaNotified,
+  recordLead,
+  updateLead,
+} from "../db/repositories/inbound-leads.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { INBOUND_LEAD_STATUSES, type InboundLeadStatus } from "../db/schema/index.js";
 import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
 import type { InboundLeadFollowup } from "../leads/default.js";
 import { notify } from "../notifications/service.js";
-import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
+import {
+  recordAsyncSideEffectFailure,
+  recordInboundLeadRejection,
+} from "../observability/metrics.js";
 
 /**
  * Inbound lead capture route (GAP 1 of the leads centre, ADR-0400). ONE PUBLIC (unauth) endpoint,
@@ -45,7 +54,7 @@ const INBOUND_LEAD_NEXT_STEP = {
 
 function leadStatus(value: unknown): InboundLeadStatus | undefined {
   return typeof value === "string" && (INBOUND_LEAD_STATUSES as readonly string[]).includes(value)
-    ? value as InboundLeadStatus
+    ? (value as InboundLeadStatus)
     : undefined;
 }
 
@@ -56,15 +65,42 @@ function nullableText(value: unknown): string | null | undefined {
   return trimmed || null;
 }
 
-function leadExcerpt(kind: "arrived" | "sla", lead: { name: string | null; email: string; message: string }): string {
+function leadExcerpt(
+  kind: "arrived" | "sla",
+  lead: { name: string | null; email: string; message: string },
+): string {
   const who = lead.name ? `${lead.name} <${lead.email}>` : lead.email;
-  const shortMessage = lead.message.length > 140 ? `${lead.message.slice(0, 137)}...` : lead.message;
+  const shortMessage =
+    lead.message.length > 140 ? `${lead.message.slice(0, 137)}...` : lead.message;
   return kind === "arrived"
     ? `New inbound lead from ${who}: ${shortMessage}`
     : `24h SLA breached for inbound lead ${who}: ${shortMessage}`;
 }
 
-async function notifyOwner(app: FastifyInstance, workspaceId: string, excerpt: string): Promise<void> {
+function leadRejectionContext(body: Record<string, unknown>): { email: string; source: string } {
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 160) : "";
+  const source = typeof body.source === "string" ? body.source.trim().slice(0, 80) : "unknown";
+  return { email, source: source || "unknown" };
+}
+
+function rejectInboundLead(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  code: 400 | 503,
+  reason: string,
+  error: string,
+  body: Record<string, unknown>,
+) {
+  recordInboundLeadRejection(reason);
+  req.log.warn({ reason, ...leadRejectionContext(body) }, "inbound lead rejected");
+  return reply.code(code).send({ error });
+}
+
+async function notifyOwner(
+  app: FastifyInstance,
+  workspaceId: string,
+  excerpt: string,
+): Promise<void> {
   const ownerMemberId = await getWorkspaceOwnerMemberId(workspaceId);
   if (!ownerMemberId) return;
   await notify(app.log, {
@@ -115,21 +151,30 @@ export async function inboundLeadsRoutes(
     const { leadId } = req.params as { leadId: string };
     const body = (req.body ?? {}) as Record<string, unknown>;
     const status = body.status === undefined ? undefined : leadStatus(body.status);
-    if (body.status !== undefined && !status) return reply.code(400).send({ error: "invalid lead status" });
-    const assigneeMemberId = body.assigneeMemberId === undefined ? undefined : nullableText(body.assigneeMemberId);
-    if (assigneeMemberId && !UUID_RE.test(assigneeMemberId)) return reply.code(400).send({ error: "invalid assigneeMemberId" });
+    if (body.status !== undefined && !status)
+      return reply.code(400).send({ error: "invalid lead status" });
+    const assigneeMemberId =
+      body.assigneeMemberId === undefined ? undefined : nullableText(body.assigneeMemberId);
+    if (assigneeMemberId && !UUID_RE.test(assigneeMemberId))
+      return reply.code(400).send({ error: "invalid assigneeMemberId" });
     const nextAction = body.nextAction === undefined ? undefined : nullableText(body.nextAction);
-    const respondedAt = body.respondedAt === undefined
-      ? undefined
-      : body.respondedAt === null
-        ? null
-        : typeof body.respondedAt === "string"
-          ? new Date(body.respondedAt)
-          : undefined;
+    const respondedAt =
+      body.respondedAt === undefined
+        ? undefined
+        : body.respondedAt === null
+          ? null
+          : typeof body.respondedAt === "string"
+            ? new Date(body.respondedAt)
+            : undefined;
     if (respondedAt instanceof Date && Number.isNaN(respondedAt.getTime())) {
       return reply.code(400).send({ error: "invalid respondedAt" });
     }
-    const lead = await updateLead(id.workspaceId, leadId, { status, assigneeMemberId, nextAction, respondedAt });
+    const lead = await updateLead(id.workspaceId, leadId, {
+      status,
+      assigneeMemberId,
+      nextAction,
+      respondedAt,
+    });
     if (!lead) return reply.code(404).send({ error: "lead not found" });
     return { lead };
   });
@@ -143,12 +188,26 @@ export async function inboundLeadsRoutes(
     let workspaceId = ownerWorkspaceId ?? "";
     if (bodyWid) {
       if (!UUID_RE.test(bodyWid) || (ownerWorkspaceId && bodyWid !== ownerWorkspaceId)) {
-        return reply.code(400).send({ error: "workspaceId is not accepted" });
+        return rejectInboundLead(
+          req,
+          reply,
+          400,
+          "invalid_workspace",
+          "workspaceId is not accepted",
+          body,
+        );
       }
       workspaceId = bodyWid;
     }
     if (!workspaceId) {
-      return reply.code(503).send({ error: "inbound lead capture is not configured" });
+      return rejectInboundLead(
+        req,
+        reply,
+        503,
+        "not_configured",
+        "inbound lead capture is not configured",
+        body,
+      );
     }
 
     const sanitized = sanitizeLead({
@@ -158,7 +217,8 @@ export async function inboundLeadsRoutes(
       source: body.source,
       trackingRef: body.trackingRef,
     });
-    if (!sanitized.ok) return reply.code(400).send({ error: sanitized.error });
+    if (!sanitized.ok)
+      return rejectInboundLead(req, reply, 400, "invalid_payload", sanitized.error, body);
     const lead = sanitized.lead;
 
     // Persist FIRST — the lead is the durable record; discovery is a best-effort enrichment on top.
@@ -175,7 +235,10 @@ export async function inboundLeadsRoutes(
       await notifyOwner(app, workspaceId, leadExcerpt("arrived", lead));
     } catch (err) {
       recordAsyncSideEffectFailure("inbound_lead_owner_notification");
-      req.log.error({ err, workspaceId, leadId: id }, "inbound lead owner notification failed after durable lead write");
+      req.log.error(
+        { err, workspaceId, leadId: id },
+        "inbound lead owner notification failed after durable lead write",
+      );
     }
 
     // Best-effort: seed the default warm-lead definition, then feed the captured lead into #222 so a fresh
@@ -203,14 +266,20 @@ export async function inboundLeadsRoutes(
     } catch (err) {
       // A discovery hiccup never fails the capture — the lead is already persisted.
       recordAsyncSideEffectFailure("inbound_lead_discovery_ingest");
-      req.log.error({ err, workspaceId, leadId: id }, "inbound lead discovery ingest failed after durable lead write");
+      req.log.error(
+        { err, workspaceId, leadId: id },
+        "inbound lead discovery ingest failed after durable lead write",
+      );
     }
 
     try {
       await warmLeadFollowup?.handle({ workspaceId, leadId: id, lead });
     } catch (err) {
       recordAsyncSideEffectFailure("inbound_lead_warm_followup");
-      req.log.error({ err, workspaceId, leadId: id }, "inbound lead warm follow-up failed after durable lead write");
+      req.log.error(
+        { err, workspaceId, leadId: id },
+        "inbound lead warm follow-up failed after durable lead write",
+      );
     }
 
     return reply.code(202).send({ received: true, nextStep: INBOUND_LEAD_NEXT_STEP });
