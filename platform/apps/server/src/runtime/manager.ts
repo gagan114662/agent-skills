@@ -323,6 +323,8 @@ export interface SessionManagerDeps {
 export interface LaunchInput {
   workspaceId: string;
   channelId: string;
+  /** Optional task row id for workflow launches; exposed to the harness as AGENT_TASK_ID. */
+  taskId?: string;
   agentMemberId: string;
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
@@ -508,6 +510,9 @@ export class SessionManager {
     const auto = await this.maybeAutoSelectModel({ ...input, task });
     const selectionRow = auto?.selectionRow ?? input.selection;
     let harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
+    if (input.taskId) {
+      harnessEnv = { ...harnessEnv, AGENT_TASK_ID: input.taskId };
+    }
 
     // Model preflight: resolve the EFFECTIVE model at the runtime boundary and ALWAYS inject a launchable
     // model as ANTHROPIC_MODEL BEFORE the session spawns. The fleet runs on a managed, always-valid

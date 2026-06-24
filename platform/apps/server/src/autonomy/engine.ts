@@ -58,6 +58,7 @@ export interface AutonomyLauncher {
   launch(input: {
     workspaceId: string;
     channelId: string;
+    taskId?: string;
     agentMemberId: string;
     createdByMemberId: string;
     task: string;
@@ -103,8 +104,24 @@ export interface AutonomyEngineDeps {
 }
 
 /** Compose the task/prompt handed to the harness for a stage (data, never argv). */
-function composeStageTask(taskTitle: string, role: string): string {
-  return `You are the ${role} on an autonomous workflow. Work the task to completion: ${taskTitle}`;
+function composeStageTask(input: {
+  workspaceId: string;
+  taskId: string;
+  taskTitle: string;
+  role: string;
+  handoffContext?: string;
+}): string {
+  const contextPath = `/workspaces/${input.workspaceId}/tasks/${input.taskId}/context`;
+  const handoff =
+    input.handoffContext && input.handoffContext.trim().length > 0
+      ? `\n\nPrior-stage handoff context:\n${input.handoffContext.trim()}`
+      : "";
+  return (
+    `You are the ${input.role} on an autonomous workflow. Work the task to completion: ${input.taskTitle}\n\n` +
+    `Before starting new work, read the prior-stage handoff context for this task from ${contextPath} ` +
+    `or use AGENT_TASK_ID=${input.taskId} to fetch the same linked context. Incorporate any handoff memory into your plan and output.` +
+    handoff
+  );
 }
 
 export interface AppliedAction {
@@ -324,7 +341,7 @@ export class AutonomyEngine {
           log,
         );
         // The next stage's agent now actually does the work (#84): launch its session as that member.
-        await this.launchStage(wf, taskId, taskTitle, wf.currentStage + 1, next.agentMemberId, log);
+        await this.launchStage(wf, taskId, taskTitle, wf.currentStage + 1, next.agentMemberId, log, note);
         return;
       }
       case "request_approval": {
@@ -361,6 +378,7 @@ export class AutonomyEngine {
     stageIndex: number,
     agentMemberId: string,
     log: SessionLogger,
+    handoffContext?: string,
   ): Promise<void> {
     const role = wf.stages[stageIndex]?.role ?? "agent";
     if (!this.deps.launcher) {
@@ -377,10 +395,11 @@ export class AutonomyEngine {
       session = await this.deps.launcher.launch({
         workspaceId: wf.workspaceId,
         channelId: wf.channelId,
+        taskId,
         agentMemberId,
         createdByMemberId: agentMemberId,
-        task: composeStageTask(taskTitle, role),
-        harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role },
+        task: composeStageTask({ workspaceId: wf.workspaceId, taskId, taskTitle, role, handoffContext }),
+        harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role, AGENT_TASK_ID: taskId },
       });
     } catch (err) {
       // A launch that never starts must not silently strand the task — surface it as blocked.

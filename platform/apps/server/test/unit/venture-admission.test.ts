@@ -10,6 +10,7 @@ import type { AutonomyLauncher } from "../../src/autonomy/engine.js";
 const LAUNCH = {
   workspaceId: "ws",
   channelId: "ch",
+  taskId: "task",
   agentMemberId: "a",
   createdByMemberId: "a",
   task: "do it",

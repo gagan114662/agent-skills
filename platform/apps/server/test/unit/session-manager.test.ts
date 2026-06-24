@@ -351,6 +351,17 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(runtime.job?.env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep");
   });
 
+  it("passes a workflow task id into the job env when provided (#921)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+
+    const session = await manager.launch({ ...launch, taskId: "task_1" });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).toBe("do the thing");
+    expect(runtime.job?.env.AGENT_TASK_ID).toBe("task_1");
+  });
+
   it("leaves the job env as AGENT_TASK-only when no harnessEnv is given (unchanged)", async () => {
     const runtime = new CapturingRuntime();
     const { manager } = makeManager(runtime, caps(), new Secrets({}));
