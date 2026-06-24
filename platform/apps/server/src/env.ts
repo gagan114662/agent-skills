@@ -337,6 +337,8 @@ export interface NotifyEnv {
 export interface ApprovalEnv {
   /** Default TTL (seconds) after which an undecided request expires. Override per request. */
   defaultTtlSeconds: number;
+  /** Approval-expiry sweep interval in ms. Default 0 disables the background timer. */
+  sweepIntervalMs: number;
 }
 
 export interface AgentEnv {
@@ -533,6 +535,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
+      sweepIntervalMs: Number(source.APPROVAL_SWEEP_INTERVAL_MS ?? 0) || 0,
     },
     team: {
       maxConcurrency: num(source.TEAM_MAX_CONCURRENCY, 3),
