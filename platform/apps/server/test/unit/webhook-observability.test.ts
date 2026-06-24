@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
+  recordAsyncSideEffectFailure,
   recordWebhookSignatureFailure,
   renderMetrics,
   resetMetrics,
@@ -16,6 +17,19 @@ describe("webhook signature observability (#999)", () => {
 
     expect(renderMetrics()).toContain(
       'webhook_signature_failures_total{provider="stripe",reason="timestamp outside tolerance"} 2',
+    );
+  });
+});
+
+describe("async side-effect observability (#993)", () => {
+  beforeEach(() => resetMetrics());
+
+  it("counts durable-write follow-up failures by bounded kind", () => {
+    recordAsyncSideEffectFailure("approval_pending_notification");
+    recordAsyncSideEffectFailure("approval_pending_notification");
+
+    expect(renderMetrics()).toContain(
+      'async_side_effect_failures_total{kind="approval_pending_notification"} 2',
     );
   });
 });

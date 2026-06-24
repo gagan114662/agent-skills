@@ -41,6 +41,7 @@ let inFlight = 0;
 // (maintenance/listing/signal reads). Keep labels bounded to known loop names.
 const loopTickFailures = new Map<string, number>();
 const webhookSignatureFailures = new Map<string, { provider: string; reason: string; count: number }>();
+const asyncSideEffectFailures = new Map<string, number>();
 
 export function recordLoopTickFailure(loop: string): void {
   loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
@@ -53,6 +54,11 @@ export function recordWebhookSignatureFailure(provider: string, reason: string):
   const existing = webhookSignatureFailures.get(key);
   if (existing) existing.count += 1;
   else webhookSignatureFailures.set(key, { provider: safeProvider, reason: safeReason, count: 1 });
+}
+
+export function recordAsyncSideEffectFailure(kind: string): void {
+  const safeKind = kind || "unknown";
+  asyncSideEffectFailures.set(safeKind, (asyncSideEffectFailures.get(safeKind) ?? 0) + 1);
 }
 
 // --- saturation signals (#113) ----------------------------------------------
@@ -422,6 +428,7 @@ export function resetMetrics(): void {
   saturationSample = null;
   loopTickFailures.clear();
   webhookSignatureFailures.clear();
+  asyncSideEffectFailures.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -474,6 +481,12 @@ export function renderMetrics(): string {
     lines.push(
       `webhook_signature_failures_total{provider="${esc(s.provider)}",reason="${esc(s.reason)}"} ${s.count}`,
     );
+  }
+
+  lines.push("# HELP async_side_effect_failures_total Durable writes whose downstream side effect failed.");
+  lines.push("# TYPE async_side_effect_failures_total counter");
+  for (const [kind, count] of asyncSideEffectFailures) {
+    lines.push(`async_side_effect_failures_total{kind="${esc(kind)}"} ${count}`);
   }
 
   lines.push("# HELP process_uptime_seconds Seconds since the process started.");

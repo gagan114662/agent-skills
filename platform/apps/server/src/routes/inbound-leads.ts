@@ -8,6 +8,7 @@ import { INBOUND_LEAD_STATUSES, type InboundLeadStatus } from "../db/schema/inde
 import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
 import type { InboundLeadFollowup } from "../leads/default.js";
 import { notify } from "../notifications/service.js";
+import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 
 /**
  * Inbound lead capture route (GAP 1 of the leads centre, ADR-0400). ONE PUBLIC (unauth) endpoint,
@@ -169,7 +170,8 @@ export async function inboundLeadsRoutes(
     try {
       await notifyOwner(app, workspaceId, leadExcerpt("arrived", lead));
     } catch (err) {
-      req.log.warn({ err, leadId: id }, "inbound lead captured but owner notification failed");
+      recordAsyncSideEffectFailure("inbound_lead_owner_notification");
+      req.log.error({ err, workspaceId, leadId: id }, "inbound lead owner notification failed after durable lead write");
     }
 
     // Best-effort: seed the default warm-lead definition, then feed the captured lead into #222 so a fresh
@@ -196,13 +198,15 @@ export async function inboundLeadsRoutes(
       });
     } catch (err) {
       // A discovery hiccup never fails the capture — the lead is already persisted.
-      req.log.warn({ err, leadId: id }, "inbound lead captured but discovery ingest failed");
+      recordAsyncSideEffectFailure("inbound_lead_discovery_ingest");
+      req.log.error({ err, workspaceId, leadId: id }, "inbound lead discovery ingest failed after durable lead write");
     }
 
     try {
       await warmLeadFollowup?.handle({ workspaceId, leadId: id, lead });
     } catch (err) {
-      req.log.warn({ err, leadId: id }, "inbound lead captured but warm follow-up failed");
+      recordAsyncSideEffectFailure("inbound_lead_warm_followup");
+      req.log.error({ err, workspaceId, leadId: id }, "inbound lead warm follow-up failed after durable lead write");
     }
 
     return reply.code(202).send({ received: true });
