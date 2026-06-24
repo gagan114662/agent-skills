@@ -343,7 +343,11 @@ export async function approvalRoutes(
 
     const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send({
+        status: "conflict",
+        error: "request already decided",
+        request,
+      });
     }
     if (decision.outcome === "expired") {
       return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
@@ -351,7 +355,11 @@ export async function approvalRoutes(
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
     const execution = await execute(req, decision.request);
     if (execution.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already executed", request: execution.request });
+      return reply.code(409).send({
+        status: "conflict",
+        error: "request already executed",
+        request: execution.request,
+      });
     }
     const finished = execution.request;
     if (finished.status === "failed") {
@@ -374,7 +382,11 @@ export async function approvalRoutes(
 
     const decision = await rejectRequest(rid, id.workspaceId, id.memberId, reason);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send({
+        status: "conflict",
+        error: "request already decided",
+        request,
+      });
     }
     if (decision.outcome === "expired") {
       return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
