@@ -3,7 +3,9 @@ import { loadConfig } from "../config/loader.js";
 import { resolveSiteUrl } from "../marketing/site.js";
 import { createRequest } from "../db/repositories/approvals.js";
 import { getPersonaByHandle } from "../db/repositories/personas.js";
+import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
+import type { SenderAuthInput } from "../email/deliverability.js";
 import { dbSuppressionStore } from "../db/repositories/acquisition.js";
 import { resolvePostmarkSender } from "../email/postmark-provider.js";
 import {
@@ -25,6 +27,7 @@ export const REACH_AGENT_HANDLE = "comet";
 const POSTMARK_SERVICE_KEY = "postmark";
 const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
 const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
+const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
 
 /** Extract a bare host from a URL ("https://ipop.ai/x" → "ipop.ai"). */
 function hostOf(url: string): string {
@@ -46,6 +49,46 @@ function firstSecret(secrets: Record<string, string>, keys: readonly string[]): 
     if (value) return value;
   }
   return "";
+}
+
+function senderDomain(secrets: Record<string, string>): string {
+  const from = firstSecret(secrets, POSTMARK_FROM_KEYS);
+  const domain = from.split("@")[1]?.trim().toLowerCase() ?? "";
+  return domain.replace(/^www\./, "");
+}
+
+async function resolveReachDeliverabilityProof(workspaceId: string): Promise<{
+  auth: SenderAuthInput;
+  authResultsHeader?: string | null;
+} | null> {
+  const caps = resolveReachCaps(loadConfig(workspaceId).reach);
+  if (caps.sendProvider !== "postmark" || !caps.liveSendEnabled) return null;
+  const secrets = await resolveServiceSecrets(workspaceId, POSTMARK_SERVICE_KEY);
+  const domain = senderDomain(secrets);
+  if (!domain) return null;
+  const receipts = await listDnsReceipts(workspaceId, domain);
+  const verified = (purpose: "spf" | "dkim" | "dmarc") =>
+    receipts.find((r) => r.purpose === purpose && r.status === "verified");
+  const spf = verified("spf");
+  const dkim = verified("dkim");
+  const dmarc = verified("dmarc");
+  return {
+    auth: {
+      spf: spf ? { published: true, includesEsp: /include:/i.test(spf.value) } : undefined,
+      dkim: dkim ? { published: true, verified: true } : undefined,
+      dmarc: dmarc
+        ? {
+            published: true,
+            policy: /p=reject\b/i.test(dmarc.value)
+              ? "reject"
+              : /p=quarantine\b/i.test(dmarc.value)
+                ? "quarantine"
+                : "none",
+          }
+        : undefined,
+    },
+    authResultsHeader: secrets[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim() || null,
+  };
 }
 
 export function resolveReachPostmarkSender(input: {
@@ -104,34 +147,51 @@ export function createDefaultReachService(log?: FastifyBaseLogger): ReachService
       },
     },
     resolveSource: (workspaceId, kind) =>
-      createProspectSource(kind, {
-        httpFetch: realHttpFetch,
-        loadImportedProspects: (input) =>
-          dbReachContactStore.importedProspects(input.workspaceId, input.limit, input.excludeKeys),
-        loadApiKey: async (serviceKey, envKey) => {
-          const secrets = await resolveServiceSecrets(workspaceId, serviceKey);
-          return secrets[envKey] ?? null;
+      createProspectSource(
+        kind,
+        {
+          httpFetch: realHttpFetch,
+          loadImportedProspects: (input) =>
+            dbReachContactStore.importedProspects(
+              input.workspaceId,
+              input.limit,
+              input.excludeKeys,
+            ),
+          loadApiKey: async (serviceKey, envKey) => {
+            const secrets = await resolveServiceSecrets(workspaceId, serviceKey);
+            return secrets[envKey] ?? null;
+          },
         },
-      }, workspaceId),
+        workspaceId,
+      ),
     channels,
     contacts: dbReachContactStore,
     sends: dbReachSendStore,
     receipts: dbReachReceiptStore,
     runs: dbReachRunStore,
-    suppressions: { loadSuppressed: (workspaceId) => dbSuppressionStore.loadSuppressed(workspaceId) },
+    suppressions: {
+      loadSuppressed: (workspaceId) => dbSuppressionStore.loadSuppressed(workspaceId),
+    },
+    deliverability: { proof: resolveReachDeliverabilityProof },
     approvals: {
       async submitDataCreditSpend(input) {
         // The Reach lead persona is the requester for the autonomous money gate (an agent member, never a
         // human) — consistent with how the monetization / outreach money actions are parked.
         const persona = await getPersonaByHandle(input.workspaceId, REACH_AGENT_HANDLE);
         if (!persona) {
-          throw new Error(`reach persona @${REACH_AGENT_HANDLE} not found — seed the department before enabling a paid source`);
+          throw new Error(
+            `reach persona @${REACH_AGENT_HANDLE} not found — seed the department before enabling a paid source`,
+          );
         }
         const req = await createRequest({
           workspaceId: input.workspaceId,
           requesterMemberId: persona.agentMemberId,
           actionType: REACH_DATA_CREDIT_ACTION,
-          payload: { provider: input.provider, amountCents: input.amountCents, prospectCount: input.prospectCount },
+          payload: {
+            provider: input.provider,
+            amountCents: input.amountCents,
+            prospectCount: input.prospectCount,
+          },
           amount: input.amountCents,
           summary: input.summary,
           status: "pending",

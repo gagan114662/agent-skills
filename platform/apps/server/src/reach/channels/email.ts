@@ -4,6 +4,10 @@ import {
   normalizeRecipient,
   type FooterInfo,
 } from "../../acquisition/compliance.js";
+import {
+  confirmDeliverability,
+  type DeliverabilityConfirmation,
+} from "../../email/deliverability.js";
 import type { ChannelSendContext, ReachChannelAdapter } from "../channel.js";
 import type { ReachMessage, ReachSendOutcome } from "../types.js";
 
@@ -58,32 +62,52 @@ function footerForRecipient(
 ): Partial<FooterInfo> | undefined {
   if (!footerInfo?.unsubscribeUrl) return footerInfo;
   const sep = footerInfo.unsubscribeUrl.includes("?") ? "&" : "?";
-  return { ...footerInfo, unsubscribeUrl: `${footerInfo.unsubscribeUrl}${sep}u=${token(recipient)}` };
+  return {
+    ...footerInfo,
+    unsubscribeUrl: `${footerInfo.unsubscribeUrl}${sep}u=${token(recipient)}`,
+  };
 }
 
 export interface EmailChannelDeps {
   sender?: EspSender;
   resolveSender?: (ctx: ChannelSendContext) => EspSender | Promise<EspSender>;
+  confirmDeliverability?: typeof confirmDeliverability;
 }
 
 export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAdapter {
   const fallbackSender = deps.sender ?? dryRunEspSender;
+  const deliverabilityGate = deps.confirmDeliverability ?? confirmDeliverability;
   return {
     channel: "email",
     async send(message: ReachMessage, ctx: ChannelSendContext): Promise<ReachSendOutcome> {
       const sender = deps.resolveSender ? await deps.resolveSender(ctx) : fallbackSender;
       const to = normalizeRecipient(message.toAddress);
       if (!to) {
-        return { status: "skipped", channel: "email", externalId: null, detail: "no email address" };
+        return {
+          status: "skipped",
+          channel: "email",
+          externalId: null,
+          detail: "no email address",
+        };
       }
       if (ctx.suppressed.has(to)) {
-        return { status: "suppressed", channel: "email", externalId: null, detail: "recipient on opt-out list" };
+        return {
+          status: "suppressed",
+          channel: "email",
+          externalId: null,
+          detail: "recipient on opt-out list",
+        };
       }
 
       const footerInfo = footerForRecipient(ctx.footerInfo, to);
       if (!footerInfo) {
         // No footer facts at all ⇒ a lawful email is impossible. Skip, never send.
-        return { status: "skipped", channel: "email", externalId: null, detail: "missing CAN-SPAM footer info" };
+        return {
+          status: "skipped",
+          channel: "email",
+          externalId: null,
+          detail: "missing CAN-SPAM footer info",
+        };
       }
       const body = appendComplianceFooter(message.body, footerInfo as FooterInfo);
       const compliance = checkEmailCompliance({
@@ -102,13 +126,38 @@ export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAda
         };
       }
 
+      if (sender.kind !== dryRunEspSender.kind) {
+        const proof = ctx.deliverability;
+        if (!proof) {
+          return {
+            status: "skipped",
+            channel: "email",
+            externalId: null,
+            detail:
+              "deliverability not confirmed — missing SPF/DKIM/DMARC Authentication-Results receipt",
+          };
+        }
+        const confirmation: DeliverabilityConfirmation = deliverabilityGate(proof);
+        if (!confirmation.deliverable) {
+          return {
+            status: "skipped",
+            channel: "email",
+            externalId: null,
+            detail: `deliverability not confirmed: ${confirmation.reasons.join("; ")}`,
+          };
+        }
+      }
+
       try {
         const { externalId } = await sender.send({ to, subject: message.subject, body });
         return {
           status: "sent",
           channel: "email",
           externalId,
-          detail: sender.kind === "dryrun" ? "dry-run (recorded-only, no network)" : `sent via ${sender.kind}`,
+          detail:
+            sender.kind === "dryrun"
+              ? "dry-run (recorded-only, no network)"
+              : `sent via ${sender.kind}`,
         };
       } catch (err) {
         return {

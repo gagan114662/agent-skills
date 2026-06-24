@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
+import type { SenderAuthInput } from "../email/deliverability.js";
 import type { ReachCaps } from "./caps.js";
 import {
   DEFAULT_CADENCE,
@@ -12,7 +13,12 @@ import { computeMetrics, type ReachMetrics, type ReceiptDatum, type SendDatum } 
 import { composeFollowUp, personalizeOpener } from "./personalize.js";
 import { ProspectSourceUnavailableError, type ProspectSource } from "./prospect-source.js";
 import { rankBatch } from "./score.js";
-import { REACH_TUNING_DEFAULTS, tuneNextBatch, type ReachTuningConfig, type TuningReport } from "./self-tune.js";
+import {
+  REACH_TUNING_DEFAULTS,
+  tuneNextBatch,
+  type ReachTuningConfig,
+  type TuningReport,
+} from "./self-tune.js";
 import type { ReachChannelAdapter } from "./channel.js";
 import type {
   ProspectSourceKind,
@@ -92,12 +98,24 @@ export interface ImportProspectsResult {
 export interface ReachContactStore {
   /** Every contact_key we've already enrolled (the dedupe set — never re-touch last week's list). */
   contactedKeys(workspaceId: string): Promise<Set<string>>;
-  importProspects(workspaceId: string, prospects: ImportedProspectInput[], now: Date): Promise<ImportProspectsResult>;
-  importedProspects(workspaceId: string, limit: number, excludeKeys: ReadonlySet<string>): Promise<RawProspect[]>;
+  importProspects(
+    workspaceId: string,
+    prospects: ImportedProspectInput[],
+    now: Date,
+  ): Promise<ImportProspectsResult>;
+  importedProspects(
+    workspaceId: string,
+    limit: number,
+    excludeKeys: ReadonlySet<string>,
+  ): Promise<RawProspect[]>;
   /** Create or advance a cadence enrolment. */
   upsertEnrollment(input: EnrollmentUpsert): Promise<void>;
   /** Mark a contact replied / opted_out (stops the cadence). */
-  markStatus(workspaceId: string, contactKey: string, status: "replied" | "opted_out"): Promise<void>;
+  markStatus(
+    workspaceId: string,
+    contactKey: string,
+    status: "replied" | "opted_out",
+  ): Promise<void>;
   /** Active enrolments (status `active`) — the service filters these to the ones with a DUE follow-up step. */
   activeEnrollments(workspaceId: string): Promise<ActiveEnrollment[]>;
 }
@@ -121,7 +139,10 @@ export interface ReachSendStore {
   insert(input: SendInsert): Promise<{ id: string }>;
   /** The most recent send for a contact (to attach a receipt to). */
   latestSendId(workspaceId: string, contactKey: string): Promise<string | null>;
-  findByExternalId?(workspaceId: string, externalId: string): Promise<{ id: string; contactKey: string } | null>;
+  findByExternalId?(
+    workspaceId: string,
+    externalId: string,
+  ): Promise<{ id: string; contactKey: string } | null>;
   /** Flattened sent rows since `since`, for measurement. */
   sendsSince(workspaceId: string, since: Date): Promise<SendDatum[]>;
 }
@@ -190,6 +211,11 @@ export interface ReachDeps {
   runs: ReachRunStore;
   approvals: ReachApprovalGate;
   suppressions: ReachSuppressionStore;
+  deliverability?: {
+    proof(
+      workspaceId: string,
+    ): Promise<{ auth: SenderAuthInput; authResultsHeader?: string | null } | null>;
+  };
   caps: (workspaceId: string) => ReachCaps;
   now?: () => Date;
   log?: FastifyBaseLogger;
@@ -241,7 +267,10 @@ export interface ReachReplyThread {
 export class ReachService {
   constructor(private readonly deps: ReachDeps) {}
 
-  async importProspects(workspaceId: string, prospects: ImportedProspectInput[]): Promise<ImportProspectsResult> {
+  async importProspects(
+    workspaceId: string,
+    prospects: ImportedProspectInput[],
+  ): Promise<ImportProspectsResult> {
     return this.deps.contacts.importProspects(workspaceId, prospects, this.now());
   }
 
@@ -318,7 +347,10 @@ export class ReachService {
           rateLimitedCount: 0,
           tuningReport: null,
         });
-        return { ...empty("awaiting_data_funding", "paid data spend awaiting owner approval"), approvalRequestId: requestId };
+        return {
+          ...empty("awaiting_data_funding", "paid data spend awaiting owner approval"),
+          approvalRequestId: requestId,
+        };
       }
     }
 
@@ -329,7 +361,10 @@ export class ReachService {
       prospects = result.prospects;
     } catch (err) {
       if (err instanceof ProspectSourceUnavailableError) {
-        this.deps.log?.warn({ workspaceId, source: source.kind }, "reach: prospect source unavailable");
+        this.deps.log?.warn(
+          { workspaceId, source: source.kind },
+          "reach: prospect source unavailable",
+        );
         await this.deps.runs.insert({
           workspaceId,
           sourceKind: source.kind,
@@ -392,7 +427,14 @@ export class ReachService {
         outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
         return;
       }
-      const outcome = await this.deps.channels[channel].send(message, { workspaceId, suppressed, footerInfo });
+      const deliverability =
+        channel === "email" ? ((await this.deps.deliverability?.proof(workspaceId)) ?? null) : null;
+      const outcome = await this.deps.channels[channel].send(message, {
+        workspaceId,
+        suppressed,
+        footerInfo,
+        deliverability,
+      });
       await this.deps.sends.insert({
         workspaceId,
         contactKey: message.contactKey,
@@ -452,7 +494,12 @@ export class ReachService {
         continue;
       }
       // Carry the original signal kind forward (the follow-up itself references no signal).
-      await dispatch({ ...followUp, signalKind: e.signalKind as ReachMessage["signalKind"] }, e.channel, enrollment, e.score);
+      await dispatch(
+        { ...followUp, signalKind: e.signalKind as ReachMessage["signalKind"] },
+        e.channel,
+        enrollment,
+        e.score,
+      );
     }
 
     for (const scored of ranked) {
@@ -479,7 +526,11 @@ export class ReachService {
       this.deps.sends.sendsSince(workspaceId, windowStart),
       this.deps.receipts.receiptData(workspaceId, windowStart),
     ]);
-    const metrics = computeMetrics({ prospectsFound: ranked.length, sends: sendData, receipts: receiptData });
+    const metrics = computeMetrics({
+      prospectsFound: ranked.length,
+      sends: sendData,
+      receipts: receiptData,
+    });
     const tuningReport = tuneNextBatch(metrics, tuning);
 
     await this.deps.runs.insert({
@@ -596,6 +647,11 @@ export class ReachService {
   /** The headline numbers for the founder-console Reach proof tile. */
   async summary(workspaceId: string, windowMs: number = TUNING_WINDOW_MS): Promise<ReachSummary> {
     const m = await this.metrics(workspaceId, windowMs);
-    return { prospectsFound: m.contacted, messagesSent: m.sent, replies: m.replies, booked: m.booked };
+    return {
+      prospectsFound: m.contacted,
+      messagesSent: m.sent,
+      replies: m.replies,
+      booked: m.booked,
+    };
   }
 }
