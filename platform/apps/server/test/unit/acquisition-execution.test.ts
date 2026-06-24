@@ -31,16 +31,37 @@ function harness(opts: {
   providers?: Parameters<typeof createAcquisitionProviders>[1];
 }) {
   const receipts: SendReceiptInput[] = [];
-  let debited = 0;
+  let envelope = opts.envelope ? { ...opts.envelope } : null;
+  let reservedCents = 0;
+  const activeEnvelope = () => (envelope?.status === "active" ? { ...envelope } : null);
+  async function reserve(amount: number): Promise<BudgetEnvelope | null> {
+    if (!envelope || envelope.status !== "active") return null;
+    if (amount > Math.max(0, envelope.capCents - envelope.spentCents)) return null;
+    envelope = {
+      ...envelope,
+      spentCents: envelope.spentCents + amount,
+      status: envelope.spentCents + amount >= envelope.capCents ? "exhausted" : "active",
+    };
+    reservedCents += amount;
+    return { ...envelope };
+  }
+  async function refund(amount: number): Promise<void> {
+    if (!envelope) return;
+    envelope = {
+      ...envelope,
+      spentCents: Math.max(0, envelope.spentCents - amount),
+      status: envelope.status === "exhausted" && envelope.spentCents - amount < envelope.capCents ? "active" : envelope.status,
+    };
+    reservedCents -= amount;
+  }
   const deps: AcquisitionDispatcherDeps = {
     resolveCaps: () => opts.caps,
     providers: createAcquisitionProviders({}, opts.providers),
     envelopes: {
-      getActiveAdsEnvelope: () => Promise.resolve(opts.envelope ?? null),
-      debitAdsEnvelope: (_w, _i, amount) => {
-        debited += amount;
-        return Promise.resolve();
-      },
+      getActiveAdsEnvelope: () => Promise.resolve(activeEnvelope()),
+      reserveAdsSpend: (_w, _i, amount) => reserve(amount),
+      refundAdsSpend: (_w, _i, amount) => refund(amount),
+      debitAdsEnvelope: (_w, _i, amount) => reserve(amount).then(() => undefined),
     },
     suppressions: { loadSuppressed: () => Promise.resolve(opts.suppressed ?? new Set()) },
     receipts: {
@@ -52,7 +73,12 @@ function harness(opts: {
     emailWindow: { warmupState: () => Promise.resolve(opts.warmup ?? { dayIndex: 99, sentToday: 0 }) },
     footerInfo: () => ("footer" in opts ? (opts.footer ?? null) : footer),
   };
-  return { dispatcher: createAcquisitionDispatcher(deps), receipts, debited: () => debited };
+  return {
+    dispatcher: createAcquisitionDispatcher(deps),
+    receipts,
+    debited: () => reservedCents,
+    envelope: () => envelope,
+  };
 }
 
 const ctx = { workspaceId: WS, requesterMemberId: "m-1" };
@@ -78,7 +104,7 @@ describe("ads: spend inside the owner envelope (AC1)", () => {
   const caps = resolveAcquisitionCaps({ enabled: true, ads: true });
 
   it("spends within the envelope and debits it", async () => {
-    const { dispatcher, receipts, debited } = harness({
+    const { dispatcher, receipts, debited, envelope } = harness({
       caps,
       envelope: { capCents: 10_000, spentCents: 0, status: "active" },
     });
@@ -89,7 +115,58 @@ describe("ads: spend inside the owner envelope (AC1)", () => {
     expect(r?.executed).toBe(true);
     expect(receipts[0]!.channel).toBe("ads");
     expect(receipts[0]!.amountCents).toBe(3_000);
+    expect(receipts[0]!.detail.envelopeRemaining).toBe(7_000);
     expect(debited()).toBe(3_000);
+    expect(envelope()!.spentCents).toBe(3_000);
+  });
+
+  it("reserves atomically so concurrent spends cannot exceed the cap", async () => {
+    const { dispatcher, receipts, envelope } = harness({
+      caps,
+      envelope: { capCents: 8_000, spentCents: 0, status: "active" },
+    });
+
+    const results = await Promise.allSettled([
+      dispatcher.dispatch({ kind: "ad.spend", summary: "a", amountCents: 4_000 }, ctx),
+      dispatcher.dispatch({ kind: "ad.spend", summary: "b", amountCents: 4_000 }, ctx),
+      dispatcher.dispatch({ kind: "ad.spend", summary: "c", amountCents: 4_000 }, ctx),
+    ]);
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(envelope()!.spentCents).toBe(8_000);
+    expect(envelope()!.spentCents).toBeLessThanOrEqual(envelope()!.capCents);
+    expect(receipts).toHaveLength(2);
+  });
+
+  it("refunds the reserved envelope spend when the provider fails", async () => {
+    const { dispatcher, receipts, debited, envelope } = harness({
+      caps,
+      envelope: { capCents: 10_000, spentCents: 1_000, status: "active" },
+      providers: {
+        ads: {
+          kind: "failing-ads",
+          spend: () =>
+            Promise.resolve({
+              status: "failed",
+              externalId: null,
+              provider: "failing-ads",
+              detail: { error: "provider down" },
+            }),
+        },
+      },
+    });
+
+    const result = await dispatcher.dispatch(
+      { kind: "ad.spend", summary: "Google starter", amountCents: 3_000, campaign: "g1" },
+      ctx,
+    );
+
+    expect(result?.executed).toBe(false);
+    expect(receipts[0]!.status).toBe("failed");
+    expect(receipts[0]!.detail.envelopeRemaining).toBe(9_000);
+    expect(debited()).toBe(0);
+    expect(envelope()!.spentCents).toBe(1_000);
   });
 
   it("throws (needs owner) when over the envelope remaining", async () => {

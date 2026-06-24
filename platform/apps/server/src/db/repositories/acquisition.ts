@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
-import { db } from "../index.js";
+import { db, getPool } from "../index.js";
 import {
   acquisitionBudgetEnvelopes,
   acquisitionSendReceipts,
@@ -56,23 +56,74 @@ export const dbEnvelopeStore: EnvelopeStore = {
     };
   },
 
+  async reserveAdsSpend(workspaceId, ideaId, amountCents): Promise<BudgetEnvelope | null> {
+    if (amountCents <= 0) return this.getActiveAdsEnvelope(workspaceId, ideaId);
+    const res = await getPool().query<{
+      cap_cents: number;
+      spent_cents: number;
+      status: EnvelopeStatus;
+    }>(
+      `WITH active_envelope AS (
+         SELECT id
+           FROM acquisition_budget_envelopes
+          WHERE workspace_id = $1
+            AND (($2::uuid IS NULL AND idea_id IS NULL) OR idea_id = $2::uuid)
+            AND channel = 'ads'
+            AND status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1
+       )
+       UPDATE acquisition_budget_envelopes AS envelope
+          SET spent_cents = envelope.spent_cents + $3,
+              status = CASE
+                WHEN envelope.spent_cents + $3 >= envelope.cap_cents THEN 'exhausted'
+                ELSE envelope.status
+              END,
+              updated_at = NOW()
+         FROM active_envelope
+        WHERE envelope.id = active_envelope.id
+          AND envelope.spent_cents + $3 <= envelope.cap_cents
+        RETURNING envelope.cap_cents, envelope.spent_cents, envelope.status`,
+      [workspaceId, ideaId, amountCents],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      capCents: row.cap_cents,
+      spentCents: row.spent_cents,
+      status: row.status,
+    };
+  },
+
+  async refundAdsSpend(workspaceId, ideaId, amountCents): Promise<void> {
+    if (amountCents <= 0) return;
+    await getPool().query(
+      `WITH latest_envelope AS (
+         SELECT id
+           FROM acquisition_budget_envelopes
+          WHERE workspace_id = $1
+            AND (($2::uuid IS NULL AND idea_id IS NULL) OR idea_id = $2::uuid)
+            AND channel = 'ads'
+            AND status IN ('active', 'exhausted')
+          ORDER BY created_at DESC
+          LIMIT 1
+       )
+       UPDATE acquisition_budget_envelopes AS envelope
+          SET spent_cents = GREATEST(0, envelope.spent_cents - $3),
+              status = CASE
+                WHEN envelope.status = 'exhausted' AND GREATEST(0, envelope.spent_cents - $3) < envelope.cap_cents
+                  THEN 'active'
+                ELSE envelope.status
+              END,
+              updated_at = NOW()
+         FROM latest_envelope
+        WHERE envelope.id = latest_envelope.id`,
+      [workspaceId, ideaId, amountCents],
+    );
+  },
+
   async debitAdsEnvelope(workspaceId, ideaId, amountCents): Promise<void> {
-    await db
-      .update(acquisitionBudgetEnvelopes)
-      .set({
-        spentCents: sql`${acquisitionBudgetEnvelopes.spentCents} + ${amountCents}`,
-        // Flip to exhausted once cumulative spend reaches the cap.
-        status: sql`CASE WHEN ${acquisitionBudgetEnvelopes.spentCents} + ${amountCents} >= ${acquisitionBudgetEnvelopes.capCents} THEN 'exhausted' ELSE ${acquisitionBudgetEnvelopes.status} END`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(acquisitionBudgetEnvelopes.workspaceId, workspaceId),
-          ideaEq(acquisitionBudgetEnvelopes.ideaId, ideaId),
-          eq(acquisitionBudgetEnvelopes.channel, "ads"),
-          eq(acquisitionBudgetEnvelopes.status, "active"),
-        ),
-      );
+    await this.reserveAdsSpend(workspaceId, ideaId, amountCents);
   },
 };
 

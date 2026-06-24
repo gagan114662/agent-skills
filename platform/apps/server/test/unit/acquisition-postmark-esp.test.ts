@@ -171,6 +171,8 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
       ),
       envelopes: {
         getActiveAdsEnvelope: () => Promise.resolve(null),
+        reserveAdsSpend: () => Promise.resolve(null),
+        refundAdsSpend: () => Promise.resolve(),
         debitAdsEnvelope: () => Promise.resolve(),
       },
       suppressions: { loadSuppressed: () => Promise.resolve(new Set<string>()) },
@@ -230,7 +232,12 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
           }),
         },
       ),
-      envelopes: { getActiveAdsEnvelope: () => Promise.resolve(null), debitAdsEnvelope: () => Promise.resolve() },
+      envelopes: {
+        getActiveAdsEnvelope: () => Promise.resolve(null),
+        reserveAdsSpend: () => Promise.resolve(null),
+        refundAdsSpend: () => Promise.resolve(),
+        debitAdsEnvelope: () => Promise.resolve(),
+      },
       suppressions: { loadSuppressed: () => Promise.resolve(new Set<string>()) },
       receipts: { record: () => Promise.resolve() },
       emailWindow: { warmupState: () => Promise.resolve({ dayIndex: 99, sentToday: 0 }) },
