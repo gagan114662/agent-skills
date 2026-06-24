@@ -17,13 +17,21 @@ describe("createBillingProvider (#98 — none default, stripe opt-in, injectable
   });
 
   it("selects the StripeBillingProvider when configured (SDK not loaded — lazy)", () => {
-    const p = createBillingProvider({ provider: "stripe", mode: "test", webhookToleranceSeconds: 300 });
+    const p = createBillingProvider(
+      { provider: "stripe", mode: "test", webhookToleranceSeconds: 300 },
+      undefined,
+      { STRIPE_SECRET_KEY: "sk_test_factory" },
+    );
     expect(p).toBeInstanceOf(StripeBillingProvider);
     expect(p.kind).toBe("stripe");
   });
 
   it("threads the go-live mode into the Stripe adapter (#481)", () => {
-    const p = createBillingProvider({ provider: "stripe", mode: "live", webhookToleranceSeconds: 300 });
+    const p = createBillingProvider(
+      { provider: "stripe", mode: "live", webhookToleranceSeconds: 300 },
+      undefined,
+      { STRIPE_SECRET_KEY: "sk_live_factory" },
+    );
     expect((p as StripeBillingProvider).mode).toBe("live");
   });
 

@@ -15,7 +15,11 @@ describe("createDeployProvider (#73 — backend selection)", () => {
   });
 
   it("selects the Vercel adapter when configured, without loading the SDK", () => {
-    const provider = createDeployProvider({ provider: "vercel", monitorIntervalMs: 0 });
+    const provider = createDeployProvider(
+      { provider: "vercel", monitorIntervalMs: 0 },
+      undefined,
+      { VERCEL_TOKEN: "vercel_factory" },
+    );
     expect(provider).toBeInstanceOf(VercelDeployProvider);
     expect(provider.kind).toBe("vercel");
   });
