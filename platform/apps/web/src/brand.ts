@@ -472,6 +472,12 @@ export interface PlanTeaser {
   readonly highlights: readonly string[];
 }
 
+interface FooterSocialLink {
+  readonly key: string;
+  readonly label: string;
+  readonly href: string;
+}
+
 /**
  * Copy for the #260 one-screen onboarding (enter your domain → Sign in with Google). Centralised here so
  * the screen reads the brand. `errors` maps the `?error=<code>` the OAuth routes redirect with to a
@@ -630,12 +636,8 @@ export const LANDING = {
       { href: "/compare", label: "Compare" },
     ],
     socialTitle: "Find us",
-    /** Placeholder handles — wired when the accounts exist (honest, never a dead promise). */
-    social: [
-      { key: "x", label: "X / Twitter", href: "/social/x" },
-      { key: "linkedin", label: "LinkedIn", href: "/social/linkedin" },
-      { key: "github", label: "GitHub", href: "/social/github" },
-    ],
+    /** No public profile links are rendered until real external accounts exist. */
+    social: [] as readonly FooterSocialLink[],
   },
 } as const;
 
