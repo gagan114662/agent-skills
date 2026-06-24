@@ -21,8 +21,13 @@ const bumpWorkflowAction = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
 const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
 const decideApproval = vi.fn(() => Promise.resolve({ id: "appr_1", status: "approved" }));
+const advanceWorkflowStage = vi.fn(() => Promise.resolve());
 const getTask = vi.fn();
 const updateStatus = vi.fn(() => Promise.resolve());
+const assignTask = vi.fn(() => Promise.resolve());
+const addTaskLink = vi.fn(() => Promise.resolve());
+const getWorkspaceMember = vi.fn(() => Promise.resolve(undefined));
+const upsertMemory = vi.fn(() => Promise.resolve({ id: "mem_1" }));
 
 vi.mock("../../src/db/repositories/autonomy.js", () => ({
   getControls,
@@ -35,7 +40,7 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   createApproval,
   decideApproval,
   // unused by the launch path, but imported by the engine module:
-  advanceWorkflowStage: vi.fn(() => Promise.resolve()),
+  advanceWorkflowStage,
   getApproval: vi.fn(() => Promise.resolve(undefined)),
   getWorkflow: vi.fn(() => Promise.resolve(undefined)),
   listActiveWorkflowWorkspaces: vi.fn(() => Promise.resolve([])),
@@ -43,14 +48,14 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
 vi.mock("../../src/db/repositories/tasks.js", () => ({
   getTask,
   updateStatus,
-  assignTask: vi.fn(() => Promise.resolve()),
-  addTaskLink: vi.fn(() => Promise.resolve()),
+  assignTask,
+  addTaskLink,
 }));
 vi.mock("../../src/db/repositories/members.js", () => ({
-  getWorkspaceMember: vi.fn(() => Promise.resolve(undefined)),
+  getWorkspaceMember,
 }));
 vi.mock("../../src/db/repositories/memories.js", () => ({
-  upsertMemory: vi.fn(() => Promise.resolve({ id: "mem_1" })),
+  upsertMemory,
 }));
 vi.mock("../../src/observability/metrics.js", () => ({
   recordAutonomyAction: vi.fn(),
@@ -70,9 +75,11 @@ const silentLogger: SessionLogger = {
 interface LaunchCall {
   workspaceId: string;
   channelId: string;
+  taskId: string;
   agentMemberId: string;
   createdByMemberId: string;
   task: string;
+  harnessEnv?: Record<string, string>;
 }
 
 function makeLauncher(opts: { status?: "completed" | "failed"; joinResolves?: boolean } = {}) {
@@ -134,11 +141,53 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(launches[0]).toMatchObject({
       workspaceId: "ws_1",
       channelId: "ch_1",
+      taskId: "task_1",
       agentMemberId: "agent_r",
     });
     expect(launches[0].task).toContain("summarize the repo");
+    expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
+    expect(launches[0].harnessEnv?.AGENT_TASK_ID).toBe("task_1");
     // The task was driven to in_progress as part of starting.
     expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
+  });
+
+  it("launches a handoff stage with task id and linked-context retrieval instructions", async () => {
+    const workflow: AgentWorkflow = {
+      ...runningWorkflow,
+      stages: [
+        { agentMemberId: "agent_r", role: "researcher" },
+        { agentMemberId: "agent_w", role: "writer" },
+      ],
+      currentStage: 0,
+    };
+    listActiveWorkflows.mockResolvedValue([workflow]);
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
+    getWorkspaceMember.mockResolvedValue({ id: "agent_w", displayName: "Writer" });
+    const { launcher, launches } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")?.action).toBe("handoff");
+    expect(upsertMemory).toHaveBeenCalledWith(expect.objectContaining({ type: "handoff", sourceId: "task_1" }));
+    expect(addTaskLink).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "ws_1", taskId: "task_1", targetType: "memory", targetId: "mem_1" }),
+    );
+    expect(assignTask).toHaveBeenCalledWith("task_1", "agent_w", "agent_r");
+    expect(advanceWorkflowStage).toHaveBeenCalledWith("wf_1", 1);
+    expect(launcher.launch).toHaveBeenCalledTimes(1);
+    expect(launches[0]).toMatchObject({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      taskId: "task_1",
+      agentMemberId: "agent_w",
+      harnessEnv: expect.objectContaining({ AGENT_AUTONOMY: "1", AGENT_ROLE: "writer", AGENT_TASK_ID: "task_1" }),
+    });
+    expect(launches[0].task).toContain("handoff context");
+    expect(launches[0].task).toContain("Prior-stage handoff context:");
+    expect(launches[0].task).toContain("stage 1/2 (researcher) complete; continuing as writer");
+    expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
+    expect(launches[0].task).toContain("AGENT_TASK_ID=task_1");
   });
 
   it("does NOT launch when the kill switch is engaged (guard blocks launch)", async () => {
