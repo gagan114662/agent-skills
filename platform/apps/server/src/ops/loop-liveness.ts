@@ -1,5 +1,6 @@
 export type BackgroundLoopName =
   | "approval_expiry"
+  | "auth_session_cleanup"
   | "autonomy"
   | "watchdog"
   | "sre"
