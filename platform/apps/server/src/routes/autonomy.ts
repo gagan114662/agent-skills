@@ -29,6 +29,22 @@ export interface AutonomyRoutesOptions {
   engine: AutonomyEngine;
 }
 
+export const MAX_AUTONOMY_ACTIONS_PER_TICK = 10_000;
+export const MAX_AUTONOMY_ACTION_BUDGET = 100_000;
+
+function parseAutonomyPositiveInteger(
+  value: unknown,
+  field: string,
+  max: number,
+  fallback: number,
+): { ok: true; value: number } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, value: fallback };
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || value > max) {
+    return { ok: false, error: field + " must be an integer between 1 and " + max };
+  }
+  return { ok: true, value };
+}
+
 /** Resolve a human caller in `workspaceId`, or send the error and return undefined. */
 async function requireHumanInWorkspace(
   req: FastifyRequest,
@@ -152,15 +168,29 @@ export async function autonomyRoutes(
     }
     const b = req.body as {
       enabled?: boolean;
-      maxActionsPerTick?: number;
-      actionBudget?: number;
+      maxActionsPerTick?: unknown;
+      actionBudget?: unknown;
     };
+    const maxActionsPerTick = parseAutonomyPositiveInteger(
+      b.maxActionsPerTick,
+      "maxActionsPerTick",
+      MAX_AUTONOMY_ACTIONS_PER_TICK,
+      5,
+    );
+    if (!maxActionsPerTick.ok) return reply.code(400).send({ error: maxActionsPerTick.error });
+    const actionBudget = parseAutonomyPositiveInteger(
+      b.actionBudget,
+      "actionBudget",
+      MAX_AUTONOMY_ACTION_BUDGET,
+      100,
+    );
+    if (!actionBudget.ok) return reply.code(400).send({ error: actionBudget.error });
     const config = await upsertAutonomy({
       workspaceId,
       agentMemberId: memberId,
       enabled: b.enabled ?? false,
-      maxActionsPerTick: b.maxActionsPerTick ?? 5,
-      actionBudget: b.actionBudget ?? 100,
+      maxActionsPerTick: maxActionsPerTick.value,
+      actionBudget: actionBudget.value,
     });
     return config;
   });
