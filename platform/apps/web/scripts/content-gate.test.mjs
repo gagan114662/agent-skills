@@ -119,6 +119,24 @@ describe("content gate — defect patterns from the #527 PRs", () => {
     });
     expect(result.violations.map((v) => v.code)).toContain("duplicate-topic");
   });
+
+  it("flags SEO titles that exceed the mobile snippet limit", () => {
+    const raw = CLEAN.replace(
+      /title: .*/,
+      "title: This startup marketing title is far too long for a search result snippet",
+    );
+    expect(codes(raw)).toContain("title-too-long");
+  });
+
+  it("flags descriptions outside the search-snippet bounds", () => {
+    const raw = CLEAN.replace(/description: .*/, "description: Too short.");
+    expect(codes(raw)).toContain("description-length");
+  });
+
+  it("flags posts with no H1 for crawler-readable article structure", () => {
+    const raw = CLEAN.replace("# Email deliverability", "## Email deliverability");
+    expect(codes(raw)).toContain("missing-h1");
+  });
 });
 
 describe("near-duplicate detection — separates real dupes from the legit corpus", () => {

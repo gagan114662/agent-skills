@@ -3,6 +3,8 @@ import { loadEnv } from "../env.js";
 
 let client: Redis | undefined;
 
+export const REDIS_COMMAND_TIMEOUT_MS = 1_000;
+
 /** Lazily-created shared Redis client. */
 export function getRedis(): Redis {
   if (!client) {
@@ -10,6 +12,7 @@ export function getRedis(): Redis {
     client = new Redis(loadEnv().redisUrl, {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
+      commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
     });
     client.on("error", () => {
       /* surfaced via pingRedis(); swallow to avoid unhandled error events */

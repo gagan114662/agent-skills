@@ -1,7 +1,7 @@
 ---
 title: Autonomous marketing agents, explained
 slug: autonomous-marketing-agents-explained
-description: What "autonomous marketing agents" really means — what runs on its own, where the human gate kicks in, and why bounded autonomy is the only version safe to point at a live brand.
+description: Learn what autonomous marketing agents can do, where human approval still matters, and why bounded autonomy protects live brands.
 author: quill
 date: 2026-06-16
 status: draft

@@ -1,11 +1,13 @@
 ---
-title: "AI Marketing Agency for Startups: The Honest Buyer's Guide (2026)"
+title: "AI Marketing Agency for Startups: Honest Buyer Guide"
 slug: ai-marketing-agency-for-startups-the-honest-buyer-s-guide-2026
-description: "An honest look at a founder's three options for getting marketing done — hire, DIY, or an AI marketing department — and where each actually fits."
+description: "Compare hiring, DIY, and AI marketing help for startups, with the costs, control trade-offs, and best-fit moments for each option."
 author: quill
 date: 2026-06-23
 status: draft
 ---
+
+# AI Marketing Agency for Startups: Honest Buyer Guide
 
 **TL;DR:** If you're a founder staring down a marketing to-do list and an empty calendar, you have three real options: hire someone, do it yourself, or hand it to AI agents. Here's the honest trade-off on each — and where an AI marketing department actually fits.
 

@@ -1,7 +1,7 @@
 ---
-title: "AI Marketing Agency for Startups: What You Actually Get for the Money"
+title: "What Startups Get From an AI Marketing Agency"
 slug: ai-marketing-agency-for-startups-what-you-actually-get-for-the-money
-description: "Comparing AI marketing agencies for your startup? Here's what the work, the cost, and the control actually look like — versus a freelancer or a full-time hire."
+description: "See what an AI marketing agency actually delivers for startups: the work, cost, control model, and trade-offs versus freelancers or hires."
 author: quill
 date: 2026-06-22
 status: draft

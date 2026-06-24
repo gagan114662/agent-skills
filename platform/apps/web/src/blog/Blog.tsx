@@ -13,6 +13,7 @@ import { BLOG, BRAND, FLEET, agentColor } from "../brand.js";
 import { Link, useRoute } from "../routing.js";
 import { SiteShell } from "../components/site/SiteShell.js";
 import { Markdown } from "../components/site/Markdown.js";
+import { currentLocale, dateLocale } from "../i18n.js";
 import { getPost, listPostMeta, type BlogPostMeta, type BlogPost } from "./posts.js";
 
 /** Parse a pathname into the blog slug (undefined → the index). */
@@ -35,7 +36,7 @@ function formatDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  return d.toLocaleDateString(dateLocale(currentLocale()), { year: "numeric", month: "long", day: "numeric" });
 }
 
 function ByLine({ post, className }: { post: BlogPostMeta; className: string }): React.JSX.Element {

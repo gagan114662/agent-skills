@@ -90,6 +90,14 @@ function approvalRequestView(request: ApprovalRequest): ApprovalRequestView {
   };
 }
 
+function approvalConflict(error: string, request: ApprovalRequest): {
+  status: "conflict";
+  error: string;
+  request: ApprovalRequestView;
+} {
+  return { status: "conflict", error, request: approvalRequestView(request) };
+}
+
 export async function approvalRoutes(
   app: FastifyInstance,
   opts: ApprovalRoutesOptions = {},
@@ -374,7 +382,7 @@ export async function approvalRoutes(
 
     const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
@@ -391,10 +399,7 @@ export async function approvalRoutes(
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
     const execution = await execute(req, decision.request);
     if (execution.outcome === "conflict") {
-      return reply.code(409).send({
-        error: "request already executed",
-        request: execution.request ? approvalRequestView(execution.request) : undefined,
-      });
+      return reply.code(409).send(approvalConflict("request already executed", execution.request ?? decision.request));
     }
     const finished = execution.request;
     if (finished.status === "failed") {
@@ -419,7 +424,7 @@ export async function approvalRoutes(
 
     const decision = await rejectRequest(rid, id.workspaceId, id.memberId, reason);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");

@@ -7,7 +7,7 @@ date: 2026-06-23
 status: draft
 ---
 
-## The walkthrough: one customer win, run both ways
+# The walkthrough: one customer win, run both ways
 
 Here's a real Tuesday job. You just closed **Acme Tools**. The win deserves to travel, so the task is: turn it into **a published case study, three platform-native social posts, and a newsletter section** — all queued, none sent without you.
 

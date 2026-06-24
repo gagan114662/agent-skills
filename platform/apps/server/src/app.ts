@@ -592,8 +592,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   registerMaintenance(app);
   // #71: map an admission denial (thrown by any launch path through SessionManager) to a clean HTTP
   // status — 402 for a budget breach, 429 for a hard stop / capacity — with a content-free reason.
-  // A non-admission error falls through to Fastify's default handling (unchanged behavior).
-  app.setErrorHandler((err, _req, reply) => {
+  // Other uncaught errors are logged with the request id and sanitized before crossing the HTTP boundary.
+  app.setErrorHandler((err, req, reply) => {
     if (err instanceof AdmissionError) {
       recordAdmissionDenied(err.reason);
       const status = err.reason === "budget_exceeded" ? 402 : 429;
@@ -607,7 +607,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     if (err instanceof VentureAdmissionError) {
       return reply.code(403).send({ error: err.message, reason: err.reason });
     }
-    return reply.send(err);
+    // Client errors (schema-validation 400, 404, etc.) carry an explicit sub-500 status. Pass them
+    // through unchanged — sanitizing them into a 500 would wrongly mask a caller mistake as a server fault.
+    const statusCode = (err as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === "number" && statusCode < 500) {
+      return reply.send(err);
+    }
+    req.log.error({ err, requestId: req.id }, "unhandled request error");
+    return reply.header("x-request-id", req.id).code(500).send({ error: "internal_error", requestId: req.id });
   });
   app.register(healthRoutes);
   // #153 public marketing-site content API (CMS-lite over repo markdown) — unauthenticated, published-only.

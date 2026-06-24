@@ -134,6 +134,11 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
       cookies: { rid: owner.cookie },
     });
     expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({
+      status: "conflict",
+      error: "request already decided",
+      request: { id: requestId },
+    });
   });
 
   it("reject blocks the action (no message, terminal rejected, audited)", async () => {
@@ -175,6 +180,19 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     ).json();
     expect(fresh.status).toBe("rejected");
     expect(fresh.reason).toBe("not now");
+
+    const again = await app.inject({
+      method: "POST",
+      url: `/approvals/${requestId}/reject`,
+      cookies: { rid: owner.cookie },
+      payload: { reason: "still no" },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({
+      status: "conflict",
+      error: "request already decided",
+      request: { id: requestId },
+    });
   });
 
   it("an expired request cannot be approved (ttlSeconds:0 → 409 expired)", async () => {
@@ -203,7 +221,11 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
       cookies: { rid: owner.cookie },
     });
     expect(approve.statusCode).toBe(409);
-    expect(approve.json().status).toBe("expired");
+    expect(approve.json()).toMatchObject({
+      status: "expired",
+      error: "request expired",
+      request: { id: requestId },
+    });
 
     // and the audit records the expiry; the channel stayed empty
     const events = (
@@ -241,6 +263,40 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     expect(submit.json().request.expiresAt).toEqual(expect.any(String));
     expect(submit.json().request.expiresAtTimezone).toBe("Australia/Sydney");
     expect(submit.json().request.expiresAtLabel).toContain("Australia/Sydney");
+  });
+
+  it("an expired request cannot be rejected (ttlSeconds:0 → 409 expired)", async () => {
+    const owner = await newOwner();
+    const agent = await newAgent(owner, "Poster");
+    const channelId = await channelWithAgent(owner, agent.memberId);
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "chat.post_message", requireApproval: true },
+    });
+
+    const requestId = (
+      await app.inject({
+        method: "POST",
+        url: `/workspaces/${owner.workspaceId}/actions`,
+        headers: bearer(agent.token),
+        payload: { actionType: "chat.post_message", payload: { channelId, body: "late reject" }, ttlSeconds: 0 },
+      })
+    ).json().request.id;
+
+    const reject = await app.inject({
+      method: "POST",
+      url: `/approvals/${requestId}/reject`,
+      cookies: { rid: owner.cookie },
+      payload: { reason: "too late" },
+    });
+    expect(reject.statusCode).toBe(409);
+    expect(reject.json()).toMatchObject({
+      status: "expired",
+      error: "request expired",
+      request: { id: requestId },
+    });
   });
 
   it("a money action (billing.refund) is gated by default; an agent cannot decide its own request (humans only)", async () => {
