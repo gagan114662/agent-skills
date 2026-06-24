@@ -1387,6 +1387,8 @@ export const reachSchema = z.object({
   prospectSource: z.string().optional(),
   /** Email send provider kind (`dryrun` default — recorded-only, no network egress). */
   sendProvider: z.string().optional(),
+  /** Allow Reach to resolve a real ESP sender. Default OFF; missing credentials still fall back to dry-run. */
+  liveSendEnabled: z.boolean().optional(),
   /** Per-sending-domain daily send cap (deliverability bound for the autonomous channel). */
   perDomainDailyCap: z.number().int().positive().optional(),
   /** Max prospects sourced + processed per cron batch. */

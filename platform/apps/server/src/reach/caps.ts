@@ -14,6 +14,8 @@ export interface ReachCaps {
   prospectSource: ProspectSourceKind;
   /** Email sender kind (`dryrun` = recorded-only, no network). */
   sendProvider: string;
+  /** Whether Reach may resolve a real ESP sender. Default OFF; dry-run remains byte-for-byte default. */
+  liveSendEnabled: boolean;
   /** Per-sending-domain daily send ceiling (deliverability bound). */
   perDomainDailyCap: number;
   /** Max prospects sourced + processed per cron batch. */
@@ -29,6 +31,7 @@ export const REACH_DEFAULTS: ReachCaps = {
   enabled: false,
   prospectSource: "mock",
   sendProvider: "dryrun",
+  liveSendEnabled: false,
   perDomainDailyCap: 50,
   batchSize: 25,
   ownerWorkspaceId: null,
@@ -48,6 +51,7 @@ export function resolveReachCaps(cfg: ReachConfig | undefined): ReachCaps {
     prospectSource:
       source && isProspectSourceKind(source) ? source : REACH_DEFAULTS.prospectSource,
     sendProvider: cfg?.sendProvider ?? REACH_DEFAULTS.sendProvider,
+    liveSendEnabled: cfg?.liveSendEnabled ?? REACH_DEFAULTS.liveSendEnabled,
     perDomainDailyCap: positiveIntOr(cfg?.perDomainDailyCap, REACH_DEFAULTS.perDomainDailyCap),
     batchSize: positiveIntOr(cfg?.batchSize, REACH_DEFAULTS.batchSize),
     ownerWorkspaceId: cfg?.ownerWorkspaceId ?? REACH_DEFAULTS.ownerWorkspaceId,
