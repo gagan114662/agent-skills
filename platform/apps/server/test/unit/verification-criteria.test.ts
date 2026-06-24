@@ -54,6 +54,15 @@ describe("verification/criteria", () => {
       const input = { deliverableKind: "outbound_content" as const, brief: "Announce the launch." };
       expect(deriveDefinitionOfDone(input)).toEqual(deriveDefinitionOfDone(input));
     });
+
+    it("requires originality for outbound content (#854)", () => {
+      const dod = deriveDefinitionOfDone({ deliverableKind: "outbound_content", brief: "Draft launch copy." });
+      expect(dod.criteria).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "originality", category: "content", required: true }),
+        ]),
+      );
+    });
   });
 
   describe("validateDefinitionOfDone", () => {

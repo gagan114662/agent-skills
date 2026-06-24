@@ -60,6 +60,12 @@ export interface DeriveDefinitionInput {
 const BASELINE_CRITERIA: Record<DeliverableKind, SuccessCriterion[]> = {
   outbound_content: [
     { id: "on_brief", text: "addresses the brief's goal", category: "content", required: true },
+    {
+      id: "originality",
+      text: "is original enough to avoid copying a known source verbatim",
+      category: "content",
+      required: true,
+    },
     { id: "brand_safe", text: "on-brand, no claims that cannot be backed", category: "content", required: true },
     { id: "no_pii_leak", text: "leaks no secrets or private data", category: "content", required: true },
   ],
