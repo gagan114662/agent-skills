@@ -1565,6 +1565,8 @@ export const CONTACT = {
   messageLabel: "What are you hoping the fleet can do?",
   messagePlaceholder: "We publish twice a week and our SEO is a mess…",
   submitLabel: "Send it over",
+  trialLinkLabel: "Send me a trial link",
+  nextStepIntro: "Want to keep moving now?",
   /** In-flight label while the lead is posting. */
   sendingLabel: "Sending…",
   /** Shown after the lead is captured (GAP 1, ADR-0400) — it now really persists + reaches a human. */

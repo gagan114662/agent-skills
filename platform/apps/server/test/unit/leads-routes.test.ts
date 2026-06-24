@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 
 describe("POST /inbound/leads (public capture)", () => {
-  it("persists a clean lead, qualifies it, triggers follow-up, and returns 202 {received:true}", async () => {
+  it("persists a clean lead, qualifies it, triggers follow-up, and returns an actionable next step", async () => {
     const disc = fakeDiscovery();
     const followup = { handle: vi.fn(async () => undefined) };
     const app = await buildRoute(OWNER_WID, disc, followup);
@@ -79,7 +79,10 @@ describe("POST /inbound/leads (public capture)", () => {
       payload: { name: "Ada", email: "ada@example.com", message: "fix our SEO" },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ received: true });
+    expect(res.json()).toEqual({
+      received: true,
+      nextStep: { label: "Start a free trial now", href: "/start?source=inbound_lead" },
+    });
     expect(recordLead).toHaveBeenCalledTimes(1);
     expect(recordLead.mock.calls[0]![0]).toMatchObject({
       workspaceId: OWNER_WID,
