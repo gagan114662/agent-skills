@@ -7,8 +7,9 @@
  * a shortcut.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { ConsoleView } from "./ConsoleView.js";
 import { api, ApiError } from "../../api/client.js";
@@ -102,11 +103,18 @@ function mockDepartment() {
   });
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
-async function mount(opts?: Parameters<typeof mockSeams>[0], over?: FakeBackendOverrides) {
+async function mount(
+  opts?: Parameters<typeof mockSeams>[0],
+  over?: FakeBackendOverrides,
+  viewProps?: ComponentProps<typeof ConsoleView>,
+) {
   mockSeams(opts);
-  const utils = renderWithStore(<ConsoleView />, over);
+  const utils = renderWithStore(<ConsoleView {...viewProps} />, over);
   await act(async () => {
     await utils.store.bootstrap();
   });
@@ -208,6 +216,24 @@ describe("ConsoleView", () => {
     );
     // Until the new sessions surface on the next poll, the panel confirms the team is clocking in.
     expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+    expect(document.querySelector(".firstrun__spinner")).toBeInTheDocument();
+  });
+
+  it("times out a seeded empty board into a recoverable Connect Claude blocker (#940)", async () => {
+    vi.spyOn(api.department, "seed")
+      .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+    await mount(
+      { mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() },
+      undefined,
+      { firstRunSeedTimeoutMs: 1 },
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+    expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(CONSOLE.firstRun.timeoutTitle);
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectErrorCta })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.timeoutRetry })).toBeInTheDocument();
   });
 
   it("surfaces a quiet retry line when the seed seam fails (#213)", async () => {

@@ -21,6 +21,8 @@ export type SeedError =
   | { kind: "rate"; retryAfterSeconds: number }
   /** No Claude runtime connected: the team can't run until the owner connects one (→ Settings). */
   | { kind: "connect" }
+  /** Seed succeeded but no work appeared before the first-run timeout and Claude is not connected. */
+  | { kind: "timeout-connect" }
   /** Anything else: a plain, quiet retry line. */
   | { kind: "generic" };
 
@@ -40,6 +42,8 @@ export interface ConsoleEmptyStateProps {
   coolOff: number;
   /** Open workspace settings (where Claude/Slack connect lives). */
   onConnect: () => void;
+  /** Clear the stalled seeded state and re-run the hire flow. */
+  onRetry: () => void;
 }
 
 export function ConsoleEmptyState({
@@ -49,13 +53,35 @@ export function ConsoleEmptyState({
   error,
   coolOff,
   onConnect,
+  onRetry,
 }: ConsoleEmptyStateProps): React.JSX.Element {
   const copy = CONSOLE.firstRun;
 
   if (seeded) {
+    if (error?.kind === "timeout-connect") {
+      return (
+        <div className="firstrun" role="alert">
+          <PopMark className="firstrun__mark" />
+          <div className="firstrun__blocked">
+            <p className="firstrun__blocked-title">{copy.timeoutTitle}</p>
+            <p className="firstrun__blocked-body">{copy.timeoutBody}</p>
+            <div className="firstrun__actions">
+              <button className="btn btn--primary" type="button" onClick={onConnect}>
+                {copy.connectErrorCta}
+              </button>
+              <button className="btn" type="button" onClick={onRetry}>
+                {copy.timeoutRetry}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="firstrun" role="status">
+      <div className="firstrun" role="status" aria-live="polite">
         <PopMark className="firstrun__mark" />
+        <span className="firstrun__spinner" aria-hidden="true" />
         <p className="firstrun__assembling">{copy.assembling}</p>
         <p className="firstrun__hint">
           {copy.connectHint}{" "}
