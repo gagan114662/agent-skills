@@ -1,9 +1,11 @@
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { loadConfig } from "../config/loader.js";
+import { conversionsByChannelSince, failingChannelsSince } from "../db/repositories/acquisition.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { createMarketingBriefService } from "../marketing/default.js";
 import { resolveCadenceCaps } from "./caps.js";
 import { CadenceEngine } from "./engine.js";
+import type { CadenceOutcome } from "./playbook.js";
 
 /**
  * Production wiring for the autonomous work cadence (#416, ADR-0416). The recurring tick that keeps the
@@ -51,6 +53,24 @@ export function createDefaultCadenceEngine(
       if (!result.ok) {
         throw new Error(`cadence: brief denied (${result.code}) ${result.error}`);
       }
+    },
+    outcomes: async (workspaceId): Promise<CadenceOutcome[]> => {
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const [conversions, failures] = await Promise.all([
+        conversionsByChannelSince(workspaceId, since),
+        failingChannelsSince(workspaceId, since),
+      ]);
+      return [
+        ...conversions.map((c) => ({
+          outcomeKey: c.channel === "seo" ? "seo" : c.channel,
+          result: "worked" as const,
+          conversions: c.verified ? c.conversions : 0,
+        })),
+        ...failures.map((channel) => ({
+          outcomeKey: channel === "seo" ? "seo" : channel,
+          result: "failed" as const,
+        })),
+      ];
     },
     logger,
   });

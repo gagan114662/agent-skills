@@ -1,7 +1,14 @@
 import type { SessionLogger } from "../runtime/manager.js";
 import type { CadenceCaps } from "./caps.js";
 import { isCadenceEnabledForWorkspace } from "./caps.js";
-import { CADENCE_PLAYBOOK_LENGTH, nextTaskIndex, taskAt, type CadenceTask } from "./playbook.js";
+import {
+  CADENCE_PLAYBOOK_LENGTH,
+  nextTaskIndex,
+  selectTaskIndexFromOutcomes,
+  taskAt,
+  type CadenceOutcome,
+  type CadenceTask,
+} from "./playbook.js";
 
 /**
  * The autonomous work-cadence tick (#416, ADR-0416) — the recurring loop that keeps the fleet working ON
@@ -38,6 +45,8 @@ export interface CadenceEngineDeps {
    * not advance state.
    */
   launch: (workspaceId: string, task: CadenceTask) => Promise<void>;
+  /** Optional reader for recorded experiment outcomes; absent keeps fixed round-robin behavior. */
+  outcomes?: (workspaceId: string) => Promise<readonly CadenceOutcome[]>;
   logger: SessionLogger;
   /** Injectable clock for deterministic per-day-cap rollover tests. Defaults to `Date.now`-backed. */
   now?: () => Date;
@@ -107,7 +116,9 @@ export class CadenceEngine {
         // Hard per-day cap: at/over the limit ⇒ skip (no launch this tick).
         if (st.count >= caps.maxLaunchesPerDay) continue;
 
-        const task = taskAt(st.cursor);
+        const outcomes = this.deps.outcomes ? await this.deps.outcomes(workspaceId) : [];
+        const selected = selectTaskIndexFromOutcomes(st.cursor, outcomes);
+        const task = taskAt(selected);
         if (!task) continue; // empty playbook — nothing to advance (defensive)
 
         // The launch can throw on a denial (admission/budget/kill switch). Treat any rejection as
@@ -116,7 +127,7 @@ export class CadenceEngine {
 
         // Success: spend one of the day's budget and advance the round-robin cursor.
         st.count += 1;
-        st.cursor = nextTaskIndex(st.cursor, CADENCE_PLAYBOOK_LENGTH);
+        st.cursor = nextTaskIndex(selected, CADENCE_PLAYBOOK_LENGTH);
       } catch (err) {
         this.deps.logger.error({ err, workspaceId }, "cadence tickAll: workspace launch failed (skipped)");
       }
