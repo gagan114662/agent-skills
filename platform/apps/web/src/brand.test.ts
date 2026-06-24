@@ -257,7 +257,7 @@ describe("landing workspace simulation copy (#165)", () => {
     for (const a of LANDING.anchors) expect(a.href.startsWith("#"), a.href).toBe(true);
     expect(LANDING.footer.product.length).toBeGreaterThan(0);
     expect(LANDING.footer.resources.length).toBeGreaterThan(0);
-    expect(LANDING.footer.social.length).toBeGreaterThan(0);
+    expect(LANDING.footer.social.map((s) => s.href).filter((href) => href.startsWith("/social/"))).toEqual([]);
   });
 });
 

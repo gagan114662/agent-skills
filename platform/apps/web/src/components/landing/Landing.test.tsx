@@ -154,6 +154,14 @@ describe("Landing", () => {
     }
   });
 
+  it("does not render dead placeholder social links in the footer (#941)", () => {
+    render(<Landing />);
+    expect(screen.queryByRole("navigation", { name: LANDING.footer.socialTitle })).toBeNull();
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.getAttribute("href") ?? "").not.toMatch(/^\/social\//);
+    }
+  });
+
   it("keeps in-page section navigation reachable through the mobile menu", () => {
     render(<Landing />);
     const mobileNav = screen.getAllByRole("navigation", { name: /on this page/i })[0]!;

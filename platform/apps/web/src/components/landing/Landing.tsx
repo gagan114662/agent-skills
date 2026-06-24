@@ -262,14 +262,16 @@ function LandingFooter(): React.JSX.Element {
         <div className="landing__footer-cols">
           <FooterCol title={footer.productTitle} links={footer.product} />
           <FooterCol title={footer.resourcesTitle} links={footer.resources} />
-          <nav className="landing__footer-col" aria-label={footer.socialTitle}>
-            <p className="landing__footer-col-title">{footer.socialTitle}</p>
-            {footer.social.map((s) => (
-              <Link key={s.key} href={s.href} className="linklike landing__footer-link">
-                {s.label}
-              </Link>
-            ))}
-          </nav>
+          {footer.social.length > 0 ? (
+            <nav className="landing__footer-col" aria-label={footer.socialTitle}>
+              <p className="landing__footer-col-title">{footer.socialTitle}</p>
+              {footer.social.map((s) => (
+                <Link key={s.key} href={s.href} className="linklike landing__footer-link">
+                  {s.label}
+                </Link>
+              ))}
+            </nav>
+          ) : null}
         </div>
       </div>
       <div className="landing__footer-bottom">
