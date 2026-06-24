@@ -41,6 +41,7 @@ let inFlight = 0;
 // (maintenance/listing/signal reads). Keep labels bounded to known loop names.
 const loopTickFailures = new Map<string, number>();
 const webhookSignatureFailures = new Map<string, { provider: string; reason: string; count: number }>();
+const redisPubSubTimeouts = new Map<string, number>();
 
 export function recordLoopTickFailure(loop: string): void {
   loopTickFailures.set(loop, (loopTickFailures.get(loop) ?? 0) + 1);
@@ -53,6 +54,11 @@ export function recordWebhookSignatureFailure(provider: string, reason: string):
   const existing = webhookSignatureFailures.get(key);
   if (existing) existing.count += 1;
   else webhookSignatureFailures.set(key, { provider: safeProvider, reason: safeReason, count: 1 });
+}
+
+export function recordRedisPubSubTimeout(operation: string): void {
+  const safeOperation = operation || "unknown";
+  redisPubSubTimeouts.set(safeOperation, (redisPubSubTimeouts.get(safeOperation) ?? 0) + 1);
 }
 
 // --- saturation signals (#113) ----------------------------------------------
@@ -422,6 +428,7 @@ export function resetMetrics(): void {
   saturationSample = null;
   loopTickFailures.clear();
   webhookSignatureFailures.clear();
+  redisPubSubTimeouts.clear();
 }
 
 /** Prometheus label-value escaping (backslash, double-quote, newline). */
@@ -474,6 +481,12 @@ export function renderMetrics(): string {
     lines.push(
       `webhook_signature_failures_total{provider="${esc(s.provider)}",reason="${esc(s.reason)}"} ${s.count}`,
     );
+  }
+
+  lines.push("# HELP redis_pubsub_timeouts_total Redis pub/sub commands that exceeded the realtime timeout.");
+  lines.push("# TYPE redis_pubsub_timeouts_total counter");
+  for (const [operation, count] of redisPubSubTimeouts) {
+    lines.push(`redis_pubsub_timeouts_total{operation="${esc(operation)}"} ${count}`);
   }
 
   lines.push("# HELP process_uptime_seconds Seconds since the process started.");
