@@ -25,7 +25,7 @@ function emailMsg(over: Partial<ReachMessage> = {}): ReachMessage {
 }
 
 function ctx(over: Partial<ChannelSendContext> = {}): ChannelSendContext {
-  return { suppressed: new Set(), footerInfo: FOOTER, ...over };
+  return { workspaceId: "ws-1", suppressed: new Set(), footerInfo: FOOTER, ...over };
 }
 
 describe("email channel — suppression + compliance (#280)", () => {
@@ -73,6 +73,27 @@ describe("email channel — suppression + compliance (#280)", () => {
     const out = await createEmailChannel({ sender }).send(emailMsg(), ctx());
     expect(out.status).toBe("failed");
     expect(out.detail).toContain("smtp down");
+  });
+
+  it("resolves the sender per workspace at send time", async () => {
+    const seen: string[] = [];
+    const sender: EspSender = {
+      kind: "postmark",
+      async send() {
+        return { externalId: "pm-live-1" };
+      },
+    };
+    const out = await createEmailChannel({
+      resolveSender(ctx) {
+        seen.push(ctx.workspaceId);
+        return sender;
+      },
+    }).send(emailMsg(), ctx({ workspaceId: "ws-live" }));
+
+    expect(out.status).toBe("sent");
+    expect(out.externalId).toBe("pm-live-1");
+    expect(out.detail).toBe("sent via postmark");
+    expect(seen).toEqual(["ws-live"]);
   });
 
   it("dryRunEspSender does no network and is deterministic", async () => {

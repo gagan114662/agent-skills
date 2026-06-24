@@ -265,6 +265,34 @@ describe("real-world tool surface config (#231)", () => {
     );
     expect(cfg.emailDeliverability).toEqual({ liveSendEnabled: true, ownerWorkspaceId: "ws_owner" });
   });
+
+  it("#850 Reach ESP defaults dry-run, and env can opt Postmark live-send in (RELOAD_REACH_*)", () => {
+    expect(loadConfig(undefined, sources({})).reach).toEqual({});
+    const cfg = loadConfig(
+      undefined,
+      sources(
+        {},
+        {
+          RELOAD_REACH_ENABLED: "true",
+          RELOAD_REACH_PROSPECT_SOURCE: "mock",
+          RELOAD_REACH_SEND_PROVIDER: "postmark",
+          RELOAD_REACH_LIVE_SEND_ENABLED: "1",
+          RELOAD_REACH_PER_DOMAIN_DAILY_CAP: "7",
+          RELOAD_REACH_BATCH_SIZE: "3",
+          RELOAD_REACH_OWNER_WORKSPACE_ID: "ws_owner",
+        },
+      ),
+    );
+    expect(cfg.reach).toEqual({
+      enabled: true,
+      prospectSource: "mock",
+      sendProvider: "postmark",
+      liveSendEnabled: true,
+      perDomainDailyCap: 7,
+      batchSize: 3,
+      ownerWorkspaceId: "ws_owner",
+    });
+  });
 });
 
 describe("validation & resilience (#58)", () => {

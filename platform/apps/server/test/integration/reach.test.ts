@@ -14,7 +14,7 @@ import {
 } from "../../src/db/repositories/reach.js";
 import { dbSuppressionStore } from "../../src/db/repositories/acquisition.js";
 import { createMockProspectSource } from "../../src/reach/sources/mock.js";
-import { createEmailChannel } from "../../src/reach/channels/email.js";
+import { createEmailChannel, type EspSender } from "../../src/reach/channels/email.js";
 import { createLinkedInChannel } from "../../src/reach/channels/linkedin.js";
 import { REACH_DEFAULTS, type ReachCaps } from "../../src/reach/caps.js";
 import { createRequest, getRequest } from "../../src/db/repositories/approvals.js";
@@ -68,14 +68,20 @@ function caps(over: Partial<ReachCaps> = {}): ReachCaps {
 }
 
 /** A service backed by the REAL db repos + the mock (free) source + dry-run email channel. */
-function service(workspaceId: string, memberId: string, capsOver: Partial<ReachCaps>, source?: ProspectSource): ReachService {
+function service(
+  workspaceId: string,
+  memberId: string,
+  capsOver: Partial<ReachCaps>,
+  source?: ProspectSource,
+  sender?: EspSender,
+): ReachService {
   const resolveSource: ReachDeps["resolveSource"] = () =>
     source ?? createMockProspectSource({ now: () => NOW.getTime() });
   return new ReachService({
     now: () => NOW,
     icp: { async seed() { return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] }; } },
     resolveSource,
-    channels: { email: createEmailChannel(), linkedin: createLinkedInChannel() },
+    channels: { email: createEmailChannel(sender ? { sender } : undefined), linkedin: createLinkedInChannel() },
     contacts: dbReachContactStore,
     sends: dbReachSendStore,
     receipts: dbReachReceiptStore,
@@ -163,6 +169,28 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     expect(run.rateLimited).toBe(3);
     const rl = await db.select().from(reachSends).where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "rate_limited")));
     expect(rl).toHaveLength(3);
+  });
+
+  it("records a real ESP provider id when the email channel is wired live (#850)", async () => {
+    const { workspaceId, memberId } = await seed();
+    let n = 0;
+    const sender: EspSender = {
+      kind: "postmark",
+      async send() {
+        n += 1;
+        return { externalId: `pm-live-${n}` };
+      },
+    };
+    const svc = service(workspaceId, memberId, { batchSize: 2 }, undefined, sender);
+
+    const run = await svc.runBatch(workspaceId);
+    expect(run.status).toBe("completed");
+    expect(run.messagesSent).toBe(2);
+
+    const sent = await db.select().from(reachSends).where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent")));
+    expect(sent).toHaveLength(2);
+    expect(sent.map((s) => s.externalId)).toEqual(["pm-live-1", "pm-live-2"]);
+    expect(sent.every((s) => !s.externalId?.startsWith("dryrun-"))).toBe(true);
   });
 
   it("money-gates a paid prospect source: parks a pending #13 spend, sends nothing", async () => {

@@ -63,13 +63,15 @@ function footerForRecipient(
 
 export interface EmailChannelDeps {
   sender?: EspSender;
+  resolveSender?: (ctx: ChannelSendContext) => EspSender | Promise<EspSender>;
 }
 
 export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAdapter {
-  const sender = deps.sender ?? dryRunEspSender;
+  const fallbackSender = deps.sender ?? dryRunEspSender;
   return {
     channel: "email",
     async send(message: ReachMessage, ctx: ChannelSendContext): Promise<ReachSendOutcome> {
+      const sender = deps.resolveSender ? await deps.resolveSender(ctx) : fallbackSender;
       const to = normalizeRecipient(message.toAddress);
       if (!to) {
         return { status: "skipped", channel: "email", externalId: null, detail: "no email address" };

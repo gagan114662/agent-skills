@@ -449,6 +449,38 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
       ...(cap !== undefined && Number.isFinite(cap) && cap > 0 ? { perChannelDailyCap: cap } : {}),
     };
   }
+  // #850 Reach ESP: let deployment env opt the autonomous outbound loop into Postmark without a managed.toml.
+  // Hard default stays OFF: vars unset means no Reach block, `sendProvider` remains dryrun, and
+  // `liveSendEnabled` remains false. Even when enabled, the sender resolves per workspace from the #192
+  // vault; missing POSTMARK_SERVER_TOKEN / From keeps the byte-for-byte dry-run path.
+  const reachEnabled = env.RELOAD_REACH_ENABLED;
+  const reachSource = env.RELOAD_REACH_PROSPECT_SOURCE;
+  const reachProvider = env.RELOAD_REACH_SEND_PROVIDER;
+  const reachLiveSend = env.RELOAD_REACH_LIVE_SEND_ENABLED;
+  const reachCap = env.RELOAD_REACH_PER_DOMAIN_DAILY_CAP;
+  const reachBatch = env.RELOAD_REACH_BATCH_SIZE;
+  const reachOwner = env.RELOAD_REACH_OWNER_WORKSPACE_ID;
+  if (
+    reachEnabled !== undefined ||
+    reachSource !== undefined ||
+    reachProvider !== undefined ||
+    reachLiveSend !== undefined ||
+    reachCap !== undefined ||
+    reachBatch !== undefined ||
+    reachOwner !== undefined
+  ) {
+    const reach: Record<string, unknown> = {};
+    if (reachEnabled !== undefined) reach.enabled = reachEnabled === "true" || reachEnabled === "1";
+    if (reachSource !== undefined) reach.prospectSource = reachSource;
+    if (reachProvider !== undefined) reach.sendProvider = reachProvider;
+    if (reachLiveSend !== undefined) reach.liveSendEnabled = reachLiveSend === "true" || reachLiveSend === "1";
+    if (reachOwner !== undefined) reach.ownerWorkspaceId = reachOwner;
+    const cap = reachCap !== undefined ? Number.parseInt(reachCap, 10) : undefined;
+    if (cap !== undefined && Number.isFinite(cap) && cap > 0) reach.perDomainDailyCap = cap;
+    const batch = reachBatch !== undefined ? Number.parseInt(reachBatch, 10) : undefined;
+    if (batch !== undefined && Number.isFinite(batch) && batch > 0) reach.batchSize = batch;
+    raw.reach = reach;
+  }
   // #189 acquisition execution: let the deployment env turn the real-send dispatcher + per-channel
   // execution on without a managed.toml — the owner workspace opts in first. Hard default stays OFF
   // (vars unset → no block ⇒ the `external.send` executor stays recorded-only, no network egress). A

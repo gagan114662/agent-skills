@@ -13,6 +13,8 @@ import type { ReachChannel, ReachMessage, ReachSendOutcome } from "./types.js";
  */
 
 export interface ChannelSendContext {
+  /** Workspace that owns this outbound attempt; used only by adapters that resolve tenant-scoped providers. */
+  workspaceId: string;
   /** Normalised opt-out/suppression set (addresses that bounced, complained, or unsubscribed). */
   suppressed: ReadonlySet<string>;
   /** CAN-SPAM/GDPR footer facts (brand, postal address, unsubscribe). Incomplete ⇒ email cannot send. */

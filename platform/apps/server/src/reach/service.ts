@@ -365,7 +365,7 @@ export class ReachService {
         outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
         return;
       }
-      const outcome = await this.deps.channels[channel].send(message, { suppressed, footerInfo });
+      const outcome = await this.deps.channels[channel].send(message, { workspaceId, suppressed, footerInfo });
       await this.deps.sends.insert({
         workspaceId,
         contactKey: message.contactKey,

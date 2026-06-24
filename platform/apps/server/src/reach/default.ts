@@ -5,6 +5,7 @@ import { createRequest } from "../db/repositories/approvals.js";
 import { getPersonaByHandle } from "../db/repositories/personas.js";
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { dbSuppressionStore } from "../db/repositories/acquisition.js";
+import { resolvePostmarkSender } from "../email/postmark-provider.js";
 import {
   dbReachContactStore,
   dbReachReceiptStore,
@@ -14,12 +15,16 @@ import {
 import { REACH_DATA_CREDIT_ACTION } from "../approvals/policy.js";
 import { resolveReachCaps, isOwnerWorkspace } from "./caps.js";
 import { createEmailChannel } from "./channels/email.js";
+import { dryRunEspSender, type EspSender } from "./channels/email.js";
 import { createLinkedInChannel } from "./channels/linkedin.js";
 import { createProspectSource, type HttpFetch } from "./sources/index.js";
 import { ReachService, type ReachDeps } from "./service.js";
 
 /** The Reach department lead's @handle — the persona that owns the channel + is the money-gate requester. */
 export const REACH_AGENT_HANDLE = "comet";
+const POSTMARK_SERVICE_KEY = "postmark";
+const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
+const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
 
 /** Extract a bare host from a URL ("https://ipop.ai/x" → "ipop.ai"). */
 function hostOf(url: string): string {
@@ -35,18 +40,45 @@ const realHttpFetch: HttpFetch = async (url, init) => {
   return { ok: res.ok, status: res.status, json: () => res.json() };
 };
 
+function firstSecret(secrets: Record<string, string>, keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = secrets[key]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+export function resolveReachPostmarkSender(input: {
+  caps: ReturnType<typeof resolveReachCaps>;
+  secrets: Record<string, string>;
+}): EspSender {
+  if (input.caps.sendProvider !== "postmark" || !input.caps.liveSendEnabled) return dryRunEspSender;
+  return resolvePostmarkSender({
+    live: true,
+    serverToken: firstSecret(input.secrets, [POSTMARK_TOKEN_KEY]),
+    from: firstSecret(input.secrets, POSTMARK_FROM_KEYS),
+  });
+}
+
+async function resolveReachEmailSender(workspaceId: string): Promise<EspSender> {
+  const caps = resolveReachCaps(loadConfig(workspaceId).reach);
+  if (caps.sendProvider !== "postmark" || !caps.liveSendEnabled) return dryRunEspSender;
+  const secrets = await resolveServiceSecrets(workspaceId, POSTMARK_SERVICE_KEY);
+  return resolveReachPostmarkSender({ caps, secrets });
+}
+
 /**
  * Wire the production {@link ReachService} (#280). Default-OFF + `mock` source + `dryrun` email sender, so
- * a deployment that sets nothing spends nothing and sends nothing. The email channel sends recorded-only
- * through the dry-run sender until a real ESP is connected (a deliberate follow-up behind the #192 vault);
+ * a deployment that sets nothing spends nothing and sends nothing. The email channel resolves a tenant-scoped
+ * Postmark sender only when Reach live send is explicitly enabled and the #192 vault has the token + From;
  * LinkedIn queues (no permitted send path wired). The paid sources resolve their key from the #192 vault
  * and never log it.
  */
 export function createDefaultReachService(log?: FastifyBaseLogger): ReachService {
   const channels: ReachDeps["channels"] = {
-    // Real ESP / permitted LinkedIn senders slot in here behind the #192 vault (a follow-up); the defaults
-    // are recorded-only (email dry-run) and queue-only (LinkedIn), the byte-for-byte safe default.
-    email: createEmailChannel(),
+    // Email stays recorded-only unless the workspace explicitly opts Reach into Postmark and connects #192
+    // vault credentials; LinkedIn remains queue-only without a permitted API sender.
+    email: createEmailChannel({ resolveSender: (ctx) => resolveReachEmailSender(ctx.workspaceId) }),
     linkedin: createLinkedInChannel(),
   };
 
