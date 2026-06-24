@@ -1,11 +1,17 @@
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../index.js";
-import { monetizationPlans, monetizationExperiments, monetizationRevenue } from "../schema/index.js";
+import {
+  monetizationPlans,
+  monetizationExperiments,
+  monetizationRevenue,
+  monetizationPlanStateChanges,
+} from "../schema/index.js";
 import type {
   MonetizationStore,
   PlanRecord,
   ExperimentRecord,
   RevenueRecord,
+  PlanStateChangeRecord,
 } from "../../monetization/service.js";
 import type { PlanStatus, PriceInterval } from "../../monetization/pricing.js";
 import type { RevenueReceipt } from "../../finance/ledger.js";
@@ -64,6 +70,20 @@ function toRevenue(row: typeof monetizationRevenue.$inferSelect): RevenueRecord 
     amountCents: row.amountCents,
     currency: row.currency,
     occurredAtMs: row.occurredAt.getTime(),
+  };
+}
+
+function toPlanStateChange(row: typeof monetizationPlanStateChanges.$inferSelect): PlanStateChangeRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    planId: row.planId,
+    fromStatus: row.fromStatus as PlanStatus,
+    toStatus: row.toStatus as PlanStatus,
+    actorMemberId: row.actorMemberId,
+    reason: row.reason,
+    approvalRequestId: row.approvalRequestId,
+    createdAtMs: row.createdAt.getTime(),
   };
 }
 
@@ -127,6 +147,38 @@ export const dbMonetizationStore: MonetizationStore = {
       .where(and(eq(monetizationPlans.workspaceId, workspaceId), eq(monetizationPlans.id, id)))
       .returning();
     return row ? toPlan(row) : undefined;
+  },
+
+  async recordPlanStateChange(input): Promise<PlanStateChangeRecord> {
+    const [row] = await db
+      .insert(monetizationPlanStateChanges)
+      .values({
+        workspaceId: input.workspaceId,
+        planId: input.planId,
+        fromStatus: input.fromStatus,
+        toStatus: input.toStatus,
+        actorMemberId: input.actorMemberId,
+        reason: input.reason,
+        approvalRequestId: input.approvalRequestId,
+        createdAt: new Date(input.createdAtMs),
+      })
+      .returning();
+    return toPlanStateChange(row!);
+  },
+
+  async listPlanStateChanges(workspaceId, filter): Promise<PlanStateChangeRecord[]> {
+    const conds = [eq(monetizationPlanStateChanges.workspaceId, workspaceId)];
+    if (filter?.planId === null) conds.push(isNull(monetizationPlanStateChanges.planId));
+    else if (typeof filter?.planId === "string") conds.push(eq(monetizationPlanStateChanges.planId, filter.planId));
+    if (filter?.sinceMs !== undefined) conds.push(gte(monetizationPlanStateChanges.createdAt, new Date(filter.sinceMs)));
+    if (filter?.untilMs !== undefined) conds.push(lte(monetizationPlanStateChanges.createdAt, new Date(filter.untilMs)));
+    const rows = await db
+      .select()
+      .from(monetizationPlanStateChanges)
+      .where(and(...conds))
+      .orderBy(desc(monetizationPlanStateChanges.createdAt))
+      .limit(filter?.limit ?? 200);
+    return rows.map(toPlanStateChange);
   },
 
   async createExperiment(input): Promise<ExperimentRecord> {

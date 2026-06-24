@@ -83,6 +83,18 @@ export interface RevenueRecord {
   occurredAtMs: number;
 }
 
+export interface PlanStateChangeRecord {
+  id: string;
+  workspaceId: string;
+  planId: string | null;
+  fromStatus: PlanStatus;
+  toStatus: PlanStatus;
+  actorMemberId: string | null;
+  reason: string;
+  approvalRequestId: string | null;
+  createdAtMs: number;
+}
+
 // ---- seams -------------------------------------------------------------------------------------
 
 /** Durable persistence for plans/experiments/revenue. The repo implements this; tests inject fakes. */
@@ -117,6 +129,20 @@ export interface MonetizationStore {
       activatedAtMs: number | null;
     }>,
   ): Promise<PlanRecord | undefined>;
+  recordPlanStateChange(input: {
+    workspaceId: string;
+    planId: string;
+    fromStatus: PlanStatus;
+    toStatus: PlanStatus;
+    actorMemberId: string | null;
+    reason: string;
+    approvalRequestId: string | null;
+    createdAtMs: number;
+  }): Promise<PlanStateChangeRecord>;
+  listPlanStateChanges(
+    workspaceId: string,
+    filter?: { planId?: string | null; sinceMs?: number; untilMs?: number; limit?: number },
+  ): Promise<PlanStateChangeRecord[]>;
 
   createExperiment(input: {
     workspaceId: string;
@@ -326,6 +352,15 @@ export class MonetizationService {
     return this.deps.store.listPlans(workspaceId, { ventureIdeaId, limit: caps.listLimit });
   }
 
+  /** List queryable plan status transitions for a workspace/time range (#890). */
+  async listPlanStateChanges(
+    workspaceId: string,
+    filter?: { planId?: string | null; sinceMs?: number; untilMs?: number; limit?: number },
+  ): Promise<PlanStateChangeRecord[]> {
+    const caps = this.deps.caps(workspaceId);
+    return this.deps.store.listPlanStateChanges(workspaceId, { ...filter, limit: filter?.limit ?? caps.listLimit });
+  }
+
   /**
    * Queue the MONEY decision to activate a draft plan so customers can be charged (#188 AC2). Asserts the
    * venture connected its OWN Stripe account first, builds the EXACT-amount summary, submits a #13
@@ -408,6 +443,8 @@ export class MonetizationService {
           continue;
         }
         const minted = await this.mintLink(workspaceId, plan, secrets);
+        const fromStatus = plan.status;
+        const activatedAtMs = this.now().getTime();
         await this.deps.store.updatePlan(workspaceId, plan.id, {
           status: "active",
           provider: this.deps.billing.kind,
@@ -415,7 +452,17 @@ export class MonetizationService {
           priceId: minted.priceId,
           providerLinkId: minted.providerLinkId,
           url: minted.url,
-          activatedAtMs: this.now().getTime(),
+          activatedAtMs,
+        });
+        await this.deps.store.recordPlanStateChange({
+          workspaceId,
+          planId: plan.id,
+          fromStatus,
+          toStatus: "active",
+          actorMemberId: null,
+          reason: "owner_approved_activation",
+          approvalRequestId: plan.activationRequestId,
+          createdAtMs: activatedAtMs,
         });
         // If an experiment drove this re-price, mark it live now (its result is concluded later from receipts).
         const experiments = await this.deps.store.listExperiments(workspaceId, {

@@ -7,7 +7,7 @@ import { members } from "./identities.js";
 
 /**
  * Venture monetization rails (#188, ADR-0188): every venture can charge money, the owner holds the keys.
- * THREE workspace-scoped tables. The tables are named with the NON-governed `monetization_` prefix on
+ * Workspace-scoped tables. The tables are named with the NON-governed `monetization_` prefix on
  * purpose — they FK `venture_ideas` (which is fine) but creating a `venture_*`-named table would trip the
  * #155 colocation gate; #194 used `finance_*` for the same reason.
  *
@@ -69,6 +69,40 @@ export const monetizationPlans = pgTable(
       sql`${t.status} IN ('draft','pending_activation','active','archived')`,
     ),
     amountCk: check("monetization_plans_amount_ck", sql`${t.amountCents} > 0`),
+  }),
+);
+
+/**
+ * Queryable audit trail for pricing-plan state transitions (#890). The approval queue records the owner
+ * decision; this table records the resulting plan status edge so operators can ask "what changed in this
+ * workspace over this window?" without scraping the mutable plan row or unrelated decision events.
+ */
+export const monetizationPlanStateChanges = pgTable(
+  "monetization_plan_state_changes",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    planId: uuid("plan_id").references(() => monetizationPlans.id, { onDelete: "set null" }),
+    fromStatus: text("from_status", { enum: PLAN_STATUSES }).notNull(),
+    toStatus: text("to_status", { enum: PLAN_STATUSES }).notNull(),
+    actorMemberId: uuid("actor_member_id").references(() => members.id, { onDelete: "set null" }),
+    reason: text("reason").notNull(),
+    approvalRequestId: uuid("approval_request_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byWorkspaceTime: index("monetization_plan_state_changes_workspace_time_idx").on(t.workspaceId, t.createdAt),
+    byPlanTime: index("monetization_plan_state_changes_plan_time_idx").on(t.workspaceId, t.planId, t.createdAt),
+    fromStatusCk: check(
+      "monetization_plan_state_changes_from_status_ck",
+      sql`${t.fromStatus} IN ('draft','pending_activation','active','archived')`,
+    ),
+    toStatusCk: check(
+      "monetization_plan_state_changes_to_status_ck",
+      sql`${t.toStatus} IN ('draft','pending_activation','active','archived')`,
+    ),
   }),
 );
 
