@@ -129,6 +129,7 @@ function askLineOf(item: ConsoleItem): string {
 
 /** Default cool-off when a 429 carries no `Retry-After` (matches the server's advertised default, #221). */
 const SEED_RETRY_FALLBACK_SECONDS = 30;
+export const FIRST_RUN_SEED_TIMEOUT_MS = 30_000;
 
 /**
  * Turn a failed first-run seed into an actionable {@link SeedError} (#221): a 429 becomes a held countdown
@@ -146,7 +147,11 @@ function classifySeedError(err: unknown): SeedError {
   return { kind: "generic" };
 }
 
-export function ConsoleView(): React.JSX.Element {
+export function ConsoleView({
+  firstRunSeedTimeoutMs = FIRST_RUN_SEED_TIMEOUT_MS,
+}: {
+  firstRunSeedTimeoutMs?: number;
+} = {}): React.JSX.Element {
   const { identity, channels, directory, messagesByChannel, paywall, activeChannelId } = useAppState();
   const store = useStore();
   const workspaceId = identity?.workspaceId;
@@ -410,6 +415,17 @@ export function ConsoleView(): React.JSX.Element {
   // The board is shown (not the no-venture empty-state pitch, which owns its own guided activation). The
   // first-run auto-deliverable only applies once the owner is on a real board with departments (#301).
   const boardShown = !(!hasVenture && model.projects.length === 0);
+  const seedAwaitingBoard = seeded && !hasVenture && model.projects.length === 0;
+
+  // #940: after a successful hire, the empty desk must not spin forever. If no work appears before the
+  // activation timeout and Claude is not confirmed connected, surface the real blocker with recovery CTAs.
+  useEffect(() => {
+    if (!seedAwaitingBoard || claudeHealth?.state === "connected") return;
+    const id = window.setTimeout(() => {
+      if (mounted.current) setSeedError({ kind: "timeout-connect" });
+    }, firstRunSeedTimeoutMs);
+    return () => window.clearTimeout(id);
+  }, [seedAwaitingBoard, claudeHealth?.state, firstRunSeedTimeoutMs]);
 
   // #301: auto-run the safe first deliverable on a fresh-but-ready board, then silently retry only while a
   // transient runner failure is in play (#299). Re-evaluated on every poll; `shouldAutoRunFirstRun` guards
@@ -670,6 +686,12 @@ export function ConsoleView(): React.JSX.Element {
     } finally {
       if (mounted.current) setSeeding(false);
     }
+  }
+
+  function retrySeededStart(): void {
+    setSeeded(false);
+    setSeedError(null);
+    void startVenture();
   }
 
   /**
@@ -949,6 +971,7 @@ export function ConsoleView(): React.JSX.Element {
             error={seedError}
             coolOff={seedCoolOff}
             onConnect={() => openShellSettings()}
+            onRetry={retrySeededStart}
           />
         ) : (
           <>

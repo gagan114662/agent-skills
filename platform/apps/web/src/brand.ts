@@ -1014,8 +1014,11 @@ export const CONSOLE = {
     connectError: "Your team can't run yet — connect Claude so they can actually clock in.",
     connectErrorCta: "Connect Claude",
     assembling: "Your team's clocking in. The board fills in as each lead opens their first task — hang tight.",
-    connectHint: "Bringing your own Claude? Connect it in Settings so the team can actually run.",
+    connectHint: "Connect Claude in Settings now so the team can actually run.",
     connectCta: "Open Settings",
+    timeoutTitle: "Your team is ready, but Claude is not connected.",
+    timeoutBody: "Nothing has appeared on the board yet. Connect Claude to start the work, or retry the hire flow.",
+    timeoutRetry: "Retry hire",
     /**
      * First-run auto-deliverable (#301): the moment a fresh workspace lands on the board, Scout quietly
      * takes a real, no-spend first pass — an SEO audit of the workspace's own site — so the owner has
