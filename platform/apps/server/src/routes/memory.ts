@@ -76,12 +76,14 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!(await requireMemoryCapability(id, wid, "read", reply))) return;
-    const q = req.query as { type?: string; entity?: string; file?: string; includeStale?: string };
-    if (q.file) return listMemoriesForFile(wid, q.file);
+    const q = req.query as { type?: string; entity?: string; file?: string; includeStale?: string; limit?: string };
+    const limit = typeof q.limit === "string" ? Number(q.limit) : undefined;
+    if (q.file) return listMemoriesForFile(wid, q.file, { limit });
     return listMemories(wid, {
       type: q.type,
       entity: q.entity,
       includeStale: q.includeStale === "true",
+      limit,
     });
   });
 

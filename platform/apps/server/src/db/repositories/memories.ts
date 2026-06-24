@@ -137,9 +137,16 @@ export async function getMemory(
  * Query nodes by optional type and/or entity, newest first. Superseded (stale) nodes are
  * **excluded by default** (issue #16) — pass `includeStale` to surface version history.
  */
+export const MAX_MEMORY_LIST_LIMIT = 1000;
+
+export function clampMemoryListLimit(limit?: number, fallback = MAX_MEMORY_LIST_LIMIT): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return fallback;
+  return Math.min(Math.floor(limit), MAX_MEMORY_LIST_LIMIT);
+}
+
 export async function listMemories(
   workspaceId: string,
-  filter: { type?: string; entity?: string; includeStale?: boolean } = {},
+  filter: { type?: string; entity?: string; includeStale?: boolean; limit?: number } = {},
 ): Promise<MemoryNode[]> {
   const conds: SQL[] = [eq(memories.workspaceId, workspaceId)];
   if (filter.type) conds.push(eq(memories.type, filter.type));
@@ -149,7 +156,8 @@ export async function listMemories(
     .select(NODE_COLS)
     .from(memories)
     .where(and(...conds))
-    .orderBy(desc(memories.createdAt)) as Promise<MemoryNode[]>;
+    .orderBy(desc(memories.createdAt))
+    .limit(clampMemoryListLimit(filter.limit)) as Promise<MemoryNode[]>;
 }
 
 /** Insert a typed edge, or merge into the existing identical one. Idempotent. */
@@ -390,13 +398,15 @@ export async function listFilesForMemory(memoryId: string): Promise<MemoryFile[]
 export async function listMemoriesForFile(
   workspaceId: string,
   path: string,
+  opts: { limit?: number } = {},
 ): Promise<MemoryNode[]> {
   return db
     .select(NODE_COLS)
     .from(memoryFiles)
     .innerJoin(memories, eq(memories.id, memoryFiles.memoryId))
     .where(and(eq(memoryFiles.workspaceId, workspaceId), eq(memoryFiles.path, path)))
-    .orderBy(desc(memories.createdAt)) as Promise<MemoryNode[]>;
+    .orderBy(desc(memories.createdAt))
+    .limit(clampMemoryListLimit(opts.limit)) as Promise<MemoryNode[]>;
 }
 
 // --- #16 relevant-context retrieval ---------------------------------------------------------
