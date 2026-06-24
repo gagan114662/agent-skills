@@ -190,7 +190,13 @@ export interface WebhookIngestResult {
  * (rather than importing `PlanBillingService`) so the #125 layer depends on #98, never the reverse.
  */
 export interface PlanActivator {
-  activate(workspaceId: string, planKey: string, providerEventId: string): Promise<unknown>;
+  activate(
+    workspaceId: string,
+    planKey: string,
+    providerEventId: string,
+    metadata?: Record<string, string>,
+    amountCents?: number,
+  ): Promise<unknown>;
 }
 
 /**
@@ -462,7 +468,13 @@ export class BillingManager {
       // the revenue row is already the source of truth, and dedupe above makes this exactly-once.
       if (parsed.metadata.kind === "plan_checkout" && parsed.metadata.planKey && this.planActivator) {
         try {
-          await this.planActivator.activate(workspaceId, parsed.metadata.planKey, parsed.id);
+          await this.planActivator.activate(
+            workspaceId,
+            parsed.metadata.planKey,
+            parsed.id,
+            parsed.metadata,
+            parsed.amountCents,
+          );
         } catch (err) {
           this.logger?.warn({ workspaceId, err }, "billing: plan activation failed");
         }

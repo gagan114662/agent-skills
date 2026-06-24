@@ -6,6 +6,7 @@ import type {
   PaymentLinkDto,
   PlanDto,
   PlansResponseDto,
+  PricingExperimentReportDto,
   RevenueSummaryDto,
 } from "@reload/shared";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
@@ -24,6 +25,7 @@ import {
   type ActivePlan,
   type PlanBillingService,
   type PlanListing,
+  type PricingExperimentReport,
 } from "../billing/plan-service.js";
 import type { Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
@@ -139,6 +141,12 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (err instanceof BillingProviderError) {
       return reply.code(502).send({ error: "billing provider error", detail: err.message });
     }
+    if (err instanceof Error && err.message.includes("assigned pricing experiment")) {
+      return reply.code(409).send({ error: err.message });
+    }
+    if (err instanceof Error && err.message.includes("pricing experiment")) {
+      return reply.code(400).send({ error: err.message });
+    }
     throw err;
   }
 
@@ -173,7 +181,12 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     return {
       plans: l.plans.map(toPlanDto),
       current: l.current ? toActivePlanDto(l.current) : null,
+      pricingExperiment: l.pricingExperiment ?? null,
     };
+  }
+
+  function toPricingReportDto(r: PricingExperimentReport): PricingExperimentReportDto {
+    return { ...r, variants: r.variants.map((v) => ({ ...v })) };
   }
 
   // Mint a payment link for the session's deployed app (inbound money).
@@ -232,8 +245,59 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const listing = await planService.listPlans(wid);
+    const query = req.query as { visitorKey?: unknown };
+    const visitorKey = typeof query.visitorKey === "string" && query.visitorKey ? query.visitorKey : id.memberId;
+    const listing = await planService.listPlans(wid, { subjectKey: visitorKey });
     return reply.send(toListingDto(listing));
+  });
+
+  app.post("/workspaces/:wid/billing/pricing-experiments", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const body = (req.body ?? {}) as {
+      name?: unknown;
+      controlVariantKey?: unknown;
+      minSampleSize?: unknown;
+      variants?: unknown;
+    };
+    if (!Array.isArray(body.variants)) return reply.code(400).send({ error: "variants required" });
+    try {
+      const experiment = await planService.createPricingExperiment({
+        workspaceId: wid,
+        name: typeof body.name === "string" ? body.name : "Pricing experiment",
+        controlVariantKey: typeof body.controlVariantKey === "string" ? body.controlVariantKey : undefined,
+        minSampleSize:
+          typeof body.minSampleSize === "number" && Number.isFinite(body.minSampleSize)
+            ? Math.trunc(body.minSampleSize)
+            : undefined,
+        variants: body.variants as Array<{
+          key: string;
+          planKey: string;
+          label?: string;
+          weightBps?: number;
+        }>,
+      });
+      return reply.code(201).send(experiment);
+    } catch (err) {
+      return mapError(err, reply);
+    }
+  });
+
+  app.get("/workspaces/:wid/billing/pricing-experiments/:eid/report", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, eid } = req.params as { wid: string; eid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    try {
+      return reply.send(toPricingReportDto(await planService.pricingExperimentReport(wid, eid)));
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not found")) {
+        return reply.code(404).send({ error: "pricing experiment not found" });
+      }
+      return mapError(err, reply);
+    }
   });
 
   // #481 go-live: the configured backend + declared mode so the UI shows the REAL state ("Live" vs "Test
@@ -255,7 +319,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const body = (req.body ?? {}) as { planKey?: unknown; returnUrl?: unknown };
+    const body = (req.body ?? {}) as { planKey?: unknown; returnUrl?: unknown; pricingAssignmentId?: unknown };
     const planKey = typeof body.planKey === "string" ? body.planKey : "";
     if (!planKey) return reply.code(400).send({ error: "planKey required" });
     // Optional post-payment redirect back into the app. Only http/https is honoured (no javascript:/data: etc).
@@ -266,8 +330,19 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
         planKey,
         createdByMemberId: id.memberId,
         ...(returnUrl ? { returnUrl } : {}),
+        pricingAssignmentId:
+          typeof body.pricingAssignmentId === "string" && body.pricingAssignmentId
+            ? body.pricingAssignmentId
+            : undefined,
       });
-      const dto: CheckoutResponseDto = { url: out.url, planKey: out.planKey };
+      const dto: CheckoutResponseDto = {
+        url: out.url,
+        planKey: out.planKey,
+        pricingAssignmentId:
+          typeof body.pricingAssignmentId === "string" && body.pricingAssignmentId
+            ? body.pricingAssignmentId
+            : null,
+      };
       return reply.code(201).send(dto);
     } catch (err) {
       return mapError(err, reply);

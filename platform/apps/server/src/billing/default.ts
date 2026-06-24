@@ -3,7 +3,7 @@ import { BillingSecretsResolver } from "../runtime/secrets-resolver.js";
 import { channelPoster } from "../runtime/default.js";
 import { dbBillingStore } from "../db/repositories/billing.js";
 import { dbDeploymentStore } from "../db/repositories/deployments.js";
-import { dbPlanPriceStore, dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { dbPlanPriceStore, dbPricingExperimentStore, dbWorkspacePlanStore } from "../db/repositories/plans.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { createBillingProvider } from "./factory.js";
 import { BillingManager, type DeploymentLookup, type DemandSignalIngestor } from "./manager.js";
@@ -41,6 +41,7 @@ export function createDefaultBilling(
     provider,
     prices: dbPlanPriceStore,
     plans: dbWorkspacePlanStore,
+    pricingExperiments: dbPricingExperimentStore,
     secrets,
     logger,
   });

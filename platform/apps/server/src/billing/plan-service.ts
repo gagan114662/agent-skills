@@ -37,6 +37,84 @@ export interface ActivePlan {
   activatedAt: Date;
 }
 
+export type PricingExperimentStatus = "active" | "paused" | "completed";
+export type PricingSignificance = "insufficient_sample" | "directional" | "significant";
+
+export interface PricingExperimentVariant {
+  key: string;
+  planKey: PlanKey;
+  label: string;
+  weightBps: number;
+}
+
+export interface PricingExperiment {
+  id: string;
+  workspaceId: string;
+  name: string;
+  status: PricingExperimentStatus;
+  controlVariantKey: string;
+  minSampleSize: number;
+  variants: PricingExperimentVariant[];
+  createdAt: Date;
+}
+
+export interface PricingAssignment {
+  id: string;
+  workspaceId: string;
+  experimentId: string;
+  subjectKey: string;
+  variantKey: string;
+  planKey: PlanKey;
+  checkoutStartedAt: Date | null;
+  convertedAt: Date | null;
+  revenueEventId: string | null;
+  revenueCents: number;
+  createdAt: Date;
+}
+
+export interface PricingExperimentSelection {
+  experimentId: string;
+  assignmentId: string;
+  variantKey: string;
+  planKey: PlanKey;
+}
+
+export interface PricingVariantReport {
+  variantKey: string;
+  planKey: PlanKey;
+  assignments: number;
+  checkouts: number;
+  conversions: number;
+  revenueCents: number;
+  conversionRate: number;
+  revenuePerVisitorCents: number;
+  liftVsControlBps: number | null;
+  significance: PricingSignificance;
+}
+
+export interface PricingExperimentReport {
+  experimentId: string;
+  workspaceId: string;
+  name: string;
+  status: PricingExperimentStatus;
+  controlVariantKey: string;
+  minSampleSize: number;
+  variants: PricingVariantReport[];
+}
+
+export interface CreatePricingExperimentInput {
+  workspaceId: string;
+  name: string;
+  controlVariantKey?: string;
+  minSampleSize?: number;
+  variants: Array<{
+    key: string;
+    planKey: string;
+    label?: string;
+    weightBps?: number;
+  }>;
+}
+
 /** A persisted product/price for a plan (the idempotent registry row). */
 export interface PlanPriceRow {
   workspaceId: string;
@@ -68,6 +146,35 @@ export interface WorkspacePlanStore {
   }): Promise<ActivePlan>;
 }
 
+export interface PricingExperimentStore {
+  create(input: {
+    workspaceId: string;
+    name: string;
+    controlVariantKey: string;
+    minSampleSize: number;
+    variants: PricingExperimentVariant[];
+  }): Promise<PricingExperiment>;
+  active(workspaceId: string): Promise<PricingExperiment | undefined>;
+  get(workspaceId: string, experimentId: string): Promise<PricingExperiment | undefined>;
+  assignment(experimentId: string, subjectKey: string): Promise<PricingAssignment | undefined>;
+  assign(input: {
+    workspaceId: string;
+    experimentId: string;
+    subjectKey: string;
+    variant: PricingExperimentVariant;
+  }): Promise<PricingAssignment>;
+  getAssignment(workspaceId: string, assignmentId: string): Promise<PricingAssignment | undefined>;
+  markCheckout(workspaceId: string, assignmentId: string): Promise<void>;
+  markConversion(input: {
+    workspaceId: string;
+    experimentId: string;
+    assignmentId: string;
+    providerEventId: string;
+    revenueCents: number;
+  }): Promise<void>;
+  assignments(workspaceId: string, experimentId: string): Promise<PricingAssignment[]>;
+}
+
 export interface PlanCheckoutRequest {
   workspaceId: string;
   planKey: string;
@@ -81,6 +188,8 @@ export interface PlanCheckoutRequest {
    * stored; the landing-recovery source is the follow-up.
    */
   trackingRef?: string | null;
+  /** Sticky A/B pricing assignment id from listPlans; checkout rejects mismatches to honor shown price. */
+  pricingAssignmentId?: string | null;
 }
 
 export interface PlanCheckoutResult {
@@ -92,6 +201,7 @@ export interface PlanCheckoutResult {
 export interface PlanListing {
   plans: readonly Plan[];
   current: ActivePlan | null;
+  pricingExperiment?: PricingExperimentSelection | null;
 }
 
 export interface BootstrapResult {
@@ -114,6 +224,7 @@ export interface PlanBillingServiceDeps {
   provider: BillingProvider;
   prices: PlanPriceStore;
   plans: WorkspacePlanStore;
+  pricingExperiments?: PricingExperimentStore;
   secrets: SecretsResolver;
   loadConfig?: (workspaceId: string) => ResolvedConfig;
   logger?: SessionLogger;
@@ -123,6 +234,7 @@ export class PlanBillingService implements PlanActivator {
   private readonly provider: BillingProvider;
   private readonly prices: PlanPriceStore;
   private readonly store: WorkspacePlanStore;
+  private readonly pricingExperiments?: PricingExperimentStore;
   private readonly secrets: SecretsResolver;
   private readonly load: (workspaceId: string) => ResolvedConfig;
   private readonly logger?: SessionLogger;
@@ -131,15 +243,17 @@ export class PlanBillingService implements PlanActivator {
     this.provider = deps.provider;
     this.prices = deps.prices;
     this.store = deps.plans;
+    this.pricingExperiments = deps.pricingExperiments;
     this.secrets = deps.secrets;
     this.load = deps.loadConfig ?? ((workspaceId) => loadConfig(workspaceId));
     this.logger = deps.logger;
   }
 
   /** The `/pricing` payload: the static catalog + the workspace's currently active plan (or null). */
-  async listPlans(workspaceId: string): Promise<PlanListing> {
+  async listPlans(workspaceId: string, opts: { subjectKey?: string | null } = {}): Promise<PlanListing> {
     const current = await this.store.getActive(workspaceId);
-    return { plans: PLANS, current: current ?? null };
+    const pricingExperiment = await this.assignPricingExperiment(workspaceId, opts.subjectKey ?? null);
+    return { plans: PLANS, current: current ?? null, pricingExperiment };
   }
 
   /**
@@ -151,6 +265,7 @@ export class PlanBillingService implements PlanActivator {
   async createCheckout(req: PlanCheckoutRequest): Promise<PlanCheckoutResult> {
     const plan = getPlan(req.planKey);
     if (!plan) throw new UnknownPlanError(req.planKey);
+    const pricingAssignment = await this.validatePricingAssignment(req.workspaceId, plan.key, req.pricingAssignmentId);
     this.gate(req.workspaceId);
     const secrets = await this.secrets.resolve(req.workspaceId);
     const redact = makeRedactor(secrets);
@@ -167,11 +282,19 @@ export class PlanBillingService implements PlanActivator {
           planKey: plan.key,
           // Round-tripped on the webhook so the merged ingest path knows to activate the plan.
           kind: "plan_checkout",
+          ...(pricingAssignment
+            ? {
+                pricingExperimentId: pricingAssignment.experimentId,
+                pricingAssignmentId: pricingAssignment.id,
+                pricingVariantKey: pricingAssignment.variantKey,
+              }
+            : {}),
           ...(trackingRef ? { trackingRef } : {}),
         },
         ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}),
         secrets,
       });
+      if (pricingAssignment) await this.pricingExperiments?.markCheckout(req.workspaceId, pricingAssignment.id);
       return { url: link.url, planKey: plan.key, priceId };
     } catch (err) {
       if (err instanceof UnknownPlanError) throw err;
@@ -188,18 +311,54 @@ export class PlanBillingService implements PlanActivator {
     workspaceId: string,
     planKey: string,
     providerEventId: string,
+    metadata: Record<string, string> = {},
+    amountCents = 0,
   ): Promise<ActivePlan | undefined> {
     const plan = getPlan(planKey);
     if (!plan) {
       this.logger?.warn({ workspaceId, planKey }, "billing: ignoring activation for unknown plan");
       return undefined;
     }
-    return this.store.activate({
+    const active = await this.store.activate({
       workspaceId,
       planKey: plan.key,
       caps: planCaps(plan),
       providerEventId,
     });
+    if (metadata.pricingExperimentId && metadata.pricingAssignmentId && this.pricingExperiments) {
+      await this.pricingExperiments.markConversion({
+        workspaceId,
+        experimentId: metadata.pricingExperimentId,
+        assignmentId: metadata.pricingAssignmentId,
+        providerEventId,
+        revenueCents: amountCents,
+      });
+    }
+    return active;
+  }
+
+  async createPricingExperiment(input: CreatePricingExperimentInput): Promise<PricingExperiment> {
+    if (!this.pricingExperiments) throw new Error("pricing experiments unavailable");
+    const variants = normalizeVariants(input.variants);
+    const controlVariantKey = input.controlVariantKey ?? variants[0]!.key;
+    if (!variants.some((v) => v.key === controlVariantKey)) {
+      throw new Error("control variant must exist");
+    }
+    return this.pricingExperiments.create({
+      workspaceId: input.workspaceId,
+      name: input.name.trim() || "Pricing experiment",
+      controlVariantKey,
+      minSampleSize: Math.max(1, Math.trunc(input.minSampleSize ?? 30)),
+      variants,
+    });
+  }
+
+  async pricingExperimentReport(workspaceId: string, experimentId: string): Promise<PricingExperimentReport> {
+    if (!this.pricingExperiments) throw new Error("pricing experiments unavailable");
+    const experiment = await this.pricingExperiments.get(workspaceId, experimentId);
+    if (!experiment) throw new Error("pricing experiment not found");
+    const rows = await this.pricingExperiments.assignments(workspaceId, experimentId);
+    return buildPricingReport(experiment, rows);
   }
 
   /**
@@ -266,4 +425,139 @@ export class PlanBillingService implements PlanActivator {
   private slug(workspaceId: string, planKey: PlanKey): string {
     return `plan-${planKey}-${workspaceId}`.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
   }
+
+  private async assignPricingExperiment(
+    workspaceId: string,
+    subjectKey: string | null,
+  ): Promise<PricingExperimentSelection | null> {
+    if (!this.pricingExperiments || !subjectKey) return null;
+    const experiment = await this.pricingExperiments.active(workspaceId);
+    if (!experiment) return null;
+    const existing = await this.pricingExperiments.assignment(experiment.id, subjectKey);
+    const assignment =
+      existing ??
+      (await this.pricingExperiments.assign({
+        workspaceId,
+        experimentId: experiment.id,
+        subjectKey,
+        variant: chooseVariant(experiment.variants, subjectKey),
+      }));
+    return {
+      experimentId: assignment.experimentId,
+      assignmentId: assignment.id,
+      variantKey: assignment.variantKey,
+      planKey: assignment.planKey,
+    };
+  }
+
+  private async validatePricingAssignment(
+    workspaceId: string,
+    planKey: PlanKey,
+    assignmentId?: string | null,
+  ): Promise<PricingAssignment | null> {
+    if (!assignmentId) return null;
+    const assignment = await this.pricingExperiments?.getAssignment(workspaceId, assignmentId);
+    if (!assignment) throw new Error("assigned pricing experiment not found");
+    if (assignment.planKey !== planKey) {
+      throw new Error("assigned pricing experiment plan mismatch");
+    }
+    return assignment;
+  }
+}
+
+function normalizeVariants(input: CreatePricingExperimentInput["variants"]): PricingExperimentVariant[] {
+  if (input.length < 2) throw new Error("pricing experiment requires at least two variants");
+  const variants = input.map((v) => {
+    const plan = getPlan(v.planKey);
+    if (!plan) throw new UnknownPlanError(v.planKey);
+    return {
+      key: cleanKey(v.key),
+      planKey: plan.key,
+      label: (v.label ?? plan.name).slice(0, 120),
+      weightBps: Math.max(1, Math.trunc(v.weightBps ?? Math.floor(10_000 / input.length))),
+    };
+  });
+  const seen = new Set<string>();
+  for (const variant of variants) {
+    if (seen.has(variant.key)) throw new Error("variant keys must be unique");
+    seen.add(variant.key);
+  }
+  return variants;
+}
+
+function cleanKey(key: string): string {
+  const clean = key.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!clean) throw new Error("variant key required");
+  return clean.slice(0, 80);
+}
+
+function chooseVariant(variants: PricingExperimentVariant[], subjectKey: string): PricingExperimentVariant {
+  const total = variants.reduce((sum, v) => sum + v.weightBps, 0);
+  const bucket = stableBucket(subjectKey, total);
+  let cursor = 0;
+  for (const variant of variants) {
+    cursor += variant.weightBps;
+    if (bucket < cursor) return variant;
+  }
+  return variants[variants.length - 1]!;
+}
+
+function stableBucket(value: string, modulo: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % Math.max(1, modulo);
+}
+
+function buildPricingReport(
+  experiment: PricingExperiment,
+  assignments: PricingAssignment[],
+): PricingExperimentReport {
+  const controlRows = assignments.filter((a) => a.variantKey === experiment.controlVariantKey);
+  const controlRate = rate(controlRows.filter((a) => a.convertedAt).length, controlRows.length);
+  const variants = experiment.variants.map((variant) => {
+    const rows = assignments.filter((a) => a.variantKey === variant.key);
+    const conversions = rows.filter((a) => a.convertedAt).length;
+    const conversionRate = rate(conversions, rows.length);
+    const revenueCents = rows.reduce((sum, a) => sum + a.revenueCents, 0);
+    return {
+      variantKey: variant.key,
+      planKey: variant.planKey,
+      assignments: rows.length,
+      checkouts: rows.filter((a) => a.checkoutStartedAt).length,
+      conversions,
+      revenueCents,
+      conversionRate,
+      revenuePerVisitorCents: rows.length ? Math.round(revenueCents / rows.length) : 0,
+      liftVsControlBps: variant.key === experiment.controlVariantKey ? null : Math.round((conversionRate - controlRate) * 10_000),
+      significance: significance(rows.length, controlRows.length, conversionRate, controlRate, experiment.minSampleSize),
+    };
+  });
+  return {
+    experimentId: experiment.id,
+    workspaceId: experiment.workspaceId,
+    name: experiment.name,
+    status: experiment.status,
+    controlVariantKey: experiment.controlVariantKey,
+    minSampleSize: experiment.minSampleSize,
+    variants,
+  };
+}
+
+function rate(num: number, denom: number): number {
+  return denom > 0 ? num / denom : 0;
+}
+
+function significance(
+  sample: number,
+  controlSample: number,
+  rateValue: number,
+  controlRate: number,
+  minSampleSize: number,
+): PricingSignificance {
+  if (sample < minSampleSize) return "insufficient_sample";
+  if (controlSample < minSampleSize) return "directional";
+  return Math.abs(rateValue - controlRate) >= 0.1 ? "significant" : "directional";
 }

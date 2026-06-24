@@ -11,7 +11,11 @@ import { BillingManager } from "../../src/billing/manager.js";
 import { NoneBillingProvider } from "../../src/billing/none-provider.js";
 import { PlanBillingService } from "../../src/billing/plan-service.js";
 import { dbBillingStore } from "../../src/db/repositories/billing.js";
-import { dbPlanPriceStore, dbWorkspacePlanStore } from "../../src/db/repositories/plans.js";
+import {
+  dbPlanPriceStore,
+  dbPricingExperimentStore,
+  dbWorkspacePlanStore,
+} from "../../src/db/repositories/plans.js";
 import { signWebhookPayload } from "../../src/billing/webhook.js";
 import { channelPoster } from "../../src/runtime/default.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
@@ -52,6 +56,7 @@ async function startApp(
     provider,
     prices: dbPlanPriceStore,
     plans: dbWorkspacePlanStore,
+    pricingExperiments: dbPricingExperimentStore,
     secrets,
     loadConfig,
     logger: silentLogger,
@@ -92,7 +97,11 @@ async function seed(app: FastifyInstance): Promise<World> {
 }
 
 /** A Stripe-shaped checkout.session.completed event carrying the plan-checkout metadata. */
-function planPaymentEvent(workspaceId: string, planKey: string): string {
+function planPaymentEvent(
+  workspaceId: string,
+  planKey: string,
+  pricing?: { experimentId: string; assignmentId: string; variantKey: string },
+): string {
   return JSON.stringify({
     id: `evt_${newId()}`,
     type: "checkout.session.completed",
@@ -102,7 +111,18 @@ function planPaymentEvent(workspaceId: string, planKey: string): string {
         currency: "usd",
         status: "complete",
         payment_status: "paid",
-        metadata: { workspaceId, planKey, kind: "plan_checkout" },
+        metadata: {
+          workspaceId,
+          planKey,
+          kind: "plan_checkout",
+          ...(pricing
+            ? {
+                pricingExperimentId: pricing.experimentId,
+                pricingAssignmentId: pricing.assignmentId,
+                pricingVariantKey: pricing.variantKey,
+              }
+            : {}),
+        },
       },
     },
   });
@@ -111,6 +131,96 @@ function planPaymentEvent(workspaceId: string, planKey: string): string {
 const BILLING_CFG: BillingConfig = { provider: "none", currency: "usd" };
 
 describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network none provider)", () => {
+  it("runs a sticky pricing experiment cohort through checkout, webhook conversion, and impact report", async () => {
+    const app = await startApp({ billing: BILLING_CFG });
+    const w = await seed(app);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/billing/pricing-experiments`,
+      cookies: { rid: w.cookie },
+      payload: {
+        name: "Starter vs Pro",
+        controlVariantKey: "starter",
+        minSampleSize: 1,
+        variants: [
+          { key: "starter", planKey: "starter", label: "Starter", weightBps: 5000 },
+          { key: "pro", planKey: "pro", label: "Pro", weightBps: 5000 },
+        ],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const experimentId = created.json().id;
+
+    const first = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/billing/plans?visitorKey=buyer-42`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    const second = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/billing/plans?visitorKey=buyer-42`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(first.pricingExperiment).toMatchObject({ experimentId });
+    expect(second.pricingExperiment.assignmentId).toBe(first.pricingExperiment.assignmentId);
+    expect(second.pricingExperiment.variantKey).toBe(first.pricingExperiment.variantKey);
+
+    const assignedPlan = first.pricingExperiment.planKey;
+    const blocked = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/billing/checkout`,
+      cookies: { rid: w.cookie },
+      payload: {
+        planKey: assignedPlan === "pro" ? "starter" : "pro",
+        pricingAssignmentId: first.pricingExperiment.assignmentId,
+      },
+    });
+    expect(blocked.statusCode).toBe(409);
+
+    const checkout = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/billing/checkout`,
+      cookies: { rid: w.cookie },
+      payload: { planKey: assignedPlan, pricingAssignmentId: first.pricingExperiment.assignmentId },
+    });
+    expect(checkout.statusCode).toBe(201);
+
+    const raw = planPaymentEvent(w.workspaceId, assignedPlan, {
+      experimentId,
+      assignmentId: first.pricingExperiment.assignmentId,
+      variantKey: first.pricingExperiment.variantKey,
+    });
+    const sig = signWebhookPayload(raw, WHSEC, Math.floor(Date.now() / 1000));
+    const hook = await app.inject({
+      method: "POST",
+      url: `/billing/webhook/${w.workspaceId}`,
+      headers: { "content-type": "application/json", "stripe-signature": sig },
+      payload: raw,
+    });
+    expect(hook.statusCode).toBe(200);
+
+    const report = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/billing/pricing-experiments/${experimentId}/report`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    const variant = report.variants.find((v: { variantKey: string }) => v.variantKey === first.pricingExperiment.variantKey);
+    expect(variant).toMatchObject({
+      assignments: 1,
+      checkouts: 1,
+      conversions: 1,
+      revenueCents: getPlan(assignedPlan)!.priceCents,
+      significance: "directional",
+    });
+  });
+
   it("renders the catalog, then plan-click → checkout → signed webhook → plan active → caps updated", async () => {
     const app = await startApp({ billing: BILLING_CFG });
     const w = await seed(app);

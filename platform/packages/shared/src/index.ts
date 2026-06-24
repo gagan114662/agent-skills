@@ -346,16 +346,49 @@ export interface ActivePlanDto {
   activatedAt: string;
 }
 
+/** Sticky pricing experiment assignment for this viewer (#608). */
+export interface PricingExperimentAssignmentDto {
+  experimentId: string;
+  assignmentId: string;
+  variantKey: string;
+  planKey: string;
+}
+
+export interface PricingExperimentVariantReportDto {
+  variantKey: string;
+  planKey: string;
+  assignments: number;
+  checkouts: number;
+  conversions: number;
+  revenueCents: number;
+  conversionRate: number;
+  revenuePerVisitorCents: number;
+  liftVsControlBps: number | null;
+  significance: string;
+}
+
+export interface PricingExperimentReportDto {
+  experimentId: string;
+  workspaceId: string;
+  name: string;
+  status: string;
+  controlVariantKey: string;
+  minSampleSize: number;
+  variants: PricingExperimentVariantReportDto[];
+}
+
 /** `GET /workspaces/:wid/billing/plans` payload (#125): the catalog + the active plan. */
 export interface PlansResponseDto {
   plans: PlanDto[];
   current: ActivePlanDto | null;
+  pricingExperiment?: PricingExperimentAssignmentDto | null;
 }
 
 /** `POST /workspaces/:wid/billing/checkout` success payload (#125): the hosted checkout URL. */
 export interface CheckoutResponseDto {
   url: string;
   planKey: string;
+  pricingAssignmentId?: string | null;
 }
 
 /**
