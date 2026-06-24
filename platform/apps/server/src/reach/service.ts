@@ -16,6 +16,7 @@ import { REACH_TUNING_DEFAULTS, tuneNextBatch, type ReachTuningConfig, type Tuni
 import type { ReachChannelAdapter } from "./channel.js";
 import type {
   ProspectSourceKind,
+  RawProspect,
   ReachChannel,
   ReachMessage,
   ReachReceiptKind,
@@ -68,9 +69,31 @@ export interface ActiveEnrollment {
   signalKind: string | null;
 }
 
+export interface ImportedProspectInput {
+  fullName: string;
+  title?: string | null;
+  company: string;
+  companyDomain?: string | null;
+  email?: string | null;
+  linkedinUrl?: string | null;
+  industry?: string | null;
+  companySize?: string | null;
+  signalKind?: RawProspect["signals"][number]["kind"] | null;
+  signalSummary?: string | null;
+  observedAtMs?: number | null;
+}
+
+export interface ImportProspectsResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+}
+
 export interface ReachContactStore {
   /** Every contact_key we've already enrolled (the dedupe set — never re-touch last week's list). */
   contactedKeys(workspaceId: string): Promise<Set<string>>;
+  importProspects(workspaceId: string, prospects: ImportedProspectInput[], now: Date): Promise<ImportProspectsResult>;
+  importedProspects(workspaceId: string, limit: number, excludeKeys: ReadonlySet<string>): Promise<RawProspect[]>;
   /** Create or advance a cadence enrolment. */
   upsertEnrollment(input: EnrollmentUpsert): Promise<void>;
   /** Mark a contact replied / opted_out (stops the cadence). */
@@ -217,6 +240,10 @@ export interface ReachReplyThread {
 
 export class ReachService {
   constructor(private readonly deps: ReachDeps) {}
+
+  async importProspects(workspaceId: string, prospects: ImportedProspectInput[]): Promise<ImportProspectsResult> {
+    return this.deps.contacts.importProspects(workspaceId, prospects, this.now());
+  }
 
   private now(): Date {
     return this.deps.now ? this.deps.now() : new Date();

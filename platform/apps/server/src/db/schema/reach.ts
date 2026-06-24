@@ -49,6 +49,15 @@ export const reachContacts = pgTable(
     score: integer("score").notNull().default(0),
     /** The signal kind the first opener was built around, or null. */
     signalKind: text("signal_kind"),
+    fullName: text("full_name"),
+    title: text("title"),
+    company: text("company"),
+    companyDomain: text("company_domain"),
+    email: text("email"),
+    linkedinUrl: text("linkedin_url"),
+    industry: text("industry"),
+    companySize: text("company_size"),
+    signals: jsonb("signals").$type<unknown[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -58,7 +67,7 @@ export const reachContacts = pgTable(
     channelCk: check("reach_contacts_channel_ck", sql`${t.channel} IN ('email','linkedin')`),
     statusCk: check(
       "reach_contacts_status_ck",
-      sql`${t.status} IN ('active','completed','replied','opted_out')`,
+      sql`${t.status} IN ('imported','active','completed','replied','opted_out')`,
     ),
   }),
 );

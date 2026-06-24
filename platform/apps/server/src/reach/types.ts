@@ -25,8 +25,8 @@ export function isReachChannel(value: string): value is ReachChannel {
   return (REACH_CHANNELS as readonly string[]).includes(value);
 }
 
-/** The pluggable prospect-data providers behind the {@link ProspectSource} seam. `mock` is the free default. */
-export const PROSPECT_SOURCE_KINDS = ["mock", "clay", "lusha", "vibe"] as const;
+/** The pluggable prospect-data providers behind the {@link ProspectSource} seam. `imported` is the default. */
+export const PROSPECT_SOURCE_KINDS = ["imported", "mock", "clay", "lusha", "vibe"] as const;
 export type ProspectSourceKind = (typeof PROSPECT_SOURCE_KINDS)[number];
 export function isProspectSourceKind(value: string): value is ProspectSourceKind {
   return (PROSPECT_SOURCE_KINDS as readonly string[]).includes(value);
@@ -79,7 +79,7 @@ export function isReachReceiptKind(value: string): value is ReachReceiptKind {
 }
 
 /** The lifecycle of a prospect's cadence enrolment. */
-export const REACH_ENROLLMENT_STATUSES = ["active", "completed", "replied", "opted_out"] as const;
+export const REACH_ENROLLMENT_STATUSES = ["imported", "active", "completed", "replied", "opted_out"] as const;
 export type ReachEnrollmentStatus = (typeof REACH_ENROLLMENT_STATUSES)[number];
 
 /** The outcome of one cron batch run. */

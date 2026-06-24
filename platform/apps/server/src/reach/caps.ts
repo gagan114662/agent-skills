@@ -2,9 +2,9 @@ import type { ReachConfig } from "../config/schema.js";
 import { isProspectSourceKind, type ProspectSourceKind } from "./types.js";
 
 /**
- * Resolved Reach policy (#280). Fills the hard defaults the config partial omits. Default OFF + `mock`
- * source + `dryrun` sender, so an un-configured workspace spends nothing (free source) and sends nothing
- * (recorded-only). `perDomainDailyCap` is the deliverability bound that makes the autonomous email send
+ * Resolved Reach policy (#280). Fills the hard defaults the config partial omits. Default OFF + `imported`
+ * source + `dryrun` sender, so an un-configured workspace spends nothing and never fabricates prospects.
+ * `perDomainDailyCap` is the deliverability bound that makes the autonomous email send
  * safe (premortem #200 §4); `batchSize` caps how many prospects one cron run processes. The footer fields
  * supply the CAN-SPAM/GDPR footer enforced in code on every email.
  */
@@ -29,7 +29,7 @@ export interface ReachCaps {
 
 export const REACH_DEFAULTS: ReachCaps = {
   enabled: false,
-  prospectSource: "mock",
+  prospectSource: "imported",
   sendProvider: "dryrun",
   liveSendEnabled: false,
   perDomainDailyCap: 50,

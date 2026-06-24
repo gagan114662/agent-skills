@@ -1383,7 +1383,7 @@ export const outreachSchema = z.object({
 export const reachSchema = z.object({
   /** Master flag for the proactive outbound posture — default OFF. */
   enabled: z.boolean().optional(),
-  /** Prospect data provider: `mock` (free, default) | `clay` | `lusha` | `vibe` (paid → money-gated search). */
+  /** Prospect data provider: `imported` (default, self-serve) | `mock` | `clay` | `lusha` | `vibe`. */
   prospectSource: z.string().optional(),
   /** Email send provider kind (`dryrun` default — recorded-only, no network egress). */
   sendProvider: z.string().optional(),

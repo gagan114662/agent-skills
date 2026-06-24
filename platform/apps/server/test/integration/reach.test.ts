@@ -14,6 +14,7 @@ import {
 } from "../../src/db/repositories/reach.js";
 import { dbSuppressionStore } from "../../src/db/repositories/acquisition.js";
 import { createMockProspectSource } from "../../src/reach/sources/mock.js";
+import { createImportedProspectSource } from "../../src/reach/sources/imported.js";
 import { createEmailChannel, type EspSender } from "../../src/reach/channels/email.js";
 import { createLinkedInChannel } from "../../src/reach/channels/linkedin.js";
 import { REACH_DEFAULTS, type ReachCaps } from "../../src/reach/caps.js";
@@ -41,7 +42,7 @@ afterAll(async () => {
   await Promise.allSettled([closeDb(), closeRedis()]);
 });
 
-async function seed(): Promise<{ workspaceId: string; memberId: string }> {
+async function seed(): Promise<{ workspaceId: string; memberId: string; cookie: string }> {
   const slug = `rc-${newId()}`;
   slugs.push(slug);
   const signup = await app.inject({
@@ -51,7 +52,7 @@ async function seed(): Promise<{ workspaceId: string; memberId: string }> {
   });
   const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
   const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
-  return { workspaceId: me.workspaceId, memberId: me.memberId };
+  return { workspaceId: me.workspaceId, memberId: me.memberId, cookie };
 }
 
 function caps(over: Partial<ReachCaps> = {}): ReachCaps {
@@ -191,6 +192,47 @@ describe("Reach outbound loop on Postgres (#280)", () => {
     expect(sent).toHaveLength(2);
     expect(sent.map((s) => s.externalId)).toEqual(["pm-live-1", "pm-live-2"]);
     expect(sent.every((s) => !s.externalId?.startsWith("dryrun-"))).toBe(true);
+  });
+
+  it("imports real prospects through the self-serve route and uses them as the default source (#895)", async () => {
+    const { workspaceId, memberId, cookie } = await seed();
+    const prospects = Array.from({ length: 10 }, (_, i) => ({
+      fullName: `Buyer ${i}`,
+      title: "Founder",
+      company: `ImportedCo ${i}`,
+      companyDomain: `imported${i}.com`,
+      email: `buyer${i}@imported${i}.com`,
+      industry: "saas",
+      companySize: "11-50",
+      signalKind: "funding_round",
+      signalSummary: "raised a seed round",
+      observedAtMs: NOW.getTime(),
+    }));
+
+    const imported = await app.inject({
+      method: "POST",
+      url: "/me/reach/import-prospects",
+      cookies: { rid: cookie },
+      payload: { prospects },
+    });
+    expect(imported.statusCode).toBe(201);
+    expect(imported.json()).toMatchObject({ imported: 10, updated: 0, skipped: 0 });
+
+    const queued = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "imported")));
+    expect(queued).toHaveLength(10);
+
+    const importedSource = createImportedProspectSource(workspaceId, {
+      loadImportedProspects: ({ workspaceId, limit, excludeKeys }) =>
+        dbReachContactStore.importedProspects(workspaceId, limit, excludeKeys),
+    });
+    const svc = service(workspaceId, memberId, { batchSize: 10, prospectSource: "imported" }, importedSource);
+    const run = await svc.runBatch(workspaceId);
+    expect(run.status).toBe("completed");
+    expect(run.prospectsFound).toBe(10);
+    expect(run.messagesSent).toBe(10);
+
+    const enrolled = await db.select().from(reachContacts).where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "active")));
+    expect(enrolled).toHaveLength(10);
   });
 
   it("money-gates a paid prospect source: parks a pending #13 spend, sends nothing", async () => {
