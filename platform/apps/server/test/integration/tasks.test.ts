@@ -6,6 +6,7 @@ import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { createMemory } from "../../src/db/repositories/memories.js";
+import { assignTask, TaskNotFoundError, updateStatus } from "../../src/db/repositories/tasks.js";
 
 let app: FastifyInstance;
 const slugs: string[] = [];
@@ -66,6 +67,12 @@ function createTask(owner: Owner, payload: Record<string, unknown>) {
 }
 
 describe("Tasks: lifecycle, assignment, auto-routing, links (real Postgres)", () => {
+  it("repository writes on missing task ids are typed not-found errors", async () => {
+    const missing = newId();
+    await expect(updateStatus(missing, "todo", newId())).rejects.toBeInstanceOf(TaskNotFoundError);
+    await expect(assignTask(missing, null, newId())).rejects.toBeInstanceOf(TaskNotFoundError);
+  });
+
   it("create → assign agent → agent drives status to done; events record the chain", async () => {
     const owner = await newOwner();
     const agent = await newAgent(owner, "Worker");

@@ -30,6 +30,7 @@ import {
   listRoutingRules,
   deleteRoutingRule,
   pickRouteAssignee,
+  TaskNotFoundError,
   type Task,
   type HandoffLink,
 } from "../db/repositories/tasks.js";
@@ -57,6 +58,11 @@ async function assignAndNotify(
     });
   }
   return updated;
+}
+
+function taskWriteNotFound(err: unknown, reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }) {
+  if (err instanceof TaskNotFoundError) return reply.code(404).send({ error: "task not found" });
+  throw err;
 }
 
 /** Link targets #14 supports today (both workspace-validated). `file` joins when files land. */
@@ -186,7 +192,11 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
           .send({ error: `blocked by ${open} unfinished task${open === 1 ? "" : "s"}` });
       }
     }
-    return updateStatus(tid, b.status, id.memberId);
+    try {
+      return await updateStatus(tid, b.status, id.memberId);
+    } catch (err) {
+      return taskWriteNotFound(err, reply);
+    }
   });
 
   // assign / reassign / unassign / auto-route (records the matching event)
@@ -201,7 +211,11 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     if (b.autoRoute === true) {
       const target = await pickRouteAssignee(task.workspaceId, task.labels);
       if (target === null) return task; // best-effort: no rule matched, leave as-is
-      return assignAndNotify(req, id, task, target);
+      try {
+        return await assignAndNotify(req, id, task, target);
+      } catch (err) {
+        return taskWriteNotFound(err, reply);
+      }
     }
     if (!("assigneeMemberId" in b)) {
       return reply.code(400).send({ error: "provide assigneeMemberId or autoRoute" });
@@ -211,7 +225,11 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: "assignee not found in this workspace" });
       }
     }
-    return assignAndNotify(req, id, task, b.assigneeMemberId ?? null);
+    try {
+      return await assignAndNotify(req, id, task, b.assigneeMemberId ?? null);
+    } catch (err) {
+      return taskWriteNotFound(err, reply);
+    }
   });
 
   // explicit handoff (#515): reassign to another member + a handoff note + optional artifact links.

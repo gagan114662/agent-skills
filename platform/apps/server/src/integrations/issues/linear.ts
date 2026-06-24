@@ -93,11 +93,11 @@ export class LinearIssueProvider implements IssueProvider {
     });
     const node = found.issues.nodes[0];
     if (!node) throw new IssueProviderError("linear", `issue ${ref.key} not found`);
-    const data = await this.gql<{ commentCreate: { comment?: { url?: string } } }>(
+    const data = await this.gql<{ commentCreate?: { comment?: { url?: string } | null } | null }>(
       token,
       COMMENT_MUTATION,
       { issueId: node.id, body },
     );
-    return { url: data.commentCreate.comment?.url ?? "" };
+    return { url: data.commentCreate?.comment?.url ?? "" };
   }
 }

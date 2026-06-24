@@ -170,6 +170,30 @@ describe("LinearIssueProvider (#57)", () => {
     const body = JSON.parse(init.body as string);
     expect(body.variables).toMatchObject({ team: "ENG", number: 123 });
   });
+
+  it("does not crash when Linear returns a null commentCreate payload", async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { issues: { nodes: [{ id: "uuid-1", identifier: "ENG-123" }] } },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { commentCreate: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ) as unknown as typeof fetch;
+
+    const provider = new LinearIssueProvider({ fetch: f });
+    await expect(provider.postComment(parseIssueRef("linear:ENG-123"), "lin_api_key", "hello")).resolves.toEqual({
+      url: "",
+    });
+  });
 });
 
 describe("issue provider registry (#57)", () => {

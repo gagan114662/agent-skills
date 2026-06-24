@@ -31,6 +31,13 @@ export interface Task {
   goalAlignment: GoalAlignment;
 }
 
+export class TaskNotFoundError extends Error {
+  constructor(taskId: string) {
+    super(`task ${taskId} not found`);
+    this.name = "TaskNotFoundError";
+  }
+}
+
 export interface TaskEvent {
   id: string;
   taskId: string;
@@ -175,17 +182,19 @@ export async function updateStatus(
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
+    if (!current) throw new TaskNotFoundError(taskId);
     const [row] = await tx
       .update(tasks)
       .set({ status: toStatus, updatedAt: new Date() })
       .where(eq(tasks.id, taskId))
       .returning(TASK_COLUMNS);
+    if (!row) throw new TaskNotFoundError(taskId);
     await tx.insert(taskEvents).values({
-      workspaceId: current!.workspaceId,
+      workspaceId: current.workspaceId,
       taskId,
       type: "status_changed",
       actorMemberId,
-      fromValue: current!.status,
+      fromValue: current.status,
       toValue: toStatus,
     });
     return withGoalAlignment(row as TaskRow);
@@ -207,17 +216,19 @@ export async function assignTask(
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
-    const prev = current!.assignee;
+    if (!current) throw new TaskNotFoundError(taskId);
+    const prev = current.assignee;
     const [row] = await tx
       .update(tasks)
       .set({ assigneeMemberId: newAssignee, updatedAt: new Date() })
       .where(eq(tasks.id, taskId))
       .returning(TASK_COLUMNS);
+    if (!row) throw new TaskNotFoundError(taskId);
     const task = withGoalAlignment(row as TaskRow);
     if (prev === newAssignee) return task; // no-op: nothing changed, no event
     const type = prev === null ? "assigned" : newAssignee === null ? "unassigned" : "reassigned";
     await tx.insert(taskEvents).values({
-      workspaceId: current!.workspaceId,
+      workspaceId: current.workspaceId,
       taskId,
       type,
       actorMemberId,
