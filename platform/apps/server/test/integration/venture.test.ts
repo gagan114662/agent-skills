@@ -13,6 +13,7 @@ import { RUBRIC_DIMENSIONS, type PersonaScorecard } from "../../src/venture/rubr
 import { createTask } from "../../src/db/repositories/tasks.js";
 import { getUsage, recordSessionCompute } from "../../src/db/repositories/tenant-usage.js";
 import { windowKey } from "../../src/scale/usage.js";
+import { InvalidIdeaStatusTransitionError } from "../../src/db/repositories/venture.js";
 
 function uniform(value: number): PersonaScorecard {
   return Object.fromEntries(RUBRIC_DIMENSIONS.map((d) => [d, value])) as PersonaScorecard;
@@ -94,6 +95,27 @@ async function seed(): Promise<{ cookie: string; workspaceId: string }> {
 const IDEA = { problem: "p", targetUser: "u", insight: "i", wedge: "w", marketPath: "m" };
 
 describe("venture routes + admission gate (integration)", () => {
+  it("#980 enforces venture idea lifecycle transitions at the repository", async () => {
+    const { workspaceId } = await seed();
+    const idea = await ventureRepo.createIdea({ ...IDEA, workspaceId, createdByMemberId: null });
+
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "scoring")).resolves.toBeUndefined();
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "iterating")).resolves.toBeUndefined();
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "scoring")).resolves.toBeUndefined();
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "funded")).resolves.toBeUndefined();
+
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "scoring")).rejects.toBeInstanceOf(
+      InvalidIdeaStatusTransitionError,
+    );
+    expect((await ventureRepo.getIdea(workspaceId, idea.id))?.status).toBe("funded");
+
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "killed")).resolves.toBeUndefined();
+    await expect(ventureRepo.updateIdeaStatus(workspaceId, idea.id, "funded")).rejects.toBeInstanceOf(
+      InvalidIdeaStatusTransitionError,
+    );
+    expect((await ventureRepo.getIdea(workspaceId, idea.id))?.status).toBe("killed");
+  });
+
   it("submits, scores, decides (FUND), and gets a full venture view", async () => {
     const { cookie, workspaceId } = await seed();
     scoreValue = 8; // → 80, FUND
