@@ -46,6 +46,10 @@ const MAX_NAME_LEN = 200;
 const VALID_INTERVALS: readonly PriceInterval[] = ["day", "week", "month", "year"];
 const MAX_RETURN_URL_LEN = 2048;
 
+function isWebhookConfigError(err: WebhookVerificationError): boolean {
+  return err.message.includes("no webhook secret configured");
+}
+
 /**
  * Validate a caller-supplied post-checkout redirect. Only well-formed `http(s)` URLs are honoured — this
  * keeps `javascript:`/`data:` and other schemes out of the hosted-link `after_completion` redirect. Returns
@@ -418,6 +422,10 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
         return reply.code(200).send({ received: true, deduped: result.deduped });
       } catch (err) {
         if (err instanceof WebhookVerificationError) {
+          if (isWebhookConfigError(err)) {
+            req.log.error({ workspaceId: wid, err }, "billing webhook is not configured; asking provider to retry");
+            return reply.code(503).send({ error: "webhook not configured" });
+          }
           return reply.code(400).send({ error: "invalid signature" });
         }
         throw err;
