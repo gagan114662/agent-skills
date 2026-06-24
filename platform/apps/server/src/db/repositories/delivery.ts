@@ -26,6 +26,8 @@ export const dbDeliveryReceiptStore: DeliveryReceiptStore = {
         reversibility: input.reversibility,
         provider: input.provider,
         live: input.live,
+        computeSeconds: input.computeSeconds ?? 0,
+        estimatedCostCents: input.estimatedCostCents ?? 0,
         externalRef: input.externalRef,
         status: input.status,
         detail: input.detail,
@@ -43,6 +45,8 @@ export interface DeliveryReceiptRow {
   reversibility: string;
   provider: string;
   live: boolean;
+  computeSeconds: number;
+  estimatedCostCents: number;
   externalRef: string | null;
   status: string;
   shippedAtMs: number;
@@ -129,6 +133,8 @@ function toReceiptRow(row: typeof deliveryReceipts.$inferSelect): DeliveryReceip
     reversibility: row.reversibility,
     provider: row.provider,
     live: row.live,
+    computeSeconds: row.computeSeconds,
+    estimatedCostCents: row.estimatedCostCents,
     externalRef: row.externalRef,
     status: row.status,
     shippedAtMs: row.shippedAt.getTime(),
@@ -319,18 +325,7 @@ export async function recordDeliverableFeedback(input: {
   if (!row) return null;
   return {
     feedback: toFeedbackRow(row),
-    receipt: {
-      id: receipt.id,
-      approvalRequestId: receipt.approvalRequestId,
-      sessionId: receipt.sessionId,
-      channel: receipt.channel,
-      reversibility: receipt.reversibility,
-      provider: receipt.provider,
-      live: receipt.live,
-      externalRef: receipt.externalRef,
-      status: receipt.status,
-      shippedAtMs: receipt.shippedAt.getTime(),
-    },
+    receipt: toReceiptRow(receipt),
   };
 }
 

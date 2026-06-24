@@ -45,6 +45,8 @@ export const deliveryReceipts = pgTable(
     reversibility: text("reversibility", { enum: DELIVERY_REVERSIBILITIES }).notNull(),
     provider: text("provider").notNull(),
     live: boolean("live").notNull().default(false),
+    computeSeconds: integer("compute_seconds").notNull().default(0),
+    estimatedCostCents: integer("estimated_cost_cents").notNull().default(0),
     /** The production-grounded external reference: a live URL, a post id, or a message id. */
     externalRef: text("external_ref"),
     status: text("status", { enum: DELIVERY_STATUSES }).notNull(),
@@ -63,6 +65,8 @@ export const deliveryReceipts = pgTable(
       sql`${t.reversibility} IN ('reversible','irreversible')`,
     ),
     statusCk: check("delivery_receipts_status_ck", sql`${t.status} IN ('shipped','failed')`),
+    computeSecondsCk: check("delivery_receipts_compute_seconds_ck", sql`${t.computeSeconds} >= 0`),
+    estimatedCostCentsCk: check("delivery_receipts_estimated_cost_cents_ck", sql`${t.estimatedCostCents} >= 0`),
   }),
 );
 

@@ -70,6 +70,10 @@ export interface DeliveryReceiptInput {
   reversibility: DeliveryReversibility;
   provider: string;
   live: boolean;
+  /** Wall-clock compute consumed by the producing session, when the caller can attach it. */
+  computeSeconds?: number;
+  /** Estimated cost for that producing session/deliverable, in cents, when known. */
+  estimatedCostCents?: number;
   externalRef: string | null;
   status: "shipped" | "failed";
   detail: Record<string, unknown>;
@@ -85,6 +89,8 @@ export interface DeliverablePayload {
   channelId?: unknown;
   task?: unknown;
   draft?: unknown;
+  computeSeconds?: unknown;
+  estimatedCostCents?: unknown;
 }
 
 export interface DeliveryShipContext {
@@ -171,6 +177,11 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+function nonnegativeInteger(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number.parseInt(v, 10) : 0;
+  return Number.isInteger(n) && n >= 0 ? n : 0;
+}
+
 /** Build the dispatcher over its IO seams. See the module doc for the fail-closed ship invariant. */
 export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): DeliveryDispatcher {
   return {
@@ -193,6 +204,8 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
         task: str(payload.task) ?? "",
         draft,
       };
+      const computeSeconds = nonnegativeInteger(payload.computeSeconds);
+      const estimatedCostCents = nonnegativeInteger(payload.estimatedCostCents);
       if (deps.verify) {
         const gate = await deps.verify({
           workspaceId: ctx.workspaceId,
@@ -223,6 +236,8 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
           reversibility: decision.reversibility,
           provider: adapter.providerKind,
           live: false,
+          computeSeconds,
+          estimatedCostCents,
           externalRef: null,
           status: "failed",
           detail: { error: err instanceof Error ? err.message : String(err) },
@@ -240,6 +255,8 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
         reversibility: decision.reversibility,
         provider: outcome.provider,
         live: outcome.live,
+        computeSeconds,
+        estimatedCostCents,
         externalRef: outcome.externalRef,
         status: "shipped",
         detail: outcome.detail ?? {},

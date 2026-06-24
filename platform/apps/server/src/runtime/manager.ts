@@ -302,6 +302,8 @@ export interface SessionManagerDeps {
     task: string;
     /** The already-redacted, bounded result tail (the deliverable/draft). */
     result: string;
+    /** Wall-clock compute consumed by the producing session. */
+    computeSeconds: number;
   }): Promise<void>;
   /**
    * Optional deliverable-message sink (#393): called best-effort when a session COMPLETES cleanly with a
@@ -1208,6 +1210,7 @@ export class SessionManager {
         .onSessionRecovered({ workspaceId: session.workspaceId, sessionId: session.id })
         .catch((err: unknown) => log.error({ err }, "session recovery routing failed"));
     }
+    const computeSeconds = Math.max(0, Math.round((Date.now() - runStart) / 1000));
     // #248: surface a clean completion's deliverable as a board artifact so a briefed task NEVER
     // vanishes — its draft lands in the APPROVAL NEEDED queue instead of living only as a channel
     // message + result row. #319: gated on `disposition.done` — the ONE source of truth — so a run that
@@ -1225,6 +1228,7 @@ export class SessionManager {
           agentMemberId: session.agentMemberId,
           task,
           result: deliverable,
+          computeSeconds,
         })
         .catch((err: unknown) => log.error({ err }, "session deliverable surfacing failed"));
     }
@@ -1247,7 +1251,6 @@ export class SessionManager {
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.
     if (this.deps.usage) {
-      const computeSeconds = Math.max(0, (Date.now() - runStart) / 1000);
       await this.deps.usage
         .recordCompute(session.workspaceId, computeSeconds)
         .catch((err: unknown) => log.error({ err }, "usage compute accounting failed"));
