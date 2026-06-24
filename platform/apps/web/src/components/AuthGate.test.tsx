@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "./AuthGate.js";
 import { navigate } from "../routing.js";
@@ -131,6 +131,98 @@ describe("AuthGate routing", () => {
     expect(screen.getByRole("note")).toHaveTextContent(PRICING.trial.generic);
   });
 
+  it("marks all mandatory auth inputs as browser-required with actionable constraints", async () => {
+    act(() => navigate("/signup"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByLabelText(/display name/i)).toHaveAttribute("required");
+    expect(screen.getByLabelText(/display name/i)).toHaveAttribute("aria-required", "true");
+    expect(screen.getByLabelText(/display name/i)).toHaveAttribute("minlength", "2");
+    expect(screen.getByLabelText(/email/i)).toHaveAttribute("required");
+    expect(screen.getByLabelText(/email/i)).toHaveAttribute("aria-required", "true");
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute("required");
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute("aria-required", "true");
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute("minlength", "8");
+    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("required");
+    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("aria-required", "true");
+    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("minlength", "2");
+    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("pattern", "[a-z0-9][a-z0-9-]{1,62}");
+  });
+
+  it("explains email reuse with a sign-in action", async () => {
+    act(() => navigate("/signup"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      {
+        me: unauthorized,
+        signup: vi.fn(async () => {
+          throw new Error("email already in use");
+        }),
+      },
+    );
+
+    await userEvent.type(await screen.findByLabelText(/display name/i), "Ada Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.type(screen.getByLabelText(/password/i), "correct-horse");
+    await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    fireEvent.submit(screen.getByRole("button", { name: /create account/i }).closest("form")!);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("That email already has an account.");
+    expect(within(alert).getByRole("link", { name: /sign in instead/i })).toHaveAttribute("href", "/login");
+  });
+
+  it("explains workspace slug collisions with a suggested alternative", async () => {
+    act(() => navigate("/signup"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      {
+        me: unauthorized,
+        signup: vi.fn(async () => {
+          throw new Error("workspace slug already exists");
+        }),
+      },
+    );
+
+    await userEvent.type(await screen.findByLabelText(/display name/i), "Ada Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.type(screen.getByLabelText(/password/i), "correct-horse");
+    await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That workspace URL is already taken.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Try acme-2.");
+  });
+
+  it("rejects short signup passwords before calling the API", async () => {
+    act(() => navigate("/signup"));
+    const signup = vi.fn(async () => ({ ok: true }) as const);
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized, signup },
+    );
+
+    await userEvent.type(await screen.findByLabelText(/display name/i), "Ada Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.type(screen.getByLabelText(/password/i), "short");
+    await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Password must be at least 8 characters.");
+    expect(signup).not.toHaveBeenCalled();
+  });
+
   it("hands the chosen plan off to the activation/first-run via sessionStorage on signup", async () => {
     act(() => navigate("/signup?plan=agency"));
     let calls = 0;
@@ -147,7 +239,7 @@ describe("AuthGate routing", () => {
 
     await userEvent.type(await screen.findByLabelText(/display name/i), "Ada Lovelace");
     await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
-    await userEvent.type(screen.getByLabelText(/password/i), "hunter2");
+    await userEvent.type(screen.getByLabelText(/password/i), "hunter22");
     await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 

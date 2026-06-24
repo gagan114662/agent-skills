@@ -91,6 +91,8 @@ const DEFAULT_MEMBERS: MemberHit[] = [
 
 export interface FakeBackendOverrides {
   me?: () => Promise<Identity>;
+  login?: StoreDeps["api"]["login"];
+  signup?: StoreDeps["api"]["signup"];
   channels?: Channel[];
   messages?: Message[];
   members?: MemberHit[];
@@ -105,8 +107,8 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
   const members = over.members ?? DEFAULT_MEMBERS;
   const api: StoreDeps["api"] = {
     me: vi.fn(over.me ?? (async () => TEST_IDENTITY)),
-    login: vi.fn(async () => ({ ok: true }) as const),
-    signup: vi.fn(async () => ({ ok: true }) as const),
+    login: vi.fn(over.login ?? (async () => ({ ok: true }) as const)),
+    signup: vi.fn(over.signup ?? (async () => ({ ok: true }) as const)),
     logout: vi.fn(async () => ({ ok: true }) as const),
     listChannels: vi.fn(async () => over.channels ?? DEFAULT_CHANNELS),
     createChannel: vi.fn(async (_w, name) => ({

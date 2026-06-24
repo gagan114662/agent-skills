@@ -16,6 +16,7 @@ import { getWorkspaceBySlug, createWorkspace } from "../db/repositories/workspac
 import { parseEnvOrigins } from "../http/cors.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const MIN_PASSWORD_LENGTH = 2;
 
 /**
  * #418 — Decide the `SameSite`/`Secure` attributes for the `rid` session cookie based on the
@@ -66,6 +67,9 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions =
     };
     if (!b.email || !b.password || !b.displayName || !b.workspaceSlug) {
       return reply.code(400).send({ error: "email, password, displayName, workspaceSlug required" });
+    }
+    if (b.password.length < MIN_PASSWORD_LENGTH) {
+      return reply.code(400).send({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
     if (await findUserByEmail(b.email)) {
       return reply.code(409).send({ error: "email already in use" });
