@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { acquisitionBudgetEnvelopes, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import {
   upsertBudgetEnvelope,
@@ -55,6 +55,40 @@ describe("budget envelope (AC1)", () => {
     // Debit the rest → the envelope flips to exhausted and is no longer "active".
     await dbEnvelopeStore.debitAdsEnvelope(wsId, null, 6_000);
     expect(await dbEnvelopeStore.getActiveAdsEnvelope(wsId, null)).toBeNull();
+  });
+
+  it("atomically reserves concurrent ad spend without exceeding the owner cap", async () => {
+    const periodKey = `race-${newId()}`;
+    await upsertBudgetEnvelope({
+      workspaceId: wsId,
+      ideaId: null,
+      periodKey,
+      capCents: 8_000,
+      status: "active",
+    });
+
+    const results = await Promise.all([
+      dbEnvelopeStore.reserveAdsSpend(wsId, null, 4_000),
+      dbEnvelopeStore.reserveAdsSpend(wsId, null, 4_000),
+      dbEnvelopeStore.reserveAdsSpend(wsId, null, 4_000),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(2);
+    const [row] = await db
+      .select({
+        capCents: acquisitionBudgetEnvelopes.capCents,
+        spentCents: acquisitionBudgetEnvelopes.spentCents,
+      })
+      .from(acquisitionBudgetEnvelopes)
+      .where(
+        and(
+          eq(acquisitionBudgetEnvelopes.workspaceId, wsId),
+          eq(acquisitionBudgetEnvelopes.periodKey, periodKey),
+        ),
+      )
+      .limit(1);
+    expect(row!.spentCents).toBe(8_000);
+    expect(row!.spentCents).toBeLessThanOrEqual(row!.capCents);
   });
 });
 

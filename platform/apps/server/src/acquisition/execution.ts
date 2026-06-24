@@ -78,6 +78,10 @@ export interface EnvelopeStore {
     workspaceId: string,
     ideaId: string | null,
   ): Promise<BudgetEnvelope | null>;
+  /** Atomically reserve ad spend inside the cap; null means no active envelope or insufficient remaining cap. */
+  reserveAdsSpend(workspaceId: string, ideaId: string | null, amountCents: number): Promise<BudgetEnvelope | null>;
+  /** Compensate a previously reserved spend when the provider does not successfully charge. */
+  refundAdsSpend(workspaceId: string, ideaId: string | null, amountCents: number): Promise<void>;
   /** Debit the envelope by a real spend (after a successful provider charge). */
   debitAdsEnvelope(workspaceId: string, ideaId: string | null, amountCents: number): Promise<void>;
 }
@@ -200,15 +204,34 @@ async function dispatchAds(
     );
   }
 
-  const outcome = await deps.providers.ads.spend({
-    workspaceId: ctx.workspaceId,
-    ideaId,
-    campaign,
-    amountCents,
-  });
-  if (outcome.status === "sent" && amountCents > 0) {
-    await deps.envelopes.debitAdsEnvelope(ctx.workspaceId, ideaId, amountCents);
+  const reserved = await deps.envelopes.reserveAdsSpend(ctx.workspaceId, ideaId, amountCents);
+  if (!reserved) {
+    const latest = await deps.envelopes.getActiveAdsEnvelope(ctx.workspaceId, ideaId);
+    const latestRemaining = latest ? Math.max(0, latest.capCents - latest.spentCents) : 0;
+    throw new ActionExecutionError(
+      `ad spend ${amountCents}¢ exceeds envelope remaining ${latestRemaining}¢ — needs owner approval`,
+    );
   }
+
+  let outcome: SendOutcome;
+  try {
+    outcome = await deps.providers.ads.spend({
+      workspaceId: ctx.workspaceId,
+      ideaId,
+      campaign,
+      amountCents,
+    });
+  } catch (err) {
+    await deps.envelopes.refundAdsSpend(ctx.workspaceId, ideaId, amountCents);
+    throw err;
+  }
+  if (outcome.status !== "sent") {
+    await deps.envelopes.refundAdsSpend(ctx.workspaceId, ideaId, amountCents);
+  }
+  const envelopeRemaining =
+    outcome.status === "sent"
+      ? Math.max(0, reserved.capCents - reserved.spentCents)
+      : Math.max(0, reserved.capCents - reserved.spentCents + amountCents);
   return recordAndReturn(deps, {
     workspaceId: ctx.workspaceId,
     ideaId,
@@ -219,7 +242,7 @@ async function dispatchAds(
     externalId: outcome.externalId,
     amountCents,
     recipientCount: 0,
-    detail: { ...outcome.detail, campaign, envelopeRemaining: remaining - amountCents },
+    detail: { ...outcome.detail, campaign, envelopeRemaining },
   });
 }
 

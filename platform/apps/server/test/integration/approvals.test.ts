@@ -237,6 +237,34 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     ).toHaveLength(0);
   });
 
+  it("returns pending approval expiry labels in the tenant timezone", async () => {
+    const owner = await newOwner();
+    const agent = await newAgent(owner, "Poster");
+    const channelId = await channelWithAgent(owner, agent.memberId);
+    await db
+      .update(workspaces)
+      .set({ timezone: "Australia/Sydney" })
+      .where(eq(workspaces.id, owner.workspaceId));
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "chat.post_message", requireApproval: true },
+    });
+
+    const submit = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/actions`,
+      headers: bearer(agent.token),
+      payload: { actionType: "chat.post_message", payload: { channelId, body: "time boxed" }, ttlSeconds: 86_400 },
+    });
+
+    expect(submit.statusCode).toBe(202);
+    expect(submit.json().request.expiresAt).toEqual(expect.any(String));
+    expect(submit.json().request.expiresAtTimezone).toBe("Australia/Sydney");
+    expect(submit.json().request.expiresAtLabel).toContain("Australia/Sydney");
+  });
+
   it("an expired request cannot be rejected (ttlSeconds:0 → 409 expired)", async () => {
     const owner = await newOwner();
     const agent = await newAgent(owner, "Poster");
