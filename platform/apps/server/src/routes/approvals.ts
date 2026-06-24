@@ -283,23 +283,25 @@ export async function approvalRoutes(
 
     // Best-effort: alert every other human member that a decision is needed (never fails the write).
     const reviewers = await listHumanReviewers(wid, id.memberId);
-    for (const recipientMemberId of reviewers) {
-      try {
-        await notify(req.log, {
-          workspaceId: wid,
-          recipientMemberId,
-          type: "approval",
-          actorMemberId: id.memberId,
-          excerpt: `Approval needed: ${summary}`,
-        });
-      } catch (err) {
-        recordAsyncSideEffectFailure("approval_pending_notification");
-        req.log.error(
-          { err, workspaceId: wid, approvalRequestId: request.id, recipientMemberId },
-          "approval pending notification failed after durable request write",
-        );
-      }
-    }
+    await Promise.all(
+      reviewers.map(async (recipientMemberId) => {
+        try {
+          await notify(req.log, {
+            workspaceId: wid,
+            recipientMemberId,
+            type: "approval",
+            actorMemberId: id.memberId,
+            excerpt: `Approval needed: ${summary}`,
+          });
+        } catch (err) {
+          recordAsyncSideEffectFailure("approval_pending_notification");
+          req.log.error(
+            { err, workspaceId: wid, approvalRequestId: request.id, recipientMemberId },
+            "approval pending notification failed after durable request write",
+          );
+        }
+      }),
+    );
     // #170: also DM the owner the Approve/Reject buttons in Slack, if connected (best-effort; the hook
     // is a no-op when no Slack bridge is registered, so the #13 gate is unchanged).
     await fireApprovalPending(req.log, request).catch((err) => {
