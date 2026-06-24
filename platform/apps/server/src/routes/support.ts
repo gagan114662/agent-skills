@@ -1,7 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { verifyWebhookSignature, WebhookVerificationError } from "../billing/webhook.js";
-import { SupportDeskService, SupportNotFoundError } from "../support/service.js";
+import {
+  SupportCsatRequiredError,
+  SupportDeskService,
+  SupportNotFoundError,
+} from "../support/service.js";
 import { kbSlug } from "../support/kb.js";
 import { RECEIPT_KINDS } from "../db/schema/support.js";
 import { recordWebhookSignatureFailure } from "../observability/metrics.js";
@@ -120,6 +124,38 @@ export async function supportRoutes(
       } catch (err) {
         if (err instanceof SupportNotFoundError)
           return reply.code(404).send({ error: err.message });
+        throw err;
+      }
+    });
+
+    /** Customer CSAT after closure/reply. Requires the original widget sourceRef, like public status. */
+    webhookScope.post("/support/widget/:wid/tickets/:tid/csat", async (req, reply) => {
+      const { wid, tid } = req.params as { wid: string; tid: string };
+      let body: Record<string, unknown>;
+      try {
+        body =
+          req.body instanceof Buffer
+            ? (JSON.parse(req.body.toString("utf8")) as Record<string, unknown>)
+            : ((req.body ?? {}) as Record<string, unknown>);
+      } catch {
+        return reply.code(400).send({ error: "invalid JSON body" });
+      }
+      const sourceRef = typeof body.sourceRef === "string" ? body.sourceRef.trim() : "";
+      const score = typeof body.score === "number" ? body.score : Number(body.score);
+      const comment = typeof body.comment === "string" ? body.comment : null;
+      if (!UUID_RE.test(tid)) return reply.code(400).send({ error: "ticket id must be a UUID" });
+      if (!sourceRef) return reply.code(400).send({ error: "sourceRef is required" });
+      if (!Number.isFinite(score) || score < 1 || score > 5) {
+        return reply.code(400).send({ error: "score must be between 1 and 5" });
+      }
+      try {
+        const ticket = await service.submitCsat(wid, tid, sourceRef, { score, comment });
+        return reply.code(200).send({ ticketId: ticket.id, csatScore: ticket.csatScore });
+      } catch (err) {
+        if (err instanceof SupportNotFoundError)
+          return reply.code(404).send({ error: err.message });
+        if (err instanceof SupportCsatRequiredError)
+          return reply.code(400).send({ error: err.message });
         throw err;
       }
     });
@@ -256,6 +292,8 @@ export async function supportRoutes(
       });
     } catch (err) {
       if (err instanceof SupportNotFoundError) return reply.code(404).send({ error: err.message });
+      if (err instanceof SupportCsatRequiredError)
+        return reply.code(409).send({ error: err.message });
       throw err;
     }
   });

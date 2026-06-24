@@ -33,6 +33,9 @@ const TICKET_COLS = {
   draftReply: supportTickets.draftReply,
   replyApprovalRequestId: supportTickets.replyApprovalRequestId,
   triageSessionId: supportTickets.triageSessionId,
+  csatScore: supportTickets.csatScore,
+  csatComment: supportTickets.csatComment,
+  csatSubmittedAt: supportTickets.csatSubmittedAt,
   createdByMemberId: supportTickets.createdByMemberId,
   createdAt: supportTickets.createdAt,
   updatedAt: supportTickets.updatedAt,
@@ -94,7 +97,9 @@ export const dbTicketStore: TicketStore = {
       .where(eq(supportTickets.workspaceId, workspaceId))
       .orderBy(desc(supportTickets.createdAt));
     const all = rows as SupportTicket[];
-    return opts?.needsHuman ? all.filter((t) => t.status !== "replied" && t.status !== "closed") : all;
+    return opts?.needsHuman
+      ? all.filter((t) => t.status !== "replied" && t.status !== "closed")
+      : all;
   },
 
   async update(workspaceId, id, patch) {
@@ -180,7 +185,12 @@ export const dbInsightStore: InsightStore = {
     const rows = await db
       .select(INSIGHT_COLS)
       .from(voiceInsights)
-      .where(and(eq(voiceInsights.workspaceId, workspaceId), eq(voiceInsights.ventureIdeaId, ventureIdeaId)));
+      .where(
+        and(
+          eq(voiceInsights.workspaceId, workspaceId),
+          eq(voiceInsights.ventureIdeaId, ventureIdeaId),
+        ),
+      );
     return rows as VoiceInsight[];
   },
 };

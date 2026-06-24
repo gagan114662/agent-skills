@@ -9,7 +9,13 @@
  * portfolio, and the ONLY outbound path — a reply — is a #13 sensitive-by-default `external.send` that a
  * human approves. An agent never sends a reply autonomously (v1).
  */
-import { classifyFeedback, type ChurnRisk, type Sentiment, type VoiceCategory, type VoiceSourceKind } from "./classify.js";
+import {
+  classifyFeedback,
+  type ChurnRisk,
+  type Sentiment,
+  type VoiceCategory,
+  type VoiceSourceKind,
+} from "./classify.js";
 import { aggregateVoiceMetrics, type VoiceMetrics } from "./metrics.js";
 import { buildVoiceDigest, type VoiceDigest } from "./digest.js";
 import { buildVoiceReply } from "./reply.js";
@@ -34,6 +40,9 @@ export interface SupportTicket {
   draftReply: string | null;
   replyApprovalRequestId: string | null;
   triageSessionId: string | null;
+  csatScore: number | null;
+  csatComment: string | null;
+  csatSubmittedAt: Date | null;
   createdByMemberId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -75,6 +84,9 @@ export interface TicketPatch {
   draftReply?: string | null;
   replyApprovalRequestId?: string | null;
   triageSessionId?: string | null;
+  csatScore?: number | null;
+  csatComment?: string | null;
+  csatSubmittedAt?: Date | null;
   sentiment?: Sentiment;
   churnRisk?: ChurnRisk;
   category?: VoiceCategory;
@@ -105,7 +117,10 @@ export interface CreateInsightInput {
 export interface InsightStore {
   create(input: CreateInsightInput): Promise<{ insight: VoiceInsight; deduped: boolean }>;
   /** List insights, optionally scoped to one idea and/or to those created at/after `createdAfter`. */
-  list(workspaceId: string, opts?: { ventureIdeaId?: string; createdAfter?: Date }): Promise<VoiceInsight[]>;
+  list(
+    workspaceId: string,
+    opts?: { ventureIdeaId?: string; createdAfter?: Date },
+  ): Promise<VoiceInsight[]>;
   listForIdea(workspaceId: string, ventureIdeaId: string): Promise<VoiceInsight[]>;
 }
 
@@ -215,7 +230,10 @@ export class CustomerVoiceService {
     return (this.deps.now ?? (() => new Date()))();
   }
 
-  private async assertVenture(workspaceId: string, ventureIdeaId: string | null | undefined): Promise<string | null> {
+  private async assertVenture(
+    workspaceId: string,
+    ventureIdeaId: string | null | undefined,
+  ): Promise<string | null> {
     if (ventureIdeaId === undefined || ventureIdeaId === null) return null;
     if (!(await this.deps.ventures.exists(workspaceId, ventureIdeaId))) {
       throw new VoiceNotFoundError("venture idea not found in this workspace");
@@ -233,7 +251,9 @@ export class CustomerVoiceService {
    * only when the workspace opted into proactive triage (and the kill switch is off) — let the triage
    * agent DRAFT a reply (never send it). Idempotent on `(workspace, channel, sourceRef)`.
    */
-  async ingestTicket(input: IngestTicketInput): Promise<{ ticket: SupportTicket; insight: VoiceInsight; deduped: boolean }> {
+  async ingestTicket(
+    input: IngestTicketInput,
+  ): Promise<{ ticket: SupportTicket; insight: VoiceInsight; deduped: boolean }> {
     const ventureIdeaId = await this.assertVenture(input.workspaceId, input.ventureIdeaId);
     const classification = classifyFeedback({ sourceKind: "support_ticket", text: input.body });
 
@@ -294,9 +314,15 @@ export class CustomerVoiceService {
   }
 
   /** Ingest a non-ticket feedback signal (checkout abandon / cancellation / NPS) → a classified insight. */
-  async ingestFeedback(input: IngestFeedbackInput): Promise<{ insight: VoiceInsight; deduped: boolean }> {
+  async ingestFeedback(
+    input: IngestFeedbackInput,
+  ): Promise<{ insight: VoiceInsight; deduped: boolean }> {
     const ventureIdeaId = await this.assertVenture(input.workspaceId, input.ventureIdeaId);
-    const classification = classifyFeedback({ sourceKind: input.sourceKind, text: input.text ?? "", npsScore: input.npsScore });
+    const classification = classifyFeedback({
+      sourceKind: input.sourceKind,
+      text: input.text ?? "",
+      npsScore: input.npsScore,
+    });
     return this.deps.insights.create({
       workspaceId: input.workspaceId,
       ventureIdeaId,
@@ -327,10 +353,17 @@ export class CustomerVoiceService {
     // A ticket already awaiting approval has a PENDING #13 request; submitting again would overwrite
     // `replyApprovalRequestId` and orphan that request forever (approvals never expire). Block it — the
     // human must resolve (approve/reject) the outstanding request before another reply is drafted.
-    if (ticket.status === "awaiting_approval" || ticket.status === "replied" || ticket.status === "closed") {
+    if (
+      ticket.status === "awaiting_approval" ||
+      ticket.status === "replied" ||
+      ticket.status === "closed"
+    ) {
       throw new VoiceStateError(`ticket is ${ticket.status} — cannot submit a new reply`);
     }
-    const descriptor = buildVoiceReply({ summary: summarize(replyBody, 120), target: ticket.contact ?? undefined });
+    const descriptor = buildVoiceReply({
+      summary: summarize(replyBody, 120),
+      target: ticket.contact ?? undefined,
+    });
     const req = await this.deps.gate.submit({
       workspaceId,
       requesterMemberId: memberId,
@@ -400,7 +433,11 @@ export class CustomerVoiceService {
   /** The #96 ↔ #114 source: an idea's customer-voice evidence, reduced for the scorecard overlay. */
   async userVoiceEvidence(workspaceId: string, ventureIdeaId: string): Promise<VoiceEvidence[]> {
     const insights = await this.deps.insights.listForIdea(workspaceId, ventureIdeaId);
-    return insights.map((i) => ({ sentiment: i.sentiment, churnRisk: i.churnRisk, npsScore: i.npsScore }));
+    return insights.map((i) => ({
+      sentiment: i.sentiment,
+      churnRisk: i.churnRisk,
+      npsScore: i.npsScore,
+    }));
   }
 }
 
