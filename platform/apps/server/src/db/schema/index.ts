@@ -21,6 +21,7 @@ export * from "./deployments.js";
 export * from "./revenue.js";
 export * from "./attribution.js";
 export * from "./plans.js";
+export * from "./trial-nurture.js";
 export * from "./venture.js";
 export * from "./watchdog.js";
 export * from "./sre.js";

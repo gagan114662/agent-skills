@@ -10,12 +10,14 @@ import { newId } from "../../src/db/id.js";
 import { BillingManager } from "../../src/billing/manager.js";
 import { NoneBillingProvider } from "../../src/billing/none-provider.js";
 import { PlanBillingService } from "../../src/billing/plan-service.js";
+import { TrialNurtureService } from "../../src/billing/trial-nurture.js";
 import { dbBillingStore } from "../../src/db/repositories/billing.js";
 import {
   dbPlanPriceStore,
   dbPricingExperimentStore,
   dbWorkspacePlanStore,
 } from "../../src/db/repositories/plans.js";
+import { dbTrialNurtureStore } from "../../src/db/repositories/trial-nurture.js";
 import { signWebhookPayload } from "../../src/billing/webhook.js";
 import { channelPoster } from "../../src/runtime/default.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
@@ -52,11 +54,13 @@ async function startApp(
     STRIPE_WEBHOOK_SECRET: WHSEC,
   });
   const provider = new NoneBillingProvider();
+  const trialNurture = new TrialNurtureService(dbTrialNurtureStore);
   const planService = new PlanBillingService({
     provider,
     prices: dbPlanPriceStore,
     plans: dbWorkspacePlanStore,
     pricingExperiments: dbPricingExperimentStore,
+    trialNurture,
     secrets,
     loadConfig,
     logger: silentLogger,
@@ -71,7 +75,7 @@ async function startApp(
     loadConfig,
     logger: silentLogger,
   });
-  const app = buildApp({ billingManager, planService, ...(opts.status ? { billingStatus: opts.status } : {}) });
+  const app = buildApp({ billingManager, planService, trialNurture, ...(opts.status ? { billingStatus: opts.status } : {}) });
   apps.push(app);
   await app.listen({ port: 0, host: "127.0.0.1" });
   void (app.server.address() as AddressInfo);
@@ -129,6 +133,7 @@ function planPaymentEvent(
 }
 
 const BILLING_CFG: BillingConfig = { provider: "none", currency: "usd" };
+const INTEGRATION_TIMEOUT_MS = 45_000;
 
 describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network none provider)", () => {
   it("runs a sticky pricing experiment cohort through checkout, webhook conversion, and impact report", async () => {
@@ -219,11 +224,28 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       revenueCents: getPlan(assignedPlan)!.priceCents,
       significance: "directional",
     });
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("renders the catalog, then plan-click → checkout → signed webhook → plan active → caps updated", async () => {
     const app = await startApp({ billing: BILLING_CFG });
     const w = await seed(app);
+
+    const nurture = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/billing/trial-nurture`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(nurture.inProductNudges[0].key).toBe("first-value");
+    expect(nurture.emailDrafts).toHaveLength(2);
+    const firstValue = await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/billing/trial-nurture/signals`,
+      cookies: { rid: w.cookie },
+      payload: { kind: "first_value", detail: { source: "integration" } },
+    });
+    expect(firstValue.statusCode).toBe(200);
 
     // /pricing data: three plans, no active plan yet.
     const listed = (
@@ -282,6 +304,15 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
     expect(revenue.paymentCount).toBe(1);
     expect(revenue.evidenceCount).toBe(1);
 
+    const nurtureSummary = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/billing/trial-nurture/summary`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(nurtureSummary).toMatchObject({ trials: 1, paid: 1, trialToPaidRate: 1 });
+
     // A replayed webhook is idempotent — the plan stays Pro, no second activation.
     const replay = await app.inject({
       method: "POST",
@@ -298,7 +329,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       })
     ).json();
     expect(stillPro.current.planKey).toBe("pro");
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("returns 409 on checkout when the tenant has not enabled billing (opt-in)", async () => {
     const app = await startApp({}); // no billing config
@@ -318,7 +349,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
     });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().plans).toHaveLength(3);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("rejects an unknown plan key with 400", async () => {
     const app = await startApp({ billing: BILLING_CFG });
@@ -330,7 +361,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       payload: { planKey: "enterprise" },
     });
     expect(res.statusCode).toBe(400);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("reports go-live status: test/none by default, live only when stripe runs live (#481)", async () => {
     // Default (no override): the no-network none provider in test mode → never live.
@@ -359,7 +390,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       })
     ).json();
     expect(liveStatus).toEqual({ provider: "stripe", mode: "live", live: true });
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("cannot read another workspace's billing status (IDOR, #481)", async () => {
     const app = await startApp({ billing: BILLING_CFG });
@@ -371,7 +402,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       cookies: { rid: b.cookie }, // B's identity
     });
     expect(res.statusCode).toBe(403);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("cannot read or check out another workspace's plan (IDOR)", async () => {
     const app = await startApp({ billing: BILLING_CFG });
@@ -384,5 +415,5 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
       payload: { planKey: "pro" },
     });
     expect(res.statusCode).toBe(403);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 });

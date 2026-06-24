@@ -30,11 +30,14 @@ import {
 import type { Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
 import type { PriceInterval } from "../billing/provider.js";
+import type { TrialNurtureService, TrialNurtureSignalKind } from "../billing/trial-nurture.js";
 
 export interface BillingRoutesOptions {
   billingManager: BillingManager;
   /** The #125 pricing/plan layer (catalog + workspace-scoped checkout). */
   planService: PlanBillingService;
+  /** #607 free-trial in-product + email nurture and trial-to-paid measurement. */
+  trialNurture: TrialNurtureService;
   /** #481 go-live snapshot (provider + declared mode + whether real money is on), surfaced read-only. */
   status: BillingStatusDto;
 }
@@ -72,7 +75,7 @@ function safeReturnUrl(raw: unknown): string | undefined {
  * action (see `approvals/runtime.ts`); payouts stay manual in the Stripe dashboard.
  */
 export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOptions): Promise<void> {
-  const { billingManager, planService, status } = opts;
+  const { billingManager, planService, trialNurture, status } = opts;
 
   async function authorize(
     req: FastifyRequest,
@@ -310,6 +313,40 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!assertWorkspace(id, wid, reply)) return;
     const dto: BillingStatusDto = { provider: status.provider, mode: status.mode, live: status.live };
     return reply.send(dto);
+  });
+
+  app.get("/workspaces/:wid/billing/trial-nurture", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    return trialNurture.plan(wid, id.memberId);
+  });
+
+  app.post("/workspaces/:wid/billing/trial-nurture/signals", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const body = (req.body ?? {}) as { kind?: unknown; detail?: unknown };
+    const kind = typeof body.kind === "string" ? body.kind : "";
+    if (!["nudge_view", "email_draft", "first_value", "upgrade_click"].includes(kind)) {
+      return reply.code(400).send({ error: "invalid trial nurture signal" });
+    }
+    return trialNurture.signal(
+      wid,
+      id.memberId,
+      kind as Exclude<TrialNurtureSignalKind, "paid">,
+      typeof body.detail === "object" && body.detail ? (body.detail as Record<string, unknown>) : {},
+    );
+  });
+
+  app.get("/workspaces/:wid/billing/trial-nurture/summary", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    return trialNurture.summary(wid);
   });
 
   // Plan click → a real Stripe Checkout / payment link via the #98 provider seam (#125). INBOUND money.

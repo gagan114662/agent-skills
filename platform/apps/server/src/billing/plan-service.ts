@@ -5,6 +5,7 @@ import type { SecretsResolver } from "../runtime/secrets-resolver.js";
 import { makeRedactor } from "../runtime/redact.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import type { BillingProvider } from "./provider.js";
+import type { TrialNurtureService } from "./trial-nurture.js";
 import {
   BillingEgressBlocked,
   BillingProviderError,
@@ -225,6 +226,7 @@ export interface PlanBillingServiceDeps {
   prices: PlanPriceStore;
   plans: WorkspacePlanStore;
   pricingExperiments?: PricingExperimentStore;
+  trialNurture?: TrialNurtureService;
   secrets: SecretsResolver;
   loadConfig?: (workspaceId: string) => ResolvedConfig;
   logger?: SessionLogger;
@@ -235,6 +237,7 @@ export class PlanBillingService implements PlanActivator {
   private readonly prices: PlanPriceStore;
   private readonly store: WorkspacePlanStore;
   private readonly pricingExperiments?: PricingExperimentStore;
+  private readonly trialNurture?: TrialNurtureService;
   private readonly secrets: SecretsResolver;
   private readonly load: (workspaceId: string) => ResolvedConfig;
   private readonly logger?: SessionLogger;
@@ -244,6 +247,7 @@ export class PlanBillingService implements PlanActivator {
     this.prices = deps.prices;
     this.store = deps.plans;
     this.pricingExperiments = deps.pricingExperiments;
+    this.trialNurture = deps.trialNurture;
     this.secrets = deps.secrets;
     this.load = deps.loadConfig ?? ((workspaceId) => loadConfig(workspaceId));
     this.logger = deps.logger;
@@ -334,6 +338,7 @@ export class PlanBillingService implements PlanActivator {
         revenueCents: amountCents,
       });
     }
+    await this.trialNurture?.markPaid(workspaceId, providerEventId, amountCents);
     return active;
   }
 
