@@ -533,7 +533,6 @@ export class SessionManager {
 
     let session: AgentSession;
     try {
-      await this.deps.usage?.recordStart(input.workspaceId);
       session = await this.deps.store.create({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
@@ -551,6 +550,7 @@ export class SessionManager {
         selectionMeta: auto?.decision ?? null,
         region: ticket?.region ?? null,
       });
+      await this.deps.usage?.recordStart(input.workspaceId);
     } catch (err) {
       // The slot was acquired but the session never started — free it so it isn't leaked.
       ticket?.release();
