@@ -264,9 +264,13 @@ describe("delivery dispatcher (#295)", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("a throwing onLiveShip never breaks or fails a real ship (best-effort, swallowed)", async () => {
+  it("a throwing onLiveShip warns and increments a counter without failing the real ship (#946)", async () => {
+    const warnings: Array<{ obj: Record<string, unknown>; msg?: string }> = [];
+    const hookFailures: Array<{ workspaceId: string; externalRef: string; channel: DeliveryChannel }> = [];
     const { deps } = buildDeps({
       onLiveShip: () => Promise.reject(new Error("attribution store down")),
+      logger: { warn: (obj, msg) => warnings.push({ obj, msg }) },
+      metrics: { recordAttributionHookFailure: (input) => hookFailures.push(input) },
     });
     const dispatcher = createDeliveryDispatcher(deps);
     const result = await dispatcher.ship(
@@ -275,6 +279,17 @@ describe("delivery dispatcher (#295)", () => {
     );
     // The ship still succeeds with a real receipt despite the hook throwing.
     expect(result).toMatchObject({ shipped: true, channel: "publish", live: true });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.msg).toBe("delivery attribution hook failed");
+    expect(warnings[0]?.obj).toMatchObject({
+      workspaceId: "ws1",
+      externalRef: "publish-ref",
+      channel: "publish",
+    });
+    expect(warnings[0]?.obj.err).toBeInstanceOf(Error);
+    expect(hookFailures).toEqual([
+      { workspaceId: "ws1", externalRef: "publish-ref", channel: "publish" },
+    ]);
   });
 
   it("records a FAILED receipt and throws when the adapter fails (never a silent success)", async () => {

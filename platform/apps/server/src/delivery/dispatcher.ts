@@ -154,6 +154,17 @@ export interface DeliveryDispatcherDeps {
    * default, attribution flag off) = prod byte-for-byte unchanged.
    */
   onLiveShip?: (e: LiveShipEvent) => Promise<void>;
+  /** Optional observability for best-effort attribution-hook failures (#946). */
+  metrics?: {
+    recordAttributionHookFailure(input: {
+      workspaceId: string;
+      externalRef: string;
+      channel: DeliveryChannel;
+    }): void;
+  };
+  logger?: {
+    warn(obj: Record<string, unknown>, msg?: string): void;
+  };
 }
 
 function str(v: unknown): string | null {
@@ -236,17 +247,31 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
 
       // #386: a REAL live ship is the head of the attribution chain. Best-effort, AFTER the receipt — a
       // dry-run (live:false) or a ship with no externalRef records no exposure, and a throwing hook is
-      // swallowed so attribution can NEVER break or fail a real ship.
+      // observable but swallowed so attribution can NEVER break or fail a real ship.
       if (outcome.live && outcome.externalRef) {
+        const liveShip = {
+          workspaceId: ctx.workspaceId,
+          externalRef: outcome.externalRef,
+          channel: decision.channel,
+          sessionId: input.sessionId,
+        };
         try {
-          await deps.onLiveShip?.({
-            workspaceId: ctx.workspaceId,
-            externalRef: outcome.externalRef,
-            channel: decision.channel,
-            sessionId: input.sessionId,
+          await deps.onLiveShip?.(liveShip);
+        } catch (err) {
+          deps.logger?.warn(
+            {
+              workspaceId: liveShip.workspaceId,
+              externalRef: liveShip.externalRef,
+              channel: liveShip.channel,
+              err,
+            },
+            "delivery attribution hook failed",
+          );
+          deps.metrics?.recordAttributionHookFailure({
+            workspaceId: liveShip.workspaceId,
+            externalRef: liveShip.externalRef,
+            channel: liveShip.channel,
           });
-        } catch {
-          // swallow — attribution is observation, never on the ship's critical path.
         }
       }
 
