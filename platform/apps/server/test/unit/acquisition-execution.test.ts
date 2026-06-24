@@ -29,11 +29,13 @@ function harness(opts: {
   warmup?: { dayIndex: number; sentToday: number };
   footer?: FooterInfo | null;
   providers?: Parameters<typeof createAcquisitionProviders>[1];
+  loadInactiveEnvelope?: boolean;
 }) {
   const receipts: SendReceiptInput[] = [];
   let envelope = opts.envelope ? { ...opts.envelope } : null;
   let reservedCents = 0;
-  const activeEnvelope = () => (envelope?.status === "active" ? { ...envelope } : null);
+  const activeEnvelope = () =>
+    opts.loadInactiveEnvelope || envelope?.status === "active" ? (envelope ? { ...envelope } : null) : null;
   async function reserve(amount: number): Promise<BudgetEnvelope | null> {
     if (!envelope || envelope.status !== "active") return null;
     if (amount > Math.max(0, envelope.capCents - envelope.spentCents)) return null;
@@ -184,6 +186,18 @@ describe("ads: spend inside the owner envelope (AC1)", () => {
     await expect(
       dispatcher.dispatch({ kind: "ad.spend", summary: "x", amountCents: 100 }, ctx),
     ).rejects.toThrow(/envelope/);
+  });
+
+  it("routes the loaded envelope through decideSpendWithinEnvelope", async () => {
+    const { dispatcher } = harness({
+      caps,
+      envelope: { capCents: 10_000, spentCents: 1_000, status: "paused" },
+      loadInactiveEnvelope: true,
+    });
+
+    await expect(
+      dispatcher.dispatch({ kind: "ad.spend", summary: "x", amountCents: 100 }, ctx),
+    ).rejects.toThrow("no active budget envelope (status: paused) — needs owner approval");
   });
 });
 

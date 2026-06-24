@@ -23,6 +23,7 @@
 import { ActionExecutionError } from "../approvals/executor.js";
 import {
   channelForKind,
+  decideSpendWithinEnvelope,
   type AcquisitionChannel,
   type BudgetEnvelope,
 } from "./decide.js";
@@ -194,14 +195,9 @@ async function dispatchAds(
   if (!envelope) {
     throw new ActionExecutionError("no active ad budget envelope — owner must approve a budget first");
   }
-  const remaining = Math.max(0, envelope.capCents - envelope.spentCents);
-  if (envelope.status !== "active") {
-    throw new ActionExecutionError(`ad budget envelope is ${envelope.status}, not active`);
-  }
-  if (amountCents > remaining) {
-    throw new ActionExecutionError(
-      `ad spend ${amountCents}¢ exceeds envelope remaining ${remaining}¢ — needs owner approval`,
-    );
+  const envelopeDecision = decideSpendWithinEnvelope(envelope, amountCents);
+  if (!envelopeDecision.allowed) {
+    throw new ActionExecutionError(`${envelopeDecision.reason} — needs owner approval`);
   }
 
   const reserved = await deps.envelopes.reserveAdsSpend(ctx.workspaceId, ideaId, amountCents);
