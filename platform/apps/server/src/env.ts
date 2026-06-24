@@ -64,6 +64,8 @@ export interface Env {
   scheduler: SchedulerEnv;
   /** Data retention sweeper (#679): old terminal runs/log tails/artifacts. */
   retention: RetentionEnv;
+  /** Human auth session cleanup (#960): expired session hard-delete. */
+  authSessionCleanup: AuthSessionCleanupEnv;
   /** Slack-native digest tick (#170). */
   slack: SlackEnv;
   /** Notifications (#8). */
@@ -132,6 +134,13 @@ export interface RetentionEnv {
   /** How often to sweep old run data. 0 disables the automatic loop. */
   intervalMs: number;
   /** Max terminal sessions to delete per sweep. */
+  batchSize: number;
+}
+
+export interface AuthSessionCleanupEnv {
+  /** How often to delete expired human auth sessions. Default 1h. */
+  intervalMs: number;
+  /** Max expired sessions to delete per sweep. */
   batchSize: number;
 }
 
@@ -521,6 +530,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // Default 0 (off): the retention loop is opt-in so tests/CI can call sweepRetention() deterministically.
       intervalMs: Number(source.RELOAD_RETENTION_INTERVAL_MS ?? 0) || 0,
       batchSize: num(source.RELOAD_RETENTION_BATCH_SIZE, 500),
+    },
+    authSessionCleanup: {
+      intervalMs: Number(source.AUTH_SESSION_CLEANUP_INTERVAL_MS ?? 3_600_000) || 0,
+      batchSize: num(source.AUTH_SESSION_CLEANUP_BATCH_SIZE, 1_000),
     },
     slack: {
       // Default 0 (off): the Slack digest loop is opt-in so tests/CI drive `tickWorkspace()` deterministically.

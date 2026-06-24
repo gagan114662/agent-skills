@@ -54,6 +54,12 @@ startBackgroundLoop("approval_expiry", env.approval.sweepIntervalMs, (intervalMs
   app.approvalExpiryEngine.start(intervalMs),
 );
 
+// #960 auth session cleanup: delete expired human auth sessions on a bounded interval. Unlike audit-bearing
+// approvals, expired login sessions have no retention value, so this hard-deletes in batches.
+startBackgroundLoop("auth_session_cleanup", env.authSessionCleanup.intervalMs, (intervalMs) =>
+  app.authSessionCleanupEngine.start(intervalMs),
+);
+
 // #96 venture loop: start the opt-in scheduled tick (VENTURE_INTERVAL_MS; default 0 = off) that
 // advances active evaluations on infrastructure time. Stopped on server close via buildApp's hook.
 app.ventureEngine.start(env.venture.intervalMs);

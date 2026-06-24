@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { db } from "../index.js";
+import { db, getPool } from "../index.js";
 import { users, agents, members, sessions, agentTokens } from "../schema/index.js";
 
 // --- humans -------------------------------------------------------------
@@ -99,6 +99,26 @@ export async function findValidSession(
 
 export async function deleteSession(tokenHash: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
+}
+
+export async function deleteExpiredSessions(input: { now: Date; limit: number }): Promise<number> {
+  const limit = Math.max(0, Math.trunc(input.limit));
+  if (limit <= 0) return 0;
+  const res = await getPool().query<{ id: string }>(
+    `WITH doomed AS (
+       SELECT id
+         FROM sessions
+        WHERE expires_at <= $1
+        ORDER BY expires_at ASC
+        LIMIT $2
+     )
+     DELETE FROM sessions
+      USING doomed
+      WHERE sessions.id = doomed.id
+      RETURNING sessions.id`,
+    [input.now, limit],
+  );
+  return res.rowCount ?? res.rows.length;
 }
 
 // --- agents -------------------------------------------------------------

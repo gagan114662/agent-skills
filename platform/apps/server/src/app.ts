@@ -11,6 +11,8 @@ import { healthRoutes } from "./routes/health.js";
 import { siteRoutes } from "./routes/site.js";
 import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
+import { createDefaultAuthSessionCleanupEngine } from "./auth/default-session-cleanup.js";
+import type { AuthSessionCleanupEngine } from "./auth/session-cleanup.js";
 import { googleAuthRoutes, type GoogleAuthRoutesOptions } from "./routes/google-auth.js";
 import { sampleRoutes, type SampleRoutesOptions } from "./routes/sample.js";
 import { meRoutes } from "./routes/me.js";
@@ -286,6 +288,8 @@ declare module "fastify" {
     autonomyEngine: AutonomyEngine;
     /** The #951 approval-expiry sweeper; `index.ts` starts its opt-in background timer. */
     approvalExpiryEngine: ApprovalExpiryEngine;
+    /** The #960 expired human-session cleanup loop; `index.ts` starts its background timer. */
+    authSessionCleanupEngine: AuthSessionCleanupEngine;
     /** The #96 venture engine; `index.ts` starts its opt-in background tick (VENTURE_INTERVAL_MS). */
     ventureEngine: VentureEngine;
     /** The #105 fleet watchdog; `index.ts` starts its opt-in supervisor tick (WATCHDOG_INTERVAL_MS). */
@@ -374,6 +378,8 @@ export interface BuildAppOptions {
   autonomyEngine?: AutonomyEngine;
   /** Tests inject an approval-expiry sweeper and drive `tickAll()` deterministically (#951). */
   approvalExpiryEngine?: ApprovalExpiryEngine;
+  /** Tests inject an auth-session cleanup engine and drive `tick()` deterministically (#960). */
+  authSessionCleanupEngine?: AuthSessionCleanupEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
@@ -684,6 +690,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
       maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
   });
+  const authSessionCleanupEngine =
+    opts.authSessionCleanupEngine ?? createDefaultAuthSessionCleanupEngine(app.log);
+  app.addHook("onClose", async () => {
+    authSessionCleanupEngine.stop();
+  });
+  app.decorate("authSessionCleanupEngine", authSessionCleanupEngine);
   // #260 non-technical onboarding: the single Google consent (identity + Search Console + Analytics) →
   // create/attach the workspace, seal the connection, kick Scout to verify the domain + submit the sitemap,
   // land on the board. Default reads Google config from env (off until configured) and builds the real
