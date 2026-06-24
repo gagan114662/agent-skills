@@ -13,6 +13,9 @@ import type {
   OutreachReceiptRecord,
 } from "../../outreach/types.js";
 
+export const OUTREACH_MESSAGES_DEFAULT_LIMIT = 200;
+export const OUTREACH_MESSAGES_MAX_LIMIT = 500;
+
 /**
  * Outreach engine repositories (#225). Implement the {@link MessageStore} / {@link ReceiptStore} seams the
  * service writes + reads through. Tenant-scoped throughout (#3). The receipt insert is idempotent via the
@@ -42,6 +45,11 @@ function toMessage(r: typeof outreachMessages.$inferSelect): OutreachMessageReco
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
+}
+
+export function clampOutreachMessagesLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return OUTREACH_MESSAGES_DEFAULT_LIMIT;
+  return Math.min(OUTREACH_MESSAGES_MAX_LIMIT, Math.floor(limit));
 }
 
 export const dbMessageStore: MessageStore = {
@@ -108,7 +116,7 @@ export const dbMessageStore: MessageStore = {
       .from(outreachMessages)
       .where(and(...conds))
       .orderBy(desc(outreachMessages.createdAt))
-      .limit(opts?.limit ?? 200);
+      .limit(clampOutreachMessagesLimit(opts?.limit));
     return rows.map(toMessage);
   },
 

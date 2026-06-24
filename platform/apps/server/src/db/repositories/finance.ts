@@ -1,8 +1,13 @@
-import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { financeLedgerEntries, financeClosePacks } from "../schema/index.js";
 import type { ClosePack, LedgerEntry, LedgerPosting, UnitEconomics } from "../../finance/ledger.js";
-import type { FinanceStore, LedgerFilter, StoredClosePack } from "../../finance/service.js";
+import type {
+  ClosePackFilter,
+  FinanceStore,
+  LedgerFilter,
+  StoredClosePack,
+} from "../../finance/service.js";
 
 /**
  * Repository-backed finance store implementing the injectable {@link FinanceStore} seam (#194), so the
@@ -52,6 +57,14 @@ function toPack(row: typeof financeClosePacks.$inferSelect): StoredClosePack {
     unitEconomics: row.unitEconomics as UnitEconomics,
     closedAtMs: row.closedAt.getTime(),
   };
+}
+
+export const FINANCE_CLOSE_PACK_DEFAULT_LIMIT = 200;
+export const FINANCE_CLOSE_PACK_MAX_LIMIT = 500;
+
+export function clampFinanceClosePackLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return FINANCE_CLOSE_PACK_DEFAULT_LIMIT;
+  return Math.min(FINANCE_CLOSE_PACK_MAX_LIMIT, Math.floor(limit));
 }
 
 export const dbFinanceStore: FinanceStore = {
@@ -154,12 +167,11 @@ export const dbFinanceStore: FinanceStore = {
     return toPack(row!);
   },
 
-  async listClosePacks(
-    workspaceId: string,
-    filter?: { periodKey?: string; ventureIdeaId?: string | null },
-  ): Promise<StoredClosePack[]> {
+  async listClosePacks(workspaceId: string, filter?: ClosePackFilter): Promise<StoredClosePack[]> {
+    if (filter?.periodKeys && filter.periodKeys.length === 0) return [];
     const conds = [eq(financeClosePacks.workspaceId, workspaceId)];
     if (filter?.periodKey) conds.push(eq(financeClosePacks.periodKey, filter.periodKey));
+    if (filter?.periodKeys) conds.push(inArray(financeClosePacks.periodKey, filter.periodKeys));
     if (filter?.ventureIdeaId === null) conds.push(isNull(financeClosePacks.ventureIdeaId));
     else if (typeof filter?.ventureIdeaId === "string")
       conds.push(eq(financeClosePacks.ventureIdeaId, filter.ventureIdeaId));
@@ -167,7 +179,23 @@ export const dbFinanceStore: FinanceStore = {
       .select()
       .from(financeClosePacks)
       .where(and(...conds))
-      .orderBy(desc(financeClosePacks.periodKey));
+      .orderBy(desc(financeClosePacks.periodKey))
+      .limit(clampFinanceClosePackLimit(filter?.limit));
     return rows.map(toPack);
+  },
+
+  async sumClosePackNet(
+    workspaceId: string,
+    filter?: { ventureIdeaId?: string | null },
+  ): Promise<number> {
+    const conds = [eq(financeClosePacks.workspaceId, workspaceId)];
+    if (filter?.ventureIdeaId === null) conds.push(isNull(financeClosePacks.ventureIdeaId));
+    else if (typeof filter?.ventureIdeaId === "string")
+      conds.push(eq(financeClosePacks.ventureIdeaId, filter.ventureIdeaId));
+    const [row] = await db
+      .select({ total: sql<number>`coalesce(sum(${financeClosePacks.netCents}), 0)::int` })
+      .from(financeClosePacks)
+      .where(and(...conds));
+    return row?.total ?? 0;
   },
 };

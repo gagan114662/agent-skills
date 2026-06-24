@@ -43,6 +43,14 @@ export interface LedgerFilter {
   limit?: number;
 }
 
+/** Filter for a close-pack read. `ventureIdeaId: null` selects workspace-level closed books. */
+export interface ClosePackFilter {
+  periodKey?: string;
+  periodKeys?: string[];
+  ventureIdeaId?: string | null;
+  limit?: number;
+}
+
 /** The durable store seam — the repository implements this; tests inject an in-memory version. */
 export interface FinanceStore {
   /** Idempotent upsert of a posting on `(workspaceId, source, sourceRef)`. Returns the stored entry. */
@@ -52,10 +60,9 @@ export interface FinanceStore {
   /** Idempotent upsert of a close pack on `(workspaceId, ventureIdeaId, periodKey)`. */
   upsertClosePack(pack: ClosePack): Promise<StoredClosePack>;
   /** Workspace-scoped close-pack read, newest period first. */
-  listClosePacks(
-    workspaceId: string,
-    filter?: { periodKey?: string; ventureIdeaId?: string | null },
-  ): Promise<StoredClosePack[]>;
+  listClosePacks(workspaceId: string, filter?: ClosePackFilter): Promise<StoredClosePack[]>;
+  /** Workspace-scoped aggregate over close-pack net values; avoids materializing historical packs. */
+  sumClosePackNet(workspaceId: string, filter?: { ventureIdeaId?: string | null }): Promise<number>;
 }
 
 /** Verified inbound revenue receipts (#98 `revenue_events`). `sinceMs` is an optional incremental cursor. */
@@ -189,7 +196,7 @@ export class FinanceService {
   /** Read the closed books (workspace-scoped). */
   async closePacks(
     workspaceId: string,
-    filter?: { periodKey?: string; ventureIdeaId?: string | null },
+    filter?: ClosePackFilter,
   ): Promise<StoredClosePack[]> {
     return this.deps.store.listClosePacks(workspaceId, filter);
   }
@@ -203,12 +210,19 @@ export class FinanceService {
     const caps = this.deps.caps(workspaceId);
     const currency = this.deps.currency(workspaceId);
     const currentPeriodKey = periodKeyOf(this.now().getTime());
-    const packs = (await this.deps.store.listClosePacks(workspaceId, { ventureIdeaId: null }));
+    const burnPeriodKeys = recentPeriodKeys(addMonths(currentPeriodKey, -1), caps.lookbackMonths);
+    const [cashPositionCents, packs] = await Promise.all([
+      this.deps.store.sumClosePackNet(workspaceId, { ventureIdeaId: null }),
+      this.deps.store.listClosePacks(workspaceId, {
+        ventureIdeaId: null,
+        periodKeys: burnPeriodKeys,
+        limit: burnPeriodKeys.length,
+      }),
+    ]);
     const byPeriod = new Map(packs.map((p) => [p.periodKey, p]));
-    const cashPositionCents = packs.reduce((a, p) => a + p.netCents, 0);
     // Burn basis = the COMPLETED periods (anchor at the previous month) — the partial current month
     // would understate burn and make runway look longer than it is (optimistic, the wrong direction).
-    const periods = recentPeriodKeys(addMonths(currentPeriodKey, -1), caps.lookbackMonths).map((periodKey) => {
+    const periods = burnPeriodKeys.map((periodKey) => {
       const p = byPeriod.get(periodKey);
       return {
         periodKey,

@@ -9,7 +9,11 @@ import { createDefaultDiscoveryService } from "../../src/discovery/default.js";
 import { createDefaultDecisionMakerService } from "../../src/decision-maker/default.js";
 import { createDefaultOutreachService } from "../../src/outreach/default.js";
 import { OutreachService } from "../../src/outreach/service.js";
-import { dbMessageStore, dbReceiptStore } from "../../src/db/repositories/outreach.js";
+import {
+  OUTREACH_MESSAGES_MAX_LIMIT,
+  dbMessageStore,
+  dbReceiptStore,
+} from "../../src/db/repositories/outreach.js";
 import { createRequest, getRequest } from "../../src/db/repositories/approvals.js";
 import { OUTREACH_SEND_ACTION } from "../../src/approvals/policy.js";
 import { buildDefaultRegistry } from "../../src/approvals/runtime.js";
@@ -115,6 +119,40 @@ function outreachWith(connected: ServiceKind[]): {
   });
   return { service, discovery, decisionMaker };
 }
+
+describe("outreach audit route limits (#988)", () => {
+  it("clamps a huge message limit to the configured ceiling", async () => {
+    const { cookie, workspaceId } = await seed();
+    for (let i = 0; i < OUTREACH_MESSAGES_MAX_LIMIT + 5; i += 1) {
+      await dbMessageStore.insert({
+        workspaceId,
+        ideaId: null,
+        prospectKey: "prospect-" + i,
+        accountId: null,
+        buyerBriefId: null,
+        channel: "email",
+        variant: "time_saved",
+        signalKind: null,
+        subject: "Subject " + i,
+        body: "Body " + i,
+        recipientLabel: "Recipient " + i,
+        recipientRef: "recipient-" + i,
+        experimentKey: "exp",
+        status: "blocked",
+        provider: "dryrun",
+      });
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/outreach/messages?limit=10000000`,
+      cookies: { rid: cookie },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(OUTREACH_MESSAGES_MAX_LIMIT);
+  });
+});
 
 describe("outreach engine (#225) — blocked without a connected channel", () => {
   it("queueing with no connected accounts BLOCKS (with what to connect) and records the message", async () => {

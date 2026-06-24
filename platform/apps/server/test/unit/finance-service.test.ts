@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { newId } from "../../src/db/id.js";
-import { FinanceService, type FinanceStore, type StoredClosePack, type LedgerFilter } from "../../src/finance/service.js";
+import {
+  FinanceService,
+  type ClosePackFilter,
+  type FinanceStore,
+  type StoredClosePack,
+  type LedgerFilter,
+} from "../../src/finance/service.js";
 import { FinanceLedgerEngine } from "../../src/finance/engine.js";
 import { FINANCE_DEFAULTS, type FinanceCaps } from "../../src/finance/caps.js";
 import { periodKeyOf, type ClosePack, type LedgerEntry, type LedgerPosting, type RevenueReceipt } from "../../src/finance/ledger.js";
@@ -9,6 +15,7 @@ import { periodKeyOf, type ClosePack, type LedgerEntry, type LedgerPosting, type
 class MemoryFinanceStore implements FinanceStore {
   entries: LedgerEntry[] = [];
   packs: StoredClosePack[] = [];
+  closePackReads: ClosePackFilter[] = [];
 
   async postEntry(posting: LedgerPosting): Promise<LedgerEntry> {
     const key = `${posting.workspaceId}|${posting.source}|${posting.sourceRef}`;
@@ -44,15 +51,22 @@ class MemoryFinanceStore implements FinanceStore {
     return stored;
   }
 
-  async listClosePacks(
-    workspaceId: string,
-    filter?: { periodKey?: string; ventureIdeaId?: string | null },
-  ): Promise<StoredClosePack[]> {
+  async listClosePacks(workspaceId: string, filter?: ClosePackFilter): Promise<StoredClosePack[]> {
+    this.closePackReads.push(filter ?? {});
     let rows = this.packs.filter((p) => p.workspaceId === workspaceId);
     if (filter?.periodKey) rows = rows.filter((p) => p.periodKey === filter.periodKey);
+    if (filter?.periodKeys) rows = rows.filter((p) => filter.periodKeys!.includes(p.periodKey));
     if (filter?.ventureIdeaId === null) rows = rows.filter((p) => p.ventureIdeaId === null);
     else if (typeof filter?.ventureIdeaId === "string") rows = rows.filter((p) => p.ventureIdeaId === filter.ventureIdeaId);
-    return [...rows].sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
+    const sorted = [...rows].sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
+    return filter?.limit ? sorted.slice(0, filter.limit) : sorted;
+  }
+
+  async sumClosePackNet(workspaceId: string, filter?: { ventureIdeaId?: string | null }): Promise<number> {
+    let rows = this.packs.filter((p) => p.workspaceId === workspaceId);
+    if (filter?.ventureIdeaId === null) rows = rows.filter((p) => p.ventureIdeaId === null);
+    else if (typeof filter?.ventureIdeaId === "string") rows = rows.filter((p) => p.ventureIdeaId === filter.ventureIdeaId);
+    return rows.reduce((sum, p) => sum + p.netCents, 0);
   }
 }
 
@@ -136,6 +150,55 @@ describe("FinanceService.close + runway", () => {
     expect(f.cashPositionCents).toBe(-20000); // sum of closed nets
     expect(f.monthlyBurnCents).toBe(10000); // mean over the 2-month lookback (both burning -10000)
     expect(f.health).toBe("breached"); // already below floor 0
+  });
+
+  it("computes runway without loading historical close packs (#988)", async () => {
+    const store = new MemoryFinanceStore();
+    const unitEconomics = { cacCents: null, ltvCents: null, marginBps: null, ltvToCacX100: null };
+    for (let i = 1; i <= 12; i += 1) {
+      const month = String(i).padStart(2, "0");
+      store.packs.push({
+        id: newId(),
+        workspaceId: WS,
+        ventureIdeaId: null,
+        periodKey: `2025-${month}`,
+        currency: "usd",
+        revenueCents: 0,
+        costCents: 100,
+        verifiedRevenueCents: 0,
+        verifiedCostCents: 0,
+        netCents: -100,
+        verifiedShareBps: 0,
+        entryCount: 1,
+        unitEconomics,
+        closedAtMs: 0,
+      });
+    }
+    store.packs.push({
+      id: newId(),
+      workspaceId: WS,
+      ventureIdeaId: null,
+      periodKey: "2026-01",
+      currency: "usd",
+      revenueCents: 0,
+      costCents: 200,
+      verifiedRevenueCents: 0,
+      verifiedCostCents: 0,
+      netCents: -200,
+      verifiedShareBps: 0,
+      entryCount: 1,
+      unitEconomics,
+      closedAtMs: 0,
+    });
+    const svc = makeService({ store, receipts: [], usageCents: 0, caps: { lookbackMonths: 2 } });
+
+    const f = await svc.runway(WS);
+
+    expect(f.cashPositionCents).toBe(-1400);
+    expect(f.monthlyBurnCents).toBe(150);
+    expect(store.closePackReads).toEqual([
+      { ventureIdeaId: null, periodKeys: ["2025-12", "2026-01"], limit: 2 },
+    ]);
   });
 });
 
