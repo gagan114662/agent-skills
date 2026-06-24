@@ -15,3 +15,21 @@ describe("loadEnv — auth session cleanup (#960)", () => {
     expect(env.authSessionCleanup).toEqual({ intervalMs: 300_000, batchSize: 250 });
   });
 });
+
+describe("loadEnv — harness args validation (#994)", () => {
+  it("names AGENT_HARNESS_ARGS when JSON is malformed", () => {
+    expect(() =>
+      loadEnv({ AGENT_HARNESS_ARGS: "[--bad" } as NodeJS.ProcessEnv),
+    ).toThrow(/AGENT_HARNESS_ARGS/);
+  });
+
+  it("requires AGENT_HARNESS_ARGS to be a JSON array of strings", () => {
+    expect(() =>
+      loadEnv({ AGENT_HARNESS_ARGS: `{"arg":"--bad"}` } as NodeJS.ProcessEnv),
+    ).toThrow(/JSON array of strings/);
+    expect(loadEnv({ AGENT_HARNESS_ARGS: `["--model","x"]` } as NodeJS.ProcessEnv).agent.harnessArgs).toEqual([
+      "--model",
+      "x",
+    ]);
+  });
+});

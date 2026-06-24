@@ -4,6 +4,7 @@ import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harne
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
 import type { SandboxGitSource } from "./runtime/sandbox.js";
 import type { BillingMode } from "./billing/mode.js";
+import { ConfigValidationError } from "./config/loader.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml. */
 export interface Env {
@@ -382,6 +383,23 @@ function num(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function parseHarnessArgs(raw: string | undefined, fallback: string[]): string[] {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((arg) => typeof arg !== "string")) {
+      throw new Error("must be a JSON array of strings");
+    }
+    return parsed;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "invalid JSON";
+    throw new ConfigValidationError(
+      "env",
+      `AGENT_HARNESS_ARGS must be a JSON array of strings (${detail})`,
+    );
+  }
+}
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return {
     port: Number(source.PORT ?? 3000),
@@ -419,9 +437,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
         harness,
         harnessCommand: source.AGENT_HARNESS_CMD ?? spec.command,
-        harnessArgs: source.AGENT_HARNESS_ARGS
-          ? JSON.parse(source.AGENT_HARNESS_ARGS)
-          : spec.args,
+        harnessArgs: parseHarnessArgs(source.AGENT_HARNESS_ARGS, spec.args),
         caps: {
           wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
           // #394: 120s idle was reaping THINKING agents mid-reason (a long Opus reasoning pass emits no
