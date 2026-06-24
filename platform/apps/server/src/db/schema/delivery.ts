@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb, index, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, boolean, timestamp, jsonb, index, check, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -23,6 +23,13 @@ import { workspaces } from "./workspaces.js";
 export const DELIVERY_CHANNELS = ["publish", "site_pr", "social", "email"] as const;
 export const DELIVERY_REVERSIBILITIES = ["reversible", "irreversible"] as const;
 export const DELIVERY_STATUSES = ["shipped", "failed"] as const;
+export const DELIVERABLE_FEEDBACK_CATEGORIES = [
+  "helpful",
+  "off_brand",
+  "inaccurate",
+  "unclear",
+  "other",
+] as const;
 
 export const deliveryReceipts = pgTable(
   "delivery_receipts",
@@ -55,5 +62,33 @@ export const deliveryReceipts = pgTable(
       sql`${t.reversibility} IN ('reversible','irreversible')`,
     ),
     statusCk: check("delivery_receipts_status_ck", sql`${t.status} IN ('shipped','failed')`),
+  }),
+);
+
+export const deliverableFeedback = pgTable(
+  "deliverable_feedback",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    deliveryReceiptId: uuid("delivery_receipt_id")
+      .notNull()
+      .references(() => deliveryReceipts.id, { onDelete: "cascade" }),
+    rating: integer("rating").notNull(),
+    category: text("category", { enum: DELIVERABLE_FEEDBACK_CATEGORIES }).notNull().default("other"),
+    comment: text("comment"),
+    alertNotifiedAt: timestamp("alert_notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byWorkspaceCreated: index("deliverable_feedback_workspace_created_idx").on(t.workspaceId, t.createdAt),
+    byReceipt: index("deliverable_feedback_receipt_idx").on(t.deliveryReceiptId),
+    lowRating: index("deliverable_feedback_low_rating_idx").on(t.workspaceId, t.rating, t.createdAt),
+    ratingCk: check("deliverable_feedback_rating_ck", sql`${t.rating} BETWEEN 1 AND 5`),
+    categoryCk: check(
+      "deliverable_feedback_category_ck",
+      sql`${t.category} IN ('helpful','off_brand','inaccurate','unclear','other')`,
+    ),
   }),
 );
