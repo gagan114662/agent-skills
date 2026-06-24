@@ -6,11 +6,9 @@ import { spawnSync } from "node:child_process";
 import { GitWorkspaceService } from "../../src/git/workspace.js";
 import { GitWorktreeReaper, LeaseRegistry } from "../../src/git/reaper.js";
 
-// #575/#394: this suite drives REAL `git` subprocesses + real fs. `npm test` runs all ~580 unit
-// files in parallel (default 5s timeout, no config), so under full-suite CPU contention a test that
-// shells out to git a dozen times can blow the 5s default and flake. Give it generous, explicit
-// headroom so the flakiness is gone without masking a genuine hang (a real wedge still trips at 30s).
-vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+// #575/#394: this suite drives REAL git subprocesses + real fs. It lives in the explicit slow lane
+// (pnpm test:slow), which runs these git-heavy files serially with 120s headroom under CI load.
+vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 /**
  * #70 local worktree isolation — the reaping half. Exercised against a REAL temp git repo (git is on
