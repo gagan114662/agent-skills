@@ -14,6 +14,7 @@
 
 import { loadConfig } from "../config/loader.js";
 import { dbAnalyticsInstallStore } from "../db/repositories/analytics.js";
+import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { resolveAnalyticsFlags, type AnalyticsFlags, type AnalyticsSiteContext } from "./decide.js";
 import { selectAnalyticsProvider, type AnalyticsCredentialResolver } from "./providers.js";
 import { AnalyticsService } from "./service.js";
@@ -33,15 +34,13 @@ async function defaultSiteContextFor(_workspaceId: string): Promise<AnalyticsSit
   return { hosted: true, externalSiteConnected: false };
 }
 
-/**
- * Resolve the vendor read credential for a workspace. The live GA4/Plausible read against the central #267
- * vault is a future ADR; until then no credential resolves (the live providers report nothing).
- */
-const noCredential: AnalyticsCredentialResolver = async () => null;
+/** Resolve vendor read secrets from the per-workspace #192 vault. */
+export const vaultAnalyticsCredentialResolver: AnalyticsCredentialResolver = async (workspaceId, provider) =>
+  resolveServiceSecrets(workspaceId, provider === "ga4" ? "google" : "plausible");
 
 /** Build the production analytics service over the real config, provider, and install store. */
 export function buildAnalyticsService(): AnalyticsService {
-  const provider = selectAnalyticsProvider(loadConfig().analytics.provider ?? "dryrun", noCredential);
+  const provider = selectAnalyticsProvider(loadConfig().analytics.provider ?? "dryrun", vaultAnalyticsCredentialResolver);
   return new AnalyticsService({
     flagsFor: analyticsFlagsFor,
     siteContextFor: defaultSiteContextFor,
