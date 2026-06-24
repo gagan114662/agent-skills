@@ -20,11 +20,14 @@ import {
   presenceHashKey,
   publishPresence,
   publishWorkspacePresence,
+  RealtimeRedisTimeoutError,
+  withRealtimeRedisTimeout,
   workspaceIdFromPresenceKey,
   workspaceIdFromMentionKey,
   workspaceIdFromNotifyKey,
 } from "./bus.js";
 import { resolveCloudWorkspaceCapability } from "../auth/access.js";
+import { recordRedisPubSubTimeout } from "../observability/metrics.js";
 import type { ServerEvent } from "./protocol.js";
 
 const WS_PATH = "/ws";
@@ -90,13 +93,26 @@ export function attachRealtime(app: FastifyInstance): void {
     if (!subscriberReady) {
       subscriberReady = (async () => {
         const sub = getRedis().duplicate();
-        await sub.psubscribe(
+        const subscribe = sub.psubscribe(
           CHANNEL_PATTERN,
           PRESENCE_PATTERN,
           MENTION_PATTERN,
           NOTIFY_PATTERN,
           CLOUD_WS_PATTERN,
         );
+        subscribe.catch(() => undefined);
+        try {
+          await withRealtimeRedisTimeout("psubscribe", subscribe);
+        } catch (err) {
+          sub.disconnect();
+          subscriber = undefined;
+          subscriberReady = undefined;
+          if (err instanceof RealtimeRedisTimeoutError) {
+            recordRedisPubSubTimeout("psubscribe");
+            app.log.error({ err }, "redis pub/sub subscriber init timed out");
+          }
+          throw err;
+        }
         sub.on("pmessage", (_pattern, key, payload) => {
           const channelId = channelIdFromKey(key);
           if (channelId) return forward(byChannel.get(channelId), payload);
@@ -315,7 +331,14 @@ export function attachRealtime(app: FastifyInstance): void {
         socket.destroy();
         return;
       }
-      await ensureSubscriber();
+      try {
+        await ensureSubscriber();
+      } catch (err) {
+        app.log.error({ err }, "ws upgrade rejected: realtime subscriber unavailable");
+        socket.write("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         void onConnection(ws, identity);
       });

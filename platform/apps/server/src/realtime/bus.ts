@@ -1,5 +1,6 @@
 import type { PullRequestDto, ReviewCommentDto, TeamEvent } from "@reload/shared";
 import { getRedis } from "../redis/index.js";
+import { recordRedisPubSubTimeout } from "../observability/metrics.js";
 import type { Message } from "../db/repositories/messages.js";
 import type {
   BillingStatusEvent,
@@ -25,6 +26,47 @@ export const PRESENCE_KEY_PREFIX = "rt:presence:";
 export const MENTION_KEY_PREFIX = "rt:mention:";
 export const NOTIFY_KEY_PREFIX = "rt:notify:";
 export const CLOUD_WS_KEY_PREFIX = "rt:cloudws:";
+export const REALTIME_REDIS_TIMEOUT_MS = 1_000;
+
+export class RealtimeRedisTimeoutError extends Error {
+  constructor(operation: string) {
+    super(`redis pub/sub ${operation} timed out`);
+    this.name = "RealtimeRedisTimeoutError";
+  }
+}
+
+export async function withRealtimeRedisTimeout<T>(
+  operation: string,
+  promise: Promise<T>,
+  timeoutMs = REALTIME_REDIS_TIMEOUT_MS,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new RealtimeRedisTimeoutError(operation)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function publishRealtime(key: string, payload: string, operation: string): Promise<void> {
+  const publish = getRedis().publish(key, payload);
+  publish.catch(() => undefined);
+  try {
+    await withRealtimeRedisTimeout(operation, publish);
+  } catch (err) {
+    if (err instanceof RealtimeRedisTimeoutError) {
+      recordRedisPubSubTimeout(operation);
+      console.warn({ err, key, operation }, "redis pub/sub publish timed out; dropping realtime event");
+      return;
+    }
+    console.warn({ err, key, operation }, "redis pub/sub publish failed; dropping realtime event");
+  }
+}
 
 /** Pattern the gateway subscribes to for all channel-message fan-out. */
 export const CHANNEL_PATTERN = `${CHANNEL_KEY_PREFIX}*`;
@@ -90,7 +132,7 @@ export function cloudWorkspaceIdFromKey(key: string): string | null {
 /** Publish a newly-posted message to its channel's subscribers (called by the REST route). */
 export async function publishMessageEvent(channelId: string, message: Message): Promise<void> {
   const event: ServerEvent = { type: "message", message };
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -100,7 +142,7 @@ export async function publishMessageEvent(channelId: string, message: Message): 
  */
 export async function publishTeamEvent(channelId: string, event: TeamEvent): Promise<void> {
   const serverEvent: ServerEvent = { type: "team_event", event };
-  await getRedis().publish(channelKey(channelId), JSON.stringify(serverEvent));
+  await publishRealtime(channelKey(channelId), JSON.stringify(serverEvent), "publish");
 }
 
 /**
@@ -113,7 +155,7 @@ export async function publishPullRequestEvent(
   pullRequest: PullRequestDto,
 ): Promise<void> {
   const event: ServerEvent = { type: "pull_request", pullRequest };
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -125,7 +167,7 @@ export async function publishRunEvent(
   channelId: string,
   event: RunStatusEvent | RunLogEvent,
 ): Promise<void> {
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -137,7 +179,7 @@ export async function publishDeployEvent(
   channelId: string,
   event: DeployStatusEvent | DeployLogEvent,
 ): Promise<void> {
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -149,7 +191,7 @@ export async function publishBillingEvent(
   channelId: string,
   event: BillingStatusEvent,
 ): Promise<void> {
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /** Publish a new/updated review comment to its channel's subscribers (#51). */
@@ -158,7 +200,7 @@ export async function publishReviewCommentEvent(
   comment: ReviewCommentDto,
 ): Promise<void> {
   const event: ServerEvent = { type: "review_comment", comment };
-  await getRedis().publish(channelKey(channelId), JSON.stringify(event));
+  await publishRealtime(channelKey(channelId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -167,7 +209,7 @@ export async function publishReviewCommentEvent(
  */
 export async function publishMention(workspaceId: string, mention: MentionEvent): Promise<void> {
   const event: ServerEvent = { type: "mention", mention };
-  await getRedis().publish(mentionKey(workspaceId), JSON.stringify(event));
+  await publishRealtime(mentionKey(workspaceId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -179,7 +221,7 @@ export async function publishNotification(
   notification: NotificationEvent,
 ): Promise<void> {
   const event: ServerEvent = { type: "notification", notification };
-  await getRedis().publish(notifyKey(workspaceId), JSON.stringify(event));
+  await publishRealtime(notifyKey(workspaceId), JSON.stringify(event), "publish");
 }
 
 /** Publish a presence change to everyone in the workspace. */
@@ -189,7 +231,7 @@ export async function publishPresence(
   status: PresenceStatus,
 ): Promise<void> {
   const event: ServerEvent = { type: "presence", memberId, status };
-  await getRedis().publish(presenceKey(workspaceId), JSON.stringify(event));
+  await publishRealtime(presenceKey(workspaceId), JSON.stringify(event), "publish");
 }
 
 /** Redis hash holding current presence for a workspace (`memberId` → status). */
@@ -202,7 +244,7 @@ export async function publishWorkspacePresence(
   presence: WorkspacePresenceEvent,
 ): Promise<void> {
   const event: ServerEvent = { type: "workspace_presence", presence };
-  await getRedis().publish(cloudWorkspaceKey(presence.cloudWorkspaceId), JSON.stringify(event));
+  await publishRealtime(cloudWorkspaceKey(presence.cloudWorkspaceId), JSON.stringify(event), "publish");
 }
 
 /**
@@ -214,5 +256,5 @@ export async function publishAccessRevoked(
   memberId: string,
 ): Promise<void> {
   const event = { type: "access_revoked" as const, cloudWorkspaceId, memberId };
-  await getRedis().publish(cloudWorkspaceKey(cloudWorkspaceId), JSON.stringify(event));
+  await publishRealtime(cloudWorkspaceKey(cloudWorkspaceId), JSON.stringify(event), "publish");
 }
