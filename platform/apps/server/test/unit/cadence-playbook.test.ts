@@ -3,6 +3,7 @@ import {
   CADENCE_PLAYBOOK,
   CADENCE_PLAYBOOK_LENGTH,
   nextTaskIndex,
+  selectTaskIndexFromOutcomes,
   taskAt,
 } from "../../src/cadence/playbook.js";
 
@@ -17,6 +18,7 @@ describe("cadence playbook (#416)", () => {
     expect(CADENCE_PLAYBOOK.length).toBe(CADENCE_PLAYBOOK_LENGTH);
     for (const t of CADENCE_PLAYBOOK) {
       expect(t.lead).toMatch(/^[a-z]+$/); // a bare @handle, no leading @
+      expect(t.outcomeKey).toMatch(/^[a-z]+$/);
       expect(t.goal.trim().length).toBeGreaterThan(20);
     }
   });
@@ -61,5 +63,23 @@ describe("cadence playbook (#416)", () => {
       // Belt: it should not literally say "publish the post" / "send the email" / "spend $".
       expect(OUTBOUND.test(t.goal) && !/\b(no|nothing|never|without|don't|do not)\b/i.test(t.goal)).toBe(false);
     }
+  });
+
+  it("selectTaskIndexFromOutcomes doubles down on the strongest verified winner", () => {
+    const selected = selectTaskIndexFromOutcomes(0, [
+      { outcomeKey: "seo", result: "worked", conversions: 1 },
+      { outcomeKey: "social", result: "worked", conversions: 3 },
+    ]);
+    expect(CADENCE_PLAYBOOK[selected]?.lead).toBe("echo");
+  });
+
+  it("selectTaskIndexFromOutcomes repairs a failed bucket when nothing worked", () => {
+    const selected = selectTaskIndexFromOutcomes(1, [{ outcomeKey: "seo", result: "failed" }]);
+    expect(CADENCE_PLAYBOOK[selected]?.lead).toBe("scout");
+  });
+
+  it("selectTaskIndexFromOutcomes preserves round-robin when no matching outcome exists", () => {
+    expect(selectTaskIndexFromOutcomes(2, [])).toBe(2);
+    expect(selectTaskIndexFromOutcomes(2, [{ outcomeKey: "unknown", result: "worked" }])).toBe(2);
   });
 });

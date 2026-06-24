@@ -25,6 +25,7 @@ function makeEngine(opts: {
   launch?: (ws: string, task: CadenceTask) => Promise<void>;
   now?: () => Date;
   ownerWorkspaces?: () => string[];
+  outcomes?: CadenceEngineDeps["outcomes"];
 } = {}) {
   const launches: Array<{ ws: string; task: CadenceTask }> = [];
   const launch =
@@ -38,6 +39,7 @@ function makeEngine(opts: {
     launch,
     logger: silentLogger(),
     now: opts.now,
+    outcomes: opts.outcomes,
   });
   return { engine, launches };
 }
@@ -56,6 +58,16 @@ describe("CadenceEngine.tickAll (#416)", () => {
     for (let i = 0; i < CADENCE_PLAYBOOK.length + 1; i++) await engine.tickAll();
     // Visited every task in order, then wrapped back to the first.
     expect(launches.map((l) => l.task)).toEqual([...CADENCE_PLAYBOOK, CADENCE_PLAYBOOK[0]]);
+  });
+
+  it("chooses the next task from recorded outcomes instead of fixed round-robin", async () => {
+    const { engine, launches } = makeEngine({
+      caps: () => enabledCaps({ maxLaunchesPerDay: 5 }),
+      outcomes: async () => [{ outcomeKey: "social", result: "worked", conversions: 2 }],
+    });
+    await engine.tickAll();
+    expect(launches).toHaveLength(1);
+    expect(launches[0]!.task.lead).toBe("echo");
   });
 
   it("SKIPS (no launch) when the cadence is disabled for the workspace", async () => {
