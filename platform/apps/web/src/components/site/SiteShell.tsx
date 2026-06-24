@@ -72,6 +72,9 @@ function SiteFooter(): React.JSX.Element {
       <div className="site__footer-base">
         <PopMark className="site__footer-mark" />
         <p className="site__credit">{SITE.maintainedBy}</p>
+        <a href={SITE.support.href} className="site__support-link">
+          {SITE.support.label}
+        </a>
         <p className="site__signoff">{VOICE.signOff}</p>
       </div>
     </footer>

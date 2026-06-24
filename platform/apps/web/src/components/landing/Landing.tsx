@@ -338,9 +338,15 @@ function FooterCol({
     <nav className="landing__footer-col" aria-label={title}>
       <p className="landing__footer-col-title">{title}</p>
       {links.map((l) => (
-        <Link key={l.href} href={l.href} className="linklike landing__footer-link">
-          {l.label}
-        </Link>
+        l.href.startsWith("mailto:") ? (
+          <a key={l.href} href={l.href} className="linklike landing__footer-link">
+            {l.label}
+          </a>
+        ) : (
+          <Link key={l.href} href={l.href} className="linklike landing__footer-link">
+            {l.label}
+          </Link>
+        )
       ))}
     </nav>
   );

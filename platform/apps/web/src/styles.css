@@ -4794,6 +4794,15 @@ select:focus-visible {
   opacity: 0.85;
   margin: 0.5rem 0 0;
 }
+.site__support-link {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.site__support-link:hover {
+  text-decoration: underline;
+}
 .site__signoff {
   opacity: 0.55;
   font-size: 0.85rem;
