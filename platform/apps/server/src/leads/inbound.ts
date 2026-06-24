@@ -47,6 +47,8 @@ export interface RawLeadInput {
   message?: unknown;
   source?: unknown;
   trackingRef?: unknown;
+  /** Bot-only hidden field from the public form. Humans leave it empty. */
+  companyWebsite?: unknown;
 }
 
 export interface SanitizedLead {

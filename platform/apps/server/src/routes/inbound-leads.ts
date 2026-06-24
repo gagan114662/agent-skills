@@ -12,6 +12,10 @@ import {
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { INBOUND_LEAD_STATUSES, type InboundLeadStatus } from "../db/schema/index.js";
 import { sanitizeLead, toDiscoverySignal } from "../leads/inbound.js";
+import {
+  INBOUND_LEAD_PUBLIC_RATE_LIMIT,
+  publicRateLimitPreHandler,
+} from "../http/rate-limit.js";
 import type { InboundLeadFollowup } from "../leads/default.js";
 import { notify } from "../notifications/service.js";
 import {
@@ -172,6 +176,7 @@ export async function inboundLeadsRoutes(
   opts: InboundLeadsRoutesOptions,
 ): Promise<void> {
   const { discovery, ownerWorkspaceId, warmLeadFollowup } = opts;
+  const inboundLeadRateLimit = publicRateLimitPreHandler(INBOUND_LEAD_PUBLIC_RATE_LIMIT);
 
   app.get("/me/inbound/leads", async (req, reply) => {
     const id = await requireIdentity(req, reply);
@@ -248,8 +253,12 @@ export async function inboundLeadsRoutes(
     return { lead };
   });
 
-  app.post("/inbound/leads", async (req, reply) => {
+  app.post("/inbound/leads", { preHandler: inboundLeadRateLimit }, async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.companyWebsite === "string" && body.companyWebsite.trim().length > 0) {
+      req.log.warn({ source: "honeypot" }, "inbound lead rejected by honeypot");
+      return reply.code(202).send({ received: true, nextStep: INBOUND_LEAD_NEXT_STEP });
+    }
 
     // Resolve the target workspace: the configured owner by default. A `workspaceId` in the body is only
     // honored when it EXACTLY matches the owner — the public form can never aim a lead at another tenant.

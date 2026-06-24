@@ -5,6 +5,7 @@ import { newId } from "./db/id.js";
 import { REDACTION_MASK } from "./runtime/redact.js";
 import { registerObservability } from "./observability/plugin.js";
 import { registerCors } from "./http/cors.js";
+import { registerPublicRateLimits } from "./http/rate-limit.js";
 import { registerMaintenance } from "./maintenance/gate.js";
 import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
@@ -553,6 +554,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     genReqId: () => newId(),
   });
   app.register(cookie);
+  registerPublicRateLimits(app);
   // #108: env-gated CORS so the Vercel-hosted console (https://ipop.ai) can make credentialed calls
   // to this API on a different origin (https://api.ipop.ai). No-op unless RELOAD_WEB_ORIGIN is set.
   registerCors(app);

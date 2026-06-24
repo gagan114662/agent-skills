@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^11.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@node-rs/argon2": "^2.0.2",
     "@reload/shared": "workspace:*",
