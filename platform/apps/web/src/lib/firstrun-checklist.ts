@@ -3,17 +3,20 @@
  * workspace lands with an unset brand kit, no connected accounts, and quiet channels — no guided path from
  * signup to first real output. This derives the four-step path the user follows:
  *
- *   1. set your brand   →  2. connect one account   →  3. run an agent   →  4. see & approve the result
+ *   1. tell the fleet what to market → 2. set your brand → 3. connect one account →
+ *   4. run an agent → 5. see & approve the result
  *
  * Each step's `done` is derived from REAL signals (the brand kit, the connections list, agent activity, an
  * executed approval), never a guess — so the checklist reflects what the user has actually accomplished and
  * disappears for good once every step is real. Display copy lives in brand.ts; this module is logic only.
  */
 
-export type FirstRunStepKey = "brand" | "connect" | "run" | "approve";
+export type FirstRunStepKey = "target" | "brand" | "connect" | "run" | "approve";
 
 /** The real, observed setup state of the workspace. All booleans — the caller resolves them from live data. */
 export interface FirstRunSignals {
+  /** The workspace has a saved marketing target/business context (#950). */
+  targetSet: boolean;
   /** A brand kit has been saved (BrandKitState.connected). */
   brandSet: boolean;
   /** At least one external account is connected (any ConnectionView.connected). */
@@ -33,6 +36,7 @@ export interface FirstRunStep {
 /** The four setup steps in order, each with its derived done-state. Pure + total. */
 export function deriveFirstRunChecklist(s: FirstRunSignals): FirstRunStep[] {
   return [
+    { key: "target", done: s.targetSet },
     { key: "brand", done: s.brandSet },
     { key: "connect", done: s.hasConnection },
     { key: "run", done: s.agentRan },

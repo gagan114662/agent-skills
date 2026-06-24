@@ -6,16 +6,24 @@ import { deriveFirstRunChecklist } from "../lib/firstrun-checklist.js";
 import { CONSOLE } from "../brand.js";
 
 const steps = (over = {}) =>
-  deriveFirstRunChecklist({ brandSet: false, hasConnection: false, agentRan: false, resultApproved: false, ...over });
+  deriveFirstRunChecklist({
+    targetSet: false,
+    brandSet: false,
+    hasConnection: false,
+    agentRan: false,
+    resultApproved: false,
+    ...over,
+  });
 
 describe("FirstRunChecklist (#479)", () => {
-  it("shows all four setup steps with progress", () => {
+  it("shows all five setup steps with progress", () => {
     render(<FirstRunChecklist steps={steps()} collapsed={false} onAction={vi.fn()} onToggleCollapse={vi.fn()} onDismiss={vi.fn()} />);
+    expect(screen.getByText(CONSOLE.firstRunChecklist.steps.target.label)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.firstRunChecklist.steps.brand.label)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.firstRunChecklist.steps.connect.label)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.firstRunChecklist.steps.run.label)).toBeInTheDocument();
     expect(screen.getByText(CONSOLE.firstRunChecklist.steps.approve.label)).toBeInTheDocument();
-    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(0, 4))).toBeInTheDocument();
+    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(0, 5))).toBeInTheDocument();
   });
 
   it("a done step shows a check and drops its CTA", () => {
@@ -23,7 +31,7 @@ describe("FirstRunChecklist (#479)", () => {
     // The brand step is done → no "Set brand" button; the others still have CTAs.
     expect(screen.queryByRole("button", { name: CONSOLE.firstRunChecklist.steps.brand.cta })).toBeNull();
     expect(screen.getByRole("button", { name: CONSOLE.firstRunChecklist.steps.connect.cta })).toBeInTheDocument();
-    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(1, 4))).toBeInTheDocument();
+    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(1, 5))).toBeInTheDocument();
   });
 
   it("routes an outstanding step's CTA to onAction with its key", async () => {
@@ -48,7 +56,7 @@ describe("FirstRunChecklist (#479)", () => {
     expect(screen.queryByRole("list")).toBeNull();
     // …but the one-line header (title · progress · Hide) still renders.
     expect(screen.getByText(CONSOLE.firstRunChecklist.title)).toBeInTheDocument();
-    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(0, 4))).toBeInTheDocument();
+    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(0, 5))).toBeInTheDocument();
     expect(screen.getByRole("button", { name: CONSOLE.firstRunChecklist.dismiss })).toBeInTheDocument();
   });
 

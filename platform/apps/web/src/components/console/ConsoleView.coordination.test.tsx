@@ -251,7 +251,7 @@ describe("ConsoleView coordination approvals inbox (#472)", () => {
     // …and clicking it opens the first-class Approvals inbox (the #13 governance surface with status tabs
     // and per-request Approve/Reject) — not a scroll to a plain agent message.
     expect(await screen.findByRole("region", { name: /approvals/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /pending/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /pending/i })).toBeInTheDocument();
   });
 });
 
@@ -314,8 +314,52 @@ describe("ConsoleView coordination header tracks the open channel (#473)", () =>
 // Brand kit section. The pure target map + scroll helper are unit-tested in lib/settings-sections.test.ts;
 // this pins the live wiring — the click really opens settings AND scrolls the brand section into view.
 describe("ConsoleView 'Set brand' deep-links to the Brand kit section (#506)", () => {
+  it("owner + flag ON ⇒ 'Set target' opens settings scrolled to the marketing target section", async () => {
+    // Target/brand unset + no connected account ⇒ the first-run checklist shows its CTAs (incl. "Set target").
+    vi.spyOn(api, "getMarketingTarget").mockResolvedValue({
+      configured: false,
+      target: { name: null, url: null, positioning: null, audience: null, competitors: null },
+      preamble: null,
+    });
+    vi.spyOn(api, "getBrandKit").mockResolvedValue({ connected: false, brandKit: null });
+    vi.spyOn(api, "getConnections").mockResolvedValue({ connections: [], canManageInternal: false });
+
+    // jsdom doesn't implement scrollIntoView; capture it to prove WHICH section the overlay scrolls to.
+    const scrollSpy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      await mount();
+
+      const setTarget = await screen.findByRole("button", {
+        name: CONSOLE.firstRunChecklist.steps.target.cta,
+      });
+      await act(async () => {
+        fireEvent.click(setTarget);
+      });
+
+      // The settings overlay opens…
+      const dialog = await screen.findByRole("dialog", { name: CONSOLE.shell.settingsTitle });
+      const targetSection = dialog.querySelector('[data-settings-section="marketing"]');
+      const brandSection = dialog.querySelector('[data-settings-section="brand"]');
+      expect(targetSection, "the marketing target section is in the overlay").not.toBeNull();
+
+      // …scrolled to the marketing target section, NOT the Brand kit section.
+      expect(scrollSpy).toHaveBeenCalled();
+      expect(scrollSpy.mock.contexts).toContain(targetSection);
+      expect(scrollSpy.mock.contexts).not.toContain(brandSection);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("owner + flag ON ⇒ 'Set brand' opens settings scrolled to the Brand kit section, not the top", async () => {
-    // Brand kit unset + no connected account ⇒ the first-run checklist shows its CTAs (incl. "Set brand").
+    // Target/brand unset + no connected account ⇒ the first-run checklist shows its CTAs (incl. "Set brand").
+    vi.spyOn(api, "getMarketingTarget").mockResolvedValue({
+      configured: false,
+      target: { name: null, url: null, positioning: null, audience: null, competitors: null },
+      preamble: null,
+    });
     vi.spyOn(api, "getBrandKit").mockResolvedValue({ connected: false, brandKit: null });
     vi.spyOn(api, "getConnections").mockResolvedValue({ connections: [], canManageInternal: false });
 
