@@ -32,6 +32,7 @@ import {
   validateOzLoopsPublish,
   validateConnectAccount,
   validateProvisioningCustomerSpend,
+  validateRecordedApprovalPayload,
   type ActionExecutor,
   type ExecutorContext,
   type ExecutorRegistry,
@@ -53,6 +54,22 @@ import {
   OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
   PROVISIONING_CUSTOMER_SPEND_ACTION,
+  AUTONOMY_COMPLETE_ACTION,
+  DR_RESTORE_ACTION,
+  PORTFOLIO_SUNSET_ACTION,
+  SETUP_EXTERNAL_ACCOUNT_ACTION,
+  VENTURE_BOOTSTRAP_ACTION,
+  VENTURE_DOMAIN_PURCHASE_ACTION,
+  VENTURE_AD_SPEND_ACTION,
+  VENTURE_PAYMENT_METHOD_ACTION,
+  VENTURE_DEPLOY_ACTION,
+  REALWORLD_PUBLISH_ACTION,
+  SOCIAL_PUBLISH_POST_ACTION,
+  EMAIL_LIVE_SEND_ACTION,
+  CAPABILITY_MINT_ACTION,
+  SEARCH_CONSOLE_SUBMIT_ACTION,
+  GARDEN_ENABLE_AGENT_ACTION,
+  ENTERPRISE_BUDGET_BREACH_ACTION,
 } from "./policy.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
@@ -580,6 +597,44 @@ const provisioningCustomerSpend: ActionExecutor = {
   },
 };
 
+function makeRecordedOnlyApproval(actionType: string, label: string): ActionExecutor {
+  return {
+    actionType,
+    validate: validateRecordedApprovalPayload,
+    summarize: (p) =>
+      `${label}: ${String(p.summary ?? p.reason ?? p.title ?? p.target ?? p.serviceKind ?? p.kind ?? "owner approval").slice(0, 100)}`,
+    execute(payload): Promise<Record<string, unknown>> {
+      return Promise.resolve({
+        recorded: true,
+        executed: false,
+        actionType,
+        summary: typeof payload.summary === "string" ? payload.summary : null,
+        target: typeof payload.target === "string" ? payload.target : null,
+        amountCents: typeof payload.amountCents === "number" ? payload.amountCents : null,
+      });
+    },
+  };
+}
+
+const setupExternalAccount = makeRecordedOnlyApproval(SETUP_EXTERNAL_ACCOUNT_ACTION, "external account setup");
+const ventureBootstrap = makeRecordedOnlyApproval(VENTURE_BOOTSTRAP_ACTION, "venture bootstrap");
+const ventureDomainPurchase = makeRecordedOnlyApproval(VENTURE_DOMAIN_PURCHASE_ACTION, "venture domain purchase");
+const ventureAdSpend = makeRecordedOnlyApproval(VENTURE_AD_SPEND_ACTION, "venture ad spend");
+const venturePaymentMethod = makeRecordedOnlyApproval(VENTURE_PAYMENT_METHOD_ACTION, "venture payment method");
+const ventureDeploy = makeRecordedOnlyApproval(VENTURE_DEPLOY_ACTION, "venture deploy");
+const realworldPublish = makeRecordedOnlyApproval(REALWORLD_PUBLISH_ACTION, "real-world publish");
+const socialPublishPost = makeRecordedOnlyApproval(SOCIAL_PUBLISH_POST_ACTION, "social publish");
+const emailLiveSend = makeRecordedOnlyApproval(EMAIL_LIVE_SEND_ACTION, "email live send");
+const capabilityMint = makeRecordedOnlyApproval(CAPABILITY_MINT_ACTION, "capability mint");
+const searchConsoleSubmit = makeRecordedOnlyApproval(SEARCH_CONSOLE_SUBMIT_ACTION, "search console submit");
+const gardenEnableAgent = makeRecordedOnlyApproval(GARDEN_ENABLE_AGENT_ACTION, "garden enable agent");
+const enterpriseBudgetBreach = makeRecordedOnlyApproval(ENTERPRISE_BUDGET_BREACH_ACTION, "enterprise budget breach");
+const autonomyComplete = makeRecordedOnlyApproval(AUTONOMY_COMPLETE_ACTION, "autonomy completion");
+const drRestore = makeRecordedOnlyApproval(DR_RESTORE_ACTION, "disaster recovery restore");
+const portfolioSunset = makeRecordedOnlyApproval(PORTFOLIO_SUNSET_ACTION, "portfolio sunset");
+const billingPayout = makeRecordedOnlyApproval("billing.payout", "billing payout");
+const billingTransfer = makeRecordedOnlyApproval("billing.transfer", "billing transfer");
+
 /**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
  * (#196), optional acquisition/delivery dispatchers (#189/#295), and the outreach sender (#896). The
@@ -612,6 +667,24 @@ export function buildDefaultRegistry(
     ozLoopsPublishProposal,
     connectAccount,
     provisioningCustomerSpend,
+    setupExternalAccount,
+    ventureBootstrap,
+    ventureDomainPurchase,
+    ventureAdSpend,
+    venturePaymentMethod,
+    ventureDeploy,
+    realworldPublish,
+    socialPublishPost,
+    emailLiveSend,
+    capabilityMint,
+    searchConsoleSubmit,
+    gardenEnableAgent,
+    enterpriseBudgetBreach,
+    autonomyComplete,
+    drRestore,
+    portfolioSunset,
+    billingPayout,
+    billingTransfer,
   ]);
 }
 
