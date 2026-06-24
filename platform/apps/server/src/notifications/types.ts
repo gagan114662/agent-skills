@@ -5,9 +5,8 @@
  */
 
 /**
- * The activity kinds that become a notification. `approval` is reserved for a future approval
- * primitive — it's part of the model/transport so the surface is complete, but no in-repo
- * trigger emits it yet (ADR-0008).
+ * The activity kinds that become a notification. `approval` backs both pending-review and terminal
+ * approval updates so open queues can refresh live (ADR-0008).
  */
 export const NOTIFICATION_TYPES = ["mention", "dm", "reply", "assignment", "approval", "inbound_lead"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
