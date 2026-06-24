@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { ApprovalRequest, DecisionOutcome } from "../db/repositories/approvals.js";
+import type { ApprovalExecutionOutcome } from "../approvals/execute.js";
 import type { ChannelPostHookInput } from "../runtime/default.js";
 import type { SlackClient } from "./client.js";
 import type { SlackSecrets } from "../db/repositories/slack.js";
@@ -72,7 +73,7 @@ export interface SlackServiceDeps {
     reason: string | null,
   ): Promise<DecisionOutcome>;
   /** Execute an approved request through the SAME #13 executor path the REST route uses. */
-  executeApproved(request: ApprovalRequest): Promise<ApprovalRequest>;
+  executeApproved(request: ApprovalRequest): Promise<ApprovalExecutionOutcome>;
   /** True if the member is a human in the workspace (the #13 humans-only gate). */
   memberIsHuman(workspaceId: string, memberId: string): Promise<boolean>;
   /** True if the member's role may clear approvals (#151 RBAC; permissive when RBAC is OFF). */
@@ -208,7 +209,8 @@ export class SlackEventService {
 
     const decision = await this.deps.approve(parsed.requestId, workspaceId, memberId, "via Slack");
     if (decision.outcome !== "approved") return { ack: SLACK_VOICE.alreadyDecided };
-    await this.deps.executeApproved(decision.request);
+    const execution = await this.deps.executeApproved(decision.request);
+    if (execution.outcome === "conflict") return { ack: SLACK_VOICE.alreadyDecided };
     return { ack: SLACK_VOICE.approvedAck };
   }
 

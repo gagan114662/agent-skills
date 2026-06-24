@@ -14,7 +14,7 @@ import { collapseDuplicateDeliverables, resolveDedupeEnabled } from "../marketin
 import { departmentForHandle } from "../marketing/blueprint.js";
 import { createCoordinationChannelBridge } from "../agent-channel-bridge/default.js";
 import { defaultRegistry, ActionExecutionError } from "../approvals/runtime.js";
-import { executeApprovedRequest } from "../approvals/execute.js";
+import { executeApprovedRequest, type ApprovalExecutionOutcome } from "../approvals/execute.js";
 import type { ExecutorRegistry } from "../approvals/executor.js";
 import {
   upsertPolicy,
@@ -94,7 +94,7 @@ export async function approvalRoutes(
   async function execute(
     req: FastifyRequest,
     request: ApprovalRequest,
-  ): Promise<ApprovalRequest> {
+  ): Promise<ApprovalExecutionOutcome> {
     return executeApprovedRequest(registry, request, req.log);
   }
 
@@ -349,7 +349,11 @@ export async function approvalRoutes(
       return reply.code(409).send({ status: "expired", error: "request expired", request: decision.request });
     }
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
-    const finished = await execute(req, decision.request);
+    const execution = await execute(req, decision.request);
+    if (execution.outcome === "conflict") {
+      return reply.code(409).send({ error: "request already executed", request: execution.request });
+    }
+    const finished = execution.request;
     if (finished.status === "failed") {
       return reply.code(502).send({ status: "failed", error: finished.error, request: finished });
     }

@@ -357,13 +357,27 @@ export async function approveAndLock(
   });
 }
 
+export type ExecutionRecordOutcome =
+  | { outcome: "recorded"; request: ApprovalRequest }
+  | { outcome: "conflict"; request?: ApprovalRequest };
+
 /** Record the outcome of executing an approved request: `executed` (result) or `failed` (error). */
 export async function recordExecution(
   requestId: string,
   workspaceId: string,
   outcome: { ok: true; result: Record<string, unknown> } | { ok: false; error: string },
-): Promise<ApprovalRequest> {
+): Promise<ExecutionRecordOutcome> {
   return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select(REQUEST_COLUMNS)
+      .from(approvalRequests)
+      .where(and(eq(approvalRequests.id, requestId), eq(approvalRequests.workspaceId, workspaceId)))
+      .limit(1)
+      .for("update");
+    if (!current || (current.status !== "pending" && current.status !== "approved")) {
+      return { outcome: "conflict", request: current as ApprovalRequest | undefined } as const;
+    }
+
     const [row] = await tx
       .update(approvalRequests)
       .set(
@@ -371,7 +385,7 @@ export async function recordExecution(
           ? { status: "executed", result: outcome.result, updatedAt: new Date() }
           : { status: "failed", error: outcome.error, updatedAt: new Date() },
       )
-      .where(eq(approvalRequests.id, requestId))
+      .where(and(eq(approvalRequests.id, requestId), eq(approvalRequests.workspaceId, workspaceId)))
       .returning(REQUEST_COLUMNS);
     await tx.insert(approvalEvents).values({
       workspaceId,
@@ -379,7 +393,7 @@ export async function recordExecution(
       type: outcome.ok ? "executed" : "failed",
       detail: outcome.ok ? outcome.result : { error: outcome.error },
     });
-    return row as ApprovalRequest;
+    return { outcome: "recorded", request: row as ApprovalRequest } as const;
   });
 }
 
