@@ -12,11 +12,22 @@
  * autonomous (§4). Resolution metrics count external receipts only (§2).
  */
 import type { IngestTicketInput, ReplyGate, SupportTicket, TicketStore } from "../voice/service.js";
-import { buildAnswerWithReceipts, kbEntryFromResolvedTicket, kbSlug, type KbEntry, type NewKbEntry } from "./kb.js";
+import {
+  buildAnswerWithReceipts,
+  kbEntryFromResolvedTicket,
+  kbSlug,
+  type KbEntry,
+  type NewKbEntry,
+} from "./kb.js";
 import { decideSupportRouting, type SupportRoute } from "./routing.js";
 import { fingerprintComplaint } from "./recurrence.js";
 import { buildRefundDraft, buildSupportReply } from "./reply.js";
-import { computeResolutionMetrics, computeSlaBreaches, type ResolutionMetrics, type SlaBreach } from "./sla.js";
+import {
+  computeResolutionMetrics,
+  computeSlaBreaches,
+  type ResolutionMetrics,
+  type SlaBreach,
+} from "./sla.js";
 import type { SupportDeskCaps } from "./caps.js";
 
 const COMPLAINT_CATEGORIES: ReadonlySet<string> = new Set(["bug", "churn", "pricing"]);
@@ -31,7 +42,9 @@ function summarize(text: string, max = 200): string {
 export interface KbStore {
   list(workspaceId: string, opts?: { category?: string }): Promise<KbEntry[]>;
   get(workspaceId: string, id: string): Promise<KbEntry | undefined>;
-  upsert(input: NewKbEntry & { createdByMemberId?: string | null }): Promise<{ entry: KbEntry; deduped: boolean }>;
+  upsert(
+    input: NewKbEntry & { createdByMemberId?: string | null },
+  ): Promise<{ entry: KbEntry; deduped: boolean }>;
 }
 
 export interface CreateReceiptInput {
@@ -59,6 +72,8 @@ export interface ReceiptStore {
   create(input: CreateReceiptInput): Promise<{ receipt: SupportReceipt; deduped: boolean }>;
   /** Resolution-relevant receipts for the workspace (used by the pure metrics aggregator). */
   listForResolution(workspaceId: string): Promise<{ ticketId: string | null; kind: string }[]>;
+  /** Customer-visible receipts for one ticket (delivery/reply/resolution status history). */
+  listForTicket(workspaceId: string, ticketId: string): Promise<SupportReceipt[]>;
   /** Count receipts of a kind at/after `since` — backs the per-day auto-send cap. */
   countByKindSince(workspaceId: string, kind: string, since: Date): Promise<number>;
 }
@@ -69,7 +84,12 @@ export interface ReceiptStore {
  * `auto_send` route degrades to a pending human approval. Wiring this is the explicit opt-in to autonomy.
  */
 export interface AutoApprover {
-  approve(input: { workspaceId: string; approvalRequestId: string; memberId: string; reason: string }): Promise<{ executed: boolean }>;
+  approve(input: {
+    workspaceId: string;
+    approvalRequestId: string;
+    memberId: string;
+    reason: string;
+  }): Promise<{ executed: boolean }>;
 }
 
 /** The recurring-complaint seam (#117/#171). Owns dedup/threshold/issue-filing; **no-op by default**. */
@@ -146,6 +166,20 @@ export interface ObjectionFaqRefresh {
   drafts: ObjectionFaqDraft[];
 }
 
+export interface PublicTicketStatus {
+  ticketId: string;
+  status: SupportTicket["status"];
+  subject: string | null;
+  channel: string;
+  createdAt: Date;
+  updatedAt: Date;
+  firstResponseSlaMinutes: number;
+  slaDueAt: Date;
+  slaBreached: boolean;
+  responseState: "waiting" | "reply_pending_approval" | "replied" | "closed";
+  events: { type: string; at: Date; detail: string | null }[];
+}
+
 export class SupportDeskService {
   constructor(private readonly deps: SupportDeskServiceDeps) {}
 
@@ -155,6 +189,57 @@ export class SupportDeskService {
 
   async webhookSecret(workspaceId: string): Promise<string | null> {
     return this.deps.webhookSecret ? this.deps.webhookSecret(workspaceId) : null;
+  }
+
+  async publicTicketStatus(
+    workspaceId: string,
+    ticketId: string,
+    sourceRef: string,
+  ): Promise<PublicTicketStatus> {
+    const ticket = await this.deps.tickets.get(workspaceId, ticketId);
+    if (!ticket || ticket.sourceRef !== sourceRef)
+      throw new SupportNotFoundError("ticket not found");
+    const caps = this.deps.caps(workspaceId);
+    const slaDueAt = new Date(ticket.createdAt.getTime() + caps.firstResponseSlaMinutes * 60_000);
+    const responded = ticket.status === "replied" || ticket.status === "closed";
+    const responseState =
+      ticket.status === "closed"
+        ? "closed"
+        : ticket.status === "replied"
+          ? "replied"
+          : ticket.status === "awaiting_approval"
+            ? "reply_pending_approval"
+            : "waiting";
+    const receipts = await this.deps.receipts.listForTicket(workspaceId, ticketId);
+    return {
+      ticketId: ticket.id,
+      status: ticket.status,
+      subject: ticket.subject,
+      channel: ticket.channel,
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+      firstResponseSlaMinutes: caps.firstResponseSlaMinutes,
+      slaDueAt,
+      slaBreached: !responded && this.now().getTime() > slaDueAt.getTime(),
+      responseState,
+      events: [
+        { type: "created", at: ticket.createdAt, detail: ticket.subject },
+        ...(ticket.status !== "open"
+          ? [
+              {
+                type: ticket.status,
+                at: ticket.updatedAt,
+                detail: ticket.draftReply ? "reply drafted" : null,
+              },
+            ]
+          : []),
+        ...receipts.map((receipt) => ({
+          type: receipt.kind,
+          at: receipt.occurredAt,
+          detail: receipt.detail,
+        })),
+      ].sort((a, b) => a.at.getTime() - b.at.getTime()),
+    };
   }
 
   /** Inbound intake → reuse #114 ingestion → triage the resulting ticket. Idempotent (dedupe in #114). */
@@ -191,13 +276,21 @@ export class SupportDeskService {
    * wired `AutoApprover`. Idempotent-ish: a ticket already awaiting approval / replied / closed is left
    * untouched (re-triage must not orphan a pending #13 request).
    */
-  async triageTicket(workspaceId: string, ticketId: string, memberId: string): Promise<TriageOutcome> {
+  async triageTicket(
+    workspaceId: string,
+    ticketId: string,
+    memberId: string,
+  ): Promise<TriageOutcome> {
     const ticket = await this.deps.tickets.get(workspaceId, ticketId);
     if (!ticket) throw new SupportNotFoundError("ticket not found");
     const caps = this.deps.caps(workspaceId);
 
     // A ticket with an outstanding/decided reply is left alone — re-triaging would orphan its #13 request.
-    if (ticket.status === "awaiting_approval" || ticket.status === "replied" || ticket.status === "closed") {
+    if (
+      ticket.status === "awaiting_approval" ||
+      ticket.status === "replied" ||
+      ticket.status === "closed"
+    ) {
       return {
         ticket,
         route: "approval",
@@ -223,8 +316,14 @@ export class SupportDeskService {
 
     // 3. The pure routing decision — over classification + a quarantined body scan, never instructions.
     const startOfDay = new Date(this.now().getTime() - DAY_MS);
-    const autoSendsToday = await this.deps.receipts.countByKindSince(workspaceId, "auto_sent", startOfDay);
-    const isOwnerWorkspace = this.deps.ownerWorkspace ? await this.deps.ownerWorkspace(workspaceId) : false;
+    const autoSendsToday = await this.deps.receipts.countByKindSince(
+      workspaceId,
+      "auto_sent",
+      startOfDay,
+    );
+    const isOwnerWorkspace = this.deps.ownerWorkspace
+      ? await this.deps.ownerWorkspace(workspaceId)
+      : false;
     const decision = decideSupportRouting({
       category: ticket.category ?? "other",
       sentiment: ticket.sentiment ?? "neutral",
@@ -240,21 +339,50 @@ export class SupportDeskService {
 
     switch (decision.route) {
       case "money_queue":
-        return { ...(await this.toMoneyQueue(ticket, memberId)), route: "money_queue", reason: decision.reason, autoSent: false, ...base };
+        return {
+          ...(await this.toMoneyQueue(ticket, memberId)),
+          route: "money_queue",
+          reason: decision.reason,
+          autoSent: false,
+          ...base,
+        };
       case "escalate":
-        return { ...(await this.toEscalation(ticket, answer.draft)), route: "escalate", reason: decision.reason, autoSent: false, ...base };
+        return {
+          ...(await this.toEscalation(ticket, answer.draft)),
+          route: "escalate",
+          reason: decision.reason,
+          autoSent: false,
+          ...base,
+        };
       case "auto_send":
-        return { ...(await this.toReply(ticket, memberId, answer.draft, caps)), route: "auto_send", reason: decision.reason, ...base };
+        return {
+          ...(await this.toReply(ticket, memberId, answer.draft, caps)),
+          route: "auto_send",
+          reason: decision.reason,
+          ...base,
+        };
       case "approval":
       default:
-        return { ...(await this.toReply(ticket, memberId, answer.draft, caps, /* forceApproval */ true)), route: "approval", reason: decision.reason, autoSent: false, ...base };
+        return {
+          ...(await this.toReply(ticket, memberId, answer.draft, caps, /* forceApproval */ true)),
+          route: "approval",
+          reason: decision.reason,
+          autoSent: false,
+          ...base,
+        };
     }
   }
 
   /** Refund → a gated `billing.refund` draft in the MONEY queue. Never auto-executed. */
-  private async toMoneyQueue(ticket: SupportTicket, memberId: string): Promise<{ ticket: SupportTicket; approvalRequestId: string }> {
+  private async toMoneyQueue(
+    ticket: SupportTicket,
+    memberId: string,
+  ): Promise<{ ticket: SupportTicket; approvalRequestId: string }> {
     const descriptor = buildRefundDraft({
-      summary: summarize(`Refund request from ticket ${ticket.id}: ${ticket.subject ?? ticket.body}`, 120),
+      summary: summarize(
+        `Refund request from ticket ${ticket.id}: ${ticket.subject ?? ticket.body}`,
+        120,
+      ),
       amountCents: null,
       ticketId: ticket.id,
     });
@@ -275,7 +403,10 @@ export class SupportDeskService {
   }
 
   /** Escalate → leave the ticket needing a human, with the KB draft attached for them. No send. */
-  private async toEscalation(ticket: SupportTicket, draft: string): Promise<{ ticket: SupportTicket; approvalRequestId: null }> {
+  private async toEscalation(
+    ticket: SupportTicket,
+    draft: string,
+  ): Promise<{ ticket: SupportTicket; approvalRequestId: null }> {
     const updated = await this.patch(ticket, {
       status: "triaged",
       draftReply: draft.length > 0 ? draft : null,
@@ -296,7 +427,10 @@ export class SupportDeskService {
     caps: SupportDeskCaps,
     forceApproval = false,
   ): Promise<{ ticket: SupportTicket; approvalRequestId: string; autoSent: boolean }> {
-    const descriptor = buildSupportReply({ summary: summarize(draft, 120), target: ticket.contact ?? undefined });
+    const descriptor = buildSupportReply({
+      summary: summarize(draft, 120),
+      target: ticket.contact ?? undefined,
+    });
     const req = await this.deps.gate.submit({
       workspaceId: ticket.workspaceId,
       requesterMemberId: memberId,
@@ -324,21 +458,34 @@ export class SupportDeskService {
           providerRef: req.id,
           detail: `auto_send:${ticket.category ?? "other"}`,
         });
-        const updated = await this.patch(ticket, { status: "replied", replyApprovalRequestId: req.id, draftReply: draft });
+        const updated = await this.patch(ticket, {
+          status: "replied",
+          replyApprovalRequestId: req.id,
+          draftReply: draft,
+        });
         return { ticket: updated, approvalRequestId: req.id, autoSent: true };
       }
     }
 
     // Pending human approval (the default, and the fallback when auto-send is not permitted/executed).
-    const updated = await this.patch(ticket, { status: "awaiting_approval", replyApprovalRequestId: req.id, draftReply: draft });
+    const updated = await this.patch(ticket, {
+      status: "awaiting_approval",
+      replyApprovalRequestId: req.id,
+      draftReply: draft,
+    });
     return { ticket: updated, approvalRequestId: req.id, autoSent: false };
   }
 
   private async maybeRecordComplaint(ticket: SupportTicket): Promise<void> {
     if (!this.deps.complaints) return;
-    const isComplaint = ticket.sentiment === "negative" || COMPLAINT_CATEGORIES.has(ticket.category ?? "");
+    const isComplaint =
+      ticket.sentiment === "negative" || COMPLAINT_CATEGORIES.has(ticket.category ?? "");
     if (!isComplaint) return;
-    const fp = fingerprintComplaint({ category: ticket.category ?? "other", subject: ticket.subject, body: ticket.body });
+    const fp = fingerprintComplaint({
+      category: ticket.category ?? "other",
+      subject: ticket.subject,
+      body: ticket.body,
+    });
     await this.deps.complaints.record({
       workspaceId: ticket.workspaceId,
       ventureIdeaId: ticket.ventureIdeaId,
@@ -349,7 +496,10 @@ export class SupportDeskService {
     });
   }
 
-  private async patch(ticket: SupportTicket, patch: Parameters<TicketStore["update"]>[2]): Promise<SupportTicket> {
+  private async patch(
+    ticket: SupportTicket,
+    patch: Parameters<TicketStore["update"]>[2],
+  ): Promise<SupportTicket> {
     const updated = await this.deps.tickets.update(ticket.workspaceId, ticket.id, patch);
     return updated ?? ticket;
   }
@@ -357,7 +507,9 @@ export class SupportDeskService {
   // ---- ingest receipts ------------------------------------------------------------------------------
 
   /** Record an external delivery/resolution receipt (a signed provider webhook). Idempotent on its ref. */
-  async ingestReceipt(input: CreateReceiptInput): Promise<{ receipt: SupportReceipt; deduped: boolean }> {
+  async ingestReceipt(
+    input: CreateReceiptInput,
+  ): Promise<{ receipt: SupportReceipt; deduped: boolean }> {
     return this.deps.receipts.create(input);
   }
 
@@ -368,12 +520,19 @@ export class SupportDeskService {
   }
 
   /** Curate a KB entry by hand (AC2). Deduped on slug. */
-  async upsertKb(input: NewKbEntry & { createdByMemberId?: string | null }): Promise<{ entry: KbEntry; deduped: boolean }> {
+  async upsertKb(
+    input: NewKbEntry & { createdByMemberId?: string | null },
+  ): Promise<{ entry: KbEntry; deduped: boolean }> {
     return this.deps.kb.upsert(input);
   }
 
   /** Distill a resolved ticket into a KB entry (AC4 — the desk learns). */
-  async learnFromResolved(workspaceId: string, ticketId: string, resolution: string, memberId: string): Promise<{ entry: KbEntry; deduped: boolean }> {
+  async learnFromResolved(
+    workspaceId: string,
+    ticketId: string,
+    resolution: string,
+    memberId: string,
+  ): Promise<{ entry: KbEntry; deduped: boolean }> {
     const ticket = await this.deps.tickets.get(workspaceId, ticketId);
     if (!ticket) throw new SupportNotFoundError("ticket not found");
     const newEntry = kbEntryFromResolvedTicket(
@@ -453,7 +612,12 @@ export class SupportDeskService {
     const caps = this.deps.caps(workspaceId);
     const tickets = await this.deps.tickets.list(workspaceId);
     return computeSlaBreaches(
-      tickets.map((t) => ({ id: t.id, status: t.status, category: t.category ?? null, createdAt: t.createdAt })),
+      tickets.map((t) => ({
+        id: t.id,
+        status: t.status,
+        category: t.category ?? null,
+        createdAt: t.createdAt,
+      })),
       caps,
       this.now(),
     );
@@ -464,7 +628,12 @@ export class SupportDeskService {
     const tickets = await this.deps.tickets.list(workspaceId);
     const receipts = await this.deps.receipts.listForResolution(workspaceId);
     return computeResolutionMetrics(
-      tickets.map((t) => ({ id: t.id, status: t.status, category: t.category ?? null, createdAt: t.createdAt })),
+      tickets.map((t) => ({
+        id: t.id,
+        status: t.status,
+        category: t.category ?? null,
+        createdAt: t.createdAt,
+      })),
       receipts,
     );
   }
@@ -486,7 +655,9 @@ const OBJECTION_KEYWORDS = [
   "contract",
 ] as const;
 
-function mineObjectionQuestion(ticket: SupportTicket): { signature: string; question: string } | null {
+function mineObjectionQuestion(
+  ticket: SupportTicket,
+): { signature: string; question: string } | null {
   const text = ((ticket.subject ?? "") + " " + ticket.body).trim();
   if (!text.includes("?")) return null;
   const lower = text.toLowerCase();
@@ -505,7 +676,10 @@ function firstQuestion(subject: string | null, body: string): string {
 }
 
 function buildObjectionFaqAnswer(question: string, tickets: SupportTicket[]): string {
-  const examples = tickets.slice(0, 3).map((t) => "- " + summarize(t.body, 120)).join("\n");
+  const examples = tickets
+    .slice(0, 3)
+    .map((t) => "- " + summarize(t.body, 120))
+    .join("\n");
   return [
     "Short answer: " + draftShortAnswer(question),
     "",
@@ -519,10 +693,20 @@ function buildObjectionFaqAnswer(question: string, tickets: SupportTicket[]): st
 
 function draftShortAnswer(question: string): string {
   const lower = question.toLowerCase();
-  if (lower.includes("soc2") || lower.includes("security") || lower.includes("privacy") || lower.includes("data")) {
+  if (
+    lower.includes("soc2") ||
+    lower.includes("security") ||
+    lower.includes("privacy") ||
+    lower.includes("data")
+  ) {
     return "Security and customer-data handling are valid buying criteria; share the current controls, roadmap, and any available proof before the prospect commits.";
   }
-  if (lower.includes("price") || lower.includes("pricing") || lower.includes("cost") || lower.includes("budget")) {
+  if (
+    lower.includes("price") ||
+    lower.includes("pricing") ||
+    lower.includes("cost") ||
+    lower.includes("budget")
+  ) {
     return "Anchor the answer in the business outcome, the smallest starting package, and what proof the prospect needs before paying more.";
   }
   if (lower.includes("integration")) {

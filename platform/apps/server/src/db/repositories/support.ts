@@ -2,7 +2,12 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { newId } from "../id.js";
 import { supportKbEntries, supportReceipts } from "../schema/index.js";
-import type { KbStore, ReceiptStore, CreateReceiptInput, SupportReceipt } from "../../support/service.js";
+import type {
+  KbStore,
+  ReceiptStore,
+  CreateReceiptInput,
+  SupportReceipt,
+} from "../../support/service.js";
 import type { KbEntry } from "../../support/kb.js";
 
 /**
@@ -111,7 +116,12 @@ export const dbReceiptStore: ReceiptStore = {
       })
       // Idempotent on (workspace, ticket, kind, provider_ref). A NULL ticket_id never dedupes (NULLs distinct).
       .onConflictDoNothing({
-        target: [supportReceipts.workspaceId, supportReceipts.ticketId, supportReceipts.kind, supportReceipts.providerRef],
+        target: [
+          supportReceipts.workspaceId,
+          supportReceipts.ticketId,
+          supportReceipts.kind,
+          supportReceipts.providerRef,
+        ],
       })
       .returning(RECEIPT_COLS);
     if (inserted.length > 0 || input.ticketId === null) {
@@ -138,6 +148,17 @@ export const dbReceiptStore: ReceiptStore = {
       .from(supportReceipts)
       .where(eq(supportReceipts.workspaceId, workspaceId));
     return rows;
+  },
+
+  async listForTicket(workspaceId, ticketId) {
+    const rows = await db
+      .select(RECEIPT_COLS)
+      .from(supportReceipts)
+      .where(
+        and(eq(supportReceipts.workspaceId, workspaceId), eq(supportReceipts.ticketId, ticketId)),
+      )
+      .orderBy(supportReceipts.occurredAt);
+    return rows as SupportReceipt[];
   },
 
   async countByKindSince(workspaceId, kind, since) {

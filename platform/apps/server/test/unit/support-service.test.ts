@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   SupportDeskService,
+  SupportNotFoundError,
   type SupportDeskServiceDeps,
   type KbStore,
   type ReceiptStore,
@@ -96,11 +97,32 @@ class FakeReceipts implements ReceiptStore {
       occurredAt: input.occurredAt ?? new Date(),
       createdAt: new Date(),
     };
-    this.rows.push({ workspaceId: input.workspaceId, ticketId: input.ticketId, kind: input.kind, providerRef: input.providerRef });
+    this.rows.push({
+      workspaceId: input.workspaceId,
+      ticketId: input.ticketId,
+      kind: input.kind,
+      providerRef: input.providerRef,
+    });
     return { receipt, deduped: false };
   }
   async listForResolution(wid: string) {
-    return this.rows.filter((r) => r.workspaceId === wid).map((r) => ({ ticketId: r.ticketId, kind: r.kind }));
+    return this.rows
+      .filter((r) => r.workspaceId === wid)
+      .map((r) => ({ ticketId: r.ticketId, kind: r.kind }));
+  }
+  async listForTicket(wid: string, ticketId: string) {
+    return this.rows
+      .filter((r) => r.workspaceId === wid && r.ticketId === ticketId)
+      .map((r, idx) => ({
+        id: `receipt-${idx + 1}`,
+        workspaceId: r.workspaceId,
+        ticketId: r.ticketId,
+        kind: r.kind,
+        providerRef: r.providerRef,
+        detail: null,
+        occurredAt: new Date("2026-06-13T11:00:00Z"),
+        createdAt: new Date("2026-06-13T11:00:00Z"),
+      }));
   }
   async countByKindSince(wid: string, kind: string) {
     return this.rows.filter((r) => r.workspaceId === wid && r.kind === kind).length;
@@ -139,7 +161,10 @@ const autoOnCaps: SupportDeskCaps = {
   autoSendMaxPerDay: 20,
 };
 
-function build(overrides: Partial<SupportDeskServiceDeps> = {}, tickets = new Map([["tic-1", makeTicket()]])) {
+function build(
+  overrides: Partial<SupportDeskServiceDeps> = {},
+  tickets = new Map([["tic-1", makeTicket()]]),
+) {
   const kb = new FakeKb();
   kb.entries = [KB_EXPORT];
   const receipts = new FakeReceipts();
@@ -162,6 +187,46 @@ beforeEach(() => {
 });
 
 describe("SupportDeskService — triage routing + bounded autonomy (#190)", () => {
+  it("publicTicketStatus exposes status, SLA and receipt events to the matching requestor sourceRef", async () => {
+    const ticket = makeTicket({
+      status: "awaiting_approval",
+      sourceRef: "widget-session-1",
+      createdAt: new Date("2026-06-13T07:00:00Z"),
+      updatedAt: new Date("2026-06-13T10:30:00Z"),
+      draftReply: "Try exporting from Settings.",
+    });
+    const { svc, receipts } = build({}, new Map([["tic-1", ticket]]));
+    receipts.rows.push({
+      workspaceId: "ws-1",
+      ticketId: "tic-1",
+      kind: "delivered",
+      providerRef: "provider-1",
+    });
+
+    const status = await svc.publicTicketStatus("ws-1", "tic-1", "widget-session-1");
+
+    expect(status).toMatchObject({
+      ticketId: "tic-1",
+      status: "awaiting_approval",
+      firstResponseSlaMinutes: 240,
+      responseState: "reply_pending_approval",
+      slaBreached: true,
+    });
+    expect(status.slaDueAt.toISOString()).toBe("2026-06-13T11:00:00.000Z");
+    expect(status.events.map((event) => event.type)).toEqual([
+      "created",
+      "awaiting_approval",
+      "delivered",
+    ]);
+  });
+
+  it("publicTicketStatus 404s when sourceRef does not match the requestor", async () => {
+    const { svc } = build({}, new Map([["tic-1", makeTicket({ sourceRef: "real-source" })]]));
+    await expect(svc.publicTicketStatus("ws-1", "tic-1", "wrong-source")).rejects.toBeInstanceOf(
+      SupportNotFoundError,
+    );
+  });
+
   it("auto_send only EXECUTES when an AutoApprover is wired — and records the auto_sent audit receipt", async () => {
     const approved: string[] = [];
     const autoApprover: AutoApprover = {
@@ -196,7 +261,11 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("the kill switch blocks an autonomous send even with an AutoApprover wired", async () => {
-    const autoApprover: AutoApprover = { async approve() { return { executed: true }; } };
+    const autoApprover: AutoApprover = {
+      async approve() {
+        return { executed: true };
+      },
+    };
     const { svc, ticketsMap } = build({ autoApprover, killSwitch: async () => true });
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(outcome.autoSent).toBe(false);
@@ -204,7 +273,11 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("a refund intent routes to the MONEY queue as a gated billing.refund — never executed", async () => {
-    const autoApprover: AutoApprover = { async approve() { return { executed: true }; } };
+    const autoApprover: AutoApprover = {
+      async approve() {
+        return { executed: true };
+      },
+    };
     const ticket = makeTicket({ body: "I want a refund immediately", category: "pricing" });
     const { svc, ticketsMap } = build({ autoApprover }, new Map([["tic-1", ticket]]));
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
@@ -215,7 +288,10 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("a legal threat escalates with no #13 request, attaching the KB draft for a human", async () => {
-    const ticket = makeTicket({ body: "my attorney will sue you over this", sentiment: "negative" });
+    const ticket = makeTicket({
+      body: "my attorney will sue you over this",
+      sentiment: "negative",
+    });
     const { svc, ticketsMap } = build({}, new Map([["tic-1", ticket]]));
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(outcome.route).toBe("escalate");
@@ -226,14 +302,26 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
 
   it("a question the KB cannot answer escalates as 'unknown' — the desk never bluffs", async () => {
     const ticket = makeTicket({ body: "explain your quantum pricing tensor", subject: null });
-    const { svc } = build({ autoApprover: { async approve() { return { executed: true }; } } }, new Map([["tic-1", ticket]]));
+    const { svc } = build(
+      {
+        autoApprover: {
+          async approve() {
+            return { executed: true };
+          },
+        },
+      },
+      new Map([["tic-1", ticket]]),
+    );
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(outcome.route).toBe("escalate");
     expect(outcome.escalationReasons).toContain("unknown");
   });
 
   it("re-triaging a ticket already awaiting approval is a no-op (never orphans the #13 request)", async () => {
-    const ticket = makeTicket({ status: "awaiting_approval", replyApprovalRequestId: "req-existing" });
+    const ticket = makeTicket({
+      status: "awaiting_approval",
+      replyApprovalRequestId: "req-existing",
+    });
     const { svc } = build({}, new Map([["tic-1", ticket]]));
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(outcome.reason).toBe("noop:awaiting_approval");
@@ -247,7 +335,12 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
         recorded.push({ signature: input.signature, category: input.category });
       },
     };
-    const ticket = makeTicket({ body: "the export feature is broken and crashes", category: "bug", sentiment: "negative", churnRisk: "high" });
+    const ticket = makeTicket({
+      body: "the export feature is broken and crashes",
+      category: "bug",
+      sentiment: "negative",
+      churnRisk: "high",
+    });
     const { svc } = build({ complaints }, new Map([["tic-1", ticket]]));
     await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(recorded).toHaveLength(1);
@@ -257,7 +350,11 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
 
   it("does NOT record a complaint for a calm, positive ticket", async () => {
     const recorded: unknown[] = [];
-    const complaints: ComplaintRecorder = { async record() { recorded.push(1); } };
+    const complaints: ComplaintRecorder = {
+      async record() {
+        recorded.push(1);
+      },
+    };
     const { svc } = build({ complaints });
     await svc.triageTicket("ws-1", "tic-1", "mem-1"); // neutral support question
     expect(recorded).toHaveLength(0);
@@ -265,9 +362,26 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
 
   it("mines recurring prospect questions into published objection FAQ drafts", async () => {
     const tickets = new Map([
-      ["tic-1", makeTicket({ id: "tic-1", body: "Is SOC2 required before we can use this with customer data?", category: "support" })],
-      ["tic-2", makeTicket({ id: "tic-2", body: "Do you have SOC2 before we put customer data in it?", category: "support" })],
-      ["tic-3", makeTicket({ id: "tic-3", body: "How do I change my avatar?", category: "support" })],
+      [
+        "tic-1",
+        makeTicket({
+          id: "tic-1",
+          body: "Is SOC2 required before we can use this with customer data?",
+          category: "support",
+        }),
+      ],
+      [
+        "tic-2",
+        makeTicket({
+          id: "tic-2",
+          body: "Do you have SOC2 before we put customer data in it?",
+          category: "support",
+        }),
+      ],
+      [
+        "tic-3",
+        makeTicket({ id: "tic-3", body: "How do I change my avatar?", category: "support" }),
+      ],
     ]);
     const { svc, kb } = build({}, tickets);
 
@@ -283,10 +397,22 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("the per-day cap blocks auto-send once reached (counts prior auto_sent receipts)", async () => {
-    const autoApprover: AutoApprover = { async approve() { return { executed: true }; } };
-    const { svc, receipts } = build({ autoApprover, caps: () => ({ ...autoOnCaps, autoSendMaxPerDay: 1 }) });
+    const autoApprover: AutoApprover = {
+      async approve() {
+        return { executed: true };
+      },
+    };
+    const { svc, receipts } = build({
+      autoApprover,
+      caps: () => ({ ...autoOnCaps, autoSendMaxPerDay: 1 }),
+    });
     // Seed one prior auto_sent receipt today.
-    receipts.rows.push({ workspaceId: "ws-1", ticketId: "older", kind: "auto_sent", providerRef: "x" });
+    receipts.rows.push({
+      workspaceId: "ws-1",
+      ticketId: "older",
+      kind: "auto_sent",
+      providerRef: "x",
+    });
     const outcome = await svc.triageTicket("ws-1", "tic-1", "mem-1");
     expect(outcome.route).toBe("approval");
     expect(outcome.reason).toBe("approval:daily_cap_reached");
@@ -294,15 +420,28 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("intakeWebhook with no owner member ingests but does not triage (no unattributed send)", async () => {
-    const { svc } = build({ ownerMember: async () => null, ingest: async () => ({ ticket: makeTicket(), deduped: false }) });
-    const outcome = await svc.intakeWebhook({ workspaceId: "ws-1", channel: "widget", sourceRef: "s", body: "hello" });
+    const { svc } = build({
+      ownerMember: async () => null,
+      ingest: async () => ({ ticket: makeTicket(), deduped: false }),
+    });
+    const outcome = await svc.intakeWebhook({
+      workspaceId: "ws-1",
+      channel: "widget",
+      sourceRef: "s",
+      body: "hello",
+    });
     expect(outcome.reason).toBe("no_owner_member");
     expect(gateCalls).toHaveLength(0);
   });
 
   it("learnFromResolved distills a resolved ticket into a KB entry", async () => {
     const { svc, kb } = build();
-    const res = await svc.learnFromResolved("ws-1", "tic-1", "Open settings and click Export.", "mem-1");
+    const res = await svc.learnFromResolved(
+      "ws-1",
+      "tic-1",
+      "Open settings and click Export.",
+      "mem-1",
+    );
     expect(res.entry.source).toBe("resolved_ticket");
     expect(res.entry.sourceTicketId).toBe("tic-1");
     expect(kb.entries.some((e) => e.source === "resolved_ticket")).toBe(true);
@@ -322,8 +461,15 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
   });
 
   it("slaBreaches flags an old unanswered ticket", async () => {
-    const old = makeTicket({ id: "old", status: "open", createdAt: new Date("2026-06-13T00:00:00Z") }); // 12h old
-    const { svc } = build({ caps: () => ({ ...autoOnCaps, firstResponseSlaMinutes: 60 }) }, new Map([["old", old]]));
+    const old = makeTicket({
+      id: "old",
+      status: "open",
+      createdAt: new Date("2026-06-13T00:00:00Z"),
+    }); // 12h old
+    const { svc } = build(
+      { caps: () => ({ ...autoOnCaps, firstResponseSlaMinutes: 60 }) },
+      new Map([["old", old]]),
+    );
     const breaches = await svc.slaBreaches("ws-1");
     expect(breaches.map((b) => b.ticketId)).toContain("old");
   });
