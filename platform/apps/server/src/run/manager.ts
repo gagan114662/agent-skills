@@ -62,6 +62,10 @@ interface RunHandle {
   state: RunState;
   channelId: string;
   child?: ChildProcess;
+  stdoutData?: (chunk: string) => void;
+  stderrData?: (chunk: string) => void;
+  onError?: (err: Error) => void;
+  onExit?: (code: number | null) => void;
   /** True once detection (or an explicit port) has resolved the preview URL. */
   resolved: boolean;
   cleanupTimer?: NodeJS.Timeout;
@@ -144,17 +148,21 @@ export class RunProcessManager {
     child.stderr?.setEncoding("utf8");
     // A SEPARATE line buffer per stream: stdout and stderr arrive on independent `data` events, so a
     // shared buffer would interleave their partial lines and corrupt the ready-banner detection.
-    child.stdout?.on("data", this.lineSplitter(handle, runCfg.readyPattern));
-    child.stderr?.on("data", this.lineSplitter(handle, runCfg.readyPattern));
-    child.on("error", (err) => this.fail(handle, err));
-    child.on("exit", (code) => {
+    handle.stdoutData = this.lineSplitter(handle, runCfg.readyPattern);
+    handle.stderrData = this.lineSplitter(handle, runCfg.readyPattern);
+    handle.onError = (err) => this.fail(handle, err);
+    handle.onExit = (code) => {
       // A user `stop()` already moved the handle to `stopped`; don't overwrite it with `exited`.
       if (handle.state.status === "stopped" || handle.state.status === "failed") return;
       handle.state.status = "exited";
       handle.state.exitCode = code;
       this.emitStatus(handle);
       this.scheduleCleanup(handle);
-    });
+    };
+    child.stdout?.on("data", handle.stdoutData);
+    child.stderr?.on("data", handle.stderrData);
+    child.on("error", handle.onError);
+    child.on("exit", handle.onExit);
 
     return handle.state;
   }
@@ -253,10 +261,26 @@ export class RunProcessManager {
 
   private scheduleCleanup(handle: RunHandle): void {
     if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-    handle.child = undefined;
+    this.cleanupChild(handle);
     handle.cleanupTimer = setTimeout(() => {
       if (this.runs.get(handle.state.sessionId) === handle) this.runs.delete(handle.state.sessionId);
     }, this.terminalRetentionMs);
     handle.cleanupTimer.unref?.();
+  }
+
+  private cleanupChild(handle: RunHandle): void {
+    const child = handle.child;
+    if (!child) return;
+    if (handle.stdoutData) child.stdout?.off("data", handle.stdoutData);
+    if (handle.stderrData) child.stderr?.off("data", handle.stderrData);
+    if (handle.onError) child.off("error", handle.onError);
+    if (handle.onExit) child.off("exit", handle.onExit);
+    child.stdout?.destroy?.();
+    child.stderr?.destroy?.();
+    handle.child = undefined;
+    handle.stdoutData = undefined;
+    handle.stderrData = undefined;
+    handle.onError = undefined;
+    handle.onExit = undefined;
   }
 }

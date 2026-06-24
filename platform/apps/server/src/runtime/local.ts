@@ -34,10 +34,17 @@ export class LocalRuntime implements AgentRuntime {
 
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => hooks.onOutput("stdout", chunk));
-    child.stderr?.on("data", (chunk: string) => hooks.onOutput("stderr", chunk));
+    const onStdout = (chunk: string): void => hooks.onOutput("stdout", chunk);
+    const onStderr = (chunk: string): void => hooks.onOutput("stderr", chunk);
+    child.stdout?.on("data", onStdout);
+    child.stderr?.on("data", onStderr);
 
-    const session = new LocalSession(job.sessionId, child);
+    const session = new LocalSession(job.sessionId, child, () => {
+      child.stdout?.off("data", onStdout);
+      child.stderr?.off("data", onStderr);
+      child.stdout?.destroy?.();
+      child.stderr?.destroy?.();
+    });
 
     // #778: honor the hard-cancel signal directly — SIGKILL the process tree the instant Stop is pressed.
     // Belt-and-suspenders with SessionManager.cancel() (which also calls cancel("canceled")); a no-op when
@@ -58,19 +65,29 @@ class LocalSession implements RunningSession {
   /** Set by `cancel()` so the exit handler reports the reaper's reason, not a generic failure. */
   private forcedReason: TerminalReason | undefined;
   private readonly done: Promise<RuntimeResult>;
+  private outputCleaned = false;
 
   constructor(
     readonly sessionId: string,
     private readonly child: ChildProcess,
+    private readonly cleanupOutput: () => void,
   ) {
     this.done = new Promise<RuntimeResult>((resolve) => {
+      let settled = false;
+      const onExit = (code: number | null): void => settle(code);
+      const onError = (): void => settle(null);
       const settle = (exitCode: number | null): void => {
+        if (settled) return;
+        settled = true;
+        this.cleanupOutputOnce();
+        child.off("exit", onExit);
+        child.off("error", onError);
         const reason: TerminalReason =
           this.forcedReason ?? (exitCode === 0 ? "completed" : "failed");
         resolve({ status: statusForReason(reason), exitCode });
       };
-      child.on("exit", (code) => settle(code));
-      child.on("error", () => settle(null)); // spawn failure → failed (no exit code)
+      child.on("exit", onExit);
+      child.on("error", onError); // spawn failure → failed (no exit code)
     });
   }
 
@@ -80,6 +97,7 @@ class LocalSession implements RunningSession {
 
   cancel(reason: TerminalReason): Promise<void> {
     this.forcedReason = reason;
+    this.cleanupOutputOnce();
     killTree(this.child);
     return Promise.resolve();
   }
@@ -95,6 +113,12 @@ class LocalSession implements RunningSession {
       /* stdin closed / process gone — never throw from steering */
     }
     return Promise.resolve();
+  }
+
+  private cleanupOutputOnce(): void {
+    if (this.outputCleaned) return;
+    this.outputCleaned = true;
+    this.cleanupOutput();
   }
 }
 
