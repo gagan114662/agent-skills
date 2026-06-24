@@ -91,6 +91,8 @@ export interface DeliveryShipContext {
   workspaceId: string;
   /** The #13 approval request id that authorized this ship. EMPTY ⇒ the dispatcher refuses to ship. */
   approvalRequestId: string;
+  /** The agent/member that produced the deliverable; used to enforce independent verification. */
+  workerMemberId?: string;
 }
 
 export interface DeliveryShipResult {
@@ -117,6 +119,21 @@ export interface LiveShipEvent {
   sessionId: string | null;
 }
 
+export interface DeliveryVerificationInput {
+  workspaceId: string;
+  deliverableRef: string;
+  workerMemberId: string;
+  content: string;
+  brief: string;
+  reversibility: DeliveryReversibility;
+}
+
+export interface DeliveryVerificationOutcome {
+  allowed: boolean;
+  reason: string;
+  action: string;
+}
+
 export interface DeliveryDispatcherDeps {
   /** Structural channel→department resolver (channelId → department key). Never reads the draft. */
   resolveDepartment(workspaceId: string, channelId: string | null): Promise<string | null>;
@@ -125,6 +142,11 @@ export interface DeliveryDispatcherDeps {
   /** One adapter per channel. */
   adapters: Record<DeliveryChannel, ChannelAdapter>;
   receipts: DeliveryReceiptStore;
+  /**
+   * Optional deliverable verification gate (#853). Production wires this to the #191 VerificationEngine.
+   * When present, a shippable deliverable must receive a passing verdict before any adapter is called.
+   */
+  verify?: (input: DeliveryVerificationInput) => Promise<DeliveryVerificationOutcome>;
   /**
    * OPTIONAL best-effort attribution hook (#386, ADR-0386): called AFTER a real live ship to record the
    * exposure (the head of the causal chain). It is wrapped in a try/catch that SWALLOWS errors — attribution
@@ -160,6 +182,21 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
         task: str(payload.task) ?? "",
         draft,
       };
+      if (deps.verify) {
+        const gate = await deps.verify({
+          workspaceId: ctx.workspaceId,
+          deliverableRef: input.sessionId ?? ctx.approvalRequestId,
+          workerMemberId: ctx.workerMemberId ?? "unknown-worker",
+          content: draft,
+          brief: input.task || draft,
+          reversibility: decision.reversibility,
+        });
+        if (!gate.allowed) {
+          throw new ActionExecutionError(
+            `delivery blocked by verification (${gate.action}): ${gate.reason}`,
+          );
+        }
+      }
 
       let outcome: ChannelShipOutcome;
       try {

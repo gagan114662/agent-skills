@@ -117,6 +117,48 @@ describe("delivery dispatcher (#295)", () => {
     expect(receipts).toHaveLength(0);
   });
 
+  it("blocks the adapter when deliverable verification does not pass (#853)", async () => {
+    const { deps, receipts, adapters } = buildDeps({
+      verify: async () => ({
+        allowed: false,
+        action: "return_to_worker",
+        reason: "required checks abstained",
+      }),
+    });
+    const dispatcher = createDeliveryDispatcher(deps);
+    await expect(
+      dispatcher.ship(
+        { sessionId: "s1", channelId: "c1", task: "Launch post", draft: "Hello world" },
+        { workspaceId: "ws1", approvalRequestId: "req-42", workerMemberId: "agent-1" },
+      ),
+    ).rejects.toThrow(ActionExecutionError);
+    expect(adapters.publish.calls).toBe(0);
+    expect(receipts).toHaveLength(0);
+  });
+
+  it("ships only after a passing deliverable verification verdict (#853)", async () => {
+    const seen: Array<{ deliverableRef: string; workerMemberId: string; content: string }> = [];
+    const { deps, receipts, adapters } = buildDeps({
+      verify: async (input) => {
+        seen.push({
+          deliverableRef: input.deliverableRef,
+          workerMemberId: input.workerMemberId,
+          content: input.content,
+        });
+        return { allowed: true, action: "request_approval", reason: "verified" };
+      },
+    });
+    const dispatcher = createDeliveryDispatcher(deps);
+    const result = await dispatcher.ship(
+      { sessionId: "s1", channelId: "c1", task: "Launch post", draft: "Hello world" },
+      { workspaceId: "ws1", approvalRequestId: "req-42", workerMemberId: "agent-1" },
+    );
+    expect(result).toMatchObject({ shipped: true, channel: "publish" });
+    expect(adapters.publish.calls).toBe(1);
+    expect(receipts).toHaveLength(1);
+    expect(seen).toEqual([{ deliverableRef: "s1", workerMemberId: "agent-1", content: "Hello world" }]);
+  });
+
   it("does not ship (no adapter call, no receipt) when delivery is disabled for the workspace", async () => {
     const { deps, receipts, adapters } = buildDeps({
       resolveFlags: () => ({ enabled: false, publish: false, site_pr: false, social: false, email: false }),

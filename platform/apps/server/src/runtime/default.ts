@@ -16,6 +16,7 @@ import { postMessage } from "../db/repositories/messages.js";
 import { createRequest, listPolicyRules } from "../db/repositories/approvals.js";
 import { evaluatePolicy } from "../approvals/policy.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
+import { createDefaultVerificationEngine } from "../verification/default.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import { preflight, type PreflightReport } from "./preflight.js";
@@ -174,8 +175,8 @@ export function defaultPreflight(): PreflightReport {
 // shared across sessions. The dispatcher is self-gating: it returns null unless delivery is enabled for the
 // workspace (owner-first), so this is a no-op everywhere delivery is off.
 let _deliveryDispatcher: ReturnType<typeof buildDeliveryDispatcher> | undefined;
-function deliveryDispatcher(): ReturnType<typeof buildDeliveryDispatcher> {
-  return (_deliveryDispatcher ??= buildDeliveryDispatcher());
+function deliveryDispatcher(logger: SessionLogger): ReturnType<typeof buildDeliveryDispatcher> {
+  return (_deliveryDispatcher ??= buildDeliveryDispatcher(createDefaultVerificationEngine(logger)));
 }
 
 export function createDefaultSessionManager(logger: SessionLogger, scale: Scale = createScale(0)): SessionManager {
@@ -439,9 +440,10 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       // already-finalized session or the recorded deliverable.
       if (!gated) {
         try {
-          const shipped = await deliveryDispatcher().ship(payload, {
+          const shipped = await deliveryDispatcher(logger).ship(payload, {
             workspaceId: e.workspaceId,
             approvalRequestId: request.id,
+            workerMemberId: e.agentMemberId,
           });
           if (shipped) {
             logger.info(

@@ -186,6 +186,7 @@ function makeAgentDeliverable(delivery?: DeliveryDispatcher): ActionExecutor {
         const shipped = await delivery.ship(payload, {
           workspaceId: ctx.workspaceId,
           approvalRequestId: ctx.requestId ?? "",
+          workerMemberId: ctx.requesterMemberId,
         });
         if (shipped) return { ...ack, ...shipped };
       }

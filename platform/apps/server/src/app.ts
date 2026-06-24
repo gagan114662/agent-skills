@@ -625,11 +625,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(tracesRoutes);
   app.register(budgetRoutes);
   app.register(taskRoutes);
+  // #191/#853 deliverable verification layer: construct it before the approval registry so the real
+  // post-approval delivery chokepoint can fail closed when no passing verdict exists.
+  const verificationEngine = opts.verification ?? createDefaultVerificationEngine(app.log);
+  app.decorate("verificationEngine", verificationEngine);
   // #13 human approval gates: agents submit sensitive actions; humans approve (→ execute) or reject.
   // #189: the executor registry routes approved `external.send` actions through the acquisition
   // dispatcher so an approved ads/email/social/SEO campaign actually runs. Default-OFF: with the
   // acquisition flag off (the default) the dispatcher returns null and the executor stays recorded-only.
-  app.register(approvalRoutes, { registry: buildAcquisitionRegistry() });
+  app.register(approvalRoutes, { registry: buildAcquisitionRegistry(verificationEngine) });
   // #151 governance & trust: workspace roles (owner/approver/viewer), email invites, egress report.
   app.register(governanceRoutes);
   app.register(searchRoutes);
@@ -1321,14 +1325,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // scheduler in index.ts), so wiring it changes nothing until a deployment opts in.
   const verifierRunner = opts.verifiers ?? createDefaultVerifierRunner(app.log);
   app.decorate("verifierRunner", verifierRunner);
-  // #191 deliverable verification layer: "nothing ships unverified". Before a deliverable (outbound
-  // content / support reply / campaign change / venture deploy) can request approval or auto-send, a
-  // SEPARATE verifier grades it against a definition-of-done derived BEFORE the work ran; the verdict +
-  // per-check proof attach to the #13 card, a failure returns to the worker (fail→fix) then escalates,
-  // and only a verified + reversible + opted-in deliverable may auto-proceed. Config default-OFF
-  // (`verification.enabled`), so decorating it changes nothing until a deployment opts in (owner first).
-  const verificationEngine = opts.verification ?? createDefaultVerificationEngine(app.log);
-  app.decorate("verificationEngine", verificationEngine);
+  // #191 deliverable verification routes read the engine decorated above; #853 also routes delivery through
+  // that same engine, so shipped deliverables have verdict evidence instead of bypassing the layer.
   // #100 insight miner: the SOURCE-stage upgrade for the venture loop. It ranks evidence sources
   // ("the list is the strategy"), mines them into structured insights (the agent-session path,
   // kill-switch + #71-budget gated), captures owner secrets as first-class artifacts, dedupes killed
