@@ -16,24 +16,30 @@ const { inboundLeadsRoutes } = await import("../../src/routes/inbound-leads.js")
 const OWNER_WID = "11111111-2222-3333-4444-555555555555";
 
 interface FakeDiscovery {
+  defineSignal: ReturnType<typeof vi.fn>;
   ingestSignal: ReturnType<typeof vi.fn>;
 }
 
 async function buildRoute(
   ownerWorkspaceId: string | undefined,
   discovery: FakeDiscovery,
+  warmLeadFollowup?: Parameters<typeof inboundLeadsRoutes>[1]["warmLeadFollowup"],
 ): Promise<FastifyInstance> {
   const app = Fastify();
   await app.register(inboundLeadsRoutes, {
     discovery: discovery as unknown as Parameters<typeof inboundLeadsRoutes>[1]["discovery"],
     ownerWorkspaceId,
+    warmLeadFollowup,
   });
   await app.ready();
   return app;
 }
 
 function fakeDiscovery(impl?: () => Promise<unknown>): FakeDiscovery {
-  return { ingestSignal: vi.fn(impl ?? (async () => ({ signal: {}, pqls: [] }))) };
+  return {
+    defineSignal: vi.fn(async () => ({})),
+    ingestSignal: vi.fn(impl ?? (async () => ({ signal: {}, pqls: [] }))),
+  };
 }
 
 beforeEach(() => {
@@ -41,9 +47,10 @@ beforeEach(() => {
 });
 
 describe("POST /inbound/leads (public capture)", () => {
-  it("persists a clean lead, feeds discovery, and returns 202 {received:true}", async () => {
+  it("persists a clean lead, qualifies it, triggers follow-up, and returns 202 {received:true}", async () => {
     const disc = fakeDiscovery();
-    const app = await buildRoute(OWNER_WID, disc);
+    const followup = { handle: vi.fn(async () => undefined) };
+    const app = await buildRoute(OWNER_WID, disc, followup);
     const res = await app.inject({
       method: "POST",
       url: "/inbound/leads",
@@ -58,12 +65,24 @@ describe("POST /inbound/leads (public capture)", () => {
       message: "fix our SEO",
       source: "landing_form",
     });
-    // Best-effort discovery feed: a role_identified signal with an opaque (non-email) prospect key.
+    // Best-effort discovery feed: a default role_match definition plus an opaque (non-email) prospect key.
+    expect(disc.defineSignal).toHaveBeenCalledWith(OWNER_WID, expect.objectContaining({
+      kind: "role_match",
+      label: "inbound_lead_default",
+      role: "inbound_lead",
+      threshold: 1,
+      weight: 100,
+    }));
     expect(disc.ingestSignal).toHaveBeenCalledTimes(1);
     const [wid, signal] = disc.ingestSignal.mock.calls[0]!;
     expect(wid).toBe(OWNER_WID);
     expect(signal).toMatchObject({ kind: "role_identified", role: "inbound_lead" });
     expect(signal.prospectKey).not.toContain("@");
+    expect(followup.handle).toHaveBeenCalledWith({
+      workspaceId: OWNER_WID,
+      leadId: "lead-1",
+      lead: expect.objectContaining({ email: "ada@example.com", message: "fix our SEO" }),
+    });
     await app.close();
   });
 
@@ -121,6 +140,20 @@ describe("POST /inbound/leads (public capture)", () => {
     });
     expect(res.statusCode).toBe(202);
     expect(recordLead).toHaveBeenCalledTimes(1); // the lead was persisted before discovery ran
+    await app.close();
+  });
+
+  it("still returns 202 when warm follow-up throws (capture must not fail)", async () => {
+    const followup = { handle: vi.fn(async () => { throw new Error("reach down"); }) };
+    const app = await buildRoute(OWNER_WID, fakeDiscovery(), followup);
+    const res = await app.inject({
+      method: "POST",
+      url: "/inbound/leads",
+      payload: { email: "a@b.co", message: "hi" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(recordLead).toHaveBeenCalledTimes(1);
+    expect(followup.handle).toHaveBeenCalledTimes(1);
     await app.close();
   });
 });

@@ -1,4 +1,6 @@
 import { loadConfig } from "../config/loader.js";
+import type { ReachService } from "../reach/service.js";
+import type { SanitizedLead } from "./inbound.js";
 
 /**
  * Production wiring helper for inbound lead capture (GAP 1 of the leads centre, ADR-0400). Resolves the
@@ -11,4 +13,52 @@ import { loadConfig } from "../config/loader.js";
  */
 export function resolveInboundLeadsOwnerWorkspaceId(): string | undefined {
   return loadConfig().marketing?.ownerWorkspaceId;
+}
+
+export interface InboundLeadFollowupInput {
+  workspaceId: string;
+  leadId: string;
+  lead: SanitizedLead;
+}
+
+export interface InboundLeadFollowup {
+  handle(input: InboundLeadFollowupInput): Promise<void>;
+}
+
+function domainCompany(email: string): { company: string; companyDomain: string } {
+  const domain = email.split("@")[1]?.trim().toLowerCase() || "inbound.local";
+  const label = domain.split(".")[0] || "Inbound lead";
+  return { company: label, companyDomain: domain };
+}
+
+function fallbackName(email: string): string {
+  const local = email.split("@")[0]?.replace(/[._-]+/g, " ").trim();
+  return local || "Inbound lead";
+}
+
+/**
+ * Convert a captured warm hand-raise into the Reach loop. Import is idempotent by email contact key; the
+ * batch then composes/sends/enrols under normal Reach caps, suppression, footer, and sender rules.
+ */
+export function createDefaultInboundLeadFollowup(
+  reach: Pick<ReachService, "importProspects" | "runBatch">,
+): InboundLeadFollowup {
+  return {
+    async handle({ workspaceId, lead }) {
+      const { company, companyDomain } = domainCompany(lead.email);
+      await reach.importProspects(workspaceId, [{
+        fullName: lead.name ?? fallbackName(lead.email),
+        title: "Inbound lead",
+        company,
+        companyDomain,
+        email: lead.email,
+        industry: null,
+        companySize: null,
+        signalKind: "content_engagement",
+        signalSummary: `Inbound form (${lead.source}): ${lead.message}`,
+        observedAtMs: Date.now(),
+      }]);
+      await reach.runBatch(workspaceId);
+    },
+  };
 }

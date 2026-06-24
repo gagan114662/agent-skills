@@ -7,6 +7,7 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_NAME_CHARS,
 } from "../../src/leads/inbound.js";
+import { createDefaultInboundLeadFollowup } from "../../src/leads/default.js";
 
 /**
  * Pure inbound-lead helper tests (GAP 1 of the leads centre, ADR-0400). No DB, no clock, no IO — every
@@ -119,5 +120,46 @@ describe("leads/inbound: toDiscoverySignal", () => {
     // The opaque key must never contain the email (discovery refuses an @-bearing key).
     expect(sig.prospectKey).not.toContain("@");
     expect(sig.detail).toMatchObject({ source: "landing_form", hasName: true });
+  });
+});
+
+describe("leads/default: warm inbound follow-up", () => {
+  it("imports the original lead into Reach and runs the opener/cadence batch", async () => {
+    const imported: unknown[] = [];
+    let batches = 0;
+    const followup = createDefaultInboundLeadFollowup({
+      async importProspects(_workspaceId, prospects) {
+        imported.push(...prospects);
+        return { imported: prospects.length, updated: 0, skipped: 0 };
+      },
+      async runBatch() {
+        batches += 1;
+        return {
+          status: "completed",
+          prospectsFound: 1,
+          messagesSent: 1,
+          messagesQueued: 0,
+          suppressed: 0,
+          rateLimited: 0,
+          skipped: 0,
+          outcomes: [],
+          tuning: null,
+        };
+      },
+    });
+    await followup.handle({
+      workspaceId: "ws-1",
+      leadId: "lead-1",
+      lead: { name: "Ada", email: "ada@acme.com", message: "Need help booking demos", source: "landing_form", trackingRef: null },
+    });
+    expect(imported[0]).toMatchObject({
+      fullName: "Ada",
+      email: "ada@acme.com",
+      company: "acme",
+      companyDomain: "acme.com",
+      signalKind: "content_engagement",
+      signalSummary: expect.stringContaining("Need help booking demos"),
+    });
+    expect(batches).toBe(1);
   });
 });
