@@ -12,7 +12,7 @@ import { getWorkspaceBySlug, createWorkspace } from "../db/repositories/workspac
 import { setServiceCredentials, listServiceStatuses } from "../db/repositories/external-credentials.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { normalizeDomain } from "../auth/onboarding-domain.js";
-import { signState, verifyState, newStateNonce, loadStateSecret } from "../auth/oauth-state.js";
+import { signState, verifyState, newStateNonce, loadStateSecret, loadStateKeyId } from "../auth/oauth-state.js";
 import {
   loadGoogleOAuthConfig,
   buildGoogleAuthorizeUrl,
@@ -109,6 +109,9 @@ export async function googleAuthRoutes(
   function stateSecret(): string {
     return opts.stateSecret ?? loadStateSecret();
   }
+  function stateKeyId(): string {
+    return loadStateKeyId();
+  }
   // Progressive-consent caps: injected for tests, else resolved ONCE at registration. Resolving per request
   // would call `loadConfig()` (synchronous `readFileSync` of the layered TOML) on every hit — a needless
   // event-loop block on the deployment-level signup flags (and a DoS lever on the public sample route).
@@ -165,7 +168,9 @@ export async function googleAuthRoutes(
     const intent = intentFromQuery(req);
     const progressive = signupEntryCaps.progressiveScopes;
     const scopes = resolveOnboardingScopes({ progressive, intent });
-    const state = signState({ domain: result.domain, nonce: newStateNonce(), intent }, stateSecret(), now());
+    const kid = stateKeyId();
+    app.log.info({ kid }, "google oauth state signed");
+    const state = signState({ domain: result.domain, nonce: newStateNonce(), intent }, stateSecret(), now(), kid);
     return reply.redirect(buildGoogleAuthorizeUrl({ config, state, scopes }));
   });
 

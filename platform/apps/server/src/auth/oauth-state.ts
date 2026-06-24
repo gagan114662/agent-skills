@@ -22,11 +22,16 @@ export interface OAuthStatePayload {
 }
 
 interface SignedState {
+  kid: string;
   domain: string;
   nonce: string;
   ts: number;
   intent?: "signup" | "seo";
 }
+
+export const OAUTH_STATE_DEFAULT_KEY_ID = "oauth-state:v1";
+
+const devStateSecret = `dev-oauth-state-${randomBytes(32).toString("base64url")}`;
 
 function b64url(buf: Buffer): string {
   return buf.toString("base64url");
@@ -46,8 +51,9 @@ export function signState(
   payload: OAuthStatePayload,
   secret: string,
   now: number = Date.now(),
+  keyId: string = OAUTH_STATE_DEFAULT_KEY_ID,
 ): string {
-  const signed: SignedState = { domain: payload.domain, nonce: payload.nonce, ts: now };
+  const signed: SignedState = { kid: keyId, domain: payload.domain, nonce: payload.nonce, ts: now };
   // Only carry `intent` when explicitly "seo" — so a #260 signup state is byte-for-byte unchanged.
   if (payload.intent === "seo") signed.intent = "seo";
   const body = b64url(Buffer.from(JSON.stringify(signed), "utf8"));
@@ -79,7 +85,7 @@ export function verifyState(
   } catch {
     return null;
   }
-  if (typeof parsed.domain !== "string" || typeof parsed.nonce !== "string") return null;
+  if (typeof parsed.kid !== "string" || typeof parsed.domain !== "string" || typeof parsed.nonce !== "string") return null;
   if (typeof parsed.ts !== "number" || now - parsed.ts > maxAgeMs || parsed.ts > now + 60_000) {
     return null;
   }
@@ -90,11 +96,20 @@ export function verifyState(
 }
 
 /**
- * The secret used to sign OAuth state. Reuses the deployment's credential encryption key (already required
- * for the #192 vault in prod, and stable across instances), falling back to a fixed dev secret so the flow
- * works locally. Read live each call (env can change between calls; mirrors `loadConfig`).
+ * The secret used to sign OAuth state. Production must provide an explicit state secret or the deployment's
+ * credential encryption key. Local/dev with neither configured uses an ephemeral per-process key so the flow
+ * works without baking a public HMAC secret into source.
  */
 export function loadStateSecret(env: NodeJS.ProcessEnv = process.env): string {
   const fromEnv = env.GOOGLE_OAUTH_STATE_SECRET?.trim() || env.AGENT_CREDENTIALS_ENC_KEY?.trim();
-  return fromEnv && fromEnv.length > 0 ? fromEnv : "ipop-dev-oauth-state-secret";
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  if (env.RELOAD_ENV === "production" || env.NODE_ENV === "production") {
+    throw new Error("GOOGLE_OAUTH_STATE_SECRET or AGENT_CREDENTIALS_ENC_KEY must be set in production");
+  }
+  return devStateSecret;
+}
+
+/** Non-secret key identifier carried in newly signed OAuth states to support rotation audits. */
+export function loadStateKeyId(env: NodeJS.ProcessEnv = process.env): string {
+  return env.GOOGLE_OAUTH_STATE_KEY_ID?.trim() || env.AGENT_CREDENTIALS_KEY_ID?.trim() || OAUTH_STATE_DEFAULT_KEY_ID;
 }

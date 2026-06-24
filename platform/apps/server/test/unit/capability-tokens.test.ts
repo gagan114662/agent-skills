@@ -1,11 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
+  CAPABILITY_TOKEN_DEFAULT_KEY_ID,
   signCapabilityToken,
   verifyCapabilityToken,
   isCapabilityTokenExpired,
   isTokenVerb,
   type CapabilityTokenClaims,
 } from "../../src/connections/token.js";
+import {
+  loadCapabilityTokenKeyId,
+  loadCapabilityTokenSecret,
+} from "../../src/connections/token-default.js";
 import {
   CAPABILITY_TOKEN_DEFAULTS,
   TTL_FLOOR_SECONDS,
@@ -44,6 +49,7 @@ const CONTROL_CHARS = new RegExp(
 function claims(over: Partial<CapabilityTokenClaims> = {}): CapabilityTokenClaims {
   return {
     workspaceId: OWNER,
+    kid: CAPABILITY_TOKEN_DEFAULT_KEY_ID,
     connectionId: "google",
     capability: "search_console",
     verb: "read",
@@ -65,6 +71,15 @@ describe("capability token codec (#336) — sign/verify, TTL, delegation", () =>
   it("round-trips a valid token incl. the delegation chain", () => {
     const token = signCapabilityToken(claims(), SECRET);
     expect(verifyCapabilityToken(token, SECRET, { now: NOW })).toEqual(claims());
+  });
+
+  it("signed tokens carry a key id for rotation", () => {
+    const token = signCapabilityToken(claims({ kid: "capability-token:v2" }), SECRET);
+    const [body] = token.split(".");
+    const raw = JSON.parse(Buffer.from(body!, "base64url").toString("utf8")) as { kid?: string };
+
+    expect(raw.kid).toBe("capability-token:v2");
+    expect(verifyCapabilityToken(token, SECRET, { now: NOW })?.kid).toBe("capability-token:v2");
   });
 
   it("carries the user->agent->service delegation + approval pre-commitment for a write", () => {
@@ -114,6 +129,28 @@ describe("capability token codec (#336) — sign/verify, TTL, delegation", () =>
     expect(isTokenVerb("write")).toBe(true);
     expect(isTokenVerb("admin")).toBe(false);
     expect(isTokenVerb(1)).toBe(false);
+  });
+});
+
+describe("capability-token default signing secret (#927)", () => {
+  it("prefers explicit secret, then enc key, then an ephemeral non-production secret", () => {
+    expect(loadCapabilityTokenSecret({ CAPABILITY_TOKEN_SECRET: "cap" } as NodeJS.ProcessEnv)).toBe("cap");
+    expect(loadCapabilityTokenSecret({ AGENT_CREDENTIALS_ENC_KEY: "enc" } as NodeJS.ProcessEnv)).toBe("enc");
+    const fallback = loadCapabilityTokenSecret({} as NodeJS.ProcessEnv);
+    expect(fallback).toMatch(/^dev-capability-token-/);
+    expect(fallback).not.toContain("ipop");
+  });
+
+  it("fails closed in production without a configured secret", () => {
+    expect(() => loadCapabilityTokenSecret({ NODE_ENV: "production" } as NodeJS.ProcessEnv)).toThrow(
+      /CAPABILITY_TOKEN_SECRET/,
+    );
+  });
+
+  it("loads a non-secret signing key id for rotation audits", () => {
+    expect(loadCapabilityTokenKeyId({ CAPABILITY_TOKEN_KEY_ID: "cap-k2" } as NodeJS.ProcessEnv)).toBe("cap-k2");
+    expect(loadCapabilityTokenKeyId({ AGENT_CREDENTIALS_KEY_ID: "enc-k3" } as NodeJS.ProcessEnv)).toBe("enc-k3");
+    expect(loadCapabilityTokenKeyId({} as NodeJS.ProcessEnv)).toBe(CAPABILITY_TOKEN_DEFAULT_KEY_ID);
   });
 });
 
@@ -326,6 +363,8 @@ describe("CapabilityTokenService.mintForAction (#336)", () => {
     provider?: CapabilityTokenProvider;
     now?: () => number;
     recordMint?: (i: MintAuditInput) => Promise<{ id: string }>;
+    signingKeyId?: string;
+    logs?: Array<{ obj: unknown; msg?: string }>;
   } = {}): Harness {
     const audits: MintAuditInput[] = [];
     const map = new Map<string, StoredMint>();
@@ -342,6 +381,7 @@ describe("CapabilityTokenService.mintForAction (#336)", () => {
       connectionGrant: async () => opts.granted ?? new Set(["search_console", "post_social"]),
       provider: () => opts.provider ?? new DryRunCapabilityTokenProvider(),
       signingSecret: () => SECRET,
+      signingKeyId: () => opts.signingKeyId ?? CAPABILITY_TOKEN_DEFAULT_KEY_ID,
       store,
       recordMint:
         opts.recordMint ??
@@ -350,6 +390,7 @@ describe("CapabilityTokenService.mintForAction (#336)", () => {
           return { id: `audit-${audits.length}` };
         }),
       now: opts.now ?? (() => NOW),
+      log: { info: (obj, msg) => opts.logs?.push({ obj, msg }) },
     };
     return { service: new CapabilityTokenService(deps), audits, store };
   }
@@ -376,9 +417,25 @@ describe("CapabilityTokenService.mintForAction (#336)", () => {
     expect(r.status).toBe("minted");
     if (r.status === "minted") {
       expect(service.verifyToken(r.token)).toEqual(r.claims);
+      expect(r.claims.kid).toBe(CAPABILITY_TOKEN_DEFAULT_KEY_ID);
       expect(r.claims.delegation).toEqual({ memberId: "m1", agentId: "scout" });
       expect(r.claims.exp).toBe(NOW + inScopeCaps.defaultTtlSeconds * 1000);
     }
+  });
+
+  it("logs the signing key id for each fresh mint", async () => {
+    const logs: Array<{ obj: unknown; msg?: string }> = [];
+    const { service } = build({ signingKeyId: "capability-token:v2", logs });
+
+    const r = await service.mintForAction(readInput);
+
+    expect(r.status === "minted" && r.claims.kid).toBe("capability-token:v2");
+    expect(logs).toEqual([
+      {
+        obj: { kid: "capability-token:v2", workspaceId: OWNER, connectionId: "google" },
+        msg: "capability-token signed",
+      },
+    ]);
   });
 
   it("records verification from the real read-back, never assumed (dry-run => unverified)", async () => {
