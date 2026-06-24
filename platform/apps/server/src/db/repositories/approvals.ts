@@ -218,7 +218,7 @@ export async function getRequest(id: string): Promise<ApprovalRequest | undefine
 
 export async function listRequests(
   workspaceId: string,
-  filters: { status?: ApprovalStatus } = {},
+  filters: { status?: ApprovalStatus; limit?: number } = {},
 ): Promise<ApprovalRequest[]> {
   const where = [eq(approvalRequests.workspaceId, workspaceId)];
   if (filters.status) where.push(eq(approvalRequests.status, filters.status));
@@ -226,8 +226,16 @@ export async function listRequests(
     .select(REQUEST_COLUMNS)
     .from(approvalRequests)
     .where(and(...where))
-    .orderBy(desc(approvalRequests.createdAt));
+    .orderBy(desc(approvalRequests.createdAt))
+    .limit(clampApprovalRequestListLimit(filters.limit));
   return rows as ApprovalRequest[];
+}
+
+export const MAX_APPROVAL_REQUEST_LIST_LIMIT = 500;
+
+export function clampApprovalRequestListLimit(limit?: number, fallback = MAX_APPROVAL_REQUEST_LIST_LIMIT): number {
+  if (!Number.isFinite(limit) || limit === undefined || limit <= 0) return fallback;
+  return Math.min(Math.floor(limit), MAX_APPROVAL_REQUEST_LIST_LIMIT);
 }
 
 export async function listRequestEvents(requestId: string): Promise<ApprovalEvent[]> {
@@ -475,7 +483,12 @@ export async function rejectRequest(
  * Bulk-expire every pending request whose TTL has passed (the housekeeping sweep, ADR-0013 §6).
  * Appends an `expired` event per request in one transaction. Returns the number expired.
  */
-export async function sweepExpired(workspaceId: string): Promise<number> {
+export interface SweepExpiredResult {
+  count: number;
+  requestIds: string[];
+}
+
+export async function sweepExpiredDetailed(workspaceId: string): Promise<SweepExpiredResult> {
   return db.transaction(async (tx) => {
     const due = await tx
       .update(approvalRequests)
@@ -495,6 +508,10 @@ export async function sweepExpired(workspaceId: string): Promise<number> {
         type: "expired",
       });
     }
-    return due.length;
+    return { count: due.length, requestIds: due.map((r) => r.id) };
   });
+}
+
+export async function sweepExpired(workspaceId: string): Promise<number> {
+  return (await sweepExpiredDetailed(workspaceId)).count;
 }

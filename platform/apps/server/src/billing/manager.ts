@@ -378,7 +378,19 @@ export class BillingManager {
     const parsed = parseEvent(rawBody, cfg?.billing?.currency ?? DEFAULT_CURRENCY);
 
     const existing = await this.store.findRevenueEvent(workspaceId, parsed.id);
-    if (existing) return { deduped: true, event: existing };
+    if (existing) {
+      this.logger?.info(
+        {
+          workspaceId,
+          provider: this.provider.kind,
+          providerEventId: parsed.id,
+          amountCents: existing.amountCents,
+          currency: existing.currency,
+        },
+        "billing webhook deduped",
+      );
+      return { deduped: true, event: existing };
+    }
 
     const redact = makeRedactor(secrets);
     const event = await this.store.createRevenueEvent({

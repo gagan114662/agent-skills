@@ -31,6 +31,7 @@ import type { Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
 import type { PriceInterval } from "../billing/provider.js";
 import type { TrialNurtureService, TrialNurtureSignalKind } from "../billing/trial-nurture.js";
+import { recordWebhookSignatureFailure } from "../observability/metrics.js";
 
 export interface BillingRoutesOptions {
   billingManager: BillingManager;
@@ -426,6 +427,8 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
             req.log.error({ workspaceId: wid, err }, "billing webhook is not configured; asking provider to retry");
             return reply.code(503).send({ error: "webhook not configured" });
           }
+          req.log.warn({ provider: "stripe", workspaceId: wid, reason: err.message }, "webhook signature verification failed");
+          recordWebhookSignatureFailure("stripe", err.message);
           return reply.code(400).send({ error: "invalid signature" });
         }
         throw err;
