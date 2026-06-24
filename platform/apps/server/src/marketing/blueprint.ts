@@ -77,6 +77,25 @@ export const FOUNDING_VENTURE = {
   marketPath: "Direct: the founder steers the team toward their own audience and refines the wedge from real demand.",
 } as const;
 
+/** First-run discovery brief for customer workspaces that have not supplied #502 target fields yet. */
+export const MARKET_DISCOVERY_TASK =
+  "Before the department drafts channel work, run market discovery for this workspace. Ask the owner 5 crisp questions: " +
+  "1) What product or offer are we marketing? 2) Who is the narrow ICP and buying trigger? " +
+  "3) Which competitors or alternatives do buyers compare against? 4) What positioning or proof should we lead with? " +
+  "5) Which channels or constraints should shape the first campaign? Summarize the answers as reusable market context " +
+  "for the rest of the team, following the ICP discovery playbook.";
+
+/** Downstream welcome-task suffix when target fields are missing and discovery has been kicked off first. */
+export function marketDiscoveryContextDirective(memoryId?: string): string {
+  const memoryLine = memoryId ? ` Stored discovery context memory: ${memoryId}.` : "";
+  return (
+    "Market discovery prerequisite: use the workspace's market-discovery context before drafting. " +
+    "Reuse its ICP, positioning, competitor, proof, and channel-constraint notes; if it is still unanswered, " +
+    "ask only the missing discovery questions before producing channel work." +
+    memoryLine
+  );
+}
+
 /**
  * The dogfood venture (#235): ipop runs ITS OWN marketing as venture #1. ipop's pitch is "your marketing
  * agency of AI agents" — the most credible proof, and its most direct path to its own first dollars, is the

@@ -1,7 +1,9 @@
 import {
   BRAND_VOICE,
+  MARKET_DISCOVERY_TASK,
   MARKETING_DEPARTMENTS,
   SHARED_CHANNELS,
+  marketDiscoveryContextDirective,
   type MarketingDepartment,
 } from "./blueprint.js";
 
@@ -59,7 +61,15 @@ export interface MarketingSeedDeps {
     department: string;
     agentMemberId: string;
     sessionId: string | null;
-    kind: "welcome" | "mention";
+    kind: "welcome" | "mention" | "discovery";
+    task: string;
+    createdByMemberId: string;
+  }): Promise<{ id: string }>;
+  /** True when the workspace has already supplied structured marketing target context (#502). */
+  hasMarketingTarget?(workspaceId: string): Promise<boolean>;
+  /** Persist the discovery prompt/context anchor so later agents can refer back to it. */
+  storeDiscoveryContext?(input: {
+    workspaceId: string;
     task: string;
     createdByMemberId: string;
   }): Promise<{ id: string }>;
@@ -253,10 +263,51 @@ export async function seedMarketingDepartment(
         ? (await deps.countWelcomeTasks(workspaceId)) > 0
         : false;
     if (!alreadyActivated) {
+      const needsDiscovery = deps.hasMarketingTarget ? !(await deps.hasMarketingTarget(workspaceId)) : true;
+      let discoveryDirective: string | undefined;
+      if (needsDiscovery) {
+        const discoveryMemory = deps.storeDiscoveryContext
+          ? await deps.storeDiscoveryContext({
+              workspaceId,
+              task: MARKET_DISCOVERY_TASK,
+              createdByMemberId,
+            })
+          : undefined;
+        discoveryDirective = marketDiscoveryContextDirective(discoveryMemory?.id);
+        const discoveryDept =
+          MARKETING_DEPARTMENTS.find((d) => d.key === "reach") ?? MARKETING_DEPARTMENTS[0]!;
+        const discoveryAgent =
+          agents.find((a) => a.department === discoveryDept.key) ?? agents[0]!;
+        const discoveryChannel = channelByName.get(discoveryDept.channel)!;
+        try {
+          const session = await deps.launchWelcome({
+            workspaceId,
+            channelId: discoveryChannel.id,
+            agentMemberId: discoveryAgent.agentMemberId,
+            createdByMemberId,
+            task: MARKET_DISCOVERY_TASK,
+          });
+          const task = await deps.recordTask({
+            workspaceId,
+            channelId: discoveryChannel.id,
+            department: "discovery",
+            agentMemberId: discoveryAgent.agentMemberId,
+            sessionId: session.id,
+            kind: "discovery",
+            task: MARKET_DISCOVERY_TASK,
+            createdByMemberId,
+          });
+          welcomeTasks.push(task);
+        } catch {
+          return { channels: [...channelByName.values()], agents, welcomeTasks, venture };
+        }
+      }
       for (let i = 0; i < MARKETING_DEPARTMENTS.length; i++) {
         const dept = MARKETING_DEPARTMENTS[i]!;
         const agent = agents[i]!;
         const channel = channelByName.get(dept.channel)!;
+        const baseTask = ventureBrief ? `${dept.welcomeTask}\n\n${ventureBrief}` : dept.welcomeTask;
+        const taskWithContext = discoveryDirective ? `${baseTask}\n\n${discoveryDirective}` : baseTask;
         let session: { id: string };
         try {
           session = await deps.launchWelcome({
@@ -267,7 +318,7 @@ export async function seedMarketingDepartment(
             // #230: fold the venture brief into the lead's first task so the launched session works the
             // real founding venture (not a generic hello). Falls back to the plain welcome task if the
             // kickoff didn't run (e.g. the no-DB unit job).
-            task: ventureBrief ? `${dept.welcomeTask}\n\n${ventureBrief}` : dept.welcomeTask,
+            task: taskWithContext,
           });
         } catch {
           // Keep the venture (+ any sessions already opened) and stop — never re-throw. A blocked launch
@@ -282,7 +333,7 @@ export async function seedMarketingDepartment(
           agentMemberId: agent.agentMemberId,
           sessionId: session.id,
           kind: "welcome",
-          task: dept.welcomeTask,
+          task: taskWithContext,
           createdByMemberId,
         });
         welcomeTasks.push(task);

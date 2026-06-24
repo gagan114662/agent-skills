@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { newId } from "../../../src/db/id.js";
 import { seedMarketingDepartment, type MarketingSeedDeps } from "../../../src/marketing/seed.js";
-import { MARKETING_CHANNELS, MARKETING_DEPARTMENTS } from "../../../src/marketing/blueprint.js";
+import {
+  MARKET_DISCOVERY_TASK,
+  MARKETING_CHANNELS,
+  MARKETING_DEPARTMENTS,
+} from "../../../src/marketing/blueprint.js";
 
 /**
  * #123 seeding — idempotent, reuse-first. Drives the seeder with in-memory fakes for every #4/#9/#59
@@ -16,7 +20,7 @@ function makeFakes() {
   const grants: Array<{ memberId: string; channelId: string; capability: string }> = [];
   const posts: Array<{ channelId: string; agentMemberId: string; body: string }> = [];
   const launches: Array<{ channelId: string; agentMemberId: string; task: string }> = [];
-  const tasks: Array<{ department: string; agentMemberId: string; sessionId: string | null; kind: string }> = [];
+  const tasks: Array<{ department: string; agentMemberId: string; sessionId: string | null; kind: string; task: string }> = [];
 
   const deps: MarketingSeedDeps = {
     getChannelByName: async (_wid, name) => channels.get(name),
@@ -47,10 +51,11 @@ function makeFakes() {
       launches.push({ channelId, agentMemberId, task });
       return { id: `sess-${newId()}` };
     },
-    recordTask: async ({ department, agentMemberId, sessionId, kind }) => {
-      tasks.push({ department, agentMemberId, sessionId, kind });
+    recordTask: async ({ department, agentMemberId, sessionId, kind, task }) => {
+      tasks.push({ department, agentMemberId, sessionId, kind, task });
       return { id: `mt-${newId()}` };
     },
+    hasMarketingTarget: async () => true,
   };
   return { deps, channels, personas, channelMembers, grants, posts, launches, tasks };
 }
@@ -181,6 +186,36 @@ describe("#123 seedMarketingDepartment", () => {
     // Every welcome session's task carries the venture brief so the launched session works the venture.
     expect(f.launches).toHaveLength(8);
     expect(f.launches.every((l) => l.task.includes("VENTURE_BRIEF_MARKER"))).toBe(true);
+  });
+
+  it("launches market discovery first when no target is set and briefs downstream welcomes with the stored context (#883)", async () => {
+    const f = makeFakes();
+    const deps: MarketingSeedDeps = {
+      ...f.deps,
+      hasMarketingTarget: async () => false,
+      storeDiscoveryContext: async ({ task }) => {
+        expect(task).toBe(MARKET_DISCOVERY_TASK);
+        return { id: "mem-discovery-1" };
+      },
+      ensureFirstVenture: async () => ({ ideaId: "idea-1", created: true }),
+      activateVenture: async () => ({
+        epicTaskId: "epic-1",
+        iterations: 1,
+        verdict: "FUND",
+        brief: "VENTURE_BRIEF_MARKER",
+      }),
+    };
+
+    await seedMarketingDepartment({ workspaceId, createdByMemberId: human, postWelcomeTasks: true }, deps);
+
+    expect(f.launches).toHaveLength(9);
+    expect(f.launches[0]!.task).toBe(MARKET_DISCOVERY_TASK);
+    expect(f.tasks[0]).toMatchObject({ department: "discovery", kind: "discovery", task: MARKET_DISCOVERY_TASK });
+    const downstream = f.launches.slice(1);
+    expect(downstream).toHaveLength(8);
+    expect(downstream.every((l) => l.task.includes("VENTURE_BRIEF_MARKER"))).toBe(true);
+    expect(downstream.every((l) => l.task.includes("Market discovery prerequisite"))).toBe(true);
+    expect(downstream.every((l) => l.task.includes("mem-discovery-1"))).toBe(true);
   });
 
   it("keeps the venture and still launches when the kickoff fails — no infinite hang (#230)", async () => {
