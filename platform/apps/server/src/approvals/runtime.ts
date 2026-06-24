@@ -44,6 +44,9 @@ import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
 import type { SocialPublishDispatcher } from "../social/dispatcher.js";
 import { buildSocialPublishDispatcher } from "../social/default.js";
+import { createDefaultSearchConsoleService } from "../search-console/default.js";
+import type { SearchConsoleService } from "../search-console/service.js";
+import type { SitemapSubmissionPlan } from "../search-console/types.js";
 import { dbMessageStore, markMessageFailed, markMessageSent } from "../db/repositories/outreach.js";
 import {
   createDefaultOutreachSendDispatcher,
@@ -685,10 +688,58 @@ const ventureDeploy = makeRecordedOnlyApproval(VENTURE_DEPLOY_ACTION, "venture d
 const realworldPublish = makeRecordedOnlyApproval(REALWORLD_PUBLISH_ACTION, "real-world publish");
 const emailLiveSend = makeRecordedOnlyApproval(EMAIL_LIVE_SEND_ACTION, "email live send");
 const capabilityMint = makeRecordedOnlyApproval(CAPABILITY_MINT_ACTION, "capability mint");
-const searchConsoleSubmit = makeRecordedOnlyApproval(
-  SEARCH_CONSOLE_SUBMIT_ACTION,
-  "search console submit",
-);
+function readString(payload: Record<string, unknown>, key: string): string {
+  const value = payload[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ActionExecutionError(`searchconsole.submit payload missing ${key}`);
+  }
+  return value;
+}
+
+function readUrls(payload: Record<string, unknown>): string[] {
+  const value = payload.urls ?? payload.indexingUrls;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((url) => typeof url !== "string")) {
+    throw new ActionExecutionError("searchconsole.submit payload urls must be strings");
+  }
+  return value;
+}
+
+function readSitemapPlan(payload: Record<string, unknown>): SitemapSubmissionPlan {
+  return {
+    siteUrl: readString(payload, "siteUrl"),
+    sitemapUrl: readString(payload, "sitemapUrl"),
+    indexingUrls: readUrls(payload),
+  };
+}
+
+function makeSearchConsoleSubmit(searchConsole: SearchConsoleService): ActionExecutor {
+  return {
+    actionType: SEARCH_CONSOLE_SUBMIT_ACTION,
+    validate: validateRecordedApprovalPayload,
+    summarize: (p) =>
+      `search console submit: ${String(p.sitemapUrl ?? p.siteUrl ?? "owner approval").slice(0, 100)}`,
+    async execute(payload, ctx): Promise<Record<string, unknown>> {
+      if (!ctx.requestId) {
+        throw new ActionExecutionError("searchconsole.submit requires an approval request id");
+      }
+      const plan = readSitemapPlan(payload);
+      const result = await searchConsole.executeApprovedSubmission({
+        workspaceId: ctx.workspaceId,
+        approvalRequestId: ctx.requestId,
+        plan,
+      });
+      return {
+        recorded: true,
+        executed: true,
+        status: result.status,
+        indexingRequested: result.indexingRequested,
+        indexedPages: result.indexedPages,
+        verification: result.verification,
+      };
+    },
+  };
+}
 const gardenEnableAgent = makeRecordedOnlyApproval(
   GARDEN_ENABLE_AGENT_ACTION,
   "garden enable agent",
@@ -718,6 +769,7 @@ export function buildDefaultRegistry(
   hosted?: HostedPublishDispatcher,
   outreachDispatcher: OutreachSendDispatcher = createDefaultOutreachSendDispatcher(),
   social?: SocialPublishDispatcher,
+  searchConsole: SearchConsoleService = createDefaultSearchConsoleService(),
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
@@ -746,7 +798,7 @@ export function buildDefaultRegistry(
     makeSocialPublishPost(social),
     emailLiveSend,
     capabilityMint,
-    searchConsoleSubmit,
+    makeSearchConsoleSubmit(searchConsole),
     gardenEnableAgent,
     enterpriseBudgetBreach,
     autonomyComplete,
@@ -767,4 +819,5 @@ export const defaultRegistry: ExecutorRegistry = buildDefaultRegistry(
   buildHostedPublishDispatcher(),
   undefined,
   buildSocialPublishDispatcher(),
+  createDefaultSearchConsoleService(),
 );
