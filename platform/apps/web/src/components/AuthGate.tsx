@@ -17,6 +17,10 @@ import { SampleConsole } from "./SampleConsole.js";
 import { isMarketingPath } from "./site/paths.js";
 
 type Mode = "login" | "signup";
+type AuthError =
+  | { kind: "plain"; message: string }
+  | { kind: "email-taken"; message: string }
+  | { kind: "slug-taken"; message: string; suggestion: string };
 
 // Code-split the marketing site: signed-in users never download it.
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
@@ -25,6 +29,39 @@ const PricingPage = lazy(() => import("./landing/PricingPage.js").then((m) => ({
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
+const PASSWORD_MIN_LENGTH = 8;
+const DISPLAY_NAME_MIN_LENGTH = 2;
+const WORKSPACE_SLUG_MIN_LENGTH = 2;
+const WORKSPACE_SLUG_PATTERN = "[a-z0-9][a-z0-9-]{1,62}";
+
+function suggestedWorkspaceSlug(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  return `${normalized || "workspace"}-2`;
+}
+
+function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthError {
+  const message = err instanceof Error ? err.message : "Something went wrong";
+  const lower = message.toLowerCase();
+  if (mode === "signup" && lower.includes("email") && (lower.includes("use") || lower.includes("taken"))) {
+    return { kind: "email-taken", message: "That email already has an account." };
+  }
+  if (mode === "signup" && lower.includes("slug")) {
+    return {
+      kind: "slug-taken",
+      message: "That workspace URL is already taken.",
+      suggestion: suggestedWorkspaceSlug(workspaceSlug),
+    };
+  }
+  if (lower.includes("password") && (lower.includes("minimum") || lower.includes("least") || lower.includes("short"))) {
+    return { kind: "plain", message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` };
+  }
+  return { kind: "plain", message };
+}
 
 /** Read a `?plan=<key>` hint off the URL and resolve it to a known plan teaser (or null). */
 function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
@@ -198,7 +235,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthError | null>(null);
   const [busy, setBusy] = useState(false);
   // #214: a plan chosen on `/pricing` arrives as `?plan=<key>`. We frame it as a free trial here and
   // hand it off (sessionStorage seam) for the post-signup activation/first-run to pick up — we don't
@@ -209,6 +246,11 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
     e.preventDefault();
     setBusy(true);
     setError(null);
+    if (mode === "signup" && password.length < PASSWORD_MIN_LENGTH) {
+      setError({ kind: "plain", message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+      setBusy(false);
+      return;
+    }
     try {
       if (mode === "login") {
         await store.login(email, password);
@@ -223,7 +265,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
         await store.signup({ email, password, displayName, workspaceSlug });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(authErrorFor(err, mode, workspaceSlug));
     } finally {
       setBusy(false);
     }
@@ -253,6 +295,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Ada Lovelace"
               autoComplete="name"
+              required
+              aria-required="true"
+              minLength={DISPLAY_NAME_MIN_LENGTH}
             />
           </label>
         )}
@@ -265,6 +310,8 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
             autoComplete="email"
+            required
+            aria-required="true"
           />
         </label>
 
@@ -276,6 +323,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             autoComplete={mode === "login" ? "current-password" : "new-password"}
+            required
+            aria-required="true"
+            minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
           />
         </label>
 
@@ -286,13 +336,24 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
               value={workspaceSlug}
               onChange={(e) => setWorkspaceSlug(e.target.value)}
               placeholder="acme"
+              required
+              aria-required="true"
+              minLength={WORKSPACE_SLUG_MIN_LENGTH}
+              pattern={WORKSPACE_SLUG_PATTERN}
+              title="Use lowercase letters, numbers, and hyphens."
             />
           </label>
         )}
 
         {error && (
           <p className="auth__error" role="alert">
-            {VOICE.authError} {error}
+            {VOICE.authError} {error.message}{" "}
+            {error.kind === "email-taken" && (
+              <Link href="/login" className="linklike">
+                Sign in instead
+              </Link>
+            )}
+            {error.kind === "slug-taken" && <span>Try {error.suggestion}.</span>}
           </p>
         )}
 
