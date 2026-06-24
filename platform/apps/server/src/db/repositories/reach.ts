@@ -290,6 +290,16 @@ export const dbReachSendStore: ReachSendStore = {
   },
 };
 
+/** Resolve a Reach contact's current email address from its stable contact key. Tenant-scoped. */
+export async function getReachContactEmail(workspaceId: string, contactKey: string): Promise<string | null> {
+  const [row] = await db
+    .select({ email: reachContacts.email })
+    .from(reachContacts)
+    .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)))
+    .limit(1);
+  return clean(row?.email) ? row!.email!.trim().toLowerCase() : null;
+}
+
 export const dbReachReceiptStore: ReachReceiptStore = {
   async record(input): Promise<{ recorded: boolean }> {
     const rows = await db

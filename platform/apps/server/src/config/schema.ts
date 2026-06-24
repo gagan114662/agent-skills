@@ -1351,13 +1351,13 @@ export const realworldSchema = z.object({
 /**
  * Outreach engine policy (#225, ADR-0225). The flags behind the signal-triggered, owner-gated outreach
  * engine: composing + parking messages is always available, but `enabled` gates the proactive posture and
- * `sendProvider` selects the (recorded-only by default) sender. `perChannelDailyCap` is the per-channel
+ * `sendProvider` selects the post-approval sender. `perChannelDailyCap` is the per-channel
  * rate ceiling (premortem #200: deliverability/brand). Default OFF: nothing is sent without the owner.
  */
 export const outreachSchema = z.object({
   /** Master flag for the outreach engine's proactive posture — default OFF. */
   enabled: z.boolean().optional(),
-  /** Send provider kind (`dryrun` default — recorded-only, no network). */
+  /** Send provider kind (`dryrun` default — explicit no-network mode, `postmark` for live delivery). */
   sendProvider: z.string().optional(),
   /** Per-channel daily send cap (deliverability/brand protection). */
   perChannelDailyCap: z.number().int().positive().optional(),

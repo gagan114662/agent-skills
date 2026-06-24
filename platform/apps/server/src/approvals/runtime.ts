@@ -2,8 +2,8 @@
  * Concrete action executors (issue #13). These touch the DB / realtime, so they live apart from the
  * pure `executor.ts` (which the unit job imports). `chat.post_message` is a real side effect — it
  * reuses #4 `postMessage` + #5 realtime and runs **as the requester**, re-checking the requester's
- * #9 capability at execution time (ADR-0013 §3). `external.send` is recorded-only — no real network
- * egress, so CI/tests never make outbound calls (ADR-0013 §2).
+ * #9 capability at execution time (ADR-0013 §3). `external.send` is recorded-only unless a dispatcher is
+ * injected; `outreach.send` dispatches through the configured outreach sender after owner approval.
  */
 import { effectiveCapability, satisfies } from "../auth/access.js";
 import { getChannel, isChannelMember } from "../db/repositories/channels.js";
@@ -41,7 +41,8 @@ import type { AcquisitionDispatcher } from "../acquisition/execution.js";
 import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
 import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
-import { markMessageSent } from "../db/repositories/outreach.js";
+import { dbMessageStore, markMessageFailed, markMessageSent } from "../db/repositories/outreach.js";
+import { createDefaultOutreachSendDispatcher, type OutreachSendDispatcher } from "../outreach/send-dispatcher.js";
 import {
   FINANCE_DISBURSEMENT_ACTION,
   MONETIZATION_ACTIVATE_PRICE_ACTION,
@@ -414,35 +415,46 @@ const monetizationPayoutSettings: ActionExecutor = {
 
 /**
  * The outreach SEND (#225, ADR-0225). **Sensitive by default + IRREVERSIBLE** (deliverability/brand): it
- * ALWAYS pauses for the owner, who sees the exact recipient + content on the card. On approval it is
- * **recorded-only** — it flips the parked `outreach_messages` row to `sent` (recording the owner's go) and
- * makes NO network call. A real ESP/social adapter behind this gate is a deliberate future ADR; outreach
- * is never an autonomous send. Runs AS the requester (re-checks tenant ownership of the message at
- * execution, ADR-0013 §3).
+ * ALWAYS pauses for the owner, who sees the exact recipient + content on the card. On approval it dispatches
+ * through the configured sender and stores the provider message id on the parked `outreach_messages` row;
+ * failed delivery marks the row `failed` instead of pretending it was sent. Outreach is never an autonomous
+ * send. Runs AS the requester (re-checks tenant ownership of the message at execution, ADR-0013 §3).
  */
-const outreachSend: ActionExecutor = {
-  actionType: OUTREACH_SEND_ACTION,
-  validate: validateOutreachSend,
-  summarize: (p) =>
-    (
-      `outreach ${String(p.channel ?? "")} to ${String(p.recipientLabel ?? p.recipientRef ?? "")}: ` +
-      `${String(p.subject || p.body || "").slice(0, 80)}`
-    ).slice(0, 160),
-  async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
-    const messageId = typeof payload.messageId === "string" ? payload.messageId : "";
-    if (!messageId) throw new ActionExecutionError("messageId required");
-    const updated = await markMessageSent(ctx.workspaceId, messageId, "dryrun");
-    if (!updated) throw new ActionExecutionError("outreach message not found in this workspace");
-    return {
-      recorded: true,
-      executed: false, // recorded-only: a real channel adapter behind this gate is a future ADR.
-      sent: true,
-      messageId,
-      channel: updated.channel,
-      provider: "dryrun",
-    };
-  },
-};
+function makeOutreachSend(dispatcher: OutreachSendDispatcher): ActionExecutor {
+  return {
+    actionType: OUTREACH_SEND_ACTION,
+    validate: validateOutreachSend,
+    summarize: (p) =>
+      (
+        `outreach ${String(p.channel ?? "")} to ${String(p.recipientLabel ?? p.recipientRef ?? "")}: ` +
+        `${String(p.subject || p.body || "").slice(0, 80)}`
+      ).slice(0, 160),
+    async execute(payload, ctx: ExecutorContext): Promise<Record<string, unknown>> {
+      const messageId = typeof payload.messageId === "string" ? payload.messageId : "";
+      if (!messageId) throw new ActionExecutionError("messageId required");
+      const message = await dbMessageStore.get(ctx.workspaceId, messageId);
+      if (!message) throw new ActionExecutionError("outreach message not found in this workspace");
+      try {
+        const sent = await dispatcher.dispatch(ctx.workspaceId, message);
+        const updated = await markMessageSent(ctx.workspaceId, messageId, sent.provider, sent.externalId);
+        if (!updated) throw new ActionExecutionError("outreach message not found in this workspace");
+        return {
+          recorded: true,
+          executed: true,
+          sent: true,
+          messageId,
+          channel: updated.channel,
+          provider: sent.provider,
+          externalId: sent.externalId,
+          detail: sent.detail,
+        };
+      } catch (err) {
+        await markMessageFailed(ctx.workspaceId, messageId, message.provider || "unknown");
+        throw new ActionExecutionError(err instanceof Error ? err.message : "outreach send failed");
+      }
+    },
+  };
+}
 
 /**
  * Reach paid prospect-data credit spend (#280) — a recorded-only MONEY decision. Buying credits from a
@@ -570,10 +582,10 @@ const provisioningCustomerSpend: ActionExecutor = {
 
 /**
  * Build the executor registry with an injectable egress enforcer (#151), a send-layer compliance enforcer
- * (#196), an optional acquisition dispatcher (#189), and an optional delivery dispatcher (#295). The
- * compliance default is a no-op and both dispatchers are absent by default, so the `external.send` executor
- * stays recorded-only and the `agent.deliverable` executor stays a pure acknowledgement — byte-for-byte
- * today's behavior, every existing approval test untouched.
+ * (#196), optional acquisition/delivery dispatchers (#189/#295), and the outreach sender (#896). The
+ * compliance default is a no-op and the acquisition/delivery dispatchers are absent by default, so the
+ * `external.send` executor stays recorded-only and the `agent.deliverable` executor stays a pure
+ * acknowledgement; `outreach.send` uses the configured outreach provider after approval.
  */
 export function buildDefaultRegistry(
   egress: EgressEnforcer = defaultEgressEnforcer,
@@ -581,6 +593,7 @@ export function buildDefaultRegistry(
   dispatcher?: AcquisitionDispatcher,
   delivery?: DeliveryDispatcher,
   hosted?: HostedPublishDispatcher,
+  outreachDispatcher: OutreachSendDispatcher = createDefaultOutreachSendDispatcher(),
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
@@ -593,7 +606,7 @@ export function buildDefaultRegistry(
     financeDisbursement,
     monetizationActivatePrice,
     monetizationPayoutSettings,
-    outreachSend,
+    makeOutreachSend(outreachDispatcher),
     reachDataCreditSpend,
     skillOptAdoptEdit,
     ozLoopsPublishProposal,
