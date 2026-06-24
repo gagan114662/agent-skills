@@ -18,10 +18,10 @@ export interface ExecutorContext {
   requesterMemberId: string;
   log: FastifyBaseLogger;
   /**
-   * The #13 approval request id this execution belongs to, when run through the approve path (#295). It
-   * lets a post-approval executor tie a production-grounded receipt back to the approval that authorized
-   * it (the proof nothing ships without an approval record). Absent on the auto-approve path (the request
-   * row is created AFTER execution there) — executors that need it MUST fail closed when it is missing.
+   * The #13 approval request id this execution belongs to. The gated and auto-approved paths both create
+   * the durable request row before execution, so executors can tie production-grounded receipts back to the
+   * audit record that authorized them. Optional only for legacy direct tests/seams; production executors
+   * that need it should fail closed when it is missing.
    */
   requestId?: string;
 }

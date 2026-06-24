@@ -371,6 +371,8 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
     });
     expect(submit.statusCode).toBe(200);
     expect(submit.json().status).toBe("executed");
+    expect(submit.json().request).toMatchObject({ status: "executed", actionType: "chat.post_message" });
+    const requestId = submit.json().request.id;
 
     expect(
       (await app.inject({ method: "GET", url: `/channels/${channelId}/messages`, cookies: { rid: owner.cookie } })).json(),
@@ -385,6 +387,11 @@ describe("Approval gates: submit → pause → approve/reject/expire + audit (re
       })
     ).json().items;
     expect(pending).toHaveLength(0);
+
+    const events = (
+      await app.inject({ method: "GET", url: `/approvals/${requestId}/events`, cookies: { rid: owner.cookie } })
+    ).json().items;
+    expect(events.map((e: { type: string }) => e.type)).toEqual(["requested", "approved", "executed"]);
   });
 
   it("rejects cross-workspace request access and decision (IDOR)", async () => {

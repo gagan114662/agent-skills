@@ -27,6 +27,7 @@ import {
   listPolicyRules,
   deletePolicy,
   createRequest,
+  recordExecution,
   listRequests,
   listRequestEvents,
   clampApprovalEventListLimit,
@@ -271,31 +272,74 @@ export async function approvalRoutes(
     const decision = gateWithRisk(baseDecision, risk);
 
     if (!decision.requiresApproval) {
-      // Auto-approved: execute immediately, but still record an auditable request (requested+executed).
+      // Auto-approved: create the audit row BEFORE any side effect, then execute with requestId in context.
+      // This preserves the #13 invariant even when the executor succeeds and the later transition stumbles.
+      let request: ApprovalRequest;
       try {
-        const result = await executor.execute(payload, {
-          workspaceId: wid,
-          requesterMemberId: id.memberId,
-          log: req.log,
-        });
-        const request = await createRequest({
+        request = await createRequest({
           workspaceId: wid,
           requesterMemberId: id.memberId,
           actionType: b.actionType,
           payload,
           amount,
           summary,
-          status: "executed",
+          status: "approved",
           expiresAt: null,
-          result,
-          events: [{ type: "requested", detail: { reason: decision.reason } }, { type: "executed", detail: result }],
+          events: [
+            { type: "requested", detail: { reason: decision.reason } },
+            { type: "approved", detail: { reason: "auto-approved" } },
+          ],
         });
-        return reply.code(200).send({ status: "executed", result, request: approvalRequestView(request) });
+      } catch (err) {
+        req.log.error({ err, workspaceId: wid, actionType: b.actionType }, "auto-action audit request create failed");
+        return reply.code(502).send({ status: "failed", error: "audit request create failed" });
+      }
+
+      let result: Record<string, unknown>;
+      try {
+        result = await executor.execute(payload, {
+          workspaceId: wid,
+          requesterMemberId: id.memberId,
+          requestId: request.id,
+          log: req.log,
+        });
       } catch (err) {
         const error = err instanceof ActionExecutionError ? err.message : "execution failed";
-        if (!(err instanceof ActionExecutionError)) req.log.error({ err }, "auto-action failed");
-        return reply.code(502).send({ status: "failed", error });
+        if (!(err instanceof ActionExecutionError)) req.log.error({ err, approvalRequestId: request.id }, "auto-action failed");
+        let failedRequest = request;
+        try {
+          const recorded = await recordExecution(request.id, wid, { ok: false, error });
+          if (recorded.outcome === "recorded") failedRequest = recorded.request;
+        } catch (recordErr) {
+          req.log.error(
+            { err: recordErr, approvalRequestId: request.id },
+            "auto-action failure audit transition failed after durable request write",
+          );
+        }
+        return reply.code(502).send({ status: "failed", error, request: approvalRequestView(failedRequest) });
       }
+
+      try {
+        const recorded = await recordExecution(request.id, wid, { ok: true, result });
+        if (recorded.outcome === "recorded") {
+          return reply.code(200).send({
+            status: "executed",
+            result,
+            request: approvalRequestView(recorded.request),
+          });
+        }
+        req.log.error({ approvalRequestId: request.id }, "auto-action execution audit transition conflicted");
+      } catch (err) {
+        req.log.error(
+          { err, approvalRequestId: request.id },
+          "auto-action execution audit transition failed after executor success",
+        );
+      }
+      return reply.code(202).send({
+        status: "execution_record_pending",
+        result,
+        request: approvalRequestView(request),
+      });
     }
 
     // Gated: pause for a human. Create a pending request + notify the reviewers (#8 `approval`).
