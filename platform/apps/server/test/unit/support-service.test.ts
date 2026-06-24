@@ -263,6 +263,25 @@ describe("SupportDeskService — triage routing + bounded autonomy (#190)", () =
     expect(recorded).toHaveLength(0);
   });
 
+  it("mines recurring prospect questions into published objection FAQ drafts", async () => {
+    const tickets = new Map([
+      ["tic-1", makeTicket({ id: "tic-1", body: "Is SOC2 required before we can use this with customer data?", category: "support" })],
+      ["tic-2", makeTicket({ id: "tic-2", body: "Do you have SOC2 before we put customer data in it?", category: "support" })],
+      ["tic-3", makeTicket({ id: "tic-3", body: "How do I change my avatar?", category: "support" })],
+    ]);
+    const { svc, kb } = build({}, tickets);
+
+    const result = await svc.refreshObjectionFaq("ws-1", { minCount: 2 });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]?.count).toBe(2);
+    expect(result.drafts[0]?.question).toContain("SOC2");
+    const objection = kb.entries.find((e) => e.category === "objection");
+    expect(objection?.title).toContain("SOC2");
+    expect(objection?.body).toContain("Short answer");
+    expect(objection?.provenance).toContain("objection_miner:");
+  });
+
   it("the per-day cap blocks auto-send once reached (counts prior auto_sent receipts)", async () => {
     const autoApprover: AutoApprover = { async approve() { return { executed: true }; } };
     const { svc, receipts } = build({ autoApprover, caps: () => ({ ...autoOnCaps, autoSendMaxPerDay: 1 }) });
