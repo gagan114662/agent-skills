@@ -48,8 +48,60 @@ export interface DecidePublishOptions {
 }
 
 /**
- * Validate + plan a publish request. Rejects empty title/content, an unslugglable title, and an
- * unknown extension. On success returns a deterministic, traversal-proof commit plan.
+ * Working-notes / agent-chatter markers (#250). A self-publish body that contains any of these is an
+ * internal artifact — A2A handoff chatter, an SEO planning scratchpad, or a "leave this for a human"
+ * note — never a finished post. Matched case-insensitively as a substring of the body. This is the
+ * content-quality boundary that stops the fleet from opening debris blog PRs out of its own scratch.
+ */
+const CHATTER_MARKERS: readonly string[] = [
+  "@scout",
+  "@quill",
+  "[a2a handoff",
+  "handoff-chain",
+  "keyword pick:",
+  "target keyword:",
+  "meta description:",
+  "suggested url",
+  "nothing publishes",
+  "draft only",
+  "for a human to review",
+  "notes for the human reviewer",
+];
+
+/** Sentence-ending punctuation a finished post's last visible line must close on. */
+const SENTENCE_END = /[.!?:")]$/;
+
+/** A line that is entirely a markdown link / linked badge, e.g. `[t](u)`, `![a](s)`, `[![a](s)](u)`. */
+function isMarkdownLinkLine(line: string): boolean {
+  return /^!?\[.*\]\([^)]*\)$/.test(line);
+}
+
+/**
+ * True when the body looks cut off mid-thought (#250). After trimming and ignoring a single trailing
+ * markdown link/badge line (the #399 "Built with ipop" footer is exactly such a line), the final visible
+ * line of a finished post ends on sentence-ending punctuation; a truncated draft does not.
+ */
+function looksTruncated(content: string): boolean {
+  const lines = content.split(/\r?\n/);
+  const dropTrailingBlanks = (): void => {
+    while (lines.length > 0 && (lines[lines.length - 1] ?? "").trim() === "") lines.pop();
+  };
+  dropTrailingBlanks();
+  // Ignore a single trailing link/badge line so a real post that ends in a sentence + an attribution
+  // badge isn't misread as truncated.
+  if (lines.length > 1 && isMarkdownLinkLine((lines[lines.length - 1] ?? "").trim())) {
+    lines.pop();
+    dropTrailingBlanks();
+  }
+  const finalLine = (lines[lines.length - 1] ?? "").trim();
+  if (finalLine === "") return true; // nothing visible left ⇒ incomplete
+  return !SENTENCE_END.test(finalLine);
+}
+
+/**
+ * Validate + plan a publish request. Rejects empty title/content, an internal/incomplete draft (#250 —
+ * agent chatter markers or a truncated body), an unslugglable title, and an unknown extension. On success
+ * returns a deterministic, traversal-proof commit plan.
  */
 export function decidePublishToIpop(
   req: PublishToIpopRequest,
@@ -59,6 +111,16 @@ export function decidePublishToIpop(
   if (!title) return { ok: false, reason: "a title is required" };
   const content = req.content ?? "";
   if (!content.trim()) return { ok: false, reason: "content is required" };
+
+  // #250 content-quality gate: the body must read as a finished post, never an internal/working draft.
+  const lower = content.toLowerCase();
+  const marker = CHATTER_MARKERS.find((m) => lower.includes(m));
+  if (marker) {
+    return { ok: false, reason: `content looks like an internal draft (contains "${marker}") — not publishable` };
+  }
+  if (looksTruncated(content)) {
+    return { ok: false, reason: "content looks truncated (does not end on a complete sentence) — not publishable" };
+  }
 
   const ext = (req.extension ?? "md").trim().toLowerCase().replace(/^\./, "");
   if (!(PUBLISHABLE_EXTENSIONS as readonly string[]).includes(ext)) {

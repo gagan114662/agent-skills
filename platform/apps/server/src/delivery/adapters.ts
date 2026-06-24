@@ -74,11 +74,16 @@ export function deriveContentTitle(draft: string, task: string): string {
 
 /**
  * Wrap a raw fleet draft in the blog frontmatter the prerendered blog requires (#252). Without a `--- … ---`
- * block carrying `status: published`, `posts.ts` treats the file as an invisible non-post — so an
- * autonomously-shipped deliverable (a plain markdown body) would never render on /blog. We synthesize a
- * valid header (title / slug / description / date / `status: published`) so the fleet's content actually
- * goes live. If the agent already produced its own frontmatter we respect it untouched. Values are
- * single-line + quoted (the blog's tiny parser reads `key: "value"`); the body is the draft verbatim.
+ * block, `posts.ts` treats the file as an invisible non-post — so an autonomously-shipped deliverable (a
+ * plain markdown body) would never be recognised as a post at all. We synthesize a valid header
+ * (title / slug / description / date / status).
+ *
+ * The status is always `draft` (#250). A fleet-authored post must NEVER self-publish to the live /blog: it
+ * lands as a draft inside the content PR so a human's review + a deliberate `status: published` flip is the
+ * publish gate — exactly like the changelog machine, where the owner's PR approval IS the gate. This is the
+ * source-level fix that stops the fleet from shipping debris posts live. If the agent already produced its
+ * own frontmatter we respect it untouched. Values are single-line + quoted (the blog's tiny parser reads
+ * `key: "value"`); the body is the draft verbatim.
  */
 export function ensureBlogFrontmatter(draft: string, title: string, now: Date): string {
   const body = draft.replace(/^\uFEFF/, "").replace(/^\s+/, "");
@@ -96,7 +101,7 @@ export function ensureBlogFrontmatter(draft: string, title: string, now: Date): 
     `slug: ${slugify(title)}`,
     `description: ${yaml(excerpt || title)}`,
     `date: ${now.toISOString().slice(0, 10)}`,
-    "status: published",
+    "status: draft",
     "---",
     "",
     "",
@@ -201,8 +206,9 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
     // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
     const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: title, format: "markdown" });
-    // Make the raw draft a real, VISIBLE blog post (#252 requires `status: published` frontmatter) so the
-    // autonomous ship actually goes live on /blog instead of committing an invisible non-post.
+    // Wrap the raw draft in blog frontmatter (#252) but always as `status: draft` (#250): the post is
+    // committed to the content PR as a draft, never self-published live — a human's review + status flip is
+    // the publish gate. This keeps the fleet from shipping debris posts to /blog on its own.
     const post = ensureBlogFrontmatter(input.draft, title, new Date());
     const content = badge ? appendBadge(post, badge, "markdown") : post;
     const result = await this.publisher.publish({

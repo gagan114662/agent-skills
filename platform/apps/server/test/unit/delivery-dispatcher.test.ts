@@ -341,9 +341,9 @@ describe("delivery adapters (#295)", () => {
       externalRef: "https://github.com/ipop/site/pull/42",
     });
     expect(out.detail).toMatchObject({ branch: "ipop-content/homepage-seo", headStatus: 200 });
-    // The draft is committed as the file body (now under generated `status: published` frontmatter so the
-    // shipped post is actually VISIBLE on /blog) — it never becomes the title/routing.
-    expect(calls[0]?.content).toContain("status: published");
+    // The draft is committed as the file body (under generated `status: draft` frontmatter so the shipped
+    // post lands gated in the PR, never self-published live — #250) — it never becomes the title/routing.
+    expect(calls[0]?.content).toContain("status: draft");
     expect(calls[0]?.content).toContain("# new meta tags");
     // The title is the content's OWN heading (the real topic), not the enriched task.
     expect(calls[0]?.title).toBe("new meta tags");
@@ -403,12 +403,13 @@ describe("delivery adapters (#295)", () => {
     expect(calls[0]!.title.length).toBeLessThanOrEqual(120);
   });
 
-  describe("ensureBlogFrontmatter (#252 — a shipped draft must be a VISIBLE post)", () => {
+  describe("ensureBlogFrontmatter (#252 + #250 — a shipped draft is wrapped, but gated as a draft)", () => {
     const now = new Date("2026-06-21T00:00:00Z");
-    it("wraps a raw draft in published frontmatter so /blog renders it", () => {
+    it("wraps a raw draft in DRAFT frontmatter so it lands gated in the PR, never self-published live", () => {
       const out = ensureBlogFrontmatter("# Best AI marketing tools\n\nHere is the post body.", "Best AI marketing tools for startups", now);
       expect(out).toMatch(/^---\n/);
-      expect(out).toContain("status: published"); // posts.ts hides anything not 'published'
+      expect(out).toContain("status: draft"); // #250: a human flip to 'published' is the publish gate
+      expect(out).not.toContain("status: published");
       expect(out).toContain('title: "Best AI marketing tools for startups"');
       expect(out).toContain("slug: best-ai-marketing-tools-for-startups");
       expect(out).toContain("date: 2026-06-21");

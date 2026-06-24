@@ -133,7 +133,7 @@ describe("self-publish to ipop.ai (#250) — POST /me/realworld/publish-site (au
         method: "POST",
         url: "/me/realworld/publish-site",
         cookies: { rid: cookie },
-        payload: { title: "Why AI Marketing Wins", content: "# A real post\n\nbody" },
+        payload: { title: "Why AI Marketing Wins", content: "# A real post\n\nThis is the complete body of the post." },
       });
       expect(res.statusCode).toBe(200);
       const body = res.json();

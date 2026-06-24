@@ -107,7 +107,7 @@ describe("SitePublisher abstraction (#258)", () => {
         config: {},
       });
       expect(pub.kind).toBe("github");
-      const res = await pub.publish({ workspaceId: "w1", title: "Post", content: "# body" });
+      const res = await pub.publish({ workspaceId: "w1", title: "Post", content: "# Post\n\nThis is the complete body." });
       expect(res.status).toBe("published");
       expect(seenAuth).toBe("Bearer tok_conn");
     });
@@ -117,7 +117,7 @@ describe("SitePublisher abstraction (#258)", () => {
         readConnectionSecrets: async () => ({}),
         config: {},
       });
-      const res = await pub.publish({ workspaceId: "w1", title: "Why AI Wins", content: "# body" });
+      const res = await pub.publish({ workspaceId: "w1", title: "Why AI Wins", content: "# Why AI wins\n\nThis is the complete body." });
       expect(res.status).toBe("published");
       if (res.status !== "published") return;
       expect(res.prUrl).toContain("/pull/dryrun-");
