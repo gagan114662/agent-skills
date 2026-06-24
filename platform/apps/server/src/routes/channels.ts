@@ -30,6 +30,7 @@ import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.
 
 const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
 const MESSAGE_LIST_MAX_LIMIT = 1_000;
+export const MAX_DM_MEMBER_IDS = 100;
 
 function parseMessageLimit(value: unknown): number | undefined {
   if (value === undefined) return undefined;
@@ -94,7 +95,10 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     const b = req.body as { memberIds?: string[] };
-    const members = [...new Set([id.memberId, ...(b.memberIds ?? [])])];
+    if (Array.isArray(b.memberIds) && b.memberIds.length > MAX_DM_MEMBER_IDS) {
+      return reply.code(400).send({ error: "memberIds must contain at most " + MAX_DM_MEMBER_IDS + " entries" });
+    }
+    const members = [...new Set([id.memberId, ...(Array.isArray(b.memberIds) ? b.memberIds : [])])];
     if (members.length < 2) return reply.code(400).send({ error: "a DM needs at least 2 members" });
     return getOrCreateDm(wid, members);
   });
