@@ -200,11 +200,10 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         if (!root || root.channelId !== channelId) {
           return fail("thread root not found in this channel");
         }
-        messages = await listThreadReplies(root.id);
+        messages = await listThreadReplies(root.id, limit);
       } else {
-        messages = await listChannelMessages(channelId);
+        messages = await listChannelMessages(channelId, limit);
       }
-      if (limit && messages.length > limit) messages = messages.slice(-limit);
       return ok(messages);
     },
   );
@@ -533,9 +532,10 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         id: z.string().optional().describe("A specific memory node id (returns it + neighbors)."),
         type: z.string().optional().describe("Filter nodes by type."),
         entity: z.string().optional().describe("Filter nodes by entity."),
+        limit: z.number().int().positive().max(1000).optional().describe("Maximum memories to return."),
       },
     },
-    async ({ id, type, entity }) => {
+    async ({ id, type, entity, limit }) => {
       const cap = captureReply();
       if (!(await requireMemoryCapability(identity, wid, "read", cap.reply))) {
         return fail(cap.denial()?.body.error ?? "access denied");
@@ -546,7 +546,7 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
         const neighbors = await getNeighbors(wid, id);
         return ok({ memory: node, ...neighbors });
       }
-      return ok(await listMemories(wid, { type, entity }));
+      return ok(await listMemories(wid, { type, entity, limit }));
     },
   );
 
