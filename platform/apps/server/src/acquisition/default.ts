@@ -31,6 +31,7 @@ import { getChannelDescriptor, LOWEST_RISK_CHANNEL } from "../outbound-channel/c
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
+import type { VerificationEngine } from "../verification/engine.js";
 import { buildAcquisitionBriefView, type AcquisitionBriefView } from "./cac.js";
 import type { FooterInfo } from "./compliance.js";
 import {
@@ -106,12 +107,12 @@ export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
  * recorded-only, and with the delivery flag off the `agent.deliverable` executor stays a pure
  * acknowledgement.
  */
-export function buildAcquisitionRegistry(): ExecutorRegistry {
+export function buildAcquisitionRegistry(verification?: VerificationEngine): ExecutorRegistry {
   return buildDefaultRegistry(
     defaultEgressEnforcer,
     defaultComplianceEnforcer,
     buildAcquisitionDispatcher(),
-    buildDeliveryDispatcher(),
+    buildDeliveryDispatcher(verification),
     buildHostedPublishDispatcher(),
   );
 }

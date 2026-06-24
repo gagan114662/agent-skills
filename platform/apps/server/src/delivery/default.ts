@@ -45,8 +45,11 @@ import type { DeliveryChannel } from "./decide.js";
 import {
   createDeliveryDispatcher,
   type DeliveryDispatcher,
+  type DeliveryVerificationInput,
+  type DeliveryVerificationOutcome,
   type LiveShipEvent,
 } from "./dispatcher.js";
+import type { VerificationEngine } from "../verification/engine.js";
 
 /** Resolve the ship flags for a workspace from the layered config (#58) — default-OFF, owner-first. */
 export function deliveryFlagsFor(workspaceId: string): DeliveryFlags {
@@ -173,8 +176,47 @@ const resolveBuiltWithBadge: AttributionBadgeFor = ({ workspaceId, artifactId, f
   });
 };
 
+async function verifyDelivery(
+  verification: VerificationEngine,
+  input: DeliveryVerificationInput,
+): Promise<DeliveryVerificationOutcome> {
+  const deliverableKind = "outbound_content" as const;
+  await verification.defineDone({
+    workspaceId: input.workspaceId,
+    deliverableRef: input.deliverableRef,
+    deliverableKind,
+    brief: input.brief,
+    reversibilityHint: input.reversibility,
+  });
+  const result = await verification.verify(
+    {
+      workspaceId: input.workspaceId,
+      deliverableRef: input.deliverableRef,
+      deliverableKind,
+      workerMemberId: input.workerMemberId,
+      content: input.content,
+    },
+    { fallbackBrief: input.brief },
+  );
+  if ("skipped" in result) {
+    return {
+      allowed: false,
+      action: result.skipped,
+      reason: "verification did not produce a verdict",
+    };
+  }
+  return {
+    allowed:
+      result.verdict.passed &&
+      result.verdict.independenceOk &&
+      (result.decision.action === "request_approval" || result.decision.action === "auto_proceed"),
+    action: result.decision.action,
+    reason: result.decision.reason,
+  };
+}
+
 /** Build the production delivery dispatcher over the real repos + providers. */
-export function buildDeliveryDispatcher(): DeliveryDispatcher {
+export function buildDeliveryDispatcher(verification?: VerificationEngine): DeliveryDispatcher {
   const sitePr = resolveSitePrDelivery();
   return createDeliveryDispatcher({
     resolveDepartment: resolveDeliveryDepartment,
@@ -186,6 +228,7 @@ export function buildDeliveryDispatcher(): DeliveryDispatcher {
       email: new EmailChannelAdapter(dryRunEspProvider),
     },
     receipts: dbDeliveryReceiptStore,
+    verify: verification ? (input) => verifyDelivery(verification, input) : undefined,
     // #386 attribution exposure capture — gated active-check inside, so it is safe to wire unconditionally.
     onLiveShip: recordAttributionExposure,
   });

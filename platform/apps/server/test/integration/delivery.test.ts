@@ -61,6 +61,7 @@ async function newWorkspace(): Promise<{ cookie: string; workspaceId: string; me
 }
 
 const ALL_ON: DeliveryFlags = { enabled: true, publish: true, site_pr: false, social: true, email: true };
+const INTEGRATION_TIMEOUT_MS = 20_000;
 
 /** A dry-run site-PR publisher (opens no real PR — exercises the wiring without a token/network). */
 function dryRunSitePrAdapter(): SitePrChannelAdapter {
@@ -120,7 +121,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       live: false, // dry-run URL is not reachable — honestly recorded, never overclaimed
     });
     expect(receipts[0]?.externalRef).toContain("dryrun.reload.app");
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("ships a content/SEO deliverable as a site PR when site_pr is on, recording a reversible receipt (#364)", async () => {
     const ws = await newWorkspace();
@@ -153,7 +154,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       live: false,
     });
     expect(receipts[0]?.externalRef).toContain("/pull/");
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("does not ship a deliverable from a non-department channel (shared room → not shippable)", async () => {
     const ws = await newWorkspace();
@@ -164,7 +165,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
     );
     expect(result).toBeNull();
     expect(await listDeliveryReceipts(ws.workspaceId)).toHaveLength(0);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("does not cross tenants: a channel from another workspace resolves to not-shippable", async () => {
     const a = await newWorkspace();
@@ -176,7 +177,7 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       { workspaceId: a.workspaceId, approvalRequestId: newId() },
     );
     expect(result).toBeNull();
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 
   it("countLiveDeliveries counts only genuinely-live receipts (dry-run sends do not inflate it)", async () => {
     const ws = await newWorkspace();
@@ -205,5 +206,5 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       detail: {},
     });
     expect(await countLiveDeliveries(ws.workspaceId)).toBe(1);
-  });
+  }, INTEGRATION_TIMEOUT_MS);
 });
