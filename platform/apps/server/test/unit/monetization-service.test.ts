@@ -10,6 +10,7 @@ import {
   type PlanRecord,
   type ExperimentRecord,
   type RevenueRecord,
+  type PlanStateChangeRecord,
 } from "../../src/monetization/service.js";
 import { MonetizationEngine } from "../../src/monetization/engine.js";
 import { MONETIZATION_DEFAULTS, type MonetizationCaps } from "../../src/monetization/caps.js";
@@ -24,6 +25,7 @@ class MemoryStore implements MonetizationStore {
   plans: PlanRecord[] = [];
   experiments: ExperimentRecord[] = [];
   revenue: RevenueRecord[] = [];
+  planStateChanges: PlanStateChangeRecord[] = [];
 
   async createPlan(input: Parameters<MonetizationStore["createPlan"]>[0]): Promise<PlanRecord> {
     const plan: PlanRecord = {
@@ -71,6 +73,25 @@ class MemoryStore implements MonetizationStore {
       (plan as Record<string, unknown>)[k] = v;
     }
     return plan;
+  }
+  async recordPlanStateChange(
+    input: Parameters<MonetizationStore["recordPlanStateChange"]>[0],
+  ): Promise<PlanStateChangeRecord> {
+    const change: PlanStateChangeRecord = { id: newId(), ...input };
+    this.planStateChanges.push(change);
+    return change;
+  }
+  async listPlanStateChanges(
+    workspaceId: string,
+    filter?: { planId?: string | null; sinceMs?: number; untilMs?: number; limit?: number },
+  ): Promise<PlanStateChangeRecord[]> {
+    let rows = this.planStateChanges.filter((change) => change.workspaceId === workspaceId);
+    if (filter?.planId === null) rows = rows.filter((change) => change.planId === null);
+    else if (typeof filter?.planId === "string") rows = rows.filter((change) => change.planId === filter.planId);
+    if (filter?.sinceMs !== undefined) rows = rows.filter((change) => change.createdAtMs >= filter.sinceMs!);
+    if (filter?.untilMs !== undefined) rows = rows.filter((change) => change.createdAtMs <= filter.untilMs!);
+    rows = [...rows].sort((a, b) => b.createdAtMs - a.createdAtMs);
+    return filter?.limit ? rows.slice(0, filter.limit) : rows;
   }
 
   async createExperiment(input: Parameters<MonetizationStore["createExperiment"]>[0]): Promise<ExperimentRecord> {
@@ -331,7 +352,7 @@ describe("MonetizationService — activation money boundary", () => {
 
 describe("MonetizationService — minting after approval (the engine tick)", () => {
   it("mints a real link with the venture's OWN key only after the owner approves", async () => {
-    const { service, gate, vault, provider } = build();
+    const { service, store, gate, vault, provider } = build();
     await vault.connect({
       workspaceId: WS,
       ventureIdeaId: VENTURE,
@@ -361,9 +382,28 @@ describe("MonetizationService — minting after approval (the engine tick)", () 
     expect(active!.url).toBe("https://pay.example/x");
     expect(active!.priceId).toBe("price_x");
 
+    const audit = await service.listPlanStateChanges(WS, {
+      planId: plan.id,
+      sinceMs: NOW.getTime() - 1,
+      untilMs: NOW.getTime() + 1,
+    });
+    expect(audit).toMatchObject([
+      {
+        workspaceId: WS,
+        planId: plan.id,
+        fromStatus: "pending_activation",
+        toStatus: "active",
+        actorMemberId: null,
+        reason: "owner_approved_activation",
+        approvalRequestId,
+        createdAtMs: NOW.getTime(),
+      },
+    ]);
+
     // Idempotent: a second tick does not re-mint.
     res = await service.activatePending(WS);
     expect(res.activated).toHaveLength(0);
+    expect(store.planStateChanges).toHaveLength(1);
   });
 
   it("does not mint while the request is still pending", async () => {
