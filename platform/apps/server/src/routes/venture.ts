@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
+import { WebhookVerificationError } from "../billing/webhook.js";
+import type { MonetizationService } from "../monetization/service.js";
 import { VentureService, VentureNotFoundError } from "../venture/service.js";
 import type { IdeaInput } from "../venture/types.js";
 
@@ -11,13 +13,51 @@ import type { IdeaInput } from "../venture/types.js";
  */
 export interface VentureRoutesOptions {
   service: VentureService;
+  monetization: MonetizationService;
+  resolveVentureWorkspaceId(ventureIdeaId: string): Promise<string | undefined>;
 }
 
 export async function ventureRoutes(
   app: FastifyInstance,
   opts: VentureRoutesOptions,
 ): Promise<void> {
-  const { service } = opts;
+  const { service, monetization, resolveVentureWorkspaceId } = opts;
+
+  // #955: public Stripe callback. Encapsulate the raw parser so normal venture routes keep JSON parsing.
+  await app.register(async (webhookScope) => {
+    webhookScope.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_req, body, done) => done(null, body),
+    );
+
+    webhookScope.post("/ventures/:vid/stripe-webhook", async (req, reply) => {
+      const { vid } = req.params as { vid: string };
+      const workspaceId = await resolveVentureWorkspaceId(vid);
+      if (!workspaceId) return reply.code(404).send({ error: "venture not found" });
+
+      const signature = req.headers["stripe-signature"];
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
+      try {
+        const result = await monetization.ingestVentureWebhook({
+          workspaceId,
+          ventureIdeaId: vid,
+          rawBody,
+          signature: typeof signature === "string" ? signature : undefined,
+        });
+        return reply.code(200).send({ received: true, deduped: result.deduped });
+      } catch (err) {
+        if (err instanceof WebhookVerificationError) {
+          req.log.warn(
+            { provider: "stripe", workspaceId, ventureIdeaId: vid, reason: err.message },
+            "venture webhook signature verification failed",
+          );
+          return reply.code(400).send({ error: "invalid signature" });
+        }
+        throw err;
+      }
+    });
+  });
 
   /** #96 step 1 SOURCE: submit the typed intake artifact. */
   app.post("/workspaces/:wid/ventures", async (req, reply) => {
