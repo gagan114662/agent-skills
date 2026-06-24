@@ -14,6 +14,11 @@ import {
 } from "../db/repositories/auth.js";
 import { getWorkspaceBySlug, createWorkspace } from "../db/repositories/workspaces.js";
 import { parseEnvOrigins } from "../http/cors.js";
+import {
+  AUTH_PUBLIC_RATE_LIMIT,
+  SIGNUP_PUBLIC_RATE_LIMIT,
+  publicRateLimitPreHandler,
+} from "../http/rate-limit.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
@@ -57,7 +62,10 @@ export interface AuthRoutesOptions {
 }
 
 export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions = {}): Promise<void> {
-  app.post("/auth/signup", async (req, reply) => {
+  const loginRateLimit = publicRateLimitPreHandler(AUTH_PUBLIC_RATE_LIMIT);
+  const signupRateLimit = publicRateLimitPreHandler(SIGNUP_PUBLIC_RATE_LIMIT);
+
+  app.post("/auth/signup", { preHandler: signupRateLimit }, async (req, reply) => {
     const b = req.body as {
       email?: string;
       password?: string;
@@ -68,7 +76,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions =
       return reply.code(400).send({ error: "email, password, displayName, workspaceSlug required" });
     }
     if (await findUserByEmail(b.email)) {
-      return reply.code(409).send({ error: "email already in use" });
+      return reply.code(401).send({ error: "invalid credentials" });
     }
     const ws =
       (await getWorkspaceBySlug(b.workspaceSlug)) ??
@@ -88,7 +96,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions =
     return reply.code(201).send({ ok: true });
   });
 
-  app.post("/auth/login", async (req, reply) => {
+  app.post("/auth/login", { preHandler: loginRateLimit }, async (req, reply) => {
     const b = req.body as { email?: string; password?: string };
     const user = await findUserByEmail(b.email ?? "");
     if (!user || !user.passwordHash || !(await verifyPassword(b.password ?? "", user.passwordHash))) {
