@@ -105,8 +105,16 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       events: [{ type: "requested", detail: {} }],
     });
 
+    const sessionId = newId();
     const result = await dispatcher().ship(
-      { sessionId: newId(), channelId: channel.id, task: "Launch blog post", draft: "Hello, world." },
+      {
+        sessionId,
+        channelId: channel.id,
+        task: "Launch blog post",
+        draft: "Hello, world.",
+        computeSeconds: 90,
+        estimatedCostCents: 45,
+      },
       { workspaceId: ws.workspaceId, approvalRequestId: req.id },
     );
     expect(result).toMatchObject({ shipped: true, channel: "publish", provider: "dryrun" });
@@ -119,6 +127,8 @@ describe("deliverable delivery (#295, real Postgres)", () => {
       reversibility: "reversible",
       status: "shipped",
       live: false, // dry-run URL is not reachable — honestly recorded, never overclaimed
+      computeSeconds: 90,
+      estimatedCostCents: 45,
     });
     expect(receipts[0]?.externalRef).toContain("dryrun.reload.app");
   }, INTEGRATION_TIMEOUT_MS);

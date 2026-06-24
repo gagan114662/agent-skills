@@ -407,6 +407,8 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         sessionId: e.sessionId,
         channelId: e.channelId,
         task,
+        computeSeconds: e.computeSeconds,
+        estimatedCostCents: 0,
         // The draft is already redacted + bounded (the result tail). Stored so the drawer can show
         // what the agent produced without re-reading the channel.
         draft: e.result.slice(0, 4000),

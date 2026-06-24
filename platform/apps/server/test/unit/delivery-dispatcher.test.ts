@@ -80,7 +80,14 @@ describe("delivery dispatcher (#295)", () => {
     const { deps, receipts, adapters } = buildDeps();
     const dispatcher = createDeliveryDispatcher(deps);
     const result = await dispatcher.ship(
-      { sessionId: "s1", channelId: "c1", task: "Launch post", draft: "Hello world" },
+      {
+        sessionId: "s1",
+        channelId: "c1",
+        task: "Launch post",
+        draft: "Hello world",
+        computeSeconds: 75,
+        estimatedCostCents: 13,
+      },
       { workspaceId: "ws1", approvalRequestId: "req-42" },
     );
     expect(adapters.publish.calls).toBe(1);
@@ -99,6 +106,8 @@ describe("delivery dispatcher (#295)", () => {
       channel: "publish",
       status: "shipped",
       live: true,
+      computeSeconds: 75,
+      estimatedCostCents: 13,
       externalRef: "publish-ref",
     });
   });

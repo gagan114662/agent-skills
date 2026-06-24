@@ -63,6 +63,10 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function nonnegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && typeof value === "number" && value >= 0;
+}
+
 /** `chat.post_message` payload: `{ channelId, body }`, both non-empty strings. */
 export function validateChatPostMessage(payload: unknown): ValidationResult {
   const p = asRecord(payload);
@@ -92,6 +96,12 @@ export function validateAgentDeliverable(payload: unknown): ValidationResult {
   }
   if (p.channelId !== undefined && typeof p.channelId !== "string") {
     return { ok: false, error: "channelId must be a string" };
+  }
+  if (p.computeSeconds !== undefined && !nonnegativeInteger(p.computeSeconds)) {
+    return { ok: false, error: "computeSeconds must be a nonnegative integer" };
+  }
+  if (p.estimatedCostCents !== undefined && !nonnegativeInteger(p.estimatedCostCents)) {
+    return { ok: false, error: "estimatedCostCents must be a nonnegative integer" };
   }
   return { ok: true };
 }
