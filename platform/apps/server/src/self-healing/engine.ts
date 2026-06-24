@@ -1,5 +1,5 @@
 import type { SessionLogger } from "../runtime/manager.js";
-import { recordSelfHealingAction, recordSelfHealingTick } from "../observability/metrics.js";
+import { recordLoopTickFailure, recordSelfHealingAction, recordSelfHealingTick } from "../observability/metrics.js";
 import { decideHealth, decideRemediation, type RemediationDecision } from "./decide.js";
 import { composeRunbook } from "./runbook.js";
 import {
@@ -177,18 +177,23 @@ export class SelfHealingEngine {
 
   /** One pass over every opted-in workspace. */
   async tickAll(): Promise<void> {
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "self-healing tickAll skipped: maintenance mode active");
-      return;
-    }
-    const now = this.deps.now?.() ?? new Date();
-    const workspaceIds = await this.deps.listWorkspaceIds();
-    for (const workspaceId of workspaceIds) {
-      try {
-        await this.tickWorkspace(workspaceId, now);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "self-healing tickAll: workspace tick failed");
+    try {
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "self-healing tickAll skipped: maintenance mode active");
+        return;
       }
+      const now = this.deps.now?.() ?? new Date();
+      const workspaceIds = await this.deps.listWorkspaceIds();
+      for (const workspaceId of workspaceIds) {
+        try {
+          await this.tickWorkspace(workspaceId, now);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "self-healing tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("self_healing");
+      this.deps.logger.error({ err }, "self-healing tickAll failed");
     }
   }
 

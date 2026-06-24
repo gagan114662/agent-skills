@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resetMetrics } from "../../src/observability/metrics.js";
+import { renderMetrics, resetMetrics } from "../../src/observability/metrics.js";
 import { WATCHDOG_DEFAULTS, type WatchdogCaps } from "../../src/watchdog/caps.js";
 import {
   WatchdogEngine,
@@ -94,6 +94,21 @@ describe("WatchdogEngine", () => {
     const { engine } = build({ maintenancePaused: async () => true, listLiveSessions });
     await engine.tickAll();
     expect(listLiveSessions).not.toHaveBeenCalled();
+  });
+
+  it("logs and counts a top-level tickAll failure without throwing", async () => {
+    const logger = { ...silentLogger, error: vi.fn() };
+    const { engine } = build({
+      logger,
+      listLiveSessions: vi.fn(async () => {
+        throw new Error("db unavailable");
+      }),
+    });
+
+    await expect(engine.tickAll()).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), "watchdog tickAll failed");
+    expect(renderMetrics()).toContain('loop_tick_failures_total{loop="watchdog"} 1');
   });
 
   it("skips a workspace whose kill switch is engaged — no revive, no escalate", async () => {

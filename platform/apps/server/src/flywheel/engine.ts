@@ -2,6 +2,7 @@ import type { SessionLogger } from "../runtime/manager.js";
 import {
   recordFlywheelAction,
   recordFlywheelTick,
+  recordLoopTickFailure,
 } from "../observability/metrics.js";
 import { resolveFlywheelCaps, type FlywheelCaps } from "./caps.js";
 import { decideDispatch, decideIssueAction } from "./decide.js";
@@ -229,20 +230,25 @@ export class FlywheelEngine {
 
   /** One pass over every workspace with open fingerprints. */
   async tickAll(): Promise<void> {
-    // #99: maintenance pauses the whole loop on the same Redis flag the HTTP write-gate reads — checked
-    // BEFORE any DB call so a maintenance window stops all flywheel work immediately.
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "flywheel tickAll skipped: maintenance mode active");
-      return;
-    }
-    const now = this.clock();
-    const workspaces = await this.deps.activeWorkspaces();
-    for (const workspaceId of workspaces) {
-      try {
-        await this.tickWorkspace(workspaceId, now);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "flywheel tickAll: workspace tick failed");
+    try {
+      // #99: maintenance pauses the whole loop on the same Redis flag the HTTP write-gate reads — checked
+      // BEFORE any DB call so a maintenance window stops all flywheel work immediately.
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "flywheel tickAll skipped: maintenance mode active");
+        return;
       }
+      const now = this.clock();
+      const workspaces = await this.deps.activeWorkspaces();
+      for (const workspaceId of workspaces) {
+        try {
+          await this.tickWorkspace(workspaceId, now);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "flywheel tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("flywheel");
+      this.deps.logger.error({ err }, "flywheel tickAll failed");
     }
   }
 

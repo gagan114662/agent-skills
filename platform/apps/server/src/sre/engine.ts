@@ -1,5 +1,5 @@
 import type { SessionLogger } from "../runtime/manager.js";
-import { recordSreAction, recordSreTick } from "../observability/metrics.js";
+import { recordLoopTickFailure, recordSreAction, recordSreTick } from "../observability/metrics.js";
 import { evaluateSlo, observeService } from "./slo.js";
 import { decideAlert } from "./decide.js";
 import { cooldownElapsed } from "./guards.js";
@@ -167,21 +167,26 @@ export class SreEngine {
 
   /** One pass: read service signals, then evaluate each opted-in workspace's SLOs. */
   async tickAll(): Promise<void> {
-    // #99: maintenance pauses the loop on the same Redis flag the HTTP write-gate reads. Checked
-    // BEFORE any signal read so a maintenance window stops all SRE work immediately.
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "sre tickAll skipped: maintenance mode active");
-      return;
-    }
-    const now = this.deps.now?.() ?? new Date();
-    const signals = await this.deps.readSignals(now);
-    const workspaceIds = await this.deps.listWorkspaceIds();
-    for (const workspaceId of workspaceIds) {
-      try {
-        await this.tickWorkspace(workspaceId, signals, now);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "sre tickAll: workspace tick failed");
+    try {
+      // #99: maintenance pauses the loop on the same Redis flag the HTTP write-gate reads. Checked
+      // BEFORE any signal read so a maintenance window stops all SRE work immediately.
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "sre tickAll skipped: maintenance mode active");
+        return;
       }
+      const now = this.deps.now?.() ?? new Date();
+      const signals = await this.deps.readSignals(now);
+      const workspaceIds = await this.deps.listWorkspaceIds();
+      for (const workspaceId of workspaceIds) {
+        try {
+          await this.tickWorkspace(workspaceId, signals, now);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "sre tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("sre");
+      this.deps.logger.error({ err }, "sre tickAll failed");
     }
   }
 

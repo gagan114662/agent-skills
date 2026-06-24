@@ -1,6 +1,6 @@
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
-import { recordWatchdogAction, recordWatchdogTick } from "../observability/metrics.js";
+import { recordLoopTickFailure, recordWatchdogAction, recordWatchdogTick } from "../observability/metrics.js";
 import { decideRevival } from "./decide.js";
 import { windowExpired } from "./guards.js";
 import { classifyFailure } from "./taxonomy.js";
@@ -162,26 +162,31 @@ export class WatchdogEngine {
 
   /** One pass over the fleet's live sessions, grouped by workspace. */
   async tickAll(): Promise<void> {
-    // #99: maintenance pauses the supervisor on the same Redis flag the HTTP write-gate reads.
-    // Checked BEFORE any DB call so a maintenance window stops all watchdog work immediately.
-    if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
-      this.deps.logger.warn({}, "watchdog tickAll skipped: maintenance mode active");
-      return;
-    }
-    const now = this.deps.now?.() ?? new Date();
-    const live = await this.deps.listLiveSessions();
-    const byWorkspace = new Map<string, LiveSession[]>();
-    for (const session of live) {
-      const list = byWorkspace.get(session.workspaceId) ?? [];
-      list.push(session);
-      byWorkspace.set(session.workspaceId, list);
-    }
-    for (const [workspaceId, sessions] of byWorkspace) {
-      try {
-        await this.tickWorkspace(workspaceId, sessions, now);
-      } catch (err) {
-        this.deps.logger.error({ err, workspaceId }, "watchdog tickAll: workspace tick failed");
+    try {
+      // #99: maintenance pauses the supervisor on the same Redis flag the HTTP write-gate reads.
+      // Checked BEFORE any DB call so a maintenance window stops all watchdog work immediately.
+      if (this.deps.maintenancePaused && (await this.deps.maintenancePaused())) {
+        this.deps.logger.warn({}, "watchdog tickAll skipped: maintenance mode active");
+        return;
       }
+      const now = this.deps.now?.() ?? new Date();
+      const live = await this.deps.listLiveSessions();
+      const byWorkspace = new Map<string, LiveSession[]>();
+      for (const session of live) {
+        const list = byWorkspace.get(session.workspaceId) ?? [];
+        list.push(session);
+        byWorkspace.set(session.workspaceId, list);
+      }
+      for (const [workspaceId, sessions] of byWorkspace) {
+        try {
+          await this.tickWorkspace(workspaceId, sessions, now);
+        } catch (err) {
+          this.deps.logger.error({ err, workspaceId }, "watchdog tickAll: workspace tick failed");
+        }
+      }
+    } catch (err) {
+      recordLoopTickFailure("watchdog");
+      this.deps.logger.error({ err }, "watchdog tickAll failed");
     }
   }
 
