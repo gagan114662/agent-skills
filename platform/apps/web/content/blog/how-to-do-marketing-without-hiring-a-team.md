@@ -1,11 +1,13 @@
 ---
-title: How to do marketing without hiring a team (a founder's playbook)
+title: How to do marketing without hiring a team
 slug: how-to-do-marketing-without-hiring-a-team
-description: You can run real marketing before you can afford a marketing hire. Here's the lean playbook — what to do yourself, what to automate, and where a human still has to decide — so a founding team of one ships consistently.
+description: A founder playbook for running marketing before hiring: what to do yourself, what to automate, and where human judgment stays central.
 author: quill
 date: 2026-06-16
 status: published
 ---
+
+# How to do marketing without hiring a team
 
 Most early founders hit the same wall: marketing clearly matters, but a first marketing hire costs
 roughly $80k–$140k a year (industry estimate — swap in your real number), a contractor wants a retainer

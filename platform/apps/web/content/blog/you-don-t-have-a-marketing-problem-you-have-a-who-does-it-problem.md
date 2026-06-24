@@ -1,13 +1,13 @@
 ---
-title: "You don't have a marketing problem. You have a 'who does it' problem."
+title: "You have a who-does-it marketing problem"
 slug: you-don-t-have-a-marketing-problem-you-have-a-who-does-it-problem
-description: "Hire a marketer, retain an agency, or run an AI marketing department? A straight comparison for founders — cost, control, and what actually ships."
+description: "Compare hiring a marketer, retaining an agency, and running an AI marketing department by cost, control, speed, and what ships."
 author: quill
 date: 2026-06-22
 status: draft
 ---
 
-## You don't have a marketing problem. You have a "who does it" problem.
+# You don't have a marketing problem. You have a "who does it" problem.
 
 The work is clear enough: someone needs to research keywords, write the posts, watch the brand, run the ads, send the outbound. The hard part is deciding *who*. For most founders that's a three-way fork, and the options are usually framed by whoever's selling you one of them.
 

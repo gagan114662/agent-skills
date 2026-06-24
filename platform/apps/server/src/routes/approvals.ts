@@ -62,6 +62,14 @@ function requireHuman(id: Identity, reply: FastifyReply): boolean {
   return true;
 }
 
+function approvalConflict(error: string, request: ApprovalRequest): {
+  status: "conflict";
+  error: string;
+  request: ApprovalRequest;
+} {
+  return { status: "conflict", error, request };
+}
+
 export function approvalDecisionLog(
   request: ApprovalRequest,
   outcome: "approved" | "edited" | "rejected" | "expired" | "executed" | "failed",
@@ -262,23 +270,25 @@ export async function approvalRoutes(
 
     // Best-effort: alert every other human member that a decision is needed (never fails the write).
     const reviewers = await listHumanReviewers(wid, id.memberId);
-    for (const recipientMemberId of reviewers) {
-      try {
-        await notify(req.log, {
-          workspaceId: wid,
-          recipientMemberId,
-          type: "approval",
-          actorMemberId: id.memberId,
-          excerpt: `Approval needed: ${summary}`,
-        });
-      } catch (err) {
-        recordAsyncSideEffectFailure("approval_pending_notification");
-        req.log.error(
-          { err, workspaceId: wid, approvalRequestId: request.id, recipientMemberId },
-          "approval pending notification failed after durable request write",
-        );
-      }
-    }
+    await Promise.all(
+      reviewers.map(async (recipientMemberId) => {
+        try {
+          await notify(req.log, {
+            workspaceId: wid,
+            recipientMemberId,
+            type: "approval",
+            actorMemberId: id.memberId,
+            excerpt: `Approval needed: ${summary}`,
+          });
+        } catch (err) {
+          recordAsyncSideEffectFailure("approval_pending_notification");
+          req.log.error(
+            { err, workspaceId: wid, approvalRequestId: request.id, recipientMemberId },
+            "approval pending notification failed after durable request write",
+          );
+        }
+      }),
+    );
     // #170: also DM the owner the Approve/Reject buttons in Slack, if connected (best-effort; the hook
     // is a no-op when no Slack bridge is registered, so the #13 gate is unchanged).
     await fireApprovalPending(req.log, request).catch((err) => {
@@ -382,7 +392,7 @@ export async function approvalRoutes(
 
     const decision = await approveAndLock(rid, id.workspaceId, id.memberId, reason, edit);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
@@ -395,7 +405,7 @@ export async function approvalRoutes(
     // Won the lock → execute. Success → executed, executor failure → failed (502, still audited).
     const execution = await execute(req, decision.request);
     if (execution.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already executed", request: execution.request });
+      return reply.code(409).send(approvalConflict("request already executed", execution.request ?? decision.request));
     }
     const finished = execution.request;
     if (finished.status === "failed") {
@@ -420,7 +430,7 @@ export async function approvalRoutes(
 
     const decision = await rejectRequest(rid, id.workspaceId, id.memberId, reason);
     if (decision.outcome === "conflict") {
-      return reply.code(409).send({ error: "request already decided" });
+      return reply.code(409).send(approvalConflict("request already decided", request));
     }
     if (decision.outcome === "expired") {
       req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");

@@ -1,7 +1,7 @@
 ---
 title: What is an AI marketing agency? A founder's guide
 slug: what-is-an-ai-marketing-agency
-description: A plain-English guide to AI marketing agencies for founders — what they are, what the agents actually do, what they cost, and when one is the right call for an early-stage company.
+description: A founder-friendly guide to AI marketing agencies: what they are, what agents do, what they cost, and when one fits.
 author: scout
 date: 2026-06-16
 status: draft

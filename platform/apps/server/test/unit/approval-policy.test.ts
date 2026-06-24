@@ -11,6 +11,7 @@ import {
   MONEY_ACTIONS,
   DEFAULT_SENSITIVE_ACTIONS,
   IRREVERSIBLE_ACTIONS,
+  APPROVAL_EXECUTOR_ACTION_TYPES,
   AUTONOMY_COMPLETE_ACTION,
   DR_RESTORE_ACTION,
   PORTFOLIO_SUNSET_ACTION,
@@ -61,8 +62,10 @@ import {
   validateExternalSend,
   validateConnectAccount,
   validateOzLoopsPublish,
+  validateRecordedApprovalPayload,
   type ActionExecutor,
 } from "../../src/approvals/executor.js";
+import { buildDefaultRegistry } from "../../src/approvals/runtime.js";
 
 describe("evaluatePolicy (gating engine)", () => {
   it("gates an action whose rule requires approval", () => {
@@ -282,6 +285,20 @@ describe("executor registry", () => {
     const other: ActionExecutor = { ...fake, summarize: () => "y" };
     const reg = buildRegistry([fake, other]);
     expect(reg.get("chat.post_message")).toBe(other);
+  });
+
+  it("default registry covers every policy approval action (#1002)", () => {
+    const reg = buildDefaultRegistry();
+    expect(new Set(APPROVAL_EXECUTOR_ACTION_TYPES).size).toBe(APPROVAL_EXECUTOR_ACTION_TYPES.length);
+    for (const actionType of APPROVAL_EXECUTOR_ACTION_TYPES) {
+      expect(reg.get(actionType), actionType).toBeDefined();
+    }
+  });
+
+  it("recorded-only parked approvals still require object payloads", () => {
+    expect(validateRecordedApprovalPayload({ summary: "owner approved" })).toEqual({ ok: true });
+    expect(validateRecordedApprovalPayload(null).ok).toBe(false);
+    expect(validateRecordedApprovalPayload("bad").ok).toBe(false);
   });
 });
 

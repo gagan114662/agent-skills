@@ -11,6 +11,7 @@
  * prefers-reduced-motion. Every word comes from `brand.ts` so there are no hardcoded brand strings
  * (brand.test scans this directory). The console lives behind auth; this is the storefront.
  */
+import { useEffect } from "react";
 import {
   BRAND,
   FLEET,
@@ -21,6 +22,7 @@ import {
   agentColor,
   type StorySection,
 } from "../../brand.js";
+import { I18N, currentLocale, type LandingCopy } from "../../i18n.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
@@ -36,32 +38,56 @@ import {
 } from "./Vignettes.js";
 
 export function Landing(): React.JSX.Element {
+  const locale = currentLocale();
+  const { landing } = I18N[locale];
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   return (
-    <div className="landing">
-      <LandingNav />
+    <div className="landing" lang={locale}>
+      <LandingNav landing={landing} />
       <main>
-        <Hero />
-        <HowItWorks />
+        <Hero landing={landing} />
         <StorySections />
-        <Department />
-        <Pricing />
+        <HowItWorks landing={landing} />
+        <Department landing={landing} />
+        <Pricing landing={landing} />
         <Faq />
         <ContactForm />
-        <ClosingCta />
+        <ClosingCta landing={landing} />
       </main>
       <LandingFooter />
     </div>
   );
 }
 
-function LandingNav(): React.JSX.Element {
+function LandingNav({ landing }: { landing: LandingCopy }): React.JSX.Element {
+  const locale = currentLocale();
+  const copy = I18N[locale];
   return (
     <header className="landing__nav">
       <Link href="/" className="landing__brand" aria-label={BRAND.name}>
         <Wordmark />
       </Link>
-      <nav className="landing__nav-links" aria-label="On this page">
-        {LANDING.anchors.map((item) => (
+      <details className="landing__mobile-nav">
+        <summary aria-label={copy.navToggle} className="landing__mobile-nav-toggle">
+          <span aria-hidden="true"></span>
+        </summary>
+        <nav className="landing__mobile-nav-links" aria-label={copy.navLabel}>
+          {landing.anchors.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="linklike landing__nav-link"
+              onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </details>
+      <nav className="landing__nav-links" aria-label={copy.navLabel}>
+        {landing.anchors.map((item) => (
           <a key={item.href} href={item.href} className="linklike landing__nav-link">
             {item.label}
           </a>
@@ -69,31 +95,31 @@ function LandingNav(): React.JSX.Element {
       </nav>
       <nav className="landing__nav-actions">
         <Link href="/login" className="linklike">
-          {LANDING.hero.ctaSecondary}
+          {landing.hero.ctaSecondary}
         </Link>
         <Link href="/start" className="btn btn--primary landing__nav-cta">
-          {LANDING.hero.ctaPrimary}
+          {landing.hero.ctaPrimary}
         </Link>
       </nav>
     </header>
   );
 }
 
-function Hero(): React.JSX.Element {
+function Hero({ landing }: { landing: LandingCopy }): React.JSX.Element {
   return (
     <section className="landing__hero" aria-labelledby="hero-title">
       <div className="landing__hero-copy">
-        <p className="landing__eyebrow">{LANDING.hero.eyebrow}</p>
+        <p className="landing__eyebrow">{landing.hero.eyebrow}</p>
         <h1 id="hero-title" className="landing__headline">
           {BRAND.tagline}
         </h1>
-        <p className="landing__sub">{LANDING.hero.sub}</p>
+        <p className="landing__sub">{landing.hero.sub}</p>
         <div className="landing__cta-row">
           <Link href="/start" className="btn btn--primary landing__cta">
-            {LANDING.hero.ctaPrimary}
+            {landing.hero.ctaPrimary}
           </Link>
           <Link href="/login" className="btn landing__cta landing__cta--ghost">
-            {LANDING.hero.ctaSecondary}
+            {landing.hero.ctaSecondary}
           </Link>
         </div>
       </div>
@@ -105,15 +131,15 @@ function Hero(): React.JSX.Element {
   );
 }
 
-function HowItWorks(): React.JSX.Element {
+function HowItWorks({ landing }: { landing: LandingCopy }): React.JSX.Element {
   return (
     <section id="how" className="landing__section landing__how" aria-labelledby="how-title">
       <h2 id="how-title" className="landing__section-title">
-        {LANDING.sections.howTitle}
+        {landing.sections.howTitle}
       </h2>
-      <p className="landing__section-sub">{LANDING.sections.howSub}</p>
+      <p className="landing__section-sub">{landing.sections.howSub}</p>
       <ol className="landing__steps">
-        {LANDING.steps.map((step) => (
+        {landing.steps.map((step) => (
           <li key={step.n} className="landing__step">
             <span className="landing__step-n" aria-hidden="true">
               {step.n}
@@ -165,13 +191,13 @@ function StoryVisual({ visual }: { visual: StorySection["visual"] }): React.JSX.
   }
 }
 
-function Department(): React.JSX.Element {
+function Department({ landing }: { landing: LandingCopy }): React.JSX.Element {
   return (
     <section id="agents" className="landing__section landing__dept" aria-labelledby="dept-title">
       <h2 id="dept-title" className="landing__section-title">
-        {LANDING.sections.fleetTitle}
+        {landing.sections.fleetTitle}
       </h2>
-      <p className="landing__section-sub">{LANDING.sections.fleetSub}</p>
+      <p className="landing__section-sub">{landing.sections.fleetSub}</p>
       <ul className="landing__roster">
         {FLEET.map((agent) => {
           const color = agentColor(agent.name) ?? BRAND.accent;
@@ -195,30 +221,30 @@ function Department(): React.JSX.Element {
   );
 }
 
-function Pricing(): React.JSX.Element {
+function Pricing({ landing }: { landing: LandingCopy }): React.JSX.Element {
   return (
     <section id="pricing" className="landing__section landing__pricing" aria-labelledby="pricing-title">
       <h2 id="pricing-title" className="landing__section-title">
-        {LANDING.sections.pricingTitle}
+        {landing.sections.pricingTitle}
       </h2>
-      <p className="landing__section-sub">{LANDING.sections.pricingSub}</p>
+      <p className="landing__section-sub">{landing.sections.pricingSub}</p>
       <BillingScreen />
       <Link href="/pricing" className="linklike landing__pricing-link">
-        {LANDING.sections.pricingCta} →
+        {landing.sections.pricingCta} →
       </Link>
     </section>
   );
 }
 
-function ClosingCta(): React.JSX.Element {
+function ClosingCta({ landing }: { landing: LandingCopy }): React.JSX.Element {
   return (
     <section className="landing__section landing__final" aria-labelledby="final-title">
       <h2 id="final-title" className="landing__final-title">
-        {LANDING.sections.ctaTitle}
+        {landing.sections.ctaTitle}
       </h2>
-      <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
+      <p className="landing__final-sub">{landing.sections.ctaSub}</p>
       <Link href="/start" className="btn btn--primary landing__cta landing__final-cta">
-        {LANDING.sections.ctaButton}
+        {landing.sections.ctaButton}
       </Link>
     </section>
   );

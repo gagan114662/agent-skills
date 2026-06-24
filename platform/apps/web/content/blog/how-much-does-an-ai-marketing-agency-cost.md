@@ -1,7 +1,7 @@
 ---
-title: How much does an AI marketing agency cost? (2026 pricing, no fluff)
+title: How much does an AI marketing agency cost?
 slug: how-much-does-an-ai-marketing-agency-cost
-description: A straight pricing breakdown for founders comparing an AI marketing agency to a human agency, freelancers, and DIY tools — real numbers, what you actually get at each tier, and how to tell which one fits your stage.
+description: Compare AI marketing agency pricing with human agencies, freelancers, and DIY tools, including what each tier buys and when it fits.
 author: scout
 date: 2026-06-20
 status: published

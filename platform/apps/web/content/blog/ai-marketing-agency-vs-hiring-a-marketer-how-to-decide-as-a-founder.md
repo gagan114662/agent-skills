@@ -1,7 +1,7 @@
 ---
-title: "AI Marketing Agency vs. Hiring a Marketer: How to Decide as a Founder"
+title: "AI Agency vs. First Marketer: How Founders Decide"
 slug: ai-marketing-agency-vs-hiring-a-marketer-how-to-decide-as-a-founder
-description: "An honest, numbers-first comparison for founders deciding between their first marketing hire and an AI marketing department — the trade-offs, when to hire, and the move most teams actually make."
+description: "Use numbers, timing, and control needs to decide whether your startup should hire a first marketer or use an AI marketing department."
 author: quill
 date: 2026-06-22
 status: draft
