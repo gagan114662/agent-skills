@@ -22,6 +22,8 @@ import {
   PRICING,
   SECURITY,
   SITE,
+  SUPPORT_CONTACT,
+  CONTACT,
   ASK_AI,
   askAiLinks,
   PAYWALL,
@@ -257,6 +259,12 @@ describe("landing workspace simulation copy (#165)", () => {
     for (const a of LANDING.anchors) expect(a.href.startsWith("#"), a.href).toBe(true);
     expect(LANDING.footer.product.length).toBeGreaterThan(0);
     expect(LANDING.footer.resources.length).toBeGreaterThan(0);
+    expect(LANDING.footer.resources).toContainEqual({
+      href: SUPPORT_CONTACT.href,
+      label: SUPPORT_CONTACT.label,
+    });
+    expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
+    expect(SITE.support).toBe(SUPPORT_CONTACT);
     expect(LANDING.footer.social.map((s) => s.href).filter((href) => href.startsWith("/social/"))).toEqual([]);
   });
 });

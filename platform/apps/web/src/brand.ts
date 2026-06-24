@@ -40,6 +40,13 @@ export const BRAND: Brand = {
   accent: env.VITE_BRAND_ACCENT ?? "#ff4524",
 };
 
+/** Public human escalation path (#864): used by the contact fallback and footer links. */
+export const SUPPORT_CONTACT = {
+  email: "support@ipop.ai",
+  href: "mailto:support@ipop.ai",
+  label: "Email support",
+} as const;
+
 /**
  * The house voice (Innocent Drinks school): warm, first-person plural, a little silly, receipts over
  * adjectives. Empty states and errors are moments, not dead ends. The server fleet (#123) carries the
@@ -635,6 +642,7 @@ export const LANDING = {
       { href: "/stories", label: "Stories" },
       { href: "/changelog", label: "Changelog" },
       { href: "/compare", label: "Compare" },
+      { href: SUPPORT_CONTACT.href, label: SUPPORT_CONTACT.label },
     ],
     socialTitle: "Find us",
     /** No public profile links are rendered until real external accounts exist. */
@@ -1620,7 +1628,7 @@ export const CONTACT = {
   /** Shown after the lead is captured (GAP 1, ADR-0400) — it now really persists + reaches a human. */
   sentNote: "Got it — your note's in. A person will read it and reply, usually within a day.",
   /** Shown if the post fails — honest, with a fallback so the lead is never silently lost. */
-  errorNote: "That didn't go through. Mind trying again, or email us directly and we'll pick it up.",
+  errorNote: `That didn't go through. Mind trying again, or email us at ${SUPPORT_CONTACT.email} and we'll pick it up.`,
 } as const;
 
 /**
@@ -1745,6 +1753,7 @@ export const SITE = {
   ctaSecondary: "Sign in",
   /** The dogfood credit on every content page — the agents drafted it, a human approved it. */
   maintainedBy: "This page is maintained by Quill, our content agent — drafted by AI, approved by a human.",
+  support: SUPPORT_CONTACT,
   /** Shown when a section or page has no published content yet (graceful, on-voice empty state). */
   empty: "Nothing published here yet. Quill's still drafting — check back soon.",
   /** Shown when the content API can't be reached (the page degrades instead of crashing). */

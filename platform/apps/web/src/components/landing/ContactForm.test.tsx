@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { CONTACT } from "../../brand.js";
+import { CONTACT, SUPPORT_CONTACT } from "../../brand.js";
 import { ContactForm } from "./ContactForm.js";
 
 afterEach(() => {
@@ -29,6 +29,7 @@ describe("ContactForm failure visibility (#938)", () => {
     await submit();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(CONTACT.errorNote);
+    expect(screen.getByRole("alert")).toHaveTextContent(SUPPORT_CONTACT.email);
     expect(error).toHaveBeenCalledWith("Inbound lead capture failed", { status: 400 });
   });
 
