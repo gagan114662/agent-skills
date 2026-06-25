@@ -54,6 +54,8 @@ export interface PlanItemRow {
 /** One provenance entry on a playbook: an anonymized source-venture lineage + the #106 receipt. */
 export interface PlaybookProvenanceRow {
   sourceVentureHash: string;
+  segment: string | null;
+  targetUser: string | null;
   outcome: string;
   evidence: string;
   verifierResultId: string | null;
@@ -69,7 +71,10 @@ export const ventureOkrs = pgTable(
     /** The venture idea (#96) this objective belongs to (soft reference). */
     ideaId: uuid("idea_id").notNull(),
     objective: text("objective").notNull(),
-    keyResults: jsonb("key_results").notNull().default(sql`'[]'::jsonb`).$type<KeyResultRow[]>(),
+    keyResults: jsonb("key_results")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<KeyResultRow[]>(),
     status: text("status", { enum: VENTURE_OKR_STATUSES }).notNull().default("active"),
     /** The objective's window label (e.g. a quarter/week). */
     periodKey: text("period_key").notNull().default(""),
@@ -103,7 +108,10 @@ export const venturePlans = pgTable(
     rationale: text("rationale").notNull().default(""),
     /** NOT NULL DEFAULT true — the drafter refuses to persist a plan without citing #200. */
     premortemCited: boolean("premortem_cited").notNull().default(true),
-    items: jsonb("items").notNull().default(sql`'[]'::jsonb`).$type<PlanItemRow[]>(),
+    items: jsonb("items")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<PlanItemRow[]>(),
     /** The #13 approval request gating the plan (soft reference), or null until enqueued. */
     approvalRequestId: uuid("approval_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

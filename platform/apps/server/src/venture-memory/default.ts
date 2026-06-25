@@ -18,6 +18,7 @@ import {
   listPlaybooks,
 } from "../db/repositories/venture-memory.js";
 import {
+  getIdea,
   listEvaluations,
   listActiveEvaluationWorkspaces,
   latestScorecard,
@@ -49,7 +50,8 @@ async function resolveRequester(workspaceId: string): Promise<string> {
   const members = await listWorkspaceMembers(workspaceId);
   const human = members.find((m) => m.kind === "human");
   const member = human ?? members[0];
-  if (!member) throw new Error("venture-memory: cannot enqueue an approval — workspace has no members");
+  if (!member)
+    throw new Error("venture-memory: cannot enqueue an approval — workspace has no members");
   return member.id;
 }
 
@@ -99,7 +101,17 @@ export function createDefaultVentureMemoryService(): VentureMemoryService {
     },
     ventures: {
       ventures: async (workspaceId) =>
-        (await listEvaluations(workspaceId)).map((e) => ({ ideaId: e.ideaId, category: null })),
+        Promise.all(
+          (await listEvaluations(workspaceId)).map(async (e) => {
+            const idea = await getIdea(workspaceId, e.ideaId);
+            return {
+              ideaId: e.ideaId,
+              category: idea?.marketPath ?? idea?.segment ?? null,
+              segment: idea?.segment ?? null,
+              targetUser: idea?.targetUser ?? null,
+            };
+          }),
+        ),
     },
     scorecard: {
       // Externally-verified (#106): passed verifier receipts whose claim references this venture. This

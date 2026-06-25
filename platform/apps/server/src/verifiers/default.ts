@@ -15,6 +15,8 @@ import { getControls } from "../db/repositories/autonomy.js";
 import { createRequest } from "../db/repositories/approvals.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
 import type { SessionLogger } from "../runtime/manager.js";
+import { getIdea } from "../db/repositories/venture.js";
+import { createDefaultVentureMemoryService } from "../venture-memory/default.js";
 
 /**
  * Production wiring for Outcome Verifiers (#106, ADR-0106). Default-OFF (config `verifiers.enabled` +
@@ -100,6 +102,7 @@ const approvalEscalator: VerifierEscalator = {
 /** Build the production VerifierRunner. The background timer is started in `index.ts`. */
 export function createDefaultVerifierRunner(logger: SessionLogger): VerifierRunner {
   const redactor = makeRedactor({});
+  const ventureMemory = createDefaultVentureMemoryService();
   return new VerifierRunner({
     observations: defaultObservationSource,
     results: verifierResultStore,
@@ -109,6 +112,24 @@ export function createDefaultVerifierRunner(logger: SessionLogger): VerifierRunn
     killSwitch: async (workspaceId) => (await getControls(workspaceId)).killSwitch,
     activeWorkspaces: listWorkspaceIds,
     redact: (text) => redactor(text),
+    playbooks: {
+      record: async ({ claim, outcome, record }) => {
+        const idea = await getIdea(claim.workspaceId, claim.claimRef);
+        if (!idea) return;
+        await ventureMemory.recordPlaybook(claim.workspaceId, {
+          ideaId: idea.id,
+          category: idea.marketPath || idea.segment || claim.kind,
+          segment: idea.segment,
+          targetUser: idea.targetUser,
+          pattern:
+            `${claim.kind} verifier passed for ${idea.segment ?? "general"} ${idea.targetUser}: ` +
+            outcome.detail,
+          outcome: outcome.detail,
+          evidence: record.id,
+          verifierResultId: record.id,
+        });
+      },
+    },
     // #99: pause the loop during maintenance (same Redis flag the write-gate + other loops read).
     maintenancePaused: () => isMaintenanceActive(),
     logger,

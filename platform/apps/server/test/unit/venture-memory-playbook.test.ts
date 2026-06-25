@@ -11,6 +11,8 @@ function win(over: Partial<PlaybookWin> = {}): PlaybookWin {
   return {
     ideaId: "idea_1",
     category: "launch",
+    segment: "b2b",
+    targetUser: "Mid-market RevOps teams",
     pattern: "Launch on ProductHunt on a Tuesday",
     outcome: "300 signups in 24h",
     evidence: "analytics export",
@@ -41,6 +43,8 @@ describe("distillPlaybook: requires a #106 receipt + anonymizes", () => {
     expect(pb).not.toBeNull();
     expect(pb.pattern).not.toContain("idea_1");
     expect(pb.provenance[0]!.sourceVentureHash).toBe(ventureHash("idea_1"));
+    expect(pb.provenance[0]!.segment).toBe("b2b");
+    expect(pb.provenance[0]!.targetUser).toBe("mid-market revops teams");
     expect(pb.provenance[0]!.verifierResultId).toBe("vr_55");
     expect(pb.dedupeKey).toContain("pb:launch:");
   });
@@ -52,7 +56,16 @@ describe("matchPlaybooks: same-category first, excludes self-only", () => {
     workspaceId: "ws_1",
     category: "growth",
     pattern: "p",
-    provenance: [{ sourceVentureHash: ventureHash("idea_9"), outcome: "o", evidence: "e", verifierResultId: "vr" }],
+    provenance: [
+      {
+        sourceVentureHash: ventureHash("idea_9"),
+        segment: null,
+        targetUser: null,
+        outcome: "o",
+        evidence: "e",
+        verifierResultId: "vr",
+      },
+    ],
     dedupeKey: "k",
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -66,9 +79,63 @@ describe("matchPlaybooks: same-category first, excludes self-only", () => {
   });
 
   it("excludes a playbook sourced ONLY from the target venture itself", () => {
-    const own = rec({ id: "own", provenance: [{ sourceVentureHash: ventureHash("idea_1"), outcome: "o", evidence: "e", verifierResultId: "vr" }] });
+    const own = rec({
+      id: "own",
+      provenance: [
+        {
+          sourceVentureHash: ventureHash("idea_1"),
+          segment: "b2b",
+          targetUser: "founders",
+          outcome: "o",
+          evidence: "e",
+          verifierResultId: "vr",
+        },
+      ],
+    });
     const other = rec({ id: "other" });
     const matched = matchPlaybooks([own, other], { ideaId: "idea_1" });
     expect(matched.map((m) => m.id)).toEqual(["other"]);
+  });
+
+  it("ranks same-audience playbooks above off-segment playbooks within a category", () => {
+    const olderSameSegment = rec({
+      id: "same",
+      category: "launch",
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      provenance: [
+        {
+          sourceVentureHash: ventureHash("idea_b2b"),
+          segment: "b2b",
+          targetUser: "mid-market revops teams",
+          outcome: "o",
+          evidence: "e",
+          verifierResultId: "vr_same",
+        },
+      ],
+    });
+    const newerOffSegment = rec({
+      id: "off",
+      category: "launch",
+      createdAt: new Date("2026-06-01T00:00:00Z"),
+      provenance: [
+        {
+          sourceVentureHash: ventureHash("idea_b2c"),
+          segment: "b2c",
+          targetUser: "shopify founders",
+          outcome: "o",
+          evidence: "e",
+          verifierResultId: "vr_off",
+        },
+      ],
+    });
+
+    const matched = matchPlaybooks([newerOffSegment, olderSameSegment], {
+      ideaId: "idea_target",
+      category: "launch",
+      segment: "B2B",
+      targetUser: "Mid-market RevOps teams",
+    });
+
+    expect(matched.map((m) => m.id)).toEqual(["same", "off"]);
   });
 });

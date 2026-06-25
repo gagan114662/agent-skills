@@ -62,6 +62,15 @@ export interface VerifierClaimSource {
   listDue(workspaceId: string): Promise<VerifierClaim[]>;
 }
 
+/** Optional learning-loop hook: a passed verifier outcome can distill a cross-venture playbook. */
+export interface VerifiedWinRecorder {
+  record(input: {
+    claim: VerifierClaim;
+    outcome: VerifierOutcome;
+    record: VerifierResultRecord;
+  }): Promise<void>;
+}
+
 export interface VerifierRunnerDeps {
   observations: ObservationSource;
   results: VerifierResultStore;
@@ -77,6 +86,8 @@ export interface VerifierRunnerDeps {
   redact: (text: string) => string;
   /** Optional maintenance-pause check (#99) — when true, `tickAll()` skips BEFORE any DB call. */
   maintenancePaused?: () => Promise<boolean>;
+  /** Optional #888 learning loop. Best-effort; never changes the verifier verdict. */
+  playbooks?: VerifiedWinRecorder;
   logger: SessionLogger;
   /** Clock seam — defaults to `new Date()`; tests inject a fixed clock. */
   now?: () => Date;
@@ -118,8 +129,12 @@ export class VerifierRunner {
     const detail = isObservationError(measured)
       ? `unmeasurable: ${measured.reason}`
       : (outcome as VerifierOutcome).detail;
-    const measuredValue = isObservationError(measured) ? 0 : (outcome as VerifierOutcome).measuredValue;
-    const threshold = isObservationError(measured) ? claim.target : (outcome as VerifierOutcome).threshold;
+    const measuredValue = isObservationError(measured)
+      ? 0
+      : (outcome as VerifierOutcome).measuredValue;
+    const threshold = isObservationError(measured)
+      ? claim.target
+      : (outcome as VerifierOutcome).threshold;
 
     // Escalate FIRST (when decided) so the durable row carries the #13 request id — a failed gate is
     // never written without its escalation linkage. An escalation that cannot be enqueued is logged and
@@ -144,7 +159,26 @@ export class VerifierRunner {
 
     recordVerifierAction(`${claim.kind}:${decision.status}`);
     if (decision.action === "escalate") recordVerifierAction("escalate");
+    if (decision.action === "record_pass" && !isObservationError(measured)) {
+      await this.recordVerifiedWin(claim, outcome as VerifierOutcome, record);
+    }
     return { record, action: decision.action };
+  }
+
+  private async recordVerifiedWin(
+    claim: VerifierClaim,
+    outcome: VerifierOutcome,
+    record: VerifierResultRecord,
+  ): Promise<void> {
+    if (!this.deps.playbooks) return;
+    try {
+      await this.deps.playbooks.record({ claim, outcome, record });
+    } catch (err) {
+      this.deps.logger.warn(
+        { err, claimRef: claim.claimRef },
+        "verifier playbook distillation failed",
+      );
+    }
   }
 
   /** One pass over every workspace with due verifications. */
@@ -193,7 +227,10 @@ export class VerifierRunner {
     }
 
     log.info(
-      { verified: verified.length, escalated: verified.filter((v) => v.action === "escalate").length },
+      {
+        verified: verified.length,
+        escalated: verified.filter((v) => v.action === "escalate").length,
+      },
       "verifier tick complete",
     );
     return { workspaceId, verified };
@@ -204,15 +241,29 @@ export class VerifierRunner {
     try {
       return await this.deps.observations.observe(claim);
     } catch (err) {
-      this.deps.logger.error({ err, kind: claim.kind, claimRef: claim.claimRef }, "verifier observe threw");
-      return { kind: claim.kind, errored: true, reason: err instanceof Error ? err.message : "observe failed" };
+      this.deps.logger.error(
+        { err, kind: claim.kind, claimRef: claim.claimRef },
+        "verifier observe threw",
+      );
+      return {
+        kind: claim.kind,
+        errored: true,
+        reason: err instanceof Error ? err.message : "observe failed",
+      };
     }
   }
 
   /** Enqueue the #13 escalation for a failed verification; best-effort — a failure is logged, not thrown. */
-  private async tryEscalate(claim: VerifierClaim, outcome: VerifierOutcome): Promise<string | null> {
+  private async tryEscalate(
+    claim: VerifierClaim,
+    outcome: VerifierOutcome,
+  ): Promise<string | null> {
     try {
-      const { id } = await this.deps.escalator.escalate({ workspaceId: claim.workspaceId, claim, outcome });
+      const { id } = await this.deps.escalator.escalate({
+        workspaceId: claim.workspaceId,
+        claim,
+        outcome,
+      });
       return id;
     } catch (err) {
       this.deps.logger.error(
