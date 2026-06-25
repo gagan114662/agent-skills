@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { loadConfig } from "../config/loader.js";
 import { resolveSiteUrl } from "../marketing/site.js";
-import { createRequest } from "../db/repositories/approvals.js";
+import { createRequest, listRequests } from "../db/repositories/approvals.js";
 import { getPersonaByHandle } from "../db/repositories/personas.js";
 import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
@@ -174,6 +174,31 @@ export function createDefaultReachService(log?: FastifyBaseLogger): ReachService
     },
     deliverability: { proof: resolveReachDeliverabilityProof },
     approvals: {
+      async dataCreditSpend(workspaceId, provider) {
+        const requests = (
+          await Promise.all([
+            listRequests(workspaceId, { status: "pending", limit: 500 }),
+            listRequests(workspaceId, { status: "approved", limit: 500 }),
+            listRequests(workspaceId, { status: "executed", limit: 500 }),
+          ])
+        ).flat();
+        let pendingCents = 0;
+        let approvedCents = 0;
+        let pendingRequestId: string | null = null;
+        for (const req of requests) {
+          if (req.actionType !== REACH_DATA_CREDIT_ACTION) continue;
+          if (req.payload.provider !== provider) continue;
+          const amount =
+            typeof req.amount === "number" && Number.isFinite(req.amount) ? req.amount : 0;
+          if (req.status === "pending") {
+            pendingCents += amount;
+            pendingRequestId ??= req.id;
+          } else {
+            approvedCents += amount;
+          }
+        }
+        return { pendingCents, approvedCents, pendingRequestId };
+      },
       async submitDataCreditSpend(input) {
         // The Reach lead persona is the requester for the autonomous money gate (an agent member, never a
         // human) — consistent with how the monetization / outreach money actions are parked.
