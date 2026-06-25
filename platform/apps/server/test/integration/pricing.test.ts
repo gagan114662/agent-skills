@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { trialNurtureEvents, trialNurtureProfiles, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { BillingManager } from "../../src/billing/manager.js";
 import { NoneBillingProvider } from "../../src/billing/none-provider.js";
@@ -136,6 +136,27 @@ const BILLING_CFG: BillingConfig = { provider: "none", currency: "usd" };
 const INTEGRATION_TIMEOUT_MS = 45_000;
 
 describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network none provider)", () => {
+  it("automatically enrolls a trial signup into logged lifecycle email drafts (#602)", async () => {
+    const app = await startApp({ billing: BILLING_CFG });
+    const { workspaceId } = await seed(app);
+
+    const rows = await db
+      .select({
+        kind: trialNurtureEvents.kind,
+        detail: trialNurtureEvents.detail,
+      })
+      .from(trialNurtureProfiles)
+      .innerJoin(trialNurtureEvents, eq(trialNurtureEvents.profileId, trialNurtureProfiles.id))
+      .where(eq(trialNurtureProfiles.workspaceId, workspaceId));
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.kind)).toEqual(["email_draft", "email_draft"]);
+    expect(rows[0]?.detail).toMatchObject({
+      trigger: "trial_signup",
+      source: "auth.signup",
+    });
+  });
+
   it("runs a sticky pricing experiment cohort through checkout, webhook conversion, and impact report", async () => {
     const app = await startApp({ billing: BILLING_CFG });
     const w = await seed(app);

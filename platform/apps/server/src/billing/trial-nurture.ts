@@ -64,6 +64,28 @@ export class TrialNurtureService {
     return buildPlan(profile);
   }
 
+  async enrollSignup(
+    workspaceId: string,
+    memberId: string,
+    detail: Record<string, unknown> = {},
+  ): Promise<TrialNurturePlan> {
+    const plan = await this.plan(workspaceId, memberId);
+    for (const draft of plan.emailDrafts) {
+      await this.store.recordSignal({
+        workspaceId,
+        memberId,
+        kind: "email_draft",
+        detail: {
+          trigger: "trial_signup",
+          ...detail,
+          draftKey: draft.key,
+          subject: draft.subject,
+        },
+      });
+    }
+    return plan;
+  }
+
   async signal(
     workspaceId: string,
     memberId: string,
