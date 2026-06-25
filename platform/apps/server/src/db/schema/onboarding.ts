@@ -26,6 +26,7 @@ import { members } from "./identities.js";
 
 export const SERVICE_KINDS = [
   "esp",
+  "sms",
   "ad_account",
   "analytics",
   "registrar",
@@ -77,7 +78,7 @@ export const externalSetupRequests = pgTable(
     uniqueService: unique("external_setup_requests_service_uk").on(t.workspaceId, t.serviceKey),
     kindCk: check(
       "external_setup_requests_kind_ck",
-      sql`${t.serviceKind} IN ('esp','ad_account','analytics','registrar','hosting','payment','other')`,
+      sql`${t.serviceKind} IN ('esp','sms','ad_account','analytics','registrar','hosting','payment','other')`,
     ),
     reversibilityCk: check(
       "external_setup_requests_reversibility_ck",

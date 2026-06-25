@@ -23,6 +23,7 @@ export const REAL_WORLD_TOOL_NAMES = [
   "publish",
   "publish_site",
   "send_email",
+  "send_sms",
   "post_social",
   "browse",
   "research",

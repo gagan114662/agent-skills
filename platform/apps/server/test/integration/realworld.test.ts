@@ -73,15 +73,17 @@ describe("readiness signal (#231) — setup.connected reflects Claude", () => {
 });
 
 describe("real-world tool surface (#231) — /me/realworld", () => {
-  it("reports the nine tools, what to connect, and the published-artifacts feed", async () => {
+  it("reports the ten tools, what to connect, and the published-artifacts feed", async () => {
     const { cookie } = await seed();
     const res = await app.inject({ method: "GET", url: "/me/realworld", cookies: { rid: cookie } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.enabled).toBe(false); // default OFF
-    expect(body.availability).toHaveLength(9); // #271 added generate_image
+    expect(body.availability).toHaveLength(10); // includes send_sms.
     // With nothing connected the owner must still connect the real-work accounts.
-    expect(body.neededAccounts.sort()).toEqual(["ad_account", "esp", "hosting", "registrar"].sort());
+    expect(body.neededAccounts.sort()).toEqual(
+      ["ad_account", "esp", "hosting", "registrar", "sms"].sort(),
+    );
     expect(body.artifacts).toEqual([]);
   });
 });
