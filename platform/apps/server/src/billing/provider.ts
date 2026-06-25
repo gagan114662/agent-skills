@@ -58,6 +58,19 @@ export interface PaymentLinkResult {
   url: string;
 }
 
+export interface BillingInvoice {
+  providerInvoiceId: string;
+  number: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  status: string | null;
+}
+
+export interface RetrieveInvoiceInput {
+  providerInvoiceId: string;
+  secrets: Record<string, string>;
+}
+
 /**
  * The inbound-only billing seam. `createProductPrice` + `createPaymentLink` set up collection; there is
  * deliberately no way to move money out. Errors are thrown raw — the {@link
@@ -70,4 +83,6 @@ export interface BillingProvider {
   createProductPrice(input: CreateProductPriceInput): Promise<ProductPrice>;
   /** Create a hosted payment link / checkout session for a price. */
   createPaymentLink(input: CreatePaymentLinkInput): Promise<PaymentLinkResult>;
+  /** Retrieve hosted invoice/receipt URLs when a webhook only carries the provider invoice id. */
+  retrieveInvoice?(input: RetrieveInvoiceInput): Promise<BillingInvoice | null>;
 }

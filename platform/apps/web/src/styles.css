@@ -5727,6 +5727,12 @@ select:focus-visible {
 .billing-settings__testmode strong { color: var(--text); }
 /* #481 go-live: a positive accent once real payments are on (vs the amber test-mode note). */
 .billing-settings__testmode--live { border-left-color: var(--online); }
+.billing-settings__invoices { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.billing-settings__invoices h3 { margin: 0 0 8px; font-size: 13px; }
+.billing-settings__invoices p { margin: 0; color: var(--text-dim); }
+.billing-settings__invoices ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.billing-settings__invoices li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; }
+.billing-settings__invoices span:first-child { min-width: 0; overflow-wrap: anywhere; }
 
 .wyo { display: flex; align-items: center; gap: 10px; margin: 14px 24px -4px; padding: 9px 13px; background: var(--bg-1);
   border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius); animation: swell-pop 0.45s var(--pop-ease) both; }

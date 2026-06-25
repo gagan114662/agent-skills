@@ -1559,7 +1559,11 @@ export const BILLING = {
     /** Shown instead of the test-mode note once the owner has flipped go-live (#481): real money is on. */
     liveModeTitle: "Live — real payments are on",
     liveModeBody:
-      "Checkout is live: real cards are charged and your plan activates the moment payment clears. Manage subscriptions, receipts, and refunds in the Stripe dashboard.",
+      "Checkout is live: real cards are charged and your plan activates the moment payment clears. Invoices and receipts appear here after payment.",
+    invoicesTitle: "Invoices & receipts",
+    noInvoices: "No invoices yet. Paid invoices and PDFs appear here after checkout.",
+    invoiceLinkLabel: "Open invoice",
+    invoicePdfLabel: "Open PDF",
   },
 } as const;
 
