@@ -35,6 +35,7 @@ import {
 import { budgetExhausted, tickLimitReached } from "./guards.js";
 import { decideWorkflowAction, type AutonomyAction } from "./decide.js";
 import { evaluatePolicy, AUTONOMY_COMPLETE_ACTION, type PolicyRule } from "../approvals/policy.js";
+import { DEFAULT_WORKSPACE_LOOP_CONCURRENCY, runBounded } from "../loops/concurrency.js";
 
 /**
  * AutonomyEngine (#17, ADR-0017; real-session execution #84, ADR-0042) — the server-owned activity
@@ -104,6 +105,7 @@ export interface AutonomyEngineDeps {
   listActiveWorkspaces?: () => Promise<string[]>;
   /** Optional #117 flywheel recorder for deduped per-workspace loop infrastructure failures (#887). */
   failureRecorder?: LoopFailureRecorder;
+  workspaceConcurrency?: number;
 }
 
 /** Compose the task/prompt handed to the harness for a stage (data, never argv). */
@@ -198,19 +200,23 @@ export class AutonomyEngine {
       }
       const listWorkspaces = this.deps.listActiveWorkspaces ?? listActiveWorkflowWorkspaces;
       const workspaceIds = await listWorkspaces();
-      for (const workspaceId of workspaceIds) {
-        try {
-          await this.tick(workspaceId);
-        } catch (err) {
-          await recordLoopWorkspaceFailure({
-            recorder: this.deps.failureRecorder,
-            loop: "autonomy",
-            workspaceId,
-            err,
-          });
-          this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
-        }
-      }
+      await runBounded(
+        workspaceIds,
+        this.deps.workspaceConcurrency ?? DEFAULT_WORKSPACE_LOOP_CONCURRENCY,
+        async (workspaceId) => {
+          try {
+            await this.tick(workspaceId);
+          } catch (err) {
+            await recordLoopWorkspaceFailure({
+              recorder: this.deps.failureRecorder,
+              loop: "autonomy",
+              workspaceId,
+              err,
+            });
+            this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
+          }
+        },
+      );
     } catch (err) {
       recordLoopTickFailure("autonomy");
       this.deps.logger.error({ err }, "autonomy tickAll failed");

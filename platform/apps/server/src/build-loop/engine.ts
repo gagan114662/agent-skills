@@ -24,6 +24,7 @@ import {
   renderVerdictComment,
 } from "./render.js";
 import type { BuildRunRecord, BuildRunStatus, IssueCandidate, ReviewAssessment } from "./types.js";
+import { DEFAULT_WORKSPACE_LOOP_CONCURRENCY, runBounded } from "../loops/concurrency.js";
 
 /**
  * BuildLoopEngine (#172, ADR-0172) — the self-shipping loop. It platform-ifies the loop the owner has
@@ -180,6 +181,7 @@ export interface BuildLoopEngineDeps {
   /** Optional maintenance-pause check (#99) — when true, `tickAll()` skips BEFORE any DB call. */
   maintenancePaused?: () => Promise<boolean>;
   logger: SessionLogger;
+  workspaceConcurrency?: number;
   /** Clock seam — defaults to `new Date()`; tests inject a fixed clock. */
   now?: () => Date;
 }
@@ -270,13 +272,17 @@ export class BuildLoopEngine {
         return;
       }
       const now = this.clock();
-      for (const workspaceId of await this.deps.activeWorkspaces()) {
-        try {
-          await this.tickWorkspace(workspaceId, now);
-        } catch (err) {
-          this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
-        }
-      }
+      await runBounded(
+        await this.deps.activeWorkspaces(),
+        this.deps.workspaceConcurrency ?? DEFAULT_WORKSPACE_LOOP_CONCURRENCY,
+        async (workspaceId) => {
+          try {
+            await this.tickWorkspace(workspaceId, now);
+          } catch (err) {
+            this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
+          }
+        },
+      );
     } catch (err) {
       recordLoopTickFailure("build_loop");
       this.deps.logger.error({ err }, "build-loop tickAll failed");
