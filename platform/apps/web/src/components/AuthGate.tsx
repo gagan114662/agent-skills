@@ -37,20 +37,30 @@ const DISPLAY_NAME_MIN_LENGTH = 2;
 const WORKSPACE_SLUG_MIN_LENGTH = 2;
 const WORKSPACE_SLUG_PATTERN = "[a-z0-9][a-z0-9-]{1,62}";
 
+function workspaceSlugFrom(raw: string): string {
+  return (
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-+/g, "-")
+      .slice(0, 50) || "workspace"
+  );
+}
+
 function suggestedWorkspaceSlug(raw: string): string {
-  const normalized = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-+/g, "-");
-  return `${normalized || "workspace"}-2`;
+  return `${workspaceSlugFrom(raw)}-2`;
 }
 
 function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthError {
   const message = err instanceof Error ? err.message : "Something went wrong";
   const lower = message.toLowerCase();
-  if (mode === "signup" && lower.includes("email") && (lower.includes("use") || lower.includes("taken"))) {
+  if (
+    mode === "signup" &&
+    lower.includes("email") &&
+    (lower.includes("use") || lower.includes("taken"))
+  ) {
     return { kind: "email-taken", message: "That email already has an account." };
   }
   if (mode === "signup" && lower.includes("slug")) {
@@ -60,8 +70,14 @@ function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthErro
       suggestion: suggestedWorkspaceSlug(workspaceSlug),
     };
   }
-  if (lower.includes("password") && (lower.includes("minimum") || lower.includes("least") || lower.includes("short"))) {
-    return { kind: "plain", message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` };
+  if (
+    lower.includes("password") &&
+    (lower.includes("minimum") || lower.includes("least") || lower.includes("short"))
+  ) {
+    return {
+      kind: "plain",
+      message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+    };
   }
   return { kind: "plain", message };
 }
@@ -69,7 +85,7 @@ function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthErro
 /** Read a `?plan=<key>` hint off the URL and resolve it to a known plan teaser (or null). */
 function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
   const key = new URLSearchParams(window.location.search).get("plan");
-  return key ? LANDING.plans.find((p) => p.key === key) ?? null : null;
+  return key ? (LANDING.plans.find((p) => p.key === key) ?? null) : null;
 }
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
@@ -258,7 +274,10 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
     setBusy(true);
     setError(null);
     if (mode === "signup" && password.length < PASSWORD_MIN_LENGTH) {
-      setError({ kind: "plain", message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+      setError({
+        kind: "plain",
+        message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+      });
       setBusy(false);
       return;
     }
@@ -273,7 +292,13 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             // sessionStorage can throw in private mode — the plan hint is a nicety, not load-bearing.
           }
         }
-        await store.signup({ email, password, displayName, workspaceSlug });
+        const trimmedSlug = workspaceSlug.trim();
+        await store.signup({
+          email,
+          password,
+          displayName,
+          ...(trimmedSlug ? { workspaceSlug: trimmedSlug } : {}),
+        });
       }
     } catch (err) {
       setError(authErrorFor(err, mode, workspaceSlug));
@@ -346,12 +371,10 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             <input
               value={workspaceSlug}
               onChange={(e) => setWorkspaceSlug(e.target.value)}
-              placeholder="acme"
-              required
-              aria-required="true"
+              placeholder={workspaceSlugFrom(displayName || email.split("@")[0] || "workspace")}
               minLength={WORKSPACE_SLUG_MIN_LENGTH}
               pattern={WORKSPACE_SLUG_PATTERN}
-              title="Use lowercase letters, numbers, and hyphens."
+              title="Optional. Use lowercase letters, numbers, and hyphens."
             />
           </label>
         )}

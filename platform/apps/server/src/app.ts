@@ -635,7 +635,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(sampleRoutes, { ...opts.sample });
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
-  // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered
+  // #123/#902 signup auto-seed needs the SessionManager (welcome launches when enabled), so authRoutes is registered
   // below, right after the manager is built.
   app.register(meRoutes);
   // #262 in-app one-click Connect Claude (replaces the `claude setup-token` CLI; default OFF, owner-first).
