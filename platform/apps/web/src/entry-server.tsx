@@ -16,6 +16,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO } from "./brand.js";
 import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
+import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { SiteShell } from "./components/site/SiteShell.js";
 import { SectionPage } from "./components/site/SectionPage.js";
 import { Brand } from "./components/site/Brand.js";
@@ -64,6 +65,7 @@ function articleMeta(post: BlogPostMeta): string {
 function marketingPages(): PrerenderPage[] {
   const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
     "/pricing": <PricingPage />,
+    "/refund-policy": <RefundPolicy />,
     "/compare": (
       <SiteShell>
         <SectionPage section="compare" copy={COMPARE} />

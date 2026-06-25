@@ -10,7 +10,7 @@
  *
  * Every word comes from `brand.ts`; brand.test scans this file for hardcoded brand strings.
  */
-import { BRAND, FAQ, LANDING, PRICING, VOICE } from "../../brand.js";
+import { BRAND, FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
@@ -81,7 +81,12 @@ export function PricingPage(): React.JSX.Element {
               </li>
             ))}
           </ul>
-          <p className="pricing__footnote">{PRICING.footnote}</p>
+          <p className="pricing__footnote">
+            {PRICING.footnote}{" "}
+            <Link href="/refund-policy" className="linklike">
+              {REFUND_POLICY.navLabel}
+            </Link>
+          </p>
         </section>
 
         <section className="pricing-page__faq landing__section" aria-labelledby="pricing-faq-title">
