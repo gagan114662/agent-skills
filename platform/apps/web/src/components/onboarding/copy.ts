@@ -77,7 +77,7 @@ export const ONBOARD_COPY = {
     inputLabel: "what are we marketing today?",
     placeholder: "a product, or your website",
     /** Primary action. */
-    submit: "let's go",
+    submit: "put the team on it",
     /** Nudge if they hit go with an empty box. */
     needInput: "go on then — give us a product or a url to chew on.",
     /** A quiet line under the input — reassurance, not config. */

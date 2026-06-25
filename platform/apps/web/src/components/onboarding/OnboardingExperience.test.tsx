@@ -9,6 +9,7 @@ import type {
   DeliverableDraft,
   OnboardingProvider,
   SiteFinding,
+  TeamMission,
 } from "./provider.js";
 import { OnboardingReadError } from "./provider.js";
 
@@ -22,6 +23,29 @@ const FINDING: SiteFinding = {
   host: "acme.com",
   name: "Acme",
   finding: "your hero buries the offer below the fold.",
+};
+
+const TEAM_MISSION: TeamMission = {
+  id: "mission-acme",
+  target: "acme.com",
+  objective: "turn Acme into a live customer-acquisition motion",
+  agents: [
+    { who: "scout", role: "customer truth", status: "handoff", current: "read acme.com and found the offer gap" },
+    { who: "quill", role: "copy + content", status: "working", current: "drafting the sharper hero" },
+    { who: "echo", role: "distribution", status: "blocked", current: "waiting on Reddit/X access" },
+    { who: "bid", role: "paid growth", status: "gated", current: "holding spend for approval" },
+  ],
+  handoffs: [
+    "scout -> quill: positioning gap",
+    "quill -> echo: launch angle",
+    "echo -> bid: paid only after organic proof",
+  ],
+  artifacts: [
+    { title: "site-read receipt", summary: "your hero buries the offer below the fold." },
+    { title: "first deliverable queued", summary: "hero rewrite + launch-week post plan" },
+  ],
+  receipts: ["site read: acme.com", "team mission recorded", "send/spend gates active"],
+  blockedPermissions: ["Gmail", "Reddit/X", "site publishing"],
 };
 
 function payoff(tool: ConnectTool): ConnectResult {
@@ -52,6 +76,7 @@ function payoff(tool: ConnectTool): ConnectResult {
 function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvider {
   return {
     readSite: () => Promise.resolve(FINDING),
+    startTeam: () => Promise.resolve(TEAM_MISSION),
     connect: (tool) => Promise.resolve(payoff(tool)),
     buildDeliverable: (): Promise<DeliverableDraft> =>
       Promise.resolve({
@@ -109,8 +134,29 @@ describe("OnboardingExperience (#784)", () => {
 
   it("nudges (does not advance) on an empty submit", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={9} />);
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/give us a product or a url/i);
+  });
+
+  it("starts a coordinated team mission with one action and shows agents, handoffs, artifacts, and blockers", async () => {
+    const startTeam = vi.fn(() => Promise.resolve(TEAM_MISSION));
+    render(<OnboardingExperience provider={fakeProvider({ startTeam })} hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+
+    expect(await screen.findByText(/send\/spend gates active/i)).toBeInTheDocument();
+    expect(startTeam).toHaveBeenCalledWith("acme.com", FINDING);
+    expect(screen.getByText(/turn Acme into a live customer-acquisition motion/i)).toBeInTheDocument();
+    expect(screen.getByText(/read acme\.com and found the offer gap/i)).toBeInTheDocument();
+    expect(screen.getByText(/drafting the sharper hero/i)).toBeInTheDocument();
+    expect(screen.getByText(/waiting on Reddit\/X access/i)).toBeInTheDocument();
+    expect(screen.getByText(/holding spend for approval/i)).toBeInTheDocument();
+    expect(screen.getByText(/scout -> quill: positioning gap/i)).toBeInTheDocument();
+    expect(screen.getByText(/site-read receipt/i)).toBeInTheDocument();
+    expect(screen.getByText(/blocked until real access: Gmail, Reddit\/X, site publishing/i)).toBeInTheDocument();
   });
 
   it("walks the whole flow: read → finding → guided connects each with a real payoff → ship", async () => {
@@ -121,8 +167,8 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
-    expect(await screen.findByText(/buries the offer below the fold/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    expect((await screen.findAllByText(/buries the offer below the fold/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/right, i read the whole thing/i)).toBeInTheDocument();
 
     // → connect: gmail first. Allow → an IMMEDIATE real reply payoff.
@@ -166,7 +212,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
 
@@ -190,7 +236,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -216,7 +262,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -242,13 +288,13 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read your site/i);
     expectPublicLinks();
     // No faked finding while it's errored.
     expect(screen.queryByText(/buries the offer/i)).not.toBeInTheDocument();
     // Retry recovers.
-    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
-    expect(await screen.findByText(/buries the offer/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    expect((await screen.findAllByText(/buries the offer/i)).length).toBeGreaterThan(0);
   });
 });

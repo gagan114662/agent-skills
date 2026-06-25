@@ -27,6 +27,7 @@ import {
   type DeliverableDraft,
   type OnboardingProvider,
   type SiteFinding,
+  type TeamMission,
 } from "./provider.js";
 
 type Phase = "door" | "reading" | "connect" | "deliverable" | "shipped";
@@ -72,6 +73,7 @@ function CoworkStage({
   phase,
   input,
   finding,
+  mission,
   results,
   deliverable,
   readError,
@@ -80,6 +82,7 @@ function CoworkStage({
   phase: Phase;
   input: string;
   finding: SiteFinding | null;
+  mission: TeamMission | null;
   results: readonly ConnectResult[];
   deliverable: DeliverableDraft | null;
   readError: string | null;
@@ -88,6 +91,7 @@ function CoworkStage({
   const lanes = ONBOARD_COPY.room.lanes[phase];
   const target = input.trim() || "waiting for the thing";
   const signal =
+    mission?.receipts[mission.receipts.length - 1] ??
     (finding ? ONBOARD_COPY.room.receipts.reading : undefined) ??
     readError ??
     connectError ??
@@ -102,11 +106,13 @@ function CoworkStage({
       </div>
 
       <ul className="onboard-room__agents" aria-label="agent team">
-        {ONBOARD_COPY.room.agents.map((agent) => (
-          <li key={agent.who} className="onboard-room-agent">
+        {(mission?.agents ?? ONBOARD_COPY.room.agents).map((agent) => (
+          <li key={agent.who} className="onboard-room-agent" data-status={"status" in agent ? agent.status : "idle"}>
             <span className="onboard-room-agent__dot" aria-hidden="true" />
             <span className="onboard-room-agent__who">{agent.who}</span>
-            <span className="onboard-room-agent__job">{agent.job}</span>
+            <span className="onboard-room-agent__job">
+              {"current" in agent ? agent.current : agent.job}
+            </span>
           </li>
         ))}
       </ul>
@@ -125,6 +131,29 @@ function CoworkStage({
         <span>{ONBOARD_COPY.room.receiptTitle}</span>
         <strong>{signal}</strong>
       </div>
+
+      {mission && (
+        <div className="onboard-room__mission" aria-label="team mission receipt">
+          <p className="onboard-room__label">mission</p>
+          <strong>{mission.objective}</strong>
+          <ul className="onboard-room__handoffs">
+            {mission.handoffs.map((handoff) => (
+              <li key={handoff}>{handoff}</li>
+            ))}
+          </ul>
+          <div className="onboard-room__artifacts">
+            {mission.artifacts.map((artifact) => (
+              <article key={artifact.title}>
+                <span>{artifact.title}</span>
+                <p>{artifact.summary}</p>
+              </article>
+            ))}
+          </div>
+          <p className="onboard-room__blocked">
+            blocked until real access: {mission.blockedPermissions.join(", ")}
+          </p>
+        </div>
+      )}
     </aside>
   );
 }
@@ -208,6 +237,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const [doorError, setDoorError] = useState<string | null>(null);
 
   const [finding, setFinding] = useState<SiteFinding | null>(null);
+  const [mission, setMission] = useState<TeamMission | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
 
   const [results, setResults] = useState<ConnectResult[]>([]);
@@ -227,9 +257,11 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
     async (value: string): Promise<void> => {
       setReadError(null);
       setFinding(null);
+      setMission(null);
       try {
         const f = await provider.readSite(value);
         setFinding(f);
+        setMission(await provider.startTeam(value, f));
       } catch (err) {
         setReadError(err instanceof OnboardingReadError ? err.message : ONBOARD_COPY.reading.error);
       }
@@ -512,6 +544,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           phase={phase}
           input={input}
           finding={finding}
+          mission={mission}
           results={results}
           deliverable={deliverable}
           readError={readError}

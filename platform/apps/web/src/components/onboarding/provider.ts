@@ -21,6 +21,31 @@ export interface SiteFinding {
   readonly finding: string;
 }
 
+export type TeamMissionAgentStatus = "working" | "handoff" | "blocked" | "gated";
+
+export interface TeamMissionAgent {
+  readonly who: "scout" | "quill" | "echo" | "bid";
+  readonly role: string;
+  readonly status: TeamMissionAgentStatus;
+  readonly current: string;
+}
+
+export interface TeamMissionArtifact {
+  readonly title: string;
+  readonly summary: string;
+}
+
+export interface TeamMission {
+  readonly id: string;
+  readonly target: string;
+  readonly objective: string;
+  readonly agents: readonly TeamMissionAgent[];
+  readonly handoffs: readonly string[];
+  readonly artifacts: readonly TeamMissionArtifact[];
+  readonly receipts: readonly string[];
+  readonly blockedPermissions: readonly string[];
+}
+
 /** The immediate, real payoff shown the instant a connection lands — discriminated by tool. */
 export type ConnectResult =
   | {
@@ -52,6 +77,8 @@ export interface ShipResult {
 export interface OnboardingProvider {
   /** Wake the fleet: read the real site and surface a finding worth saying out loud. May reject (offline). */
   readSite(input: string): Promise<SiteFinding>;
+  /** Create the shared first-run mission tying the starter agents, their handoffs, outputs, and receipts. */
+  startTeam(input: string, finding: SiteFinding): Promise<TeamMission>;
   /** Plug in one tool, Cowork-style; resolve with the real result that uses it (personalized from `input`). */
   connect(tool: ConnectTool, input: string): Promise<ConnectResult>;
   /** Build the first shippable deliverable from the connected accounts. */
@@ -99,6 +126,11 @@ export function parseTarget(input: string): { host: string; name: string } {
   return { host: `${slug}.com`, name: raw };
 }
 
+function missionId(host: string): string {
+  const key = host.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `mission-${key || "target"}`;
+}
+
 /**
  * The default provider used in the live app. `readSite` is REAL (it reads the user's site via the public
  * deliverable endpoint and narrates its first insight). Connectors require real OAuth/live account reads, so
@@ -124,6 +156,62 @@ export function createDefaultProvider(opts: { fetchImpl?: FetchLike } = {}): Onb
             : "we couldn't read your site just now.";
         throw new OnboardingReadError(message);
       }
+    },
+    async startTeam(input, finding) {
+      const { host, name } = parseTarget(input);
+      const target = finding.host || host;
+      return {
+        id: missionId(target),
+        target,
+        objective: `turn ${finding.name || name} into a live customer-acquisition motion`,
+        agents: [
+          {
+            who: "scout",
+            role: "customer truth",
+            status: "handoff",
+            current: `read ${target} and found: ${finding.finding}`,
+          },
+          {
+            who: "quill",
+            role: "copy + content",
+            status: "working",
+            current: "drafting a sharper hero and launch-week copy from Scout's finding",
+          },
+          {
+            who: "echo",
+            role: "distribution",
+            status: "blocked",
+            current: "ready to find social threads once Reddit/X access is real",
+          },
+          {
+            who: "bid",
+            role: "paid growth",
+            status: "gated",
+            current: "holding paid spend behind the workspace approval policy",
+          },
+        ],
+        handoffs: [
+          "scout -> quill: positioning gap and strongest customer promise",
+          "quill -> echo: draft angle for social/community distribution",
+          "echo -> bid: only escalate to paid once organic proof exists",
+        ],
+        artifacts: [
+          {
+            title: "site-read receipt",
+            summary: finding.finding,
+          },
+          {
+            title: "first deliverable queued",
+            summary: "hero rewrite + launch-week post plan can be built before any external send",
+          },
+        ],
+        receipts: [
+          `site read: ${target}`,
+          "team mission recorded",
+          "send/spend gates active",
+        ],
+        blockedPermissions: ["Gmail", "Reddit/X", "site publishing"],
+      };
     },
     async connect(tool, input) {
       void input;
