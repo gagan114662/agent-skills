@@ -24,6 +24,7 @@ import {
   bumpWorkflowAction,
   setWorkflowStatus,
   createApproval,
+  findWorkflowApproval,
   getApproval,
   decideApproval,
   getWorkflow,
@@ -146,6 +147,28 @@ export class AutonomyEngine {
   private readonly inflight = new Map<string, Promise<void>>();
 
   constructor(private readonly deps: AutonomyEngineDeps) {}
+
+  private async getOrCreateCompletionApproval(input: {
+    wf: AgentWorkflow;
+    taskId: string;
+    agentMemberId: string;
+  }) {
+    const action = "complete_workflow";
+    const existing = await findWorkflowApproval({
+      workspaceId: input.wf.workspaceId,
+      workflowId: input.wf.id,
+      taskId: input.taskId,
+      action,
+    });
+    if (existing) return existing;
+    return createApproval({
+      workspaceId: input.wf.workspaceId,
+      workflowId: input.wf.id,
+      taskId: input.taskId,
+      requestedByMemberId: input.agentMemberId,
+      action,
+    });
+  }
 
   /** Start the periodic loop over every workspace with active work. No-op if interval ≤ 0. */
   start(intervalMs: number): void {
@@ -341,17 +364,19 @@ export class AutonomyEngine {
           log,
         );
         // The next stage's agent now actually does the work (#84): launch its session as that member.
-        await this.launchStage(wf, taskId, taskTitle, wf.currentStage + 1, next.agentMemberId, log, note);
+        await this.launchStage(
+          wf,
+          taskId,
+          taskTitle,
+          wf.currentStage + 1,
+          next.agentMemberId,
+          log,
+          note,
+        );
         return;
       }
       case "request_approval": {
-        await createApproval({
-          workspaceId: wf.workspaceId,
-          workflowId: wf.id,
-          taskId,
-          requestedByMemberId: agentMemberId,
-          action: "complete_workflow",
-        });
+        await this.getOrCreateCompletionApproval({ wf, taskId, agentMemberId });
         await setWorkflowStatus(wf.id, "awaiting_approval");
         await bumpWorkflowAction(wf.id);
         await this.post(
@@ -398,7 +423,13 @@ export class AutonomyEngine {
         taskId,
         agentMemberId,
         createdByMemberId: agentMemberId,
-        task: composeStageTask({ workspaceId: wf.workspaceId, taskId, taskTitle, role, handoffContext }),
+        task: composeStageTask({
+          workspaceId: wf.workspaceId,
+          taskId,
+          taskTitle,
+          role,
+          handoffContext,
+        }),
         harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role, AGENT_TASK_ID: taskId },
       });
     } catch (err) {
@@ -435,6 +466,7 @@ export class AutonomyEngine {
     sessionId: string,
     log: SessionLogger,
   ): void {
+    let settled = false;
     const run = (async (): Promise<void> => {
       try {
         await this.deps.launcher!.join(sessionId);
@@ -449,14 +481,18 @@ export class AutonomyEngine {
           status,
           log,
         );
+        settled = true;
       } catch (err) {
         log.error({ err, sessionId, workflowId: wf.id }, "autonomy session tracking failed");
+        throw err;
       }
     })();
     this.inflight.set(wf.id, run);
-    void run.finally(() => {
-      if (this.inflight.get(wf.id) === run) this.inflight.delete(wf.id);
-    });
+    void run
+      .finally(() => {
+        if (settled && this.inflight.get(wf.id) === run) this.inflight.delete(wf.id);
+      })
+      .catch(() => {});
   }
 
   /**
@@ -505,13 +541,7 @@ export class AutonomyEngine {
         // trusted workflow skip the human: the gate is decided BY POLICY (recording which rule fired)
         // and the task goes straight to `done` + the workflow to `completed`. With no rule the gate
         // holds exactly as before.
-        const approval = await createApproval({
-          workspaceId: wf.workspaceId,
-          workflowId: wf.id,
-          taskId,
-          requestedByMemberId: agentMemberId,
-          action: "complete_workflow",
-        });
+        const approval = await this.getOrCreateCompletionApproval({ wf, taskId, agentMemberId });
         const policy = await this.completionDecision(wf.workspaceId);
         if (policy.autoApprove) {
           await decideApproval(approval.id, {

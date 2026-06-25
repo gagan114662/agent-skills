@@ -373,7 +373,10 @@ export function clampAutonomyListLimit(limit?: number): number {
   return Math.min(MAX_AUTONOMY_LIST_LIMIT, Math.floor(limit));
 }
 
-export async function listWorkflowsInChannel(channelId: string, limit?: number): Promise<AgentWorkflow[]> {
+export async function listWorkflowsInChannel(
+  channelId: string,
+  limit?: number,
+): Promise<AgentWorkflow[]> {
   const rows = await db
     .select(WORKFLOW_COLS)
     .from(agentWorkflows)
@@ -384,7 +387,10 @@ export async function listWorkflowsInChannel(channelId: string, limit?: number):
 }
 
 /** The engine's work-list: every `running` workflow in a workspace, oldest first (fair order). */
-export async function listActiveWorkflows(workspaceId: string, limit?: number): Promise<AgentWorkflow[]> {
+export async function listActiveWorkflows(
+  workspaceId: string,
+  limit?: number,
+): Promise<AgentWorkflow[]> {
   const rows = await db
     .select(WORKFLOW_COLS)
     .from(agentWorkflows)
@@ -482,6 +488,28 @@ export async function createApproval(input: {
     })
     .returning(APPROVAL_COLS);
   return row as AgentApproval;
+}
+
+export async function findWorkflowApproval(input: {
+  workspaceId: string;
+  workflowId: string;
+  taskId: string;
+  action: string;
+}): Promise<AgentApproval | undefined> {
+  const [row] = await db
+    .select(APPROVAL_COLS)
+    .from(agentApprovals)
+    .where(
+      and(
+        eq(agentApprovals.workspaceId, input.workspaceId),
+        eq(agentApprovals.workflowId, input.workflowId),
+        eq(agentApprovals.taskId, input.taskId),
+        eq(agentApprovals.action, input.action),
+      ),
+    )
+    .orderBy(desc(agentApprovals.createdAt))
+    .limit(1);
+  return row as AgentApproval | undefined;
 }
 
 export async function getApproval(
