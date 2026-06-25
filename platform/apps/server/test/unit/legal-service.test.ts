@@ -164,11 +164,11 @@ function build(opts?: { facts?: VentureLegalFacts; caps?: Partial<LegalCaps> }) 
 }
 
 describe("LegalService — documents (#196 criterion 1)", () => {
-  it("generates a ToS+privacy pack and opens ONE pending #13 publish approval", async () => {
+  it("generates a ToS+privacy+DPA pack and opens ONE pending #13 publish approval", async () => {
     const { service, documents, gate } = build({ facts: baseFacts });
     const result = await service.generate("ws", VENTURE, MEMBER);
-    expect(result.documents.map((d) => d.kind).sort()).toEqual(["privacy", "tos"]);
-    expect(documents.rows).toHaveLength(2);
+    expect(result.documents.map((d) => d.kind).sort()).toEqual(["dpa", "privacy", "tos"]);
+    expect(documents.rows).toHaveLength(3);
     expect(gate.calls).toHaveLength(1); // one owner-review approval for the publish
     expect(gate.calls[0].payload.kind).toBe("content.publish");
     expect(result.documents.every((d) => d.approvalRequestId === "appr-1")).toBe(true);

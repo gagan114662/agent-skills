@@ -95,6 +95,7 @@ describe("AuthGate routing", () => {
   it.each([
     [LEGAL.terms.href, LEGAL.terms.title],
     [LEGAL.privacy.href, LEGAL.privacy.title],
+    [LEGAL.dpa.href, LEGAL.dpa.title],
     [COMPANY.href, COMPANY.title],
   ])("serves %s as a public legal page for logged-out visitors (#863)", async (path, title) => {
     act(() => navigate(path));
@@ -177,6 +178,7 @@ describe("AuthGate routing", () => {
     expect(consent).toHaveAttribute("aria-required", "true");
     expect(screen.getByRole("link", { name: LEGAL.terms.navLabel })).toHaveAttribute("href", LEGAL.terms.href);
     expect(screen.getByRole("link", { name: LEGAL.privacy.navLabel })).toHaveAttribute("href", LEGAL.privacy.href);
+    expect(screen.getByRole("link", { name: LEGAL.dpa.navLabel })).toHaveAttribute("href", LEGAL.dpa.href);
   });
 
   it("explains email reuse with a sign-in action", async () => {

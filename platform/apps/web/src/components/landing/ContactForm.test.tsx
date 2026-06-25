@@ -48,7 +48,7 @@ describe("ContactForm failure visibility (#938)", () => {
       email: "ada@example.com",
       companyWebsite: "",
       termsAccepted: true,
-      legalConsentVersion: "public-legal-2026-06-25",
+      legalConsentVersion: "public-legal-dpa-2026-06-25",
     });
     expect(typeof body.legalConsentAt).toBe("string");
   });
@@ -60,6 +60,8 @@ describe("ContactForm failure visibility (#938)", () => {
     expect(consent).toHaveAttribute("required");
     expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
+    expect(screen.getByRole("link", { name: "DPA" })).toHaveAttribute("href", "/dpa");
+    expect(screen.getByText(/data-subject-rights requests/i)).toBeInTheDocument();
   });
 
   it("posts the real UTM source and tracking ref from the landing URL (#901)", async () => {

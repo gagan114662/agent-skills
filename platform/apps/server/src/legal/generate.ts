@@ -1,5 +1,5 @@
 /**
- * Pure ToS + privacy-policy generation (#196, criterion 1). Given a venture's `VentureLegalFacts`, compose
+ * Pure ToS, privacy-policy, and DPA generation (#196, #867). Given a venture's `VentureLegalFacts`, compose
  * deterministic markdown documents — no IO, no model spend, no clock. The output is content-addressed: the
  * `version` is a short hash of the rendered body, and `sourceFactsHash` fingerprints the facts the doc was
  * generated from, so a *material change* (facts-hash drift) is detectable and triggers a regenerate +
@@ -115,8 +115,8 @@ function compose(kind: LegalDocumentKind, facts: VentureLegalFacts): string {
     return lines.join("\n");
   }
 
-  // privacy
-  const lines = [
+  if (kind === "privacy") {
+    const lines = [
     "# Privacy Policy",
     "",
     "## 1. Information we collect",
@@ -154,6 +154,51 @@ function compose(kind: LegalDocumentKind, facts: VentureLegalFacts): string {
     "We may update this policy; material changes will be posted with an updated effective date.",
     "",
     DOCUMENT_DISCLAIMER,
+    ];
+    return lines.join("\n");
+  }
+
+  // dpa
+  const lines = [
+    "# Data Processing Agreement",
+    "",
+    "## 1. Roles and scope",
+    "This Data Processing Agreement applies when we process personal data on behalf of a customer to provide",
+    "the service. The customer is the controller or business, and we act as processor or service provider.",
+    "",
+    "## 2. Categories of personal data",
+    "The service may process the following categories of personal data based on the customer's configuration:",
+    "",
+    dataBullets,
+    "",
+    "## 3. Processing instructions",
+    "We process personal data only to provide, secure, support, and improve the service, to follow documented",
+    "customer instructions, and to comply with applicable law.",
+    "",
+    "## 4. Subprocessors",
+    "We use subprocessors such as hosting, payment, analytics, email, and model providers where needed to run",
+    "the service. We remain responsible for subprocessors we engage for the service.",
+    "",
+    "## 5. Security",
+    "We apply workspace isolation, scoped credentials, approval gates, audit logs, and reasonable technical",
+    "and organizational safeguards appropriate to the service.",
+    "",
+    "## 6. Data-subject requests",
+    "We will reasonably assist the customer with verified access, export, deletion, objection, or restriction",
+    "requests for personal data processed through the service.",
+    "",
+    "## 7. Return and deletion",
+    "On termination or verified request, we will delete or return personal data unless retention is required",
+    "for legal, security, billing, or audit obligations.",
+    "",
+    "## 8. International transfers",
+    `This DPA is interpreted under the laws applicable in ${jurisdiction}. Where transfer mechanisms are`,
+    "required, the parties will use an appropriate lawful transfer mechanism.",
+    "",
+    "## 9. Contact",
+    "Questions, countersignature requests, and data-subject-rights requests can be sent to support@ipop.ai.",
+    "",
+    DOCUMENT_DISCLAIMER,
   ];
   return lines.join("\n");
 }
@@ -171,9 +216,9 @@ export function composeDocument(kind: LegalDocumentKind, facts: VentureLegalFact
   };
 }
 
-/** Compose the full pack (ToS + privacy) for a venture's facts. */
+/** Compose the full pack (ToS + privacy + DPA) for a venture's facts. */
 export function composePack(facts: VentureLegalFacts): ComposedDocument[] {
-  return [composeDocument("tos", facts), composeDocument("privacy", facts)];
+  return [composeDocument("tos", facts), composeDocument("privacy", facts), composeDocument("dpa", facts)];
 }
 
 /** A material change = the facts that generated a published doc no longer fingerprint the same. */

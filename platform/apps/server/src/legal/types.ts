@@ -16,8 +16,8 @@
  */
 
 /** A document the pack generates and versions. */
-export type LegalDocumentKind = "tos" | "privacy";
-export const LEGAL_DOCUMENT_KINDS: readonly LegalDocumentKind[] = ["tos", "privacy"];
+export type LegalDocumentKind = "tos" | "privacy" | "dpa";
+export const LEGAL_DOCUMENT_KINDS: readonly LegalDocumentKind[] = ["tos", "privacy", "dpa"];
 
 export type LegalDocumentStatus = "draft" | "published";
 

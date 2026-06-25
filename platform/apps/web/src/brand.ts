@@ -639,6 +639,7 @@ export const LANDING = {
       { href: "/refund-policy", label: "Refund policy" },
       { href: "/terms", label: "Terms" },
       { href: "/privacy", label: "Privacy" },
+      { href: "/dpa", label: "DPA" },
     ],
     resourcesTitle: "Resources",
     resources: [
@@ -1671,9 +1672,9 @@ export const CONTACT = {
   sentNote: "Got it — your note's in. A person will read it and reply, usually within a day.",
   /** Shown if the post fails — honest, with a fallback so the lead is never silently lost. */
   errorNote: `That didn't go through. Mind trying again, or email us at ${SUPPORT_CONTACT.email} and we'll pick it up.`,
-  consentLabel: "I agree to be contacted about ipop and accept the public legal terms.",
+  consentLabel: "I agree to be contacted about ipop and accept the public legal terms, privacy notice, and DPA.",
   consentHelp:
-    "We use this to reply to your note and keep a consent record. You can opt out any time.",
+    "We use this to reply to your note, keep a consent record, and honor privacy or data-subject-rights requests sent to support@ipop.ai.",
 } as const;
 
 /** Public company-level legal pages (#863). Factual product terms, not per-venture generated docs. */
@@ -1760,9 +1761,50 @@ export const LEGAL = {
       },
     ],
   },
+  dpa: {
+    eyebrow: "Data Processing Agreement",
+    title: "DPA for customer data",
+    sub:
+      "This DPA explains how ipop processes customer personal data, supports GDPR Article 28 obligations, and handles data-subject requests.",
+    navLabel: "DPA",
+    href: "/dpa",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "Roles and scope",
+        body:
+          "When ipop processes personal data on behalf of a customer to provide the service, the customer acts as controller or business and ipop acts as processor or service provider.",
+      },
+      {
+        title: "Processing instructions",
+        body:
+          "We process customer personal data only to provide, secure, support, and improve the service; follow documented customer instructions; and comply with applicable law.",
+      },
+      {
+        title: "Security measures",
+        body:
+          "The service uses workspace isolation, scoped credentials, approval gates, audit logs, and reasonable technical and organizational safeguards appropriate to the data processed.",
+      },
+      {
+        title: "Subprocessors",
+        body:
+          "We may use hosting, payment, analytics, email, and model providers as subprocessors where needed to run ipop. We remain responsible for subprocessors we engage for the service.",
+      },
+      {
+        title: "Data-subject rights",
+        body:
+          "Customers and data subjects can request access, export, deletion, correction, objection, or restriction by emailing support@ipop.ai. We may verify requests before acting.",
+      },
+      {
+        title: "Return, deletion, and transfers",
+        body:
+          "On termination or verified request, we delete or return personal data unless retention is required for legal, security, billing, or audit obligations. Where transfer mechanisms are required, the parties use an appropriate lawful mechanism.",
+      },
+    ],
+  },
   backCta: "Back home",
   securityCta: "Security & trust",
-  consentVersion: "public-legal-2026-06-25",
+  consentVersion: "public-legal-dpa-2026-06-25",
 } as const;
 
 /**
@@ -1821,7 +1863,6 @@ export const SECURITY = {
   roadmapTitle: "On the roadmap — not yet",
   roadmap: [
     { title: "SOC 2 Type II", status: "Planned — not yet certified", body: "We're building toward an audit. We are not certified today and don't claim to be." },
-    { title: "GDPR data-processing agreement", status: "Planned — not yet offered", body: "A formal DPA and the tooling behind it are on the roadmap, not shipped." },
     { title: "SSO / SAML", status: "Designed seam — not yet built", body: "The wiring point exists in the code; no identity provider is connected yet." },
     { title: "Kernel-level network policy", status: "Partial — application-enforced today", body: "Egress is enforced at the application layer now; in-sandbox kernel enforcement is the next step." },
   ],
@@ -2121,6 +2162,11 @@ export const PAGE_SEO = {
     name: COMPANY.navLabel,
     title: `Company information — ${BRAND.name} legal and operator details`,
     description: COMPANY.sub,
+  },
+  "/dpa": {
+    name: "DPA",
+    title: `DPA / Data Processing Agreement — ${BRAND.name} customer data terms`,
+    description: LEGAL.dpa.sub,
   },
   "/compare": {
     name: "Compare",
