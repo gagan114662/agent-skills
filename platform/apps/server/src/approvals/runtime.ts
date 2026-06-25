@@ -3,7 +3,8 @@
  * pure `executor.ts` (which the unit job imports). `chat.post_message` is a real side effect — it
  * reuses #4 `postMessage` + #5 realtime and runs **as the requester**, re-checking the requester's
  * #9 capability at execution time (ADR-0013 §3). `external.send` is recorded-only unless a dispatcher is
- * injected; `outreach.send` dispatches through the configured outreach sender after owner approval.
+ * injected; support replies fail closed without a support delivery dispatcher. `outreach.send` dispatches
+ * through the configured outreach sender after owner approval.
  */
 import { effectiveCapability, satisfies } from "../auth/access.js";
 import { getChannel, isChannelMember } from "../db/repositories/channels.js";
@@ -39,6 +40,7 @@ import {
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
+import type { SupportReplyDeliveryDispatcher } from "../support/delivery.js";
 import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
 import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
@@ -302,6 +304,7 @@ function makeExternalSend(
   egress: EgressEnforcer,
   compliance: ComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
+  supportDispatcher?: SupportReplyDeliveryDispatcher,
 ): ActionExecutor {
   return {
     actionType: "external.send",
@@ -335,6 +338,24 @@ function makeExternalSend(
         envelope,
       });
       if (unlawful) throw new ActionExecutionError(unlawful);
+      if (kind === "support.reply") {
+        if (!supportDispatcher) {
+          throw new ActionExecutionError(
+            "support reply delivery path not configured — approval was recorded but no message was delivered",
+          );
+        }
+        const delivered = await supportDispatcher.dispatch(payload, {
+          workspaceId: ctx.workspaceId,
+          requesterMemberId: ctx.requesterMemberId,
+          requestId: ctx.requestId,
+        });
+        if (!delivered) {
+          throw new ActionExecutionError(
+            "support reply delivery path declined the send — approval was recorded but no message was delivered",
+          );
+        }
+        return delivered;
+      }
       // #189: hand the approved (and now compliance-cleared) send to the acquisition dispatcher. A non-null
       // result means a real (or dry-run) campaign action ran; null means this is not an acquisition send, or
       // the channel is not cleared to execute → fall back to recorded-only (the default, no-egress behavior).
@@ -770,12 +791,13 @@ export function buildDefaultRegistry(
   outreachDispatcher: OutreachSendDispatcher = createDefaultOutreachSendDispatcher(),
   social?: SocialPublishDispatcher,
   searchConsole: SearchConsoleService = createDefaultSearchConsoleService(),
+  supportDispatcher?: SupportReplyDeliveryDispatcher,
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
     makeAgentDeliverable(delivery),
     makeHostedPublish(hosted),
-    makeExternalSend(egress, compliance, dispatcher),
+    makeExternalSend(egress, compliance, dispatcher, supportDispatcher),
     billingRefund,
     browserAction,
     ventureWeeklyPlanExecutor,

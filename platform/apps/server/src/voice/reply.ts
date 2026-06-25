@@ -1,8 +1,9 @@
 /**
  * Outbound support replies (#114, ADR-0114) — a **pure** descriptor builder over the #13 `external.send`
  * action, mirroring the marketing `buildMarketingSend` (#123). A reply to a real customer is
- * sensitive-by-default (no workspace rule needed → gated) and recorded-only after a human approves. This
- * module changes NEITHER `approvals/policy.ts` NOR the executor — it only shapes the submission an
+ * sensitive-by-default (no workspace rule needed → gated). At execution time the approval executor must
+ * have a support delivery path; otherwise the request fails loudly instead of masquerading as sent. This
+ * module changes NEITHER `approvals/policy.ts` NOR executor wiring — it only shapes the submission an
  * agent's draft becomes, so an agent can never send a reply autonomously (v1: a human approves every send).
  */
 
