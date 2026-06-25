@@ -217,6 +217,29 @@ function ConnectPayoff({ result }: { result: ConnectResult }): React.JSX.Element
   );
 }
 
+function InstantDeliverable({ finding }: { finding: SiteFinding }): React.JSX.Element {
+  return (
+    <article className="onboard-instant" aria-label="instant personalized deliverable">
+      <div className="onboard-instant__head">
+        <p className="onboard-eyebrow">streaming now</p>
+        <h2>{finding.name}'s first useful thing</h2>
+      </div>
+      <ol className="onboard-instant__steps" aria-label="agent work stream">
+        <li>scout read {finding.host}</li>
+        <li>quill drafted from the finding</li>
+        <li>ready for your approval</li>
+      </ol>
+      <div className="onboard-instant__draft">
+        <span>draft</span>
+        <p>
+          Lead with this: {finding.finding} Then ship a homepage hero rewrite and a launch-week post
+          plan before asking anyone to connect an account.
+        </p>
+      </div>
+    </article>
+  );
+}
+
 function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React.JSX.Element {
   return (
     <nav
@@ -449,6 +472,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                       </span>
                     </li>
                   </ul>
+                  <InstantDeliverable finding={finding} />
                   <button className="onboard-cta" type="button" onClick={() => setPhase("connect")}>
                     {ONBOARD_COPY.reading.next}
                   </button>
