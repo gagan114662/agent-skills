@@ -12,6 +12,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { EverydayShell } from "./EverydayShell.js";
 import { seedEveryday, type EverydayData } from "./everyday-data.js";
 import { EVERYDAY } from "../../brand.js";
+import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
 function emptyData(over: Partial<EverydayData> = {}): EverydayData {
   return {
@@ -26,6 +27,20 @@ function emptyData(over: Partial<EverydayData> = {}): EverydayData {
 }
 
 describe("EverydayShell — north star (#630)", () => {
+  it("renders from the shared ipop experience token contract (#1068)", () => {
+    const { container } = render(<EverydayShell data={seedEveryday()} />);
+    const root = container.querySelector<HTMLElement>(".everyday-shell");
+
+    expect(root).not.toBeNull();
+    expect(root).toHaveStyle({
+      "--ed-canvas": ipopExperienceTokens.color.canvas,
+      "--ed-surface": ipopExperienceTokens.color.surface,
+      "--ed-pop": ipopExperienceTokens.color.accent,
+      "--ed-serif": ipopExperienceTokens.typography.serif,
+      "--ed-sans": ipopExperienceTokens.typography.sans,
+    });
+  });
+
   it("shows paying customers and revenue up top", () => {
     render(<EverydayShell data={seedEveryday()} />);
     expect(screen.getByText(EVERYDAY.northStar.customersLabel)).toBeInTheDocument();

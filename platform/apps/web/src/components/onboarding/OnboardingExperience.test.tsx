@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
+import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 import type {
   ConnectResult,
   ConnectTool,
@@ -51,6 +52,20 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 }
 
 describe("OnboardingExperience (#784)", () => {
+  it("renders from the shared ipop experience token contract (#1068)", () => {
+    const { container } = render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+    const root = container.querySelector<HTMLElement>(".onboard");
+
+    expect(root).not.toBeNull();
+    expect(root).toHaveStyle({
+      "--o-canvas": ipopExperienceTokens.color.canvas,
+      "--o-surface": ipopExperienceTokens.color.surface,
+      "--o-pop": ipopExperienceTokens.color.accent,
+      "--o-serif": ipopExperienceTokens.typography.serif,
+      "--o-sans": ipopExperienceTokens.typography.sans,
+    });
+  });
+
   it("opens on the warm door — a personalized greeting and ONE input, nothing else", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
     expect(screen.getByText(/afternoon, gagan/i)).toBeInTheDocument();

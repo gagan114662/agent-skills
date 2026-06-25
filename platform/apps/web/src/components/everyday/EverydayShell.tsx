@@ -16,6 +16,7 @@
  */
 import { useState } from "react";
 import { EVERYDAY } from "../../brand.js";
+import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import {
   type ApprovalCard,
   type Deliverable,
@@ -361,7 +362,7 @@ export function EverydayShell({
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
 
   return (
-    <div className="everyday-shell">
+    <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
       <main className="everyday-shell__main">
         <header className="everyday-door">
           <h1 className="everyday-serif everyday-door__greeting">{greeting}</h1>

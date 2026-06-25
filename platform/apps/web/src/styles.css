@@ -7323,22 +7323,10 @@ select:focus-visible {
    Inter body (two weights), generous whitespace, calm intentional motion.
    ========================================================================== */
 .everyday-shell {
-  /* #784 tokens — local only. */
-  --ed-canvas: #0f0f12;
-  --ed-surface: #17171c;
-  --ed-raised: #1e1e25;
-  --ed-border: rgba(255, 255, 255, 0.08);
-  --ed-text: #f4f3f1;
-  --ed-text-dim: #9a9aa2;
-  --ed-pop: #ff5470; /* the single coral pop */
-  --ed-on-pop: #2a0a12; /* text on the pop */
-  --ed-radius: 16px;
-  --ed-gap: 28px;
-
   min-height: 100vh;
   background: var(--ed-canvas);
   color: var(--ed-text);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--ed-sans);
   font-weight: 400;
   line-height: 1.55;
   letter-spacing: -0.01em;
@@ -7355,7 +7343,7 @@ select:focus-visible {
 
 /* Editorial serif headlines (greetings + section heads). */
 .everyday-serif {
-  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+  font-family: var(--ed-serif);
   font-weight: 400;
   letter-spacing: 0;
   line-height: 1.12;
@@ -7463,7 +7451,7 @@ select:focus-visible {
   gap: 2px;
 }
 .everyday-metric__value {
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--ed-serif);
   font-size: 44px;
   line-height: 1;
   color: var(--ed-text);
@@ -7761,19 +7749,6 @@ select:focus-visible {
    two weights only (400/500). Motion is calm and intentional; all of it gated by prefers-reduced-motion.
    ============================================================================================ */
 .onboard {
-  /* The #784 palette — local custom properties so nothing leaks into the rest of the app. */
-  --o-canvas: #0f0f12;
-  --o-surface: #17171c;
-  --o-raised: #1e1e25;
-  --o-border: rgba(255, 255, 255, 0.08);
-  --o-text: #f4f3f1;
-  --o-text-dim: #9a9aa2;
-  --o-pop: #ff5470; /* the one accent, used sparingly */
-  --o-pop-ink: #2a0a12; /* text on the accent */
-  --o-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
-  --o-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --o-ease: cubic-bezier(0.22, 0.61, 0.36, 1); /* calm, no bounce */
-
   position: fixed;
   inset: 0;
   overflow-y: auto;
