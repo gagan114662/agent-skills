@@ -26,6 +26,7 @@ import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 export const DEFAULT_SECRET_KEY_NAME = "STRIPE_SECRET_KEY";
 export const DEFAULT_WEBHOOK_SECRET_NAME = "STRIPE_WEBHOOK_SECRET";
 export const DEFAULT_CURRENCY = "usd";
+const DEFAULT_TAX_CODE = "txcd_10103001";
 
 /** Webhook event types that represent a real, completed inbound payment (→ willingness-to-pay evidence). */
 const PAYMENT_EVENT_TYPES: readonly string[] = [
@@ -75,6 +76,9 @@ export interface CreateRevenueEventRow {
   invoiceUrl: string | null;
   invoicePdfUrl: string | null;
   invoiceStatus: string | null;
+  taxAmountCents: number;
+  customerVatId: string | null;
+  effectiveTaxRateBps: number | null;
   /** The #386 tracking ref carried through Stripe checkout metadata (slice 3). Null ⇒ no ref ⇒ unattributed. */
   trackingRef: string | null;
   /** The REDACTED webhook payload (stored verbatim as a JSON string value). */
@@ -208,6 +212,8 @@ export interface CreatePaymentLinkRequest {
   trackingRef?: string | null;
   /** Optional customer contact to round-trip into checkout metadata and persist after payment. */
   billingEmail?: string | null;
+  /** Optional provider tax-code override; defaults to SaaS/digital-services. */
+  taxCode?: string | null;
 }
 
 export interface WebhookIngestResult {
@@ -328,6 +334,8 @@ export class BillingManager {
         amountCents: req.amountCents,
         currency,
         interval,
+        taxCode: req.taxCode ?? DEFAULT_TAX_CODE,
+        taxBehavior: "exclusive",
         secrets,
       });
       const link = await this.provider.createPaymentLink({
@@ -345,6 +353,9 @@ export class BillingManager {
           ...(billingEmail ? { customerEmail: billingEmail } : {}),
         },
         ...(billingEmail ? { customerEmail: billingEmail } : {}),
+        collectTax: true,
+        collectTaxIds: true,
+        billingAddressCollection: "required",
         secrets,
       });
       productId = pp.productId;
@@ -446,6 +457,9 @@ export class BillingManager {
         invoiceUrl: invoice?.hostedInvoiceUrl ?? parsed.invoice?.hostedInvoiceUrl ?? null,
         invoicePdfUrl: invoice?.invoicePdfUrl ?? parsed.invoice?.invoicePdfUrl ?? null,
         invoiceStatus: invoice?.status ?? parsed.invoice?.status ?? null,
+        taxAmountCents: parsed.taxAmountCents,
+        customerVatId: parsed.customerVatId,
+        effectiveTaxRateBps: parsed.effectiveTaxRateBps,
         // #386 slice 3: carry the tracking ref through Stripe metadata onto the row so the attribution
         // projection can credit the artifact/lead that drove this dollar. Sanitized — it comes off an
         // external webhook (#200 §6); a missing/garbage ref lands as null ⇒ this payment stays unattributed.
@@ -708,6 +722,9 @@ interface ParsedEvent {
   customerEmail: string | null;
   stripeCustomerId: string | null;
   invoice: BillingInvoice | null;
+  taxAmountCents: number;
+  customerVatId: string | null;
+  effectiveTaxRateBps: number | null;
 }
 
 function buildFirstCustomerStory(input: {
@@ -805,6 +822,7 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
     num(data?.amount) ??
     num(data?.amount_received) ??
     0;
+  const taxAmount = num(nestedValue(data?.total_details, "amount_tax")) ?? 0;
   const metadataRaw = (data?.metadata as Record<string, unknown> | undefined) ?? {};
   const metadata: Record<string, string> = {};
   for (const [k, v] of Object.entries(metadataRaw)) {
@@ -821,12 +839,33 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
       "succeeded",
     metadata,
     invoice: parseInvoice(data),
+    taxAmountCents: taxAmount,
+    customerVatId: firstTaxIdValue(data) ?? cleanMetadata(metadata.customerVatId) ?? null,
+    effectiveTaxRateBps: effectiveTaxRateBps(amount, taxAmount),
     customerEmail:
       sanitizeBillingEmail(stringValue(data?.customer_email)) ??
       sanitizeBillingEmail(nestedString(data?.customer_details, "email")) ??
       sanitizeBillingEmail(metadata.customerEmail),
     stripeCustomerId: cleanStripeCustomerId(stringValue(data?.customer)),
   };
+}
+
+function effectiveTaxRateBps(amountCents: number, taxAmountCents: number): number | null {
+  const pretax = amountCents - taxAmountCents;
+  if (taxAmountCents <= 0 || pretax <= 0) return null;
+  return Math.round((taxAmountCents / pretax) * 10_000);
+}
+
+function firstTaxIdValue(data: Record<string, unknown> | undefined): string | null {
+  const taxIds = nestedValue(data?.customer_details, "tax_ids");
+  if (!Array.isArray(taxIds)) return null;
+  for (const item of taxIds) {
+    if (item && typeof item === "object") {
+      const value = cleanMetadata(stringValue((item as Record<string, unknown>).value) ?? undefined);
+      if (value) return value;
+    }
+  }
+  return null;
 }
 
 function parseInvoice(data: Record<string, unknown> | undefined): BillingInvoice | null {
@@ -901,9 +940,13 @@ function stringValue(value: unknown): string | null {
 }
 
 function nestedString(value: unknown, key: string): string | null {
-  if (!value || typeof value !== "object") return null;
-  const v = (value as Record<string, unknown>)[key];
+  const v = nestedValue(value, key);
   return typeof v === "string" ? v : null;
+}
+
+function nestedValue(value: unknown, key: string): unknown {
+  if (!value || typeof value !== "object") return undefined;
+  return (value as Record<string, unknown>)[key];
 }
 
 function num(value: unknown): number | undefined {

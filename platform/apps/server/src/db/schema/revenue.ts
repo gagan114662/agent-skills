@@ -80,6 +80,9 @@ export const revenueEvents = pgTable(
     invoiceUrl: text("invoice_url"),
     invoicePdfUrl: text("invoice_pdf_url"),
     invoiceStatus: text("invoice_status"),
+    taxAmountCents: integer("tax_amount_cents").notNull().default(0),
+    customerVatId: text("customer_vat_id"),
+    effectiveTaxRateBps: integer("effective_tax_rate_bps"),
     // The #386 tracking ref carried through Stripe checkout metadata (slice 3, #402). NULL ⇒ the payment
     // carried no ref (or pre-dates this column) ⇒ stays `unattributed` in the attribution projection.
     trackingRef: text("tracking_ref"),

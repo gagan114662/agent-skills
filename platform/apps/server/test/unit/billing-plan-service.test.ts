@@ -259,6 +259,13 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
       customerEmail: "buyer@example.com",
     });
     expect(link.customerEmail).toBe("buyer@example.com");
+    expect(link.collectTax).toBe(true);
+    expect(link.collectTaxIds).toBe(true);
+    expect(link.billingAddressCollection).toBe("required");
+    expect(provider.products.at(-1)).toMatchObject({
+      taxCode: "txcd_10103001",
+      taxBehavior: "exclusive",
+    });
   });
 
   it("ensures the price once — a second checkout reuses the registry (no duplicate product)", async () => {

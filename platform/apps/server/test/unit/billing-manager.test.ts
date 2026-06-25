@@ -370,6 +370,26 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     });
   });
 
+  it("persists Stripe Tax amount and collected VAT id for audit (#861)", async () => {
+    const raw = successEvent({}, "evt_tax", {
+      total_details: { amount_tax: 1900 },
+      customer_details: {
+        email: "Buyer@Example.COM",
+        tax_ids: [{ type: "eu_vat", value: "DE123456789" }],
+      },
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+
+    expect(res.event).toMatchObject({
+      amountCents: 2500,
+      taxAmountCents: 1900,
+      customerVatId: "DE123456789",
+      effectiveTaxRateBps: 31667,
+    });
+  });
+
   it("can repair the workspace billing contact from a replayed deduped webhook", async () => {
     const raw = successEvent({}, "evt_contact_replay", {
       customer_email: "replay@example.com",
