@@ -98,9 +98,7 @@ export async function autonomyRoutes(
     if (!id) return;
     if (!assertWorkspace(id, workspaceId, reply)) return;
     const pools = await listPools(workspaceId);
-    return Promise.all(
-      pools.map(async (p) => ({ ...p, members: await listPoolMembers(p.id) })),
-    );
+    return Promise.all(pools.map(async (p) => ({ ...p, members: await listPoolMembers(p.id) })));
   });
 
   // Add an agent to a pool with its roles (human). Idempotent — updates roles if already a member.
@@ -153,7 +151,9 @@ export async function autonomyRoutes(
       grantedByMemberId: id.memberId,
     });
     const roles = await agentRoles(id.workspaceId, b.agentMemberId);
-    return reply.code(201).send({ ok: true, agentMemberId: b.agentMemberId, channelId: cid, roles });
+    return reply
+      .code(201)
+      .send({ ok: true, agentMemberId: b.agentMemberId, channelId: cid, roles });
   });
 
   // ---- autonomy config (per agent) ----------------------------------------
@@ -244,7 +244,13 @@ export async function autonomyRoutes(
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
 
-    const b = req.body as { taskId?: string; stages?: WorkflowStage[]; recurring?: boolean };
+    const b = req.body as {
+      taskId?: string;
+      stages?: WorkflowStage[];
+      recurring?: boolean;
+      maxAgeMs?: number;
+      deadlineAt?: string;
+    };
     if (!b.taskId) return reply.code(400).send({ error: "taskId required" });
     if (!b.stages || b.stages.length === 0) {
       return reply.code(400).send({ error: "at least one stage required" });
@@ -289,6 +295,11 @@ export async function autonomyRoutes(
       stages: b.stages,
       createdByMemberId: id.memberId,
       recurring: b.recurring === true,
+      maxAgeMs:
+        typeof b.maxAgeMs === "number" && Number.isFinite(b.maxAgeMs) && b.maxAgeMs > 0
+          ? Math.floor(b.maxAgeMs)
+          : undefined,
+      deadlineAt: b.deadlineAt ? new Date(b.deadlineAt) : undefined,
     });
     return reply.code(201).send(workflow);
   });

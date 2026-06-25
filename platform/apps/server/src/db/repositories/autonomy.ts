@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lte, or, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import {
   agentPools,
@@ -322,6 +322,8 @@ export interface AgentWorkflow {
   currentStage: number;
   status: WorkflowStatus;
   actionCount: number;
+  maxAgeMs: number;
+  deadlineAt: Date | null;
   currentSessionId: string | null;
   currentSessionStage: number | null;
   recurring: boolean;
@@ -338,6 +340,8 @@ const WORKFLOW_COLS = {
   currentStage: agentWorkflows.currentStage,
   status: agentWorkflows.status,
   actionCount: agentWorkflows.actionCount,
+  maxAgeMs: agentWorkflows.maxAgeMs,
+  deadlineAt: agentWorkflows.deadlineAt,
   currentSessionId: agentWorkflows.currentSessionId,
   currentSessionStage: agentWorkflows.currentSessionStage,
   recurring: agentWorkflows.recurring,
@@ -353,6 +357,8 @@ export async function createWorkflow(input: {
   createdByMemberId: string;
   recurring?: boolean;
   sourceWorkflowId?: string | null;
+  maxAgeMs?: number;
+  deadlineAt?: Date | null;
 }): Promise<AgentWorkflow> {
   const [row] = await db
     .insert(agentWorkflows)
@@ -364,6 +370,8 @@ export async function createWorkflow(input: {
       createdByMemberId: input.createdByMemberId,
       recurring: input.recurring ?? false,
       sourceWorkflowId: input.sourceWorkflowId ?? null,
+      maxAgeMs: input.maxAgeMs ?? 24 * 60 * 60 * 1000,
+      deadlineAt: input.deadlineAt ?? null,
     })
     .returning(WORKFLOW_COLS);
   return row as AgentWorkflow;
@@ -401,26 +409,45 @@ export async function listWorkflowsInChannel(
   return rows as AgentWorkflow[];
 }
 
-/** The engine's work-list: every `running` workflow in a workspace, oldest first (fair order). */
+/**
+ * The engine's work-list: every `running` workflow plus overdue approval-gated workflows in a
+ * workspace, oldest first. Awaiting gates stay inert until their deadline passes, then re-enter the
+ * loop exactly once for timeout/escalation instead of disappearing forever.
+ */
 export async function listActiveWorkflows(
   workspaceId: string,
   limit?: number,
 ): Promise<AgentWorkflow[]> {
+  const now = new Date();
   const rows = await db
     .select(WORKFLOW_COLS)
     .from(agentWorkflows)
-    .where(and(eq(agentWorkflows.workspaceId, workspaceId), eq(agentWorkflows.status, "running")))
+    .where(
+      and(
+        eq(agentWorkflows.workspaceId, workspaceId),
+        or(
+          eq(agentWorkflows.status, "running"),
+          and(eq(agentWorkflows.status, "awaiting_approval"), lte(agentWorkflows.deadlineAt, now)),
+        ),
+      ),
+    )
     .orderBy(asc(agentWorkflows.createdAt))
     .limit(clampAutonomyListLimit(limit));
   return rows as AgentWorkflow[];
 }
 
-/** Distinct workspaces that currently have a `running` workflow — the production timer's work-list. */
+/** Distinct workspaces that currently have runnable work or an overdue approval gate. */
 export async function listActiveWorkflowWorkspaces(): Promise<string[]> {
+  const now = new Date();
   const rows = await db
     .selectDistinct({ workspaceId: agentWorkflows.workspaceId })
     .from(agentWorkflows)
-    .where(eq(agentWorkflows.status, "running"));
+    .where(
+      or(
+        eq(agentWorkflows.status, "running"),
+        and(eq(agentWorkflows.status, "awaiting_approval"), lte(agentWorkflows.deadlineAt, now)),
+      ),
+    );
   return rows.map((r) => r.workspaceId);
 }
 
@@ -588,6 +615,7 @@ export async function markWorkflowAwaitingApproval(id: string): Promise<void> {
       .update(agentWorkflows)
       .set({
         status: "awaiting_approval",
+        deadlineAt: sql`now() + (${agentWorkflows.maxAgeMs} * interval '1 millisecond')`,
         actionCount: sql`${agentWorkflows.actionCount} + 1`,
         updatedAt: new Date(),
       })
