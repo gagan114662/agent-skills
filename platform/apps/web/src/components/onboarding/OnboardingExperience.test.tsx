@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
+import { listPostMeta } from "../../blog/posts.js";
 import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 import type {
@@ -130,6 +131,24 @@ describe("OnboardingExperience (#784)", () => {
     expectPublicLinks();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+  });
+
+  it("shows finished real deliverables and the approve-to-ship loop inside onboarding (#571)", () => {
+    const [latestPost] = listPostMeta();
+    if (!latestPost) throw new Error("expected at least one published blog post for onboarding proof");
+    render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+
+    const proof = screen.getByRole("region", { name: /finished work proof/i });
+    expect(within(proof).getByText(/already shipped/i)).toBeInTheDocument();
+    expect(within(proof).getByText(/real deliverables from the fleet/i)).toBeInTheDocument();
+    expect(within(proof).getByRole("list", { name: /approve to ship trail/i })).toHaveTextContent(
+      /draftapprovelive/i,
+    );
+    expect(latestPost).toBeDefined();
+    expect(within(proof).getByRole("link", { name: latestPost.title })).toHaveAttribute(
+      "href",
+      `/blog/${latestPost.slug}`,
+    );
   });
 
   it("nudges (does not advance) on an empty submit", () => {
