@@ -26,6 +26,7 @@ import { DEFAULT_PROTECTED_PATHS } from "../../src/build-loop/guardrails.js";
 import { makeRedactor } from "../../src/runtime/redact.js";
 import type { SessionLogger } from "../../src/runtime/manager.js";
 import type { ReviewAssessment } from "../../src/build-loop/types.js";
+import type { BuildPublicNarrator } from "../../src/build-loop/narration.js";
 
 const silentLogger: SessionLogger = {
   child: () => silentLogger,
@@ -162,6 +163,7 @@ function makeEngine(opts: {
   repo: RepoHost;
   launcher: BuildLauncher;
   escalator: Escalator;
+  narrator?: BuildPublicNarrator;
   reviewer?: Reviewer;
   enabled: Set<string>;
   killSwitchOn: Set<string>;
@@ -184,6 +186,7 @@ function makeEngine(opts: {
     redact: opts.redact ?? ((t) => t),
     activeWorkspaces: listActiveBuildLoopWorkspaces,
     logger: silentLogger,
+    narrator: opts.narrator,
     now: () => new Date(),
   });
 }
@@ -235,9 +238,28 @@ describe("self-shipping loop (real Postgres): issue → build → review → mer
       const repo = fakeRepo();
       const launcher = fakeLauncher();
       const escalator = fakeEscalator();
+      const narrations: Array<{ issueRef: string; mergeRef: string }> = [];
+      const narrator: BuildPublicNarrator = {
+        narrate: async ({ run, mergeRef }) => {
+          narrations.push({ issueRef: run.issueRef, mergeRef });
+          return {
+            status: "pending_approval",
+            postId: "post-1",
+            approvalRequestId: "approval-1",
+            artifact: { body: "Built with ipop: https://ipop.ai", networks: ["x", "linkedin"] },
+          };
+        },
+      };
       const enabled = new Set([w.workspaceId]);
       const killSwitchOn = new Set<string>();
-      const engine = makeEngine({ repo: repo.host, launcher: launcher.launcher, escalator: escalator.escalator, enabled, killSwitchOn });
+      const engine = makeEngine({
+        repo: repo.host,
+        launcher: launcher.launcher,
+        escalator: escalator.escalator,
+        narrator,
+        enabled,
+        killSwitchOn,
+      });
 
       // (1) record two agent-ok issues (#1 higher priority) + one NOT agent-ok; dedup #1 on re-record.
       await engine.recordIssue(w.workspaceId, {
@@ -300,6 +322,7 @@ describe("self-shipping loop (real Postgres): issue → build → review → mer
       expect(merged?.status).toBe("merged");
       expect(merged?.mergeRef).toBeTruthy();
       expect(repo.merges).toHaveLength(1);
+      expect(narrations).toEqual([{ issueRef: "github:acme/web#1", mergeRef: merged!.mergeRef! }]);
       expect(launcher.calls.map((c) => c.issueRef)).toContain("github:acme/web#3"); // freed capacity
       // a verdict comment was posted + a review row persisted.
       const reviews = await db.select().from(buildLoopReviews).where(eq(buildLoopReviews.workspaceId, w.workspaceId));
