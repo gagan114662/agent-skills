@@ -42,6 +42,7 @@ import {
   CHANNEL_STARTERS,
   DEFAULT_STARTERS,
   starterPromptsFor,
+  LEGAL,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -266,6 +267,11 @@ describe("landing workspace simulation copy (#165)", () => {
     });
     expect(LANDING.footer.product).toContainEqual({ href: COMPANY.href, label: COMPANY.navLabel });
     expect(LANDING.footer.product).toContainEqual({ href: "/refund-policy", label: "Refund policy" });
+    expect(LANDING.footer.product).toContainEqual({
+      href: LEGAL.dpa.href,
+      label: LEGAL.dpa.navLabel,
+    });
+    expect(CONTACT.consentHelp).toContain("data-subject-rights");
     expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
     expect(CONTACT.bookingHref).toMatch(/^https:\/\/cal\.com\//);
     expect(CONTACT.trialHref).toContain("/start");
@@ -326,10 +332,10 @@ describe("security trust page copy (#151) — honest by construction", () => {
       // A roadmap status must read as not-done: "planned" / "not yet" / "designed seam" / "partial".
       expect(r.status.toLowerCase(), r.title).toMatch(/planned|not yet|seam|partial/);
     }
-    // SOC2 + GDPR appear ONLY as roadmap, and never in the shipped-guarantees grid.
+    // SOC2 remains roadmap-only; GDPR DPA now lives in the public legal DPA page, not as a security cert.
     const roadmapText = SECURITY.roadmap.map((r) => `${r.title} ${r.status} ${r.body}`).join(" ");
     expect(roadmapText).toMatch(/SOC ?2/i);
-    expect(roadmapText).toMatch(/GDPR/i);
+    expect(LEGAL.dpa.sub).toMatch(/GDPR Article 28/i);
     const guaranteeText = SECURITY.guarantees.map((g) => `${g.title} ${g.body}`).join(" ");
     expect(guaranteeText).not.toMatch(/SOC ?2/i); // never claimed as a current guarantee
     expect(guaranteeText).not.toMatch(/GDPR/i);

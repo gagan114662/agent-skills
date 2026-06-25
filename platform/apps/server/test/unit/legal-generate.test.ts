@@ -17,9 +17,9 @@ const facts: VentureLegalFacts = {
 };
 
 describe("legal document generation (#196 criterion 1)", () => {
-  it("composes a ToS + privacy pack, each with the non-counsel disclaimer", () => {
+  it("composes a ToS + privacy + DPA pack, each with the non-counsel disclaimer", () => {
     const pack = composePack(facts);
-    expect(pack.map((d) => d.kind)).toEqual(["tos", "privacy"]);
+    expect(pack.map((d) => d.kind)).toEqual(["tos", "privacy", "dpa"]);
     for (const doc of pack) {
       expect(doc.body).toContain(DOCUMENT_DISCLAIMER);
       expect(doc.body.toLowerCase()).toContain("not legal advice");
@@ -31,11 +31,15 @@ describe("legal document generation (#196 criterion 1)", () => {
   it("renders facts into the documents (jurisdiction, data, payments)", () => {
     const tos = composeDocument("tos", facts);
     const privacy = composeDocument("privacy", facts);
+    const dpa = composeDocument("dpa", facts);
     expect(tos.body).toContain("US-CA");
     expect(tos.body.toLowerCase()).toContain("renew automatically"); // subscription payment flow
     expect(privacy.body.toLowerCase()).toContain("email address");
     expect(privacy.body.toLowerCase()).toContain("usage and analytics data");
     expect(privacy.body.toLowerCase()).toContain("unsubscribe"); // CAN-SPAM marketing section
+    expect(dpa.body).toContain("Data Processing Agreement");
+    expect(dpa.body.toLowerCase()).toContain("data-subject requests");
+    expect(dpa.body).toContain("support@ipop.ai");
   });
 
   it("is deterministic — same facts produce a byte-identical body + version", () => {

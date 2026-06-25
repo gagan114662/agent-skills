@@ -333,6 +333,9 @@ function LandingFooter(): React.JSX.Element {
         <Link href={LEGAL.privacy.href} className="linklike landing__footer-link">
           {LEGAL.privacy.navLabel}
         </Link>
+        <Link href={LEGAL.dpa.href} className="linklike landing__footer-link">
+          {LEGAL.dpa.navLabel}
+        </Link>
       </div>
     </footer>
   );

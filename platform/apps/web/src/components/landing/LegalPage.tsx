@@ -6,7 +6,7 @@ import { BRAND, LEGAL } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 
-export type LegalPageKind = "terms" | "privacy";
+export type LegalPageKind = "terms" | "privacy" | "dpa";
 
 export function LegalPage({ kind }: { kind: LegalPageKind }): React.JSX.Element {
   const copy = LEGAL[kind];
@@ -60,6 +60,9 @@ export function LegalPage({ kind }: { kind: LegalPageKind }): React.JSX.Element 
           </Link>
           <Link href={LEGAL.privacy.href} className="linklike landing__footer-link">
             {LEGAL.privacy.navLabel}
+          </Link>
+          <Link href={LEGAL.dpa.href} className="linklike landing__footer-link">
+            {LEGAL.dpa.navLabel}
           </Link>
           <Wordmark className="landing__footer-mark" />
         </div>

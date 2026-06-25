@@ -122,6 +122,10 @@ export function ContactForm(): React.JSX.Element {
               /{" "}
               <Link href={LEGAL.privacy.href} className="linklike">
                 {LEGAL.privacy.navLabel}
+              </Link>{" "}
+              /{" "}
+              <Link href={LEGAL.dpa.href} className="linklike">
+                {LEGAL.dpa.navLabel}
               </Link>
             </span>
           </label>

@@ -23,6 +23,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       "/terms",
       "/privacy",
       "/company",
+      "/dpa",
       "/compare",
       "/stories",
       "/guides",
@@ -36,6 +37,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
   it.each([
     ["/terms", "Terms", LEGAL.terms.title],
     ["/privacy", "Privacy", LEGAL.privacy.title],
+    ["/dpa", "DPA", LEGAL.dpa.title],
     ["/company", "Company", COMPANY.title],
   ])("prerenders %s with public legal copy and breadcrumbs (#863)", (urlPath, titleWord, h1) => {
     const page = byPath(urlPath)!;

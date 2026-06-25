@@ -21,7 +21,7 @@ import { members } from "./identities.js";
  * is enforced by the workspace_id FK + the app-level idea lookup. No secret lands here; migration `0196`.
  */
 
-export const LEGAL_DOCUMENT_KINDS = ["tos", "privacy"] as const;
+export const LEGAL_DOCUMENT_KINDS = ["tos", "privacy", "dpa"] as const;
 export const LEGAL_DOCUMENT_STATUSES = ["draft", "published"] as const;
 export const SUPPRESSION_SOURCES = ["unsubscribe", "bounce", "deletion_request", "manual"] as const;
 export const CONSENT_BASES = ["opt_in", "contract", "legitimate_interest"] as const;

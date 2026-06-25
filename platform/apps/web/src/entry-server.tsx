@@ -71,6 +71,7 @@ function marketingPages(): PrerenderPage[] {
     "/terms": <LegalPage kind="terms" />,
     "/privacy": <LegalPage kind="privacy" />,
     "/company": <CompanyPage />,
+    "/dpa": <LegalPage kind="dpa" />,
     "/compare": (
       <SiteShell>
         <SectionPage section="compare" copy={COMPARE} />

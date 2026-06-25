@@ -150,10 +150,10 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     );
   }
 
-  if (path === LEGAL.terms.href || path === LEGAL.privacy.href) {
+  if (path === LEGAL.terms.href || path === LEGAL.privacy.href || path === LEGAL.dpa.href) {
     return (
       <Suspense fallback={<Splash />}>
-        <LegalPage kind={path === LEGAL.terms.href ? "terms" : "privacy"} />
+        <LegalPage kind={path === LEGAL.terms.href ? "terms" : path === LEGAL.privacy.href ? "privacy" : "dpa"} />
       </Suspense>
     );
   }
@@ -377,6 +377,10 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
               and{" "}
               <Link href={LEGAL.privacy.href} className="linklike">
                 {LEGAL.privacy.navLabel}
+              </Link>{" "}
+              and{" "}
+              <Link href={LEGAL.dpa.href} className="linklike">
+                {LEGAL.dpa.navLabel}
               </Link>
               .
             </span>
