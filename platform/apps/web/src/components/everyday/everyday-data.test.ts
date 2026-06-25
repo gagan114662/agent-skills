@@ -60,6 +60,7 @@ describe("seedEveryday (#784) — the surface contract", () => {
       expect(card.deliverable.title).toBeTruthy();
       expect(card.deliverable.preview.length).toBeGreaterThan(10);
       expect(card.consequence).toBeTruthy();
+      expect(card.approvalRequestId).toMatch(/^apr_/);
     }
   });
 

@@ -1491,6 +1491,12 @@ export const EVERYDAY = {
     /** The two buttons (cheeky, decisive). */
     ship: "ship it",
     redo: "nah, redo",
+    redoSend: "send back",
+    redoNote: "what should change?",
+    redoPlaceholder: "make it warmer, shorter, or less salesy...",
+    redoDefaultNote: "Please revise this deliverable.",
+    pending: "sending this decision to the approval gate...",
+    decisionError: "couldn't record that decision. try again.",
     /** Per-card: what actually happens on approve (consequence line). */
     consequencePrefix: "approve and we'll",
     /** The deliverable-card eyebrow so it's clear this is the real artifact, not chatter. */

@@ -7,10 +7,10 @@
  *   · the kill switch is always on, framed as reassurance;
  *   · empty states + the greeting read in the cheeky Innocent voice.
  */
-import { describe, expect, it } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
-import { EverydayShell } from "./EverydayShell.js";
-import { seedEveryday, type EverydayData } from "./everyday-data.js";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { EverydayShell, type EverydayApprovalActions } from "./EverydayShell.js";
+import { seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
 import { EVERYDAY } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
@@ -23,6 +23,16 @@ function emptyData(over: Partial<EverydayData> = {}): EverydayData {
     transparency: [],
     fleetPaused: false,
     ...over,
+  };
+}
+
+function approvalActions(): EverydayApprovalActions & {
+  ship: ReturnType<typeof vi.fn>;
+  requestRevision: ReturnType<typeof vi.fn>;
+} {
+  return {
+    ship: vi.fn(async (_card: ApprovalCard) => undefined),
+    requestRevision: vi.fn(async (_card: ApprovalCard, _note: string) => undefined),
   };
 }
 
@@ -88,11 +98,13 @@ describe("EverydayShell — approval queue is a ship decision (#572/#574/#632)",
     );
   });
 
-  it("celebrates — and removes the card — after shipping", () => {
+  it("records ship through the approval gate before removing the card (#1182)", async () => {
+    const actions = approvalActions();
     const data = emptyData({
       approvals: [
         {
           id: "only",
+          approvalRequestId: "apr_only",
           agent: "Comet",
           deliverable: {
             title: "a reply",
@@ -104,10 +116,38 @@ describe("EverydayShell — approval queue is a ship decision (#572/#574/#632)",
         },
       ],
     });
-    render(<EverydayShell data={data} />);
+    render(<EverydayShell data={data} approvalActions={actions} />);
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.approvals.ship }));
-    expect(screen.getByText(EVERYDAY.celebrate.shipped)).toBeInTheDocument();
+    expect(actions.ship).toHaveBeenCalledWith(data.approvals[0]);
+    await waitFor(() => expect(screen.getByText(EVERYDAY.celebrate.shipped)).toBeInTheDocument());
     expect(screen.getByText(EVERYDAY.approvals.empty)).toBeInTheDocument();
+  });
+
+  it("records redo as a revision request with reviewer note (#1182)", async () => {
+    const actions = approvalActions();
+    render(<EverydayShell data={seedEveryday()} approvalActions={actions} />);
+    const card = screen.getByText("reply to a warm lead in your inbox").closest("article")!;
+
+    fireEvent.click(within(card).getByRole("button", { name: EVERYDAY.approvals.redo }));
+    fireEvent.change(within(card).getByRole("textbox", { name: EVERYDAY.approvals.redoNote }), {
+      target: { value: "make this warmer" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: EVERYDAY.approvals.redoSend }));
+
+    expect(actions.requestRevision).toHaveBeenCalledWith(seedEveryday().approvals[0], "make this warmer");
+    await waitFor(() => expect(screen.getByText(EVERYDAY.celebrate.shipped)).toBeInTheDocument());
+  });
+
+  it("keeps the card visible and shows failure when the approval API rejects (#1182)", async () => {
+    const actions = approvalActions();
+    actions.ship.mockRejectedValueOnce(new Error("backend said no"));
+    render(<EverydayShell data={seedEveryday()} approvalActions={actions} />);
+    const card = screen.getByText("reply to a warm lead in your inbox").closest("article")!;
+
+    fireEvent.click(within(card).getByRole("button", { name: EVERYDAY.approvals.ship }));
+
+    await waitFor(() => expect(within(card).getByRole("alert")).toHaveTextContent("backend said no"));
+    expect(screen.getByText("reply to a warm lead in your inbox")).toBeInTheDocument();
   });
 });
 
@@ -122,6 +162,7 @@ describe("EverydayShell — money is the one hard gate (#784)", () => {
       approvals: [
         {
           id: "spend",
+          approvalRequestId: "apr_spend",
           agent: "Ada",
           deliverable: {
             title: "a boost",
@@ -134,7 +175,8 @@ describe("EverydayShell — money is the one hard gate (#784)", () => {
         },
       ],
     });
-    render(<EverydayShell data={data} />);
+    const actions = approvalActions();
+    render(<EverydayShell data={data} approvalActions={actions} />);
     const card = screen.getByText("a boost").closest("article")!;
     // First click does NOT ship — it asks for confirmation in voice.
     fireEvent.click(within(card).getByRole("button", { name: EVERYDAY.approvals.ship }));
@@ -144,7 +186,8 @@ describe("EverydayShell — money is the one hard gate (#784)", () => {
     expect(screen.queryByText(EVERYDAY.celebrate.shipped)).not.toBeInTheDocument();
     // Confirming spends it.
     fireEvent.click(within(card).getByRole("button", { name: EVERYDAY.safety.moneyGateApprove }));
-    expect(screen.getByText(EVERYDAY.celebrate.shipped)).toBeInTheDocument();
+    expect(actions.ship).toHaveBeenCalledWith(data.approvals[0]);
+    return waitFor(() => expect(screen.getByText(EVERYDAY.celebrate.shipped)).toBeInTheDocument());
   });
 });
 

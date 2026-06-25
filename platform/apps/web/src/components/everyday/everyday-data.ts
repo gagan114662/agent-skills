@@ -49,6 +49,8 @@ export type ThreadEntry =
 /** A ship-decision card: the FINISHED deliverable + the one consequence of approving — never chatter. */
 export interface ApprovalCard {
   readonly id: string;
+  /** The real #13 approval request this card decides. */
+  readonly approvalRequestId: string;
   readonly agent: string;
   readonly deliverable: Deliverable;
   /** Verb phrase completing "approve and we'll …" (e.g. "send this to 3 warm leads"). */
@@ -168,6 +170,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
     approvals: [
       {
         id: "a1",
+        approvalRequestId: "apr_warm_lead_reply",
         agent: "Comet",
         deliverable: {
           title: "reply to a warm lead in your inbox",
@@ -180,6 +183,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       },
       {
         id: "a2",
+        approvalRequestId: "apr_launch_boost",
         agent: "Ada",
         deliverable: {
           title: "boosted post for the launch thread",
