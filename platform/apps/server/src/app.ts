@@ -264,10 +264,13 @@ import type { AutomationEngine } from "./automations/engine.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { workflowRoutes } from "./routes/workflows.js";
 import { createDefaultWorkflowEngine } from "./workflows/default.js";
+import { dependencySchedulerRoutes } from "./routes/dependency-scheduler.js";
+import { createDefaultDependencySchedulerService } from "./dependency-scheduler/default.js";
 import { createDefaultScheduler } from "./scheduler/default.js";
 import type { DurableScheduler } from "./scheduler/scheduler.js";
 import { workflowStore } from "./db/repositories/workflows.js";
 import type { WorkflowEngine } from "./workflows/engine.js";
+import type { DependencySchedulerService } from "./dependency-scheduler/service.js";
 import { missionControlRoutes } from "./routes/mission-control.js";
 import { createDefaultMissionControlService } from "./mission-control/default.js";
 import type { MissionControlService } from "./mission-control/service.js";
@@ -500,6 +503,8 @@ export interface BuildAppOptions {
   automations?: AutomationEngine;
   /** #152 workflows: tests inject an engine over fake action seams; default builds the real repo-backed one. */
   workflows?: WorkflowEngine;
+  /** #590 dependency-aware scheduler: tests inject a service; default builds the self-managed Postgres-backed one. */
+  dependencyScheduler?: DependencySchedulerService;
   /** #559 scheduler: tests inject a scheduler over an in-memory store; default builds the Postgres-backed one. */
   scheduler?: DurableScheduler;
   /** #147 mission control: tests inject a read-only service over fakes; default reads the live #25 sessions. */
@@ -1418,6 +1423,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(catalogRoutes, { workflowEngine });
   app.register(workflowRoutes, { engine: workflowEngine, store: workflowStore });
   app.decorate("workflowEngine", workflowEngine);
+  // #590 dependency-aware scheduler: declare content/review/publish task graphs and only claim runnable work.
+  // The service is default-OFF for execution (DEP_SCHEDULER_ENABLED) but planning/listing remain visible.
+  const dependencyScheduler = opts.dependencyScheduler ?? createDefaultDependencySchedulerService();
+  app.register(dependencySchedulerRoutes, { service: dependencyScheduler });
   // #559 durable, single-leader scheduler: the restart-safe replacement for the per-engine `setInterval`
   // tick loops (planning / venture-memory / verifiers / workflows). `index.ts` registers each engine's
   // `tickAll` as a durable job (persisted cursor + leader lease in `scheduler_jobs`) and calls `start()`;
