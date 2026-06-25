@@ -8,6 +8,7 @@ import {
   advanceEnrollment,
   newEnrollment,
   nextDueStep,
+  type CadenceEngagement,
   type CadenceEnrollment,
 } from "./cadence.js";
 import { deriveIcp, type IcpSeed } from "./icp.js";
@@ -104,9 +105,12 @@ function domainPauseReason(input: {
 }
 
 function chooseDomain(states: DomainState[]): DomainState | null {
-  return states
-    .filter((s) => !s.pauseReason && s.sentToday < s.effectiveDailyCap)
-    .sort((a, b) => (b.effectiveDailyCap - b.sentToday) - (a.effectiveDailyCap - a.sentToday))[0] ?? null;
+  return (
+    states
+      .filter((s) => !s.pauseReason && s.sentToday < s.effectiveDailyCap)
+      .sort((a, b) => b.effectiveDailyCap - b.sentToday - (a.effectiveDailyCap - a.sentToday))[0] ??
+    null
+  );
 }
 
 // ---- seams ---------------------------------------------------------------------------------------
@@ -136,6 +140,7 @@ export interface ActiveEnrollment {
   channel: ReachChannel;
   currentStep: number;
   lastStepAtMs: number;
+  engagement?: CadenceEngagement;
   /** The enrolment's fit score, preserved across follow-up advances. */
   score: number;
   /** The signal the opener was built around, preserved across follow-up advances. */
@@ -590,7 +595,12 @@ export class ReachService {
       }
       const selectedDomain = channel === "email" ? chooseDomain(domainStates) : null;
       const pausedDomains = domainStates.filter((s) => s.pauseReason);
-      if (channel === "email" && !selectedDomain && pausedDomains.length === domainStates.length && pausedDomains[0]?.pauseReason) {
+      if (
+        channel === "email" &&
+        !selectedDomain &&
+        pausedDomains.length === domainStates.length &&
+        pausedDomains[0]?.pauseReason
+      ) {
         await this.deps.sends.insert({
           workspaceId,
           contactKey: message.contactKey,
@@ -609,9 +619,12 @@ export class ReachService {
         return;
       }
       if (channel === "email" && !selectedDomain) {
-        const capped = domainStates
-          .filter((s) => !s.pauseReason)
-          .sort((a, b) => (b.effectiveDailyCap - b.sentToday) - (a.effectiveDailyCap - a.sentToday))[0] ?? domainStates[0];
+        const capped =
+          domainStates
+            .filter((s) => !s.pauseReason)
+            .sort(
+              (a, b) => b.effectiveDailyCap - b.sentToday - (a.effectiveDailyCap - a.sentToday),
+            )[0] ?? domainStates[0];
         await this.deps.sends.insert({
           workspaceId,
           contactKey: message.contactKey,
@@ -625,7 +638,11 @@ export class ReachService {
           sendingDomain: capped?.domain ?? null,
           detail:
             capped && capped.effectiveDailyCap < capped.dailyCap
-              ? "per-domain warmup cap (" + capped.effectiveDailyCap + "/" + capped.dailyCap + ") reached"
+              ? "per-domain warmup cap (" +
+                capped.effectiveDailyCap +
+                "/" +
+                capped.dailyCap +
+                ") reached"
               : `per-domain daily cap (${capped?.dailyCap ?? caps.perDomainDailyCap}) reached`,
         });
         rateLimitedCount += 1;
@@ -691,12 +708,12 @@ export class ReachService {
         lastStepAtMs: e.lastStepAtMs,
         status: "active",
       };
-      const step = nextDueStep(enrollment, DEFAULT_CADENCE, nowMs);
+      const step = nextDueStep(enrollment, DEFAULT_CADENCE, nowMs, { engagement: e.engagement });
       if (!step) continue;
       const followUp = composeFollowUp({
         contactKey: e.contactKey,
         recipientLabel: e.recipientLabel,
-        channel: e.channel,
+        channel: step.channel,
         variant: step.variant,
         step: step.stepIndex,
         brandName: caps.brandName ?? "the team",

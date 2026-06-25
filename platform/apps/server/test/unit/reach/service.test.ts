@@ -18,7 +18,7 @@ interface SendRow extends SendDatum {
 }
 
 /** Build the full set of in-memory store fakes the service writes through. */
-function fakes() {
+function fakes(opts: { now?: () => Date } = {}) {
   const contacts = new Map<
     string,
     {
@@ -32,7 +32,12 @@ function fakes() {
     }
   >();
   const sends: SendRow[] = [];
-  const receipts: (ReceiptDatum & { sendId: string; externalRef: string })[] = [];
+  const receipts: (ReceiptDatum & {
+    sendId: string;
+    contactKey: string;
+    externalRef: string;
+    occurredAt?: Date;
+  })[] = [];
   const runs: { status: string; tuning: ReachTuningConfig | null }[] = [];
   const approvalCalls: { provider: string; amountCents: number }[] = [];
   const dataCreditSpend = new Map<
@@ -42,7 +47,7 @@ function fakes() {
   let sendSeq = 0;
 
   const deps: Omit<ReachDeps, "caps" | "resolveSource"> = {
-    now: () => NOW,
+    now: opts.now ?? (() => NOW),
     icp: {
       async seed() {
         return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] };
@@ -85,6 +90,16 @@ function fakes() {
             channel: c.channel,
             currentStep: c.currentStep,
             lastStepAtMs: c.lastStepAtMs,
+            engagement: {
+              opensCount: receipts.filter((r) => r.contactKey === contactKey && r.kind === "open")
+                .length,
+              lastOpenAtMs:
+                receipts
+                  .filter((r) => r.contactKey === contactKey && r.kind === "open")
+                  .map((r) => r.occurredAt?.getTime() ?? NOW.getTime())
+                  .sort((a, b) => b - a)[0] ?? null,
+              hasReplied: receipts.some((r) => r.contactKey === contactKey && r.kind === "reply"),
+            },
             score: c.score,
             signalKind: c.signalKind,
           }));
@@ -144,12 +159,14 @@ function fakes() {
         const send = sends.find((s) => s.id === input.sendId);
         receipts.push({
           sendId: input.sendId,
+          contactKey: input.contactKey,
           externalRef: input.externalRef,
           kind: input.kind,
           variant: send?.variant ?? null,
           signalKind: send?.signalKind ?? null,
           sentHourUtc: send?.sentHourUtc ?? null,
           sendingDomain: send?.sendingDomain ?? null,
+          occurredAt: input.occurredAt,
         });
         return { recorded: true };
       },
@@ -219,16 +236,24 @@ function caps(over: Partial<ReachCaps> = {}): ReachCaps {
 const mockSource: ReachDeps["resolveSource"] = () =>
   createMockProspectSource({ now: () => NOW.getTime() });
 
-const sourceWith = (
-  prospects: Awaited<ReturnType<ReturnType<typeof createMockProspectSource>["search"]>>["prospects"],
-): ReachDeps["resolveSource"] => () => ({
-  kind: "mock",
-  paid: false,
-  estimateCostCents: () => 0,
-  async search({ limit, excludeKeys }) {
-    return { prospects: prospects.filter((p) => !excludeKeys.has(p.email ? `email:${p.email.toLowerCase()}` : "")).slice(0, limit) };
-  },
-});
+const sourceWith =
+  (
+    prospects: Awaited<
+      ReturnType<ReturnType<typeof createMockProspectSource>["search"]>
+    >["prospects"],
+  ): ReachDeps["resolveSource"] =>
+  () => ({
+    kind: "mock",
+    paid: false,
+    estimateCostCents: () => 0,
+    async search({ limit, excludeKeys }) {
+      return {
+        prospects: prospects
+          .filter((p) => !excludeKeys.has(p.email ? `email:${p.email.toLowerCase()}` : ""))
+          .slice(0, limit),
+      };
+    },
+  });
 
 describe("ReachService.runBatch (#280)", () => {
   it("runs the loop end-to-end: sources, sends (dry-run), enrols, measures, self-tunes", async () => {
@@ -283,6 +308,67 @@ describe("ReachService.runBatch (#280)", () => {
     for (const k of enrolled) expect(f.contacts.get(k)?.currentStep).toBe(2);
     // follow-ups carry the step-1 angle ("outcome") and the follow-up subject
     expect(f.sends.some((s) => s.contactKey === enrolled[0] && s.variant === "outcome")).toBe(true);
+  });
+
+  it("accelerates a follow-up when the contact opened the previous touch (#886)", async () => {
+    const clock = NOW.getTime() + 24 * 60 * 60 * 1000;
+    const f = fakes({ now: () => new Date(clock) });
+    const contactKey = "email:ada@example.com";
+    f.contacts.set(contactKey, {
+      status: "active",
+      currentStep: 1,
+      lastStepAtMs: NOW.getTime(),
+      recipientLabel: "Ada Buyer · Example",
+      channel: "email",
+      score: 91,
+      signalKind: "funding_round",
+    });
+    f.receipts.push({
+      sendId: "seed-send",
+      contactKey,
+      externalRef: "open-1",
+      kind: "open",
+      variant: "pain",
+      signalKind: "funding_round",
+      sentHourUtc: 12,
+      occurredAt: new Date(NOW.getTime() + 60_000),
+    });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 1, perDomainDailyCap: 10 }),
+      resolveSource: sourceWith([]),
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.messagesSent).toBe(1);
+    expect(f.contacts.get(contactKey)?.currentStep).toBe(2);
+    expect(f.sends.at(-1)).toMatchObject({ contactKey, status: "sent", variant: "outcome" });
+  });
+
+  it("pauses a silent enrollment after the cold threshold instead of hammering the same schedule (#886)", async () => {
+    const f = fakes({ now: () => NOW });
+    const contactKey = "email:cold@example.com";
+    f.contacts.set(contactKey, {
+      status: "active",
+      currentStep: 1,
+      lastStepAtMs: NOW.getTime() - 15 * 24 * 60 * 60 * 1000,
+      recipientLabel: "Cold Prospect · Example",
+      channel: "email",
+      score: 71,
+      signalKind: "hiring_surge",
+    });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 1, perDomainDailyCap: 10 }),
+      resolveSource: sourceWith([]),
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.messagesSent).toBe(0);
+    expect(f.contacts.get(contactKey)?.currentStep).toBe(1);
+    expect(f.sends).toHaveLength(0);
   });
 
   it("enforces the per-domain daily cap (excess prospects are rate_limited, not sent)", async () => {
@@ -359,6 +445,7 @@ describe("ReachService.runBatch (#280)", () => {
     f.receipts.push(
       {
         sendId: "seed-0",
+        contactKey: "email:seed-0@example.com",
         externalRef: "bounce-1",
         kind: "bounce",
         variant: "pain",
@@ -368,6 +455,7 @@ describe("ReachService.runBatch (#280)", () => {
       },
       {
         sendId: "seed-1",
+        contactKey: "email:seed-1@example.com",
         externalRef: "bounce-2",
         kind: "bounce",
         variant: "pain",
@@ -416,6 +504,7 @@ describe("ReachService.runBatch (#280)", () => {
     f.receipts.push(
       {
         sendId: "seed-0",
+        contactKey: "email:seed-0@example.com",
         externalRef: "bounce-1",
         kind: "bounce",
         variant: "pain",
@@ -424,6 +513,7 @@ describe("ReachService.runBatch (#280)", () => {
       },
       {
         sendId: "seed-1",
+        contactKey: "email:seed-1@example.com",
         externalRef: "bounce-2",
         kind: "bounce",
         variant: "pain",
@@ -439,7 +529,9 @@ describe("ReachService.runBatch (#280)", () => {
     const res = await svc.runBatch("ws1");
     expect(res.messagesSent).toBe(0);
     expect(res.rateLimited).toBe(3);
-    expect(f.sends.slice(-3).every((s) => s.detail.includes("deliverability pause: bounce rate"))).toBe(true);
+    expect(
+      f.sends.slice(-3).every((s) => s.detail.includes("deliverability pause: bounce rate")),
+    ).toBe(true);
   });
 
   it("skips implausible email-only prospects before cadence enrollment (#904)", async () => {
