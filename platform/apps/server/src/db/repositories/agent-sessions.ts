@@ -42,6 +42,7 @@ export interface AgentSession {
   status: SessionStatus;
   agentStatus: AgentActivityStatus;
   command: string;
+  idempotencyKey: string | null;
   /** Coding-agent harness the session ran on (#50). Null for rows created before #50. */
   harness: HarnessKind | null;
   sandboxId: string | null;
@@ -70,6 +71,8 @@ export interface AgentSession {
   startedAt: Date | null;
   endedAt: Date | null;
   createdAt: Date;
+  /** True when createAgentSession returned an existing row for an idempotent launch. */
+  reusedIdempotencyKey?: boolean;
 }
 
 /** A non-terminal session the #105 watchdog supervises, with its resolved liveness timestamp. */
@@ -95,6 +98,7 @@ const COLUMNS = {
   status: agentSessions.status,
   agentStatus: agentSessions.agentStatus,
   command: agentSessions.command,
+  idempotencyKey: agentSessions.idempotencyKey,
   harness: agentSessions.harness,
   sandboxId: agentSessions.sandboxId,
   snapshotId: agentSessions.snapshotId,
@@ -123,6 +127,7 @@ export async function createAgentSession(input: {
   createdByMemberId: string;
   runtime: RuntimeKind;
   command: string;
+  idempotencyKey?: string | null;
   caps: ResourceCaps;
   /** Coding-agent harness the session ran on (#50); omitted → null (pre-#50 / unselected). */
   harness?: HarnessKind | null;
@@ -136,26 +141,44 @@ export async function createAgentSession(input: {
   /** Multi-region placement (#71): the region the session was placed in. */
   region?: string | null;
 }): Promise<AgentSession> {
+  const values = {
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    agentMemberId: input.agentMemberId,
+    createdByMemberId: input.createdByMemberId,
+    runtime: input.runtime,
+    command: input.command,
+    idempotencyKey: input.idempotencyKey ?? null,
+    harness: input.harness ?? null,
+    caps: input.caps,
+    provider: input.provider ?? null,
+    model: input.model ?? null,
+    effort: input.effort ?? null,
+    mode: input.mode ?? null,
+    selectionMeta: input.selectionMeta ?? null,
+    region: input.region ?? null,
+    status: "provisioning" as const,
+  };
   const [row] = await db
     .insert(agentSessions)
-    .values({
-      workspaceId: input.workspaceId,
-      channelId: input.channelId,
-      agentMemberId: input.agentMemberId,
-      createdByMemberId: input.createdByMemberId,
-      runtime: input.runtime,
-      command: input.command,
-      harness: input.harness ?? null,
-      caps: input.caps,
-      provider: input.provider ?? null,
-      model: input.model ?? null,
-      effort: input.effort ?? null,
-      mode: input.mode ?? null,
-      selectionMeta: input.selectionMeta ?? null,
-      region: input.region ?? null,
-      status: "provisioning",
+    .values(values)
+    .onConflictDoNothing({
+      target: [agentSessions.workspaceId, agentSessions.idempotencyKey],
     })
     .returning(COLUMNS);
+  if (!row && input.idempotencyKey) {
+    const [existing] = await db
+      .select(COLUMNS)
+      .from(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.workspaceId, input.workspaceId),
+          eq(agentSessions.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing) return { ...(existing as AgentSession), reusedIdempotencyKey: true };
+  }
   return row as AgentSession;
 }
 

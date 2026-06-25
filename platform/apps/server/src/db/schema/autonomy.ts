@@ -16,6 +16,7 @@ import { workspaces } from "./workspaces.js";
 import { channels } from "./channels.js";
 import { members } from "./identities.js";
 import { tasks } from "./tasks.js";
+import { agentSessions } from "./agent-sessions.js";
 
 /**
  * Cross-team agent pooling + autonomy (issue #17, ADR-0017). All tables are workspace-scoped:
@@ -137,6 +138,10 @@ export const agentWorkflows = pgTable(
     currentStage: integer("current_stage").notNull().default(0),
     status: text("status", { enum: WORKFLOW_STATUSES }).notNull().default("running"),
     actionCount: integer("action_count").notNull().default(0),
+    currentSessionId: uuid("current_session_id").references(() => agentSessions.id, {
+      onDelete: "set null",
+    }),
+    currentSessionStage: integer("current_session_stage"),
     createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
       onDelete: "set null",
     }),

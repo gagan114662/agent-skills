@@ -18,6 +18,8 @@ const listActiveWorkflows = vi.fn();
 const tryReserveActionsUsed = vi.fn(() => Promise.resolve(true));
 const refundActionsUsed = vi.fn(() => Promise.resolve());
 const bumpWorkflowAction = vi.fn(() => Promise.resolve());
+const attachWorkflowSession = vi.fn(() => Promise.resolve(true));
+const clearWorkflowSession = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
 const handoffWorkflowStage = vi.fn(() => Promise.resolve({ advanced: true, alreadyAdvanced: false }));
 const markWorkflowAwaitingApproval = vi.fn(() => Promise.resolve());
@@ -32,6 +34,7 @@ const assignTask = vi.fn(() => Promise.resolve());
 const addTaskLink = vi.fn(() => Promise.resolve());
 const getWorkspaceMember = vi.fn(() => Promise.resolve(undefined));
 const upsertMemory = vi.fn(() => Promise.resolve({ id: "mem_1" }));
+const getAgentSessionStatus = vi.fn(() => Promise.resolve(undefined));
 
 vi.mock("../../src/db/repositories/autonomy.js", () => ({
   getControls,
@@ -40,6 +43,8 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   tryReserveActionsUsed,
   refundActionsUsed,
   bumpWorkflowAction,
+  attachWorkflowSession,
+  clearWorkflowSession,
   setWorkflowStatus,
   handoffWorkflowStage,
   markWorkflowAwaitingApproval,
@@ -52,6 +57,9 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   getApproval: vi.fn(() => Promise.resolve(undefined)),
   getWorkflow: vi.fn(() => Promise.resolve(undefined)),
   listActiveWorkflowWorkspaces: vi.fn(() => Promise.resolve([])),
+}));
+vi.mock("../../src/db/repositories/agent-sessions.js", () => ({
+  getAgentSessionStatus,
 }));
 vi.mock("../../src/db/repositories/tasks.js", () => ({
   getTask,
@@ -87,6 +95,7 @@ interface LaunchCall {
   agentMemberId: string;
   createdByMemberId: string;
   task: string;
+  idempotencyKey?: string;
   harnessEnv?: Record<string, string>;
 }
 
@@ -117,6 +126,8 @@ const runningWorkflow: AgentWorkflow = {
   currentStage: 0,
   status: "running",
   actionCount: 0,
+  currentSessionId: null,
+  currentSessionStage: null,
   createdAt: new Date(0),
 };
 
@@ -155,8 +166,50 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(launches[0].task).toContain("summarize the repo");
     expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
     expect(launches[0].harnessEnv?.AGENT_TASK_ID).toBe("task_1");
+    expect(launches[0].idempotencyKey).toBe("workflow:wf_1:stage:0");
+    expect(attachWorkflowSession).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      expectedCurrentStage: 0,
+      sessionId: "sess_1",
+    });
     // The task was driven to in_progress as part of starting.
     expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
+  });
+
+  it("does NOT launch when the workflow already has a live persisted session after restart", async () => {
+    listActiveWorkflows.mockResolvedValue([
+      { ...runningWorkflow, currentSessionId: "sess_existing", currentSessionStage: 0 },
+    ]);
+    getAgentSessionStatus.mockResolvedValueOnce("running");
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")).toEqual({
+      workflowId: "wf_1",
+      action: "noop",
+      reason: "session_running",
+    });
+    expect(launcher.launch).not.toHaveBeenCalled();
+    expect(clearWorkflowSession).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale persisted session before deciding the next action", async () => {
+    listActiveWorkflows.mockResolvedValue([
+      { ...runningWorkflow, currentSessionId: "sess_done", currentSessionStage: 0 },
+    ]);
+    getAgentSessionStatus.mockResolvedValueOnce("completed");
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+
+    expect(clearWorkflowSession).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      sessionId: "sess_done",
+    });
+    expect(launcher.launch).toHaveBeenCalledTimes(1);
   });
 
   it("launches a handoff stage with task id and linked-context retrieval instructions", async () => {
@@ -209,6 +262,7 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(launches[0].task).toContain("stage 1/2 (researcher) complete; continuing as writer");
     expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
     expect(launches[0].task).toContain("AGENT_TASK_ID=task_1");
+    expect(launches[0].idempotencyKey).toBe("workflow:wf_1:stage:1");
   });
 
   it("does NOT launch when the kill switch is engaged (guard blocks launch)", async () => {
