@@ -15,6 +15,7 @@
  * flag, so production renders today's console unchanged.
  */
 import { useState } from "react";
+import { api } from "../../api/client.js";
 import { EVERYDAY } from "../../brand.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import {
@@ -29,6 +30,22 @@ import {
   seedEveryday,
   signedDelta,
 } from "./everyday-data.js";
+
+export type EverydayDecisionStatus = "idle" | "pending" | "shipped" | "revision" | "error";
+
+export interface EverydayApprovalActions {
+  ship(card: ApprovalCard): Promise<void>;
+  requestRevision(card: ApprovalCard, note: string): Promise<void>;
+}
+
+export const defaultEverydayApprovalActions: EverydayApprovalActions = {
+  async ship(card) {
+    await api.approvals.approve(card.approvalRequestId, "Ship from everyday shell");
+  },
+  async requestRevision(card, note) {
+    await api.approvals.reject(card.approvalRequestId, note);
+  },
+};
 
 /** A small agent monogram tile — first initial, used through the thread + cards so agents feel like people. */
 function AgentChip({ name }: { name: string }): React.JSX.Element {
@@ -124,13 +141,21 @@ function Thread({ entries }: { entries: readonly ThreadEntry[] }): React.JSX.Ele
 function ApprovalCardView({
   card,
   onShip,
+  onRedo,
+  status,
+  error,
 }: {
   card: ApprovalCard;
-  onShip: (id: string) => void;
+  onShip: (card: ApprovalCard) => Promise<void>;
+  onRedo: (card: ApprovalCard, note: string) => Promise<void>;
+  status: EverydayDecisionStatus;
+  error?: string;
 }): React.JSX.Element {
   const a = EVERYDAY.approvals;
   const s = EVERYDAY.safety;
   const [confirmingSpend, setConfirmingSpend] = useState(false);
+  const [redoing, setRedoing] = useState(false);
+  const [note, setNote] = useState("");
 
   function ship(): void {
     // Money is the one hard gate: a spend needs a second, explicit confirmation (#784).
@@ -138,7 +163,7 @@ function ApprovalCardView({
       setConfirmingSpend(true);
       return;
     }
-    onShip(card.id);
+    void onShip(card);
   }
 
   return (
@@ -160,10 +185,30 @@ function ApprovalCardView({
           {card.amount ? ` (${card.amount})` : ""}
         </p>
       )}
+      {status === "pending" && (
+        <p className="everyday-card__state" role="status">
+          {a.pending}
+        </p>
+      )}
+      {status === "error" && error && (
+        <p className="everyday-card__state everyday-card__state--error" role="alert">
+          {error}
+        </p>
+      )}
+      {redoing && (
+        <label className="everyday-card__redo">
+          {a.redoNote}
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.currentTarget.value)}
+            placeholder={a.redoPlaceholder}
+          />
+        </label>
+      )}
       <div className="everyday-card__actions">
         {confirmingSpend ? (
           <>
-            <button type="button" className="everyday-btn everyday-btn--pop" onClick={ship}>
+            <button type="button" className="everyday-btn everyday-btn--pop" onClick={ship} disabled={status === "pending"}>
               {s.moneyGateApprove}
             </button>
             <button
@@ -176,15 +221,22 @@ function ApprovalCardView({
           </>
         ) : (
           <>
-            <button type="button" className="everyday-btn everyday-btn--pop" onClick={ship}>
+            <button type="button" className="everyday-btn everyday-btn--pop" onClick={ship} disabled={status === "pending"}>
               {a.ship}
             </button>
             <button
               type="button"
               className="everyday-btn everyday-btn--ghost"
-              onClick={() => onShip(card.id)}
+              disabled={status === "pending"}
+              onClick={() => {
+                if (!redoing) {
+                  setRedoing(true);
+                  return;
+                }
+                void onRedo(card, note.trim() || a.redoDefaultNote);
+              }}
             >
-              {a.redo}
+              {redoing ? a.redoSend : a.redo}
             </button>
           </>
         )}
@@ -197,11 +249,17 @@ function ApprovalCardView({
 function ApprovalQueue({
   cards,
   onShip,
+  onRedo,
   justShipped,
+  statuses,
+  errors,
 }: {
   cards: readonly ApprovalCard[];
-  onShip: (id: string) => void;
+  onShip: (card: ApprovalCard) => Promise<void>;
+  onRedo: (card: ApprovalCard, note: string) => Promise<void>;
   justShipped: boolean;
+  statuses: Readonly<Record<string, EverydayDecisionStatus>>;
+  errors: Readonly<Record<string, string>>;
 }): React.JSX.Element {
   const a = EVERYDAY.approvals;
   return (
@@ -218,7 +276,14 @@ function ApprovalQueue({
       ) : (
         <div className="everyday-approvals__list">
           {cards.map((c) => (
-            <ApprovalCardView key={c.id} card={c} onShip={onShip} />
+            <ApprovalCardView
+              key={c.id}
+              card={c}
+              onShip={onShip}
+              onRedo={onRedo}
+              status={statuses[c.id] ?? "idle"}
+              error={errors[c.id]}
+            />
           ))}
         </div>
       )}
@@ -347,19 +412,40 @@ function Composer(): React.JSX.Element {
 /**
  * The everyday shell. Presentational + self-contained: takes the full {@link EverydayData} (defaulting to a
  * realistic seed for the flagged preview) and an injectable `hour` so the greeting bucket is deterministic
- * in tests. Shipping a card is local UI state here (a small celebration); wiring real approve/redo to the
- * live approvals API is the documented follow-up.
+ * in tests. Ship/redo decisions go through the approval-action seam; a card only leaves the queue once the
+ * backend records the decision.
  */
 export function EverydayShell({
   data = seedEveryday(),
   hour = 14,
+  approvalActions = defaultEverydayApprovalActions,
 }: {
   data?: EverydayData;
   hour?: number;
+  approvalActions?: EverydayApprovalActions;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
+  const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const pending = data.approvals.filter((c) => !shipped.includes(c.id));
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
+
+  async function decide(card: ApprovalCard, kind: "ship" | "redo", note?: string): Promise<void> {
+    setStatuses((prev) => ({ ...prev, [card.id]: "pending" }));
+    setErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => id !== card.id)));
+    try {
+      if (kind === "ship") await approvalActions.ship(card);
+      else await approvalActions.requestRevision(card, note ?? EVERYDAY.approvals.redoDefaultNote);
+      setStatuses((prev) => ({ ...prev, [card.id]: kind === "ship" ? "shipped" : "revision" }));
+      setShipped((ids) => (ids.includes(card.id) ? ids : [...ids, card.id]));
+    } catch (err) {
+      setStatuses((prev) => ({ ...prev, [card.id]: "error" }));
+      setErrors((prev) => ({
+        ...prev,
+        [card.id]: err instanceof Error ? err.message : EVERYDAY.approvals.decisionError,
+      }));
+    }
+  }
 
   return (
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
@@ -374,7 +460,10 @@ export function EverydayShell({
         <ApprovalQueue
           cards={pending}
           justShipped={shipped.length > 0}
-          onShip={(id) => setShipped((s) => [...s, id])}
+          onShip={(card) => decide(card, "ship")}
+          onRedo={(card, note) => decide(card, "redo", note)}
+          statuses={statuses}
+          errors={errors}
         />
         <TransparencyLog actions={data.transparency} />
         <SafetyFooter paused={data.fleetPaused} />
