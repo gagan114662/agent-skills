@@ -73,13 +73,13 @@ export const VOICE = {
   /** Shown above the sign-in card when auth fails. The voice turns a dead end into a moment (#145). */
   authError: "Well, that didn't pop. Give it another go —",
   /** Empty approvals queue (per status reads naturally: "Nothing pending. …"). */
-  emptyApprovals: "All clear here. The agents will ping you the moment something needs a human.",
+  emptyApprovals: "nothing waiting on you. go get a coffee - we'll shout if money needs a grown-up.",
   /** No agent sessions in a channel (Deploy / Review / Run rails). */
   noSessions: "No agent sessions here yet. Kick one off and it'll show up on this rail.",
   /** Deploy rail: a session is picked but nothing deployed. */
   pickSessionToDeploy: "Pick a session on the left and we'll ship its app to a live URL.",
   /** Founder console: nothing waiting. */
-  noPendingApprovals: "Nothing waiting on you. Go get a coffee — we've got this.",
+  noPendingApprovals: "nothing waiting on you. go get a coffee - we've got this.",
 
   // --- Composer + automations interactions (#167) -------------------------------------------------
   /** Automations form: no name yet. */
@@ -267,8 +267,8 @@ export const GARDEN = {
   pending: "Awaiting your approval",
   needsApproval: "Needs your approval",
   capabilitiesLabel: "What they do",
-  moneyGated: "Money-gated",
-  moneyGatedTitle: "Acts outside the building — needs your approval before it can spend or send.",
+  moneyGated: "needs your yes",
+  moneyGatedTitle: "Tries to spend or send outside the building - so it waits for your yes.",
   riskReadOnly: "Reads only",
   riskInternalDraft: "Drafts for review",
   riskExternalSend: "Acts outside",
@@ -2073,12 +2073,12 @@ export const PAGE_SEO = {
 
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {
-  title: "You're flying — time for more runway",
+  title: "tiny runway situation",
   body:
-    "Your free trial workspace hit a cap. Nothing's lost; your agents are just waiting on more room to work. " +
-    "Pick a plan and they're back at it in seconds.",
-  cta: "See plans",
-  dismiss: "Not now",
+    "Your trial hit its cap. Nothing's lost; the agents are lined up at the door, politely not spending " +
+    "another penny until you give them more room.",
+  cta: "show me plans",
+  dismiss: "not now",
   /** Shown as the small print under the nudge, naming the current plan. */
-  onPlan: (planName: string): string => `You're on the ${planName} trial.`,
+  onPlan: (planName: string): string => `currently on ${planName}. modest, but respectable.`,
 } as const;
