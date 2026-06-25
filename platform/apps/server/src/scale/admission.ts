@@ -1,6 +1,6 @@
 import type { ResolvedConfig } from "../config/schema.js";
 import { decideAdmission, type AdmissionReason } from "./decide.js";
-import { resolveScaleCaps } from "./caps.js";
+import { resolveScaleCaps, type ScalePlanBudget } from "./caps.js";
 import { planRegion, type RegionLoad } from "./region.js";
 import { budgetExceeded, windowKey, type UsageReader } from "./usage.js";
 
@@ -29,6 +29,8 @@ export interface AdmissionDeps {
   killSwitch: KillSwitchReader;
   /** Resolve a tenant's config — caps/budget/regions live in its managed/per-tenant layer (#58). */
   config: (workspaceId: string) => ResolvedConfig;
+  /** Active paid plan projection; when present its session budget overrides the trial/config cap (#873). */
+  activePlans?: { getActive(workspaceId: string): Promise<ScalePlanBudget | undefined> };
   /** Fleet-wide in-flight ceiling; 0 = unlimited (the server default derives from TEAM_MAX_CONCURRENCY). */
   globalMax: number;
   /** Injectable clock for the usage window (tests pin it; prod uses the real clock). */
@@ -82,12 +84,13 @@ export class Admission {
 
   /** Try to admit a launch. Resolves to a ticket, or throws {@link AdmissionError} on denial. */
   async acquire(workspaceId: string): Promise<AdmissionTicket> {
-    const caps = resolveScaleCaps(this.deps.config(workspaceId).scale);
     const window = windowKey(this.now());
-    const [killSwitch, usage] = await Promise.all([
+    const [killSwitch, usage, activePlan] = await Promise.all([
       this.deps.killSwitch.isEngaged(workspaceId),
       this.deps.usage.read(workspaceId, window),
+      this.deps.activePlans?.getActive(workspaceId) ?? Promise.resolve(undefined),
     ]);
+    const caps = resolveScaleCaps(this.deps.config(workspaceId).scale, activePlan);
 
     return this.withAdmissionLock(() => {
       const decision = decideAdmission({

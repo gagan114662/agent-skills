@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
-import { resolveScaleCaps } from "../scale/caps.js";
+import { resolveScaleCaps, type ScalePlanBudget } from "../scale/caps.js";
 import { budgetExceeded, windowKey } from "../scale/usage.js";
 import { liveSpendRegistry } from "../scale/live-spend.js";
 import type { Admission } from "../scale/admission.js";
@@ -13,6 +13,8 @@ export interface ScaleRoutesOptions {
   admission: Admission;
   /** The tenant-config source — the SAME one admission enforces, so caps shown match caps enforced. */
   config?: (workspaceId: string) => ResolvedConfig;
+  /** Active paid plan projection; must match admission's source so displayed budget equals enforced budget. */
+  activePlans?: { getActive(workspaceId: string): Promise<ScalePlanBudget | undefined> };
   /** Injectable clock for the window (tests pin it). */
   now?: () => Date;
 }
@@ -34,8 +36,11 @@ export async function scaleRoutes(app: FastifyInstance, opts: ScaleRoutesOptions
     if (!assertWorkspace(id, wid, reply)) return;
 
     const window = windowKey(now());
-    const usage = await getUsage(wid, window);
-    const caps = resolveScaleCaps(config(wid).scale);
+    const [usage, activePlan] = await Promise.all([
+      getUsage(wid, window),
+      opts.activePlans?.getActive(wid) ?? Promise.resolve(undefined),
+    ]);
+    const caps = resolveScaleCaps(config(wid).scale, activePlan);
     const inFlight = opts.admission.snapshot(wid);
     const liveSessions = liveSpendRegistry.list(wid);
 

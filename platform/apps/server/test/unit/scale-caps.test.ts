@@ -36,4 +36,13 @@ describe("scale/caps (#71 — per-tenant scale policy defaults)", () => {
     });
     expect(caps.regions).not.toBe(regions); // defensive copy — caller's array is not aliased
   });
+
+  it("uses an active paid plan budget over the trial/config budget (#873)", () => {
+    expect(
+      resolveScaleCaps(
+        { budgetCents: 500, tenantConcurrency: 2 },
+        { status: "active", monthlySessionBudgetCents: 100_000 },
+      ),
+    ).toMatchObject({ budgetCents: 100_000, tenantConcurrency: 2 });
+  });
 });
