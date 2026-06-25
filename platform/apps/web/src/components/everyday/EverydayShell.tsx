@@ -432,10 +432,7 @@ export function EverydayShell({
 
   async function decide(card: ApprovalCard, kind: "ship" | "redo", note?: string): Promise<void> {
     setStatuses((prev) => ({ ...prev, [card.id]: "pending" }));
-    setErrors((prev) => {
-      const { [card.id]: _drop, ...rest } = prev;
-      return rest;
-    });
+    setErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => id !== card.id)));
     try {
       if (kind === "ship") await approvalActions.ship(card);
       else await approvalActions.requestRevision(card, note ?? EVERYDAY.approvals.redoDefaultNote);
