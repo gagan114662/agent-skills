@@ -724,6 +724,28 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #222 customer discovery engine: one instance shared by signup, billing, outreach, and the console.
   const discoveryService =
     opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
+  // #101/#125/#607/#602 billing + lifecycle services are shared by signup, billing routes, and webhook
+  // activation so a trial signup can enter the nurture sequence before the owner opens the billing panel.
+  const demandService = opts.demand ?? createDefaultDemandService(app.log);
+  const billingDefaults =
+    !opts.billingManager || !opts.planService || !opts.trialNurture
+      ? createDefaultBilling(app.log, demandService, {
+          funnel: {
+            advancePostSales: (input) =>
+              discoveryService.advancePipelineStage(input.workspaceId, {
+                prospectKey: input.prospectKey,
+                stage: "post_sales",
+                externalRef: input.externalRef,
+              }),
+          },
+        })
+      : null;
+  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
+  const planService = opts.planService ?? billingDefaults!.planService;
+  const trialNurture = opts.trialNurture ?? billingDefaults!.trialNurture;
+  // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
+  const billingStatusValue =
+    opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
   // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
   // per marketing function), turn an @mention into a REAL harness session through the venture-gated
   // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
@@ -742,6 +764,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
           source: attribution.source,
           metadata: attributionMetadata(attribution),
         }),
+        trialNurture.enrollSignup(workspaceId, ownerMemberId, { source: "auth.signup" }),
         ...(attribution.trackingRef
           ? [
               discoveryService.advancePipelineStage(workspaceId, {
@@ -887,26 +910,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #101 demand validation rails: ONE service instance shared by the demand routes, the billing webhook's
   // `demandIngestor` (so a `demand_smoke` checkout becomes an external `paid` signal), and the #96 venture
   // demand overlay (so the scorecard's demand dimension consumes only this externally-attributed evidence).
-  const demandService = opts.demand ?? createDefaultDemandService(app.log);
-  const billingDefaults =
-    !opts.billingManager || !opts.planService || !opts.trialNurture
-      ? createDefaultBilling(app.log, demandService, {
-          funnel: {
-            advancePostSales: (input) =>
-              discoveryService.advancePipelineStage(input.workspaceId, {
-                prospectKey: input.prospectKey,
-                stage: "post_sales",
-                externalRef: input.externalRef,
-              }),
-          },
-        })
-      : null;
-  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
-  const planService = opts.planService ?? billingDefaults!.planService;
-  const trialNurture = opts.trialNurture ?? billingDefaults!.trialNurture;
-  // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
-  const billingStatusValue =
-    opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
   app.register(billingRoutes, {
     billingManager,
     planService,
