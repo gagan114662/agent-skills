@@ -8,7 +8,18 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildSitemap, prerenderPages } from "./entry-server.js";
-import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS, LEGAL, COMPANY } from "./brand.js";
+import {
+  BRAND,
+  PRICING,
+  COMPARE,
+  STORIES,
+  GUIDES,
+  CHANGELOG,
+  BRAND_ASSETS,
+  LEGAL,
+  COMPANY,
+  SEGMENT_LANDING_PAGES,
+} from "./brand.js";
 
 const pages = prerenderPages();
 const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
@@ -36,6 +47,9 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       "/brand",
     ]) {
       expect(paths, `missing prerendered route ${expected}`).toContain(expected);
+    }
+    for (const segment of SEGMENT_LANDING_PAGES) {
+      expect(paths, `missing prerendered segment route ${segment.path}`).toContain(segment.path);
     }
   });
 
@@ -112,5 +126,22 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     for (const expected of organicDiscoveryPosts) {
       expect(sitemap).toContain(`<loc>https://ipop.ai${expected}</loc>`);
     }
+  });
+
+  it("prerenders all #599 segment pages with unique ICP copy and experiment metadata", () => {
+    const sitemap = buildSitemap("https://ipop.ai", pages);
+    const titles = new Set<string>();
+    for (const segment of SEGMENT_LANDING_PAGES) {
+      const page = byPath(segment.path)!;
+      expect(page.title).toContain(segment.seoTitleSubject);
+      expect(page.description).toBe(segment.seoDescription);
+      expect(page.html).toContain(segment.hero.title);
+      expect(page.html).toContain(segment.proof.title);
+      expect(page.html).toContain(segment.experiment.id);
+      expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+      expect(sitemap).toContain(`<loc>https://ipop.ai${segment.path}</loc>`);
+      titles.add(page.title!);
+    }
+    expect(titles.size).toBe(SEGMENT_LANDING_PAGES.length);
   });
 });

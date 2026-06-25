@@ -13,7 +13,7 @@
  * which `renderToStaticMarkup` never runs.
  */
 import { renderToStaticMarkup } from "react-dom/server";
-import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO } from "./brand.js";
+import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO, SEGMENT_LANDING_PAGES } from "./brand.js";
 import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
@@ -22,6 +22,7 @@ import { CompanyPage } from "./components/landing/CompanyPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
 import { SectionPage } from "./components/site/SectionPage.js";
 import { Brand } from "./components/site/Brand.js";
+import { SegmentLandingPage } from "./components/site/SegmentLandingPage.js";
 import { BlogIndex, BlogPostPage } from "./blog/Blog.js";
 import { listPostMeta, type BlogPostMeta } from "./blog/posts.js";
 import { hreflangLinks } from "./i18n.js";
@@ -123,6 +124,30 @@ function marketingPages(): PrerenderPage[] {
   });
 }
 
+function segmentPages(): PrerenderPage[] {
+  return SEGMENT_LANDING_PAGES.map((segment) => ({
+    outFile: segment.path.replace(/^\//, "") + "/index.html",
+    urlPath: segment.path,
+    html: renderToStaticMarkup(
+      <SiteShell>
+        <SegmentLandingPage page={segment} />
+      </SiteShell>,
+    ),
+    title: segment.seoTitleSubject + " — " + BRAND.name,
+    description: segment.seoDescription,
+    priority: 0.7,
+    headExtra:
+      hreflangLinks(ORIGIN, segment.path) +
+      "\n" +
+      renderJsonLd(
+        breadcrumbLd(ORIGIN, [
+          [BRAND.name, "/"],
+          [segment.navLabel, segment.path],
+        ]),
+      ),
+  }));
+}
+
 /** Build the full set of pages to prerender (home + pricing + marketing sections + blog index + posts). */
 export function prerenderPages(): PrerenderPage[] {
   const pages: PrerenderPage[] = [];
@@ -146,6 +171,7 @@ export function prerenderPages(): PrerenderPage[] {
 
   // The pricing page + the five content-site sections (#467) — each with its own front-loaded head meta.
   pages.push(...marketingPages());
+  pages.push(...segmentPages());
 
   // The blog index: Blog node (lists every post) + a Home › Blog breadcrumb.
   pages.push({
