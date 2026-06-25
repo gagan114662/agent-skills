@@ -178,6 +178,17 @@ function PublicProof(): React.JSX.Element {
           </article>
         ))}
       </div>
+      <div className="landing__proof-ladder" aria-label={PUBLIC_PROOF.ladderTitle}>
+        <h3 className="landing__proof-ladder-title">{PUBLIC_PROOF.ladderTitle}</h3>
+        <ul>
+          {PUBLIC_PROOF.ladder.map((item) => (
+            <li key={item.label}>
+              <strong>{item.label}</strong>
+              <span>{item.body}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <Link href="/stories" className="btn landing__proof-link">
         {PUBLIC_PROOF.cta}
       </Link>

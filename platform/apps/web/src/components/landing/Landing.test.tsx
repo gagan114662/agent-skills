@@ -138,6 +138,19 @@ describe("Landing", () => {
     }
   });
 
+  it("distinguishes dogfood, consent-pending proof, and independently validated proof (#1219)", () => {
+    render(<Landing />);
+    const proof = screen.getByRole("region", { name: PUBLIC_PROOF.title });
+    const ladder = within(proof).getByLabelText(PUBLIC_PROOF.ladderTitle);
+
+    for (const item of PUBLIC_PROOF.ladder) {
+      expect(within(ladder).getByText(item.label)).toBeInTheDocument();
+      expect(within(ladder).getByText(item.body)).toBeInTheDocument();
+    }
+    expect(PUBLIC_PROOF.tiles.some((tile) => tile.customerType === "dogfood" && tile.consented)).toBe(true);
+    expect(PUBLIC_PROOF.tiles.some((tile) => tile.customerType === "external" && !tile.consented)).toBe(true);
+  });
+
   it("introduces every member of the department with its personality", () => {
     render(<Landing />);
     const dept = screen.getByRole("region", { name: /meet the department/i });
