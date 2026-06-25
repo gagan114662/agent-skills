@@ -2360,6 +2360,24 @@ export const PAGE_SEO = {
     title: `Start your AI marketing team — ${BRAND.name}`,
     description: ONBOARDING.sub,
   },
+  "/welcome": {
+    name: "Welcome",
+    title: `Welcome — build with your AI marketing team`,
+    description:
+      "Tell ipop what you are marketing, then connect your tools one at a time and watch the team build a real first deliverable.",
+  },
+  "/demo": {
+    name: "Live demo",
+    title: `Live demo — see ${BRAND.name} build your marketing deliverable`,
+    description:
+      "Drop in your website and watch a real, personalized growth deliverable build itself before you create an account.",
+  },
+  "/sandbox": {
+    name: "Sandbox",
+    title: `Sandbox — try the ${BRAND.name} marketing deliverable builder`,
+    description:
+      "Use the no-signup sandbox to preview the marketing deliverable ipop can build from your website.",
+  },
   "/login": {
     name: "Sign in",
     title: `Sign in — ${BRAND.name} workspace`,
@@ -2369,6 +2387,30 @@ export const PAGE_SEO = {
     name: "Sign up",
     title: `Sign up — start ${BRAND.name} without a card`,
     description: PRICING.trial.generic,
+  },
+  "/everyday": {
+    name: "Everyday workspace",
+    title: `Everyday workspace — sign in to steer ${BRAND.name}`,
+    description:
+      "The everyday workspace is where signed-in teams review approvals, receipts, and the work queue before anything risky ships.",
+  },
+  "/theater": {
+    name: "Agent theater",
+    title: `Agent theater — sign in to watch ${BRAND.name} work live`,
+    description:
+      "The live agent theater shows workspace-scoped reasoning, actions, artifacts, and receipts once you sign in.",
+  },
+  "/support/status": {
+    name: "Support ticket status",
+    title: `Support ticket status — ${BRAND.name}`,
+    description:
+      "Open a ticket status link to see its current state, SLA target, response status, and timeline.",
+  },
+  "/status/test": {
+    name: "Status page",
+    title: `Status page — ${BRAND.name} public component health`,
+    description:
+      "A public workspace status route shows published component health and incident history when the workspace has opted in.",
   },
   "/pricing": {
     name: "Pricing",

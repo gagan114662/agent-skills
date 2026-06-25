@@ -36,8 +36,15 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     for (const expected of [
       "/",
       "/start",
+      "/welcome",
+      "/demo",
+      "/sandbox",
       "/login",
       "/signup",
+      "/everyday",
+      "/theater",
+      "/support/status",
+      "/status/test",
       "/blog",
       "/pricing",
       "/security",
@@ -100,9 +107,12 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
   it.each([
     ["/start", "Start", "your website"],
+    ["/welcome", "Welcome", "what are we marketing today?"],
+    ["/demo", "Live demo", "Build my free deliverable"],
+    ["/sandbox", "Sandbox", "Build my free deliverable"],
     ["/login", "Sign in", "Sign in"],
     ["/signup", "Sign up", "Create account"],
-  ])("prerenders %s as its own activation/auth route, not homepage fallback (#1176)", (urlPath, titleWord, bodyText) => {
+  ])("prerenders %s as its own activation/auth route, not homepage fallback (#1176/#1184)", (urlPath, titleWord, bodyText) => {
     const page = byPath(urlPath)!;
     const home = byPath("/")!;
     expect(page.title).toContain(titleWord);
@@ -110,6 +120,29 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.html).toContain(bodyText);
     expect(page.html).not.toBe(home.html);
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+  });
+
+  it.each([
+    ["/everyday", "Everyday workspace", "Review approvals"],
+    ["/theater", "Agent theater", "Watch workspace-scoped"],
+    ["/support/status", "Support ticket status", "Ticket status"],
+    ["/status/test", "Status page", "component health"],
+  ])("prerenders %s as an honest route-specific shell instead of homepage HTML (#1184)", (urlPath, titleWord, bodyText) => {
+    const page = byPath(urlPath)!;
+    const home = byPath("/")!;
+    expect(page.title).toContain(titleWord);
+    expect(page.description, urlPath + " has no description").toBeTruthy();
+    expect(page.html).toContain(bodyText);
+    expect(page.html).not.toBe(home.html);
+    expect(page.html).toContain("Sign in");
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+  });
+
+  it("keeps public route unfurls specific for demo and welcome (#1184)", () => {
+    expect(byPath("/demo")!.title).toMatch(/^Live demo\b/);
+    expect(byPath("/demo")!.description).toContain("website");
+    expect(byPath("/welcome")!.title).toMatch(/^Welcome\b/);
+    expect(byPath("/welcome")!.description).toContain("connect your tools");
   });
 
   it.each([
