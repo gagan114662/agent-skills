@@ -16,6 +16,7 @@ export const NOTIFICATION_TYPES = [
   "approval",
   "inbound_lead",
   "deliverable_feedback",
+  "activation_health",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
