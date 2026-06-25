@@ -7,5 +7,7 @@ export const workspaces = pgTable("workspaces", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   timezone: text("timezone").notNull().default("UTC"),
+  billingEmail: text("billing_email"),
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -125,8 +125,15 @@ export interface BillingStore {
   createPaymentLink(input: CreatePaymentLinkRow): Promise<PaymentLink>;
   findRevenueEvent(workspaceId: string, providerEventId: string): Promise<RevenueEvent | undefined>;
   createRevenueEvent(input: CreateRevenueEventRow): Promise<RevenueEvent>;
+  updateWorkspaceBillingContact(input: {
+    workspaceId: string;
+    billingEmail?: string | null;
+    stripeCustomerId?: string | null;
+  }): Promise<unknown>;
   createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence>;
-  createFirstCustomerStory(input: CreateFirstCustomerStoryRow): Promise<FirstCustomerStory | undefined>;
+  createFirstCustomerStory(
+    input: CreateFirstCustomerStoryRow,
+  ): Promise<FirstCustomerStory | undefined>;
   revenueSummary(workspaceId: string, limit?: number): Promise<RevenueSummary>;
 }
 
@@ -179,6 +186,8 @@ export interface CreatePaymentLinkRequest {
    * lead that drove it. Sanitized before it reaches Stripe (#200 §6); omitted ⇒ the payment is unattributed.
    */
   trackingRef?: string | null;
+  /** Optional customer contact to round-trip into checkout metadata and persist after payment. */
+  billingEmail?: string | null;
 }
 
 export interface WebhookIngestResult {
@@ -287,6 +296,7 @@ export class BillingManager {
     // #386 slice 3: stamp a (sanitized) tracking ref into checkout metadata so the resulting payment can be
     // attributed to the artifact/lead that drove it. Garbage/absent ⇒ omitted ⇒ unattributed (honest).
     const trackingRef = sanitizeTrackingRef(req.trackingRef);
+    const billingEmail = sanitizeBillingEmail(req.billingEmail);
 
     let productId: string;
     let priceId: string;
@@ -312,7 +322,9 @@ export class BillingManager {
           agentMemberId: req.agentMemberId,
           ...(deploymentId ? { deploymentId } : {}),
           ...(trackingRef ? { trackingRef } : {}),
+          ...(billingEmail ? { customerEmail: billingEmail } : {}),
         },
+        ...(billingEmail ? { customerEmail: billingEmail } : {}),
         secrets,
       });
       productId = pp.productId;
@@ -380,6 +392,7 @@ export class BillingManager {
 
     const existing = await this.store.findRevenueEvent(workspaceId, parsed.id);
     if (existing) {
+      await this.persistBillingContact(workspaceId, parsed);
       this.logger?.info(
         {
           workspaceId,
@@ -413,6 +426,7 @@ export class BillingManager {
     });
 
     if (isPaymentEvent(parsed.type)) {
+      await this.persistBillingContact(workspaceId, parsed);
       const beforePaymentSummary = await this.store.revenueSummary(workspaceId, 1);
       await this.store.createEvidence({
         workspaceId,
@@ -481,7 +495,11 @@ export class BillingManager {
       }
       // #125: a plan checkout payment activates the workspace's plan + updates its caps. Best-effort —
       // the revenue row is already the source of truth, and dedupe above makes this exactly-once.
-      if (parsed.metadata.kind === "plan_checkout" && parsed.metadata.planKey && this.planActivator) {
+      if (
+        parsed.metadata.kind === "plan_checkout" &&
+        parsed.metadata.planKey &&
+        this.planActivator
+      ) {
         try {
           await this.planActivator.activate(
             workspaceId,
@@ -507,7 +525,11 @@ export class BillingManager {
       // #101: a demand smoke-test checkout is the apex external willingness-to-pay signal. Hand it to the
       // Demand Validation Rails (which records the `paid` signal + fires the ethics auto-refund). Best-
       // effort + exactly-once (the revenue dedupe above guarantees one delivery reaches here).
-      if (parsed.metadata.kind === "demand_smoke" && parsed.metadata.experimentId && this.demandIngestor) {
+      if (
+        parsed.metadata.kind === "demand_smoke" &&
+        parsed.metadata.experimentId &&
+        this.demandIngestor
+      ) {
         try {
           await this.demandIngestor.ingestCheckout({
             workspaceId,
@@ -580,6 +602,19 @@ export class BillingManager {
       this.logger?.warn({ channelId, err }, "billing channel post failed");
     }
   }
+
+  private async persistBillingContact(workspaceId: string, parsed: ParsedEvent): Promise<void> {
+    if (!parsed.customerEmail && !parsed.stripeCustomerId) return;
+    try {
+      await this.store.updateWorkspaceBillingContact({
+        workspaceId,
+        ...(parsed.customerEmail ? { billingEmail: parsed.customerEmail } : {}),
+        ...(parsed.stripeCustomerId ? { stripeCustomerId: parsed.stripeCustomerId } : {}),
+      });
+    } catch (err) {
+      this.logger?.warn({ workspaceId, err }, "billing: workspace billing contact update failed");
+    }
+  }
 }
 
 // --- pure helpers ------------------------------------------------------------------------------------
@@ -591,6 +626,8 @@ interface ParsedEvent {
   currency: string;
   status: string;
   metadata: Record<string, string>;
+  customerEmail: string | null;
+  stripeCustomerId: string | null;
 }
 
 function buildFirstCustomerStory(input: {
@@ -599,7 +636,8 @@ function buildFirstCustomerStory(input: {
   metadata: Record<string, string>;
 }): CreateFirstCustomerStoryRow {
   const amount = formatAmount(input.event.amountCents, input.event.currency);
-  const channel = cleanMetadata(input.metadata.channelName) ?? input.event.channelId ?? "Unknown channel";
+  const channel =
+    cleanMetadata(input.metadata.channelName) ?? input.event.channelId ?? "Unknown channel";
   const journey =
     cleanMetadata(input.metadata.customerJourney) ??
     cleanMetadata(input.metadata.journey) ??
@@ -682,7 +720,11 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
     | Record<string, unknown>
     | undefined;
   const amount =
-    num(data?.amount_total) ?? num(data?.amount_due) ?? num(data?.amount) ?? num(data?.amount_received) ?? 0;
+    num(data?.amount_total) ??
+    num(data?.amount_due) ??
+    num(data?.amount) ??
+    num(data?.amount_received) ??
+    0;
   const metadataRaw = (data?.metadata as Record<string, unknown> | undefined) ?? {};
   const metadata: Record<string, string> = {};
   for (const [k, v] of Object.entries(metadataRaw)) {
@@ -698,7 +740,34 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
       (typeof data?.status === "string" && data.status) ||
       "succeeded",
     metadata,
+    customerEmail:
+      sanitizeBillingEmail(stringValue(data?.customer_email)) ??
+      sanitizeBillingEmail(nestedString(data?.customer_details, "email")) ??
+      sanitizeBillingEmail(metadata.customerEmail),
+    stripeCustomerId: cleanStripeCustomerId(stringValue(data?.customer)),
   };
+}
+
+function sanitizeBillingEmail(value: string | null | undefined): string | null {
+  const clean = cleanMetadata(value ?? undefined)?.toLowerCase();
+  if (!clean || clean.length > 320) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean) ? clean : null;
+}
+
+function cleanStripeCustomerId(value: string | null | undefined): string | null {
+  const clean = cleanMetadata(value ?? undefined);
+  if (!clean || clean.length > 200) return null;
+  return clean;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function nestedString(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object") return null;
+  const v = (value as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : null;
 }
 
 function num(value: unknown): number | undefined {
