@@ -199,6 +199,8 @@ import type { MonetizationEngine } from "./monetization/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
 import { attributionMetadata, type SignupAttribution } from "./attribution/signup.js";
+import { createDefaultReferralService } from "./referrals/default.js";
+import type { ReferralService } from "./referrals/service.js";
 import { decisionMakerRoutes } from "./routes/decision-maker.js";
 import { createDefaultDecisionMakerService } from "./decision-maker/default.js";
 import type { DecisionMakerService } from "./decision-maker/service.js";
@@ -489,6 +491,8 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #603 referral loop: tests inject a service; default stores signup attribution and incentives in Postgres. */
+  referrals?: ReferralService;
   /** #223 decision-maker resolver: tests inject a service over fakes; default builds the real one. */
   decisionMaker?: DecisionMakerService;
   /** #225 outreach engine: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -727,6 +731,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #901 signup attribution: construct growth before auth/OAuth so both entry points can record the
   // acquisition denominator without waiting for the growth routes to be registered.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  const referralService = opts.referrals ?? createDefaultReferralService();
   // #222 customer discovery engine: one instance shared by signup, billing, outreach, and the console.
   const discoveryService =
     opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
@@ -769,6 +774,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
           kind: "acquisition",
           source: attribution.source,
           metadata: attributionMetadata(attribution),
+        }),
+        referralService.ensureWorkspaceReferralCode(workspaceId, ownerMemberId),
+        referralService.attributeSignup({
+          referralCode: attribution.referralCode,
+          referredWorkspaceId: workspaceId,
+          referredMemberId: ownerMemberId,
+          trackingRef: attribution.trackingRef,
         }),
         trialNurture.enrollSignup(workspaceId, ownerMemberId, { source: "auth.signup" }),
         ...(attribution.trackingRef
