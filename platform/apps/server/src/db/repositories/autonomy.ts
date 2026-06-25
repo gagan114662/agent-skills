@@ -324,6 +324,8 @@ export interface AgentWorkflow {
   actionCount: number;
   currentSessionId: string | null;
   currentSessionStage: number | null;
+  recurring: boolean;
+  sourceWorkflowId: string | null;
   createdAt: Date;
 }
 
@@ -338,6 +340,8 @@ const WORKFLOW_COLS = {
   actionCount: agentWorkflows.actionCount,
   currentSessionId: agentWorkflows.currentSessionId,
   currentSessionStage: agentWorkflows.currentSessionStage,
+  recurring: agentWorkflows.recurring,
+  sourceWorkflowId: agentWorkflows.sourceWorkflowId,
   createdAt: agentWorkflows.createdAt,
 } as const;
 
@@ -347,6 +351,8 @@ export async function createWorkflow(input: {
   taskId: string;
   stages: WorkflowStage[];
   createdByMemberId: string;
+  recurring?: boolean;
+  sourceWorkflowId?: string | null;
 }): Promise<AgentWorkflow> {
   const [row] = await db
     .insert(agentWorkflows)
@@ -356,6 +362,8 @@ export async function createWorkflow(input: {
       taskId: input.taskId,
       stages: input.stages,
       createdByMemberId: input.createdByMemberId,
+      recurring: input.recurring ?? false,
+      sourceWorkflowId: input.sourceWorkflowId ?? null,
     })
     .returning(WORKFLOW_COLS);
   return row as AgentWorkflow;
@@ -631,6 +639,75 @@ export async function completeWorkflowWithTask(input: {
         updatedAt: new Date(),
       })
       .where(eq(agentWorkflows.id, input.workflowId));
+  });
+}
+
+export async function spawnRecurringWorkflowSuccessor(input: {
+  workflowId: string;
+  completedTaskTitle: string;
+  actorMemberId: string;
+}): Promise<AgentWorkflow | undefined> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select(WORKFLOW_COLS)
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.sourceWorkflowId, input.workflowId))
+      .limit(1);
+    if (existing) return existing as AgentWorkflow;
+
+    const [workflow] = await tx
+      .select(WORKFLOW_COLS)
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, input.workflowId))
+      .limit(1);
+    const wf = workflow as AgentWorkflow | undefined;
+    if (!wf || !wf.recurring || wf.status !== "completed" || wf.stages.length === 0) {
+      return undefined;
+    }
+
+    const firstStage = wf.stages[0]!;
+    const [task] = await tx
+      .insert(tasks)
+      .values({
+        workspaceId: wf.workspaceId,
+        title: "Next: " + input.completedTaskTitle,
+        description: "Auto-spawned by recurring autonomy workflow " + wf.id + ".",
+        labels: ["autonomy", "recurring"],
+        assigneeMemberId: firstStage.agentMemberId,
+        createdByMemberId: input.actorMemberId,
+      })
+      .returning({ id: tasks.id });
+    if (!task) return undefined;
+    await tx.insert(taskEvents).values({
+      workspaceId: wf.workspaceId,
+      taskId: task.id,
+      type: "created",
+      actorMemberId: input.actorMemberId,
+      toValue: "backlog",
+      detail: { sourceWorkflowId: wf.id },
+    });
+    await tx.insert(taskEvents).values({
+      workspaceId: wf.workspaceId,
+      taskId: task.id,
+      type: "assigned",
+      actorMemberId: input.actorMemberId,
+      toValue: firstStage.agentMemberId,
+      detail: { sourceWorkflowId: wf.id },
+    });
+
+    const [successor] = await tx
+      .insert(agentWorkflows)
+      .values({
+        workspaceId: wf.workspaceId,
+        channelId: wf.channelId,
+        taskId: task.id,
+        stages: wf.stages,
+        createdByMemberId: input.actorMemberId,
+        recurring: true,
+        sourceWorkflowId: wf.id,
+      })
+      .returning(WORKFLOW_COLS);
+    return successor as AgentWorkflow | undefined;
   });
 }
 

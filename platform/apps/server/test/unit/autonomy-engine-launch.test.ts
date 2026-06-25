@@ -24,6 +24,7 @@ const setWorkflowStatus = vi.fn(() => Promise.resolve());
 const handoffWorkflowStage = vi.fn(() => Promise.resolve({ advanced: true, alreadyAdvanced: false }));
 const markWorkflowAwaitingApproval = vi.fn(() => Promise.resolve());
 const completeWorkflowWithTask = vi.fn(() => Promise.resolve());
+const spawnRecurringWorkflowSuccessor = vi.fn(() => Promise.resolve(undefined));
 const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
 const findWorkflowApproval = vi.fn(() => Promise.resolve(undefined));
 const decideApproval = vi.fn(() => Promise.resolve({ id: "appr_1", status: "approved" }));
@@ -49,6 +50,7 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   handoffWorkflowStage,
   markWorkflowAwaitingApproval,
   completeWorkflowWithTask,
+  spawnRecurringWorkflowSuccessor,
   createApproval,
   findWorkflowApproval,
   decideApproval,
@@ -128,6 +130,8 @@ const runningWorkflow: AgentWorkflow = {
   actionCount: 0,
   currentSessionId: null,
   currentSessionStage: null,
+  recurring: false,
+  sourceWorkflowId: null,
   createdAt: new Date(0),
 };
 
@@ -436,6 +440,11 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
       taskId: "task_1",
       actorMemberId: "agent_r",
       completeTask: true,
+    });
+    expect(spawnRecurringWorkflowSuccessor).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      completedTaskTitle: "summarize the repo",
+      actorMemberId: "agent_r",
     });
     expect(markWorkflowAwaitingApproval).not.toHaveBeenCalledWith("wf_1");
   });

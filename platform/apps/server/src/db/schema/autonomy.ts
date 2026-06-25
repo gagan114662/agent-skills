@@ -9,6 +9,7 @@ import {
   index,
   unique,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
@@ -142,6 +143,10 @@ export const agentWorkflows = pgTable(
       onDelete: "set null",
     }),
     currentSessionStage: integer("current_session_stage"),
+    recurring: boolean("recurring").notNull().default(false),
+    sourceWorkflowId: uuid("source_workflow_id").references((): AnyPgColumn => agentWorkflows.id, {
+      onDelete: "set null",
+    }),
     createdByMemberId: uuid("created_by_member_id").references(() => members.id, {
       onDelete: "set null",
     }),
@@ -150,6 +155,7 @@ export const agentWorkflows = pgTable(
   },
   (t) => ({
     taskUniq: unique("agent_workflows_task_uniq").on(t.taskId),
+    sourceWorkflowUniq: unique("agent_workflows_source_workflow_uniq").on(t.sourceWorkflowId),
     byStatus: index("agent_workflows_workspace_status_idx").on(t.workspaceId, t.status),
     statusCk: check(
       "agent_workflows_status_ck",
