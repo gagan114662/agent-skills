@@ -98,6 +98,21 @@ const rpc = (method: string, params: unknown, id: number | string = 1) => ({
   params,
 });
 
+async function waitForMessages(
+  channelId: string,
+  match: (messages: Awaited<ReturnType<typeof listChannelMessages>>) => boolean,
+  label: string,
+): Promise<Awaited<ReturnType<typeof listChannelMessages>>> {
+  const deadline = Date.now() + 2_000;
+  let messages = await listChannelMessages(channelId);
+  while (!match(messages) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    messages = await listChannelMessages(channelId);
+  }
+  expect(messages, label).toSatisfy(match);
+  return messages;
+}
+
 /** Drive a delegation: scout hands `task` off to quill via JSON-RPC `message/send`. Returns the task id. */
 async function delegate(
   senderToken: string,
@@ -131,7 +146,13 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const task = "Draft the launch announcement blog from the SEO brief";
     const taskId = await delegate(scout.token, quill.agentId, task);
 
-    const messages = await listChannelMessages(content.id);
+    const messages = await waitForMessages(
+      content.id,
+      (rows) =>
+        rows.some((m) => m.body.includes("Handing this off to @quill")) &&
+        rows.some((m) => m.body.startsWith("📋 Task")),
+      "expected handoff narration in #content",
+    );
 
     // The delegating lead (scout) posts the handoff status line naming the assignee + the (DATA) task.
     const handoff = messages.find((m) => m.body.includes("Handing this off to @quill"));
