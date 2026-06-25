@@ -19,6 +19,8 @@ technical + content SEO: crawlability, on-page, internal linking, Core Web Vital
 - `references/seo/technical-audit-checklist.md` — open only when the task needs it.
 - `references/seo/serp-intent-map.md` — open only when the task needs it.
 - `references/seo/core-web-vitals.md` — open only when the task needs it.
+- `references/design/taste-skill.md` — open when an SEO recommendation changes a public page's layout,
+  hierarchy, or visual presentation.
 
 ## Metric questions are not answered here
 Numbers come from the **semantic layer** (@lens owns it), never from a number you eyeball in a dashboard.

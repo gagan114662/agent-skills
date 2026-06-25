@@ -19,7 +19,8 @@
       "references": [
         "seo/technical-audit-checklist",
         "seo/serp-intent-map",
-        "seo/core-web-vitals"
+        "seo/core-web-vitals",
+        "design/taste-skill"
       ],
       "metrics": [
         "growth.score"
@@ -67,7 +68,8 @@
       "references": [
         "content/outline-patterns",
         "content/editing-rubric",
-        "content/reader-personas"
+        "content/reader-personas",
+        "design/taste-skill"
       ],
       "metrics": [
         "growth.score"
@@ -169,7 +171,8 @@
       "references": [
         "brand/voice-and-tone",
         "brand/naming-guardrails",
-        "brand/message-consistency"
+        "brand/message-consistency",
+        "design/taste-skill"
       ],
       "metrics": []
     },
