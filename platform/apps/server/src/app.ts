@@ -277,6 +277,7 @@ import type { AuditService } from "./audit/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
+import { SpendCapBreachError } from "./runtime/manager.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
 
 /**
@@ -611,6 +612,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       // Additive metadata only — the denial itself is unchanged (no gate is weakened).
       if (status === 429) reply.header("retry-after", String(ADMISSION_RETRY_AFTER_SECONDS));
       return reply.code(status).send({ error: err.message, reason: err.reason });
+    }
+    if (err instanceof SpendCapBreachError) {
+      return reply.code(402).send({
+        error: err.message,
+        reason: err.reason,
+        approvalRequestId: err.approvalRequestId,
+        requestCents: err.requestCents,
+      });
     }
     // #96: the venture admission gate denies an autonomy launch lacking a fundable scorecard → 403.
     if (err instanceof VentureAdmissionError) {

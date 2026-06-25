@@ -54,6 +54,7 @@ import { resolveScaleCaps } from "../scale/caps.js";
 import { resolveBrowserCaps } from "./browser/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
 import { createSpendAnomalyMonitor } from "../scale/spend-anomaly.js";
+import { createDefaultEnterpriseService } from "../enterprise/default.js";
 import { selfHealingStore } from "../db/repositories/self-healing.js";
 import {
   recordSpawnFailureIncident,
@@ -328,6 +329,9 @@ export function createDefaultSessionManager(
     // dashboard's in-flight numbers reflect what the manager is actually running.
     admission: scale.admission,
     usage: scale.usage,
+    enterprise: createDefaultEnterpriseService(),
+    enterpriseComputeRateCentsPerMinute: (workspaceId) =>
+      resolveScaleCaps(loadConfig(workspaceId).scale).computeRateCentsPerMinute,
     spendAnomaly: createSpendAnomalyMonitor({
       usage: usageStore,
       config: (workspaceId) => loadConfig(workspaceId),
