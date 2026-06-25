@@ -7,11 +7,16 @@
  * body, and given a unique, front-loaded title + its own description + a breadcrumb.
  */
 import { describe, expect, it } from "vitest";
-import { prerenderPages } from "./entry-server.js";
+import { buildSitemap, prerenderPages } from "./entry-server.js";
 import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS, LEGAL, COMPANY } from "./brand.js";
 
 const pages = prerenderPages();
 const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
+const organicDiscoveryPosts = [
+  "/blog/what-is-an-ai-marketing-agency",
+  "/blog/ai-marketing-team-for-startups",
+  "/blog/autonomous-marketing-agents-explained",
+] as const;
 
 describe("prerenderPages — public marketing coverage (#467)", () => {
   it("prerenders every public marketing surface a crawler should index", () => {
@@ -92,6 +97,20 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     for (const page of pages.filter((p) => p.urlPath !== "/")) {
       // urlPath is what injectPage() turns into the canonical/og:url — each must be its own route.
       expect(page.urlPath).not.toBe("/");
+    }
+  });
+
+  it("prerenders the #903 organic-discovery pillar and spoke articles", () => {
+    const paths = pages.map((p) => p.urlPath);
+    for (const expected of organicDiscoveryPosts) {
+      expect(paths, `missing prerendered SEO article ${expected}`).toContain(expected);
+    }
+  });
+
+  it("includes the #903 organic-discovery articles in the sitemap", () => {
+    const sitemap = buildSitemap("https://ipop.ai", pages);
+    for (const expected of organicDiscoveryPosts) {
+      expect(sitemap).toContain(`<loc>https://ipop.ai${expected}</loc>`);
     }
   });
 });

@@ -3,7 +3,7 @@
 **Issue:** #294
 **Author:** Scout (SEO) + Quill (content)
 **Date:** 2026-06-16
-**Status:** plan (deliverables are content drafts; nothing is published — see #200 §4 human gate)
+**Status:** targets configured; the pillar + two spoke articles are published via the content allowlist (#903).
 
 ## Goal
 

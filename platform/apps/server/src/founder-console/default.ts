@@ -62,6 +62,11 @@ import {
 import { buildAcquisitionBriefView } from "../acquisition/cac.js";
 import type { ProofMetricReading } from "./proof-scorecard.js";
 
+function describeSeoTargets(targetKeywords: readonly string[] | undefined): string {
+  const targets = (targetKeywords ?? []).map((keyword) => keyword.trim()).filter(Boolean);
+  return targets.length > 0 ? `tracking targets: ${targets.join(", ")}; ` : "";
+}
+
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
  * repo/manager — no new query authority beyond the additive workspace-scoped `listEvaluations` read.
@@ -624,6 +629,7 @@ export function createDefaultFounderConsoleService(deps: {
         // when a real provider/webhook has reported at least one observation; otherwise "not connected"
         // with the reason — never a fabricated rank (premortem #200 §2). The headline is target keywords
         // sitting on page 1 (positions 1–10) as of each keyword's latest external reading.
+        const seoTargets = describeSeoTargets(loadConfig(workspaceId).seo?.targetKeywords);
         const seoTotal = await dbSeoRankStore.count(workspaceId);
         // #265: the latest EXTERNALLY-VERIFIED indexed-page count from a Search Console submission, or null
         // (never fabricated). Folded into the SEO tile so indexed-page numbers surface automatically once a
@@ -661,7 +667,7 @@ export function createDefaultFounderConsoleService(deps: {
             unit: "count",
             metricLabel: "Target keywords on page 1",
             source: "No rank source connected",
-            note: "connect a rank tracker (Search Console / SERP API) or POST external rank receipts to /me/seo/observations to prove rankings",
+            note: `${seoTargets}connect a rank tracker (Search Console / SERP API) or POST external rank receipts to /me/seo/observations to prove rankings`,
           });
         }
 

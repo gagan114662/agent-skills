@@ -110,6 +110,16 @@ describe("owner-activation profile — FULL ACTIVATION for the owner workspace (
     expect(cfg.realworld.publishProvider).toBe("github_pages");
   });
 
+  it("configures the 0294 organic-discovery target keywords for rank tracking (#903)", () => {
+    expect(cfg.seo.targetKeywords).toEqual([
+      "AI marketing agency",
+      "AI agent marketing team",
+      "autonomous marketing agents",
+      "AI marketing department",
+      "AI marketing agents for startups",
+    ]);
+  });
+
   it("brings the owner-workspace-first resolvers INTO scope for the owner", () => {
     expect(isVentureGateEnabledForWorkspace(resolveVentureCaps(cfg.venture), OWNER)).toBe(true);
     expect(isLiveSendEnabledForWorkspace(cfg.emailDeliverability, OWNER)).toBe(true);
