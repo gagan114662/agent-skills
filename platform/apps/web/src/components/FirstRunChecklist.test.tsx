@@ -34,6 +34,23 @@ describe("FirstRunChecklist (#479)", () => {
     expect(screen.getByText(CONSOLE.firstRunChecklist.progress(1, 5))).toBeInTheDocument();
   });
 
+  it("keeps the progress counter in sync with the visible completed steps", () => {
+    const visibleSteps = steps({ targetSet: true, hasConnection: true, agentRan: true });
+    const { container } = render(
+      <FirstRunChecklist
+        steps={visibleSteps}
+        collapsed={false}
+        onAction={vi.fn()}
+        onToggleCollapse={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(visibleSteps.length);
+    expect(container.querySelectorAll(".firstrun__step--done")).toHaveLength(3);
+    expect(screen.getByText(CONSOLE.firstRunChecklist.progress(3, visibleSteps.length))).toBeInTheDocument();
+  });
+
   it("routes an outstanding step's CTA to onAction with its key", async () => {
     const onAction = vi.fn();
     render(<FirstRunChecklist steps={steps()} collapsed={false} onAction={onAction} onToggleCollapse={vi.fn()} onDismiss={vi.fn()} />);

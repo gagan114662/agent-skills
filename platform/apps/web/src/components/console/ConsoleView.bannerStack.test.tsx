@@ -55,6 +55,14 @@ function ruleBody(selector: string): string {
   return css.slice(open + 1, close);
 }
 
+function lastRuleBody(selector: string): string {
+  const start = css.lastIndexOf(`${selector} {`);
+  expect(start, `the final ${selector} rule must exist`).toBeGreaterThanOrEqual(0);
+  const open = css.indexOf("{", start);
+  const close = css.indexOf("}", open);
+  return css.slice(open + 1, close);
+}
+
 const FAILING = {
   state: "sessions_failing" as const,
   headline: "I couldn't start up — my runtime is missing a tool I need.",
@@ -137,6 +145,22 @@ describe("ConsoleView stacked top banners stay above the fold (#503)", () => {
     // majority of the viewport. (Pinned here so a future banner change can't quietly steal the channel.)
     expect(ruleBody(".coord"), ".coord must grow to fill the space the capped banner rail leaves").toMatch(
       /flex\s*:\s*1/,
+    );
+  });
+
+  it("the first-run checklist resets legacy empty-state sizing inside the banner rail", () => {
+    const body = lastRuleBody(".firstrun");
+    expect(body, "the checklist card must not grow like the old empty-console first-run panel").toMatch(
+      /flex\s*:\s*none/,
+    );
+    expect(body, "the checklist card must not create its own clipped scrollport").toMatch(
+      /overflow\s*:\s*visible/,
+    );
+    expect(body, "the checklist card must fill the rail instead of staying capped to a narrow centered panel").toMatch(
+      /max-width\s*:\s*none/,
+    );
+    expect(body, "the checklist content must align like a compact banner, not faded centered onboarding chrome").toMatch(
+      /text-align\s*:\s*left/,
     );
   });
 
