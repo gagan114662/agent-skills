@@ -1258,7 +1258,7 @@ export const CONSOLE = {
   },
   /** Per-project settings sheet: tab labels + field copy. */
   settings: {
-    tabs: { general: "General", models: "Models", agents: "Agents", budget: "Budget", approvals: "Approvals" },
+    tabs: { general: "General", models: "Models", agents: "Agents", budget: "Budget", approvals: "Approvals", skillopt: "SkillOpt" },
     general: {
       repoLabel: "REPOSITORY",
       repoHint: "one project = one repo = one company",
@@ -1291,6 +1291,21 @@ export const CONSOLE = {
       gateSub: "money moves are gated in code; the fleet ships everything else on its own",
       approverLabel: "APPROVERS",
       approverHint: "every yes is on the record",
+    },
+    skillopt: {
+      title: "SkillOpt proposals",
+      hint: "staged runbook edits with held-out validation receipts. adopt or reject through the same approval gate.",
+      loading: "loading proposals...",
+      empty: "no staged self-improvements yet.",
+      verified: "external receipt verified",
+      unverified: "not externally verified",
+      adopt: "Adopt",
+      reject: "Reject",
+      working: "Working...",
+      adoptReason: "Owner adopted the staged SkillOpt edit from the console.",
+      rejectReason: "Owner rejected the staged SkillOpt edit from the console.",
+      error: "Couldn't load SkillOpt proposals.",
+      decisionError: "Couldn't update that SkillOpt approval.",
     },
     close: "Done",
   },

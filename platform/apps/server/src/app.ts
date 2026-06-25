@@ -177,6 +177,7 @@ import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { gardenRoutes } from "./routes/garden.js";
+import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
 import { departmentRoutes } from "./routes/department.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
@@ -1122,6 +1123,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.
   app.register(gardenRoutes);
+  // #1065 SkillOpt review console: list staged self-improvement proposals + held-out validation receipts.
+  // Adoption/rejection stays on the linked #13 approval request; this route is read-only.
+  app.register(skilloptRoutes);
   // #464 agent execution tools: the runtime seam where an "acts outside" agent requests a real-world action
   // (publish/post/spend). Every invocation parks a PENDING #13 approval and NEVER fires on its own — the
   // action runs only after the owner approves it. The catalog is read-only and always listable.

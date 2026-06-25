@@ -10,8 +10,9 @@
 import { useEffect, useState } from "react";
 import { CONSOLE, FLEET, departmentColor } from "../../brand.js";
 import { fmtCents, type ConsoleProject } from "./model.js";
+import { SkillOptProposalsPanel } from "./SkillOptProposalsPanel.js";
 
-type Tab = "general" | "models" | "agents" | "budget" | "approvals";
+type Tab = "general" | "models" | "agents" | "budget" | "approvals" | "skillopt";
 
 export interface ProjectSettingsSheetProps {
   open: boolean;
@@ -29,6 +30,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "agents", label: CONSOLE.settings.tabs.agents },
   { key: "budget", label: CONSOLE.settings.tabs.budget },
   { key: "approvals", label: CONSOLE.settings.tabs.approvals },
+  { key: "skillopt", label: CONSOLE.settings.tabs.skillopt },
 ];
 
 function StatusChip({ children }: { children: string }): React.JSX.Element {
@@ -196,6 +198,8 @@ export function ProjectSettingsSheet(props: ProjectSettingsSheetProps): React.JS
               </div>
             </>
           )}
+
+          {tab === "skillopt" && <SkillOptProposalsPanel />}
         </div>
 
         <footer className="sheet__foot">

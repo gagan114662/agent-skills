@@ -155,6 +155,34 @@ export interface GardenResponse {
   agents: GardenAgentView[];
 }
 
+export type SkillOptProposalStatus = "staged" | "deduped" | "skipped";
+
+/** One SkillOpt-Sleep proposal/outcome row (#1065), from GET /me/skillopt/proposals. */
+export interface SkillOptProposalDto {
+  id: string;
+  runId: string;
+  workspaceId: string;
+  agentHandle: string;
+  skillId: string;
+  status: SkillOptProposalStatus;
+  skipReason: string | null;
+  clusterKey: string | null;
+  metric: string | null;
+  higherIsBetter: boolean | null;
+  baseline: number | null;
+  candidate: number | null;
+  improvementRatio: number | null;
+  sampleSize: number | null;
+  externallyVerified: boolean | null;
+  currentDocSha: string | null;
+  requestId: string | null;
+  createdAt: string;
+}
+
+export interface SkillOptProposalsResponse {
+  proposals: SkillOptProposalDto[];
+}
+
 /** The brand kit (#271) — the owner's one-time brand identity the fleet draws from. */
 export interface BrandKitDto {
   id: string;

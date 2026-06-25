@@ -78,6 +78,8 @@ import type {
   ExternalAccountConnectInput,
   ConnectionsResponse,
   GardenResponse,
+  SkillOptProposalsResponse,
+  SkillOptProposalStatus,
   SampleConsoleResponse,
   StatusPageDto,
   PublicSupportTicketStatusDto,
@@ -474,6 +476,14 @@ export const api = {
   async disableGardenAgent(handle: string): Promise<GardenResponse> {
     const res = await post(`/me/garden/${encodeURIComponent(handle)}/disable`);
     return (res as { garden: GardenResponse }).garden;
+  },
+
+  // --- SkillOpt-Sleep proposals (#1065): staged edits + held-out validation receipts ---
+  skillopt: {
+    proposals(status?: SkillOptProposalStatus): Promise<SkillOptProposalsResponse> {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<SkillOptProposalsResponse>(`/me/skillopt/proposals${qs}`);
+    },
   },
 
   // --- venture intake (#387): brief ANY company idea into the already-built #96 venture loop ---
