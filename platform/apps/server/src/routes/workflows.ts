@@ -5,6 +5,7 @@ import { computeNextRun } from "../automations/schedule.js";
 import { generateWebhookToken, hashWebhookToken } from "../automations/webhook.js";
 import { resolveWorkflowCaps } from "../workflows/caps.js";
 import { aggregateWorkflowInsights } from "../workflows/insights.js";
+import { buildLaunchPlaybook, isLaunchChannel, type LaunchChannel } from "../workflows/launch-playbook.js";
 import {
   isWorkflowTriggerKind,
   isConditionOp,
@@ -179,6 +180,62 @@ export async function workflowRoutes(app: FastifyInstance, opts: WorkflowRoutesO
       nextRunAt,
     });
     return reply.code(201).send(token ? { ...record, webhookToken: token } : record);
+  });
+
+  /** Create and optionally run the reusable launch-day coordination playbook (#600). */
+  app.post("/workspaces/:wid/workflows/launch-playbook", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      return reply.code(400).send({ error: "name is required" });
+    }
+    if (typeof body.channelId !== "string" || !body.channelId.trim()) {
+      return reply.code(400).send({ error: "channelId is required" });
+    }
+    const launchAt = typeof body.launchAt === "string" ? new Date(body.launchAt) : null;
+    if (!launchAt || Number.isNaN(launchAt.getTime())) {
+      return reply.code(400).send({ error: "launchAt must be an ISO timestamp" });
+    }
+    const channels: LaunchChannel[] = [];
+    if (body.channels !== undefined) {
+      if (!Array.isArray(body.channels)) return reply.code(400).send({ error: "channels must be an array" });
+      for (const channel of body.channels) {
+        if (!isLaunchChannel(channel)) return reply.code(400).send({ error: "unknown launch channel" });
+        channels.push(channel);
+      }
+    }
+
+    const caps = resolveWorkflowCaps(loadConfig(wid).workflows);
+    if ((await store.countForWorkspace(wid)) >= caps.maxPerWorkspace) {
+      return reply.code(429).send({ error: "workflow limit reached" });
+    }
+
+    const playbook = buildLaunchPlaybook({
+      name: body.name,
+      launchAt,
+      channelId: body.channelId,
+      channels: channels.length > 0 ? channels : undefined,
+      ownerMessage: typeof body.ownerMessage === "string" ? body.ownerMessage : undefined,
+    });
+    const minted = generateWebhookToken();
+    const record = await store.create({
+      workspaceId: wid,
+      name: playbook.workflow.name,
+      triggerKind: playbook.workflow.trigger.kind,
+      trigger: playbook.workflow.trigger,
+      conditions: playbook.workflow.conditions,
+      actions: playbook.workflow.actions,
+      webhookTokenHash: minted.hash,
+      enabled: playbook.workflow.enabled,
+      createdByMemberId: id.memberId,
+      nextRunAt: null,
+    });
+    const run = body.runNow === false ? null : await engine.runWorkflow(record, "manual");
+    return reply.code(201).send({ workflow: { ...record, webhookToken: minted.token }, checklist: playbook.checklist, run });
   });
 
   /** Pause / resume a workflow. Enabling a schedule trigger recomputes its cursor from now. */

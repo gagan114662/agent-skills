@@ -231,6 +231,54 @@ describe("workflows (real Postgres): trigger → condition → action chains", (
     expect((await get(w, "/workflows")).json()[0].webhookToken).toBeUndefined();
   });
 
+  it("creates and runs the launch-day coordination playbook as a timed checklist plus approval-gated monitoring workflow", async () => {
+    capsEnabled = true;
+    maxRunsPerWindow = 50;
+    launches.length = 0;
+    const w = await seed();
+
+    const created = await post(w, "/workflows/launch-playbook", {
+      name: "ipop Product Hunt launch",
+      launchAt: "2026-07-01T16:00:00.000Z",
+      channelId: w.channelId,
+      channels: ["product_hunt", "hacker_news", "communities"],
+      ownerMessage: "Owner is launch commander.",
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().workflow.name).toBe("Launch-day coordination: ipop Product Hunt launch");
+    expect(created.json().workflow.webhookToken).toMatch(/^whk_/);
+    expect(created.json().checklist).toHaveLength(8);
+    expect(created.json().checklist[0]).toMatchObject({
+      phase: "pre_launch",
+      owner: "quill",
+      dueAt: "2026-06-29T16:00:00.000Z",
+    });
+    expect(created.json().checklist.some((i: { owner: string; title: string }) => i.owner === "lens" && i.title.includes("Monitor"))).toBe(true);
+    expect(created.json().run.status).toBe("fired");
+    expect(created.json().run.results.map((r: { kind: string; status: string }) => r.kind + ":" + r.status)).toEqual([
+      "agent_task:ok",
+      "agent_task:ok",
+      "draft_send:ok",
+      "draft_send:ok",
+      "draft_send:ok",
+      "agent_task:ok",
+      "agent_task:ok",
+      "notify_owner:ok",
+    ]);
+
+    expect(launches).toHaveLength(4);
+    expect(launches.some((l) => l.task.includes("Monitor launch replies and traffic"))).toBe(true);
+    const pending = await listRequests(w.workspaceId, { status: "pending" });
+    const launchApprovals = pending.filter((r) => r.actionType === "external.send" && r.summary.includes("launch post"));
+    expect(launchApprovals).toHaveLength(3);
+    expect(launchApprovals.map((r) => (r.payload as { target?: string }).target).sort()).toEqual([
+      "Hacker News / Show HN",
+      "Product Hunt",
+      "founder and AI-operator communities",
+    ]);
+  });
+
   it("a catalog_change workflow fires when a matching catalog entry is created", async () => {
     capsEnabled = true;
     maxRunsPerWindow = 50;
