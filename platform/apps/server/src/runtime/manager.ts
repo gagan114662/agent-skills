@@ -51,6 +51,11 @@ import {
   type AgentSessionOutcome,
   type AgentTracer,
 } from "../observability/tracing.js";
+import {
+  createReasoningLoopGuard,
+  prepareAgentContext,
+  type ContextCircuitPolicy,
+} from "./context-circuit.js";
 
 /**
  * Thrown when a per-session harness selection is invalid (not in the allowlist) or cannot be honored
@@ -360,6 +365,11 @@ export interface SessionManagerDeps {
     task: string;
     result: string;
   }): Promise<void>;
+  /**
+   * Context-rot circuit breaker (#557): compacts oversized launch context before it reaches AGENT_TASK
+   * and nudges repeated planning spirals in the live stream. Undefined uses safe defaults; false disables.
+   */
+  contextCircuit?: ContextCircuitPolicy | false;
 }
 
 export interface LaunchInput {
@@ -371,6 +381,8 @@ export interface LaunchInput {
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
   task: string;
+  /** True when this launch resumes after an interrupted prior run; appended as a synthetic context turn. */
+  interrupted?: boolean;
   /** Optional caller-owned idempotency key; duplicate launches return the existing session row. */
   idempotencyKey?: string | null;
   /**
@@ -531,7 +543,13 @@ export class SessionManager {
 
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
-    const task = redactPotentialSecrets(input.task);
+    const redactedTask = redactPotentialSecrets(input.task);
+    const task =
+      this.deps.contextCircuit === false
+        ? redactedTask
+        : prepareAgentContext(redactedTask, this.deps.contextCircuit, {
+            interrupted: input.interrupted,
+          }).task;
     // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
     // a row, acquire an admission slot, or make any runtime/cloud call — so a half-broken session
     // never starts. The default local/demo posture always passes; no gate wired (unit tests) = no-op.
@@ -992,6 +1010,11 @@ export class SessionManager {
     let finalAnswer = "";
     let lastToolCall: HarnessToolCall | null = null;
     let failedTool: ToolFailureContext | null = null;
+    const reasoningGuard =
+      this.deps.contextCircuit === false
+        ? undefined
+        : createReasoningLoopGuard(this.deps.contextCircuit);
+    let runningRef: RunningSession | undefined;
     // #436 idempotency anchors: did the SESSION ever emit output / fire a heartbeat across its attempts?
     // The moment either is true, a dead attempt may have taken a real/money action, so it is NEVER retried.
     let sawOutput = false;
@@ -1024,6 +1047,22 @@ export class SessionManager {
         tail.push(clean);
         if (tail.length > RESULT_TAIL_LINES) tail.shift();
         postChain = postChain.then(() => this.safePost(session, clean, log, parentMessageId));
+        const nudge = reasoningGuard?.observe(clean);
+        if (nudge) {
+          tail.push(nudge);
+          if (tail.length > RESULT_TAIL_LINES) tail.shift();
+          postChain = postChain.then(() => this.safePost(session, nudge, log, parentMessageId));
+          const steer = runningRef?.steer;
+          if (steer) {
+            void steer(nudge).catch((err: unknown) =>
+              log.error({ err }, "reasoning-loop guard steer failed"),
+            );
+          } else {
+            void runningRef
+              ?.cancel("idle")
+              .catch((err: unknown) => log.error({ err }, "reasoning-loop guard cancel failed"));
+          }
+        }
       }
     };
 
@@ -1083,7 +1122,6 @@ export class SessionManager {
     };
     const wallTimer = setTimeout(() => fireReap("timeout"), opts.caps.wallClockMs);
 
-    let runningRef: RunningSession | undefined;
     let result: RuntimeResult = { status: "failed", exitCode: null };
     // #71: the session's wall-clock lifetime is the compute-seconds we bill the tenant for.
     const runStart = Date.now();
