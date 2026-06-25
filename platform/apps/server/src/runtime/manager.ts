@@ -31,6 +31,7 @@ import { resolveEgressPolicy } from "./egress-allowlist.js";
 import { loadConfig } from "../config/loader.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
+import type { SpendAnomalyMonitor, SpendGuardSession } from "../scale/spend-anomaly.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { statusForReason } from "./types.js";
@@ -44,7 +45,11 @@ import {
   type FailureReasonClass,
 } from "./outcome.js";
 import { resolveLaunchModel } from "./models.js";
-import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
+import {
+  noopTracer,
+  type AgentSessionOutcome,
+  type AgentTracer,
+} from "../observability/tracing.js";
 
 /**
  * Thrown when a per-session harness selection is invalid (not in the allowlist) or cannot be honored
@@ -213,6 +218,14 @@ export interface SessionManagerDeps {
    * per-tenant budget can bite. Absent → no accounting (today's behavior).
    */
   usage?: UsageRecorder;
+  /**
+   * Runtime spend anomaly guard (#926): estimates in-flight session cost, emits threshold alerts, and
+   * asks the manager to cancel a runaway session before it drains the workspace budget. Absent means no
+   * realtime spend guard; finalized usage accounting still runs through usage.
+   */
+  spendAnomaly?: SpendAnomalyMonitor;
+  /** Poll cadence for the spend anomaly guard. Prod defaults conservatively; tests inject a tiny value. */
+  spendAnomalyIntervalMs?: number;
   /**
    * Optional harness-aware output decoder (#81): converts each raw stdout line into readable channel
    * text, keeping the parsed event for structured consumers. The `claude-code` harness emits
@@ -630,7 +643,10 @@ export class SessionManager {
     }
     if (!isHarnessKind(override)) throw new HarnessKindError(override);
     if (!this.deps.harnessOverrides) {
-      throw new HarnessKindError(override, "cannot be selected (no harness override resolver wired)");
+      throw new HarnessKindError(
+        override,
+        "cannot be selected (no harness override resolver wired)",
+      );
     }
     const resolved = this.deps.harnessOverrides(override, { fast });
     return {
@@ -649,7 +665,12 @@ export class SessionManager {
    */
   private async maybeAutoSelectModel(input: LaunchInput): Promise<
     | {
-        selectionRow: { provider: ProviderKind; model: string; effort: EffortLevel; mode: SessionMode };
+        selectionRow: {
+          provider: ProviderKind;
+          model: string;
+          effort: EffortLevel;
+          mode: SessionMode;
+        };
         harnessEnv: Record<string, string>;
         decision: AutoModelDecision;
       }
@@ -932,7 +953,10 @@ export class SessionManager {
         if (harnessEventReportsError(decoded.raw)) {
           harnessReportedError = true;
           if (!failedTool && lastToolCall) {
-            failedTool = { tool: lastToolCall, error: eventError ?? "agent run ended with an error" };
+            failedTool = {
+              tool: lastToolCall,
+              error: eventError ?? "agent run ended with an error",
+            };
           }
         }
         const answer = finalAnswerFromEvent(decoded.raw);
@@ -1007,14 +1031,72 @@ export class SessionManager {
     let result: RuntimeResult = { status: "failed", exitCode: null };
     // #71: the session's wall-clock lifetime is the compute-seconds we bill the tenant for.
     const runStart = Date.now();
+    let spendGuard: SpendGuardSession | null = null;
+    let spendTimer: NodeJS.Timeout | undefined;
+    let spendKilled = false;
+    const checkSpend = async (): Promise<void> => {
+      if (!spendGuard || spendKilled) return;
+      const elapsedSeconds = Math.max(0, Math.round((Date.now() - runStart) / 1000));
+      try {
+        const check = await spendGuard.check(elapsedSeconds);
+        if (!check.kill) return;
+        spendKilled = true;
+        log.warn(
+          {
+            reason: check.reason,
+            elapsedSeconds,
+            estimatedCostCents: check.live.estimatedCostCents,
+            budgetCents: check.live.budgetCents,
+          },
+          "agent session spend anomaly guard canceled runaway session",
+        );
+        await this.safePost(
+          session,
+          "Warning: session " +
+            session.id +
+            " paused: spend guard hit " +
+            (check.reason ?? "budget threshold") +
+            " (" +
+            check.live.estimatedCostCents +
+            "c estimated this session).",
+          log,
+          parentMessageId,
+        );
+        await runningRef
+          ?.cancel("canceled")
+          .catch((err: unknown) => log.error({ err }, "spend anomaly cancel failed"));
+      } catch (err) {
+        log.error({ err }, "spend anomaly check failed");
+      }
+    };
     try {
+      spendGuard =
+        (await this.deps.spendAnomaly?.begin({
+          sessionId: session.id,
+          workspaceId: session.workspaceId,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          createdByMemberId: session.createdByMemberId ?? session.agentMemberId,
+          task,
+          startedAtMs: runStart,
+        })) ?? null;
+      if (spendGuard) {
+        spendTimer = setInterval(
+          () => void checkSpend(),
+          Math.max(250, this.deps.spendAnomalyIntervalMs ?? 15_000),
+        );
+        spendTimer.unref?.();
+      }
       // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
       const prepared = await this.deps.workspace?.prepare({
         sessionId: session.id,
         workspaceId: session.workspaceId,
       });
       const safeHarnessEnv = Object.fromEntries(
-        Object.entries(opts.harnessEnv ?? {}).map(([key, value]) => [key, redactPotentialSecrets(value)]),
+        Object.entries(opts.harnessEnv ?? {}).map(([key, value]) => [
+          key,
+          redactPotentialSecrets(value),
+        ]),
       );
       const startSpec = {
         sessionId: session.id,
@@ -1081,7 +1163,10 @@ export class SessionManager {
         } catch (attemptErr) {
           // `start()`/`markRunning()` threw: a pre-process death (no exit code). Tear down any started
           // child best-effort so a retry never leaves an orphan running, then treat it as a null-exit failure.
-          log.warn({ attempt, err: redactError(attemptErr, redact) }, "agent session attempt failed to start");
+          log.warn(
+            { attempt, err: redactError(attemptErr, redact) },
+            "agent session attempt failed to start",
+          );
           if (running) await running.cancel("failed").catch(() => {});
           result = { status: "failed", exitCode: null };
         } finally {
@@ -1111,6 +1196,11 @@ export class SessionManager {
       log.error({ err: redactError(err, redact) }, "agent session failed to run");
       result = { status: "failed", exitCode: null };
     } finally {
+      if (spendTimer) clearInterval(spendTimer);
+      if (spendGuard) {
+        await checkSpend();
+        spendGuard.close();
+      }
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(wallTimer);
       if (graceTimer) clearTimeout(graceTimer); // #394: drop the reap grace timer on every teardown path
@@ -1157,7 +1247,11 @@ export class SessionManager {
     // reason class (auth markers) and is never echoed back into the message.
     await this.safePost(
       session,
-      renderSessionOutcome({ status: result.status, exitCode: result.exitCode, outputTail: resultText }),
+      renderSessionOutcome({
+        status: result.status,
+        exitCode: result.exitCode,
+        outputTail: resultText,
+      }),
       log,
     );
     await this.deps.store.finalize(session.id, {
@@ -1280,7 +1374,11 @@ export class SessionManager {
           exitCode: null,
         });
       } else {
-        await this.deps.store.finalize(session.id, { status: "failed", exitCode: null, result: detail });
+        await this.deps.store.finalize(session.id, {
+          status: "failed",
+          exitCode: null,
+          result: detail,
+        });
         finalized = true;
       }
     } catch (e: unknown) {

@@ -32,7 +32,12 @@ import { getWorkspaceClaudeModel } from "../db/repositories/agent-credentials.js
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import { resolveAllServiceSecrets } from "../db/repositories/external-credentials.js";
 import { createAgentAuthResolver } from "./auth-default.js";
-import { SessionManager, type ChannelPoster, type SessionLogger, type SessionStore } from "./manager.js";
+import {
+  SessionManager,
+  type ChannelPoster,
+  type SessionLogger,
+  type SessionStore,
+} from "./manager.js";
 import { formatDeliverableMessage } from "./outcome.js";
 import {
   isAgentChannelPostingEnabledForWorkspace,
@@ -41,15 +46,23 @@ import {
 import { AutoModelResolver } from "./auto-model.js";
 import { HttpGatewayRoutingClient } from "./gateway-client.js";
 import { usageStore } from "../db/repositories/tenant-usage.js";
+import { setKillSwitch } from "../db/repositories/autonomy.js";
 import { harnessLineDecoder } from "./stream-json.js";
 import { harnessSpec, type HarnessKind } from "./harness.js";
 import { createBraintrustTracer } from "../observability/braintrust.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { resolveBrowserCaps } from "./browser/caps.js";
 import { createScale, type Scale } from "../scale/default.js";
+import { createSpendAnomalyMonitor } from "../scale/spend-anomaly.js";
 import { selfHealingStore } from "../db/repositories/self-healing.js";
-import { recordSpawnFailureIncident, resolveSpawnFailureIncident } from "../self-healing/spawn-incident.js";
-import { recordModelFailureIncident, resolveModelFailureIncident } from "../self-healing/model-incident.js";
+import {
+  recordSpawnFailureIncident,
+  resolveSpawnFailureIncident,
+} from "../self-healing/spawn-incident.js";
+import {
+  recordModelFailureIncident,
+  resolveModelFailureIncident,
+} from "../self-healing/model-incident.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -179,7 +192,10 @@ function deliveryDispatcher(logger: SessionLogger): ReturnType<typeof buildDeliv
   return (_deliveryDispatcher ??= buildDeliveryDispatcher(createDefaultVerificationEngine(logger)));
 }
 
-export function createDefaultSessionManager(logger: SessionLogger, scale: Scale = createScale(0)): SessionManager {
+export function createDefaultSessionManager(
+  logger: SessionLogger,
+  scale: Scale = createScale(0),
+): SessionManager {
   const fullEnv = loadEnv();
   const env = fullEnv.agent;
   // Auto model-selection (convene-llm-gateway): wired only when a gateway URL is configured. The
@@ -256,12 +272,14 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       new SubscriptionSecretsResolver(
         createAgentAuthResolver(),
         new ExternalSecretsResolver(new EnvSecretsResolver(), {
-          isEnabled: (workspaceId) => resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled,
+          isEnabled: (workspaceId) =>
+            resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled,
           loadServiceSecrets: (workspaceId) => resolveAllServiceSecrets(workspaceId),
         }),
       ),
       {
-        loadMatrix: (workspaceId) => resolveCredentialMatrix(loadConfig(workspaceId).credentialScopes),
+        loadMatrix: (workspaceId) =>
+          resolveCredentialMatrix(loadConfig(workspaceId).credentialScopes),
         lookupAgentName: async (workspaceId, agentMemberId) =>
           (await getPersonaByAgentMember(workspaceId, agentMemberId))?.name ?? null,
       },
@@ -295,7 +313,9 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // narrow knob) — honored when the session var is unset so existing deployments keep working.
     sessionRetryMaxAttempts:
       Number(
-        process.env.AGENT_SESSION_RETRY_MAX_ATTEMPTS ?? process.env.AGENT_SPAWN_RETRY_MAX_ATTEMPTS ?? 1,
+        process.env.AGENT_SESSION_RETRY_MAX_ATTEMPTS ??
+          process.env.AGENT_SPAWN_RETRY_MAX_ATTEMPTS ??
+          1,
       ) || 1,
     logger,
     // #58 file-copy provisioner, or the #51 git-worktree provisioner when a repo is configured.
@@ -308,6 +328,41 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
     // dashboard's in-flight numbers reflect what the manager is actually running.
     admission: scale.admission,
     usage: scale.usage,
+    spendAnomaly: createSpendAnomalyMonitor({
+      usage: usageStore,
+      config: (workspaceId) => loadConfig(workspaceId),
+      onAlert: async ({ session, threshold, live }) => {
+        await channelPoster.post({
+          workspaceId: session.workspaceId,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          body:
+            "Spend alert: session " +
+            session.sessionId +
+            " crossed " +
+            threshold +
+            "% of the workspace budget window (" +
+            live.estimatedCostCents +
+            "c estimated for this session).",
+        });
+      },
+      onKill: async ({ session, live, reason }) => {
+        await setKillSwitch(session.workspaceId, true, session.createdByMemberId);
+        await channelPoster.post({
+          workspaceId: session.workspaceId,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          body:
+            "Spend guard engaged the workspace kill switch for session " +
+            session.sessionId +
+            ": " +
+            reason +
+            " (" +
+            live.estimatedCostCents +
+            "c estimated for this session).",
+        });
+      },
+    }),
     // #69: fail fast on a misconfigured cloud/real-agent posture before any launch persists or makes
     // a cloud call. local/demo (the default) always passes, so this is a no-op for that posture.
     preflight: defaultPreflight,
@@ -402,7 +457,10 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
       // cautious workspace can still opt `agent.deliverable` back into the spend-approval lane with a policy
       // rule. `evaluatePolicy` honors both the money predicate and any workspace rule (#243 / ADR-0013).
       const rules = await listPolicyRules(e.workspaceId);
-      const gated = evaluatePolicy({ actionType: "agent.deliverable", amount: null }, rules).requiresApproval;
+      const gated = evaluatePolicy(
+        { actionType: "agent.deliverable", amount: null },
+        rules,
+      ).requiresApproval;
       const payload = {
         sessionId: e.sessionId,
         channelId: e.channelId,
@@ -423,7 +481,9 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
         // Non-money → autonomous: land it in Done (executed). Money (a future priced deliverable) → pending.
         status: gated ? "pending" : "executed",
         expiresAt: null,
-        result: gated ? undefined : { acknowledged: true, sessionId: e.sessionId, autonomous: true },
+        result: gated
+          ? undefined
+          : { acknowledged: true, sessionId: e.sessionId, autonomous: true },
         events: gated
           ? [{ type: "requested", detail: { sessionId: e.sessionId } }]
           : [
@@ -449,7 +509,11 @@ export function createDefaultSessionManager(logger: SessionLogger, scale: Scale 
           });
           if (shipped) {
             logger.info(
-              { workspaceId: e.workspaceId, sessionId: e.sessionId, channel: shipped.channel ?? null },
+              {
+                workspaceId: e.workspaceId,
+                sessionId: e.sessionId,
+                channel: shipped.channel ?? null,
+              },
               "deliverable shipped autonomously",
             );
             // Make the autonomous ship VISIBLE in the console — the owner shouldn't have to read the GitHub

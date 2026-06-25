@@ -4,6 +4,7 @@ import { loadConfig } from "../config/loader.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { budgetExceeded, windowKey } from "../scale/usage.js";
+import { liveSpendRegistry } from "../scale/live-spend.js";
 import type { Admission } from "../scale/admission.js";
 import type { ResolvedConfig } from "../config/schema.js";
 
@@ -36,6 +37,7 @@ export async function scaleRoutes(app: FastifyInstance, opts: ScaleRoutesOptions
     const usage = await getUsage(wid, window);
     const caps = resolveScaleCaps(config(wid).scale);
     const inFlight = opts.admission.snapshot(wid);
+    const liveSessions = liveSpendRegistry.list(wid);
 
     return {
       window,
@@ -49,6 +51,7 @@ export async function scaleRoutes(app: FastifyInstance, opts: ScaleRoutesOptions
         regions: caps.regions,
       },
       inFlight,
+      liveSessions,
       overBudget: budgetExceeded(usage.estimatedCostCents, caps.budgetCents),
     };
   });
