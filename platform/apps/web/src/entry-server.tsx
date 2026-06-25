@@ -13,11 +13,22 @@
  * which `renderToStaticMarkup` never runs.
  */
 import { renderToStaticMarkup } from "react-dom/server";
-import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO, SEGMENT_LANDING_PAGES } from "./brand.js";
+import {
+  BLOG,
+  BRAND,
+  COMPARE,
+  STORIES,
+  GUIDES,
+  CHANGELOG,
+  PAGE_SEO,
+  PRICING,
+  SEGMENT_LANDING_PAGES,
+} from "./brand.js";
 import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { Security } from "./components/landing/Security.js";
+import { Onboarding } from "./components/Onboarding.js";
 import { LegalPage } from "./components/landing/LegalPage.js";
 import { CompanyPage } from "./components/landing/CompanyPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
@@ -68,6 +79,9 @@ function articleMeta(post: BlogPostMeta): string {
  */
 function marketingPages(): PrerenderPage[] {
   const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
+    "/start": <Onboarding />,
+    "/login": <StaticAuthPage mode="login" />,
+    "/signup": <StaticAuthPage mode="signup" />,
     "/pricing": <PricingPage />,
     "/refund-policy": <RefundPolicy />,
     "/security": <Security />,
@@ -124,6 +138,45 @@ function marketingPages(): PrerenderPage[] {
       ),
     };
   });
+}
+
+function StaticAuthPage({ mode }: { mode: "login" | "signup" }): React.JSX.Element {
+  const isSignup = mode === "signup";
+  return (
+    <div className="auth">
+      <form className="auth__card">
+        <h1 className="auth__tag">{isSignup ? "Create your ipop workspace" : "Sign in to ipop"}</h1>
+        {isSignup && (
+          <p className="auth__trial" role="note">
+            <span className="auth__trial-badge">{PRICING.trial.eyebrow}</span> {PRICING.trial.generic}
+          </p>
+        )}
+        {isSignup && (
+          <label className="field">
+            Display name
+            <input name="name" autoComplete="name" />
+          </label>
+        )}
+        <label className="field">
+          Email
+          <input type="email" name="email" autoComplete="email" />
+        </label>
+        <label className="field">
+          Password
+          <input type="password" name="password" autoComplete={isSignup ? "new-password" : "current-password"} />
+        </label>
+        {isSignup && (
+          <label className="field">
+            Workspace
+            <input name="workspace" />
+          </label>
+        )}
+        <button className="btn btn--primary" type="submit">
+          {isSignup ? "Create account" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function segmentPages(): PrerenderPage[] {

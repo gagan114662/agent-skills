@@ -12,12 +12,17 @@
  */
 import { BRAND, FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
 import { Link } from "../../routing.js";
+import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
 
 /** The pricing questions, drawn from the shared FAQ by matching question text — no copy duplicated. */
 function pricingFaq(): readonly { q: string; a: string }[] {
   return FAQ.items.filter((item) => PRICING.faqMatch.some((re) => re.test(item.q)));
+}
+
+function trackCta(href: string, source: string): void {
+  trackAcquisitionEvent("cta-click", { url: href, source });
 }
 
 export function PricingPage(): React.JSX.Element {
@@ -31,10 +36,10 @@ export function PricingPage(): React.JSX.Element {
           <Link href="/demo" className="linklike">
             {LANDING.hero.ctaDemo}
           </Link>
-          <Link href="/login" className="linklike">
+          <Link href="/login" className="linklike" onClick={() => trackCta("/login", "pricing-nav")}>
             {LANDING.hero.ctaSecondary}
           </Link>
-          <Link href="/signup" className="btn btn--primary landing__nav-cta">
+          <Link href="/signup" className="btn btn--primary landing__nav-cta" onClick={() => trackCta("/signup", "pricing-nav")}>
             {LANDING.hero.ctaPrimary}
           </Link>
         </nav>
@@ -78,6 +83,7 @@ export function PricingPage(): React.JSX.Element {
                   href={`/signup?plan=${plan.key}`}
                   className={`btn pricing-card__cta${plan.featured ? " btn--primary" : ""}`}
                   aria-label={`${PRICING.planCta} — ${plan.name}`}
+                  onClick={() => trackCta(`/signup?plan=${plan.key}`, `pricing-plan-${plan.key}`)}
                 >
                   {PRICING.planCta}
                 </Link>
@@ -114,7 +120,7 @@ export function PricingPage(): React.JSX.Element {
             {LANDING.sections.ctaTitle}
           </h2>
           <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
-          <Link href="/signup" className="btn btn--primary landing__cta landing__final-cta">
+          <Link href="/signup" className="btn btn--primary landing__cta landing__final-cta" onClick={() => trackCta("/signup", "pricing-final")}>
             {LANDING.sections.ctaButton}
           </Link>
           <Link href="/demo" className="btn landing__cta landing__cta--ghost">

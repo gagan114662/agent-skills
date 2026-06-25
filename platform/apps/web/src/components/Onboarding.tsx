@@ -15,6 +15,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { BRAND, ONBOARDING } from "../brand.js";
 import { api, googleStartUrl } from "../api/client.js";
+import { trackAcquisitionEvent } from "../acquisition-events.js";
 import { Link } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -71,7 +72,10 @@ export function Onboarding(): React.JSX.Element {
   function onSubmit(e: FormEvent): void {
     e.preventDefault();
     const trimmed = validatedDomain();
-    if (trimmed) setPreviewUrl(trimmed);
+    if (trimmed) {
+      trackAcquisitionEvent("activation-start", { url: trimmed, source: "start-domain-submit" });
+      setPreviewUrl(trimmed);
+    }
   }
 
   // The parallel config path: full-page navigation to the API's OAuth entry. Available on the entry screen
@@ -79,6 +83,7 @@ export function Onboarding(): React.JSX.Element {
   function signInWithGoogle(): void {
     const trimmed = validatedDomain();
     if (!trimmed) return;
+    trackAcquisitionEvent("activation-start", { url: trimmed, source: "start-google" });
     setBusy(true);
     window.location.assign(googleStartUrl(trimmed));
   }

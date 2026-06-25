@@ -2310,6 +2310,21 @@ export function segmentLandingPage(slug: string | undefined): SegmentLandingPage
  * Keyed by canonical path. `name` is the human label used for the breadcrumb trail.
  */
 export const PAGE_SEO = {
+  "/start": {
+    name: "Start",
+    title: `Start your AI marketing team — ${BRAND.name}`,
+    description: ONBOARDING.sub,
+  },
+  "/login": {
+    name: "Sign in",
+    title: `Sign in — ${BRAND.name} workspace`,
+    description: "Sign in to your ipop workspace and keep your autonomous marketing team moving.",
+  },
+  "/signup": {
+    name: "Sign up",
+    title: `Sign up — start ${BRAND.name} without a card`,
+    description: PRICING.trial.generic,
+  },
   "/pricing": {
     name: "Pricing",
     title: `Pricing — ${BRAND.name}, your marketing agency of AI agents`,
