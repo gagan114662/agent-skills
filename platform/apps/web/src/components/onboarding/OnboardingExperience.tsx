@@ -14,6 +14,7 @@
  * surface is gated default-OFF (#784 `onboarding-flag`); this component renders nothing in production until then.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BRAND, LANDING, SUPPORT_CONTACT } from "../../brand.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
@@ -43,6 +44,17 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
   { tool: "social", copy: ONBOARD_COPY.connect.social },
   { tool: "site", copy: ONBOARD_COPY.connect.site },
 ];
+
+const TRUST_LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/demo", label: LANDING.hero.ctaDemo },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/company", label: "Company" },
+  { href: "/security", label: "Security & trust" },
+  { href: "/terms", label: "Terms" },
+  { href: "/privacy", label: "Privacy" },
+  { href: SUPPORT_CONTACT.href, label: "Contact" },
+] as const;
 
 export interface OnboardingExperienceProps {
   /** The data seam (defaults to the live provider: a REAL site read + deterministic payoffs). */
@@ -95,6 +107,18 @@ function ConnectPayoff({ result }: { result: ConnectResult }): React.JSX.Element
         <p className="onboard-hero__after">{result.after}</p>
       </div>
     </div>
+  );
+}
+
+function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React.JSX.Element {
+  return (
+    <nav className={"onboard-trust onboard-trust--" + placement} aria-label={placement + " public links"}>
+      {TRUST_LINKS.map((link) => (
+        <a key={placement + "-" + link.href} className="onboard-trust__link" href={link.href}>
+          {link.label}
+        </a>
+      ))}
+    </nav>
   );
 }
 
@@ -200,6 +224,12 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   return (
     <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
+      <header className="onboard__nav">
+        <a href="/" className="onboard__brand" aria-label={BRAND.name}>
+          {BRAND.name}
+        </a>
+        <PublicTrustLinks placement="nav" />
+      </header>
       <div className="onboard__inner">
         {/* ---- 1. the door ------------------------------------------------------------------ */}
         {phase === "door" && (
@@ -389,6 +419,12 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           </section>
         )}
       </div>
+      <footer className="onboard__footer">
+        <PublicTrustLinks placement="footer" />
+        <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
+          {SUPPORT_CONTACT.email}
+        </a>
+      </footer>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
+import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 import type {
   ConnectResult,
@@ -51,6 +52,15 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
   };
 }
 
+function expectPublicLinks(): void {
+  expect(screen.getAllByRole("link", { name: "Pricing" })[0]).toHaveAttribute("href", "/pricing");
+  expect(screen.getAllByRole("link", { name: "Company" })[0]).toHaveAttribute("href", "/company");
+  expect(screen.getAllByRole("link", { name: "Security & trust" })[0]).toHaveAttribute("href", "/security");
+  expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", "/terms");
+  expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", "/privacy");
+  expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute("href", SUPPORT_CONTACT.href);
+}
+
 describe("OnboardingExperience (#784)", () => {
   it("renders from the shared ipop experience token contract (#1068)", () => {
     const { container } = render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
@@ -71,6 +81,7 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByText(/afternoon, gagan/i)).toBeInTheDocument();
     expect(screen.getByText(/what are we making pop today/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expectPublicLinks();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
@@ -179,6 +190,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read your site/i);
+    expectPublicLinks();
     // No faked finding while it's errored.
     expect(screen.queryByText(/buries the offer/i)).not.toBeInTheDocument();
     // Retry recovers.
