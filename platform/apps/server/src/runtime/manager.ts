@@ -86,6 +86,8 @@ export interface SessionStore {
     createdByMemberId: string;
     runtime: RuntimeKind;
     command: string;
+    /** Optional caller-owned idempotency key; duplicate launches return the existing session row. */
+    idempotencyKey?: string | null;
     caps: ResourceCaps;
     /** Coding-agent harness the session ran on (#50); omitted → null (env default unselected). */
     harness?: HarnessKind | null;
@@ -369,6 +371,8 @@ export interface LaunchInput {
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
   task: string;
+  /** Optional caller-owned idempotency key; duplicate launches return the existing session row. */
+  idempotencyKey?: string | null;
   /**
    * Per-session coding-agent harness (#50): overrides the deployment default for THIS session.
    * Validated against the {@link HarnessKind} allowlist (invalid → {@link HarnessKindError}, mapped
@@ -586,6 +590,7 @@ export class SessionManager {
         createdByMemberId: input.createdByMemberId,
         runtime: this.deps.runtime.kind,
         command: harness.spec.command,
+        idempotencyKey: input.idempotencyKey ?? null,
         harness: harness.kind,
         caps,
         provider: selectionRow?.provider ?? null,
@@ -596,6 +601,10 @@ export class SessionManager {
         selectionMeta: auto?.decision ?? null,
         region: ticket?.region ?? null,
       });
+      if (session.reusedIdempotencyKey) {
+        ticket?.release();
+        return session;
+      }
       await this.deps.usage?.recordStart(input.workspaceId);
     } catch (err) {
       // The slot was acquired but the session never started — free it so it isn't leaked.

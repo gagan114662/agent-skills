@@ -322,6 +322,8 @@ export interface AgentWorkflow {
   currentStage: number;
   status: WorkflowStatus;
   actionCount: number;
+  currentSessionId: string | null;
+  currentSessionStage: number | null;
   createdAt: Date;
 }
 
@@ -334,6 +336,8 @@ const WORKFLOW_COLS = {
   currentStage: agentWorkflows.currentStage,
   status: agentWorkflows.status,
   actionCount: agentWorkflows.actionCount,
+  currentSessionId: agentWorkflows.currentSessionId,
+  currentSessionStage: agentWorkflows.currentSessionStage,
   createdAt: agentWorkflows.createdAt,
 } as const;
 
@@ -517,6 +521,44 @@ export async function bumpWorkflowAction(id: string): Promise<void> {
     .update(agentWorkflows)
     .set({ actionCount: sql`${agentWorkflows.actionCount} + 1`, updatedAt: new Date() })
     .where(eq(agentWorkflows.id, id));
+}
+
+export async function attachWorkflowSession(input: {
+  workflowId: string;
+  expectedCurrentStage: number;
+  sessionId: string;
+}): Promise<boolean> {
+  const rows = await db
+    .update(agentWorkflows)
+    .set({
+      currentSessionId: input.sessionId,
+      currentSessionStage: input.expectedCurrentStage,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(agentWorkflows.id, input.workflowId),
+        eq(agentWorkflows.status, "running"),
+        eq(agentWorkflows.currentStage, input.expectedCurrentStage),
+      ),
+    )
+    .returning({ id: agentWorkflows.id });
+  return rows.length > 0;
+}
+
+export async function clearWorkflowSession(input: {
+  workflowId: string;
+  sessionId: string;
+}): Promise<void> {
+  await db
+    .update(agentWorkflows)
+    .set({ currentSessionId: null, currentSessionStage: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(agentWorkflows.id, input.workflowId),
+        eq(agentWorkflows.currentSessionId, input.sessionId),
+      ),
+    );
 }
 
 export async function setWorkflowStatus(id: string, status: WorkflowStatus): Promise<void> {

@@ -1,5 +1,6 @@
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
+import { getAgentSessionStatus } from "../db/repositories/agent-sessions.js";
 import {
   recordAutonomyAction,
   recordAutonomyTick,
@@ -21,6 +22,8 @@ import {
   listActiveWorkflows,
   listActiveWorkflowWorkspaces,
   bumpWorkflowAction,
+  attachWorkflowSession,
+  clearWorkflowSession,
   setWorkflowStatus,
   handoffWorkflowStage,
   markWorkflowAwaitingApproval,
@@ -67,6 +70,7 @@ export interface AutonomyLauncher {
     createdByMemberId: string;
     task: string;
     harnessEnv?: Record<string, string>;
+    idempotencyKey?: string;
   }): Promise<{ id: string }>;
   join(id: string): Promise<void>;
   status(id: string): Promise<SessionStatus>;
@@ -127,6 +131,14 @@ function composeStageTask(input: {
     `or use AGENT_TASK_ID=${input.taskId} to fetch the same linked context. Incorporate any handoff memory into your plan and output.` +
     handoff
   );
+}
+
+function autonomyStageIdempotencyKey(workflowId: string, stageIndex: number): string {
+  return `workflow:${workflowId}:stage:${stageIndex}`;
+}
+
+function isLiveSessionStatus(status: SessionStatus | undefined): boolean {
+  return status === "provisioning" || status === "running";
 }
 
 export interface AppliedAction {
@@ -256,6 +268,15 @@ export class AutonomyEngine {
         recordAutonomyAction("noop:session_running");
         actions.push({ workflowId: wf.id, action: "noop", reason: "session_running" });
         continue;
+      }
+      if (wf.currentSessionId) {
+        const status = await getAgentSessionStatus(wf.currentSessionId);
+        if (isLiveSessionStatus(status)) {
+          recordAutonomyAction("noop:session_running");
+          actions.push({ workflowId: wf.id, action: "noop", reason: "session_running" });
+          continue;
+        }
+        await clearWorkflowSession({ workflowId: wf.id, sessionId: wf.currentSessionId });
       }
 
       const autonomy = await getAutonomy(workspaceId, agentMemberId);
@@ -432,6 +453,7 @@ export class AutonomyEngine {
         taskId,
         agentMemberId,
         createdByMemberId: agentMemberId,
+        idempotencyKey: autonomyStageIdempotencyKey(wf.id, stageIndex),
         task: composeStageTask({
           workspaceId: wf.workspaceId,
           taskId,
@@ -462,6 +484,15 @@ export class AutonomyEngine {
         `(stage ${stageIndex + 1}/${wf.stages.length}, ${role}).`,
       log,
     );
+    const attached = await attachWorkflowSession({
+      workflowId: wf.id,
+      expectedCurrentStage: stageIndex,
+      sessionId: session.id,
+    });
+    if (!attached) {
+      log.warn({ workflowId: wf.id, sessionId: session.id }, "autonomy session attached to stale workflow");
+      return;
+    }
     this.trackSession(wf, taskId, taskTitle, stageIndex, agentMemberId, session.id, log);
   }
 
@@ -538,6 +569,7 @@ export class AutonomyEngine {
     status: SessionStatus,
     log: SessionLogger,
   ): Promise<void> {
+    await clearWorkflowSession({ workflowId: wf.id, sessionId });
     const task = await getTask(taskId);
     if (!task) return;
 

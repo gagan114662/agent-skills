@@ -18,12 +18,17 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   tryReserveActionsUsed: vi.fn(() => Promise.resolve(true)),
   refundActionsUsed: vi.fn(() => Promise.resolve()),
   bumpWorkflowAction: vi.fn(() => Promise.resolve()),
+  attachWorkflowSession: vi.fn(() => Promise.resolve(true)),
+  clearWorkflowSession: vi.fn(() => Promise.resolve()),
   setWorkflowStatus: vi.fn(() => Promise.resolve()),
   createApproval: vi.fn(() => Promise.resolve({ id: "appr_1" })),
   decideApproval: vi.fn(() => Promise.resolve(undefined)),
   advanceWorkflowStage: vi.fn(() => Promise.resolve()),
   getApproval: vi.fn(() => Promise.resolve(undefined)),
   getWorkflow: vi.fn(() => Promise.resolve(undefined)),
+}));
+vi.mock("../../src/db/repositories/agent-sessions.js", () => ({
+  getAgentSessionStatus: vi.fn(() => Promise.resolve(undefined)),
 }));
 vi.mock("../../src/db/repositories/tasks.js", () => ({
   getTask: vi.fn(),

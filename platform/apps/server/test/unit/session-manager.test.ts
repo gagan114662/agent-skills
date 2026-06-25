@@ -41,6 +41,7 @@ class FakeStore implements SessionStore {
     createdByMemberId: string;
     runtime: "local" | "sandbox";
     command: string;
+    idempotencyKey?: string | null;
     caps: ResourceCaps;
     harness?: string | null;
   }): Promise<AgentSession> {
@@ -52,12 +53,24 @@ class FakeStore implements SessionStore {
       createdByMemberId: input.createdByMemberId,
       runtime: input.runtime,
       status: "provisioning",
+      agentStatus: "idle",
       command: input.command,
+      idempotencyKey: input.idempotencyKey ?? null,
       harness: (input.harness ?? null) as AgentSession["harness"],
       sandboxId: null,
       snapshotId: null,
       exitCode: null,
       result: null,
+      branch: null,
+      baseBranch: null,
+      headSha: null,
+      provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      selectionMeta: null,
+      region: null,
+      lastHeartbeatAt: null,
       caps: input.caps,
       startedAt: null,
       endedAt: null,
@@ -91,6 +104,44 @@ class FakeStore implements SessionStore {
   nextId(): string {
     this.seq += 1;
     return `msg_${this.seq}`;
+  }
+}
+
+class ReusedIdempotencyStore extends FakeStore {
+  override create(input: Parameters<SessionStore["create"]>[0]): Promise<AgentSession> {
+    this.created = {
+      id: "sess_existing",
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      agentMemberId: input.agentMemberId,
+      createdByMemberId: input.createdByMemberId,
+      runtime: input.runtime,
+      status: "running",
+      agentStatus: "thinking",
+      command: input.command,
+      idempotencyKey: input.idempotencyKey ?? null,
+      harness: (input.harness ?? null) as AgentSession["harness"],
+      sandboxId: null,
+      snapshotId: null,
+      exitCode: null,
+      result: null,
+      branch: null,
+      baseBranch: null,
+      headSha: null,
+      provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      selectionMeta: null,
+      region: null,
+      lastHeartbeatAt: null,
+      caps: input.caps,
+      startedAt: new Date(0),
+      endedAt: null,
+      createdAt: new Date(0),
+      reusedIdempotencyKey: true,
+    };
+    return Promise.resolve(this.created);
   }
 }
 
@@ -269,6 +320,28 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(poster.posts[1]?.parentMessageId).toBe("msg_1");
     expect(store.finalized?.status).toBe("completed");
     expect(store.finalized?.result).toContain("line one");
+  });
+
+  it("does not start a second runtime when an idempotent launch reuses an existing session", async () => {
+    const runtime = new CapturingRuntime();
+    const store = new ReusedIdempotencyStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+    });
+
+    const session = await manager.launch({ ...launch, idempotencyKey: "workflow:wf_1:stage:0" });
+
+    expect(session.id).toBe("sess_existing");
+    expect(runtime.job).toBeUndefined();
+    expect(poster.bodies()).toEqual([]);
+    expect(manager.activeSessionIds).toEqual([]);
   });
 
   it("redacts secret values from streamed output and the persisted result", async () => {
