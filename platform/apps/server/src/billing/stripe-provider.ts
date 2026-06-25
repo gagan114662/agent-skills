@@ -33,19 +33,23 @@ import { assertKeyMatchesMode, type BillingMode } from "./mode.js";
 
 /** The slice of the Stripe SDK surface we use. */
 interface StripeClient {
-  products: { create(args: { name: string }): Promise<{ id: string }> };
+  products: { create(args: { name: string; tax_code?: string }): Promise<{ id: string }> };
   prices: {
     create(args: {
       product: string;
       unit_amount: number;
       currency: string;
       recurring?: { interval: string };
+      tax_behavior?: "inclusive" | "exclusive" | "unspecified";
     }): Promise<{ id: string }>;
   };
   paymentLinks: {
     create(args: {
       line_items: { price: string; quantity: number }[];
       metadata?: Record<string, string>;
+      automatic_tax?: { enabled: boolean };
+      tax_id_collection?: { enabled: boolean };
+      billing_address_collection?: "auto" | "required";
       after_completion?: { type: "redirect"; redirect: { url: string } };
     }): Promise<{ id: string; url: string }>;
   };
@@ -116,12 +120,16 @@ export class StripeBillingProvider implements BillingProvider {
 
   async createProductPrice(input: CreateProductPriceInput): Promise<ProductPrice> {
     const client = await loadClient(input.secrets, this.mode, this.loadModule);
-    const product = await client.products.create({ name: input.name });
+    const product = await client.products.create({
+      name: input.name,
+      ...(input.taxCode ? { tax_code: input.taxCode } : {}),
+    });
     const price = await client.prices.create({
       product: product.id,
       unit_amount: input.amountCents,
       currency: input.currency,
       ...(input.interval ? { recurring: { interval: input.interval } } : {}),
+      ...(input.taxBehavior ? { tax_behavior: input.taxBehavior } : {}),
     });
     return { productId: product.id, priceId: price.id };
   }
@@ -134,6 +142,11 @@ export class StripeBillingProvider implements BillingProvider {
         ...input.metadata,
         ...(input.customerEmail ? { customerEmail: input.customerEmail } : {}),
       },
+      ...(input.collectTax ? { automatic_tax: { enabled: true } } : {}),
+      ...(input.collectTaxIds ? { tax_id_collection: { enabled: true } } : {}),
+      ...(input.billingAddressCollection
+        ? { billing_address_collection: input.billingAddressCollection }
+        : {}),
       // Send the payer back into the app (so the SPA reflects the new plan) when a return URL is supplied.
       ...(input.returnUrl
         ? { after_completion: { type: "redirect" as const, redirect: { url: input.returnUrl } } }

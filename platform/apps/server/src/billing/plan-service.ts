@@ -346,6 +346,9 @@ export class PlanBillingService implements PlanActivator {
           ...(billingEmail ? { customerEmail: billingEmail } : {}),
         },
         ...(billingEmail ? { customerEmail: billingEmail } : {}),
+        collectTax: true,
+        collectTaxIds: true,
+        billingAddressCollection: "required",
         ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}),
         secrets,
       });
@@ -518,6 +521,8 @@ export class PlanBillingService implements PlanActivator {
       amountCents: plan.priceCents,
       currency: plan.currency,
       interval: plan.interval,
+      taxCode: "txcd_10103001",
+      taxBehavior: "exclusive",
       secrets,
     });
     await this.prices.upsert({

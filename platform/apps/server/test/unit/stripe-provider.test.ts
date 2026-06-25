@@ -76,6 +76,44 @@ describe("StripeBillingProvider (#481 — go-live adapter against a mock Stripe 
     ]);
   });
 
+  it("enables Stripe Tax product, price, address, and tax-id collection fields (#861)", async () => {
+    const rec = newRecorder();
+    const provider = new StripeBillingProvider("live", async () => fakeStripeModule(rec));
+
+    await provider.createProductPrice({
+      name: "ipop Pro",
+      amountCents: 19_900,
+      currency: "usd",
+      interval: "month",
+      taxCode: "txcd_10103001",
+      taxBehavior: "exclusive",
+      secrets: { STRIPE_SECRET_KEY: "sk_live_REALKEY" },
+    });
+    await provider.createPaymentLink({
+      priceId: "price_TEST",
+      slug: "plan-pro-ws1",
+      metadata: { workspaceId: "ws1", planKey: "pro", kind: "plan_checkout" },
+      customerEmail: "buyer@example.com",
+      collectTax: true,
+      collectTaxIds: true,
+      billingAddressCollection: "required",
+      returnUrl: "https://app.ipop.ai/?checkout=success",
+      secrets: { STRIPE_SECRET_KEY: "sk_live_REALKEY" },
+    });
+
+    expect(rec.products).toContainEqual({ name: "ipop Pro", tax_code: "txcd_10103001" });
+    expect(rec.prices).toContainEqual(
+      expect.objectContaining({ tax_behavior: "exclusive" }),
+    );
+    expect(rec.links).toContainEqual(
+      expect.objectContaining({
+        automatic_tax: { enabled: true },
+        tax_id_collection: { enabled: true },
+        billing_address_collection: "required",
+      }),
+    );
+  });
+
   it("omits the recurring block for a one-time price (interval null)", async () => {
     const rec = newRecorder();
     const provider = new StripeBillingProvider("test", async () => fakeStripeModule(rec));
