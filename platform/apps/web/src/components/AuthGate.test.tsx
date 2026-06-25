@@ -3,7 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "./AuthGate.js";
 import { navigate } from "../routing.js";
-import { LEGAL, PRICING } from "../brand.js";
+import { COMPANY, LEGAL, PRICING } from "../brand.js";
 import { TEST_IDENTITY, renderWithStore } from "../test/utils.js";
 
 const unauthorized = () => {
@@ -95,6 +95,7 @@ describe("AuthGate routing", () => {
   it.each([
     [LEGAL.terms.href, LEGAL.terms.title],
     [LEGAL.privacy.href, LEGAL.privacy.title],
+    [COMPANY.href, COMPANY.title],
   ])("serves %s as a public legal page for logged-out visitors (#863)", async (path, title) => {
     act(() => navigate(path));
     renderWithStore(

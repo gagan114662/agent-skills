@@ -18,6 +18,7 @@ import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { LegalPage } from "./components/landing/LegalPage.js";
+import { CompanyPage } from "./components/landing/CompanyPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
 import { SectionPage } from "./components/site/SectionPage.js";
 import { Brand } from "./components/site/Brand.js";
@@ -69,6 +70,7 @@ function marketingPages(): PrerenderPage[] {
     "/refund-policy": <RefundPolicy />,
     "/terms": <LegalPage kind="terms" />,
     "/privacy": <LegalPage kind="privacy" />,
+    "/company": <CompanyPage />,
     "/compare": (
       <SiteShell>
         <SectionPage section="compare" copy={COMPARE} />

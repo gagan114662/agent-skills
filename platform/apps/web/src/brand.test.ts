@@ -24,6 +24,7 @@ import {
   SITE,
   SUPPORT_CONTACT,
   CONTACT,
+  COMPANY,
   ASK_AI,
   askAiLinks,
   PAYWALL,
@@ -263,10 +264,8 @@ describe("landing workspace simulation copy (#165)", () => {
       href: SUPPORT_CONTACT.href,
       label: SUPPORT_CONTACT.label,
     });
-    expect(LANDING.footer.product).toContainEqual({
-      href: "/refund-policy",
-      label: "Refund policy",
-    });
+    expect(LANDING.footer.product).toContainEqual({ href: COMPANY.href, label: COMPANY.navLabel });
+    expect(LANDING.footer.product).toContainEqual({ href: "/refund-policy", label: "Refund policy" });
     expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
     expect(CONTACT.bookingHref).toMatch(/^https:\/\/cal\.com\//);
     expect(CONTACT.trialHref).toContain("/start");
@@ -501,6 +500,7 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/landing/Landing.tsx",
     // The dedicated public pricing page (#214).
     "components/landing/PricingPage.tsx",
+    "components/landing/CompanyPage.tsx",
     "components/landing/WorkspaceSim.tsx",
     "components/landing/Vignettes.tsx",
     "components/landing/BillingScreen.tsx",

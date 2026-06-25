@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import {
   BRAND,
+  COMPANY,
   CONTACT,
   FLEET,
   LANDING,
@@ -320,6 +321,9 @@ function LandingFooter(): React.JSX.Element {
         </div>
       </div>
       <div className="landing__footer-bottom">
+        <Link href={COMPANY.href} className="linklike landing__footer-link">
+          {COMPANY.navLabel}
+        </Link>
         <Link href="/security" className="linklike landing__footer-link">
           {SECURITY.navLabel}
         </Link>
