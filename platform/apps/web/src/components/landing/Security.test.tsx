@@ -27,6 +27,12 @@ describe("Security trust page (#151)", () => {
     expect(within(region).getByText(SECURITY.notClaimed)).toBeInTheDocument();
   });
 
+  it("states the customer support SLA", () => {
+    render(<Security />);
+    const region = screen.getByRole("region", { name: new RegExp(SECURITY.slaTitle, "i") });
+    expect(within(region).getByText(SECURITY.sla)).toBeInTheDocument();
+  });
+
   it("offers a way back home", () => {
     render(<Security />);
     expect(screen.getAllByRole("link", { name: new RegExp(SECURITY.backCta, "i") }).length).toBeGreaterThan(0);

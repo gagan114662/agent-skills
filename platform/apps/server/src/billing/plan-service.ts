@@ -212,6 +212,8 @@ export interface PlanCheckoutRequest {
    * stored; the landing-recovery source is the follow-up.
    */
   trackingRef?: string | null;
+  /** Optional payer contact to persist on the workspace after the checkout webhook lands. */
+  billingEmail?: string | null;
   /** Sticky A/B pricing assignment id from listPlans; checkout rejects mismatches to honor shown price. */
   pricingAssignmentId?: string | null;
 }
@@ -277,9 +279,15 @@ export class PlanBillingService implements PlanActivator {
   }
 
   /** The `/pricing` payload: the static catalog + the workspace's currently active plan (or null). */
-  async listPlans(workspaceId: string, opts: { subjectKey?: string | null } = {}): Promise<PlanListing> {
+  async listPlans(
+    workspaceId: string,
+    opts: { subjectKey?: string | null } = {},
+  ): Promise<PlanListing> {
     const current = await this.expireIfPastDue(workspaceId);
-    const pricingExperiment = await this.assignPricingExperiment(workspaceId, opts.subjectKey ?? null);
+    const pricingExperiment = await this.assignPricingExperiment(
+      workspaceId,
+      opts.subjectKey ?? null,
+    );
     return { plans: PLANS, current: current ?? null, pricingExperiment };
   }
 
@@ -292,13 +300,18 @@ export class PlanBillingService implements PlanActivator {
   async createCheckout(req: PlanCheckoutRequest): Promise<PlanCheckoutResult> {
     const plan = getPlan(req.planKey);
     if (!plan) throw new UnknownPlanError(req.planKey);
-    const pricingAssignment = await this.validatePricingAssignment(req.workspaceId, plan.key, req.pricingAssignmentId);
+    const pricingAssignment = await this.validatePricingAssignment(
+      req.workspaceId,
+      plan.key,
+      req.pricingAssignmentId,
+    );
     this.gate(req.workspaceId);
     const secrets = await this.secrets.resolve(req.workspaceId);
     const redact = makeRedactor(secrets);
     // #386 slice 3: stamp a (sanitized) tracking ref into checkout metadata so the resulting payment can be
     // attributed to the artifact/lead that drove it. Garbage/absent ⇒ omitted ⇒ unattributed (honest).
     const trackingRef = sanitizeTrackingRef(req.trackingRef);
+    const billingEmail = sanitizeBillingEmail(req.billingEmail);
     try {
       const { priceId } = await this.ensurePrice(req.workspaceId, plan, secrets);
       const link = await this.provider.createPaymentLink({
@@ -317,11 +330,14 @@ export class PlanBillingService implements PlanActivator {
               }
             : {}),
           ...(trackingRef ? { trackingRef } : {}),
+          ...(billingEmail ? { customerEmail: billingEmail } : {}),
         },
+        ...(billingEmail ? { customerEmail: billingEmail } : {}),
         ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}),
         secrets,
       });
-      if (pricingAssignment) await this.pricingExperiments?.markCheckout(req.workspaceId, pricingAssignment.id);
+      if (pricingAssignment)
+        await this.pricingExperiments?.markCheckout(req.workspaceId, pricingAssignment.id);
       return { url: link.url, planKey: plan.key, priceId };
     } catch (err) {
       if (err instanceof UnknownPlanError) throw err;
@@ -367,7 +383,10 @@ export class PlanBillingService implements PlanActivator {
     return active;
   }
 
-  async recordPaymentFailure(workspaceId: string, providerEventId: string): Promise<ActivePlan | undefined> {
+  async recordPaymentFailure(
+    workspaceId: string,
+    providerEventId: string,
+  ): Promise<ActivePlan | undefined> {
     const now = new Date();
     return this.store.recordPaymentFailure({
       workspaceId,
@@ -419,7 +438,10 @@ export class PlanBillingService implements PlanActivator {
     });
   }
 
-  async pricingExperimentReport(workspaceId: string, experimentId: string): Promise<PricingExperimentReport> {
+  async pricingExperimentReport(
+    workspaceId: string,
+    experimentId: string,
+  ): Promise<PricingExperimentReport> {
     if (!this.pricingExperiments) throw new Error("pricing experiments unavailable");
     const experiment = await this.pricingExperiments.get(workspaceId, experimentId);
     if (!experiment) throw new Error("pricing experiment not found");
@@ -531,7 +553,9 @@ export class PlanBillingService implements PlanActivator {
   }
 }
 
-function normalizeVariants(input: CreatePricingExperimentInput["variants"]): PricingExperimentVariant[] {
+function normalizeVariants(
+  input: CreatePricingExperimentInput["variants"],
+): PricingExperimentVariant[] {
   if (input.length < 2) throw new Error("pricing experiment requires at least two variants");
   const variants = input.map((v) => {
     const plan = getPlan(v.planKey);
@@ -556,12 +580,19 @@ function addDays(date: Date, days: number): Date {
 }
 
 function cleanKey(key: string): string {
-  const clean = key.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  const clean = key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   if (!clean) throw new Error("variant key required");
   return clean.slice(0, 80);
 }
 
-function chooseVariant(variants: PricingExperimentVariant[], subjectKey: string): PricingExperimentVariant {
+function chooseVariant(
+  variants: PricingExperimentVariant[],
+  subjectKey: string,
+): PricingExperimentVariant {
   const total = variants.reduce((sum, v) => sum + v.weightBps, 0);
   const bucket = stableBucket(subjectKey, total);
   let cursor = 0;
@@ -601,8 +632,17 @@ function buildPricingReport(
       revenueCents,
       conversionRate,
       revenuePerVisitorCents: rows.length ? Math.round(revenueCents / rows.length) : 0,
-      liftVsControlBps: variant.key === experiment.controlVariantKey ? null : Math.round((conversionRate - controlRate) * 10_000),
-      significance: significance(rows.length, controlRows.length, conversionRate, controlRate, experiment.minSampleSize),
+      liftVsControlBps:
+        variant.key === experiment.controlVariantKey
+          ? null
+          : Math.round((conversionRate - controlRate) * 10_000),
+      significance: significance(
+        rows.length,
+        controlRows.length,
+        conversionRate,
+        controlRate,
+        experiment.minSampleSize,
+      ),
     };
   });
   return {
@@ -618,6 +658,17 @@ function buildPricingReport(
 
 function rate(num: number, denom: number): number {
   return denom > 0 ? num / denom : 0;
+}
+
+function sanitizeBillingEmail(value: string | null | undefined): string | null {
+  const clean = value
+    // eslint-disable-next-line no-control-regex -- strip control chars before carrying payer email into metadata
+    ?.replace(/[\x00-\x1f\x7f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!clean || clean.length > 320) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean) ? clean : null;
 }
 
 function significance(

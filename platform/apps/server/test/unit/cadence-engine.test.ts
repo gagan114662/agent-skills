@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { CadenceEngine, type CadenceEngineDeps } from "../../src/cadence/engine.js";
+import {
+  CadenceEngine,
+  enrichCadenceTaskWithMemory,
+  type CadenceEngineDeps,
+} from "../../src/cadence/engine.js";
 import { resolveCadenceCaps, type CadenceCaps } from "../../src/cadence/caps.js";
 import { CADENCE_PLAYBOOK, type CadenceTask } from "../../src/cadence/playbook.js";
 
@@ -20,13 +24,16 @@ function enabledCaps(over: Partial<CadenceCaps> = {}): CadenceCaps {
 }
 
 /** Build an engine with an in-memory launch recorder + an injectable clock. */
-function makeEngine(opts: {
-  caps?: (ws: string) => CadenceCaps;
-  launch?: (ws: string, task: CadenceTask) => Promise<void>;
-  now?: () => Date;
-  ownerWorkspaces?: () => string[];
-  outcomes?: CadenceEngineDeps["outcomes"];
-} = {}) {
+function makeEngine(
+  opts: {
+    caps?: (ws: string) => CadenceCaps;
+    launch?: (ws: string, task: CadenceTask) => Promise<void>;
+    now?: () => Date;
+    ownerWorkspaces?: () => string[];
+    outcomes?: CadenceEngineDeps["outcomes"];
+    memoryContext?: CadenceEngineDeps["memoryContext"];
+  } = {},
+) {
   const launches: Array<{ ws: string; task: CadenceTask }> = [];
   const launch =
     opts.launch ??
@@ -40,6 +47,7 @@ function makeEngine(opts: {
     logger: silentLogger(),
     now: opts.now,
     outcomes: opts.outcomes,
+    memoryContext: opts.memoryContext,
   });
   return { engine, launches };
 }
@@ -54,7 +62,9 @@ describe("CadenceEngine.tickAll (#416)", () => {
   });
 
   it("advances the round-robin cursor across ticks (one per tick, in order)", async () => {
-    const { engine, launches } = makeEngine({ caps: () => enabledCaps({ maxLaunchesPerDay: 100 }) });
+    const { engine, launches } = makeEngine({
+      caps: () => enabledCaps({ maxLaunchesPerDay: 100 }),
+    });
     for (let i = 0; i < CADENCE_PLAYBOOK.length + 1; i++) await engine.tickAll();
     // Visited every task in order, then wrapped back to the first.
     expect(launches.map((l) => l.task)).toEqual([...CADENCE_PLAYBOOK, CADENCE_PLAYBOOK[0]]);
@@ -68,6 +78,22 @@ describe("CadenceEngine.tickAll (#416)", () => {
     await engine.tickAll();
     expect(launches).toHaveLength(1);
     expect(launches[0]!.task.lead).toBe("echo");
+  });
+
+  it("injects workspace memory vault context into the launched task brief", async () => {
+    const { engine, launches } = makeEngine({
+      memoryContext: async () => [
+        { text: "Founder-led teardown posts convert best", source: "seo-win" },
+        { text: "Avoid generic AI agent wording" },
+      ],
+    });
+
+    await engine.tickAll();
+
+    expect(launches).toHaveLength(1);
+    expect(launches[0]!.task.goal).toContain("Workspace memory vault");
+    expect(launches[0]!.task.goal).toContain("Founder-led teardown posts convert best");
+    expect(launches[0]!.task.goal).toContain(CADENCE_PLAYBOOK[0]!.goal);
   });
 
   it("SKIPS (no launch) when the cadence is disabled for the workspace", async () => {
@@ -97,7 +123,10 @@ describe("CadenceEngine.tickAll (#416)", () => {
   it("a UTC-day rollover (injected clock) RESETS the per-day count", async () => {
     let day = "2026-06-20T08:00:00Z";
     const now = () => new Date(day);
-    const { engine, launches } = makeEngine({ caps: () => enabledCaps({ maxLaunchesPerDay: 1 }), now });
+    const { engine, launches } = makeEngine({
+      caps: () => enabledCaps({ maxLaunchesPerDay: 1 }),
+      now,
+    });
     await engine.tickAll(); // day 1: launch
     await engine.tickAll(); // day 1: over cap → skip
     expect(launches).toHaveLength(1);
@@ -133,6 +162,19 @@ describe("CadenceEngine.tickAll (#416)", () => {
       },
     });
     await expect(engine.tickAll()).resolves.toBeUndefined();
+  });
+
+  it("bounds and sanitizes memory context before adding it to a cadence task", () => {
+    const task = enrichCadenceTaskWithMemory(CADENCE_PLAYBOOK[0]!, [
+      { text: "  keep\nthis\tangle  " },
+      { text: "" },
+      { text: "x".repeat(500), source: "  source\nname " },
+    ]);
+
+    expect(task.goal).toContain("- keep this angle");
+    expect(task.goal).toContain("(source: source name)");
+    expect(task.goal).not.toContain("\nthis\t");
+    expect(task.goal).toContain("Task: " + CADENCE_PLAYBOOK[0]!.goal);
   });
 
   it("start() is a no-op for interval <= 0 (default OFF) and stop() is idempotent", () => {

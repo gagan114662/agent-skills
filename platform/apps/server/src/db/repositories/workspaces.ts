@@ -7,13 +7,26 @@ export interface Workspace {
   slug: string;
   name: string;
   timezone: string;
+  billingEmail: string | null;
+  stripeCustomerId: string | null;
 }
 
-export async function createWorkspace(input: { slug: string; name: string; timezone?: string }): Promise<Workspace> {
+export async function createWorkspace(input: {
+  slug: string;
+  name: string;
+  timezone?: string;
+}): Promise<Workspace> {
   const [row] = await db
     .insert(workspaces)
     .values({ slug: input.slug, name: input.name, timezone: input.timezone ?? "UTC" })
-    .returning({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name, timezone: workspaces.timezone });
+    .returning({
+      id: workspaces.id,
+      slug: workspaces.slug,
+      name: workspaces.name,
+      timezone: workspaces.timezone,
+      billingEmail: workspaces.billingEmail,
+      stripeCustomerId: workspaces.stripeCustomerId,
+    });
   return row!;
 }
 
@@ -29,10 +42,41 @@ export async function listWorkspaceIds(): Promise<string[]> {
 
 export async function getWorkspaceBySlug(slug: string): Promise<Workspace | undefined> {
   const [row] = await db
-    .select({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name, timezone: workspaces.timezone })
+    .select({
+      id: workspaces.id,
+      slug: workspaces.slug,
+      name: workspaces.name,
+      timezone: workspaces.timezone,
+      billingEmail: workspaces.billingEmail,
+      stripeCustomerId: workspaces.stripeCustomerId,
+    })
     .from(workspaces)
     .where(eq(workspaces.slug, slug))
     .limit(1);
+  return row;
+}
+
+export async function updateWorkspaceBillingContact(input: {
+  workspaceId: string;
+  billingEmail?: string | null;
+  stripeCustomerId?: string | null;
+}): Promise<Workspace | undefined> {
+  const values: Partial<typeof workspaces.$inferInsert> = {};
+  if (input.billingEmail !== undefined) values.billingEmail = input.billingEmail;
+  if (input.stripeCustomerId !== undefined) values.stripeCustomerId = input.stripeCustomerId;
+  if (Object.keys(values).length === 0) return undefined;
+  const [row] = await db
+    .update(workspaces)
+    .set(values)
+    .where(eq(workspaces.id, input.workspaceId))
+    .returning({
+      id: workspaces.id,
+      slug: workspaces.slug,
+      name: workspaces.name,
+      timezone: workspaces.timezone,
+      billingEmail: workspaces.billingEmail,
+      stripeCustomerId: workspaces.stripeCustomerId,
+    });
   return row;
 }
 

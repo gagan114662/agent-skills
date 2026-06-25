@@ -119,7 +119,10 @@ export class StripeBillingProvider implements BillingProvider {
     const client = await loadClient(input.secrets, this.mode, this.loadModule);
     const link = await client.paymentLinks.create({
       line_items: [{ price: input.priceId, quantity: 1 }],
-      metadata: input.metadata,
+      metadata: {
+        ...input.metadata,
+        ...(input.customerEmail ? { customerEmail: input.customerEmail } : {}),
+      },
       // Send the payer back into the app (so the SPA reflects the new plan) when a return URL is supplied.
       ...(input.returnUrl
         ? { after_completion: { type: "redirect" as const, redirect: { url: input.returnUrl } } }

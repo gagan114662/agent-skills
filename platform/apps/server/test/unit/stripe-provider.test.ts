@@ -67,7 +67,12 @@ describe("StripeBillingProvider (#481 — go-live adapter against a mock Stripe 
     expect(rec.apiKey).toBe("sk_live_REALKEY");
     expect(rec.products).toEqual([{ name: "ipop Pro" }]);
     expect(rec.prices).toEqual([
-      { product: "prod_TEST", unit_amount: 19_900, currency: "usd", recurring: { interval: "month" } },
+      {
+        product: "prod_TEST",
+        unit_amount: 19_900,
+        currency: "usd",
+        recurring: { interval: "month" },
+      },
     ]);
   });
 
@@ -94,6 +99,7 @@ describe("StripeBillingProvider (#481 — go-live adapter against a mock Stripe 
       priceId: "price_TEST",
       slug: "plan-pro-ws1",
       metadata: { workspaceId: "ws1", planKey: "pro", kind: "plan_checkout" },
+      customerEmail: "buyer@example.com",
       returnUrl: "https://app.ipop.ai/?checkout=success",
       secrets: { STRIPE_SECRET_KEY: "sk_live_REALKEY" },
     });
@@ -102,8 +108,16 @@ describe("StripeBillingProvider (#481 — go-live adapter against a mock Stripe 
     expect(rec.links).toEqual([
       {
         line_items: [{ price: "price_TEST", quantity: 1 }],
-        metadata: { workspaceId: "ws1", planKey: "pro", kind: "plan_checkout" },
-        after_completion: { type: "redirect", redirect: { url: "https://app.ipop.ai/?checkout=success" } },
+        metadata: {
+          workspaceId: "ws1",
+          planKey: "pro",
+          kind: "plan_checkout",
+          customerEmail: "buyer@example.com",
+        },
+        after_completion: {
+          type: "redirect",
+          redirect: { url: "https://app.ipop.ai/?checkout=success" },
+        },
       },
     ]);
   });

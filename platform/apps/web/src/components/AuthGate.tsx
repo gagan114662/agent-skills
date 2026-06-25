@@ -25,8 +25,9 @@ type AuthError =
 // Code-split the marketing site: signed-in users never download it.
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
 // #214: the dedicated public pricing page. Its own lazy chunk; public at every phase like the landing.
-const PricingPage = lazy(() =>
-  import("./landing/PricingPage.js").then((m) => ({ default: m.PricingPage })),
+const PricingPage = lazy(() => import("./landing/PricingPage.js").then((m) => ({ default: m.PricingPage })));
+const RefundPolicy = lazy(() =>
+  import("./landing/RefundPolicy.js").then((m) => ({ default: m.RefundPolicy })),
 );
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
@@ -135,6 +136,14 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <Security />
+      </Suspense>
+    );
+  }
+
+  if (path === "/refund-policy") {
+    return (
+      <Suspense fallback={<Splash />}>
+        <RefundPolicy />
       </Suspense>
     );
   }

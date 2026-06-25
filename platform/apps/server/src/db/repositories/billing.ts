@@ -1,6 +1,12 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
-import { firstCustomerStories, paymentLinks, revenueEvents, revenueEvidence } from "../schema/index.js";
+import {
+  firstCustomerStories,
+  paymentLinks,
+  revenueEvents,
+  revenueEvidence,
+} from "../schema/index.js";
+import { updateWorkspaceBillingContact } from "./workspaces.js";
 import type {
   BillingStore,
   CreateEvidenceRow,
@@ -111,22 +117,23 @@ export const dbBillingStore: BillingStore = {
     return toEvent(row!);
   },
 
+  async updateWorkspaceBillingContact(input): Promise<unknown> {
+    return updateWorkspaceBillingContact(input);
+  },
+
   async createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence> {
-    const [row] = await db
-      .insert(revenueEvidence)
-      .values(input)
-      .returning({
-        id: revenueEvidence.id,
-        workspaceId: revenueEvidence.workspaceId,
-        sessionId: revenueEvidence.sessionId,
-        kind: revenueEvidence.kind,
-        source: revenueEvidence.source,
-        revenueEventId: revenueEvidence.revenueEventId,
-        amountCents: revenueEvidence.amountCents,
-        currency: revenueEvidence.currency,
-        summary: revenueEvidence.summary,
-        createdAt: revenueEvidence.createdAt,
-      });
+    const [row] = await db.insert(revenueEvidence).values(input).returning({
+      id: revenueEvidence.id,
+      workspaceId: revenueEvidence.workspaceId,
+      sessionId: revenueEvidence.sessionId,
+      kind: revenueEvidence.kind,
+      source: revenueEvidence.source,
+      revenueEventId: revenueEvidence.revenueEventId,
+      amountCents: revenueEvidence.amountCents,
+      currency: revenueEvidence.currency,
+      summary: revenueEvidence.summary,
+      createdAt: revenueEvidence.createdAt,
+    });
     return row as RevenueEvidence;
   },
 

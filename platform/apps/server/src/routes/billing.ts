@@ -58,7 +58,8 @@ function isWebhookConfigError(err: WebhookVerificationError): boolean {
  * own confirmation page). It is the customer's own app origin, so we don't allow-list hosts here.
  */
 function safeReturnUrl(raw: unknown): string | undefined {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_RETURN_URL_LEN) return undefined;
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_RETURN_URL_LEN)
+    return undefined;
   try {
     const u = new URL(raw);
     return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : undefined;
@@ -79,7 +80,10 @@ function safeReturnUrl(raw: unknown): string | undefined {
  * Outbound money (refunds/payouts/transfers) is NOT here — it is a #13 approval-gated, recorded-only
  * action (see `approvals/runtime.ts`); payouts stay manual in the Stripe dashboard.
  */
-export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOptions): Promise<void> {
+export async function billingRoutes(
+  app: FastifyInstance,
+  opts: BillingRoutesOptions,
+): Promise<void> {
   const { billingManager, planService, trialNurture, status } = opts;
 
   async function authorize(
@@ -206,6 +210,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       amountCents?: unknown;
       currency?: unknown;
       interval?: unknown;
+      billingEmail?: unknown;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name || name.length > MAX_NAME_LEN) {
@@ -227,6 +232,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       typeof body.interval === "string" && VALID_INTERVALS.includes(body.interval as PriceInterval)
         ? (body.interval as PriceInterval)
         : null;
+    const billingEmail = typeof body.billingEmail === "string" ? body.billingEmail : undefined;
 
     try {
       const link = await billingManager.createPaymentLink({
@@ -239,6 +245,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
         amountCents: body.amountCents,
         currency,
         interval,
+        billingEmail,
       });
       return reply.code(201).send(toLinkDto(link));
     } catch (err) {
@@ -254,7 +261,8 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     const query = req.query as { visitorKey?: unknown };
-    const visitorKey = typeof query.visitorKey === "string" && query.visitorKey ? query.visitorKey : id.memberId;
+    const visitorKey =
+      typeof query.visitorKey === "string" && query.visitorKey ? query.visitorKey : id.memberId;
     const listing = await planService.listPlans(wid, { subjectKey: visitorKey });
     return reply.send(toListingDto(listing));
   });
@@ -275,7 +283,8 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       const experiment = await planService.createPricingExperiment({
         workspaceId: wid,
         name: typeof body.name === "string" ? body.name : "Pricing experiment",
-        controlVariantKey: typeof body.controlVariantKey === "string" ? body.controlVariantKey : undefined,
+        controlVariantKey:
+          typeof body.controlVariantKey === "string" ? body.controlVariantKey : undefined,
         minSampleSize:
           typeof body.minSampleSize === "number" && Number.isFinite(body.minSampleSize)
             ? Math.trunc(body.minSampleSize)
@@ -316,7 +325,11 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const dto: BillingStatusDto = { provider: status.provider, mode: status.mode, live: status.live };
+    const dto: BillingStatusDto = {
+      provider: status.provider,
+      mode: status.mode,
+      live: status.live,
+    };
     return reply.send(dto);
   });
 
@@ -342,7 +355,9 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       wid,
       id.memberId,
       kind as Exclude<TrialNurtureSignalKind, "paid">,
-      typeof body.detail === "object" && body.detail ? (body.detail as Record<string, unknown>) : {},
+      typeof body.detail === "object" && body.detail
+        ? (body.detail as Record<string, unknown>)
+        : {},
     );
   });
 
@@ -361,7 +376,12 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    const body = (req.body ?? {}) as { planKey?: unknown; returnUrl?: unknown; pricingAssignmentId?: unknown };
+    const body = (req.body ?? {}) as {
+      planKey?: unknown;
+      returnUrl?: unknown;
+      pricingAssignmentId?: unknown;
+      billingEmail?: unknown;
+    };
     const planKey = typeof body.planKey === "string" ? body.planKey : "";
     if (!planKey) return reply.code(400).send({ error: "planKey required" });
     // Optional post-payment redirect back into the app. Only http/https is honoured (no javascript:/data: etc).
@@ -372,6 +392,7 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
         planKey,
         createdByMemberId: id.memberId,
         ...(returnUrl ? { returnUrl } : {}),
+        ...(typeof body.billingEmail === "string" ? { billingEmail: body.billingEmail } : {}),
         pricingAssignmentId:
           typeof body.pricingAssignmentId === "string" && body.pricingAssignmentId
             ? body.pricingAssignmentId
@@ -440,7 +461,9 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
     webhookScope.post("/billing/webhook/:wid", async (req, reply) => {
       const { wid } = req.params as { wid: string };
       const signature = req.headers["stripe-signature"];
-      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
+      const rawBody = Buffer.isBuffer(req.body)
+        ? req.body.toString("utf8")
+        : String(req.body ?? "");
       try {
         const result = await billingManager.ingestWebhook(
           wid,
@@ -451,10 +474,16 @@ export async function billingRoutes(app: FastifyInstance, opts: BillingRoutesOpt
       } catch (err) {
         if (err instanceof WebhookVerificationError) {
           if (isWebhookConfigError(err)) {
-            req.log.error({ workspaceId: wid, err }, "billing webhook is not configured; asking provider to retry");
+            req.log.error(
+              { workspaceId: wid, err },
+              "billing webhook is not configured; asking provider to retry",
+            );
             return reply.code(503).send({ error: "webhook not configured" });
           }
-          req.log.warn({ provider: "stripe", workspaceId: wid, reason: err.message }, "webhook signature verification failed");
+          req.log.warn(
+            { provider: "stripe", workspaceId: wid, reason: err.message },
+            "webhook signature verification failed",
+          );
           recordWebhookSignatureFailure("stripe", err.message);
           return reply.code(400).send({ error: "invalid signature" });
         }

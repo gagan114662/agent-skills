@@ -635,6 +635,7 @@ export const LANDING = {
       { href: "#agents", label: "The department" },
       { href: "#pricing", label: "Pricing" },
       { href: "/security", label: "Security & trust" },
+      { href: "/refund-policy", label: "Refund policy" },
     ],
     resourcesTitle: "Resources",
     resources: [
@@ -670,7 +671,8 @@ export const PRICING = {
   /** Per-plan CTA — starts a free trial of that tier. */
   planCta: "Start free",
   /** Reassurance under the grid (honest: free trial, no card, you set the ceiling). */
-  footnote: "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it.",
+  footnote:
+    "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
   /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
   faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
@@ -1601,6 +1603,10 @@ export const FAQ = {
       a: "Start free, no card. Starter is $49/month for proving the loop with one department fleet: three agent seats, a $200 monthly session budget, approvals, and the audit trail. Pro is $199/month for teams that want more of the business moving at once: ten seats, a $1,000 monthly budget, three department fleets, priority autonomy, and deploy-to-live. Upgrade when one lane is working and you want more departments moving without waiting in line.",
     },
     {
+      q: "What is the refund policy and support SLA?",
+      a: "Paid customers can request a refund within 14 days of the first charge if the fleet cannot deliver the promised starter work after support has had a fair chance to help. We acknowledge support requests within one business day, and urgent billing or access issues are prioritized first.",
+    },
+    {
       q: "What do priority autonomy and deploy-to-live mean?",
       a: "Priority autonomy means Pro work gets a larger budget and earlier background-run capacity, so agents can keep planning, drafting, and checking without you restarting every step. Deploy-to-live means approved site or venture changes can move from preview to the live customer URL through the product flow, with receipts and rollback paths instead of a manual handoff.",
     },
@@ -1688,6 +1694,9 @@ export const SECURITY = {
     },
   ],
   guaranteesTitle: "Built and enforced today",
+  slaTitle: "Support SLA",
+  sla:
+    "We acknowledge customer support requests within one business day. Billing, access, and live-work blockers are prioritized first, and every support case keeps an auditable status instead of disappearing into email.",
   /** NOT built / NOT certified. Each carries an explicit status so it can never be read as a claim. */
   roadmapTitle: "On the roadmap — not yet",
   roadmap: [
@@ -1702,6 +1711,41 @@ export const SECURITY = {
   backCta: "Back to home",
   /** The footer/nav link label that points visitors at this page. */
   navLabel: "Security & trust",
+} as const;
+
+/** Public support and refund terms (#865). Kept factual: it describes the current money gate and support SLA. */
+export const REFUND_POLICY = {
+  eyebrow: "Refunds & support",
+  title: "Plain terms before you pay",
+  sub:
+    "No mystery policy hidden after checkout. Here is how refunds, billing support, and response times work for paid ipop customers.",
+  sections: [
+    {
+      title: "14-day first-charge refund window",
+      body:
+        "If your first paid workspace cannot deliver the promised starter work, contact support within 14 days of the charge. We will either help unblock the fleet or process a refund through the money-approval path.",
+    },
+    {
+      title: "Human-reviewed money actions",
+      body:
+        "Refunds are never fired automatically by an agent. They are recorded, reviewed, and approved by a human with the amount visible before money moves.",
+    },
+    {
+      title: "Support SLA",
+      body:
+        "We acknowledge customer support requests within one business day. Billing, access, and live-work blockers are prioritized first.",
+    },
+    {
+      title: "What is not refundable",
+      body:
+        "Approved third-party spend, completed custom services, abuse, fraud, and repeated policy violations are not refundable. We will still provide receipts and a clear explanation.",
+    },
+  ],
+  cta: "Back to pricing",
+  ctaHref: "/pricing",
+  securityCta: "Security & trust",
+  securityHref: "/security",
+  navLabel: "Refund policy",
 } as const;
 
 /**
@@ -1880,6 +1924,11 @@ export const PAGE_SEO = {
     name: "Pricing",
     title: `Pricing — ${BRAND.name}, your marketing agency of AI agents`,
     description: PRICING.sub,
+  },
+  "/refund-policy": {
+    name: "Refund policy",
+    title: `Refund policy — ${BRAND.name} support SLA and billing terms`,
+    description: REFUND_POLICY.sub,
   },
   "/compare": {
     name: "Compare",
