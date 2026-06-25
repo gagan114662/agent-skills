@@ -121,6 +121,26 @@ describe("OnboardingExperience (#784)", () => {
     expect(onEnterApp).toHaveBeenCalledTimes(1);
   });
 
+  it("does not fake a connected state when the live connector is unavailable", async () => {
+    const onEnterApp = vi.fn();
+    const provider = fakeProvider({
+      connect: () => Promise.reject(new Error("gmail needs the real connections panel before ipop can use it.")),
+    });
+    render(<OnboardingExperience provider={provider} hour={14} onEnterApp={onEnterApp} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/needs the real connections panel/i);
+    expect(screen.queryByText(/drafted you a reply to a warm lead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /open real connections/i }));
+    expect(onEnterApp).toHaveBeenCalledTimes(1);
+  });
+
   it("reject is a take-two, not a dead end (rebuilds the deliverable)", async () => {
     let built = 0;
     const provider = fakeProvider({

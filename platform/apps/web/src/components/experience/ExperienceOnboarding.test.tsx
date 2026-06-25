@@ -24,32 +24,34 @@ describe("ExperienceOnboarding (#784)", () => {
     expect(screen.getByText("quill found the sharp bit: acme.ai needs one obvious promise.")).toBeInTheDocument();
   });
 
-  it("shows each connection ask followed by an immediate visible result", async () => {
+  it("does not mark mocked connection asks as connected", async () => {
     render(<ExperienceOnboarding />);
     await userEvent.type(screen.getByLabelText("what are we marketing today?"), "acme.ai");
     await userEvent.click(screen.getByRole("button", { name: "wake the fleet" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "allow gmail" }));
-    expect(screen.getByText("drafted a reply to a warm lead. polite, useful, suspiciously good.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "connect gmail" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/gmail needs a real OAuth handoff/i);
+    expect(screen.queryByText(/drafted a reply to a warm lead/i)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "allow reddit/x" }));
-    expect(screen.getByText("found 3 threads where you can genuinely help. drafts are ready.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "connect reddit/x" }));
+    expect(screen.getAllByRole("status")[1]).toHaveTextContent(/no threads or replies are being invented/i);
+    expect(screen.queryByText(/found 3 threads/i)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "allow site" }));
-    expect(screen.getByText("rewrote the hero and parked it for approval. no rogue publishing.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "connect site" }));
+    expect(screen.getAllByRole("status")[2]).toHaveTextContent(/site publishing needs the real connections panel/i);
+    expect(screen.queryByText(/rewrote the hero/i)).not.toBeInTheDocument();
   });
 
-  it("only ships after the guided connections are complete", async () => {
+  it("never exposes ship controls from the local mock connection flow", async () => {
     render(<ExperienceOnboarding />);
     await userEvent.type(screen.getByLabelText("what are we marketing today?"), "acme.ai");
     await userEvent.click(screen.getByRole("button", { name: "wake the fleet" }));
 
+    expect(screen.getByText(/no fake replies, scraped threads, or site edits/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ship it" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "allow gmail" }));
-    await userEvent.click(screen.getByRole("button", { name: "allow reddit/x" }));
-    await userEvent.click(screen.getByRole("button", { name: "allow site" }));
-    await userEvent.click(screen.getByRole("button", { name: "ship it" }));
-
-    expect(screen.getByRole("status")).toHaveTextContent("shipped. quietly heroic, honestly.");
+    await userEvent.click(screen.getByRole("button", { name: "connect gmail" }));
+    await userEvent.click(screen.getByRole("button", { name: "connect reddit/x" }));
+    await userEvent.click(screen.getByRole("button", { name: "connect site" }));
+    expect(screen.queryByRole("button", { name: "ship it" })).not.toBeInTheDocument();
   });
 });

@@ -6,35 +6,34 @@ interface ToolStep {
   readonly id: ToolId;
   readonly label: string;
   readonly ask: string;
-  readonly result: string;
+  readonly unavailable: string;
 }
 
 const TOOLS: readonly ToolStep[] = [
   {
     id: "gmail",
-    label: "allow gmail",
+    label: "connect gmail",
     ask: "lend us your gmail for a sec? best behaviour, promise.",
-    result: "drafted a reply to a warm lead. polite, useful, suspiciously good.",
+    unavailable: "gmail needs a real OAuth handoff before the fleet can read or draft from it.",
   },
   {
     id: "social",
-    label: "allow reddit/x",
+    label: "connect reddit/x",
     ask: "shall we go where your customers are already complaining?",
-    result: "found 3 threads where you can genuinely help. drafts are ready.",
+    unavailable: "reddit/x is not connected here yet, so no threads or replies are being invented.",
   },
   {
     id: "site",
-    label: "allow site",
+    label: "connect site",
     ask: "give us the keys to the homepage? tiny keys. big trousers.",
-    result: "rewrote the hero and parked it for approval. no rogue publishing.",
+    unavailable: "site publishing needs the real connections panel before rewrites can be queued.",
   },
 ];
 
 export function ExperienceOnboarding(): React.JSX.Element {
   const [target, setTarget] = useState("");
   const [started, setStarted] = useState(false);
-  const [connected, setConnected] = useState<ReadonlySet<ToolId>>(new Set());
-  const [shipped, setShipped] = useState(false);
+  const [requested, setRequested] = useState<ReadonlySet<ToolId>>(new Set());
   const trimmed = target.trim();
 
   const findings = useMemo(
@@ -52,8 +51,8 @@ export function ExperienceOnboarding(): React.JSX.Element {
     setStarted(true);
   }
 
-  function connect(id: ToolId): void {
-    setConnected((current) => new Set([...current, id]));
+  function requestConnection(id: ToolId): void {
+    setRequested((current) => new Set([...current, id]));
   }
 
   if (!started) {
@@ -98,14 +97,14 @@ export function ExperienceOnboarding(): React.JSX.Element {
         <h2>plug in the bits that make it real</h2>
         <div className="experience-tools">
           {TOOLS.map((tool) => {
-            const done = connected.has(tool.id);
+            const asked = requested.has(tool.id);
             return (
-              <article className={`experience-tool${done ? " experience-tool--done" : ""}`} key={tool.id}>
+              <article className={`experience-tool${asked ? " experience-tool--pending" : ""}`} key={tool.id}>
                 <p>{tool.ask}</p>
-                <button type="button" onClick={() => connect(tool.id)} disabled={done}>
-                  {done ? "allowed" : tool.label}
+                <button type="button" onClick={() => requestConnection(tool.id)} disabled={asked}>
+                  {asked ? "needs real connection" : tool.label}
                 </button>
-                {done && <strong>{tool.result}</strong>}
+                {asked && <strong role="status">{tool.unavailable}</strong>}
               </article>
             );
           })}
@@ -114,21 +113,8 @@ export function ExperienceOnboarding(): React.JSX.Element {
 
       <section className="experience__ship" aria-label="first deliverable">
         <p>on it. ok this one is good.</p>
-        <h2>homepage rewrite plus three warm replies, queued and waiting for your say-so.</h2>
-        {connected.size < TOOLS.length ? (
-          <small>connect the three bits above and we will queue the first proper ship.</small>
-        ) : shipped ? (
-          <strong role="status">shipped. quietly heroic, honestly.</strong>
-        ) : (
-          <div className="experience__actions">
-            <button type="button" onClick={() => setShipped(true)}>
-              ship it
-            </button>
-            <button type="button" className="experience__secondary">
-              nah, redo
-            </button>
-          </div>
-        )}
+        <h2>no fake replies, scraped threads, or site edits until real access is connected.</h2>
+        <small>open the authenticated Connections panel to use live OAuth-backed tools.</small>
       </section>
     </main>
   );
