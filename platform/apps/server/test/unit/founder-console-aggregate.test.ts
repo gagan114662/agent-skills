@@ -476,4 +476,42 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(content.trend).toBe("up");
     expect(content.delta).toBe(3);
   });
+
+  it("surfaces per-artifact attributed revenue sorted by receipted dollars (#868)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        attribution: {
+          totalAttributedCents: 16400,
+          attributedPaymentCount: 4,
+          unattributedPaymentCount: 2,
+          topArtifacts: [
+            {
+              artifactId: "https://example.com/pricing",
+              artifactKind: "seo_page",
+              channel: "seo",
+              attributedCents: 4200,
+              currency: "usd",
+              paymentCount: 1,
+            },
+            {
+              artifactId: "post-1",
+              artifactKind: "social_post",
+              channel: "social",
+              attributedCents: 12200,
+              currency: "usd",
+              paymentCount: 3,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(out.attribution.totalAttributedCents).toBe(16400);
+    expect(out.attribution.attributedPaymentCount).toBe(4);
+    expect(out.attribution.unattributedPaymentCount).toBe(2);
+    expect(out.attribution.topArtifacts.map((a) => a.artifactId)).toEqual([
+      "post-1",
+      "https://example.com/pricing",
+    ]);
+  });
 });

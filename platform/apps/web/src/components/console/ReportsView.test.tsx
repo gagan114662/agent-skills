@@ -4,7 +4,7 @@
  * never a fabricated number; and the section is absent entirely when the payload predates the scorecard.
  */
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { ReportsView } from "./ReportsView.js";
 import { CONSOLE } from "../../brand.js";
 import type { FounderConsoleDto } from "../../api/types.js";
@@ -91,6 +91,51 @@ describe("#253 ReportsView proof scorecard", () => {
 
     expect(screen.getByText("not connected")).toBeInTheDocument();
     expect(screen.getByText(/Search Console not connected/)).toBeInTheDocument();
+  });
+
+  it("renders per-artifact attributed revenue from the attribution ledger (#868)", () => {
+    const data = dto({
+      attribution: {
+        totalAttributedCents: 16400,
+        attributedPaymentCount: 4,
+        unattributedPaymentCount: 2,
+        topArtifacts: [
+          {
+            artifactId: "https://example.com/pricing",
+            artifactKind: "seo_page",
+            channel: "seo",
+            attributedCents: 12200,
+            currency: "usd",
+            paymentCount: 3,
+          },
+        ],
+      },
+    });
+
+    render(<ReportsView console={data} onApprove={noop} onPeekBrief={noop} decidingId={null} />);
+
+    expect(screen.getByText("Attributed revenue")).toBeInTheDocument();
+    expect(screen.getByText("4 payments")).toBeInTheDocument();
+    expect(screen.getByText("$164.00")).toBeInTheDocument();
+    expect(screen.getByText("$122.00")).toBeInTheDocument();
+    expect(screen.getByText(/Seo Page · Seo/)).toBeInTheDocument();
+    expect(screen.getByText(/https:\/\/example.com\/pricing/)).toBeInTheDocument();
+  });
+
+  it("renders an honest attribution empty state without inventing ROI (#868)", () => {
+    const data = dto({
+      attribution: {
+        totalAttributedCents: 0,
+        attributedPaymentCount: 0,
+        unattributedPaymentCount: 1,
+        topArtifacts: [],
+      },
+    });
+
+    render(<ReportsView console={data} onApprove={noop} onPeekBrief={noop} decidingId={null} />);
+
+    expect(screen.getByText("No attributed payments yet")).toBeInTheDocument();
+    expect(within(screen.getByText("Attributed").parentElement!).getByText("$0.00")).toBeInTheDocument();
   });
 
   it("omits the scorecard section entirely for payloads that predate it", () => {

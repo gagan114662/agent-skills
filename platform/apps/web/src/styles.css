@@ -6020,6 +6020,12 @@ select:focus-visible {
 .reports__pl { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 12px; }
 .reports__pl dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
 .reports__pl dd { font-family: var(--console-mono); font-size: 14px; color: var(--ink); margin-top: 2px; }
+.reports__empty { margin-top: 10px; font-size: 12px; color: var(--text-faint); }
+.reports__artifact-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.reports__artifact-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; }
+.reports__artifact-row span { min-width: 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 700; color: var(--ink); }
+.reports__artifact-row strong { font-family: var(--console-mono); font-size: 13px; color: var(--ink); }
+.reports__artifact-row small { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; font-size: 10px; color: var(--text-faint); }
 
 /* ---- #253 proof scorecard: one real, sourced outcome per department ---- */
 .reports__proof { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }

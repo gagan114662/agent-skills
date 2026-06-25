@@ -15,6 +15,7 @@ import {
   type GrowthSnapshot,
   type DiscoveryPipelineSnapshot,
   type OutreachSnapshot,
+  type AttributionSnapshot,
   type PortfolioReviewSnapshot,
   type VentureEvalSnapshot,
   type ConstitutionSnapshot,
@@ -120,6 +121,11 @@ export interface OutreachReader {
   summary(workspaceId: string): Promise<OutreachSnapshot>;
 }
 
+/** Per-artifact attributed revenue (#868). Optional — absent ⇒ a zeroed ROI proof pane. */
+export interface AttributionReader {
+  summary(workspaceId: string): Promise<AttributionSnapshot>;
+}
+
 /** The planning roadmap pane (#115). Optional — absent ⇒ the console renders an empty roadmap. */
 export interface PlanningReader {
   state(workspaceId: string): Promise<PlanningSnapshot>;
@@ -206,6 +212,8 @@ export interface FounderConsoleDeps {
   discovery?: DiscoveryReader;
   /** Outreach engine roll-up (#225) — optional, read-only. */
   outreach?: OutreachReader;
+  /** Per-artifact attributed revenue (#868) — optional, read-only. */
+  attribution?: AttributionReader;
   /** Product Planning Loop roadmap (#115) — optional, read-only. */
   planning?: PlanningReader;
   /** Cost forecast + right-sizing + infra-ceiling inputs (#113). */
@@ -258,6 +266,7 @@ export class FounderConsoleService {
       growth,
       discoveryPipeline,
       outreach,
+      attribution,
       planning,
       moat,
       constitution,
@@ -284,6 +293,7 @@ export class FounderConsoleService {
         this.deps.growth?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.discovery?.pipeline(workspaceId) ?? Promise.resolve(undefined),
         this.deps.outreach?.summary(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.attribution?.summary(workspaceId) ?? Promise.resolve(undefined),
         this.deps.planning?.state(workspaceId) ?? Promise.resolve(undefined),
         this.deps.moat?.portfolio(workspaceId) ?? Promise.resolve([]),
         this.deps.constitution?.openViolations(workspaceId) ??
@@ -324,6 +334,7 @@ export class FounderConsoleService {
       growth,
       discoveryPipeline,
       outreach,
+      attribution,
       planning,
       usageTrend,
       forecastWindow: this.deps.forecast.forecastWindow(now),

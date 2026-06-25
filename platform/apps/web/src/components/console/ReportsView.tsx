@@ -25,9 +25,23 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
     );
   }
 
-  const { fleet, budget, revenue, venturePipeline, pendingApprovals, attention, growth, discoveryPipeline, outreach, proofScorecard } = data;
+  const {
+    fleet,
+    budget,
+    revenue,
+    venturePipeline,
+    pendingApprovals,
+    attention,
+    growth,
+    discoveryPipeline,
+    outreach,
+    attribution,
+    proofScorecard,
+  } = data;
   const stageLabel = (stage: string): string =>
     stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const compactLabel = (value: string): string =>
+    value.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const trendGlyph = (trend: string): string =>
     trend === "up" ? "▲" : trend === "down" ? "▼" : trend === "flat" ? "▬" : "";
   const brief = attention.required
@@ -166,6 +180,49 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
                   <dd>{growth.score}</dd>
                 </div>
               </div>
+            </article>
+          </>
+        )}
+
+        {attribution && (
+          <>
+            <header className="board__colh">
+              <span className="board__colt">Attributed revenue</span>
+              <span className="board__coln">{attribution.attributedPaymentCount} payments</span>
+            </header>
+            <article className="card" style={{ ["--hue" as string]: "var(--dept-analytics)" } as React.CSSProperties}>
+              <div className="reports__pl">
+                <div>
+                  <dt>Attributed</dt>
+                  <dd>{fmtCents(attribution.totalAttributedCents)}</dd>
+                </div>
+                <div>
+                  <dt>Unattributed</dt>
+                  <dd>{attribution.unattributedPaymentCount}</dd>
+                </div>
+              </div>
+              {attribution.topArtifacts.length === 0 ? (
+                <div className="reports__empty" role="status">
+                  No attributed payments yet
+                </div>
+              ) : (
+                <div className="reports__artifact-list">
+                  {attribution.topArtifacts.map((artifact) => (
+                    <div
+                      key={artifact.artifactId + ":" + artifact.currency}
+                      className="reports__artifact-row"
+                    >
+                      <span>
+                        {compactLabel(artifact.artifactKind)} · {compactLabel(artifact.channel)}
+                      </span>
+                      <strong>{fmtCents(artifact.attributedCents)}</strong>
+                      <small>
+                        {artifact.paymentCount} payments · {artifact.artifactId}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           </>
         )}
