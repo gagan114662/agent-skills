@@ -14,7 +14,7 @@ import {
   createMarketingBriefService,
 } from "../marketing/default.js";
 import { resolveMarketingCaps } from "../marketing/caps.js";
-import { loadConfig } from "../config/loader.js";
+import { loadWorkspaceConfig } from "../config/workspace-capabilities.js";
 import { createDefaultCampaignBriefService } from "../campaign-brief/index.js";
 import type { CampaignBriefPatch } from "../campaign-brief/index.js";
 
@@ -115,7 +115,7 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
     const liveSessionMemberIds = live.filter((s) => s.workspaceId === wid).map((s) => s.agentMemberId);
     // #166: standing department agents read as online when the fleet is enabled (available to mention),
     // not only during a live session — otherwise they always render grey/offline (QA bug 13).
-    const fleetEnabled = resolveMarketingCaps(loadConfig(wid).marketing).enabled;
+    const fleetEnabled = resolveMarketingCaps((await loadWorkspaceConfig(wid)).marketing).enabled;
     const roster = buildMarketingRoster({
       members,
       personas: personas.map((p) => ({ agentMemberId: p.agentMemberId, name: p.name })),

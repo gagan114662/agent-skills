@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
-import { loadConfig } from "../config/loader.js";
+import { loadWorkspaceConfig } from "../config/workspace-capabilities.js";
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import type { OnboardingService } from "../onboarding/service.js";
 import type { DnsManager } from "../onboarding/dns/manager.js";
@@ -28,8 +28,8 @@ export async function onboardingRoutes(
 ): Promise<void> {
   const { service, dnsManager } = opts;
 
-  function enabled(workspaceId: string): boolean {
-    return resolveOnboardingCaps(loadConfig(workspaceId).onboarding).enabled;
+  async function enabled(workspaceId: string): Promise<boolean> {
+    return resolveOnboardingCaps((await loadWorkspaceConfig(workspaceId)).onboarding).enabled;
   }
 
   // Every open deliverable stream registers a teardown here so a server shutdown ends them all (no leak).
@@ -88,7 +88,7 @@ export async function onboardingRoutes(
   app.post("/me/external-services", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as { required?: unknown };
@@ -114,7 +114,7 @@ export async function onboardingRoutes(
   app.put("/me/external-credentials/:service", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const serviceKey = (req.params as { service: string }).service;
@@ -142,7 +142,7 @@ export async function onboardingRoutes(
   app.delete("/me/external-credentials/:service", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const serviceKey = (req.params as { service: string }).service;
@@ -154,7 +154,7 @@ export async function onboardingRoutes(
   app.post("/me/external-dns", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as {
@@ -209,7 +209,7 @@ export async function onboardingRoutes(
   app.post("/me/dns/verify-domain", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as { domain?: unknown; token?: unknown; kind?: unknown };
@@ -230,7 +230,7 @@ export async function onboardingRoutes(
   app.post("/me/dns/email-auth", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as {
@@ -256,7 +256,7 @@ export async function onboardingRoutes(
   app.post("/me/dns/site-cname", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as {
@@ -283,7 +283,7 @@ export async function onboardingRoutes(
   app.post("/me/dns/setup", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    if (!enabled(identity.workspaceId)) {
+    if (!(await enabled(identity.workspaceId))) {
       return reply.code(409).send({ error: "onboarding not enabled for this workspace" });
     }
     const body = (req.body ?? {}) as {
