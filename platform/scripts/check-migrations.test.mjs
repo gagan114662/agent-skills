@@ -44,3 +44,28 @@ test("requires every up migration to have a paired down migration", () => {
   assert.equal(result.ok, false);
   assert.deepEqual(result.errors, ["0511_missing_down.sql: missing paired down migration"]);
 });
+
+test("allows timestamp-prefixed migrations and preserves lexicographic order", () => {
+  const result = validateMigrationSet([
+    { file: "20260625010203_alpha.sql", sql: "CREATE TABLE alpha (id text);" },
+    { file: "20260625010203_alpha.down.sql", sql: "DROP TABLE alpha;" },
+    { file: "20260625010204_beta.sql", sql: "CREATE TABLE beta (id text);" },
+    { file: "20260625010204_beta.down.sql", sql: "DROP TABLE beta;" },
+  ]);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.order, ["20260625010203_alpha.sql", "20260625010204_beta.sql"]);
+});
+
+test("rejects newly added legacy numeric migrations", () => {
+  const result = validateMigrationSet(
+    [
+      { file: "0512_legacy.sql", sql: "CREATE TABLE legacy (id text);" },
+      { file: "0512_legacy.down.sql", sql: "DROP TABLE legacy;" },
+    ],
+    { addedFiles: ["0512_legacy.sql", "0512_legacy.down.sql"] },
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /new migrations must use timestamp prefixes/);
+});

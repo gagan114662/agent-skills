@@ -156,7 +156,11 @@ jobs:
             if [ -z "$ok" ]; then echo "could not pull $img after retries"; exit 1; fi
           done
       - name: Build image + boot full stack
-        run: docker compose --profile full up -d --build
+        run: |
+          docker compose --profile full up -d --build || {
+            docker compose logs migrate
+            exit 1
+          }
       - name: Wait for server readiness (/readyz)
         run: |
           for i in $(seq 1 60); do

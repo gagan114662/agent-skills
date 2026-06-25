@@ -6,10 +6,24 @@ Plain SQL migrations applied by the minimal runner in [`../src/db/migrate.ts`](.
 pnpm --filter @reload/server db:migrate     # apply all pending NNNN_*.sql (up)
 pnpm --filter @reload/server db:rollback     # revert the most recent (down)
 pnpm --filter @reload/server db:reset        # revert all, then re-apply
+pnpm migration:new add_customer_status       # create timestamped up/down files
 ```
 
 Each `NNNN_name.sql` has a paired `NNNN_name.down.sql`. Applied migrations are tracked by **filename**
 in the `_migrations` table.
+
+## New migrations use timestamps
+
+New migrations should be created with `pnpm migration:new <slug>`, which writes:
+
+```text
+YYYYMMDDHHMMSS_slug.sql
+YYYYMMDDHHMMSS_slug.down.sql
+```
+
+The timestamp prefix removes the old branch race where two parallel PRs both guessed the next `NNNN`
+slot. CI rejects newly added `NNNN_*.sql` files; legacy `NNNN_*.sql` files stay valid because deployed
+databases record applied migrations by filename.
 
 ## Ordering (and duplicate prefixes)
 
@@ -28,7 +42,8 @@ unwinds cleanly.
 
 CI runs the migration guard (node scripts/check-migrations.mjs) to keep this deterministic under parallel PRs:
 
-- every NNNN_name.sql must have a paired NNNN_name.down.sql;
+- every `YYYYMMDDHHMMSS_name.sql` or legacy `NNNN_name.sql` must have a paired `.down.sql`;
+- newly added migrations must use the timestamp prefix;
 - duplicate numeric prefixes are allowed only when their up migrations touch disjoint tables/objects;
 - duplicate prefixes that mutate the same table fail before merge, because their order would encode a
   hidden conflict that should be resolved in the PR.
