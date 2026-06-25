@@ -7,8 +7,15 @@ import {
   listAgents,
   deactivateAgent,
 } from "../db/repositories/auth.js";
+import { checkPlanQuota, type PlanQuotaReaders } from "../billing/entitlements.js";
+import { defaultPlanQuotaReaders } from "../billing/entitlements-default.js";
 
-export async function agentRoutes(app: FastifyInstance): Promise<void> {
+export interface AgentRoutesOptions {
+  planQuota?: PlanQuotaReaders;
+}
+
+export async function agentRoutes(app: FastifyInstance, opts: AgentRoutesOptions = {}): Promise<void> {
+  const planQuota = opts.planQuota ?? defaultPlanQuotaReaders;
   // List the workspace's agent registry (profiles). Any workspace member may read the roster.
   app.get("/workspaces/:workspaceId/agents", async (req, reply) => {
     const identity = await resolveIdentity(req);
@@ -47,6 +54,16 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     }
     const b = req.body as { name?: string; framework?: string };
     if (!b.name) return reply.code(400).send({ error: "name required" });
+    const quota = await checkPlanQuota(planQuota, workspaceId, "agent");
+    if (!quota.ok) {
+      return reply.code(quota.statusCode).send({
+        error: quota.error,
+        resource: quota.resource,
+        limit: quota.limit,
+        used: quota.used,
+        planKey: quota.plan.planKey,
+      });
+    }
 
     const { raw, hash } = generateAgentToken();
     const created = await createAgentWithToken({

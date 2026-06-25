@@ -21,9 +21,12 @@ import {
   type SubagentInvokeResult,
 } from "../subagents/service.js";
 import type { SessionManager } from "../runtime/manager.js";
+import { checkPlanQuota, type PlanQuotaReaders } from "../billing/entitlements.js";
+import { defaultPlanQuotaReaders } from "../billing/entitlements-default.js";
 
 export interface SubagentRoutesOptions {
   sessionManager: SessionManager;
+  planQuota?: PlanQuotaReaders;
 }
 
 /** Public shape of a persona (never includes the token; that is returned once at creation). */
@@ -52,6 +55,7 @@ export async function subagentRoutes(
   opts: SubagentRoutesOptions,
 ): Promise<void> {
   const { sessionManager } = opts;
+  const planQuota = opts.planQuota ?? defaultPlanQuotaReaders;
 
   const service = new SubagentService({
     getPersona,
@@ -93,6 +97,17 @@ export async function subagentRoutes(
     } catch (err) {
       if (err instanceof PersonaValidationError) return reply.code(400).send({ error: err.message });
       throw err;
+    }
+
+    const quota = await checkPlanQuota(planQuota, wid, "agent");
+    if (!quota.ok) {
+      return reply.code(quota.statusCode).send({
+        error: quota.error,
+        resource: quota.resource,
+        limit: quota.limit,
+        used: quota.used,
+        planKey: quota.plan.planKey,
+      });
     }
 
     const { raw, hash } = generateAgentToken();

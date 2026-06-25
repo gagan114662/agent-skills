@@ -27,6 +27,8 @@ import {
 import { MAX_MESSAGE_BODY_LENGTH } from "../messaging/limits.js";
 import { resolveThreadRoot } from "../messaging/threads.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
+import { checkPlanQuota, type PlanQuotaReaders } from "../billing/entitlements.js";
+import { defaultPlanQuotaReaders } from "../billing/entitlements-default.js";
 
 const CAPABILITIES: Capability[] = ["read", "write", "propagate"];
 const MESSAGE_LIST_MAX_LIMIT = 1_000;
@@ -56,7 +58,12 @@ function parseMessageBody(value: unknown):
   return { ok: true, body: value };
 }
 
-export async function channelRoutes(app: FastifyInstance): Promise<void> {
+export interface ChannelRoutesOptions {
+  planQuota?: PlanQuotaReaders;
+}
+
+export async function channelRoutes(app: FastifyInstance, opts: ChannelRoutesOptions = {}): Promise<void> {
+  const planQuota = opts.planQuota ?? defaultPlanQuotaReaders;
   // create a public channel (creator auto-joins)
   app.post("/workspaces/:wid/channels", async (req, reply) => {
     const id = await requireIdentity(req, reply);
@@ -65,6 +72,16 @@ export async function channelRoutes(app: FastifyInstance): Promise<void> {
     if (!assertWorkspace(id, wid, reply)) return;
     const b = req.body as { name?: string };
     if (!b.name) return reply.code(400).send({ error: "name required" });
+    const quota = await checkPlanQuota(planQuota, wid, "channel");
+    if (!quota.ok) {
+      return reply.code(quota.statusCode).send({
+        error: quota.error,
+        resource: quota.resource,
+        limit: quota.limit,
+        used: quota.used,
+        planKey: quota.plan.planKey,
+      });
+    }
     const channel = await createChannel({ workspaceId: wid, kind: "public", name: b.name });
     await addChannelMember(channel.id, id.memberId);
     // The creator is the channel's first administrator (#9): an explicit propagate grant.

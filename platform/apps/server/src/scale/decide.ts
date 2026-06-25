@@ -9,7 +9,7 @@
  */
 
 /** Why a launch was denied. `kill_switch`/`budget_exceeded` are hard stops; the rest are capacity. */
-export type AdmissionReason = "kill_switch" | "budget_exceeded" | "tenant_capacity" | "global_capacity";
+export type AdmissionReason = "kill_switch" | "budget_exceeded" | "plan_expired" | "tenant_capacity" | "global_capacity";
 
 export type AdmissionDecision = { ok: true } | { ok: false; reason: AdmissionReason };
 
@@ -18,6 +18,8 @@ export interface AdmissionState {
   killSwitch: boolean;
   /** The tenant's accrued cost has met/passed its budget cap this window. */
   budgetExceeded: boolean;
+  /** The tenant's active paid/trial plan row is past its expiry date. */
+  planExpired?: boolean;
   /** Sessions currently in flight for this tenant. */
   tenantInFlight: number;
   /** Per-tenant concurrency cap; `0` = unlimited. */
@@ -31,6 +33,7 @@ export interface AdmissionState {
 export function decideAdmission(s: AdmissionState): AdmissionDecision {
   if (s.killSwitch) return { ok: false, reason: "kill_switch" };
   if (s.budgetExceeded) return { ok: false, reason: "budget_exceeded" };
+  if (s.planExpired) return { ok: false, reason: "plan_expired" };
   if (s.tenantMax > 0 && s.tenantInFlight >= s.tenantMax) {
     return { ok: false, reason: "tenant_capacity" };
   }

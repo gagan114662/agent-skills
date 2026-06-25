@@ -28,11 +28,11 @@ class FakeKillSwitch implements KillSwitchReader {
 }
 
 class FakeActivePlans {
-  private readonly rows = new Map<string, { status: string; monthlySessionBudgetCents: number }>();
-  set(workspaceId: string, plan: { status: string; monthlySessionBudgetCents: number }): void {
+  private readonly rows = new Map<string, { status: string; monthlySessionBudgetCents: number; expiresAt?: Date }>();
+  set(workspaceId: string, plan: { status: string; monthlySessionBudgetCents: number; expiresAt?: Date }): void {
     this.rows.set(workspaceId, plan);
   }
-  getActive(workspaceId: string): Promise<{ status: string; monthlySessionBudgetCents: number } | undefined> {
+  getActive(workspaceId: string): Promise<{ status: string; monthlySessionBudgetCents: number; expiresAt?: Date } | undefined> {
     return Promise.resolve(this.rows.get(workspaceId));
   }
 }
@@ -145,6 +145,17 @@ describe("Admission (#71 — launch chokepoint: kill switch, budget, concurrency
 
     usage.set("ws1", "2026-06", { estimatedCostCents: 100_000 });
     await expect(admission.acquire("ws1")).rejects.toMatchObject({ reason: "budget_exceeded" });
+  });
+
+  it("blocks an expired active plan at admission (#877)", async () => {
+    const { admission, activePlans } = makeAdmission({ ws1: { budgetCents: 500 } });
+    activePlans.set("ws1", {
+      status: "active",
+      monthlySessionBudgetCents: 100_000,
+      expiresAt: new Date("2026-06-01T00:00:00Z"),
+    });
+
+    await expect(admission.acquire("ws1")).rejects.toMatchObject({ reason: "plan_expired" });
   });
 
   it("places a session in the least-loaded allowed region and frees it on release", async () => {

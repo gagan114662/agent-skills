@@ -3,6 +3,7 @@ import type { ScaleConfig } from "../config/schema.js";
 /** The active-plan fields scale needs; kept structural so scale does not depend on billing internals. */
 export interface ScalePlanBudget {
   status: string;
+  expiresAt?: Date;
   monthlySessionBudgetCents: number;
 }
 
