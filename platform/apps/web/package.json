@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "content:gate": "node scripts/content-gate.mjs"
+    "content:gate": "node scripts/content-gate.mjs",
+    "visual:verify": "node scripts/visual-match.mjs"
   },
   "dependencies": {
     "@reload/shared": "workspace:*",
