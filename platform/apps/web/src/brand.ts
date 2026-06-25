@@ -565,6 +565,7 @@ export const LANDING = {
       "you approve anything that leaves the building.",
     ctaPrimary: "Start free",
     ctaSecondary: "Sign in",
+    ctaDemo: "Watch live demo",
   },
   /** The looping hero vignette — a tiny staged channel where the fleet visibly does work. */
   vignette: [

@@ -24,6 +24,7 @@ import {
   type DemoSectionDto,
   type FetchLike,
 } from "../../api/demo.js";
+import { trackAcquisitionEvent } from "../../acquisition-events.js";
 
 /** Human label per deliverable kind — mirrors the onboarding deliverable badges so styling is shared. */
 const KIND_LABEL: Record<DemoSectionDto["kind"], string> = {
@@ -56,6 +57,8 @@ const COPY = {
     "No account needed. Nothing here is saved or sent — this is a private preview, just for you.",
 } as const;
 
+const DEMO_INTENT_KEY = "ipop-demo-intent";
+
 type Phase = "idle" | "building" | "ready";
 
 export interface DemoSandboxProps {
@@ -76,6 +79,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
   const [plan, setPlan] = useState<DemoDeliverableDto | null>(null);
   const [revealed, setRevealed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const completedHostRef = useRef<string | null>(null);
 
   // Abort any in-flight fetch when a new one starts or the component unmounts (no setState-after-unmount).
   const abortRef = useRef<AbortController | null>(null);
@@ -96,6 +100,8 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
       setPlan(null);
       setRevealed(0);
       setPhase("building");
+      completedHostRef.current = null;
+      trackAcquisitionEvent("demo-start", { url, source: "demo" });
 
       try {
         const result = await fetchDemoDeliverable(url, { fetchImpl, signal: controller.signal });
@@ -135,6 +141,46 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
     return () => clearInterval(timer);
   }, [plan, revealDelayMs]);
 
+  useEffect(() => {
+    if (phase !== "ready" || !plan || completedHostRef.current === plan.business.host) return;
+    completedHostRef.current = plan.business.host;
+    trackAcquisitionEvent("demo-complete", {
+      url: plan.business.url,
+      host: plan.business.host,
+      source: "demo",
+      sectionCount: plan.sections.length,
+    });
+  }, [phase, plan]);
+
+  const signupHref = plan
+    ? `/signup?source=demo&demoHost=${encodeURIComponent(plan.business.host)}&demoUrl=${encodeURIComponent(
+        plan.business.url,
+      )}`
+    : "/signup?source=demo";
+
+  const onDemoSignup = (): void => {
+    if (!plan) return;
+    try {
+      window.sessionStorage.setItem(
+        DEMO_INTENT_KEY,
+        JSON.stringify({
+          url: plan.business.url,
+          host: plan.business.host,
+          title: plan.title,
+          sectionCount: plan.sections.length,
+        }),
+      );
+    } catch {
+      // Storage is best-effort; the query string still preserves the host for the next step.
+    }
+    trackAcquisitionEvent("demo-to-signup", {
+      url: plan.business.url,
+      host: plan.business.host,
+      source: "demo",
+      sectionCount: plan.sections.length,
+    });
+  };
+
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     void build(input);
@@ -146,6 +192,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
     setPlan(null);
     setRevealed(0);
     setError(null);
+    completedHostRef.current = null;
   };
 
   const sections = plan?.sections.slice(0, revealed) ?? [];
@@ -234,7 +281,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
           <h2 className="demo__cta-title">{COPY.ctaTitle(plan.business.host)}</h2>
           <p className="demo__cta-sub">{COPY.ctaSub(BRAND.name)}</p>
           <div className="demo__cta-actions">
-            <Link href="/start" className="btn btn--primary demo__cta-primary">
+            <Link href={signupHref} className="btn btn--primary demo__cta-primary" onClick={onDemoSignup}>
               {COPY.ctaPrimary}
             </Link>
             <Link href="/login" className="linklike demo__cta-secondary">

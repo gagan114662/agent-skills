@@ -12,6 +12,7 @@ export type LandingCopy = Omit<typeof LANDING, "anchors" | "hero" | "sections" |
     readonly sub: string;
     readonly ctaPrimary: string;
     readonly ctaSecondary: string;
+    readonly ctaDemo: string;
   };
   readonly sections: { readonly [K in keyof typeof LANDING.sections]: string };
   readonly steps: ReadonlyArray<{ readonly n: string; readonly title: string; readonly body: string }>;
@@ -48,6 +49,7 @@ export const I18N: Record<Locale, LocaleCopy> = {
         eyebrow: "Une equipe marketing IA complete",
         ctaPrimary: "Commencer gratuitement",
         ctaSecondary: "Se connecter",
+        ctaDemo: "Voir la demo live",
         sub:
           "Scout, Quill, Echo et le reste du departement recherchent, redigent et planifient pendant que vous gardez le dernier mot.",
       },

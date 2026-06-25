@@ -28,6 +28,9 @@ export function PricingPage(): React.JSX.Element {
           <Wordmark />
         </Link>
         <nav className="landing__nav-actions">
+          <Link href="/demo" className="linklike">
+            {LANDING.hero.ctaDemo}
+          </Link>
           <Link href="/login" className="linklike">
             {LANDING.hero.ctaSecondary}
           </Link>
@@ -113,6 +116,9 @@ export function PricingPage(): React.JSX.Element {
           <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
           <Link href="/signup" className="btn btn--primary landing__cta landing__final-cta">
             {LANDING.sections.ctaButton}
+          </Link>
+          <Link href="/demo" className="btn landing__cta landing__cta--ghost">
+            {LANDING.hero.ctaDemo}
           </Link>
         </section>
       </main>

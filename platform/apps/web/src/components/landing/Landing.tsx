@@ -126,6 +126,9 @@ function Hero({ landing }: { landing: LandingCopy }): React.JSX.Element {
           <Link href="/login" className="btn landing__cta landing__cta--ghost">
             {landing.hero.ctaSecondary}
           </Link>
+          <Link href="/demo" className="btn landing__cta landing__cta--ghost">
+            {landing.hero.ctaDemo}
+          </Link>
           <a href="#contact" className="btn landing__cta landing__cta--ghost">
             {CONTACT.trialLinkLabel}
           </a>
