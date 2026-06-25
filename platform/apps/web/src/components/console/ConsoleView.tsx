@@ -332,11 +332,11 @@ export function ConsoleView({
     return () => window.clearInterval(timer);
   }, [workspaceId]);
 
-  // #365: refresh the connection-health chip on mount and whenever Settings closes (so reconnecting in the
-  // Connect-Claude panel updates the chip immediately, not on a later poll). Only fetches for the named
-  // owner workspace; a transient failure leaves the prior snapshot (or null → the chip renders nothing).
+  // #365/#916: refresh the token-free Claude connection-health signal on mount and whenever Settings closes.
+  // The header chip remains owner-flagged, but the first-run hire gate needs this for every workspace so a
+  // new customer cannot reach a "team ready" state while the real runtime prerequisite is absent.
   useEffect(() => {
-    if (!connectHealthEnabled || !workspaceId) return;
+    if (!workspaceId) return;
     let live = true;
     void api
       .getClaudeHealth()
@@ -548,6 +548,7 @@ export function ConsoleView({
   const firstRunSteps = deriveFirstRunChecklist({
     targetSet,
     brandSet,
+    claudeConnected: claudeHealth?.state === "connected",
     hasConnection,
     agentRan,
     resultApproved: shipped.length > 0,
@@ -680,6 +681,10 @@ export function ConsoleView({
     // request at all — that is what kept re-hitting the limit and resetting the window. The hold elapses on
     // its own (seedCoolOff ticks to 0), after which a click can fire again.
     if (!workspaceId || seeding || seedHeld) return;
+    if (claudeHealth?.state !== "connected") {
+      openShellSettings("connect");
+      return;
+    }
     setSeeding(true);
     setSeedError(null);
     try {
@@ -981,6 +986,7 @@ export function ConsoleView({
             busy={seeding}
             seeded={seeded}
             error={seedError}
+            claudeConnected={claudeHealth?.state === "connected"}
             activationDiagnostic={seedAwaitingBoard ? (mc?.diagnostic ?? null) : null}
             coolOff={seedCoolOff}
             onConnect={() => openShellSettings()}

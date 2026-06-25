@@ -9,16 +9,18 @@ import {
 const none: FirstRunSignals = {
   targetSet: false,
   brandSet: false,
+  claudeConnected: false,
   hasConnection: false,
   agentRan: false,
   resultApproved: false,
 };
 
 describe("deriveFirstRunChecklist (#479)", () => {
-  it("returns the five steps in setup order", () => {
+  it("returns the six steps in setup order", () => {
     expect(deriveFirstRunChecklist(none).map((s) => s.key)).toEqual([
       "target",
       "brand",
+      "claude",
       "connect",
       "run",
       "approve",
@@ -29,6 +31,7 @@ describe("deriveFirstRunChecklist (#479)", () => {
     const steps = deriveFirstRunChecklist({
       targetSet: true,
       brandSet: true,
+      claudeConnected: false,
       hasConnection: false,
       agentRan: true,
       resultApproved: false,
@@ -36,6 +39,7 @@ describe("deriveFirstRunChecklist (#479)", () => {
     expect(steps).toEqual([
       { key: "target", done: true },
       { key: "brand", done: true },
+      { key: "claude", done: false },
       { key: "connect", done: false },
       { key: "run", done: true },
       { key: "approve", done: false },
@@ -43,10 +47,10 @@ describe("deriveFirstRunChecklist (#479)", () => {
   });
 
   it("progress counts only the real, done steps", () => {
-    expect(firstRunProgress(deriveFirstRunChecklist(none))).toEqual({ done: 0, total: 5 });
+    expect(firstRunProgress(deriveFirstRunChecklist(none))).toEqual({ done: 0, total: 6 });
     expect(
-      firstRunProgress(deriveFirstRunChecklist({ ...none, targetSet: true, brandSet: true, hasConnection: true })),
-    ).toEqual({ done: 3, total: 5 });
+      firstRunProgress(deriveFirstRunChecklist({ ...none, targetSet: true, brandSet: true, claudeConnected: true, hasConnection: true })),
+    ).toEqual({ done: 4, total: 6 });
   });
 
   it("is complete only when every step is real", () => {
@@ -56,6 +60,7 @@ describe("deriveFirstRunChecklist (#479)", () => {
         deriveFirstRunChecklist({
           targetSet: true,
           brandSet: true,
+          claudeConnected: true,
           hasConnection: true,
           agentRan: true,
           resultApproved: true,

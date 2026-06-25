@@ -36,6 +36,8 @@ export interface ConsoleEmptyStateProps {
   seeded: boolean;
   /** The seed call failed — surface the matching actionable message by the CTA (null = no error). */
   error: SeedError | null;
+  /** Whether the workspace has connected Claude runtime auth (#916). */
+  claudeConnected: boolean;
   /** Server-side activation diagnostic while the seed landed but the board has not filled yet (#917). */
   activationDiagnostic?: MissionDiagnosticDto | null;
   /**
@@ -54,6 +56,7 @@ export function ConsoleEmptyState({
   busy,
   seeded,
   error,
+  claudeConnected,
   activationDiagnostic,
   coolOff,
   onConnect,
@@ -118,7 +121,7 @@ export function ConsoleEmptyState({
   }
 
   const held = error?.kind === "rate" && coolOff > 0;
-  const ctaLabel = busy ? copy.ctaBusy : held ? copy.retryWait : copy.cta;
+  const ctaLabel = !claudeConnected ? copy.connectFirstCta : busy ? copy.ctaBusy : held ? copy.retryWait : copy.cta;
 
   return (
     <div className="firstrun">
@@ -141,7 +144,11 @@ export function ConsoleEmptyState({
         ))}
       </ol>
 
-      <button className="btn btn--primary firstrun__cta" onClick={onStart} disabled={busy || held}>
+      <button
+        className="btn btn--primary firstrun__cta"
+        onClick={claudeConnected ? onStart : onConnect}
+        disabled={claudeConnected && (busy || held)}
+      >
         {ctaLabel}
       </button>
 
