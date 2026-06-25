@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { prerenderPages } from "./entry-server.js";
-import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS, LEGAL } from "./brand.js";
+import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS, LEGAL, COMPANY } from "./brand.js";
 
 const pages = prerenderPages();
 const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
@@ -22,6 +22,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       "/pricing",
       "/terms",
       "/privacy",
+      "/company",
       "/compare",
       "/stories",
       "/guides",
@@ -35,6 +36,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
   it.each([
     ["/terms", "Terms", LEGAL.terms.title],
     ["/privacy", "Privacy", LEGAL.privacy.title],
+    ["/company", "Company", COMPANY.title],
   ])("prerenders %s with public legal copy and breadcrumbs (#863)", (urlPath, titleWord, h1) => {
     const page = byPath(urlPath)!;
     expect(page.title).toContain(titleWord);

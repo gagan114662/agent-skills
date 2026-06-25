@@ -634,6 +634,7 @@ export const LANDING = {
       { href: "#how", label: "How it works" },
       { href: "#agents", label: "The department" },
       { href: "#pricing", label: "Pricing" },
+      { href: "/company", label: "Company" },
       { href: "/security", label: "Security & trust" },
       { href: "/refund-policy", label: "Refund policy" },
       { href: "/terms", label: "Terms" },
@@ -1867,6 +1868,63 @@ export const REFUND_POLICY = {
   navLabel: "Refund policy",
 } as const;
 
+function companyValue(key: string, fallback: string): string {
+  const value = (env as unknown as Record<string, string | undefined>)[key];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+}
+
+/** Public company information (#866): buyer/procurement basics, with env-overridable details. */
+export const COMPANY = {
+  eyebrow: "Company",
+  title: "Company information",
+  sub:
+    "The factual details a buyer, payment processor, or legal team needs before contracts, invoices, and payouts.",
+  navLabel: "Company",
+  href: "/company",
+  updated: "Updated June 25, 2026",
+  factsTitle: "Business details",
+  details: [
+    {
+      label: "Legal entity",
+      value: companyValue("VITE_COMPANY_LEGAL_ENTITY", "ipop.ai operator"),
+    },
+    {
+      label: "Jurisdiction",
+      value: companyValue("VITE_COMPANY_JURISDICTION", "United States"),
+    },
+    {
+      label: "Postal address",
+      value: companyValue(
+        "VITE_COMPANY_POSTAL_ADDRESS",
+        "Postal notices are coordinated through support@ipop.ai until a registered office is published.",
+      ),
+    },
+    {
+      label: "Principal",
+      value: companyValue("VITE_COMPANY_PRINCIPAL", "Gagan Arora, owner"),
+    },
+  ],
+  sections: [
+    {
+      title: "Contracting and notices",
+      body:
+        "For vendor onboarding, tax forms, security questionnaires, postal notices, or procurement review, contact support@ipop.ai and include the workspace or buying organization name.",
+    },
+    {
+      title: "Public legal documents",
+      body:
+        "Company-level terms, privacy, refund, and security pages are linked from the footer so buyers can review baseline operating terms before talking to the team.",
+    },
+  ],
+  legalLinks: [
+    { href: LEGAL.terms.href, label: LEGAL.terms.navLabel },
+    { href: LEGAL.privacy.href, label: LEGAL.privacy.navLabel },
+    { href: "/security", label: SECURITY.navLabel },
+    { href: "/refund-policy", label: REFUND_POLICY.navLabel },
+  ],
+  backCta: "Back home",
+} as const;
+
 /**
  * The eight named department agents (#123 fleet) → their department key. Each agent wears its
  * department's spectrum hue on its avatar pop-mark and name chip (#145). Keyed by the lowercased
@@ -2058,6 +2116,11 @@ export const PAGE_SEO = {
     name: "Privacy",
     title: `Privacy Policy — how ${BRAND.name} handles customer data`,
     description: LEGAL.privacy.sub,
+  },
+  "/company": {
+    name: COMPANY.navLabel,
+    title: `Company information — ${BRAND.name} legal and operator details`,
+    description: COMPANY.sub,
   },
   "/compare": {
     name: "Compare",

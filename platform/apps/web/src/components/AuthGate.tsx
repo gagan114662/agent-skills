@@ -8,7 +8,7 @@
  */
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
+import { BRAND, COMPANY, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
 import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -30,6 +30,7 @@ const RefundPolicy = lazy(() =>
   import("./landing/RefundPolicy.js").then((m) => ({ default: m.RefundPolicy })),
 );
 const LegalPage = lazy(() => import("./landing/LegalPage.js").then((m) => ({ default: m.LegalPage })));
+const CompanyPage = lazy(() => import("./landing/CompanyPage.js").then((m) => ({ default: m.CompanyPage })));
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
@@ -153,6 +154,14 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <LegalPage kind={path === LEGAL.terms.href ? "terms" : "privacy"} />
+      </Suspense>
+    );
+  }
+
+  if (path === COMPANY.href) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <CompanyPage />
       </Suspense>
     );
   }
