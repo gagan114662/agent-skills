@@ -114,6 +114,19 @@ const post = (w: World, url: string, payload?: unknown) =>
 const get = (w: World, url: string) =>
   app.inject({ method: "GET", url: `/workspaces/${w.workspaceId}${url}`, cookies: { rid: w.cookie } });
 
+async function waitForWorkflowRuns(w: World, workflowId: string, minRuns: number, timeoutMs = 2000): Promise<Array<{ status: string }>> {
+  const deadline = Date.now() + timeoutMs;
+  let runs: Array<{ status: string }> = [];
+
+  while (Date.now() <= deadline) {
+    runs = (await get(w, `/workflows/${workflowId}/runs`)).json();
+    if (runs.length >= minRuns) return runs;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  return runs;
+}
+
 describe("workflows (real Postgres): trigger → condition → action chains", () => {
   it(
     "creates + lists workflows, fires actions through gated paths, gates on conditions + the rate cap + " +
@@ -294,17 +307,14 @@ describe("workflows (real Postgres): trigger → condition → action chains", (
 
     // creating a venture entry fires the catalog_change workflow (best-effort, awaited via the run ledger).
     await post(w, "/catalog", { kind: "venture", name: "NewCo" });
-    // give the fire-and-forget a tick to land its run.
-    await new Promise((r) => setTimeout(r, 50));
-    const runs = (await get(w, `/workflows/${created.json().id}/runs`)).json();
+    const runs = await waitForWorkflowRuns(w, created.json().id, 1);
     expect(runs.length).toBeGreaterThanOrEqual(1);
     expect(runs[0].status).toBe("fired");
 
     // a non-matching catalog kind (site) does NOT fire it.
     const before = runs.length;
     await post(w, "/catalog", { kind: "site", name: "other.com" });
-    await new Promise((r) => setTimeout(r, 50));
-    const after = (await get(w, `/workflows/${created.json().id}/runs`)).json();
+    const after = await waitForWorkflowRuns(w, created.json().id, before + 1, 250);
     expect(after.length).toBe(before);
   });
 });
