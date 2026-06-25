@@ -26,8 +26,8 @@ import {
   type NorthStar,
   type ThreadEntry,
   compactCount,
+  emptyEverydayData,
   partOfDay,
-  seedEveryday,
   signedDelta,
 } from "./everyday-data.js";
 
@@ -410,13 +410,13 @@ function Composer(): React.JSX.Element {
 }
 
 /**
- * The everyday shell. Presentational + self-contained: takes the full {@link EverydayData} (defaulting to a
- * realistic seed for the flagged preview) and an injectable `hour` so the greeting bucket is deterministic
- * in tests. Ship/redo decisions go through the approval-action seam; a card only leaves the queue once the
- * backend records the decision.
+ * The everyday shell. Presentational + self-contained: takes the full {@link EverydayData}. The fallback is
+ * an honest empty live state, not the demo seed; explicit demos/tests can still pass seedEveryday().
+ * Ship/redo decisions go through the approval-action seam; a card only leaves the queue once the backend
+ * records the decision.
  */
 export function EverydayShell({
-  data = seedEveryday(),
+  data = emptyEverydayData(),
   hour = 14,
   approvalActions = defaultEverydayApprovalActions,
 }: {

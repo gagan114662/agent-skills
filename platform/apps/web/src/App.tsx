@@ -11,7 +11,7 @@ import {
   ONBOARDING_V2_ENABLED,
   shouldShowOnboardingV2,
 } from "./components/onboarding/onboarding-flag.js";
-import { EverydayShell } from "./components/everyday/EverydayShell.js";
+import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import {
   EVERYDAY_SHELL_ENABLED,
   EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
@@ -55,7 +55,7 @@ function AuthedHome(): React.JSX.Element {
       workspaceId: identity?.workspaceId,
     })
   ) {
-    return <EverydayShell />;
+    return <LiveEverydayShell />;
   }
   return <Workspace />;
 }
@@ -91,7 +91,7 @@ export function App(): React.JSX.Element {
   if (EVERYDAY_SHELL_ENABLED && EVERYDAY_PATH.test(path)) {
     return (
       <AuthGate>
-        <EverydayShell />
+        <LiveEverydayShell />
       </AuthGate>
     );
   }

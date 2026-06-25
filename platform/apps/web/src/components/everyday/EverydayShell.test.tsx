@@ -37,6 +37,13 @@ function approvalActions(): EverydayApprovalActions & {
 }
 
 describe("EverydayShell — north star (#630)", () => {
+  it("defaults to an honest empty live state, not the demo seed (#1181)", () => {
+    render(<EverydayShell />);
+    expect(screen.getByText("$0")).toBeInTheDocument();
+    expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Dana/i)).not.toBeInTheDocument();
+  });
+
   it("renders from the shared ipop experience token contract (#1068)", () => {
     const { container } = render(<EverydayShell data={seedEveryday()} />);
     const root = container.querySelector<HTMLElement>(".everyday-shell");

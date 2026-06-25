@@ -97,6 +97,7 @@ export interface FakeBackendOverrides {
   messages?: Message[];
   members?: MemberHit[];
   sessions?: AgentSessionSummary[];
+  approvals?: ApprovalRequestDto[];
 }
 
 export function makeFakeDeps(over: FakeBackendOverrides = {}): {
@@ -152,7 +153,7 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       stop: vi.fn(async () => ({ canceled: true })),
     },
     approvals: {
-      list: vi.fn(async () => [] as ApprovalRequestDto[]),
+      list: vi.fn(async () => over.approvals ?? [] as ApprovalRequestDto[]),
       get: vi.fn(async () => STUB_REQUEST),
       events: vi.fn(async () => []),
       approve: vi.fn(async (rid: string) => ({ status: "executed" as const, result: {}, request: { ...STUB_REQUEST, id: rid, status: "executed" as const } })),

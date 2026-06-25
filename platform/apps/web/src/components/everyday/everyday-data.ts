@@ -1,8 +1,8 @@
 /**
  * Pure data + types for the everyday workspace shell (#784). The shell is presentational: it renders these
  * typed shapes and reads every label/button/empty-state word from `EVERYDAY` in brand.ts. This module owns
- * the shapes, a couple of pure helpers (time-of-day greeting bucket, number formatting), and a realistic
- * seed dataset used to render the flagged preview before live data is wired (a documented follow-up).
+ * the shapes, a couple of pure helpers (time-of-day greeting bucket, number formatting), an empty live-state
+ * fallback, and an explicit realistic seed dataset for tests/demo previews only.
  *
  * Keeping it pure (no React, no DOM) means every branch is unit-tested directly. Agent output text and
  * deliverable bodies in the seed are DATA (what an agent actually produced), not product chrome, so they
@@ -111,9 +111,28 @@ export function signedDelta(n: number): string {
   return v > 0 ? `+${v}` : String(v);
 }
 
+/** Empty live workspace state: honest zeros and empty sections, never sample wins. */
+export function emptyEverydayData(memberName: string = "there"): EverydayData {
+  return {
+    memberName,
+    northStar: {
+      customers: 0,
+      customersDelta: 0,
+      revenue: "$0",
+      revenueDelta: "—",
+      trend: "zero",
+    },
+    thread: [],
+    approvals: [],
+    transparency: [],
+    fleetPaused: false,
+  };
+}
+
 /**
- * A realistic seed dataset for the flagged preview. Voice-rich and concrete so the shell reads like a real,
- * working product (the whole point of #784) before live data is wired. The chrome copy is still sourced
+ * A realistic seed dataset for explicit demos/tests. Voice-rich and concrete so a labelled preview can read like
+ * a real, working product (the whole point of #784). The signed-in app shell must pass live workspace data instead
+ * of relying on this seed. The chrome copy is still sourced
  * from EVERYDAY — only the agent output / deliverable bodies (genuine work product) live here.
  */
 export function seedEveryday(memberName: string = "gagan"): EverydayData {
