@@ -1,9 +1,11 @@
 import type { ResolvedConfig } from "../config/schema.js";
 import { loadConfig } from "../config/loader.js";
 import { getControls } from "../db/repositories/autonomy.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
 import { usageStore } from "../db/repositories/tenant-usage.js";
 import { recordRegionPlacement } from "../observability/metrics.js";
 import { Admission, type KillSwitchReader } from "./admission.js";
+import type { ScalePlanBudget } from "./caps.js";
 import { resolveScaleCaps } from "./caps.js";
 import {
   estimateCostCents,
@@ -39,6 +41,7 @@ export function createAdmission(globalDefault: number): Admission {
     usage: usageStore,
     killSwitch,
     config: tenantConfig,
+    activePlans: dbWorkspacePlanStore,
     globalMax: resolveGlobalConcurrencyCap(serverScale.globalConcurrency, globalDefault),
     onPlace: recordRegionPlacement,
   });
@@ -92,6 +95,8 @@ export interface Scale {
   usage: UsageRecorder;
   /** The tenant-config source — the SAME one admission enforces, so the usage route shows real caps. */
   config: (workspaceId: string) => ResolvedConfig;
+  /** Active paid-plan projection — same source admission uses for plan budget overrides (#873). */
+  activePlans?: { getActive(workspaceId: string): Promise<ScalePlanBudget | undefined> };
 }
 
 export function createScale(globalDefault = 0): Scale {
@@ -99,5 +104,6 @@ export function createScale(globalDefault = 0): Scale {
     admission: createAdmission(globalDefault),
     usage: createDefaultUsageRecorder(),
     config: tenantConfig,
+    activePlans: dbWorkspacePlanStore,
   };
 }

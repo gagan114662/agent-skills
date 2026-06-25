@@ -27,6 +27,16 @@ class FakeKillSwitch implements KillSwitchReader {
   }
 }
 
+class FakeActivePlans {
+  private readonly rows = new Map<string, { status: string; monthlySessionBudgetCents: number }>();
+  set(workspaceId: string, plan: { status: string; monthlySessionBudgetCents: number }): void {
+    this.rows.set(workspaceId, plan);
+  }
+  getActive(workspaceId: string): Promise<{ status: string; monthlySessionBudgetCents: number } | undefined> {
+    return Promise.resolve(this.rows.get(workspaceId));
+  }
+}
+
 function cfg(scale: ScaleConfig): ResolvedConfig {
   return { ...CONFIG_DEFAULTS, scale };
 }
@@ -36,18 +46,20 @@ const FIXED_NOW = (): Date => new Date("2026-06-09T00:00:00Z"); // window "2026-
 function makeAdmission(
   scaleByTenant: Record<string, ScaleConfig>,
   over: Partial<AdmissionDeps> = {},
-): { admission: Admission; usage: FakeUsage; kill: FakeKillSwitch } {
+): { admission: Admission; usage: FakeUsage; kill: FakeKillSwitch; activePlans: FakeActivePlans } {
   const usage = new FakeUsage();
   const kill = new FakeKillSwitch();
+  const activePlans = new FakeActivePlans();
   const admission = new Admission({
     usage,
     killSwitch: kill,
     config: (workspaceId) => cfg(scaleByTenant[workspaceId] ?? {}),
+    activePlans,
     globalMax: 0,
     now: FIXED_NOW,
     ...over,
   });
-  return { admission, usage, kill };
+  return { admission, usage, kill, activePlans };
 }
 
 // --- tests ------------------------------------------------------------------
@@ -122,6 +134,17 @@ describe("Admission (#71 — launch chokepoint: kill switch, budget, concurrency
     // under budget admits
     usage.set("ws1", "2026-06", { estimatedCostCents: 4999 });
     await expect(admission.acquire("ws1")).resolves.toBeDefined();
+  });
+
+  it("enforces an active paid plan budget instead of the trial/config cap (#873)", async () => {
+    const { admission, usage, activePlans } = makeAdmission({ ws1: { budgetCents: 500 } });
+    activePlans.set("ws1", { status: "active", monthlySessionBudgetCents: 100_000 });
+
+    usage.set("ws1", "2026-06", { estimatedCostCents: 500 });
+    await expect(admission.acquire("ws1")).resolves.toBeDefined();
+
+    usage.set("ws1", "2026-06", { estimatedCostCents: 100_000 });
+    await expect(admission.acquire("ws1")).rejects.toMatchObject({ reason: "budget_exceeded" });
   });
 
   it("places a session in the least-loaded allowed region and frees it on release", async () => {

@@ -619,7 +619,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       // "retry in Ns" and hold the retry control until then, instead of re-firing straight into the cap.
       // Additive metadata only — the denial itself is unchanged (no gate is weakened).
       if (status === 429) reply.header("retry-after", String(ADMISSION_RETRY_AFTER_SECONDS));
-      return reply.code(status).send({ error: err.message, reason: err.reason });
+      return reply.code(status).send({
+        error: err.message,
+        reason: err.reason,
+        ...(err.reason === "budget_exceeded"
+          ? { upgradePath: "Open Billing settings to raise or upgrade the workspace session budget." }
+          : {}),
+      });
     }
     if (err instanceof SpendCapBreachError) {
       return reply.code(402).send({
@@ -703,7 +709,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // default) it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
   app.register(agentSessionRoutes, { sessionManager });
-  app.register(scaleRoutes, { admission: scale.admission, config: scale.config });
+  app.register(scaleRoutes, { admission: scale.admission, config: scale.config, activePlans: scale.activePlans });
   // #69 preflight/doctor: GET /preflight reports whether the configured cloud + real-agent posture
   // is runnable (auth + harness availability), backing `reload doctor`. Secret-free (names only).
   app.register(preflightRoutes, { preflight: opts.preflight });
