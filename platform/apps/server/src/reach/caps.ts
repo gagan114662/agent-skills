@@ -18,6 +18,10 @@ export interface ReachCaps {
   liveSendEnabled: boolean;
   /** Per-sending-domain daily send ceiling (deliverability bound). */
   perDomainDailyCap: number;
+  /** Pause email sends when recent bounces exceed this rate over sent messages. */
+  maxBounceRate: number;
+  /** Pause email sends when recent complaints exceed this rate over sent messages. */
+  maxComplaintRate: number;
   /** Workspace-level hard cap for paid prospect-data credits. Zero means no paid data credits. */
   dataCreditBudgetCents: number;
   /** Max prospects sourced + processed per cron batch. */
@@ -35,6 +39,8 @@ export const REACH_DEFAULTS: ReachCaps = {
   sendProvider: "dryrun",
   liveSendEnabled: false,
   perDomainDailyCap: 50,
+  maxBounceRate: 0.05,
+  maxComplaintRate: 0.001,
   dataCreditBudgetCents: 0,
   batchSize: 25,
   ownerWorkspaceId: null,
@@ -63,6 +69,16 @@ export function resolveReachCaps(cfg: ReachConfig | undefined): ReachCaps {
     sendProvider: cfg?.sendProvider ?? REACH_DEFAULTS.sendProvider,
     liveSendEnabled: cfg?.liveSendEnabled ?? REACH_DEFAULTS.liveSendEnabled,
     perDomainDailyCap: positiveIntOr(cfg?.perDomainDailyCap, REACH_DEFAULTS.perDomainDailyCap),
+    maxBounceRate:
+      typeof cfg?.maxBounceRate === "number" && Number.isFinite(cfg.maxBounceRate) && cfg.maxBounceRate >= 0
+        ? cfg.maxBounceRate
+        : REACH_DEFAULTS.maxBounceRate,
+    maxComplaintRate:
+      typeof cfg?.maxComplaintRate === "number" &&
+      Number.isFinite(cfg.maxComplaintRate) &&
+      cfg.maxComplaintRate >= 0
+        ? cfg.maxComplaintRate
+        : REACH_DEFAULTS.maxComplaintRate,
     dataCreditBudgetCents: nonnegativeIntOr(
       cfg?.dataCreditBudgetCents,
       REACH_DEFAULTS.dataCreditBudgetCents,

@@ -1,5 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { SenderAuthInput } from "../email/deliverability.js";
+import { isPlausibleEmail } from "../leads/inbound.js";
+import { checkSpamRisk } from "../outreach/compose.js";
 import type { ReachCaps } from "./caps.js";
 import {
   DEFAULT_CADENCE,
@@ -41,6 +43,18 @@ import type {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TUNING_WINDOW_MS = 30 * DAY_MS;
+
+function warmupDailyCap(recentSent: number, configuredCap: number): number {
+  if (recentSent >= 100) return configuredCap;
+  if (recentSent >= 50) return Math.min(configuredCap, 40);
+  if (recentSent >= 20) return Math.min(configuredCap, 25);
+  return Math.min(configuredCap, 10);
+}
+
+function appendAuditDetail(base: string, extra: Record<string, unknown>): string {
+  const suffix = JSON.stringify(extra);
+  return base ? base + "; " + suffix : suffix;
+}
 
 // ---- seams ---------------------------------------------------------------------------------------
 
@@ -288,7 +302,7 @@ export class ReachService {
 
   /** Pick the channel for a prospect: email when we have an address, else LinkedIn, else none. */
   private channelFor(email: string | null, linkedinUrl: string | null): ReachChannel | null {
-    if (email && email.trim()) return "email";
+    if (email && isPlausibleEmail(email.trim())) return "email";
     if (linkedinUrl && linkedinUrl.trim()) return "linkedin";
     return null;
   }
@@ -434,6 +448,32 @@ export class ReachService {
     let emailHeadroom = Math.max(0, caps.perDomainDailyCap - sentToday);
 
     const suppressed = await this.deps.suppressions.loadSuppressed(workspaceId);
+    const healthWindowStart = new Date(nowMs - TUNING_WINDOW_MS);
+    const [healthSendData, healthReceiptData] = await Promise.all([
+      this.deps.sends.sendsSince(workspaceId, healthWindowStart),
+      this.deps.receipts.receiptData(workspaceId, healthWindowStart),
+    ]);
+    const health = computeMetrics({
+      prospectsFound: healthSendData.length,
+      sends: healthSendData,
+      receipts: healthReceiptData,
+    });
+    const effectiveDailyCap = warmupDailyCap(health.sent, caps.perDomainDailyCap);
+    emailHeadroom = Math.max(0, Math.min(emailHeadroom, effectiveDailyCap - sentToday));
+    const deliverabilityPauseReason =
+      health.sent > 0 && health.bounceRate > caps.maxBounceRate
+        ? "bounce rate " +
+          (health.bounceRate * 100).toFixed(1) +
+          "% exceeds " +
+          (caps.maxBounceRate * 100).toFixed(1) +
+          "%"
+        : health.sent > 0 && health.complaintRate > caps.maxComplaintRate
+          ? "complaint rate " +
+            (health.complaintRate * 100).toFixed(2) +
+            "% exceeds " +
+            (caps.maxComplaintRate * 100).toFixed(2) +
+            "%"
+          : null;
     const footerInfo = {
       brandName: caps.brandName ?? undefined,
       postalAddress: caps.postalAddress ?? undefined,
@@ -454,6 +494,40 @@ export class ReachService {
       enrollment: CadenceEnrollment,
       score: number,
     ): Promise<void> => {
+      if (channel === "email" && !isPlausibleEmail(message.toAddress.trim())) {
+        await this.deps.sends.insert({
+          workspaceId,
+          contactKey: message.contactKey,
+          channel,
+          status: "skipped",
+          variant: message.variant,
+          signalKind: message.signalKind,
+          subject: message.subject,
+          externalId: null,
+          sentHourUtc: tuning.sendHourUtc,
+          detail: "invalid email address",
+        });
+        skippedCount += 1;
+        outcomes.push({ contactKey: message.contactKey, channel, status: "skipped" });
+        return;
+      }
+      if (channel === "email" && deliverabilityPauseReason) {
+        await this.deps.sends.insert({
+          workspaceId,
+          contactKey: message.contactKey,
+          channel,
+          status: "rate_limited",
+          variant: message.variant,
+          signalKind: message.signalKind,
+          subject: message.subject,
+          externalId: null,
+          sentHourUtc: tuning.sendHourUtc,
+          detail: "deliverability pause: " + deliverabilityPauseReason,
+        });
+        rateLimitedCount += 1;
+        outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
+        return;
+      }
       if (channel === "email" && emailHeadroom <= 0) {
         await this.deps.sends.insert({
           workspaceId,
@@ -465,7 +539,10 @@ export class ReachService {
           subject: "",
           externalId: null,
           sentHourUtc: tuning.sendHourUtc,
-          detail: `per-domain daily cap (${caps.perDomainDailyCap}) reached`,
+          detail:
+            effectiveDailyCap < caps.perDomainDailyCap
+              ? "per-domain warmup cap (" + effectiveDailyCap + "/" + caps.perDomainDailyCap + ") reached"
+              : `per-domain daily cap (${caps.perDomainDailyCap}) reached`,
         });
         rateLimitedCount += 1;
         outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
@@ -473,6 +550,7 @@ export class ReachService {
       }
       const deliverability =
         channel === "email" ? ((await this.deps.deliverability?.proof(workspaceId)) ?? null) : null;
+      const spamRisk = checkSpamRisk({ subject: message.subject, body: message.body });
       const outcome = await this.deps.channels[channel].send(message, {
         workspaceId,
         suppressed,
@@ -489,7 +567,7 @@ export class ReachService {
         subject: message.subject,
         externalId: outcome.externalId,
         sentHourUtc: tuning.sendHourUtc,
-        detail: outcome.detail,
+        detail: appendAuditDetail(outcome.detail, { spamRisk }),
       });
       outcomes.push({ contactKey: message.contactKey, channel, status: outcome.status });
       if (outcome.status === "sent") {
