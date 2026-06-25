@@ -1,10 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import {
-  hashPassword,
-  verifyPassword,
-  generateSessionToken,
-  hashToken,
-} from "../auth/secrets.js";
+import { hashPassword, verifyPassword, generateSessionToken, hashToken } from "../auth/secrets.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
 import {
   findUserByEmail,
@@ -22,6 +17,33 @@ import {
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MIN_PASSWORD_LENGTH = 2;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function slugifyWorkspace(raw: string): string {
+  return (
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-+/g, "-")
+      .slice(0, 50) || "workspace"
+  );
+}
+
+async function uniqueWorkspaceSlug(seed: string): Promise<string> {
+  const base = slugifyWorkspace(seed);
+  for (let i = 0; i < 100; i++) {
+    const slug = i === 0 ? base : `${base}-${i + 1}`;
+    if (!(await getWorkspaceBySlug(slug))) return slug;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
 
 /**
  * #418 — Decide the `SameSite`/`Secure` attributes for the `rid` session cookie based on the
@@ -62,7 +84,10 @@ export interface AuthRoutesOptions {
   onWorkspaceCreated?: (workspaceId: string, ownerMemberId: string) => Promise<void>;
 }
 
-export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions = {}): Promise<void> {
+export async function authRoutes(
+  app: FastifyInstance,
+  opts: AuthRoutesOptions = {},
+): Promise<void> {
   const loginRateLimit = publicRateLimitPreHandler(AUTH_PUBLIC_RATE_LIMIT);
   const signupRateLimit = publicRateLimitPreHandler(SIGNUP_PUBLIC_RATE_LIMIT);
 
@@ -73,37 +98,60 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRoutesOptions =
       displayName?: string;
       workspaceSlug?: string;
     };
-    if (!b.email || !b.password || !b.displayName || !b.workspaceSlug) {
-      return reply.code(400).send({ error: "email, password, displayName, workspaceSlug required" });
+    if (!b.email || !b.password || !b.displayName) {
+      return reply.code(400).send({ error: "email, password, displayName required" });
+    }
+    const email = normalizeEmail(b.email);
+    if (!EMAIL_RE.test(email)) {
+      return reply.code(400).send({ error: "valid email required" });
     }
     if (b.password.length < MIN_PASSWORD_LENGTH) {
-      return reply.code(400).send({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+      return reply
+        .code(400)
+        .send({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
-    if (await findUserByEmail(b.email)) {
+    if (await findUserByEmail(email)) {
       return reply.code(401).send({ error: "invalid credentials" });
     }
+    const requestedSlug = b.workspaceSlug?.trim();
+    if (requestedSlug && !SLUG_RE.test(requestedSlug)) {
+      return reply
+        .code(400)
+        .send({ error: "workspace slug must use lowercase letters, numbers, and hyphens" });
+    }
+    const workspaceSlug =
+      requestedSlug ||
+      (await uniqueWorkspaceSlug(b.displayName || email.split("@")[0] || "workspace"));
     const ws =
-      (await getWorkspaceBySlug(b.workspaceSlug)) ??
-      (await createWorkspace({ slug: b.workspaceSlug, name: b.workspaceSlug }));
+      (await getWorkspaceBySlug(workspaceSlug)) ??
+      (await createWorkspace({ slug: workspaceSlug, name: workspaceSlug }));
     const { userId, memberId } = await createHumanAccount({
       workspaceId: ws.id,
-      email: b.email,
+      email,
       passwordHash: await hashPassword(b.password),
       displayName: b.displayName,
     });
     const { raw, hash } = generateSessionToken();
-    await createSession({ userId, tokenHash: hash, expiresAt: new Date(Date.now() + SESSION_TTL_MS) });
+    await createSession({
+      userId,
+      tokenHash: hash,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    });
     setSessionCookie(reply, raw);
-    // #123: when the deployment opts in (marketing.enabled), seed the department fleet so the owner
-    // lands inside a working agency. Best-effort — the hook never throws, so signup can't be broken.
+    // #123/#902: seed the department fleet so the owner lands inside a working agency. Best-effort —
+    // the hook never throws, so signup can't be broken.
     if (opts.onWorkspaceCreated) await opts.onWorkspaceCreated(ws.id, memberId);
     return reply.code(201).send({ ok: true });
   });
 
   app.post("/auth/login", { preHandler: loginRateLimit }, async (req, reply) => {
     const b = req.body as { email?: string; password?: string };
-    const user = await findUserByEmail(b.email ?? "");
-    if (!user || !user.passwordHash || !(await verifyPassword(b.password ?? "", user.passwordHash))) {
+    const user = await findUserByEmail(normalizeEmail(b.email ?? ""));
+    if (
+      !user ||
+      !user.passwordHash ||
+      !(await verifyPassword(b.password ?? "", user.passwordHash))
+    ) {
       return reply.code(401).send({ error: "invalid credentials" });
     }
     const { raw, hash } = generateSessionToken();

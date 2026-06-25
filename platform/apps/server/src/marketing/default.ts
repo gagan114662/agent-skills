@@ -267,8 +267,9 @@ export async function seedDepartmentForWorkspace(
 }
 
 /**
- * Seed the fleet on signup when the workspace's `marketing` policy opts in (#58, default OFF). Best
- * effort: a seed failure is logged and never fails the signup that already succeeded.
+ * Seed the fleet on signup so email/password users land on the same working board as Google OAuth users
+ * (#902). Welcome launches still respect the marketing policy; default signup creates channels + agents
+ * without spending on welcome sessions.
  */
 export async function maybeAutoSeedOnSignup(
   sessionManager: SessionManager,
@@ -278,9 +279,12 @@ export async function maybeAutoSeedOnSignup(
 ): Promise<void> {
   try {
     const caps = resolveMarketingCaps(loadConfig(workspaceId).marketing);
-    if (!caps.enabled) return;
     await seedMarketingDepartment(
-      { workspaceId, createdByMemberId: memberId, postWelcomeTasks: caps.seedWelcomeTasks },
+      {
+        workspaceId,
+        createdByMemberId: memberId,
+        postWelcomeTasks: caps.enabled ? caps.seedWelcomeTasks : false,
+      },
       seedDeps(sessionManager),
     );
   } catch (err) {

@@ -297,7 +297,7 @@ export interface Store {
     email: string;
     password: string;
     displayName: string;
-    workspaceSlug: string;
+    workspaceSlug?: string;
   }): Promise<void>;
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;

@@ -294,7 +294,7 @@ export const api = {
     email: string;
     password: string;
     displayName: string;
-    workspaceSlug: string;
+    workspaceSlug?: string;
   }): Promise<{ ok: true }> {
     return post("/auth/signup", input) as Promise<{ ok: true }>;
   },
