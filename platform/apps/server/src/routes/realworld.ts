@@ -5,6 +5,7 @@ import { resolveRealworldCaps } from "../realworld/caps.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { connectedAccountKinds, createDefaultSitePublisher } from "../realworld/default.js";
 import type { RealWorldActuatorService } from "../realworld/service.js";
+import { resolvePublishReadiness } from "../realworld/publish/status.js";
 import { listArtifacts } from "../db/repositories/realworld-artifacts.js";
 import { createDefaultAssetService } from "../assets/default.js";
 
@@ -29,14 +30,15 @@ export async function realworldRoutes(
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const wid = identity.workspaceId;
-    const enabled = resolveRealworldCaps((await loadWorkspaceConfig(wid)).realworld).enabled;
+    const caps = resolveRealworldCaps((await loadWorkspaceConfig(wid)).realworld);
     const [availability, connectedKinds, artifacts] = await Promise.all([
       service.availability(wid),
       connectedAccountKinds(wid),
       listArtifacts(wid, 20),
     ]);
     return {
-      enabled,
+      enabled: caps.enabled,
+      publish: resolvePublishReadiness(caps.publishProvider),
       neededAccounts: realWorldReadinessNeeded(connectedKinds),
       availability,
       artifacts,

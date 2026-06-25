@@ -189,6 +189,9 @@ export const EXTERNAL_ACCOUNTS = {
     "them forever. Keys are stored encrypted and never shown again.",
   loading: "Loading…",
   neededTitle: "To do real work, connect:",
+  dryRunTitle: "Publishing is in dry-run",
+  dryRunBody:
+    "Published pages will show dryrun.reload.app preview URLs, but they are not live until a real publishing provider is connected.",
   allConnected: "All set — every account a venture needs for real work is connected.",
   noneYet: "No external accounts connected yet.",
   connectedBadge: "Connected",

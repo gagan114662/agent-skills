@@ -91,6 +91,11 @@ export interface ExternalAccountsChecklist {
 /** The real-world readiness summary (#231, `GET /me/realworld`) — what to connect for real work. */
 export interface RealworldReadiness {
   enabled: boolean;
+  publish?: {
+    provider: string;
+    live: boolean;
+    dryRun: boolean;
+  };
   neededAccounts: string[];
 }
 

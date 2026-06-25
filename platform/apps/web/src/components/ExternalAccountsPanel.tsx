@@ -6,13 +6,14 @@
  */
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
-import type { ExternalAccountsChecklist } from "../api/types.js";
+import type { ExternalAccountsChecklist, RealworldReadiness } from "../api/types.js";
 import { EXTERNAL_ACCOUNTS } from "../brand.js";
 import { ExternalAccounts, type ExternalAccountsConnect } from "./ExternalAccounts.js";
 
 export function ExternalAccountsPanel(): React.JSX.Element {
   const [checklist, setChecklist] = useState<ExternalAccountsChecklist | null>(null);
   const [needed, setNeeded] = useState<string[]>([]);
+  const [publishStatus, setPublishStatus] = useState<RealworldReadiness["publish"] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +25,11 @@ export function ExternalAccountsPanel(): React.JSX.Element {
       .catch(() => live && setChecklist({ requests: [], pendingSetupCount: 0 }));
     void api
       .getRealworldReadiness()
-      .then((r) => live && setNeeded(r.neededAccounts))
+      .then((r) => {
+        if (!live) return;
+        setNeeded(r.neededAccounts);
+        setPublishStatus(r.publish ?? null);
+      })
       .catch(() => undefined);
     return () => {
       live = false;
@@ -38,7 +43,10 @@ export function ExternalAccountsPanel(): React.JSX.Element {
       setChecklist(await action());
       // Connection state changed — refresh what's still needed for real work.
       const readiness = await api.getRealworldReadiness().catch(() => null);
-      if (readiness) setNeeded(readiness.neededAccounts);
+      if (readiness) {
+        setNeeded(readiness.neededAccounts);
+        setPublishStatus(readiness.publish ?? null);
+      }
     } catch {
       setError(EXTERNAL_ACCOUNTS.error);
     } finally {
@@ -51,6 +59,7 @@ export function ExternalAccountsPanel(): React.JSX.Element {
       <ExternalAccounts
         checklist={checklist}
         needed={needed}
+        publishStatus={publishStatus}
         busy={busy}
         error={error}
         onConnect={(input: ExternalAccountsConnect) =>

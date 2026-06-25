@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { EXTERNAL_ACCOUNTS } from "../brand.js";
-import type { ExternalAccountsChecklist } from "../api/types.js";
+import type { ExternalAccountsChecklist, RealworldReadiness } from "../api/types.js";
 
 export interface ExternalAccountsConnect {
   serviceKey: string;
@@ -23,6 +23,8 @@ export interface ExternalAccountsProps {
   checklist: ExternalAccountsChecklist | null;
   /** External account KINDS the owner must still connect before a venture can do real work (#231). */
   needed: string[];
+  /** Publish provider status from /me/realworld, so dry-run is explicit (#872). */
+  publishStatus?: RealworldReadiness["publish"] | null;
   busy?: boolean;
   error?: string | null;
   onConnect: (input: ExternalAccountsConnect) => void;
@@ -36,7 +38,7 @@ function kindLabel(kind: string): string {
 }
 
 export function ExternalAccounts(props: ExternalAccountsProps): React.JSX.Element {
-  const { checklist, needed, busy, error, onConnect, onDisconnect } = props;
+  const { checklist, needed, publishStatus, busy, error, onConnect, onDisconnect } = props;
   const [serviceKind, setServiceKind] = useState<string>(KIND_OPTIONS[0] ?? "other");
   const [serviceKey, setServiceKey] = useState("");
   const [secret, setSecret] = useState("");
@@ -65,6 +67,13 @@ export function ExternalAccounts(props: ExternalAccountsProps): React.JSX.Elemen
               ✅ {EXTERNAL_ACCOUNTS.allConnected}
             </p>
           )}
+
+          {publishStatus?.dryRun ? (
+            <div className="connect-accounts__needed" role="status">
+              <p>{EXTERNAL_ACCOUNTS.dryRunTitle}</p>
+              <p>{EXTERNAL_ACCOUNTS.dryRunBody}</p>
+            </div>
+          ) : null}
 
           {checklist.requests.length === 0 ? (
             <p className="connect-accounts__empty">{EXTERNAL_ACCOUNTS.noneYet}</p>
