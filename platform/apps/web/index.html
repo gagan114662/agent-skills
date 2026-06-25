@@ -13,6 +13,7 @@
     />
     <meta name="theme-color" content="#f6f1e7" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- #784 experience-system fonts: Instrument Serif (greetings/editorial headlines) + Inter (UI/body),
          two weights only. Loaded globally but consumed ONLY under the scoped `.onboard` / `.everyday-shell`
          surfaces in styles.css, so the rest of the app is unaffected. preconnect keeps first paint snappy. -->
@@ -29,8 +30,7 @@
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
 
-    <!-- Open Graph. og:image is currently an SVG; social platforms (FB/LinkedIn/X/Slack) don't render
-         SVG unfurls, so a 1200×630 PNG at /og.png is the documented follow-up (ADR-0294). -->
+    <!-- Open Graph. Use a 1200×630 PNG because social platforms don't reliably render SVG unfurls. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ipop" />
     <meta property="og:locale" content="en_US" />
@@ -40,15 +40,17 @@
       content="A whole marketing department of AI agents. You steer, they ship."
     />
     <meta property="og:url" content="https://ipop.ai/" />
-    <meta property="og:image" content="https://ipop.ai/og.svg" />
-    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image" content="https://ipop.ai/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="ipop — the marketing agency of AI agents" />
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="ipop — your marketing agency of AI agents" />
     <meta name="twitter:description" content="You steer, they ship. Made by robots, steered by humans." />
-    <meta name="twitter:image" content="https://ipop.ai/og.svg" />
+    <meta name="twitter:image" content="https://ipop.ai/og-image.png" />
     <meta name="twitter:image:alt" content="ipop — the marketing agency of AI agents" />
   </head>
   <body>
