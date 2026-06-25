@@ -13,7 +13,7 @@ import type { ComponentProps } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { ConsoleView } from "./ConsoleView.js";
 import { api, ApiError } from "../../api/client.js";
-import type { Channel, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import type { Channel, ClaudeConnectionHealth, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { CONSOLE } from "../../brand.js";
 import { renderWithStore, type FakeBackendOverrides } from "../../test/utils.js";
 
@@ -79,9 +79,17 @@ const req = (over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto => ({
   ...over,
 });
 
-function mockSeams(opts: { pending?: ApprovalRequestDto[]; fc?: FounderConsoleDto; mc?: MissionControlDto } = {}): void {
+function mockSeams(opts: {
+  pending?: ApprovalRequestDto[];
+  fc?: FounderConsoleDto;
+  mc?: MissionControlDto;
+  claudeHealth?: ClaudeConnectionHealth;
+} = {}): void {
   vi.spyOn(api.missionControl, "get").mockResolvedValue(opts.mc ?? mcDto());
   vi.spyOn(api, "getFounderConsole").mockResolvedValue(opts.fc ?? fcDto());
+  vi.spyOn(api, "getClaudeHealth").mockResolvedValue({
+    health: opts.claudeHealth ?? { state: "connected", reason: null },
+  });
   vi.spyOn(api.approvals, "list").mockImplementation(async (_w: string, status?: string) =>
     status === "pending" ? (opts.pending ?? [req()]) : [],
   );
@@ -203,6 +211,25 @@ describe("ConsoleView", () => {
     ).toBeInTheDocument();
   });
 
+  it("requires Connect Claude before the first hire can complete (#916)", async () => {
+    const seedSpy = vi
+      .spyOn(api.department, "seed")
+      .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+    await mount({
+      mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }),
+      pending: [],
+      fc: firstRunFc(),
+      claudeHealth: { state: "not_connected", reason: null },
+    });
+
+    expect(await screen.findByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: CONSOLE.firstRun.connectFirstCta }));
+
+    expect(seedSpy).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog", { name: CONSOLE.shell.settingsTitle })).toBeInTheDocument();
+    expect(screen.getAllByText(/Connect Claude/i).length).toBeGreaterThan(0);
+  });
+
   it("starts a venture through the REAL #123/#138 department seed, not a fake (#213)", async () => {
     const seedSpy = vi
       .spyOn(api.department, "seed")
@@ -231,6 +258,11 @@ describe("ConsoleView", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
     expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+
+    vi.mocked(api.getClaudeHealth).mockResolvedValue({
+      health: { state: "not_connected", reason: null },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(CONSOLE.firstRun.timeoutTitle);
     expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectErrorCta })).toBeInTheDocument();

@@ -11,7 +11,7 @@
  * disappears for good once every step is real. Display copy lives in brand.ts; this module is logic only.
  */
 
-export type FirstRunStepKey = "target" | "brand" | "connect" | "run" | "approve";
+export type FirstRunStepKey = "target" | "brand" | "claude" | "connect" | "run" | "approve";
 
 /** The real, observed setup state of the workspace. All booleans — the caller resolves them from live data. */
 export interface FirstRunSignals {
@@ -19,6 +19,8 @@ export interface FirstRunSignals {
   targetSet: boolean;
   /** A brand kit has been saved (BrandKitState.connected). */
   brandSet: boolean;
+  /** Claude runtime auth is connected and healthy enough for real agent launches (#916). */
+  claudeConnected: boolean;
   /** At least one external account is connected (any ConnectionView.connected). */
   hasConnection: boolean;
   /** An agent has actually run — an agent-authored message exists, a session is live, or a result/approval
@@ -38,6 +40,7 @@ export function deriveFirstRunChecklist(s: FirstRunSignals): FirstRunStep[] {
   return [
     { key: "target", done: s.targetSet },
     { key: "brand", done: s.brandSet },
+    { key: "claude", done: s.claudeConnected },
     { key: "connect", done: s.hasConnection },
     { key: "run", done: s.agentRan },
     { key: "approve", done: s.resultApproved },

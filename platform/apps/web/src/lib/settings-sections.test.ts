@@ -16,8 +16,12 @@ describe("settings deep-linking (#506)", () => {
       expect(firstRunSettingsSection("brand")).toBe("brand");
     });
 
-    it("deep-links 'Connect' to the Connect section", () => {
-      expect(firstRunSettingsSection("connect")).toBe("connect");
+    it("deep-links 'Connect Claude' to the Connect Claude section", () => {
+      expect(firstRunSettingsSection("claude")).toBe("connect");
+    });
+
+    it("deep-links output account connection to the Connections section", () => {
+      expect(firstRunSettingsSection("connect")).toBe("connections");
     });
 
     it("returns null for steps with no settings surface", () => {

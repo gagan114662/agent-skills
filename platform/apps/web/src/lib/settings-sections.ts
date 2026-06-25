@@ -34,8 +34,10 @@ export function firstRunSettingsSection(key: FirstRunStepKey): SettingsSection |
       return "marketing";
     case "brand":
       return "brand";
-    case "connect":
+    case "claude":
       return "connect";
+    case "connect":
+      return "connections";
     default:
       return null;
   }
