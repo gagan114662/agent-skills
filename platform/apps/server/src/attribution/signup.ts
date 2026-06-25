@@ -4,9 +4,11 @@ export interface SignupAttribution {
   utmMedium: string;
   utmCampaign: string;
   trackingRef: string | null;
+  referralCode: string | null;
 }
 
 const TRACKING_REF_RE = /^[A-Za-z0-9_-]{1,80}$/;
+const REFERRAL_CODE_RE = /^[A-Za-z0-9_-]{3,80}$/;
 
 function clean(value: unknown, max = 120): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -45,11 +47,20 @@ export function readSignupAttribution(input: {
   );
   const source = firstString(body.source, query.source, utmSource);
   const rawRef = firstString(body.trackingRef, body.ref, query.trackingRef, query.ref);
+  const rawReferralCode = firstString(
+    body.referralCode,
+    body.referral_code,
+    body.referral,
+    query.referralCode,
+    query.referral_code,
+    query.referral,
+  );
   return {
     source,
     utmSource,
     utmMedium,
     utmCampaign,
     trackingRef: TRACKING_REF_RE.test(rawRef) ? rawRef : null,
+    referralCode: REFERRAL_CODE_RE.test(rawReferralCode) ? rawReferralCode : null,
   };
 }

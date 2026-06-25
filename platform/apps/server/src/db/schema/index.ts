@@ -20,6 +20,7 @@ export * from "./tenant-usage.js";
 export * from "./deployments.js";
 export * from "./revenue.js";
 export * from "./attribution.js";
+export * from "./referrals.js";
 export * from "./plans.js";
 export * from "./trial-nurture.js";
 export * from "./venture.js";

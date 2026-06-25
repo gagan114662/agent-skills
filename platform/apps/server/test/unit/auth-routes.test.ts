@@ -97,7 +97,34 @@ describe("authRoutes", () => {
         utmMedium: "launch",
         utmCampaign: "alpha",
         trackingRef: "trk_123",
+        referralCode: null,
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("passes a sanitized referral code from signup into the workspace-created hook (#603)", async () => {
+    const onWorkspaceCreated = vi.fn(async () => undefined);
+    const app = await buildRouteWithHook(onWorkspaceCreated);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/auth/signup?referral=ref_abc123",
+        payload: {
+          email: "grace@example.com",
+          password: "pw",
+          displayName: "Grace",
+          workspaceSlug: "acme",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(onWorkspaceCreated).toHaveBeenCalledWith(
+        "w1",
+        "m1",
+        expect.objectContaining({ referralCode: "ref_abc123" }),
+      );
     } finally {
       await app.close();
     }
