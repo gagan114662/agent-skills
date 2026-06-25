@@ -46,6 +46,8 @@ export interface ChannelShipOutcome {
 export interface ChannelShipInput {
   workspaceId: string;
   sessionId: string | null;
+  /** Explicit recipient addresses/user ids supplied by the approval payload. Never inferred from draft text. */
+  recipients?: string[];
   /** The briefed task (a title/subject hint). */
   task: string;
   /** The drafted content to ship. Opaque DATA — escaped/bounded by the adapter, never executed. */
@@ -87,6 +89,7 @@ export interface DeliveryReceiptStore {
 export interface DeliverablePayload {
   sessionId?: unknown;
   channelId?: unknown;
+  recipients?: unknown;
   task?: unknown;
   draft?: unknown;
   computeSeconds?: unknown;
@@ -182,6 +185,18 @@ function nonnegativeInteger(v: unknown): number {
   return Number.isInteger(n) && n >= 0 ? n : 0;
 }
 
+function recipients(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[;,]/) : [];
+  return [
+    ...new Set(
+      raw
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 /** Build the dispatcher over its IO seams. See the module doc for the fail-closed ship invariant. */
 export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): DeliveryDispatcher {
   return {
@@ -201,6 +216,7 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
       const input: ChannelShipInput = {
         workspaceId: ctx.workspaceId,
         sessionId: str(payload.sessionId),
+        recipients: recipients(payload.recipients),
         task: str(payload.task) ?? "",
         draft,
       };
@@ -224,6 +240,9 @@ export function createDeliveryDispatcher(deps: DeliveryDispatcherDeps): Delivery
 
       let outcome: ChannelShipOutcome;
       try {
+        if (decision.channel === "email" && (input.recipients?.length ?? 0) === 0) {
+          throw new ActionExecutionError("email delivery requires at least one explicit recipient");
+        }
         outcome = await adapter.ship(input);
       } catch (err) {
         // A failed ship is recorded (auditable, surfaces in the console) then re-thrown so the #13 request

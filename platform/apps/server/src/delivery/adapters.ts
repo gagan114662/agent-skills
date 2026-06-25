@@ -88,7 +88,11 @@ export function deriveContentTitle(draft: string, task: string): string {
 export function ensureBlogFrontmatter(draft: string, title: string, now: Date): string {
   const body = draft.replace(/^\uFEFF/, "").replace(/^\s+/, "");
   if (body.startsWith("---")) return draft; // the agent supplied its own frontmatter — leave it alone
-  const yaml = (s: string): string => `"${s.replace(/[\r\n]+/g, " ").replace(/"/g, "'").trim()}"`;
+  const yaml = (s: string): string =>
+    `"${s
+      .replace(/[\r\n]+/g, " ")
+      .replace(/"/g, "'")
+      .trim()}"`;
   const excerpt = body
     .replace(/^#+\s*/gm, "")
     .replace(/[*_>`]/g, "")
@@ -146,7 +150,11 @@ export class PublishChannelAdapter implements ChannelAdapter {
     const slug = slugify(input.task);
     // #399: when attribution is active, append a tracked "Built with ipop" footer before </body>. The gate
     // lives behind badgeFor — inactive ⇒ null ⇒ the published HTML is byte-for-byte unchanged.
-    const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: slug, format: "html" });
+    const badge = this.badgeFor?.({
+      workspaceId: input.workspaceId,
+      artifactId: slug,
+      format: "html",
+    });
     const html = badge
       ? appendBadge(draftToHtml(input.task, input.draft), badge, "html")
       : draftToHtml(input.task, input.draft);
@@ -205,7 +213,11 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     // #399: when attribution is active, append a tracked "Built with ipop" footer to the committed file. The
     // publisher slugs the title into a `.md` content path, so the badge is markdown. The gate lives behind
     // badgeFor — inactive ⇒ null ⇒ the committed content is byte-for-byte unchanged.
-    const badge = this.badgeFor?.({ workspaceId: input.workspaceId, artifactId: title, format: "markdown" });
+    const badge = this.badgeFor?.({
+      workspaceId: input.workspaceId,
+      artifactId: title,
+      format: "markdown",
+    });
     // Wrap the raw draft in blog frontmatter (#252) but always as `status: draft` (#250): the post is
     // committed to the content PR as a draft, never self-published live — a human's review + status flip is
     // the publish gate. This keeps the fleet from shipping debris posts to /blog on its own.
@@ -226,9 +238,7 @@ export class SitePrChannelAdapter implements ChannelAdapter {
       throw new ActionExecutionError(`site PR not opened (${result.status}): ${reason}`);
     }
     // Only an answering PR url is "live". Dry-run (no headCheck) never claims a live PR.
-    const health = this.headCheck
-      ? await this.headCheck(result.url)
-      : { ok: false, status: 0 };
+    const health = this.headCheck ? await this.headCheck(result.url) : { ok: false, status: 0 };
     return {
       provider: this.publisher.kind,
       live: health.ok,
@@ -272,7 +282,7 @@ export class SocialChannelAdapter implements ChannelAdapter {
   }
 }
 
-/** Send a deliverable via the #189 ESP (dry-run by default; NO recipients — a content draft carries none). */
+/** Send a deliverable via the #189 ESP (dry-run by default; recipients must be supplied explicitly). */
 export class EmailChannelAdapter implements ChannelAdapter {
   readonly channel = "email" as const;
   readonly providerKind: string;
@@ -280,23 +290,26 @@ export class EmailChannelAdapter implements ChannelAdapter {
     this.providerKind = provider.kind;
   }
   async ship(input: ChannelShipInput): Promise<ChannelShipOutcome> {
+    const recipients = input.recipients ?? [];
+    if (recipients.length === 0) {
+      throw new ActionExecutionError("email delivery requires at least one explicit recipient");
+    }
     const outcome = await this.provider.send({
       workspaceId: input.workspaceId,
       ideaId: null,
       subject: input.task || "Deliverable",
       body: input.draft,
-      // A content draft carries no recipient list; we NEVER invent real addresses (#295 hard constraint).
-      recipients: [],
+      recipients,
     });
     if (outcome.status !== "sent") {
       throw new ActionExecutionError(`email send failed via ${outcome.provider}`);
     }
+    const recipientCount = recipients.length;
     return {
-      // No recipients + dry-run ⇒ nothing reached a real inbox; never claim a live send here.
       provider: outcome.provider,
-      live: false,
+      live: outcome.provider !== "dryrun" && outcome.externalId !== null && recipientCount > 0,
       externalRef: outcome.externalId,
-      detail: { ...outcome.detail, recipientCount: 0 },
+      detail: { ...outcome.detail, recipientCount },
     };
   }
 }
