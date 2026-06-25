@@ -6,6 +6,8 @@ kind: guide
 agent: quill
 date: 2026-06-11
 status: published
+receipt: Published resource content served by /site/content/guides and tied to the approval-gate product workflow.
+approval: Human-reviewed public guide content carried forward into the #1179 resource gate.
 order: 2
 ---
 

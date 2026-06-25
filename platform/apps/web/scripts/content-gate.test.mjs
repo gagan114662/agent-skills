@@ -12,15 +12,18 @@ import { fileURLToPath } from "node:url";
 
 import {
   lintPost,
+  lintSiteResource,
   parseAllowlist,
   significantTokens,
   isNearDuplicateSlug,
   REQUIRED_KEYS,
+  SITE_RESOURCE_SECTIONS,
 } from "./content-gate-core.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(HERE, "..");
 const BLOG_DIR = path.join(WEB_ROOT, "content", "blog");
+const SITE_DIR = path.resolve(WEB_ROOT, "..", "..", "content", "site");
 const ALLOWLIST_FILE = path.join(WEB_ROOT, "content", "published-allowlist.txt");
 
 const allowlist = parseAllowlist(readFileSync(ALLOWLIST_FILE, "utf8"));
@@ -41,6 +44,33 @@ Scout reads your domain records the way a mail server does. Here is what matters
 `;
 
 const codes = (raw, extra = {}) => lintPost({ path: `content/blog/${extra.slug ?? "a-genuinely-new-topic-about-email-deliverability"}.md`, raw, publishedAllowlist: allowlist, ...extra }).violations.map((v) => v.code);
+
+const CLEAN_SITE = `---
+title: ipop vs. waiting for a marketing hire
+slug: ipop-vs-waiting-for-a-marketing-hire
+description: A maintained comparison page with source receipts for founders deciding whether to wait for a hire or use ipop.
+kind: compare
+agent: scout
+date: 2026-06-25
+status: published
+receipt: Public route and approval work merged in agent-skills.
+approval: Published through the #1179 resource-page gate.
+---
+
+# ipop vs. waiting for a marketing hire
+
+Waiting for a hire is sometimes correct, especially when the business needs senior positioning judgment.
+The risk is that the acquisition loop goes quiet while the search runs. A useful resource page should name
+that tradeoff plainly, then tie its recommendation to shipped product evidence and receipts. This body is
+long enough to prove the page is substantive rather than a loading mark. It explains where ipop helps:
+drafting public assets, routing approval decisions, and leaving a record of what changed. It also explains
+where ipop is not enough: high-stakes messaging, legal review, and channel relationships that only a human
+operator already has. The comparison is useful because it helps a founder choose the next action without
+pretending the product replaces every possible marketing role.
+`;
+
+const siteCodes = (raw, section = "compare") =>
+  lintSiteResource({ path: `platform/content/site/${section}/ipop-vs-waiting-for-a-marketing-hire.md`, raw, section }).violations.map((v) => v.code);
 
 describe("content gate — clean post", () => {
   it("passes a valid draft with no markers", () => {
@@ -139,6 +169,29 @@ describe("content gate — defect patterns from the #527 PRs", () => {
   });
 });
 
+describe("content gate — public resource pages (#1179)", () => {
+  it("passes a substantive published site resource with receipt and approval metadata", () => {
+    const result = lintSiteResource({
+      path: "platform/content/site/compare/ipop-vs-waiting-for-a-marketing-hire.md",
+      raw: CLEAN_SITE,
+      section: "compare",
+    });
+    expect(result.ok, result.violations.map((v) => `[${v.code}] ${v.message}`).join("; ")).toBe(true);
+  });
+
+  it("flags placeholder-thin site resources", () => {
+    const raw = CLEAN_SITE.replace(/# ipop vs[\s\S]*$/, "# ipop vs. waiting\n\n…");
+    const cs = siteCodes(raw);
+    expect(cs).toContain("site-body-too-thin");
+    expect(cs).toContain("site-placeholder-content");
+  });
+
+  it("requires published resource docs to carry receipt and approval metadata", () => {
+    const raw = CLEAN_SITE.replace("receipt: Public route and approval work merged in agent-skills.\n", "");
+    expect(siteCodes(raw)).toContain("missing-site-frontmatter");
+  });
+});
+
 describe("near-duplicate detection — separates real dupes from the legit corpus", () => {
   it("flags the #497 truncated re-title as a dupe of the published tools post", () => {
     expect(
@@ -171,6 +224,25 @@ describe("content gate — committed corpus regression guard", () => {
   it.each(files)("%s passes the gate", (file) => {
     const others = corpus.filter((c) => c.path !== file);
     const result = lintPost({ path: file, raw: readFileSync(file, "utf8"), corpus: others, publishedAllowlist: allowlist });
+    expect(result.ok, result.violations.map((v) => `[${v.code}] ${v.message}`).join("; ")).toBe(true);
+  });
+});
+
+describe("content gate — committed site-resource corpus (#1179)", () => {
+  const files = SITE_RESOURCE_SECTIONS.flatMap((section) => {
+    const dir = path.join(SITE_DIR, section);
+    return readdirSync(dir).filter((f) => f.endsWith(".md")).map((f) => ({ section, path: path.join(dir, f) }));
+  });
+
+  it.each(SITE_RESOURCE_SECTIONS)("%s has at least one published resource", (section) => {
+    const sectionFiles = files.filter((f) => f.section === section);
+    expect(sectionFiles.length).toBeGreaterThan(0);
+    const published = sectionFiles.filter((f) => /\nstatus:\s*published\n/.test(readFileSync(f.path, "utf8")));
+    expect(published.length).toBeGreaterThan(0);
+  });
+
+  it.each(files)("$path passes the site-resource gate", ({ section, path: file }) => {
+    const result = lintSiteResource({ path: file, raw: readFileSync(file, "utf8"), section });
     expect(result.ok, result.violations.map((v) => `[${v.code}] ${v.message}`).join("; ")).toBe(true);
   });
 });

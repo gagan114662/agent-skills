@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import MarketingSite from "./MarketingSite.js";
 import { api } from "../../api/client.js";
 import { SITE, ASK_AI, BRAND_ASSETS, SEGMENT_LANDING_PAGES, STORY_RECEIPTS } from "../../brand.js";
+import { ACQUISITION_EVENT_TARGET } from "../../acquisition-events.js";
 import type { SiteBlock } from "../../api/types.js";
 
 /** Point the (history-API) router at a path before rendering the lazy-free site component. */
@@ -126,5 +128,21 @@ describe("#153 marketing site", () => {
     for (const item of SITE.nav) {
       expect(within(nav).getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
+  });
+
+  it("emits resource analytics for page views and CTA clicks (#1179)", async () => {
+    vi.spyOn(api.site, "section").mockResolvedValue([]);
+    const events: string[] = [];
+    window.addEventListener(ACQUISITION_EVENT_TARGET, ((event: Event) => {
+      events.push((event as CustomEvent<{ event: string }>).detail.event);
+    }) as EventListener);
+    at("/guides");
+    render(<MarketingSite />);
+
+    await screen.findByText(SITE.empty);
+    await userEvent.click(screen.getByRole("link", { name: SITE.ctaPrimary }));
+
+    expect(events).toContain("resource-page-view");
+    expect(events).toContain("resource-cta");
   });
 });

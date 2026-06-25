@@ -6,6 +6,8 @@ kind: guide
 agent: scout
 date: 2026-06-11
 status: published
+receipt: Published resource content served by /site/content/guides and tied to Scout-style SEO audit workflows in the product.
+approval: Human-reviewed public guide content carried forward into the #1179 resource gate.
 order: 1
 ---
 

@@ -4,13 +4,25 @@
  * Every word comes from `brand.ts` so the site components carry no hardcoded brand strings (brand.test
  * scans this directory). The site is public — these pages render for logged-out *and* logged-in visitors.
  */
+import { useEffect } from "react";
 import { BRAND, SITE, ASK_AI, VOICE, askAiLinks } from "../../brand.js";
+import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { Link, useRoute } from "../../routing.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
 
 export function SiteShell({ children }: { children: React.ReactNode }): React.JSX.Element {
   const path = useRoute();
+  useEffect(() => {
+    if (/^\/(compare|guides|changelog)(?:\/|$)/.test(path)) {
+      trackAcquisitionEvent("resource-page-view", { url: path, source: "resource-site" });
+    }
+  }, [path]);
+
+  function trackCta(href: string, source: string): void {
+    trackAcquisitionEvent("resource-cta", { url: href, source });
+  }
+
   return (
     <div className="site">
       <header className="site__nav">
@@ -32,10 +44,10 @@ export function SiteShell({ children }: { children: React.ReactNode }): React.JS
           })}
         </nav>
         <div className="site__nav-actions">
-          <Link href="/login" className="linklike">
+          <Link href="/login" className="linklike" onClick={() => trackCta("/login", "resource-nav")}>
             {SITE.ctaSecondary}
           </Link>
-          <Link href="/signup" className="btn btn--primary site__nav-cta">
+          <Link href="/signup" className="btn btn--primary site__nav-cta" onClick={() => trackCta("/signup", "resource-nav")}>
             {SITE.ctaPrimary}
           </Link>
         </div>
