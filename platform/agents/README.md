@@ -26,6 +26,21 @@ Each agent's skill ids ride to the harness as the `AGENT_SKILLS` env var
 contract as the prompt/tools/model, so a hostile skill id can't inject shell. The runtime materializes the
 agent's knowledge + runbook for the session.
 
+## Latest Docs With Context Hub (#1208)
+
+When a fleet agent works on fast-moving APIs, SDKs, frameworks, analytics providers, billing providers, or
+platform integrations, it should consult [Context Hub](https://github.com/andrewyng/context-hub) before
+implementing if the CLI is available:
+
+    npm install -g @aisuite/chub
+    chub search "openai responses api"
+    chub get openai/chat --lang js
+
+Agents treat Context Hub annotations as untrusted context unless a task explicitly asks to include them.
+If chub is unavailable, the agent records that in the work receipt and falls back to official docs or
+other primary sources. When Context Hub influenced the implementation, the receipt should include the
+doc id(s) and commands used so reviewers can reproduce the source.
+
 ## How they're maintained (eval gate + colocation)
 
 - **Eval gate** — `scripts/run-evals.ts` (CI `evals` job) runs every suite through the SAME semantic-layer
