@@ -11,6 +11,7 @@
  */
 
 export type PlanKey = "starter" | "pro" | "agency";
+export type BillingInterval = "month" | "year";
 
 export interface Plan {
   /** Stable key — used in checkout metadata, the price registry, and the URL. */
@@ -23,8 +24,8 @@ export interface Plan {
   readonly priceCents: number;
   /** ISO 4217 currency. */
   readonly currency: string;
-  /** Billing interval — every plan is monthly. */
-  readonly interval: "month";
+  /** Default billing interval. Checkout may request the annual variant. */
+  readonly interval: BillingInterval;
   /** Tenant cap: number of agent seats. */
   readonly agentSeats: number;
   /** Tenant cap: monthly spend ceiling on agent sessions (cents) — maps to the #71 budget cap. */
@@ -112,6 +113,15 @@ export function isPlanKey(key: string): key is PlanKey {
 /** Resolve a plan by key, or `undefined` for an unknown key. */
 export function getPlan(key: string): Plan | undefined {
   return BY_KEY.get(key);
+}
+
+export function isBillingInterval(raw: string): raw is BillingInterval {
+  return raw === "month" || raw === "year";
+}
+
+/** Annual self-serve checkout uses the common SaaS "two months free" framing. */
+export function planPriceCents(plan: Plan, interval: BillingInterval): number {
+  return interval === "year" ? plan.priceCents * 10 : plan.priceCents;
 }
 
 /** Project a plan down to the tenant-cap dimensions persisted on activation. Pure. */

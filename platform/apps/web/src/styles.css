@@ -3344,6 +3344,41 @@ select:focus-visible {
   max-width: 760px;
   margin: 0 auto;
 }
+.pricing-page__cadence {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 20px;
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-1);
+}
+.pricing-page__cadence-option {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pricing-page__cadence-option span {
+  margin-left: 6px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.pricing-page__cadence-option.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+.pricing-page__cadence-option.is-active span {
+  color: #fff;
+}
 .pricing-page .landing__footer-bottom {
   display: flex;
   align-items: center;

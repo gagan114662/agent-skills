@@ -631,10 +631,12 @@ export const api = {
     startCheckout(
       workspaceId: string,
       planKey: string,
+      billingInterval: "month" | "year" = "month",
       returnUrl: string = checkoutReturnUrl(),
     ): Promise<CheckoutResponseDto> {
       return post(`/workspaces/${workspaceId}/billing/checkout`, {
         planKey,
+        billingInterval,
         returnUrl,
       }) as Promise<CheckoutResponseDto>;
     },

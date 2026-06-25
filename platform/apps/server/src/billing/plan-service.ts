@@ -12,7 +12,17 @@ import {
   NoBillingConfigError,
   type PlanActivator,
 } from "./manager.js";
-import { getPlan, planCaps, PLANS, type Plan, type PlanCaps, type PlanKey } from "./plans.js";
+import {
+  getPlan,
+  isBillingInterval,
+  planCaps,
+  planPriceCents,
+  PLANS,
+  type BillingInterval,
+  type Plan,
+  type PlanCaps,
+  type PlanKey,
+} from "./plans.js";
 import { sanitizeTrackingRef } from "../attribution/tracking.js";
 
 /**
@@ -127,6 +137,7 @@ export interface PlanPriceRow {
   workspaceId: string;
   planKey: PlanKey;
   provider: string;
+  billingInterval: BillingInterval;
   productId: string;
   priceId: string;
 }
@@ -137,6 +148,7 @@ export interface PlanPriceStore {
     workspaceId: string,
     planKey: PlanKey,
     provider: string,
+    billingInterval?: BillingInterval,
   ): Promise<{ productId: string; priceId: string } | undefined>;
   /** Insert-if-absent (ON CONFLICT DO NOTHING) so a repeat bootstrap creates no duplicate product. */
   upsert(row: PlanPriceRow): Promise<void>;
@@ -214,6 +226,8 @@ export interface PlanCheckoutRequest {
   trackingRef?: string | null;
   /** Optional payer contact to persist on the workspace after the checkout webhook lands. */
   billingEmail?: string | null;
+  /** Monthly or annual hosted checkout. Defaults to month for existing callers. */
+  billingInterval?: BillingInterval | null;
   /** Sticky A/B pricing assignment id from listPlans; checkout rejects mismatches to honor shown price. */
   pricingAssignmentId?: string | null;
 }
@@ -221,6 +235,7 @@ export interface PlanCheckoutRequest {
 export interface PlanCheckoutResult {
   url: string;
   planKey: PlanKey;
+  billingInterval: BillingInterval;
   priceId: string;
 }
 
@@ -313,6 +328,10 @@ export class PlanBillingService implements PlanActivator {
   async createCheckout(req: PlanCheckoutRequest): Promise<PlanCheckoutResult> {
     const plan = getPlan(req.planKey);
     if (!plan) throw new UnknownPlanError(req.planKey);
+    const requestedInterval = req.billingInterval ?? "";
+    const billingInterval: BillingInterval = isBillingInterval(requestedInterval)
+      ? requestedInterval
+      : "month";
     const pricingAssignment = await this.validatePricingAssignment(
       req.workspaceId,
       plan.key,
@@ -326,13 +345,14 @@ export class PlanBillingService implements PlanActivator {
     const trackingRef = sanitizeTrackingRef(req.trackingRef);
     const billingEmail = sanitizeBillingEmail(req.billingEmail);
     try {
-      const { priceId } = await this.ensurePrice(req.workspaceId, plan, secrets);
+      const { priceId } = await this.ensurePrice(req.workspaceId, plan, billingInterval, secrets);
       const link = await this.provider.createPaymentLink({
         priceId,
-        slug: this.slug(req.workspaceId, plan.key),
+        slug: this.slug(req.workspaceId, plan.key, billingInterval),
         metadata: {
           workspaceId: req.workspaceId,
           planKey: plan.key,
+          billingInterval,
           // Round-tripped on the webhook so the merged ingest path knows to activate the plan.
           kind: "plan_checkout",
           ...(pricingAssignment
@@ -354,7 +374,7 @@ export class PlanBillingService implements PlanActivator {
       });
       if (pricingAssignment)
         await this.pricingExperiments?.markCheckout(req.workspaceId, pricingAssignment.id);
-      return { url: link.url, planKey: plan.key, priceId };
+      return { url: link.url, planKey: plan.key, billingInterval, priceId };
     } catch (err) {
       if (err instanceof UnknownPlanError) throw err;
       throw new BillingProviderError(redact(err instanceof Error ? err.message : String(err)));
@@ -494,9 +514,9 @@ export class PlanBillingService implements PlanActivator {
     const created: PlanKey[] = [];
     const existing: PlanKey[] = [];
     for (const plan of PLANS) {
-      const had = await this.prices.find(workspaceId, plan.key, this.provider.kind);
+      const had = await this.prices.find(workspaceId, plan.key, this.provider.kind, "month");
       try {
-        await this.ensurePrice(workspaceId, plan, secrets);
+        await this.ensurePrice(workspaceId, plan, "month", secrets);
       } catch (err) {
         // Redact any leaked secret out of a provider failure before it surfaces to the CLI/logs.
         throw new BillingProviderError(redact(err instanceof Error ? err.message : String(err)));
@@ -512,15 +532,16 @@ export class PlanBillingService implements PlanActivator {
   private async ensurePrice(
     workspaceId: string,
     plan: Plan,
+    billingInterval: BillingInterval,
     secrets: Record<string, string>,
   ): Promise<{ productId: string; priceId: string }> {
-    const existing = await this.prices.find(workspaceId, plan.key, this.provider.kind);
+    const existing = await this.prices.find(workspaceId, plan.key, this.provider.kind, billingInterval);
     if (existing) return existing;
     const pp = await this.provider.createProductPrice({
-      name: `ipop ${plan.name}`,
-      amountCents: plan.priceCents,
+      name: `ipop ${plan.name} ${billingInterval === "year" ? "annual" : "monthly"}`,
+      amountCents: planPriceCents(plan, billingInterval),
       currency: plan.currency,
-      interval: plan.interval,
+      interval: billingInterval,
       taxCode: "txcd_10103001",
       taxBehavior: "exclusive",
       secrets,
@@ -529,11 +550,12 @@ export class PlanBillingService implements PlanActivator {
       workspaceId,
       planKey: plan.key,
       provider: this.provider.kind,
+      billingInterval,
       productId: pp.productId,
       priceId: pp.priceId,
     });
     // Re-read so a concurrent bootstrap that won the ON CONFLICT race returns the persisted row.
-    const stored = await this.prices.find(workspaceId, plan.key, this.provider.kind);
+    const stored = await this.prices.find(workspaceId, plan.key, this.provider.kind, billingInterval);
     return stored ?? { productId: pp.productId, priceId: pp.priceId };
   }
 
@@ -545,8 +567,8 @@ export class PlanBillingService implements PlanActivator {
     return cfg;
   }
 
-  private slug(workspaceId: string, planKey: PlanKey): string {
-    return `plan-${planKey}-${workspaceId}`.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
+  private slug(workspaceId: string, planKey: PlanKey, billingInterval: BillingInterval): string {
+    return `plan-${planKey}-${billingInterval}-${workspaceId}`.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase();
   }
 
   private async assignPricingExperiment(

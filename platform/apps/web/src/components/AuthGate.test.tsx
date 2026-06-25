@@ -5,6 +5,7 @@ import { AuthGate } from "./AuthGate.js";
 import { navigate } from "../routing.js";
 import { COMPANY, LEGAL, PRICING } from "../brand.js";
 import { TEST_IDENTITY, renderWithStore } from "../test/utils.js";
+import { api } from "../api/client.js";
 
 const unauthorized = () => {
   throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -126,8 +127,8 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
-  it("frames signup as a free trial of the plan chosen on /pricing (?plan=pro)", async () => {
-    act(() => navigate("/signup?plan=pro"));
+  it("frames signup as checkout for the plan chosen on /pricing (?plan=pro)", async () => {
+    act(() => navigate("/signup?plan=pro&billing=year"));
     renderWithStore(
       <AuthGate>
         <div>WORKSPACE CONTENT</div>
@@ -281,8 +282,11 @@ describe("AuthGate routing", () => {
     );
   });
 
-  it("hands the chosen plan off to the activation/first-run via sessionStorage on signup", async () => {
-    act(() => navigate("/signup?plan=agency"));
+  it("opens hosted checkout after signup for the chosen plan and billing interval (#606)", async () => {
+    act(() => navigate("/signup?plan=agency&billing=year"));
+    const checkout = vi
+      .spyOn(api.billing, "startCheckout")
+      .mockResolvedValue({ url: "#checkout", planKey: "agency", billingInterval: "year" });
     let calls = 0;
     const me = async () => {
       if (calls++ === 0) throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -303,7 +307,9 @@ describe("AuthGate routing", () => {
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
-    expect(window.sessionStorage.getItem("plan-intent")).toBe("agency");
+    await waitFor(() => expect(checkout).toHaveBeenCalledWith("w1", "agency", "year"));
+    await waitFor(() => expect(window.sessionStorage.getItem("plan-intent")).toBeNull());
+    expect(window.sessionStorage.getItem("billing-interval-intent")).toBeNull();
   });
 
   it("redirects a logged-out app-route hit to sign-in, preserving the return path (#304)", async () => {

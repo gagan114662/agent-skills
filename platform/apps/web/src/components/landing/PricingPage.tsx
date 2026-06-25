@@ -15,6 +15,9 @@ import { Link } from "../../routing.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
+import { useState } from "react";
+
+type BillingInterval = "month" | "year";
 
 /** The pricing questions, drawn from the shared FAQ by matching question text — no copy duplicated. */
 function pricingFaq(): readonly { q: string; a: string }[] {
@@ -26,6 +29,8 @@ function trackCta(href: string, source: string): void {
 }
 
 export function PricingPage(): React.JSX.Element {
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
+  const isAnnual = billingInterval === "year";
   return (
     <div className="pricing-page">
       <header className="landing__nav">
@@ -56,6 +61,25 @@ export function PricingPage(): React.JSX.Element {
         </section>
 
         <section className="pricing" aria-label={PRICING.plansLabel}>
+          <div className="pricing-page__cadence" role="group" aria-label="Billing cadence">
+            <button
+              type="button"
+              className={`pricing-page__cadence-option${!isAnnual ? " is-active" : ""}`}
+              aria-pressed={!isAnnual}
+              onClick={() => setBillingInterval("month")}
+            >
+              {PRICING.monthlyLabel}
+            </button>
+            <button
+              type="button"
+              className={`pricing-page__cadence-option${isAnnual ? " is-active" : ""}`}
+              aria-pressed={isAnnual}
+              onClick={() => setBillingInterval("year")}
+            >
+              {PRICING.annualLabel}
+              <span>{PRICING.annualBadge}</span>
+            </button>
+          </div>
           <ul className="pricing__grid">
             {LANDING.plans.map((plan, i) => (
               <li
@@ -68,8 +92,10 @@ export function PricingPage(): React.JSX.Element {
                 {plan.featured && <span className="pricing-card__ribbon">{PRICING.popularBadge}</span>}
                 <h2 className="pricing-card__name">{plan.name}</h2>
                 <p className="pricing-card__price">
-                  <span className="pricing-card__amount">{plan.price}</span>
-                  <span className="pricing-card__period">{PRICING.perMonth}</span>
+                  <span className="pricing-card__amount">
+                    {isAnnual ? annualPrice(plan.price) : plan.price}
+                  </span>
+                  <span className="pricing-card__period">{isAnnual ? PRICING.perYear : PRICING.perMonth}</span>
                 </p>
                 <p className="pricing-card__tagline">{plan.tagline}</p>
                 <ul className="pricing-card__highlights">
@@ -80,10 +106,15 @@ export function PricingPage(): React.JSX.Element {
                   ))}
                 </ul>
                 <Link
-                  href={`/signup?plan=${plan.key}`}
+                  href={`/signup?plan=${plan.key}&billing=${billingInterval}`}
                   className={`btn pricing-card__cta${plan.featured ? " btn--primary" : ""}`}
                   aria-label={`${PRICING.planCta} — ${plan.name}`}
-                  onClick={() => trackCta(`/signup?plan=${plan.key}`, `pricing-plan-${plan.key}`)}
+                  onClick={() =>
+                    trackCta(
+                      `/signup?plan=${plan.key}&billing=${billingInterval}`,
+                      `pricing-plan-${plan.key}-${billingInterval}`,
+                    )
+                  }
                 >
                   {PRICING.planCta}
                 </Link>
@@ -139,4 +170,10 @@ export function PricingPage(): React.JSX.Element {
       </footer>
     </div>
   );
+}
+
+function annualPrice(monthlyPrice: string): string {
+  const amount = Number(monthlyPrice.replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return monthlyPrice;
+  return `$${Math.round(amount * 10).toLocaleString("en-US")}`;
 }
