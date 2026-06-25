@@ -26,13 +26,21 @@ const FINDING: SiteFinding = {
 
 function payoff(tool: ConnectTool): ConnectResult {
   if (tool === "gmail") {
-    return { tool, lead: { from: "priya@brightfox.io", subject: "re: team plans?" }, draft: "hi priya — yes we do." };
+    return {
+      tool,
+      lead: { from: "priya@brightfox.io", subject: "re: team plans?" },
+      draft: "hi priya — yes we do.",
+    };
   }
   if (tool === "social") {
     return {
       tool,
       threads: [
-        { source: "r/marketing", title: "best tool for a tiny team?", draft: "be helpful, not salesy." },
+        {
+          source: "r/marketing",
+          title: "best tool for a tiny team?",
+          draft: "be helpful, not salesy.",
+        },
         { source: "x · #buildinpublic", title: "launch help?", draft: "one concrete tip." },
         { source: "r/SaaS", title: "onboarding emails?", draft: "answer first." },
       ],
@@ -46,7 +54,11 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
     readSite: () => Promise.resolve(FINDING),
     connect: (tool) => Promise.resolve(payoff(tool)),
     buildDeliverable: (): Promise<DeliverableDraft> =>
-      Promise.resolve({ title: "Acme's new hero + a launch week", body: "all from your real accounts.", spendsMoney: false }),
+      Promise.resolve({
+        title: "Acme's new hero + a launch week",
+        body: "all from your real accounts.",
+        spendsMoney: false,
+      }),
     ship: () => Promise.resolve({ shipped: true as const }),
     ...over,
   };
@@ -55,10 +67,16 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 function expectPublicLinks(): void {
   expect(screen.getAllByRole("link", { name: "Pricing" })[0]).toHaveAttribute("href", "/pricing");
   expect(screen.getAllByRole("link", { name: "Company" })[0]).toHaveAttribute("href", "/company");
-  expect(screen.getAllByRole("link", { name: "Security & trust" })[0]).toHaveAttribute("href", "/security");
+  expect(screen.getAllByRole("link", { name: "Security & trust" })[0]).toHaveAttribute(
+    "href",
+    "/security",
+  );
   expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", "/terms");
   expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", "/privacy");
-  expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute("href", SUPPORT_CONTACT.href);
+  expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute(
+    "href",
+    SUPPORT_CONTACT.href,
+  );
 }
 
 describe("OnboardingExperience (#784)", () => {
@@ -81,6 +99,9 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByText(/afternoon, gagan/i)).toBeInTheDocument();
     expect(screen.getByText(/what are we making pop today/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: /ipop cowork room/i })).toBeInTheDocument();
+    expect(screen.getByText(/your marketing team, already at the table/i)).toBeInTheDocument();
+    expect(screen.getByText(/send\/spend policy locked/i)).toBeInTheDocument();
     expectPublicLinks();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
@@ -97,7 +118,9 @@ describe("OnboardingExperience (#784)", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} onEnterApp={onEnterApp} />);
 
     // Door → reading: the fleet wakes, reads the real site, narrates the finding.
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     expect(await screen.findByText(/buries the offer below the fold/i)).toBeInTheDocument();
     expect(screen.getByText(/right, i read the whole thing/i)).toBeInTheDocument();
@@ -135,11 +158,14 @@ describe("OnboardingExperience (#784)", () => {
   it("does not fake a connected state when the live connector is unavailable", async () => {
     const onEnterApp = vi.fn();
     const provider = fakeProvider({
-      connect: () => Promise.reject(new Error("gmail needs the real connections panel before ipop can use it.")),
+      connect: () =>
+        Promise.reject(new Error("gmail needs the real connections panel before ipop can use it.")),
     });
     render(<OnboardingExperience provider={provider} hour={14} onEnterApp={onEnterApp} />);
 
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
@@ -161,7 +187,9 @@ describe("OnboardingExperience (#784)", () => {
       },
     });
     render(<OnboardingExperience provider={provider} hour={14} />);
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
@@ -181,10 +209,13 @@ describe("OnboardingExperience (#784)", () => {
   it("shows the hard money gate when the deliverable would actually spend", async () => {
     const provider = fakeProvider({
       readSite: () => Promise.resolve(FINDING),
-      buildDeliverable: () => Promise.resolve({ title: "a paid boost", body: "x", spendsMoney: true }),
+      buildDeliverable: () =>
+        Promise.resolve({ title: "a paid boost", body: "x", spendsMoney: true }),
     });
     render(<OnboardingExperience provider={provider} hour={14} />);
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
@@ -202,12 +233,15 @@ describe("OnboardingExperience (#784)", () => {
     const provider = fakeProvider({
       readSite: () => {
         calls += 1;
-        if (calls === 1) return Promise.reject(new OnboardingReadError("we couldn't read your site just now."));
+        if (calls === 1)
+          return Promise.reject(new OnboardingReadError("we couldn't read your site just now."));
         return Promise.resolve(FINDING);
       },
     });
     render(<OnboardingExperience provider={provider} hour={14} />);
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), { target: { value: "acme.com" } });
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /let's go/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read your site/i);
     expectPublicLinks();

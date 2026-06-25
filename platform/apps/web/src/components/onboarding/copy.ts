@@ -26,6 +26,51 @@ export function greeting(hour: number, name?: string | null): string {
 }
 
 export const ONBOARD_COPY = {
+  /** Persistent cowork-room chrome — the reload.chat × Claude cowork signal, without pretending work happened. */
+  room: {
+    eyebrow: "live cowork room",
+    title: "your marketing team, already at the table",
+    sub: "give them a target and they read, draft, queue, ask, and leave receipts. very professional. suspiciously tidy.",
+    agents: [
+      { who: "scout", job: "finds customers and awkward truths" },
+      { who: "quill", job: "turns the truth into publishable words" },
+      { who: "echo", job: "gets it seen without being annoying" },
+      { who: "bid", job: "spends only when you say so" },
+    ] as const,
+    lanesTitle: "on the desk",
+    lanes: {
+      door: [
+        "site read waiting for a target",
+        "customer angle warming up",
+        "send/spend policy locked",
+      ],
+      reading: [
+        "scout reading the actual site",
+        "quill listening for the sharp bit",
+        "receipts being kept",
+      ],
+      connect: [
+        "gmail, social, and site access stay honest",
+        "no fake connected badges",
+        "useful work appears only after real access",
+      ],
+      deliverable: [
+        "one shippable asset in review",
+        "approval before publish",
+        "spend and sends still gated",
+      ],
+      shipped: ["receipt saved", "fleet awake", "next useful move queued"],
+    } as const,
+    receiptTitle: "receipts",
+    receipts: {
+      waiting: "nothing shipped yet. lovely restraint.",
+      reading: "site read in progress",
+      connected: "real access produced a visible payoff",
+      deliverable: "draft ready for your yes",
+      shipped: "approved by human, then shipped",
+    },
+  },
+
   /** SURFACE 1 · the door — one input, nothing else on the near-black canvas. */
   door: {
     /** The single field. */
