@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ne } from "drizzle-orm";
+import { and, count, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { reachContacts, reachReceipts, reachRuns, reachSends } from "../schema/index.js";
 import type {
@@ -27,6 +27,11 @@ function toSignalKind(value: string | null): ReachSignalKind | null {
 function clean(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function sendingDomainFromDetail(detail: string | null | undefined): string | null {
+  const match = detail?.match(/"sendingDomain":"([^"]+)"/);
+  return match?.[1] ?? null;
 }
 
 function contactKey(input: Pick<ImportedProspectInput, "email" | "linkedinUrl" | "fullName" | "company">): string | null {
@@ -219,7 +224,10 @@ export const dbReachContactStore: ReachContactStore = {
 };
 
 export const dbReachSendStore: ReachSendStore = {
-  async countSentSince(workspaceId, since): Promise<number> {
+  async countSentSince(workspaceId, since, sendingDomain): Promise<number> {
+    const domainFilter = sendingDomain
+      ? sql`${reachSends.detail} LIKE ${`%"sendingDomain":"${sendingDomain}"%`}`
+      : undefined;
     const [row] = await db
       .select({ n: count() })
       .from(reachSends)
@@ -228,6 +236,7 @@ export const dbReachSendStore: ReachSendStore = {
           eq(reachSends.workspaceId, workspaceId),
           eq(reachSends.status, "sent"),
           gte(reachSends.createdAt, since),
+          domainFilter,
         ),
       );
     return Number(row?.n ?? 0);
@@ -277,6 +286,7 @@ export const dbReachSendStore: ReachSendStore = {
         variant: reachSends.variant,
         signalKind: reachSends.signalKind,
         sentHourUtc: reachSends.sentHourUtc,
+        detail: reachSends.detail,
       })
       .from(reachSends)
       .where(and(eq(reachSends.workspaceId, workspaceId), gte(reachSends.createdAt, since)));
@@ -286,6 +296,7 @@ export const dbReachSendStore: ReachSendStore = {
       variant: r.variant as ReachVariant,
       signalKind: toSignalKind(r.signalKind),
       sentHourUtc: r.sentHourUtc,
+      sendingDomain: sendingDomainFromDetail(r.detail),
     }));
   },
 };
@@ -328,6 +339,7 @@ export const dbReachReceiptStore: ReachReceiptStore = {
         variant: reachSends.variant,
         signalKind: reachSends.signalKind,
         sentHourUtc: reachSends.sentHourUtc,
+        detail: reachSends.detail,
       })
       .from(reachReceipts)
       .innerJoin(reachSends, eq(reachReceipts.sendId, reachSends.id))
@@ -337,6 +349,7 @@ export const dbReachReceiptStore: ReachReceiptStore = {
       variant: r.variant as ReachVariant,
       signalKind: toSignalKind(r.signalKind),
       sentHourUtc: r.sentHourUtc,
+      sendingDomain: sendingDomainFromDetail(r.detail),
     }));
   },
   async replyThreads(workspaceId, limit = 50) {

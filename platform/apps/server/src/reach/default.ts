@@ -64,7 +64,7 @@ async function resolveReachDeliverabilityProof(workspaceId: string): Promise<{
   const caps = resolveReachCaps(loadConfig(workspaceId).reach);
   if (caps.sendProvider !== "postmark" || !caps.liveSendEnabled) return null;
   const secrets = await resolveServiceSecrets(workspaceId, POSTMARK_SERVICE_KEY);
-  const domain = senderDomain(secrets);
+  const domain = caps.sendingDomains.find((d) => d.enabled)?.domain ?? senderDomain(secrets);
   if (!domain) return null;
   const receipts = await listDnsReceipts(workspaceId, domain);
   const verified = (purpose: "spf" | "dkim" | "dmarc") =>
@@ -96,10 +96,11 @@ export function resolveReachPostmarkSender(input: {
   secrets: Record<string, string>;
 }): EspSender {
   if (input.caps.sendProvider !== "postmark" || !input.caps.liveSendEnabled) return dryRunEspSender;
+  const fallbackFrom = input.caps.sendingDomains.find((d) => d.enabled)?.from ?? "";
   return resolvePostmarkSender({
     live: true,
     serverToken: firstSecret(input.secrets, [POSTMARK_TOKEN_KEY]),
-    from: firstSecret(input.secrets, POSTMARK_FROM_KEYS),
+    from: firstSecret(input.secrets, POSTMARK_FROM_KEYS) || fallbackFrom,
   });
 }
 

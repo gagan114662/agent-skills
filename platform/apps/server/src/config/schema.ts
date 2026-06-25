@@ -1392,6 +1392,15 @@ export const reachSchema = z.object({
   liveSendEnabled: z.boolean().optional(),
   /** Per-sending-domain daily send cap (deliverability bound for the autonomous channel). */
   perDomainDailyCap: z.number().int().positive().optional(),
+  /**
+   * Optional pool of verified sender addresses. Secrets stay in the ESP vault; these are non-secret From
+   * identities and per-domain caps used to distribute volume and fail over damaged domains.
+   */
+  sendingDomains: z.array(z.object({
+    from: z.string(),
+    dailyCap: z.number().int().positive().optional(),
+    enabled: z.boolean().optional(),
+  })).optional(),
   /** Pause email sends when recent bounces / sent exceeds this ratio. */
   maxBounceRate: z.number().min(0).optional(),
   /** Pause email sends when recent complaints / sent exceeds this ratio. */

@@ -91,8 +91,13 @@ function fakes() {
       },
     },
     sends: {
-      async countSentSince(_w, since) {
-        return sends.filter((s) => s.status === "sent" && s.createdAt >= since).length;
+      async countSentSince(_w, since, sendingDomain) {
+        return sends.filter(
+          (s) =>
+            s.status === "sent" &&
+            s.createdAt >= since &&
+            (!sendingDomain || s.sendingDomain === sendingDomain),
+        ).length;
       },
       async insert(input) {
         const id = `send-${sendSeq++}`;
@@ -104,6 +109,7 @@ function fakes() {
           variant: input.variant,
           signalKind: input.signalKind as SendDatum["signalKind"],
           sentHourUtc: input.sentHourUtc,
+          sendingDomain: input.sendingDomain,
           createdAt: NOW,
           detail: input.detail,
         });
@@ -122,6 +128,7 @@ function fakes() {
             variant: s.variant,
             signalKind: s.signalKind,
             sentHourUtc: s.sentHourUtc,
+            sendingDomain: s.sendingDomain,
           }));
       },
     },
@@ -142,6 +149,7 @@ function fakes() {
           variant: send?.variant ?? null,
           signalKind: send?.signalKind ?? null,
           sentHourUtc: send?.sentHourUtc ?? null,
+          sendingDomain: send?.sendingDomain ?? null,
         });
         return { recorded: true };
       },
@@ -151,6 +159,7 @@ function fakes() {
           variant: r.variant,
           signalKind: r.signalKind,
           sentHourUtc: r.sentHourUtc,
+          sendingDomain: r.sendingDomain,
         }));
       },
     },
@@ -299,6 +308,94 @@ describe("ReachService.runBatch (#280)", () => {
     expect(res.messagesSent).toBe(10);
     expect(res.rateLimited).toBe(2);
     expect(f.sends.filter((s) => s.detail.includes("warmup cap"))).toHaveLength(2);
+  });
+
+  it("distributes email volume across configured sending domains (#907)", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () =>
+        caps({
+          batchSize: 12,
+          perDomainDailyCap: 10,
+          sendingDomains: [
+            { from: "founder@a.example", domain: "a.example", dailyCap: 10, enabled: true },
+            { from: "founder@b.example", domain: "b.example", dailyCap: 10, enabled: true },
+          ],
+        }),
+      resolveSource: mockSource,
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.messagesSent).toBe(12);
+    expect(res.rateLimited).toBe(0);
+    const sentByDomain = f.sends
+      .filter((s) => s.status === "sent")
+      .reduce<Record<string, number>>((acc, s) => {
+        acc[s.sendingDomain ?? "none"] = (acc[s.sendingDomain ?? "none"] ?? 0) + 1;
+        return acc;
+      }, {});
+    expect(sentByDomain["a.example"]).toBeGreaterThan(0);
+    expect(sentByDomain["b.example"]).toBeGreaterThan(0);
+  });
+
+  it("rotates away from a damaged sending domain without halting outreach (#907)", async () => {
+    const f = fakes();
+    for (let i = 0; i < 20; i++) {
+      f.sends.push({
+        id: `seed-${i}`,
+        contactKey: `email:seed-${i}@example.com`,
+        channel: "email",
+        status: "sent",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+        sendingDomain: "bad.example",
+        createdAt: NOW,
+        detail: '{"sendingDomain":"bad.example"}',
+      });
+    }
+    f.receipts.push(
+      {
+        sendId: "seed-0",
+        externalRef: "bounce-1",
+        kind: "bounce",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+        sendingDomain: "bad.example",
+      },
+      {
+        sendId: "seed-1",
+        externalRef: "bounce-2",
+        kind: "bounce",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+        sendingDomain: "bad.example",
+      },
+    );
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () =>
+        caps({
+          batchSize: 3,
+          perDomainDailyCap: 50,
+          maxBounceRate: 0.05,
+          sendingDomains: [
+            { from: "founder@bad.example", domain: "bad.example", dailyCap: 50, enabled: true },
+            { from: "founder@good.example", domain: "good.example", dailyCap: 50, enabled: true },
+          ],
+        }),
+      resolveSource: mockSource,
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.messagesSent).toBe(3);
+    expect(res.rateLimited).toBe(0);
+    expect(f.sends.slice(-3).every((s) => s.sendingDomain === "good.example")).toBe(true);
   });
 
   it("pauses email sends when recent bounce rate exceeds the deliverability threshold (#904)", async () => {
