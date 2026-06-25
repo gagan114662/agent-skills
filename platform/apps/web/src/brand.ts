@@ -258,7 +258,7 @@ export const GARDEN = {
   title: "Agent Garden",
   hint:
     "Your department agents are working for you. Switch off any you don't want. " +
-    "Outbound and spend always wait for your approval — nothing leaves the building without your yes.",
+    "Spend always waits for your approval; outbound work follows the workspace policy you set.",
   loading: "Loading your agents…",
   empty: "No agents to show yet.",
   rollout: "The Agent Garden is rolling out for your workspace.",
@@ -380,7 +380,7 @@ export interface FleetAgent {
 
 export const FLEET: readonly FleetAgent[] = [
   { handle: "scout", name: "Scout", department: "seo", personality: "Reads your site the way Google does — then tells you exactly where it trips." },
-  { handle: "echo", name: "Echo", department: "social", personality: "Turns one good idea into a week of posts. Nothing leaves without your nod." },
+  { handle: "echo", name: "Echo", department: "social", personality: "Turns one good idea into a week of posts, then ships what policy allows with receipts." },
   { handle: "quill", name: "Quill", department: "content", personality: "Writes like a human on a good day — drafts that sound like you, faster." },
   { handle: "postmark", name: "Postmark", department: "email", personality: "Writes the emails people actually open. Never hits send — that's your call." },
   { handle: "bid", name: "Bid", department: "ads", personality: "Plans spend like it's their own money — which is to say, carefully." },
@@ -549,7 +549,17 @@ export const SAMPLE = {
   back: "Sign in to get your own",
   empty: "The sample workspace isn't switched on for this deployment yet.",
   loading: "Loading the sample…",
-  consequence: "Sign in and Scout produces this for your site — you approve anything before it ships.",
+  consequence: "Sign in and Scout produces this for your site — money waits for your yes; allowed no-spend work ships with receipts.",
+} as const;
+
+/** Public approval/autonomy contract (#1180). Keep this as the source of truth for buyer-facing copy. */
+export const APPROVAL_POLICY = {
+  title: "Money waits. Allowed work moves.",
+  money:
+    "Charges, refunds, payouts, live payment keys, and paid ad spend always pause for an explicit approval.",
+  external:
+    "Non-money external work — publishing, deploys, social posts, and outreach — can run only through connected accounts and workspace policy. When allowed, it ships with an audit receipt, rollback/undo where the provider supports it, and the kill switch can stop new launches.",
+  internal: "Drafts, research, audits, plans, and internal edits do not need approval; the fleet should keep moving.",
 } as const;
 
 /**
@@ -562,7 +572,7 @@ export const LANDING = {
     eyebrow: "Your always-on marketing department",
     sub:
       "Hire a whole marketing department of AI agents. They draft, research, and plan around the clock — " +
-      "you approve anything that leaves the building.",
+      "money waits for your yes; allowed no-spend work ships with receipts.",
     ctaPrimary: "Start free",
     ctaSecondary: "Sign in",
     ctaDemo: "Watch live demo",
@@ -581,7 +591,7 @@ export const LANDING = {
   steps: [
     { n: "01", title: "Brief them", body: "Mention an agent by name and tell them what you need — like Slacking a teammate." },
     { n: "02", title: "They get to work", body: "Real agents research, draft, and plan in the channel. You watch it happen, live." },
-    { n: "03", title: "You approve", body: "Nothing leaves the building without your yes. Drafts land first; you ship the good ones." },
+    { n: "03", title: "You steer", body: "Money pauses for approval. Drafts, audits, and allowed no-spend actions keep moving with receipts." },
   ],
   sections: {
     howTitle: "How it works",
@@ -821,7 +831,7 @@ export const WORKSPACE = {
       time: "9:22",
       dept: "content",
       title: "Publish meta description on /pricing",
-      detail: "“Hire a whole marketing team of AI agents — you approve every send.” · 58 chars · Quill",
+      detail: "“Hire a whole marketing team of AI agents — money waits, work moves.” · 58 chars · Quill",
       requestedBy: "Quill",
       pendingLabel: "Waiting on you",
       approveLabel: "Approve",
@@ -829,7 +839,7 @@ export const WORKSPACE = {
       decidedLabel: "Approved by you",
       reply: "ship it ✅",
     },
-    { kind: "message", time: "9:25", from: "postmark", dept: "email", text: "Queued the launch note to 3 lists (4,210 people). Held as drafts — nothing sends without your yes." },
+    { kind: "message", time: "9:25", from: "postmark", dept: "email", text: "Queued the launch note to 3 lists (4,210 people). Workspace policy allows this send; receipt ready." },
     { kind: "message", time: "16:30", from: "lens", dept: "analytics", text: "End of day: /pricing impressions +18%, newsletter open rate +4.2%. Tidy work, team. 🎉", done: true },
   ] as readonly SimEntry[],
 } as const;
@@ -841,7 +851,7 @@ export const WORKSPACE = {
  */
 export const APPROVALS_VIGNETTE = {
   title: "Approvals",
-  subtitle: "Nothing leaves the building without a human yes.",
+  subtitle: "Money waits for approval; policy-allowed work ships with receipts.",
   pendingTag: "Pending",
   approvedTag: "Approved",
   approveLabel: "Approve",
@@ -900,10 +910,10 @@ export const STORY: readonly StorySection[] = [
   },
   {
     n: "03",
-    title: "Nothing leaves without your yes",
+    title: "Money waits; allowed work moves",
     body:
-      "Every outbound send, every spend, every public change pauses for a human. Agents draft and queue; " +
-      "you approve the good ones with a tap. The brakes are on by default.",
+      "Spend, charges, payouts, and payment keys always pause for a human. Non-money sends, publishing, " +
+      "and deploys run only when your workspace policy allows them — with receipts, rollback where possible, and the kill switch close by.",
     visual: "approvals",
   },
   {
@@ -1613,11 +1623,11 @@ export const FAQ = {
     },
     {
       q: "Which actions still need my approval?",
-      a: "Money — and only money. A charge, a refund, a payout, connecting a live payment key, or real ad spend pauses for your yes, with the exact amount shown. Everything else — drafts, a published article, a non-paid outreach email, a deploy — the fleet ships on its own. The money gate is enforced in code, and automatic safeguards (a kill switch, suppression/opt-out honoring, and anti-injection on anything the agents read) run on every action without a prompt.",
+      a: `${APPROVAL_POLICY.money} ${APPROVAL_POLICY.external} ${APPROVAL_POLICY.internal}`,
     },
     {
       q: "What can the agents actually do?",
-      a: "SEO audits, content drafts, social calendars, email campaigns, ad planning, analytics digests, brand-voice checks, and outbound prospecting. They research, write, and plan. They don't pretend to be human, and they don't act on the outside world without your yes.",
+      a: "SEO audits, content drafts, social calendars, email campaigns, ad planning, analytics digests, brand-voice checks, and outbound prospecting. They research, write, plan, publish, deploy, and send only through connected accounts and the workspace policy you set. They do not pretend to be human, and every external action leaves a receipt.",
     },
     {
       q: "How is this different from ChatGPT or a single AI assistant?",

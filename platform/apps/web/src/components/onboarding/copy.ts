@@ -36,7 +36,7 @@ export const ONBOARD_COPY = {
     /** Nudge if they hit go with an empty box. */
     needInput: "go on then — give us a product or a url to chew on.",
     /** A quiet line under the input — reassurance, not config. */
-    reassurance: "sends and spend always wait for your yes. nothing sneaks out the back door.",
+    reassurance: "spend waits for your yes. sends follow your workspace policy, with receipts.",
   },
 
   /** SURFACE 1 · step 2 — the fleet wakes and reads the real site, then narrates a real finding. */
@@ -88,7 +88,7 @@ export const ONBOARD_COPY = {
     },
   },
 
-  /** SURFACE 1 · step 4 — one real deliverable, one approve, it ships. Sends/spend stay human-gated. */
+  /** SURFACE 1 · step 4 — one real deliverable, one approve, it ships. Spend stays human-gated. */
   deliverable: {
     eyebrow: "your first real one",
     /** While we put it together. */
@@ -107,7 +107,7 @@ export const ONBOARD_COPY = {
   /** SURFACE 1 · the payoff — small delight when it ships. */
   shipped: {
     headline: "shipped. that's a real thing you just did.",
-    sub: "your fleet's awake and they've got your accounts. from here, they just keep going — you only ever say yes.",
+    sub: "your fleet's awake and they've got your accounts. from here, they keep going inside your policy — spend still waits for your yes.",
     /** Into the everyday shell. */
     enter: "take me in →",
     /** The bigger celebration we're saving for the first paying customer (#784 motion spec). */
