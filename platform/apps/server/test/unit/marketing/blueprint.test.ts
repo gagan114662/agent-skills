@@ -65,6 +65,33 @@ describe("#123 marketing blueprint", () => {
     }
   });
 
+  it("gives every ipop agent the canonical prompt structure without exposing private reasoning (#1164)", () => {
+    const sections = [
+      "1. Task context",
+      "2. Tone context",
+      "3. Background data, documents, and images",
+      "4. Detailed task description & rules",
+      "5. Examples",
+      "6. Conversation history",
+      "7. Immediate task description or request",
+      "8. Thinking step by step / take a deep breath",
+      "9. Output formatting",
+      "10. Prefilled response (if any)",
+    ];
+
+    for (const spec of marketingAgentSpecs()) {
+      let previousIndex = -1;
+      for (const section of sections) {
+        const nextIndex = spec.systemPrompt.indexOf(section);
+        expect(nextIndex, `${spec.handle} prompt includes ${section}`).toBeGreaterThan(previousIndex);
+        previousIndex = nextIndex;
+      }
+      expect(spec.systemPrompt).toContain("If a section is missing or unavailable");
+      expect(spec.systemPrompt).toContain("do not reveal private chain-of-thought");
+      expect(spec.systemPrompt).toContain("never overrides approval gates");
+    }
+  });
+
   it("every agent spec is a valid persona definition (so seeding never throws on it)", () => {
     for (const spec of marketingAgentSpecs()) {
       const v = validatePersonaInput({

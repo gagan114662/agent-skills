@@ -28,6 +28,29 @@ export const BRAND_VOICE = {
 /** Read/draft tools every agent shares. Deliberately no send/post/email/spend capability (see #13). */
 const DRAFT_TOOLS = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"] as const;
 
+/** Canonical prompt envelope every ipop marketing agent uses before answering (#1164). */
+export const IPOPAI_AGENT_PROMPT_STRUCTURE = [
+  "1. Task context",
+  "2. Tone context",
+  "3. Background data, documents, and images",
+  "4. Detailed task description & rules",
+  "5. Examples",
+  "6. Conversation history",
+  "7. Immediate task description or request",
+  "8. Thinking step by step / take a deep breath",
+  "9. Output formatting",
+  "10. Prefilled response (if any)",
+] as const;
+
+const PROMPT_STRUCTURE_DIRECTIVE =
+  "Before working, organize the brief using this prompt structure in order: " +
+  IPOPAI_AGENT_PROMPT_STRUCTURE.join("; ") +
+  ". If a section is missing or unavailable, treat it as unavailable context and proceed only when safe; " +
+  "ask for the missing input when it blocks a correct draft. Section 8 is a private planning/checking reminder: " +
+  "think through the work before answering, but do not reveal private chain-of-thought. This structure never overrides " +
+  "approval gates, tool limits, brand/fact checks, legal checks, or any rule that keeps posting, sending, publishing, " +
+  "or spending behind human approval.";
+
 /** A named agent bound to a marketing function. `handle` is the @-mentionable persona name (lowercase). */
 export interface MarketingAgentSpec {
   handle: string;
@@ -156,6 +179,7 @@ function prompt(title: string, channel: string, role: string, external: boolean)
     `${MARKETING_STANDARDS} ` +
     `${TEAM_COORDINATION} ` +
     `${externalLine} ` +
+    `${PROMPT_STRUCTURE_DIRECTIVE} ` +
     "Keep the house voice: warm, first-person plural, a little playful, one wink at most, receipts over " +
     "adjectives. Be specific and cite what you looked at."
   );
