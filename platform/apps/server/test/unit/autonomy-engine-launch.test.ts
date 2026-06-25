@@ -19,6 +19,9 @@ const tryReserveActionsUsed = vi.fn(() => Promise.resolve(true));
 const refundActionsUsed = vi.fn(() => Promise.resolve());
 const bumpWorkflowAction = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
+const handoffWorkflowStage = vi.fn(() => Promise.resolve({ advanced: true, alreadyAdvanced: false }));
+const markWorkflowAwaitingApproval = vi.fn(() => Promise.resolve());
+const completeWorkflowWithTask = vi.fn(() => Promise.resolve());
 const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
 const findWorkflowApproval = vi.fn(() => Promise.resolve(undefined));
 const decideApproval = vi.fn(() => Promise.resolve({ id: "appr_1", status: "approved" }));
@@ -38,6 +41,9 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   refundActionsUsed,
   bumpWorkflowAction,
   setWorkflowStatus,
+  handoffWorkflowStage,
+  markWorkflowAwaitingApproval,
+  completeWorkflowWithTask,
   createApproval,
   findWorkflowApproval,
   decideApproval,
@@ -174,16 +180,18 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(upsertMemory).toHaveBeenCalledWith(
       expect.objectContaining({ type: "handoff", sourceId: "task_1" }),
     );
-    expect(addTaskLink).toHaveBeenCalledWith(
+    expect(handoffWorkflowStage).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: "ws_1",
+        workflowId: "wf_1",
+        expectedCurrentStage: 0,
+        toStage: 1,
         taskId: "task_1",
-        targetType: "memory",
-        targetId: "mem_1",
+        workspaceId: "ws_1",
+        nextAgentMemberId: "agent_w",
+        actorMemberId: "agent_r",
+        memoryId: "mem_1",
       }),
     );
-    expect(assignTask).toHaveBeenCalledWith("task_1", "agent_w", "agent_r");
-    expect(advanceWorkflowStage).toHaveBeenCalledWith("wf_1", 1);
     expect(launcher.launch).toHaveBeenCalledTimes(1);
     expect(launches[0]).toMatchObject({
       workspaceId: "ws_1",
@@ -270,7 +278,7 @@ describe("AutonomyEngine real-session launch (#84)", () => {
         action: "complete_workflow",
       }),
     );
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
     // The only status write was the `in_progress` on start — never `done`.
     expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
     expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
@@ -323,7 +331,7 @@ describe("AutonomyEngine real-session launch (#84)", () => {
       action: "complete_workflow",
     });
     expect(createApproval).not.toHaveBeenCalled();
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
   });
 
   it("on a failed session, blocks the task (no approval gate for work that did not land)", async () => {
@@ -369,9 +377,13 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
       "appr_1",
       expect.objectContaining({ status: "approved", decisionSource: "policy", policyRuleId: null }),
     );
-    expect(updateStatus).toHaveBeenCalledWith("task_1", "done", "agent_r");
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "completed");
-    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(completeWorkflowWithTask).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      taskId: "task_1",
+      actorMemberId: "agent_r",
+      completeTask: true,
+    });
+    expect(markWorkflowAwaitingApproval).not.toHaveBeenCalledWith("wf_1");
   });
 
   it("with an auto-approve rule, drives completed → done and records which rule fired", async () => {
@@ -409,9 +421,13 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
       }),
     );
     // The loop closes to done + completed without a human.
-    expect(updateStatus).toHaveBeenCalledWith("task_1", "done", "agent_r");
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "completed");
-    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(completeWorkflowWithTask).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      taskId: "task_1",
+      actorMemberId: "agent_r",
+      completeTask: true,
+    });
+    expect(markWorkflowAwaitingApproval).not.toHaveBeenCalledWith("wf_1");
   });
 
   it("with a rule that still requires approval, keeps the human gate", async () => {
@@ -434,7 +450,7 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
     await engine.tick("ws_1");
     await engine.drain();
 
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
     expect(decideApproval).not.toHaveBeenCalled();
     expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
   });

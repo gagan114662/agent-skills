@@ -9,6 +9,7 @@ import { channelPoster } from "../../src/runtime/default.js";
 import { AutonomyEngine } from "../../src/autonomy/engine.js";
 import {
   getAutonomy,
+  handoffWorkflowStage,
   refundActionsUsed,
   tryReserveActionsUsed,
 } from "../../src/db/repositories/autonomy.js";
@@ -178,20 +179,54 @@ describe("cross-team agent pooling + autonomy loop (real Postgres + Redis, #17)"
       })
     ).json();
 
-    // tick 1: researcher starts.   tick 2: researcher hands off to writer.   tick 3: writer asks approval.
+    // tick 1: researcher starts.   tick 2: researcher hands off to writer.
     expect((await engine.tick(w.workspaceId)).actions[0]?.action).toBe("start");
     expect((await engine.tick(w.workspaceId)).actions[0]?.action).toBe("handoff");
-    expect((await engine.tick(w.workspaceId)).actions[0]?.action).toBe("request_approval");
 
-    // The workflow parked at the human gate; the task is reassigned to the writer; continuity rode
+    // The workflow advanced once; the task is reassigned to the writer; continuity rode
     // in shared memory linked to the task (#16/#14).
+    const handedOff = (await get(`/channels/${w.channelId}/workflows/${wf.id}`, w.cookie)).json();
+    expect(handedOff.status).toBe("running");
+    expect(handedOff.currentStage).toBe(1);
+    const assigned = (await get(`/tasks/${taskId}`, w.cookie)).json();
+    expect(assigned.assigneeMemberId).toBe(w.writer);
+    const links = (await get(`/tasks/${taskId}/links`, w.cookie)).json() as {
+      targetType: string;
+      targetId: string;
+    }[];
+    const handoffMemory = links.find((l) => l.targetType === "memory");
+    expect(handoffMemory).toBeTruthy();
+
+    const staleRetry = await handoffWorkflowStage({
+      workflowId: wf.id,
+      expectedCurrentStage: 0,
+      toStage: 1,
+      taskId,
+      workspaceId: w.workspaceId,
+      nextAgentMemberId: w.writer,
+      actorMemberId: w.researcher,
+      memoryId: handoffMemory!.targetId,
+    });
+    expect(staleRetry).toEqual({ advanced: false, alreadyAdvanced: true });
+    const afterRetry = (await get(`/channels/${w.channelId}/workflows/${wf.id}`, w.cookie)).json();
+    expect(afterRetry.status).toBe("running");
+    expect(afterRetry.currentStage).toBe(1);
+    const linksAfterRetry = (await get(`/tasks/${taskId}/links`, w.cookie)).json() as {
+      targetType: string;
+    }[];
+    expect(linksAfterRetry.filter((l) => l.targetType === "memory")).toHaveLength(1);
+    const eventsAfterRetry = (await get(`/tasks/${taskId}/events`, w.cookie)).json() as {
+      type: string;
+      toValue: string | null;
+    }[];
+    expect(eventsAfterRetry.filter((e) => e.type === "linked" && e.toValue?.startsWith("memory:"))).toHaveLength(1);
+    expect(eventsAfterRetry.filter((e) => e.type === "reassigned" && e.toValue === w.writer)).toHaveLength(1);
+
+    // tick 3: writer asks approval.
+    expect((await engine.tick(w.workspaceId)).actions[0]?.action).toBe("request_approval");
     const parked = (await get(`/channels/${w.channelId}/workflows/${wf.id}`, w.cookie)).json();
     expect(parked.status).toBe("awaiting_approval");
     expect(parked.currentStage).toBe(1);
-    const assigned = (await get(`/tasks/${taskId}`, w.cookie)).json();
-    expect(assigned.assigneeMemberId).toBe(w.writer);
-    const links = (await get(`/tasks/${taskId}/links`, w.cookie)).json() as { targetType: string }[];
-    expect(links.some((l) => l.targetType === "memory")).toBe(true);
 
     const text = (await bodies(w)).join("\n");
     expect(text).toContain("handoff");
