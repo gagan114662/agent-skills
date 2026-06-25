@@ -35,6 +35,8 @@ export interface CreateReleaseReceiptInput {
   requiresApproval: boolean;
   approvalRequestId?: string | null;
   smokeCriticalCount: number;
+  promoteHealthOk?: boolean | null;
+  promoteHealthDetail?: string | null;
   url?: string | null;
   incidentFiled: boolean;
   detail: string;

@@ -24,6 +24,11 @@ export interface ReleaseDeployOutcome {
   detail: string;
 }
 
+export interface ReleasePromoteHealth {
+  ok: boolean;
+  detail: string;
+}
+
 /** A prior good prod deployment to roll back to. */
 export interface PriorProdDeploy {
   providerDeploymentId: string;
@@ -53,6 +58,8 @@ export interface ReleaseDeployer {
     prodUrl: string;
     providerDeploymentId: string | null;
   }): Promise<void>;
+  /** Verify the customer-facing prod URL after promote; omitted only by legacy/dry-run fakes. */
+  healthCheck?(url: string): Promise<ReleasePromoteHealth>;
   /** Roll prod back to a prior good deployment — the autonomous safety action (#195 AC3). */
   rollback(input: {
     workspaceId: string;
@@ -168,6 +175,12 @@ export class VentureReleasePipeline {
     let approvalRequestId: string | null = null;
     let url: string | null = deployOutcome.url;
     let detail = `${decision.reason}: ${deployOutcome.detail}`;
+    let action = decision.action;
+    let reversibility = decision.reversibility;
+    let requiresApproval = decision.requiresApproval;
+    let promoteHealthOk: boolean | null = null;
+    let promoteHealthDetail: string | null = null;
+    let promoteHealthIncident = false;
 
     if (decision.action === "promote") {
       if (decision.requiresApproval) {
@@ -188,8 +201,30 @@ export class VentureReleasePipeline {
           prodUrl: target.prodUrl,
           providerDeploymentId: deployOutcome.providerDeploymentId,
         });
-        url = target.prodUrl;
-        detail = "smoke green — promoted to production";
+        const promoteHealth = this.deps.deployer.healthCheck
+          ? await this.deps.deployer.healthCheck(target.prodUrl)
+          : { ok: true, detail: "post-promote health check unavailable" };
+        promoteHealthOk = promoteHealth.ok;
+        promoteHealthDetail = promoteHealth.detail;
+        if (promoteHealth.ok) {
+          url = target.prodUrl;
+          detail = `smoke green — promoted to production; promote health ok: ${promoteHealth.detail}`;
+        } else if (prior) {
+          const rb = await this.deps.deployer.rollback({ workspaceId, ventureId, prior });
+          action = "rollback";
+          reversibility = "cheap";
+          requiresApproval = false;
+          url = rb.url;
+          detail = `promote health failed: ${promoteHealth.detail} — rolled back to last good prod (${prior.url})`;
+          promoteHealthIncident = true;
+        } else {
+          action = "escalate";
+          reversibility = "reversible";
+          requiresApproval = true;
+          url = deployOutcome.url;
+          detail = `promote health failed: ${promoteHealth.detail} — no rollback target; escalated`;
+          promoteHealthIncident = true;
+        }
       }
     } else if (decision.action === "rollback" && prior) {
       const rb = await this.deps.deployer.rollback({ workspaceId, ventureId, prior });
@@ -207,18 +242,33 @@ export class VentureReleasePipeline {
     }
 
     // 4. File a self-healing incident on a failed release (#195 AC3 — feeds the #172 self-shipping loop).
-    const incidentFiled = decision.fileIncident && Boolean(this.deps.incident);
+    const incidentFiled =
+      (decision.fileIncident || promoteHealthIncident) && Boolean(this.deps.incident);
     if (decision.fileIncident && this.deps.incident) {
       await this.deps.incident.file(
         this.buildIncident({ workspaceId, ventureId, releaseRef, decision, smoke, deployOutcome }),
       );
     }
+    if (promoteHealthIncident && this.deps.incident) {
+      await this.deps.incident.file(
+        this.buildPromoteHealthIncident({
+          workspaceId,
+          ventureId,
+          releaseRef,
+          detail: promoteHealthDetail ?? "post-promote health check failed",
+          rolledBack: action === "rollback",
+        }),
+      );
+    }
 
     // 5. Append the immutable receipt (the audit trail, #195 AC4). A gated promote is parked, not done.
     const status =
-      decision.action === "promote" && decision.requiresApproval
+      action === "promote" && requiresApproval
         ? "escalated"
-        : releaseStatusFor(decision.action, decision.reason);
+        : releaseStatusFor(
+            action,
+            action === decision.action ? decision.reason : "promote_health_failed",
+          );
 
     return this.deps.releases.create({
       workspaceId,
@@ -226,11 +276,13 @@ export class VentureReleasePipeline {
       targetId: target.id,
       releaseRef,
       status,
-      action: decision.action,
-      reversibility: decision.reversibility,
-      requiresApproval: decision.requiresApproval,
+      action,
+      reversibility,
+      requiresApproval,
       approvalRequestId,
       smokeCriticalCount: smoke.ran ? smoke.criticalCount : -1,
+      promoteHealthOk,
+      promoteHealthDetail,
       url,
       incidentFiled,
       detail,
@@ -262,13 +314,51 @@ export class VentureReleasePipeline {
       threshold: 0,
       timeline: [
         { at, event: `release ${releaseRef} deployed: ${deployOutcome.ok ? "ok" : "failed"}` },
-        { at, event: `smoke ${smoke.ran ? `ran (${smoke.criticalCount} critical)` : "did not run"}` },
+        {
+          at,
+          event: `smoke ${smoke.ran ? `ran (${smoke.criticalCount} critical)` : "did not run"}`,
+        },
         { at, event: `decision: ${decision.action} (${decision.reason})` },
       ],
       rootCause,
       missingCheck:
         "A post-deploy smoke against the live preview URL before promotion — already the gate here; the " +
         "incident records that it caught a broken image and the venture stayed on its last good prod.",
+    };
+  }
+
+  private buildPromoteHealthIncident(args: {
+    workspaceId: string;
+    ventureId: string;
+    releaseRef: string;
+    detail: string;
+    rolledBack: boolean;
+  }): OpsPostmortem {
+    const { workspaceId, ventureId, releaseRef, detail, rolledBack } = args;
+    const surfaceKey = `venture-deploy:${ventureId}`;
+    const at = this.now().toISOString();
+    return {
+      signature: `${workspaceId}|${surfaceKey}|uptime`,
+      workspaceId,
+      surfaceKey,
+      ventureLabel: `venture ${ventureId}`,
+      signal: "uptime",
+      action: rolledBack ? "rollback" : "escalate",
+      observed: 1,
+      threshold: 0,
+      timeline: [
+        { at, event: `release ${releaseRef} promoted to prod` },
+        { at, event: `post-promote health failed: ${detail}` },
+        {
+          at,
+          event: rolledBack
+            ? "decision: rollback to prior prod"
+            : "decision: escalate; no rollback target",
+        },
+      ],
+      rootCause: `Post-promote production health check failed for release ${releaseRef}: ${detail}`,
+      missingCheck:
+        "A post-promote probe of the customer-facing production URL before recording a promoted receipt.",
     };
   }
 }
@@ -305,9 +395,7 @@ export function releasePipelineAsPostMergeVerifier(
         requesterMemberId: v.requesterMemberId,
       });
       const regressions =
-        receipt.status === "promoted"
-          ? 0
-          : Math.max(receipt.smokeCriticalCount, 1); // any non-promote surfaces ≥1 so the loop escalates
+        receipt.status === "promoted" ? 0 : Math.max(receipt.smokeCriticalCount, 1); // any non-promote surfaces ≥1 so the loop escalates
       return { regressions, detail: receipt.detail };
     },
   };

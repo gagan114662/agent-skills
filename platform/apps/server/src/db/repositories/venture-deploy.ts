@@ -34,6 +34,8 @@ const RELEASE_COLUMNS = {
   requiresApproval: deployReleases.requiresApproval,
   approvalRequestId: deployReleases.approvalRequestId,
   smokeCriticalCount: deployReleases.smokeCriticalCount,
+  promoteHealthOk: deployReleases.promoteHealthOk,
+  promoteHealthDetail: deployReleases.promoteHealthDetail,
   url: deployReleases.url,
   incidentFiled: deployReleases.incidentFiled,
   detail: deployReleases.detail,
@@ -50,7 +52,9 @@ export const dbDeployTargetStore: DeployTargetStore = {
     const [row] = await db
       .select(TARGET_COLUMNS)
       .from(deployTargets)
-      .where(and(eq(deployTargets.workspaceId, workspaceId), eq(deployTargets.ventureId, ventureId)))
+      .where(
+        and(eq(deployTargets.workspaceId, workspaceId), eq(deployTargets.ventureId, ventureId)),
+      )
       .limit(1);
     return row as DeployTarget | undefined;
   },
@@ -77,6 +81,8 @@ export const dbReleaseStore: ReleaseStore = {
         requiresApproval: input.requiresApproval,
         approvalRequestId: input.approvalRequestId ?? null,
         smokeCriticalCount: input.smokeCriticalCount,
+        promoteHealthOk: input.promoteHealthOk ?? null,
+        promoteHealthDetail: input.promoteHealthDetail ?? null,
         url: input.url ?? null,
         incidentFiled: input.incidentFiled,
         detail: input.detail,
