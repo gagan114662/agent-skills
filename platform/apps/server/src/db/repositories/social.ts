@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { socialPosts, socialPostResults } from "../schema/index.js";
 import type { SocialNetwork, SocialPostStatus } from "../../social/decide.js";
@@ -115,6 +115,20 @@ export const dbSocialResultStore: SocialResultStore = {
       .from(socialPostResults)
       .where(eq(socialPostResults.postId, postId))
       .orderBy(socialPostResults.recordedAt);
+    return rows.map(toResult);
+  },
+  async listRecentForWorkspace(workspaceId, since, limit = 500) {
+    const rows = await db
+      .select()
+      .from(socialPostResults)
+      .where(
+        and(
+          eq(socialPostResults.workspaceId, workspaceId),
+          gte(socialPostResults.recordedAt, since),
+        ),
+      )
+      .orderBy(desc(socialPostResults.recordedAt))
+      .limit(limit);
     return rows.map(toResult);
   },
   async countPublishedForWorkspace(workspaceId) {

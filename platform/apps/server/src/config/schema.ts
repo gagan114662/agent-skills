@@ -1782,6 +1782,20 @@ export const socialSchema = z.object({
   ownerWorkspaceOnly: z.boolean().optional(),
   /** The owner's own workspace id — social posting rolls out owner-workspace-first. */
   ownerWorkspaceId: z.string().optional(),
+  /** Rolling workspace-wide cap across all social network fan-outs. Default 10/hour. */
+  workspaceWindowCap: z.number().int().nonnegative().optional(),
+  /** Rolling workspace-wide cap window in milliseconds. Default 1 hour. */
+  workspaceWindowMs: z.number().int().positive().optional(),
+  /** Rolling per-network cap. Default 5/hour/network. */
+  networkWindowCap: z.number().int().nonnegative().optional(),
+  /** Rolling per-network cap window in milliseconds. Default 1 hour. */
+  networkWindowMs: z.number().int().positive().optional(),
+  /** Number of days a workspace stays on the social warmup ramp. Default 7. */
+  warmupDays: z.number().int().nonnegative().optional(),
+  /** Day-0 warmup cap across all networks. Default 3. */
+  warmupStartCap: z.number().int().nonnegative().optional(),
+  /** Additional sends allowed per warmup day. Default +2/day. */
+  warmupDailyIncrement: z.number().int().nonnegative().optional(),
 });
 
 /**

@@ -75,6 +75,12 @@ export interface SocialResultStore {
   /** Replace the recorded per-network receipts for a post (a publish is recorded atomically per attempt). */
   record(postId: string, results: readonly RecordSocialResultInput[]): Promise<void>;
   listForPost(postId: string): Promise<SocialPostResultRecord[]>;
+  /** Recent receipts in a workspace, newest first, for rate-cap enforcement. */
+  listRecentForWorkspace(
+    workspaceId: string,
+    since: Date,
+    limit?: number,
+  ): Promise<SocialPostResultRecord[]>;
   /** Count externally-verified `published` receipts for a workspace (the metric source — recorded rows only). */
   countPublishedForWorkspace(workspaceId: string): Promise<number>;
 }
