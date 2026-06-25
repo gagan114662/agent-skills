@@ -6,7 +6,7 @@ import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { createChannel, listChannels } from "../../src/db/repositories/channels.js";
-import { listChannelMessages } from "../../src/db/repositories/messages.js";
+import { latestMessageId, listChannelMessages } from "../../src/db/repositories/messages.js";
 
 /**
  * #361 (epic #359) — ACCEPTANCE: with the coordination layers enabled for the OWNER workspace
@@ -106,17 +106,26 @@ const rpc = (method: string, params: unknown, id: number | string = 1) => ({
 
 async function waitForMessages(
   channelId: string,
+  afterMessageId: string | null,
   match: (messages: Awaited<ReturnType<typeof listChannelMessages>>) => boolean,
   label: string,
 ): Promise<Awaited<ReturnType<typeof listChannelMessages>>> {
   const deadline = Date.now() + 2_000;
-  let messages = await listChannelMessages(channelId);
+  let messages = await listChannelMessagesAfter(channelId, afterMessageId);
   while (!match(messages) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));
-    messages = await listChannelMessages(channelId);
+    messages = await listChannelMessagesAfter(channelId, afterMessageId);
   }
   expect(messages, label).toSatisfy(match);
   return messages;
+}
+
+async function listChannelMessagesAfter(
+  channelId: string,
+  afterMessageId: string | null,
+): Promise<Awaited<ReturnType<typeof listChannelMessages>>> {
+  const messages = await listChannelMessages(channelId);
+  return afterMessageId ? messages.filter((m) => m.id > afterMessageId) : messages;
 }
 
 /** Drive a delegation: scout hands `task` off to quill via JSON-RPC `message/send`. Returns the task id. */
@@ -146,6 +155,7 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const quill = await newAgent(owner, "quill");
     // The bridge posts to the first department channel matching the blueprint name.
     const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     enableCoordinationFor(owner.workspaceId);
 
@@ -154,6 +164,7 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
 
     const messages = await waitForMessages(
       content.id,
+      beforeDelegation,
       (rows) =>
         rows.some((m) => m.body.includes("Handing this off to @quill")) &&
         rows.some((m) => m.body.startsWith("📋 Task")),
@@ -188,11 +199,12 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
     const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     // No coordination env set ⇒ channel posting is OFF (the prod default).
     const taskId = await delegate(scout.token, quill.agentId, "should not be narrated");
 
-    expect(await listChannelMessages(content.id)).toHaveLength(0);
+    expect(await listChannelMessagesAfter(content.id, beforeDelegation)).toHaveLength(0);
     // …yet the handoff itself still happened (the bridge is best-effort narration, never the write).
     const native = await app.inject({
       method: "GET",
@@ -207,11 +219,12 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
     const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     // Posting is enabled, but named for some OTHER owner workspace — this workspace must stay quiet.
     enableCoordinationFor(`someone-else-${newId()}`);
     await delegate(scout.token, quill.agentId, "still should not be narrated");
 
-    expect(await listChannelMessages(content.id)).toHaveLength(0);
+    expect(await listChannelMessagesAfter(content.id, beforeDelegation)).toHaveLength(0);
   });
 });
