@@ -758,6 +758,27 @@ export interface StatusPageDto {
   generatedAt: string;
 }
 
+export type PublicDogfoodPhase = "thinking" | "tool" | "artifact" | "approval" | "outcome" | "blocked";
+
+export interface PublicDogfoodReceiptDto {
+  id: string;
+  agent: string;
+  workstream: string;
+  phase: PublicDogfoodPhase;
+  summary: string;
+  artifactLabel: string | null;
+  approvalStatus: string | null;
+  occurredAt: string;
+}
+
+export interface PublicDogfoodFeedDto {
+  slug: string;
+  workspaceName: string;
+  title: string;
+  lastUpdatedAt: string | null;
+  receipts: PublicDogfoodReceiptDto[];
+}
+
 export interface PublicSupportTicketStatusDto {
   ticketId: string;
   status: "open" | "triaged" | "awaiting_approval" | "replied" | "closed";

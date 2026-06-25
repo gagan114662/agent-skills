@@ -3,6 +3,7 @@ import { AuthGate } from "./components/AuthGate.js";
 import { Workspace } from "./components/Workspace.js";
 import { StatusPage } from "./components/StatusPage.js";
 import { SupportTicketStatus } from "./components/SupportTicketStatus.js";
+import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
@@ -24,6 +25,8 @@ import { navigate, useRoute } from "./routing.js";
 const STATUS_PATH = /^\/status\/([^/]+)\/?$/;
 /** Public support-ticket status page (#919), linked from widget confirmations. */
 const SUPPORT_STATUS_PATH = /^\/support\/status\/?$/;
+/** Public dogfood feed (#461): ipop marketing ipop with real redacted trace receipts. */
+const DOGFOOD_PATH = /^\/dogfood(?:\/([^/]+))?\/?$/;
 /** The no-signup instant demo / sandbox (#610) — a PUBLIC surface at `/demo` (or `/sandbox`), rendered
  * BEFORE the auth boundary: a prospect watches a personalized deliverable build with zero account. */
 const DEMO_PATH = /^\/(?:demo|sandbox)\/?$/;
@@ -63,6 +66,8 @@ export function App(): React.JSX.Element {
   const status = STATUS_PATH.exec(path);
   if (status) return <StatusPage slug={decodeURIComponent(status[1]!)} />;
   if (SUPPORT_STATUS_PATH.test(path)) return <SupportTicketStatus />;
+  const dogfood = DOGFOOD_PATH.exec(path);
+  if (dogfood) return <PublicDogfood slug={decodeURIComponent(dogfood[1] ?? "ipop")} />;
 
   // #784: the onboarding experience is the default public landing at root `/` and `/welcome`. It renders
   // before the auth boundary (no session needed); "take me in" carries the visitor into the everyday shell.

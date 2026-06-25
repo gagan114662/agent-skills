@@ -83,6 +83,7 @@ import type {
   SampleConsoleResponse,
   StatusPageDto,
   PublicSupportTicketStatusDto,
+  PublicDogfoodFeedDto,
   TaskTemplateDto,
   SiteDocDetail,
   SiteDocMeta,
@@ -586,6 +587,9 @@ export const api = {
   // --- public status page (#148) — UNauthenticated; needs no session cookie ---
   getStatusPage(slug: string): Promise<StatusPageDto> {
     return request<StatusPageDto>(`/status/${encodeURIComponent(slug)}`);
+  },
+  getPublicDogfoodFeed(slug: string): Promise<PublicDogfoodFeedDto> {
+    return request<PublicDogfoodFeedDto>(`/dogfood/${encodeURIComponent(slug)}`);
   },
   getPublicSupportTicketStatus(
     workspaceId: string,
