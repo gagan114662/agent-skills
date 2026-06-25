@@ -6287,6 +6287,45 @@ select:focus-visible {
 }
 .typingind__pill strong { font-weight: 700; }
 .typingind__pill span { color: var(--text-dim); }
+.agentsteps {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.agentsteps__item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.agentsteps__agent { font-weight: 700; }
+.agentsteps__phase {
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.agentsteps__tool {
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agentsteps__summary {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .typingind__stop {
   margin-left: 6px; background: none; border: 1px solid var(--border); color: var(--text-dim);
   font-size: 11px; padding: 1px 8px; border-radius: 999px; cursor: pointer;

@@ -71,6 +71,12 @@ export function useTheaterStream(
       setEventCount(0);
       return;
     }
+    if (!eventSourceFactory && typeof EventSource === "undefined") {
+      setLanes(new Map());
+      setStatus("idle");
+      setEventCount(0);
+      return;
+    }
     setStatus("connecting");
 
     const upsertRun = (run: TheaterRunDto): void => {
