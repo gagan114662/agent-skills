@@ -14,6 +14,7 @@ import {
   type PricingExperiment,
   type PricingExperimentStore,
   type PricingExperimentVariant,
+  type PlanFunnelAdvancer,
   type WorkspacePlanStore,
   type ActivePlan,
 } from "../../src/billing/plan-service.js";
@@ -212,7 +213,7 @@ function memExperimentStore(): PricingExperimentStore {
   };
 }
 
-function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
+function makeService(opts: { config?: Partial<ResolvedConfig> | null; funnel?: PlanFunnelAdvancer } = {}) {
   const provider = new NoneBillingProvider();
   const prices = memPriceStore();
   const plans = memPlanStore();
@@ -228,6 +229,7 @@ function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
     pricingExperiments: memExperimentStore(),
     secrets: new StaticSecretsResolver({ STRIPE_SECRET_KEY: STRIPE_KEY }),
     loadConfig,
+    ...(opts.funnel ? { funnel: opts.funnel } : {}),
   });
   return { service, provider, prices, plans };
 }
@@ -297,6 +299,30 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     const current = (await service.listPlans(WS)).current;
     expect(current?.planKey).toBe("agency");
     expect(current?.fleetSize).toBe(planCaps(getPlan("agency")!).fleetSize);
+  });
+
+  it("advances a tracked paid checkout into the post-sales GTM stage", async () => {
+    const postSales: Array<{ workspaceId: string; prospectKey: string; externalRef: string; planKey: string; amountCents: number }> = [];
+    const { service } = makeService({
+      funnel: {
+        advancePostSales: async (input) => {
+          postSales.push(input);
+        },
+      },
+    });
+
+    await service.activate(WS, "pro", "evt_paid_1", { trackingRef: "ipop_paidprospect1" }, 4900);
+    await service.activate(WS, "agency", "evt_paid_2", { trackingRef: "not-ours" }, 9900);
+
+    expect(postSales).toEqual([
+      {
+        workspaceId: WS,
+        prospectKey: "ipop_paidprospect1",
+        externalRef: "evt_paid_1",
+        planKey: "pro",
+        amountCents: 4900,
+      },
+    ]);
   });
 
   it("sets a renewal window on activation and moves failed renewals into dunning", async () => {

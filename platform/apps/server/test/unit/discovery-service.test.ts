@@ -320,6 +320,50 @@ describe("DiscoveryService.queue / pipelineSummary (read-only surfaces)", () => 
     expect(summary.metrics.stages.find((s) => s.stage === "outreach")!.prospects).toBe(1);
     expect(summary.metrics.stages.find((s) => s.stage === "conversion")!.prospects).toBe(1);
   });
+
+  it("advances externally grounded onboarding and post-sales stages for a named prospect", async () => {
+    const h = makeHarness();
+    await h.service.advancePipelineStage("ws-1", {
+      prospectKey: "ipop_ref_1",
+      stage: "onboarding",
+      externalRef: "signup:mem-1",
+    });
+    await h.service.advancePipelineStage("ws-1", {
+      prospectKey: "ipop_ref_1",
+      stage: "post_sales",
+      externalRef: "evt_paid_1",
+    });
+
+    const summary = await h.service.pipelineSummary("ws-1");
+    expect(summary.metrics.stages.find((s) => s.stage === "onboarding")!.prospects).toBe(1);
+    expect(summary.metrics.stages.find((s) => s.stage === "post_sales")!.prospects).toBe(1);
+    expect(summary.metrics.totalProspects).toBe(1);
+  });
+
+  it("rejects ungrounded or invalid direct stage advances", async () => {
+    const h = makeHarness();
+    await expect(
+      h.service.advancePipelineStage("ws-1", {
+        prospectKey: "alice@example.com",
+        stage: "onboarding",
+        externalRef: "signup:1",
+      }),
+    ).rejects.toBeInstanceOf(DiscoveryValidationError);
+    await expect(
+      h.service.advancePipelineStage("ws-1", {
+        prospectKey: "p-1",
+        stage: "not_real",
+        externalRef: "signup:1",
+      }),
+    ).rejects.toBeInstanceOf(DiscoveryValidationError);
+    await expect(
+      h.service.advancePipelineStage("ws-1", {
+        prospectKey: "p-1",
+        stage: "post_sales",
+        externalRef: " ",
+      }),
+    ).rejects.toBeInstanceOf(DiscoveryValidationError);
+  });
 });
 
 describe("founder-console growth shows non-zero, event-driven counts (AC2)", () => {

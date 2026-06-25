@@ -238,6 +238,16 @@ export interface BootstrapResult {
   existing: PlanKey[];
 }
 
+export interface PlanFunnelAdvancer {
+  advancePostSales(input: {
+    workspaceId: string;
+    prospectKey: string;
+    externalRef: string;
+    planKey: PlanKey;
+    amountCents: number;
+  }): Promise<void>;
+}
+
 /** Thrown when a checkout/activation references a plan key not in the catalog → route 400. */
 export class UnknownPlanError extends Error {
   constructor(key: string) {
@@ -254,6 +264,7 @@ export interface PlanBillingServiceDeps {
   trialNurture?: TrialNurtureService;
   secrets: SecretsResolver;
   loadConfig?: (workspaceId: string) => ResolvedConfig;
+  funnel?: PlanFunnelAdvancer;
   logger?: SessionLogger;
 }
 
@@ -265,6 +276,7 @@ export class PlanBillingService implements PlanActivator {
   private readonly trialNurture?: TrialNurtureService;
   private readonly secrets: SecretsResolver;
   private readonly load: (workspaceId: string) => ResolvedConfig;
+  private readonly funnel?: PlanFunnelAdvancer;
   private readonly logger?: SessionLogger;
 
   constructor(deps: PlanBillingServiceDeps) {
@@ -275,6 +287,7 @@ export class PlanBillingService implements PlanActivator {
     this.trialNurture = deps.trialNurture;
     this.secrets = deps.secrets;
     this.load = deps.loadConfig ?? ((workspaceId) => loadConfig(workspaceId));
+    this.funnel = deps.funnel;
     this.logger = deps.logger;
   }
 
@@ -380,6 +393,23 @@ export class PlanBillingService implements PlanActivator {
       });
     }
     await this.trialNurture?.markPaid(workspaceId, providerEventId, amountCents);
+    const prospectKey = sanitizeTrackingRef(metadata.trackingRef);
+    if (prospectKey && this.funnel) {
+      try {
+        await this.funnel.advancePostSales({
+          workspaceId,
+          prospectKey,
+          externalRef: providerEventId,
+          planKey: plan.key,
+          amountCents,
+        });
+      } catch (err) {
+        this.logger?.error?.(
+          { workspaceId, providerEventId, err },
+          "billing: failed to advance discovery pipeline after paid plan activation",
+        );
+      }
+    }
     return active;
   }
 

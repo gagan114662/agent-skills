@@ -90,7 +90,7 @@ export function createDefaultOutreachService(deps: {
         const req = await createRequest({
           workspaceId: input.workspaceId,
           requesterMemberId: input.requesterMemberId,
-          actionType: OUTREACH_SEND_ACTION,
+          actionType: input.actionType ?? OUTREACH_SEND_ACTION,
           payload: input.payload,
           amount: null,
           summary: input.summary,
@@ -102,16 +102,25 @@ export function createDefaultOutreachService(deps: {
       },
     },
     ...(payLinks ? { payLinks } : {}),
-    // The receipt advancer: record an externally-grounded #222 conversion (and nothing else).
+    // The receipt advancer: record an externally-grounded #222 GTM stage (and nothing else).
     pipeline: {
-      recordConversion: async (workspaceId, input) => {
-        await deps.discovery.ingestSignal(workspaceId, {
+      recordStage: async (workspaceId, input) => {
+        if (input.stage === "conversion") {
+          await deps.discovery.ingestSignal(workspaceId, {
+            ideaId: input.ideaId,
+            prospectKey: input.prospectKey,
+            kind: "conversion",
+            externalRef: input.externalRef,
+            source: "outreach",
+            detail: input.detail,
+          });
+          return;
+        }
+        await deps.discovery.advancePipelineStage(workspaceId, {
           ideaId: input.ideaId,
           prospectKey: input.prospectKey,
-          kind: "conversion",
+          stage: input.stage,
           externalRef: input.externalRef,
-          source: "outreach",
-          detail: input.detail,
         });
       },
     },

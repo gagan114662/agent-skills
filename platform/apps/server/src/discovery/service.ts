@@ -2,6 +2,7 @@ import type { GrowthEventKind } from "../growth/types.js";
 import type { DiscoveryCaps } from "./caps.js";
 import {
   detectQualifications,
+  isGtmStage,
   pipelineMetrics,
   rankProspects,
   type DiscoveryProspect,
@@ -457,6 +458,43 @@ export class DiscoveryService {
       entries.map((e) => ({ prospectKey: e.prospectKey, stage: e.stage, verified: e.verified })),
     );
     return { workspaceId, ideaId: ideaId ?? null, metrics, pqlCount: pqls.length };
+  }
+
+  /**
+   * Advance a named, opaque prospect into one of the canonical GTM stages from an external receipt.
+   * This is the bridge used by signup/payment/meeting integrations after the prospect is already known;
+   * it writes only the pipeline ledger, so callers cannot smuggle arbitrary discovery signals.
+   */
+  async advancePipelineStage(
+    workspaceId: string,
+    input: {
+      ideaId?: string | null;
+      prospectKey: string;
+      stage: string;
+      externalRef: string;
+      verified?: boolean;
+      enteredAt?: Date;
+    },
+  ): Promise<void> {
+    assertOpaqueProspectKey(input.prospectKey);
+    if (!isGtmStage(input.stage)) {
+      throw new DiscoveryValidationError(
+        "stage must be one of outreach, discovery, conversion, onboarding, post_sales",
+      );
+    }
+    const externalRef = input.externalRef.trim();
+    if (!externalRef) {
+      throw new DiscoveryValidationError("externalRef is required to advance the GTM pipeline");
+    }
+    await this.deps.pipeline.enter({
+      workspaceId,
+      ideaId: input.ideaId ?? null,
+      prospectKey: input.prospectKey.trim(),
+      stage: input.stage,
+      verified: input.verified ?? true,
+      externalRef,
+      enteredAt: input.enteredAt ?? this.now(),
+    });
   }
 
   /** Close out one meaningful prospect with a concrete win/loss reason (#612). */

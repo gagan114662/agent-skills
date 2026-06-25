@@ -8,7 +8,7 @@ import { dbTrialNurtureStore } from "../db/repositories/trial-nurture.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { createBillingProvider } from "./factory.js";
 import { BillingManager, type DeploymentLookup, type DemandSignalIngestor } from "./manager.js";
-import { PlanBillingService } from "./plan-service.js";
+import { PlanBillingService, type PlanFunnelAdvancer } from "./plan-service.js";
 import { TrialNurtureService } from "./trial-nurture.js";
 import { billingStatus, type BillingStatus } from "./mode.js";
 
@@ -22,6 +22,7 @@ import { billingStatus, type BillingStatus } from "./mode.js";
 export function createDefaultBilling(
   logger: SessionLogger,
   demandIngestor?: DemandSignalIngestor,
+  opts: { funnel?: PlanFunnelAdvancer } = {},
 ): {
   billingManager: BillingManager;
   planService: PlanBillingService;
@@ -48,6 +49,7 @@ export function createDefaultBilling(
     pricingExperiments: dbPricingExperimentStore,
     trialNurture,
     secrets,
+    ...(opts.funnel ? { funnel: opts.funnel } : {}),
     logger,
   });
   const billingManager = new BillingManager({

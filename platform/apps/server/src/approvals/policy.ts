@@ -132,6 +132,8 @@ export const SOCIAL_PUBLISH_POST_ACTION = "social.publish_post" as const;
  * social adapter behind this gate is a deliberate future ADR, never an autonomous call.
  */
 export const OUTREACH_SEND_ACTION = "outreach.send" as const;
+/** #900 informational call-prep handoff after a booked meeting; no executor, just founder-visible context. */
+export const OUTREACH_CALL_PREP_ACTION = "outreach.call_prep" as const;
 
 /**
  * #268 a real Postmark email send. Composing an email is free, but pushing it to a real inbox is the most
