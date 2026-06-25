@@ -72,7 +72,7 @@ export const REACH_SEND_STATUSES = [
 export type ReachSendStatus = (typeof REACH_SEND_STATUSES)[number];
 
 /** External engagement receipts — the ONLY source of measurement truth (each carries an external ref). */
-export const REACH_RECEIPT_KINDS = ["open", "reply", "booked"] as const;
+export const REACH_RECEIPT_KINDS = ["open", "reply", "booked", "bounce", "complaint"] as const;
 export type ReachReceiptKind = (typeof REACH_RECEIPT_KINDS)[number];
 export function isReachReceiptKind(value: string): value is ReachReceiptKind {
   return (REACH_RECEIPT_KINDS as readonly string[]).includes(value);

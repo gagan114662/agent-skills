@@ -136,7 +136,7 @@ export const reachReceipts = pgTable(
       t.kind,
       t.externalRef,
     ),
-    kindCk: check("reach_receipts_kind_ck", sql`${t.kind} IN ('open','reply','booked')`),
+    kindCk: check("reach_receipts_kind_ck", sql`${t.kind} IN ('open','reply','booked','bounce','complaint')`),
   }),
 );
 

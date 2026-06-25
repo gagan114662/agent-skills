@@ -14,6 +14,7 @@ interface SendRow extends SendDatum {
   id: string;
   contactKey: string;
   createdAt: Date;
+  detail: string;
 }
 
 /** Build the full set of in-memory store fakes the service writes through. */
@@ -104,6 +105,7 @@ function fakes() {
           signalKind: input.signalKind as SendDatum["signalKind"],
           sentHourUtc: input.sentHourUtc,
           createdAt: NOW,
+          detail: input.detail,
         });
         return { id };
       },
@@ -208,6 +210,17 @@ function caps(over: Partial<ReachCaps> = {}): ReachCaps {
 const mockSource: ReachDeps["resolveSource"] = () =>
   createMockProspectSource({ now: () => NOW.getTime() });
 
+const sourceWith = (
+  prospects: Awaited<ReturnType<ReturnType<typeof createMockProspectSource>["search"]>>["prospects"],
+): ReachDeps["resolveSource"] => () => ({
+  kind: "mock",
+  paid: false,
+  estimateCostCents: () => 0,
+  async search({ limit, excludeKeys }) {
+    return { prospects: prospects.filter((p) => !excludeKeys.has(p.email ? `email:${p.email.toLowerCase()}` : "")).slice(0, limit) };
+  },
+});
+
 describe("ReachService.runBatch (#280)", () => {
   it("runs the loop end-to-end: sources, sends (dry-run), enrols, measures, self-tunes", async () => {
     const f = fakes();
@@ -273,6 +286,120 @@ describe("ReachService.runBatch (#280)", () => {
     const res = await svc.runBatch("ws1");
     expect(res.messagesSent).toBe(2);
     expect(res.rateLimited).toBe(3);
+  });
+
+  it("applies a cold-domain warmup cap before the configured daily cap (#904)", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 12, perDomainDailyCap: 50 }),
+      resolveSource: mockSource,
+    });
+    const res = await svc.runBatch("ws1");
+    expect(res.messagesSent).toBe(10);
+    expect(res.rateLimited).toBe(2);
+    expect(f.sends.filter((s) => s.detail.includes("warmup cap"))).toHaveLength(2);
+  });
+
+  it("pauses email sends when recent bounce rate exceeds the deliverability threshold (#904)", async () => {
+    const f = fakes();
+    for (let i = 0; i < 20; i++) {
+      f.sends.push({
+        id: `seed-${i}`,
+        contactKey: `email:seed-${i}@example.com`,
+        channel: "email",
+        status: "sent",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+        createdAt: NOW,
+        detail: "seed",
+      });
+    }
+    f.receipts.push(
+      {
+        sendId: "seed-0",
+        externalRef: "bounce-1",
+        kind: "bounce",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+      },
+      {
+        sendId: "seed-1",
+        externalRef: "bounce-2",
+        kind: "bounce",
+        variant: "pain",
+        signalKind: "funding_round",
+        sentHourUtc: 15,
+      },
+    );
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 3, perDomainDailyCap: 50, maxBounceRate: 0.05 }),
+      resolveSource: mockSource,
+    });
+    const res = await svc.runBatch("ws1");
+    expect(res.messagesSent).toBe(0);
+    expect(res.rateLimited).toBe(3);
+    expect(f.sends.slice(-3).every((s) => s.detail.includes("deliverability pause: bounce rate"))).toBe(true);
+  });
+
+  it("skips implausible email-only prospects before cadence enrollment (#904)", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 1 }),
+      resolveSource: sourceWith([
+        {
+          fullName: "Bad Email",
+          title: "Founder",
+          company: "Example",
+          companyDomain: "example.com",
+          email: "not-an-email",
+          linkedinUrl: null,
+          industry: "saas",
+          companySize: "1-10",
+          signals: [],
+          sourceKind: "mock",
+        },
+      ]),
+    });
+    const res = await svc.runBatch("ws1");
+    expect(res.skipped).toBe(1);
+    expect(f.sends).toHaveLength(0);
+    expect(f.contacts.size).toBe(0);
+  });
+
+  it("records spam trigger score in send detail for audit warnings (#904)", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 1 }),
+      resolveSource: sourceWith([
+        {
+          fullName: "Ada Buyer",
+          title: "Founder",
+          company: "Example",
+          companyDomain: "example.com",
+          email: "ada@example.com",
+          linkedinUrl: null,
+          industry: "saas",
+          companySize: "1-10",
+          signals: [
+            {
+              kind: "funding_round",
+              summary: "ACT NOW limited time offer",
+              observedAtMs: NOW.getTime(),
+            },
+          ],
+          sourceKind: "mock",
+        },
+      ]),
+    });
+    await svc.runBatch("ws1");
+    expect(f.sends[0]?.detail).toContain('"spamRisk"');
+    expect(f.sends[0]?.detail).toContain("spam trigger language");
   });
 
   it("honours suppression / opt-out (the recipient is dropped)", async () => {
