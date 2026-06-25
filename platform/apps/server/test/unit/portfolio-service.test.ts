@@ -38,6 +38,7 @@ function harness(
   fixtures: VentureFixture[],
   opts: {
     revenueCents?: number;
+    revenueByVenture?: Record<string, number>;
     monthlyCostCents?: number;
     requiresApproval?: boolean;
     capsCfg?: Parameters<typeof resolvePortfolioCaps>[0];
@@ -67,7 +68,10 @@ function harness(
         })),
     },
     demand: { signalCount: async (_w, vid) => byId.get(vid)?.demandSignals ?? 0 },
-    revenue: { workspaceRevenueCents: async () => opts.revenueCents ?? 0 },
+    revenue: {
+      ventureVerifiedRevenueCents: async (_w, vid) =>
+        opts.revenueByVenture?.[vid] ?? opts.revenueCents ?? 0,
+    },
     cost: { monthlyCostCents: async () => opts.monthlyCostCents ?? 0 },
     store: {
       insert: async (input) => {
@@ -138,7 +142,10 @@ const DEAD: VentureFixture = {
 
 describe("PortfolioService.reviewPortfolio", () => {
   it("persists one review per launched venture, snapshotting the gathered evidence", async () => {
-    const h = harness([HEALTHY, DEAD], { revenueCents: 50_00, monthlyCostCents: 1_00 });
+    const h = harness([HEALTHY, DEAD], {
+      revenueByVenture: { "v-healthy": 50_00, "v-dead": 0 },
+      monthlyCostCents: 1_00,
+    });
     const reviews = await h.service.reviewPortfolio(WID);
     expect(reviews).toHaveLength(2);
     expect(h.rows).toHaveLength(2);
@@ -153,6 +160,11 @@ describe("PortfolioService.reviewPortfolio", () => {
     expect(healthy.netCents).toBe(49_00);
     expect(healthy.ageInDays).toBe(60);
     expect(healthy.status).toBe("recorded");
+    expect(healthy.reasons.join(" ")).toContain("10000bps of portfolio receipts");
+
+    const dead = h.rows.find((r) => r.ventureIdeaId === "v-dead")!;
+    expect(dead.revenueCents).toBe(0);
+    expect(dead.reasons.join(" ")).toContain("0bps of portfolio receipts");
   });
 
   it("computes ageInDays from launchedAt and the injected clock", async () => {
@@ -204,7 +216,9 @@ describe("PortfolioService SUNSET lifecycle — gated by default", () => {
   it("executeSunset kills the venture + writes the post-mortem once approved", async () => {
     const h = harness([DEAD], { monthlyCostCents: 5_00 });
     const id = await seedSunset(h);
-    const { approvalRequestId } = await h.service.requestSunset(WID, id, { requesterMemberId: "m1" });
+    const { approvalRequestId } = await h.service.requestSunset(WID, id, {
+      requesterMemberId: "m1",
+    });
     h.setApprovalStatus(approvalRequestId!, "approved");
 
     const res = await h.service.executeSunset(WID, id, { actorMemberId: "m2" });
@@ -219,7 +233,9 @@ describe("PortfolioService SUNSET lifecycle — gated by default", () => {
   it("executeSunset marks the review rejected when the approval was rejected (no kill)", async () => {
     const h = harness([DEAD], { monthlyCostCents: 5_00 });
     const id = await seedSunset(h);
-    const { approvalRequestId } = await h.service.requestSunset(WID, id, { requesterMemberId: "m1" });
+    const { approvalRequestId } = await h.service.requestSunset(WID, id, {
+      requesterMemberId: "m1",
+    });
     h.setApprovalStatus(approvalRequestId!, "rejected");
 
     const res = await h.service.executeSunset(WID, id, { actorMemberId: "m2" });

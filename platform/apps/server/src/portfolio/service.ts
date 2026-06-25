@@ -1,11 +1,7 @@
 import type { ApprovalStatus } from "../approvals/policy.js";
 import type { PortfolioCaps } from "./caps.js";
 import { decidePortfolio } from "./decide.js";
-import type {
-  PortfolioEvidence,
-  PortfolioReviewRecord,
-  PortfolioReviewStatus,
-} from "./types.js";
+import type { PortfolioEvidence, PortfolioReviewRecord, PortfolioReviewStatus } from "./types.js";
 
 /**
  * The Portfolio Lifecycle IO orchestrator (#107, ADR-0107). Declares one seam per data source (the
@@ -47,9 +43,9 @@ export interface DemandReader {
   signalCount(workspaceId: string, ventureIdeaId: string): Promise<number>;
 }
 
-/** Workspace revenue in cents (#98). Per-workspace in the current rails (see ADR-0107). */
+/** Per-venture verified revenue in cents from external receipts (#386/#194). */
 export interface RevenueReader {
-  workspaceRevenueCents(workspaceId: string): Promise<number>;
+  ventureVerifiedRevenueCents(workspaceId: string, ventureIdeaId: string): Promise<number>;
 }
 
 /** Current-window infra burn in cents (#71 `tenant_usage`). */
@@ -59,7 +55,9 @@ export interface CostReader {
 
 /** The durable review ledger. */
 export interface PortfolioReviewStore {
-  insert(input: Omit<PortfolioReviewRecord, "id" | "status" | "approvalRequestId" | "createdAt">): Promise<PortfolioReviewRecord>;
+  insert(
+    input: Omit<PortfolioReviewRecord, "id" | "status" | "approvalRequestId" | "createdAt">,
+  ): Promise<PortfolioReviewRecord>;
   list(workspaceId: string): Promise<PortfolioReviewRecord[]>;
   get(workspaceId: string, id: string): Promise<PortfolioReviewRecord | undefined>;
   setSunset(
@@ -182,13 +180,23 @@ export class PortfolioService {
     if (launched.length === 0) return [];
 
     const ids = launched.map((l) => l.ventureIdeaId);
-    // Workspace-level signals fetched once; the moat roll-up is one batched read for the whole portfolio.
-    const [moatRollup, revenueCents, monthlyCostCents] = await Promise.all([
+    // Portfolio-level signals fetched once; the moat roll-up is one batched read for the whole portfolio.
+    const [moatRollup, monthlyCostCents] = await Promise.all([
       this.deps.moat.portfolio(workspaceId, ids),
-      this.deps.revenue.workspaceRevenueCents(workspaceId),
       this.deps.cost.monthlyCostCents(workspaceId, now),
     ]);
     const moatById = new Map(moatRollup.map((m) => [m.ventureIdeaId, m]));
+    const revenueEntries = await Promise.all(
+      ids.map(async (ventureIdeaId) => ({
+        ventureIdeaId,
+        revenueCents: await this.deps.revenue.ventureVerifiedRevenueCents(
+          workspaceId,
+          ventureIdeaId,
+        ),
+      })),
+    );
+    const revenueById = new Map(revenueEntries.map((r) => [r.ventureIdeaId, r.revenueCents]));
+    const totalVerifiedRevenueCents = revenueEntries.reduce((sum, r) => sum + r.revenueCents, 0);
 
     const reviews = await Promise.all(
       launched.map(async (venture) => {
@@ -208,11 +216,15 @@ export class PortfolioService {
           moatScore: moat?.score ?? 0,
           moatStagnant: moat?.stagnant ?? true,
           demandSignals,
-          revenueCents,
+          revenueCents: revenueById.get(venture.ventureIdeaId) ?? 0,
           monthlyCostCents,
           ageInDays,
         };
         const assessment = decidePortfolio(evidence, caps);
+        const allocationBps =
+          totalVerifiedRevenueCents > 0
+            ? Math.round((evidence.revenueCents / totalVerifiedRevenueCents) * 10_000)
+            : 0;
         return this.deps.store.insert({
           workspaceId,
           ventureIdeaId: venture.ventureIdeaId,
@@ -226,7 +238,16 @@ export class PortfolioService {
           monthlyCostCents: evidence.monthlyCostCents,
           netCents: assessment.netCents,
           ageInDays: evidence.ageInDays,
-          reasons: assessment.reasons,
+          reasons: [
+            ...assessment.reasons,
+            totalVerifiedRevenueCents > 0
+              ? "allocation: " +
+                evidence.revenueCents +
+                " cents verified revenue = " +
+                allocationBps +
+                "bps of portfolio receipts"
+              : "allocation: no verified revenue receipts - scale weight 0",
+          ],
           createdByMemberId: opts.createdByMemberId ?? null,
         });
       }),

@@ -1009,7 +1009,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       moat: moatService,
       growth: growthService,
       demand: demandService,
-      billing: billingManager,
     });
   const founderConsole =
     opts.founderConsole ??
@@ -1292,7 +1291,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(ventureRoutes, {
     service: ventureService,
     monetization,
-    resolveVentureWorkspaceId: async (ventureIdeaId) => (await getIdeaById(ventureIdeaId))?.workspaceId,
+    resolveVentureWorkspaceId: async (ventureIdeaId) =>
+      (await getIdeaById(ventureIdeaId))?.workspaceId,
   });
   // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
   // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.
