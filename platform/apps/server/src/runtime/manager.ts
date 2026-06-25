@@ -32,6 +32,7 @@ import { loadConfig } from "../config/loader.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
 import type { SpendAnomalyMonitor, SpendGuardSession } from "../scale/spend-anomaly.js";
+import type { DecideSpendInput, SpendOutcome } from "../enterprise/service.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { statusForReason } from "./types.js";
@@ -59,6 +60,20 @@ export class HarnessKindError extends Error {
   constructor(value: unknown, detail = "is not a recognized harness") {
     super(`harness ${JSON.stringify(value)} ${detail}`);
     this.name = "HarnessKindError";
+  }
+}
+
+/** Thrown before session creation when enterprise hard budget caps park an owner approval (#925). */
+export class SpendCapBreachError extends Error {
+  readonly reason = "enterprise_budget_cap_breached";
+
+  constructor(
+    readonly approvalRequestId: string,
+    readonly requestCents: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SpendCapBreachError";
   }
 }
 
@@ -124,6 +139,10 @@ export interface ChannelPoster {
     body: string;
     parentMessageId?: string;
   }): Promise<{ id: string }>;
+}
+
+export interface EnterpriseSpendGate {
+  decideSpend(input: DecideSpendInput): Promise<SpendOutcome>;
 }
 
 /** Minimal structural logger — Fastify's pino `app.log` satisfies this; tests pass a no-op. */
@@ -226,6 +245,12 @@ export interface SessionManagerDeps {
   spendAnomaly?: SpendAnomalyMonitor;
   /** Poll cadence for the spend anomaly guard. Prod defaults conservatively; tests inject a tiny value. */
   spendAnomalyIntervalMs?: number;
+  /**
+   * Enterprise hard budget caps (#925): preflight a session's upper-bound compute cost before admission,
+   * row creation, or runtime start. Absent/default rate 0 keeps existing behavior unchanged.
+   */
+  enterprise?: EnterpriseSpendGate;
+  enterpriseComputeRateCentsPerMinute?: (workspaceId: string) => number;
   /**
    * Optional harness-aware output decoder (#81): converts each raw stdout line into readable channel
    * text, keeping the parsed event for structured consumers. The `claude-code` harness emits
@@ -544,9 +569,10 @@ export class SessionManager {
     harnessEnv = modelPreflight.harnessEnv;
     const effectiveModel = modelPreflight.model;
 
-    // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
-    // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
-    // no admission is wired this is a no-op and the session is unplaced (today's #25 behavior).
+    // #925 + #71: the enterprise budget cap and scale admission chokepoints. Both deny BEFORE any row is
+    // created or runtime/cloud call starts. Enterprise checks first so a blocked launch never acquires a
+    // scale slot that would need releasing.
+    await this.checkEnterpriseBudget(input, caps);
     const ticket = this.deps.admission
       ? await this.deps.admission.acquire(input.workspaceId)
       : undefined;
@@ -607,6 +633,27 @@ export class SessionManager {
       this.aborts.delete(session.id);
     });
     return session;
+  }
+
+  private async checkEnterpriseBudget(input: LaunchInput, caps: ResourceCaps): Promise<void> {
+    if (!this.deps.enterprise) return;
+    const rate = this.deps.enterpriseComputeRateCentsPerMinute?.(input.workspaceId) ?? 0;
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    const requestCents = Math.max(0, Math.round((caps.wallClockMs / 60_000) * rate));
+    if (requestCents <= 0) return;
+    const outcome = await this.deps.enterprise.decideSpend({
+      workspaceId: input.workspaceId,
+      agentId: input.agentMemberId,
+      requesterMemberId: input.createdByMemberId,
+      requestCents,
+    });
+    if (outcome.status === "breach_gated") {
+      throw new SpendCapBreachError(
+        outcome.approvalRequestId,
+        requestCents,
+        outcome.decision.reason,
+      );
+    }
   }
 
   /**

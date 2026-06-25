@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { SessionManager } from "../../src/runtime/manager.js";
+import {
+  SessionManager,
+  SpendCapBreachError,
+  type EnterpriseSpendGate,
+} from "../../src/runtime/manager.js";
 import type { ChannelPoster, SessionLogger, SessionStore } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { AdmissionError } from "../../src/scale/admission.js";
@@ -123,11 +127,36 @@ class BlockingRuntime implements AgentRuntime {
 
 class FakeAdmission implements AdmissionController {
   released = 0;
+  acquired = 0;
   constructor(private readonly behavior: { region?: string } | { deny: AdmissionError }) {}
   acquire(): Promise<AdmissionTicket> {
+    this.acquired += 1;
     if ("deny" in this.behavior) return Promise.reject(this.behavior.deny);
     const region = this.behavior.region;
     return Promise.resolve({ region, release: () => void (this.released += 1) });
+  }
+}
+
+class FakeEnterpriseGate implements EnterpriseSpendGate {
+  requests: { workspaceId: string; agentId: string; requesterMemberId: string; requestCents: number }[] = [];
+  constructor(private readonly status: "allowed" | "breach_gated" = "allowed") {}
+  async decideSpend(input: {
+    workspaceId: string;
+    agentId: string;
+    requesterMemberId: string;
+    requestCents: number;
+  }) {
+    this.requests.push(input);
+    const decision = {
+      allowed: this.status === "allowed",
+      requiresOwner: this.status === "breach_gated",
+      actionType: "enterprise.budget_breach" as const,
+      breaches: [],
+      reason: this.status === "allowed" ? "within all budget caps" : "enterprise cap breached",
+    };
+    return this.status === "allowed"
+      ? { status: "allowed" as const, decision }
+      : { status: "breach_gated" as const, decision, approvalRequestId: "apr_925" };
   }
 }
 
@@ -160,6 +189,8 @@ function makeManager(over: {
   spendAnomaly?: SpendAnomalyMonitor;
   spendAnomalyIntervalMs?: number;
   failCreate?: boolean;
+  enterprise?: EnterpriseSpendGate;
+  enterpriseComputeRateCentsPerMinute?: () => number;
 }): { manager: SessionManager; store: FakeStore } {
   const store = new FakeStore(over.failCreate);
   const manager = new SessionManager({
@@ -174,6 +205,8 @@ function makeManager(over: {
     usage: over.usage,
     spendAnomaly: over.spendAnomaly,
     spendAnomalyIntervalMs: over.spendAnomalyIntervalMs,
+    enterprise: over.enterprise,
+    enterpriseComputeRateCentsPerMinute: over.enterpriseComputeRateCentsPerMinute,
   });
   return { manager, store };
 }
@@ -223,6 +256,28 @@ describe("SessionManager × scale (#71 — admission gate, placement, usage, slo
     expect(usage.computes).toHaveLength(1);
     expect(usage.computes[0]?.workspaceId).toBe("ws_1");
     expect(usage.computes[0]?.seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("blocks over-enterprise-cap launches before session creation or scale admission (#925)", async () => {
+    const admission = new FakeAdmission({ region: "iad1" });
+    const enterprise = new FakeEnterpriseGate("breach_gated");
+    const { manager, store } = makeManager({
+      admission,
+      enterprise,
+      enterpriseComputeRateCentsPerMinute: () => 60,
+    });
+
+    const blocked = await manager.launch(launch).catch((err: unknown) => err);
+    expect(blocked).toBeInstanceOf(SpendCapBreachError);
+    expect(blocked).toMatchObject({ approvalRequestId: "apr_925", requestCents: 10 });
+    expect(enterprise.requests[0]).toMatchObject({
+      workspaceId: "ws_1",
+      agentId: "mem_agent",
+      requesterMemberId: "mem_human",
+      requestCents: 10,
+    });
+    expect(store.createdCount).toBe(0);
+    expect(admission.acquired).toBe(0);
   });
 
   it("cancels a running session when the spend anomaly guard trips (#926)", async () => {
