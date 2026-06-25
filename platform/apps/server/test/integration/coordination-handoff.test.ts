@@ -6,6 +6,7 @@ import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { createChannel, listChannels } from "../../src/db/repositories/channels.js";
+import { getAgentMemberByHandle } from "../../src/db/repositories/auth.js";
 import { latestMessageId, listChannelMessages } from "../../src/db/repositories/messages.js";
 
 /**
@@ -78,6 +79,12 @@ async function ensureDepartmentChannel(workspaceId: string, name: string): Promi
   const existing = (await listChannels(workspaceId)).find((c) => c.name === name);
   if (existing) return { id: existing.id };
   return createChannel({ workspaceId, kind: "public", name });
+}
+
+async function bridgeResolvedAgentMemberId(workspaceId: string, handle: string): Promise<string> {
+  const member = await getAgentMemberByHandle(workspaceId, handle);
+  expect(member, `expected @${handle} to resolve to an active agent member`).toBeTruthy();
+  return member!.memberId;
 }
 
 /** Register an agent whose @handle (display name) is a real department handle so the bridge can route it. */
@@ -158,6 +165,8 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const beforeDelegation = await latestMessageId(content.id);
 
     enableCoordinationFor(owner.workspaceId);
+    const bridgeScoutMemberId = await bridgeResolvedAgentMemberId(owner.workspaceId, "scout");
+    const bridgeQuillMemberId = await bridgeResolvedAgentMemberId(owner.workspaceId, "quill");
 
     const task = "Draft the launch announcement blog from the SEO brief";
     const taskId = await delegate(scout.token, quill.agentId, task);
@@ -174,13 +183,13 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     // The delegating lead (scout) posts the handoff status line naming the assignee + the (DATA) task.
     const handoff = messages.find((m) => m.body.includes("Handing this off to @quill"));
     expect(handoff, "expected a handoff line in #content").toBeTruthy();
-    expect(handoff!.authorMemberId).toBe(scout.memberId);
+    expect(handoff!.authorMemberId).toBe(bridgeScoutMemberId);
     expect(handoff!.body).toContain(task);
 
     // The assignee (quill) posts the inline task card linking the created task id.
     const card = messages.find((m) => m.body.startsWith("📋 Task"));
     expect(card, "expected an inline task card in #content").toBeTruthy();
-    expect(card!.authorMemberId).toBe(quill.memberId);
+    expect(card!.authorMemberId).toBe(bridgeQuillMemberId);
     expect(card!.body).toContain("@quill");
     expect(card!.body).toContain(taskId.slice(0, 8)); // the card references the real task id
 
