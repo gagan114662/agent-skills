@@ -115,6 +115,10 @@ export interface PlanRecord {
 export interface PlaybookProvenance {
   /** A stable hash of the source venture id — lineage without leaking which venture. */
   sourceVentureHash: string;
+  /** Go-to-market segment for audience-aware reuse, when known. */
+  segment: string | null;
+  /** Target-user audience for audience-aware reuse, when known. */
+  targetUser: string | null;
   outcome: string;
   evidence: string;
   /** The #106 verifier-result id that earned the win, or null. */

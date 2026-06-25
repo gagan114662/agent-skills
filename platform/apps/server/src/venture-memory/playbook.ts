@@ -27,6 +27,8 @@ export function ventureHash(ideaId: string): string {
 export interface PlaybookWin {
   ideaId: string;
   category: string;
+  segment?: string | null;
+  targetUser?: string | null;
   /** The reusable lesson — MUST NOT contain venture-identifying text (the distiller enforces this). */
   pattern: string;
   outcome: string;
@@ -53,6 +55,8 @@ export function distillPlaybook(win: PlaybookWin): DistilledPlaybook | null {
   if (win.pattern.includes(win.ideaId)) return null; // refuse a pattern that leaks the venture id
   const provenance: PlaybookProvenance = {
     sourceVentureHash: ventureHash(win.ideaId),
+    segment: normalizeAudience(win.segment),
+    targetUser: normalizeAudience(win.targetUser),
     outcome: win.outcome,
     evidence: win.evidence,
     verifierResultId: win.verifierResultId,
@@ -72,10 +76,17 @@ export function distillPlaybook(win: PlaybookWin): DistilledPlaybook | null {
  */
 export function matchPlaybooks(
   playbooks: PlaybookRecord[],
-  target: { ideaId: string; category?: string | null },
+  target: {
+    ideaId: string;
+    category?: string | null;
+    segment?: string | null;
+    targetUser?: string | null;
+  },
   limit = 5,
 ): PlaybookRecord[] {
   const targetHash = ventureHash(target.ideaId);
+  const targetSegment = normalizeAudience(target.segment);
+  const targetUser = normalizeAudience(target.targetUser);
   const notSelfOnly = playbooks.filter(
     (p) => !p.provenance.every((pr) => pr.sourceVentureHash === targetHash),
   );
@@ -83,7 +94,30 @@ export function matchPlaybooks(
     const aMatch = target.category && a.category === target.category ? 0 : 1;
     const bMatch = target.category && b.category === target.category ? 0 : 1;
     if (aMatch !== bMatch) return aMatch - bMatch;
+    const aAudience = audienceRank(a, targetSegment, targetUser);
+    const bAudience = audienceRank(b, targetSegment, targetUser);
+    if (aAudience !== bAudience) return aAudience - bAudience;
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
   return ranked.slice(0, Math.max(0, limit));
+}
+
+function normalizeAudience(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim().toLowerCase() : null;
+}
+
+function audienceRank(
+  playbook: PlaybookRecord,
+  targetSegment: string | null,
+  targetUser: string | null,
+): number {
+  if (!targetSegment && !targetUser) return 0;
+  const anyAudience = playbook.provenance.some((pr) => pr.segment || pr.targetUser);
+  const sameAudience = playbook.provenance.some(
+    (pr) =>
+      (targetSegment !== null && normalizeAudience(pr.segment) === targetSegment) ||
+      (targetUser !== null && normalizeAudience(pr.targetUser) === targetUser),
+  );
+  if (sameAudience) return 0;
+  return anyAudience ? 1 : 2;
 }

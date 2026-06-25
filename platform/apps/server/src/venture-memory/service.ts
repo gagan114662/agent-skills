@@ -93,8 +93,15 @@ export interface PlaybookStore {
 }
 
 /** The ventures (idea ids + optional category) the weekly tick plans over — the #96 evaluations. */
+export interface VentureListItem {
+  ideaId: string;
+  category?: string | null;
+  segment?: string | null;
+  targetUser?: string | null;
+}
+
 export interface VentureLister {
-  ventures(workspaceId: string): Promise<{ ideaId: string; category?: string | null }[]>;
+  ventures(workspaceId: string): Promise<VentureListItem[]>;
 }
 
 /** Externally-verified (#106) + self-reported (#96) signal for the go/no-go. */
@@ -251,7 +258,7 @@ export class VentureMemoryService {
   /** Draft + gate one venture's weekly plan (pure decision + persistence + #13). */
   private async planVenture(
     workspaceId: string,
-    venture: { ideaId: string; category?: string | null },
+    venture: VentureListItem,
     weekKey: string,
     caps: VentureMemoryCaps,
     allPlaybooks: PlaybookRecord[],
@@ -267,7 +274,12 @@ export class VentureMemoryService {
 
     const candidates = matchPlaybooks(
       allPlaybooks,
-      { ideaId: venture.ideaId, category: venture.category ?? null },
+      {
+        ideaId: venture.ideaId,
+        category: venture.category ?? null,
+        segment: venture.segment ?? null,
+        targetUser: venture.targetUser ?? null,
+      },
       caps.maxPlaybookCandidates,
     ).map((p) => ({ id: p.id, category: p.category, pattern: p.pattern }));
 
