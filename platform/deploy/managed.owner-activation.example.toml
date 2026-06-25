@@ -290,6 +290,13 @@ ownerWorkspaceId = "OWNER_WORKSPACE_ID"
 enabled = true
 provider = "dryrun"
 ownerWorkspaceId = "OWNER_WORKSPACE_ID"
+targetKeywords = [
+  "AI marketing agency",
+  "AI agent marketing team",
+  "autonomous marketing agents",
+  "AI marketing department",
+  "AI marketing agents for startups",
+]
 
 # Legal & compliance pack (#196) — send-layer enforcement. autoRegenerate OFF
 # (regeneration opens an owner-review approval, never silently rewrites).
