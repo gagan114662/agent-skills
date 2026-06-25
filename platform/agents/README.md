@@ -43,3 +43,14 @@ Bump the suite `version`, edit cases, run `pnpm --filter @reload/server evals`. 
 update `baseline.json` to the new pass-rate in the same PR. Metric questions key off the catalog `scope`
 (`apps/server/src/semantic/catalog.ts`): `workspace` metrics resolve canonically; `venture` metrics are a
 flagged fallback at workspace scope.
+
+## Taste Skill integration (#1162)
+
+Design-facing agents (`mark`, `quill`, and `scout`) can discover the governed
+`references/design/taste-skill.md` router from the manifest. It points at Leonxlnx's MIT-licensed Taste
+Skill repo and explains which upstream install names are default guidance (`design-taste-frontend`) versus
+opt-in variants (`redesign-existing-projects`, `image-to-code`, `gpt-taste`, style variants, and
+image-generation helpers).
+
+This is drafting guidance only. It does not install third-party packages at runtime, does not add publish or
+send tools, and does not weaken the approval queue, brand/fact gate, content review, or money/spend gates.

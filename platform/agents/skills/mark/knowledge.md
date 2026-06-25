@@ -19,6 +19,8 @@ voice & tone stewardship: house-voice guardrails, naming, message consistency, o
 - `references/brand/voice-and-tone.md` — open only when the task needs it.
 - `references/brand/naming-guardrails.md` — open only when the task needs it.
 - `references/brand/message-consistency.md` — open only when the task needs it.
+- `references/design/taste-skill.md` — open when a brand-heavy UI, visual system, or rendered asset needs
+  Taste Skill design-taste guidance.
 
 ## Metric questions are not answered here
 Numbers come from the **semantic layer** (@lens owns it), never from a number you eyeball in a dashboard.

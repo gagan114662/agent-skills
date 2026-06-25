@@ -19,6 +19,8 @@ long-form drafting, outlines, narrative structure, reader-intent matching, editi
 - `references/content/outline-patterns.md` — open only when the task needs it.
 - `references/content/editing-rubric.md` — open only when the task needs it.
 - `references/content/reader-personas.md` — open only when the task needs it.
+- `references/design/taste-skill.md` — open when a public page, onboarding surface, or content-led UI needs
+  Taste Skill design-taste guidance.
 
 ## Metric questions are not answered here
 Numbers come from the **semantic layer** (@lens owns it), never from a number you eyeball in a dashboard.
