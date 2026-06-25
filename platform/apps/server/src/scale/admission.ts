@@ -91,11 +91,14 @@ export class Admission {
       this.deps.activePlans?.getActive(workspaceId) ?? Promise.resolve(undefined),
     ]);
     const caps = resolveScaleCaps(this.deps.config(workspaceId).scale, activePlan);
+    const planExpired =
+      activePlan?.status === "active" && activePlan.expiresAt !== undefined && activePlan.expiresAt <= this.now();
 
     return this.withAdmissionLock(() => {
       const decision = decideAdmission({
         killSwitch,
         budgetExceeded: budgetExceeded(usage.estimatedCostCents, caps.budgetCents),
+        planExpired,
         tenantInFlight: this.tenant.get(workspaceId) ?? 0,
         tenantMax: caps.tenantConcurrency,
         globalInFlight: this.global,

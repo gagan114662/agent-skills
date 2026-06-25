@@ -614,7 +614,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AdmissionError) {
       recordAdmissionDenied(err.reason);
-      const status = err.reason === "budget_exceeded" ? 402 : 429;
+      const status = err.reason === "budget_exceeded" || err.reason === "plan_expired" ? 402 : 429;
       // #221: a 429 (capacity / kill switch) carries a `Retry-After` so the client can show an honest
       // "retry in Ns" and hold the retry control until then, instead of re-firing straight into the cap.
       // Additive metadata only — the denial itself is unchanged (no gate is weakened).
@@ -622,7 +622,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       return reply.code(status).send({
         error: err.message,
         reason: err.reason,
-        ...(err.reason === "budget_exceeded"
+        ...(err.reason === "budget_exceeded" || err.reason === "plan_expired"
           ? { upgradePath: "Open Billing settings to raise or upgrade the workspace session budget." }
           : {}),
       });
