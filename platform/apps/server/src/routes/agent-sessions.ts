@@ -136,7 +136,12 @@ export async function agentSessionRoutes(
         mode: b.mode,
       });
     } catch (err) {
-      if (err instanceof SelectionError) return reply.code(400).send({ error: err.message });
+      if (err instanceof SelectionError) {
+        return reply.code(err.receipt ? 409 : 400).send({
+          error: err.message,
+          ...(err.receipt ? { receipt: err.receipt } : {}),
+        });
+      }
       throw err;
     }
 
@@ -282,7 +287,12 @@ export async function agentSessionRoutes(
         mode: prior.mode ?? undefined,
       });
     } catch (err) {
-      if (err instanceof SelectionError) return reply.code(400).send({ error: err.message });
+      if (err instanceof SelectionError) {
+        return reply.code(err.receipt ? 409 : 400).send({
+          error: err.message,
+          ...(err.receipt ? { receipt: err.receipt } : {}),
+        });
+      }
       throw err;
     }
 
