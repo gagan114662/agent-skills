@@ -239,9 +239,9 @@ describe("landing workspace simulation copy (#165)", () => {
     expect(new Set(STORY.map((s) => s.visual)).size).toBe(4);
   });
 
-  it("carries a substantive FAQ (8–10 answered questions)", () => {
+  it("carries a substantive FAQ (8–11 answered questions)", () => {
     expect(FAQ.items.length).toBeGreaterThanOrEqual(8);
-    expect(FAQ.items.length).toBeLessThanOrEqual(10);
+    expect(FAQ.items.length).toBeLessThanOrEqual(11);
     for (const item of FAQ.items) {
       expect(item.q, item.q).toBeTruthy();
       expect(item.a.length, item.q).toBeGreaterThan(40); // real answers, not one-liners
@@ -262,6 +262,10 @@ describe("landing workspace simulation copy (#165)", () => {
     expect(LANDING.footer.resources).toContainEqual({
       href: SUPPORT_CONTACT.href,
       label: SUPPORT_CONTACT.label,
+    });
+    expect(LANDING.footer.product).toContainEqual({
+      href: "/refund-policy",
+      label: "Refund policy",
     });
     expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
     expect(SITE.support).toBe(SUPPORT_CONTACT);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { PricingPage } from "./PricingPage.js";
-import { FAQ, LANDING, PRICING } from "../../brand.js";
+import { FAQ, LANDING, PRICING, REFUND_POLICY } from "../../brand.js";
 
 describe("PricingPage (#214)", () => {
   it("leads with the focused pricing hero", () => {
@@ -57,5 +57,14 @@ describe("PricingPage (#214)", () => {
   it("offers a way back to the homepage", () => {
     render(<PricingPage />);
     expect(screen.getByRole("link", { name: PRICING.backLabel })).toHaveAttribute("href", "/");
+  });
+
+  it("links the public refund policy from the pricing terms", () => {
+    render(<PricingPage />);
+    expect(screen.getByText(PRICING.footnote, { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: REFUND_POLICY.navLabel })).toHaveAttribute(
+      "href",
+      "/refund-policy",
+    );
   });
 });

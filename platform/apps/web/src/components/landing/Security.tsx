@@ -72,6 +72,13 @@ export function Security(): React.JSX.Element {
           </ul>
         </section>
 
+        <section className="landing__section" aria-labelledby="sla-title">
+          <h2 id="sla-title" className="landing__section-title">
+            {SECURITY.slaTitle}
+          </h2>
+          <p className="landing__section-sub landing__security-disclaimer">{SECURITY.sla}</p>
+        </section>
+
         <section
           className="landing__section landing__security-honest"
           aria-labelledby="notclaimed-title"
