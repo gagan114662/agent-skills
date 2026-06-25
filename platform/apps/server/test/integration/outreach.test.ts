@@ -103,14 +103,23 @@ function outreachWith(connected: ServiceKind[]): {
       },
     },
     pipeline: {
-      recordConversion: async (ws, input) => {
-        await discovery.ingestSignal(ws, {
+      recordStage: async (ws, input) => {
+        if (input.stage === "conversion") {
+          await discovery.ingestSignal(ws, {
+            ideaId: input.ideaId,
+            prospectKey: input.prospectKey,
+            kind: "conversion",
+            externalRef: input.externalRef,
+            source: "outreach",
+            detail: input.detail,
+          });
+          return;
+        }
+        await discovery.advancePipelineStage(ws, {
           ideaId: input.ideaId,
           prospectKey: input.prospectKey,
-          kind: "conversion",
+          stage: input.stage,
           externalRef: input.externalRef,
-          source: "outreach",
-          detail: input.detail,
         });
       },
     },

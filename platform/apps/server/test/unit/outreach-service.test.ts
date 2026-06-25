@@ -195,17 +195,27 @@ class FakeApprovalGate implements OutreachApprovalGate {
 }
 
 class FakePipeline implements PipelineAdvancer {
-  conversions: { prospectKey: string; externalRef: string }[] = [];
-  async recordConversion(
+  stages: { prospectKey: string; stage: string; externalRef: string }[] = [];
+  get conversions(): { prospectKey: string; externalRef: string }[] {
+    return this.stages
+      .filter((s) => s.stage === "conversion")
+      .map((s) => ({ prospectKey: s.prospectKey, externalRef: s.externalRef }));
+  }
+  async recordStage(
     _ws: string,
     input: {
       ideaId: string | null;
       prospectKey: string;
+      stage: string;
       externalRef: string;
       detail: Record<string, unknown>;
     },
   ): Promise<void> {
-    this.conversions.push({ prospectKey: input.prospectKey, externalRef: input.externalRef });
+    this.stages.push({
+      prospectKey: input.prospectKey,
+      stage: input.stage,
+      externalRef: input.externalRef,
+    });
   }
 }
 
@@ -479,6 +489,31 @@ describe("OutreachService.recordReceipt — external receipts only, advances #22
     });
     expect(r.created).toBe(true);
     expect(pipeline.conversions).toEqual([{ prospectKey: "p-1", externalRef: "evt-123" }]);
+  });
+
+  it("records signup receipts as onboarding and booked meetings as call-prep handoffs", async () => {
+    const { service, messages, pipeline } = build();
+    await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    const mid = messages.rows[0].id;
+    await service.recordReceipt("ws-1", { messageId: mid, kind: "signup", externalRef: "signup-1" });
+    const meeting = await service.recordReceipt("ws-1", { messageId: mid, kind: "meeting", externalRef: "cal-1" });
+
+    expect(pipeline.stages).toEqual([
+      { prospectKey: "p-1", stage: "onboarding", externalRef: "signup-1" },
+      { prospectKey: "p-1", stage: "conversion", externalRef: "cal-1" },
+    ]);
+    expect(meeting.callPrep).toMatchObject({
+      source: "outreach.call_prep",
+      buyerBriefId: "brief-1",
+      buyerName: "Dana Vp",
+      buyerTitle: "VP of Engineering",
+      accountName: "Acme",
+      prospectKey: "p-1",
+    });
   });
 
   it("is idempotent (a re-delivered receipt advances the pipeline once)", async () => {

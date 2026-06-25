@@ -704,6 +704,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #901 signup attribution: construct growth before auth/OAuth so both entry points can record the
   // acquisition denominator without waiting for the growth routes to be registered.
   const growthService = opts.growth ?? createDefaultGrowthService();
+  // #222 customer discovery engine: one instance shared by signup, billing, outreach, and the console.
+  const discoveryService =
+    opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
   // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
   // per marketing function), turn an @mention into a REAL harness session through the venture-gated
   // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
@@ -722,6 +725,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
           source: attribution.source,
           metadata: attributionMetadata(attribution),
         }),
+        ...(attribution.trackingRef
+          ? [
+              discoveryService.advancePipelineStage(workspaceId, {
+                prospectKey: attribution.trackingRef,
+                stage: "onboarding",
+                externalRef: `signup:${ownerMemberId}`,
+              }),
+            ]
+          : []),
       ]);
     },
   });
@@ -861,7 +873,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const demandService = opts.demand ?? createDefaultDemandService(app.log);
   const billingDefaults =
     !opts.billingManager || !opts.planService || !opts.trialNurture
-      ? createDefaultBilling(app.log, demandService)
+      ? createDefaultBilling(app.log, demandService, {
+          funnel: {
+            advancePostSales: (input) =>
+              discoveryService.advancePipelineStage(input.workspaceId, {
+                prospectKey: input.prospectKey,
+                stage: "post_sales",
+                externalRef: input.externalRef,
+              }),
+          },
+        })
       : null;
   const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
   const planService = opts.planService ?? billingDefaults!.planService;
@@ -918,8 +939,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // PQL events + the 5-stage GTM pipeline. READ-ONLY (it never sends — outreach is #225). Shares the live
   // `growthService` so an ingested signal lights up the founder-console growth panel (#104) with real,
   // event-driven counts. Built before the console so the console can read the pipeline pane.
-  const discoveryService =
-    opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
   // #223 decision-maker resolver — built here (before the console) so the #225 outreach engine can consume
   // its buyer briefs and the console can surface the outreach pane. Enrichment stays in a QUARANTINED
   // reader with no send/spend capability (#200).

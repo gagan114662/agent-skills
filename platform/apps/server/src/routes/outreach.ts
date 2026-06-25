@@ -95,7 +95,7 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
       return reply.code(400).send({ error: "messageId, kind, and externalRef are required" });
     }
     try {
-      const { receipt, created } = await service.recordReceipt(wid, {
+      const { receipt, created, callPrep } = await service.recordReceipt(wid, {
         messageId: b.messageId,
         kind: b.kind,
         externalRef: b.externalRef,
@@ -103,7 +103,7 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
         replyFrom: typeof b.replyFrom === "string" ? b.replyFrom : null,
         replySubject: typeof b.replySubject === "string" ? b.replySubject : null,
       });
-      return reply.code(201).send({ receipt, created });
+      return reply.code(201).send({ receipt, created, ...(callPrep ? { callPrep } : {}) });
     } catch (err) {
       if (err instanceof OutreachValidationError) return reply.code(422).send({ error: err.message });
       throw err;
