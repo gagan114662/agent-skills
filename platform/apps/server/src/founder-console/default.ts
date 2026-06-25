@@ -49,6 +49,10 @@ import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import { reachProofReading } from "../db/repositories/reach.js";
 import { dbSeoRankStore } from "../db/repositories/seo-ranks.js";
 import { dbSearchConsoleSubmissionStore } from "../db/repositories/search-console.js";
+import { projectAttributedRevenue, type AttributionServiceDeps } from "../attribution/service.js";
+import { maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { dbRevenueReader } from "../finance/default.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -315,6 +319,33 @@ export function createDefaultFounderConsoleService(deps: {
           },
         }
       : undefined,
+    // #868 ROI proof: project verified payment receipts through the existing attribution ledger and expose
+    // the top per-artifact revenue rows in the customer console. This is read-only; no checkout/webhook
+    // behavior changes here.
+    attribution: {
+      summary: async (workspaceId) => {
+        const caps = resolveAttributionCaps(loadConfig(workspaceId).attribution);
+        const attributionDeps: AttributionServiceDeps = {
+          store: dbAttributionExposureStore,
+          revenue: dbRevenueReader,
+          maxChainAgeMs: maxChainAgeMs(caps),
+          now: () => (deps.now ?? (() => new Date()))().getTime(),
+        };
+        const projection = await projectAttributedRevenue(attributionDeps, workspaceId);
+        return {
+          totalAttributedCents: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.attributedCents,
+            0,
+          ),
+          attributedPaymentCount: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.paymentCount,
+            0,
+          ),
+          unattributedPaymentCount: projection.unattributed.length,
+          topArtifacts: projection.byArtifact.slice(0, 5),
+        };
+      },
+    },
     // #115 planning roadmap pane: read the backlog, rank it off the SAME pure RICE scorer the routes use
     // (so the console roadmap matches the API), and reshape to the read-struct with the why-ranked-here
     // evidence link per item. Read-only; `enabled` comes from the resolved planning caps (default OFF).

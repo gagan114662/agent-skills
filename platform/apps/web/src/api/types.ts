@@ -531,6 +531,20 @@ export interface FounderConsoleDto {
     meetings: number;
     signups: number;
   };
+  /** Per-artifact attributed revenue (#868), computed from verified payment receipts. */
+  attribution?: {
+    totalAttributedCents: number;
+    attributedPaymentCount: number;
+    unattributedPaymentCount: number;
+    topArtifacts: {
+      artifactId: string;
+      artifactKind: string;
+      channel: string;
+      attributedCents: number;
+      currency: string;
+      paymentCount: number;
+    }[];
+  };
   /**
    * The per-department PROOF scorecard (#253): one tile per marketing department with a real, sourced outcome
    * metric + trend — or "not connected" where a source isn't wired yet. Optional only for backward-compat with

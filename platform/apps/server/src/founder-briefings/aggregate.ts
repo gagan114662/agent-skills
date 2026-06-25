@@ -450,6 +450,23 @@ export interface FinanceBriefingSection {
   breachPeriodKey: string | null;
 }
 
+/** Per-artifact ROI proof (#868), backed by verified payment receipts in the attribution ledger. */
+export interface AttributionBriefingArtifact {
+  artifactId: string;
+  artifactKind: string;
+  channel: string;
+  attributedCents: number;
+  currency: string;
+  paymentCount: number;
+}
+
+export interface AttributionBriefingSection {
+  totalAttributedCents: number;
+  attributedPaymentCount: number;
+  unattributedPaymentCount: number;
+  topArtifacts: AttributionBriefingArtifact[];
+}
+
 export interface WeeklyReportInput {
   workspaceId: string;
   nowMs: number;
@@ -464,6 +481,8 @@ export interface WeeklyReportInput {
   maxWords: number;
   /** Optional #194 finance close-pack section; absent ⇒ the report is unchanged. */
   financeSection?: FinanceBriefingSection;
+  /** Optional #868 ROI proof section; absent ⇒ the report is unchanged. */
+  attribution?: AttributionBriefingSection;
   /**
    * Optional premortem-panel counters (#200 AC2). Absent (default) ⇒ the report renders byte-for-byte as
    * before and `premortem` is `null` — the same composable-overlay discipline finance/acquisition follow,
@@ -485,6 +504,8 @@ export interface WeeklyReport {
   backlog: BacklogEntry[];
   /** The #194 finance close-pack section, or `null` when the finance layer is off/unwired. */
   financeSection: FinanceBriefingSection | null;
+  /** The #868 per-artifact ROI proof section, or `null` when attribution is unwired. */
+  attribution: AttributionBriefingSection | null;
   /** The premortem panel (#200 AC2), or `null` when the counters were not supplied (panel unwired). */
   premortem: PremortemPanel | null;
   /** The brand-voice weekly digest, guaranteed `wordCount <= maxWords`. */
@@ -550,6 +571,17 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     );
   }
 
+  const attribution = input.attribution ?? null;
+  if (attribution) {
+    const top = attribution.topArtifacts[0];
+    const topLine = top
+      ? ` Top artifact: ${top.artifactKind} on ${top.channel} (${formatMoney(top.attributedCents, top.currency)}).`
+      : "";
+    parts.push(
+      `ROI proof: ${formatMoney(attribution.totalAttributedCents, input.currency)} attributed across ${pluralize(attribution.attributedPaymentCount, "verified payment")}; ${pluralize(attribution.unattributedPaymentCount, "payment")} unattributed.${topLine}`,
+    );
+  }
+
   if (recommendations.sunset > 0 || recommendations.pivot > 0 || recommendations.doubleDown > 0) {
     parts.push(
       `Recommendations: ${recommendations.doubleDown} double-down, ${recommendations.pivot} pivot, ${recommendations.sunset} sunset.`,
@@ -586,6 +618,7 @@ export function composeWeeklyReport(input: WeeklyReportInput): WeeklyReport {
     voiceSignals: input.voiceSignals,
     backlog: input.backlog,
     financeSection: input.financeSection ?? null,
+    attribution,
     premortem,
     text,
     wordCount: wc,

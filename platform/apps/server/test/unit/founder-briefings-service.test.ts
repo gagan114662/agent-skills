@@ -145,6 +145,40 @@ describe("FounderBriefingsService delivery gating", () => {
     expect(typeof store.rows[0]!.wordCount).toBe("number");
     expect(store.rows[0]!.kind).toBe("daily");
   });
+
+  it("sends the weekly ROI proof section through email when attribution is wired (#868)", async () => {
+    const notifier = captureNotifier();
+    const svc = new FounderBriefingsService(
+      buildDeps({
+        notifier,
+        attribution: {
+          section: async () => ({
+            totalAttributedCents: 16_400,
+            attributedPaymentCount: 4,
+            unattributedPaymentCount: 2,
+            topArtifacts: [
+              {
+                artifactId: "https://example.com/pricing",
+                artifactKind: "seo_page",
+                channel: "seo",
+                attributedCents: 12_200,
+                currency: "usd",
+                paymentCount: 3,
+              },
+            ],
+          }),
+        },
+      }),
+    );
+
+    const out = await svc.deliverWeekly("ws");
+
+    expect(out.status).toBe("sent");
+    expect(notifier.calls).toHaveLength(1);
+    expect(notifier.calls[0]!.kind).toBe("weekly");
+    expect(notifier.calls[0]!.body).toContain("ROI proof: $164.00 attributed across 4 verified payments");
+    expect(notifier.calls[0]!.body).toContain("Top artifact: seo_page on seo ($122.00)");
+  });
 });
 
 describe("FounderBriefingsService weekly premortem panel (#200 AC2)", () => {

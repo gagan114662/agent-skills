@@ -261,7 +261,43 @@ describe("composeWeeklyReport", () => {
     } as const;
     const out = composeWeeklyReport(base);
     expect(out.premortem).toBeNull();
+    expect(out.attribution).toBeNull();
     expect(out.text).not.toContain("Premortem");
+  });
+
+  it("includes per-artifact ROI proof when attribution is supplied (#868)", () => {
+    const out = composeWeeklyReport({
+      workspaceId: "ws",
+      nowMs: NOW,
+      brandName: "ipop",
+      currency: "usd",
+      revenueTotalCents: 20_000,
+      ventures: [],
+      voiceSignals: [],
+      backlog: [],
+      maxWords: 400,
+      attribution: {
+        totalAttributedCents: 16_400,
+        attributedPaymentCount: 4,
+        unattributedPaymentCount: 2,
+        topArtifacts: [
+          {
+            artifactId: "https://example.com/pricing",
+            artifactKind: "seo_page",
+            channel: "seo",
+            attributedCents: 12_200,
+            currency: "usd",
+            paymentCount: 3,
+          },
+        ],
+      },
+    });
+
+    expect(out.attribution).not.toBeNull();
+    expect(out.attribution!.totalAttributedCents).toBe(16_400);
+    expect(out.text).toContain("ROI proof: $164.00 attributed across 4 verified payments");
+    expect(out.text).toContain("2 payments unattributed");
+    expect(out.text).toContain("Top artifact: seo_page on seo ($122.00)");
   });
 
   it("includes the premortem panel + a flagged-line when counters are supplied (#200 AC2)", () => {

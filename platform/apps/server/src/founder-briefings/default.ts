@@ -38,6 +38,10 @@ import { resolveVentureDeployCaps } from "../venture-deploy/caps.js";
 import { summarizeReleasesForBrief } from "../venture-deploy/brief.js";
 import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { getMaintenanceState } from "../maintenance/flag.js";
+import { projectAttributedRevenue, type AttributionServiceDeps } from "../attribution/service.js";
+import { maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { dbRevenueReader } from "../finance/default.js";
 
 /**
  * Production wiring for Founder Briefings (#173, ADR-0173). Every read seam is backed by an EXISTING
@@ -273,6 +277,32 @@ export function createDefaultFounderBriefingsService(deps: {
           },
         }
       : {}),
+    // #868 ROI proof: the weekly report email carries the same per-artifact attribution projection the
+    // console shows, backed by verified payment receipts and the attribution exposure ledger.
+    attribution: {
+      section: async (workspaceId) => {
+        const caps = resolveAttributionCaps(loadConfig(workspaceId).attribution);
+        const attributionDeps: AttributionServiceDeps = {
+          store: dbAttributionExposureStore,
+          revenue: dbRevenueReader,
+          maxChainAgeMs: maxChainAgeMs(caps),
+          now: () => (deps.now?.() ?? new Date()).getTime(),
+        };
+        const projection = await projectAttributedRevenue(attributionDeps, workspaceId);
+        return {
+          totalAttributedCents: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.attributedCents,
+            0,
+          ),
+          attributedPaymentCount: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.paymentCount,
+            0,
+          ),
+          unattributedPaymentCount: projection.unattributed.length,
+          topArtifacts: projection.byArtifact.slice(0, 5),
+        };
+      },
+    },
     // #148 delivery: email-first to the resolved owner (log transport in CI/privacy mode) + optional Slack.
     notifier: new MultiChannelBriefingNotifier({
       ownerContact: { resolve: (workspaceId) => getWorkspaceOwnerContact(workspaceId) },
