@@ -32,6 +32,14 @@ const MAX_LABEL_CHARS = 140;
 const MAX_EVIDENCE_CHARS = 200;
 const MAX_GROUNDING = 3;
 const MAX_SPAM_REASONS = 8;
+const SMS_OPT_IN_SIGNAL_KINDS = new Set([
+  "sms_opt_in",
+  "opted_in_sms",
+  "meeting_reminder",
+  "payment_followup",
+  "post_conversion",
+  "renewal_due",
+]);
 
 /** Strip control chars, collapse whitespace, trim, and cap length. Quoted DATA, never executed. */
 export function sanitizeLine(text: string, max: number): string {
@@ -148,10 +156,18 @@ export function checkSpamRisk(input: { subject?: string; body: string }): Outrea
  * never chosen. Pure + total (always returns all channels in some order).
  */
 export function channelPreference(signalKinds: readonly string[]): OutreachChannel[] {
+  if (smsAllowedForSignals(signalKinds)) {
+    return ["sms", "email", "linkedin", "x"];
+  }
   if (signalKinds.includes("role_identified")) {
     return ["linkedin", "email", "x"];
   }
   return ["email", "linkedin", "x"];
+}
+
+/** SMS is only eligible for warm, opted-in lifecycle/reminder signals, never cold reach. */
+export function smsAllowedForSignals(signalKinds: readonly string[]): boolean {
+  return signalKinds.some((kind) => SMS_OPT_IN_SIGNAL_KINDS.has(kind));
 }
 
 /** The first preferred channel whose account is connected, or null when none of them are. */
@@ -268,11 +284,18 @@ export function composeMessage(input: ComposeInput): ComposedMessage {
   const opener = `I noticed ${account} is likely wrestling with ${problem}.`;
   const value = sanitizeLine(valuePropLine(input.variant, input.productName, problem), 240);
   const isEmail = input.channel === "email";
-  const cta = isEmail ? "Open to a 15-minute look at whether it'd help?" : "Worth a quick chat?";
+  const isSms = input.channel === "sms";
+  const cta = isEmail
+    ? "Open to a 15-minute look at whether it'd help?"
+    : isSms
+      ? "Want the reminder link?"
+      : "Worth a quick chat?";
 
   const bodyParts = isEmail
     ? [`Hi ${name},`, opener, value, cta]
-    : [`Hi ${name} — ${opener}`, value, cta];
+    : isSms
+      ? [`Hi ${name} — ${opener}`, cta]
+      : [`Hi ${name} — ${opener}`, value, cta];
   const prose = sanitizeLine(bodyParts.join(" "), MAX_BODY_CHARS);
 
   // Append a single clean pay-link line when one is supplied (GAP 3). The URL is ipop's own minted #386

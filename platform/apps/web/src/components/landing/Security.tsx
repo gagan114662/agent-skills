@@ -2,7 +2,7 @@
  * The public trust page (#151) — `/security`, reachable by anyone. Honest by construction: the
  * "guarantees" grid lists only mechanisms the platform actually enforces in code today (approval gates,
  * tenant isolation, kill switch, budget caps, audit trail, scoped credentials, egress allowlists, roles);
- * the "roadmap" grid lists things NOT yet built or certified (SOC 2, GDPR DPA, SSO), each carrying an
+ * the "roadmap" grid lists things NOT yet built or certified (SOC 2, SSO), each carrying an
  * explicit status so nothing reads as a claim; and a closing note states plainly that we hold no
  * third-party certifications. All copy comes from `brand.ts` (SECURITY) — brand.test scans this directory.
  */
@@ -70,6 +70,13 @@ export function Security(): React.JSX.Element {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="landing__section" aria-labelledby="sla-title">
+          <h2 id="sla-title" className="landing__section-title">
+            {SECURITY.slaTitle}
+          </h2>
+          <p className="landing__section-sub landing__security-disclaimer">{SECURITY.sla}</p>
         </section>
 
         <section

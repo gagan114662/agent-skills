@@ -8,8 +8,8 @@
 export const MARKETING_SECTIONS = ["compare", "stories", "guides", "changelog"] as const;
 export type MarketingSection = (typeof MARKETING_SECTIONS)[number];
 
-/** Every top-level marketing path prefix (sections + the brand page). */
-const PREFIXES = [...MARKETING_SECTIONS, "brand"] as const;
+/** Every top-level marketing path prefix (sections + the brand page + segment landing pages). */
+const PREFIXES = [...MARKETING_SECTIONS, "brand", "segments"] as const;
 
 /** True when `path` is a public marketing-site route (an index or a `/section/slug` document). */
 export function isMarketingPath(path: string): boolean {

@@ -3,7 +3,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "./Landing.js";
 import { navigate } from "../../routing.js";
-import { BRAND, FLEET, LANDING, WORKSPACE, STORY, FAQ, BILLING, PUBLIC_PROOF } from "../../brand.js";
+import { BRAND, FLEET, LANDING, SUPPORT_CONTACT, WORKSPACE, STORY, FAQ, BILLING, PUBLIC_PROOF } from "../../brand.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -172,6 +172,15 @@ describe("Landing", () => {
     for (const link of screen.getAllByRole("link")) {
       expect(link.getAttribute("href") ?? "").not.toMatch(/^\/social\//);
     }
+  });
+
+  it("exposes a public support email from the footer (#864)", () => {
+    render(<Landing />);
+
+    expect(screen.getByRole("link", { name: SUPPORT_CONTACT.label })).toHaveAttribute(
+      "href",
+      SUPPORT_CONTACT.href,
+    );
   });
 
   it("keeps in-page section navigation reachable through the mobile menu", () => {

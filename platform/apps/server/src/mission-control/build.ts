@@ -7,6 +7,7 @@
  */
 
 export type LiveStatus = "provisioning" | "running" | "completed" | "failed" | "timeout" | "idle_reaped" | "canceled";
+export type AgentActivityStatus = "thinking" | "drafting" | "waiting" | "handoff" | "idle" | "done";
 
 /** One live session as the engine reads it (the workspace-scoped repo row). */
 export interface MissionSessionInput {
@@ -14,6 +15,7 @@ export interface MissionSessionInput {
   channelId: string;
   agentMemberId: string;
   status: LiveStatus;
+  agentStatus: AgentActivityStatus;
   createdAt: Date;
   startedAt: Date | null;
   progressAt: Date;
@@ -25,6 +27,7 @@ export interface LiveSessionView {
   channelId: string;
   agentMemberId: string;
   status: LiveStatus;
+  agentStatus: AgentActivityStatus;
   elapsedMs: number;
   estimatedCostCents: number;
   startedAt: string | null;
@@ -60,6 +63,7 @@ export function buildMissionControl(input: {
       channelId: s.channelId,
       agentMemberId: s.agentMemberId,
       status: s.status,
+      agentStatus: s.agentStatus,
       elapsedMs: ms,
       estimatedCostCents,
       startedAt: s.startedAt ? s.startedAt.toISOString() : null,

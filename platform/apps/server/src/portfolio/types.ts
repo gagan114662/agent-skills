@@ -57,7 +57,7 @@ export interface PortfolioThresholds {
 /**
  * The gathered KPI snapshot for one launched venture — the input the pure decision reads. Growth (#102)
  * and moat (#103) are already-computed 0–100 scores; `demandSignals` is the count of external
- * willingness-to-pay signals (#101); revenue (#98) is workspace-level cents; cost is the current
+ * willingness-to-pay signals (#101); revenue (#386/#194) is per-venture verified external receipts; cost is the current
  * window's infra burn (#71 `tenant_usage`); `ageInDays` is days since the venture launched (FUND).
  */
 export interface PortfolioEvidence {
@@ -70,7 +70,7 @@ export interface PortfolioEvidence {
   moatStagnant: boolean;
   /** Count of external demand signals earned (#101). */
   demandSignals: number;
-  /** Workspace revenue in cents (#98). */
+  /** Per-venture verified revenue in cents from external receipts (#386/#194). */
   revenueCents: number;
   /** Current-window infra cost in cents (#71 `tenant_usage`). */
   monthlyCostCents: number;

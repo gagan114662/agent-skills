@@ -15,6 +15,7 @@ import {
   protectedPathsTouched,
 } from "./guardrails.js";
 import { evaluateHouseRubric } from "./rubric.js";
+import type { BuildPublicNarrator } from "./narration.js";
 import {
   issueNumberOf,
   renderBuildTask,
@@ -24,6 +25,7 @@ import {
   renderVerdictComment,
 } from "./render.js";
 import type { BuildRunRecord, BuildRunStatus, IssueCandidate, ReviewAssessment } from "./types.js";
+import { DEFAULT_WORKSPACE_LOOP_CONCURRENCY, runBounded } from "../loops/concurrency.js";
 
 /**
  * BuildLoopEngine (#172, ADR-0172) — the self-shipping loop. It platform-ifies the loop the owner has
@@ -166,6 +168,8 @@ export interface BuildLoopEngineDeps {
   reviewer: Reviewer;
   escalator: Escalator;
   verifier?: PostMergeVerifier;
+  /** Optional #1059 build-in-public narrator. Drafts public receipts; publish still goes through #13. */
+  narrator?: BuildPublicNarrator;
   issueSource?: IssueSource;
   /** Resolve the per-workspace caps (config; default OFF). */
   caps: (workspaceId: string) => BuildLoopCaps;
@@ -180,6 +184,7 @@ export interface BuildLoopEngineDeps {
   /** Optional maintenance-pause check (#99) — when true, `tickAll()` skips BEFORE any DB call. */
   maintenancePaused?: () => Promise<boolean>;
   logger: SessionLogger;
+  workspaceConcurrency?: number;
   /** Clock seam — defaults to `new Date()`; tests inject a fixed clock. */
   now?: () => Date;
 }
@@ -270,13 +275,17 @@ export class BuildLoopEngine {
         return;
       }
       const now = this.clock();
-      for (const workspaceId of await this.deps.activeWorkspaces()) {
-        try {
-          await this.tickWorkspace(workspaceId, now);
-        } catch (err) {
-          this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
-        }
-      }
+      await runBounded(
+        await this.deps.activeWorkspaces(),
+        this.deps.workspaceConcurrency ?? DEFAULT_WORKSPACE_LOOP_CONCURRENCY,
+        async (workspaceId) => {
+          try {
+            await this.tickWorkspace(workspaceId, now);
+          } catch (err) {
+            this.deps.logger.error({ err, workspaceId }, "build-loop tickAll: workspace tick failed");
+          }
+        },
+      );
     } catch (err) {
       recordLoopTickFailure("build_loop");
       this.deps.logger.error({ err }, "build-loop tickAll failed");
@@ -517,13 +526,30 @@ export class BuildLoopEngine {
     await this.deps.runs.update({ id: run.id, patch: { status: "merged", mergeRef }, now });
     recordBuildLoopAction("merge:auto");
     log.info({ runId: run.id, prRef: run.prRef, mergeRef }, "build-loop: auto-merged within guardrails");
+    const mergedRun: BuildRunRecord = { ...run, status: "merged", mergeRef, updatedAt: now };
+    if (this.deps.narrator) {
+      try {
+        const narration = await this.deps.narrator.narrate({
+          workspaceId: run.workspaceId,
+          run: mergedRun,
+          mergeRef,
+        });
+        recordBuildLoopAction(`narration:${narration.status}`);
+      } catch (err) {
+        log.warn({ err, runId: run.id }, "build-loop: build-in-public narration failed");
+        recordBuildLoopAction("narration:failed");
+      }
+    }
 
     // post-merge verify (criterion 5): smoke + the #171 self-QA subset; a regression PROPOSES a revert.
     if (this.deps.verifier) {
-      const { regressions, detail } = await this.deps.verifier.verify({ workspaceId: run.workspaceId, run });
+      const { regressions, detail } = await this.deps.verifier.verify({
+        workspaceId: run.workspaceId,
+        run: mergedRun,
+      });
       const post = decidePostMerge(regressions);
       if (post.action === "propose_revert") {
-        await this.applyEscalation({ ...run, status: "merged", mergeRef }, post.reason, now, detail);
+        await this.applyEscalation(mergedRun, post.reason, now, detail);
         recordBuildLoopAction("post_merge:propose_revert");
       } else {
         recordBuildLoopAction("post_merge:clean");

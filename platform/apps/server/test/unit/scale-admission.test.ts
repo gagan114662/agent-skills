@@ -27,6 +27,16 @@ class FakeKillSwitch implements KillSwitchReader {
   }
 }
 
+class FakeActivePlans {
+  private readonly rows = new Map<string, { status: string; monthlySessionBudgetCents: number; expiresAt?: Date }>();
+  set(workspaceId: string, plan: { status: string; monthlySessionBudgetCents: number; expiresAt?: Date }): void {
+    this.rows.set(workspaceId, plan);
+  }
+  getActive(workspaceId: string): Promise<{ status: string; monthlySessionBudgetCents: number; expiresAt?: Date } | undefined> {
+    return Promise.resolve(this.rows.get(workspaceId));
+  }
+}
+
 function cfg(scale: ScaleConfig): ResolvedConfig {
   return { ...CONFIG_DEFAULTS, scale };
 }
@@ -36,18 +46,20 @@ const FIXED_NOW = (): Date => new Date("2026-06-09T00:00:00Z"); // window "2026-
 function makeAdmission(
   scaleByTenant: Record<string, ScaleConfig>,
   over: Partial<AdmissionDeps> = {},
-): { admission: Admission; usage: FakeUsage; kill: FakeKillSwitch } {
+): { admission: Admission; usage: FakeUsage; kill: FakeKillSwitch; activePlans: FakeActivePlans } {
   const usage = new FakeUsage();
   const kill = new FakeKillSwitch();
+  const activePlans = new FakeActivePlans();
   const admission = new Admission({
     usage,
     killSwitch: kill,
     config: (workspaceId) => cfg(scaleByTenant[workspaceId] ?? {}),
+    activePlans,
     globalMax: 0,
     now: FIXED_NOW,
     ...over,
   });
-  return { admission, usage, kill };
+  return { admission, usage, kill, activePlans };
 }
 
 // --- tests ------------------------------------------------------------------
@@ -78,6 +90,29 @@ describe("Admission (#71 — launch chokepoint: kill switch, budget, concurrency
     await expect(admission.acquire("ws2")).resolves.toBeDefined();
   });
 
+  it("serializes concurrent acquires so exactly the tenant cap is admitted (#879)", async () => {
+    const { admission } = makeAdmission({ ws1: { tenantConcurrency: 5 } });
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 10 }, () => admission.acquire("ws1")),
+    );
+
+    const admitted = attempts.filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<Admission["acquire"]>>> =>
+        result.status === "fulfilled",
+    );
+    const rejected = attempts.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    expect(admitted).toHaveLength(5);
+    expect(rejected).toHaveLength(5);
+    expect(rejected.every((result) => result.reason?.reason === "tenant_capacity")).toBe(true);
+    expect(admission.snapshot("ws1")).toMatchObject({ tenant: 5, global: 5 });
+
+    for (const ticket of admitted) ticket.value.release();
+    expect(admission.snapshot("ws1")).toMatchObject({ tenant: 0, global: 0 });
+  });
+
   it("enforces the global ceiling across tenants", async () => {
     const { admission } = makeAdmission({}, { globalMax: 1 });
     await admission.acquire("ws1");
@@ -99,6 +134,28 @@ describe("Admission (#71 — launch chokepoint: kill switch, budget, concurrency
     // under budget admits
     usage.set("ws1", "2026-06", { estimatedCostCents: 4999 });
     await expect(admission.acquire("ws1")).resolves.toBeDefined();
+  });
+
+  it("enforces an active paid plan budget instead of the trial/config cap (#873)", async () => {
+    const { admission, usage, activePlans } = makeAdmission({ ws1: { budgetCents: 500 } });
+    activePlans.set("ws1", { status: "active", monthlySessionBudgetCents: 100_000 });
+
+    usage.set("ws1", "2026-06", { estimatedCostCents: 500 });
+    await expect(admission.acquire("ws1")).resolves.toBeDefined();
+
+    usage.set("ws1", "2026-06", { estimatedCostCents: 100_000 });
+    await expect(admission.acquire("ws1")).rejects.toMatchObject({ reason: "budget_exceeded" });
+  });
+
+  it("blocks an expired active plan at admission (#877)", async () => {
+    const { admission, activePlans } = makeAdmission({ ws1: { budgetCents: 500 } });
+    activePlans.set("ws1", {
+      status: "active",
+      monthlySessionBudgetCents: 100_000,
+      expiresAt: new Date("2026-06-01T00:00:00Z"),
+    });
+
+    await expect(admission.acquire("ws1")).rejects.toMatchObject({ reason: "plan_expired" });
   });
 
   it("places a session in the least-loaded allowed region and frees it on release", async () => {

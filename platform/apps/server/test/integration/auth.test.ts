@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { growthEvents, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 
 let app: FastifyInstance;
@@ -28,7 +28,103 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
   return c.value;
 }
 
+function slugifyForTest(raw: string): string {
+  return (
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-+/g, "-")
+      .slice(0, 50) || "workspace"
+  );
+}
+
 describe("auth & identity (real Postgres)", () => {
+  it("email signup can auto-generate a workspace slug and lands on a seeded board", async () => {
+    const displayName = `Auto Seed ${newId()}`;
+    const expectedSlug = slugifyForTest(displayName);
+    createdWorkspaceSlugs.push(expectedSlug);
+    const signup = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      payload: { email: `auto-${newId()}@example.com`, password: "s3cret-pw", displayName },
+    });
+    expect(signup.statusCode).toBe(201);
+    const cookie = sessionCookie(signup);
+    const me = (
+      await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })
+    ).json() as {
+      workspaceId: string;
+    };
+
+    const channels = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${me.workspaceId}/channels`,
+        cookies: { rid: cookie },
+      })
+    ).json() as unknown[];
+    const agents = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${me.workspaceId}/agents`,
+        cookies: { rid: cookie },
+      })
+    ).json() as unknown[];
+
+    expect(channels.length).toBeGreaterThan(0);
+    expect(agents.length).toBeGreaterThan(0);
+  });
+
+  it("email signup with UTM params creates the acquisition growth denominator (#901)", async () => {
+    const slug = `utm-${newId()}`;
+    createdWorkspaceSlugs.push(slug);
+    const signup = await app.inject({
+      method: "POST",
+      url: "/auth/signup?utm_source=producthunt&utm_medium=launch&utm_campaign=alpha&ref=trk_901",
+      payload: {
+        email: `utm-${newId()}@example.com`,
+        password: "s3cret-pw",
+        displayName: "UTM Founder",
+        workspaceSlug: slug,
+      },
+    });
+    expect(signup.statusCode).toBe(201);
+    const cookie = sessionCookie(signup);
+    const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json() as {
+      workspaceId: string;
+    };
+
+    const rows = await db
+      .select()
+      .from(growthEvents)
+      .where(eq(growthEvents.workspaceId, me.workspaceId));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "acquisition",
+        source: "producthunt",
+        value: 1,
+        metadata: expect.objectContaining({
+          utmSource: "producthunt",
+          utmMedium: "launch",
+          utmCampaign: "alpha",
+          trackingRef: "trk_901",
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects malformed email signup before workspace access", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      payload: { email: "not-an-email", password: "s3cret-pw", displayName: "Bad Email" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: "valid email required" });
+  });
+
   it("signup → session → /me resolves the human member; agent token → /me resolves the agent; revoke → 401", async () => {
     const slug = `auth-${newId()}`;
     createdWorkspaceSlugs.push(slug);
@@ -126,7 +222,12 @@ describe("auth & identity (real Postgres)", () => {
     const signA = await app.inject({
       method: "POST",
       url: "/auth/signup",
-      payload: { email: `a-${newId()}@e.com`, password: "pw", displayName: "A", workspaceSlug: slugA },
+      payload: {
+        email: `a-${newId()}@e.com`,
+        password: "pw",
+        displayName: "A",
+        workspaceSlug: slugA,
+      },
     });
     const cookieA = sessionCookie(signA);
     const wsA = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookieA } })).json()
@@ -138,7 +239,12 @@ describe("auth & identity (real Postgres)", () => {
     const signB = await app.inject({
       method: "POST",
       url: "/auth/signup",
-      payload: { email: `b-${newId()}@e.com`, password: "pw", displayName: "B", workspaceSlug: slugB },
+      payload: {
+        email: `b-${newId()}@e.com`,
+        password: "pw",
+        displayName: "B",
+        workspaceSlug: slugB,
+      },
     });
     const cookieB = sessionCookie(signB);
     const wsB = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookieB } })).json()
@@ -149,7 +255,11 @@ describe("auth & identity (real Postgres)", () => {
       cookies: { rid: cookieB },
       payload: { name: "BScout" },
     });
-    const { token: tokenB, agentId: agentB, tokenId: tokenIdB } = regB.json() as {
+    const {
+      token: tokenB,
+      agentId: agentB,
+      tokenId: tokenIdB,
+    } = regB.json() as {
       token: string;
       agentId: string;
       tokenId: string;

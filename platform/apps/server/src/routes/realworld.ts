@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
-import { loadConfig } from "../config/loader.js";
+import { loadWorkspaceConfig } from "../config/workspace-capabilities.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { connectedAccountKinds, createDefaultSitePublisher } from "../realworld/default.js";
 import type { RealWorldActuatorService } from "../realworld/service.js";
+import { resolvePublishReadiness } from "../realworld/publish/status.js";
 import { listArtifacts } from "../db/repositories/realworld-artifacts.js";
 import { createDefaultAssetService } from "../assets/default.js";
 
@@ -29,14 +30,15 @@ export async function realworldRoutes(
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const wid = identity.workspaceId;
-    const enabled = resolveRealworldCaps(loadConfig(wid).realworld).enabled;
+    const caps = resolveRealworldCaps((await loadWorkspaceConfig(wid)).realworld);
     const [availability, connectedKinds, artifacts] = await Promise.all([
       service.availability(wid),
       connectedAccountKinds(wid),
       listArtifacts(wid, 20),
     ]);
     return {
-      enabled,
+      enabled: caps.enabled,
+      publish: resolvePublishReadiness(caps.publishProvider),
       neededAccounts: realWorldReadinessNeeded(connectedKinds),
       availability,
       artifacts,
@@ -53,7 +55,7 @@ export async function realworldRoutes(
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const wid = identity.workspaceId;
-    if (!resolveRealworldCaps(loadConfig(wid).realworld).enabled) {
+    if (!resolveRealworldCaps((await loadWorkspaceConfig(wid)).realworld).enabled) {
       return reply.code(403).send({ error: "the real-world tool surface is disabled for this workspace" });
     }
     const body = (req.body ?? {}) as {
@@ -96,7 +98,7 @@ export async function realworldRoutes(
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const wid = identity.workspaceId;
-    if (!resolveRealworldCaps(loadConfig(wid).realworld).enabled) {
+    if (!resolveRealworldCaps((await loadWorkspaceConfig(wid)).realworld).enabled) {
       return reply.code(403).send({ error: "the real-world tool surface is disabled for this workspace" });
     }
     const body = (req.body ?? {}) as {

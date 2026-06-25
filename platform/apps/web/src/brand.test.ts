@@ -22,6 +22,9 @@ import {
   PRICING,
   SECURITY,
   SITE,
+  SUPPORT_CONTACT,
+  CONTACT,
+  COMPANY,
   ASK_AI,
   askAiLinks,
   PAYWALL,
@@ -39,6 +42,7 @@ import {
   CHANNEL_STARTERS,
   DEFAULT_STARTERS,
   starterPromptsFor,
+  LEGAL,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -237,9 +241,9 @@ describe("landing workspace simulation copy (#165)", () => {
     expect(new Set(STORY.map((s) => s.visual)).size).toBe(4);
   });
 
-  it("carries a substantive FAQ (8–10 answered questions)", () => {
+  it("carries a substantive FAQ (8–11 answered questions)", () => {
     expect(FAQ.items.length).toBeGreaterThanOrEqual(8);
-    expect(FAQ.items.length).toBeLessThanOrEqual(10);
+    expect(FAQ.items.length).toBeLessThanOrEqual(11);
     for (const item of FAQ.items) {
       expect(item.q, item.q).toBeTruthy();
       expect(item.a.length, item.q).toBeGreaterThan(40); // real answers, not one-liners
@@ -257,6 +261,21 @@ describe("landing workspace simulation copy (#165)", () => {
     for (const a of LANDING.anchors) expect(a.href.startsWith("#"), a.href).toBe(true);
     expect(LANDING.footer.product.length).toBeGreaterThan(0);
     expect(LANDING.footer.resources.length).toBeGreaterThan(0);
+    expect(LANDING.footer.resources).toContainEqual({
+      href: SUPPORT_CONTACT.href,
+      label: SUPPORT_CONTACT.label,
+    });
+    expect(LANDING.footer.product).toContainEqual({ href: COMPANY.href, label: COMPANY.navLabel });
+    expect(LANDING.footer.product).toContainEqual({ href: "/refund-policy", label: "Refund policy" });
+    expect(LANDING.footer.product).toContainEqual({
+      href: LEGAL.dpa.href,
+      label: LEGAL.dpa.navLabel,
+    });
+    expect(CONTACT.consentHelp).toContain("data-subject-rights");
+    expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
+    expect(CONTACT.bookingHref).toMatch(/^https:\/\/cal\.com\//);
+    expect(CONTACT.trialHref).toContain("/start");
+    expect(SITE.support).toBe(SUPPORT_CONTACT);
     expect(LANDING.footer.social.map((s) => s.href).filter((href) => href.startsWith("/social/"))).toEqual([]);
   });
 });
@@ -313,10 +332,10 @@ describe("security trust page copy (#151) — honest by construction", () => {
       // A roadmap status must read as not-done: "planned" / "not yet" / "designed seam" / "partial".
       expect(r.status.toLowerCase(), r.title).toMatch(/planned|not yet|seam|partial/);
     }
-    // SOC2 + GDPR appear ONLY as roadmap, and never in the shipped-guarantees grid.
+    // SOC2 remains roadmap-only; GDPR DPA now lives in the public legal DPA page, not as a security cert.
     const roadmapText = SECURITY.roadmap.map((r) => `${r.title} ${r.status} ${r.body}`).join(" ");
     expect(roadmapText).toMatch(/SOC ?2/i);
-    expect(roadmapText).toMatch(/GDPR/i);
+    expect(LEGAL.dpa.sub).toMatch(/GDPR Article 28/i);
     const guaranteeText = SECURITY.guarantees.map((g) => `${g.title} ${g.body}`).join(" ");
     expect(guaranteeText).not.toMatch(/SOC ?2/i); // never claimed as a current guarantee
     expect(guaranteeText).not.toMatch(/GDPR/i);
@@ -487,6 +506,7 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/landing/Landing.tsx",
     // The dedicated public pricing page (#214).
     "components/landing/PricingPage.tsx",
+    "components/landing/CompanyPage.tsx",
     "components/landing/WorkspaceSim.tsx",
     "components/landing/Vignettes.tsx",
     "components/landing/BillingScreen.tsx",

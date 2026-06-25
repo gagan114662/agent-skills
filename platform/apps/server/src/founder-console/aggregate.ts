@@ -259,6 +259,24 @@ export interface OutreachSnapshot {
   recentReplies?: OutreachReplyView[];
 }
 
+/** One attributed-revenue artifact row (#868), backed by verified payment receipts. */
+export interface AttributionArtifactSnapshot {
+  artifactId: string;
+  artifactKind: string;
+  channel: string;
+  attributedCents: number;
+  currency: string;
+  paymentCount: number;
+}
+
+/** Customer-visible ROI proof (#868): per-artifact revenue from the existing attribution ledger. */
+export interface AttributionSnapshot {
+  totalAttributedCents: number;
+  attributedPaymentCount: number;
+  unattributedPaymentCount: number;
+  topArtifacts: AttributionArtifactSnapshot[];
+}
+
 /** One ranked backlog item (#115) reduced to what the roadmap pane shows. */
 export interface PlanningItemSnapshot {
   id: string;
@@ -340,6 +358,14 @@ export interface SupportSlaSnapshot {
   resolvedUnverified: number;
 }
 
+/** Customer lifecycle workflow roll-up (#914): proactive retention actions waiting on an owner/operator. */
+export interface LifecycleSnapshot {
+  dormantWorkspaces: number;
+  highChurnEscalations: number;
+  renewalReminders: number;
+  cancellationOffers: number;
+}
+
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
   killSwitch: boolean;
@@ -376,6 +402,8 @@ export interface FounderConsoleInput {
   discoveryPipeline?: DiscoveryPipelineSnapshot;
   /** Outreach engine roll-up (#225) — optional so the console works before outreach is wired. */
   outreach?: OutreachSnapshot;
+  /** Per-artifact attributed revenue (#868) — optional so the console works before attribution is wired. */
+  attribution?: AttributionSnapshot;
   /** Recent per-window usage trend (#71 `tenant_usage`), oldest→newest, feeding the cost forecast (#113). */
   usageTrend: UsageTrendPoint[];
   /** The window the forecast projects (the next calendar month). */
@@ -398,6 +426,8 @@ export interface FounderConsoleInput {
   voice?: VoiceSnapshot;
   /** Support Desk SLA roll-up (#190) — optional so the console works before the support desk is wired. */
   supportSla?: SupportSlaSnapshot;
+  /** Customer lifecycle workflow roll-up (#914). Optional ⇒ zeroed (loop off / unwired). */
+  lifecycle?: LifecycleSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
@@ -572,6 +602,15 @@ export interface OutreachReplyView {
   occurredAt: Date;
 }
 
+export type AttributionArtifactView = AttributionArtifactSnapshot;
+
+export interface AttributionView {
+  totalAttributedCents: number;
+  attributedPaymentCount: number;
+  unattributedPaymentCount: number;
+  topArtifacts: AttributionArtifactView[];
+}
+
 /** One roadmap row (#115): a ranked backlog item with its why-ranked-here evidence link. */
 export interface PlanningRoadmapItemView {
   id: string;
@@ -744,6 +783,8 @@ export interface FounderConsole {
   discoveryPipeline: DiscoveryPipelineView;
   /** The outreach engine roll-up (#225). Zero-valued when outreach is unwired. */
   outreach: OutreachView;
+  /** Per-artifact attributed revenue (#868). Zero-valued when attribution is unwired. */
+  attribution: AttributionView;
   /** The Product Planning Loop roadmap (#115). Empty when the planning loop is unwired. */
   planning: PlanningView;
   /** The moat-accrual roll-up (#103). Zero-valued when moat is unwired. */
@@ -926,6 +967,18 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     recentReplies: input.outreach?.recentReplies ?? [],
   };
 
+  // #868 ROI proof: expose the same per-artifact attribution projection already computed from verified
+  // payment receipts. The console limits to the top five rows and never invents revenue when the ledger
+  // has no matching tracking ref.
+  const attribution: AttributionView = {
+    totalAttributedCents: input.attribution?.totalAttributedCents ?? 0,
+    attributedPaymentCount: input.attribution?.attributedPaymentCount ?? 0,
+    unattributedPaymentCount: input.attribution?.unattributedPaymentCount ?? 0,
+    topArtifacts: [...(input.attribution?.topArtifacts ?? [])]
+      .sort((a, b) => b.attributedCents - a.attributedCents)
+      .slice(0, 5),
+  };
+
   // #115 product planning loop: reshape the ranked backlog into the roadmap pane — each row carries its
   // why-ranked-here evidence link + RICE score. Counting only (the score is computed by the reader off
   // the same pure scorer the routes use), so this stays pure + deterministic.
@@ -1081,6 +1134,24 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   if (supportSla.breaches > 0) {
     reasons.push(`${pluralize(supportSla.breaches, "support ticket")} past first-response SLA`);
   }
+  const lifecycle = input.lifecycle ?? {
+    dormantWorkspaces: 0,
+    highChurnEscalations: 0,
+    renewalReminders: 0,
+    cancellationOffers: 0,
+  };
+  if (lifecycle.dormantWorkspaces > 0) {
+    reasons.push(`${pluralize(lifecycle.dormantWorkspaces, "workspace")} dormant (retention check due)`);
+  }
+  if (lifecycle.highChurnEscalations > 0) {
+    reasons.push(`${pluralize(lifecycle.highChurnEscalations, "high-churn signal")} need same-day escalation`);
+  }
+  if (lifecycle.renewalReminders > 0) {
+    reasons.push(`${pluralize(lifecycle.renewalReminders, "renewal")} need reminder or right-size offer`);
+  }
+  if (lifecycle.cancellationOffers > 0) {
+    reasons.push(`${pluralize(lifecycle.cancellationOffers, "cancellation")} need save offer`);
+  }
   if (portfolio.enabled && portfolio.sunsetsPendingApproval > 0) {
     reasons.push(`${pluralize(portfolio.sunsetsPendingApproval, "venture sunset")} awaiting approval`);
   }
@@ -1134,7 +1205,8 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     growth,
     discoveryPipeline,
     outreach,
-  planning,
+    attribution,
+    planning,
     moat,
     constitution,
     voice,

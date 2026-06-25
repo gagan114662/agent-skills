@@ -1,4 +1,14 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, index, unique, check } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  boolean,
+  timestamp,
+  index,
+  unique,
+  check,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -73,6 +83,8 @@ export const deployReleases = pgTable(
     requiresApproval: boolean("requires_approval").notNull().default(false),
     approvalRequestId: uuid("approval_request_id"),
     smokeCriticalCount: integer("smoke_critical_count").notNull().default(-1),
+    promoteHealthOk: boolean("promote_health_ok"),
+    promoteHealthDetail: text("promote_health_detail"),
     url: text("url"),
     incidentFiled: boolean("incident_filed").notNull().default(false),
     detail: text("detail").notNull().default(""),
@@ -81,9 +93,14 @@ export const deployReleases = pgTable(
   (t) => ({
     byVenture: index("deploy_releases_venture_idx").on(t.ventureId, t.createdAt),
     byWorkspace: index("deploy_releases_workspace_idx").on(t.workspaceId, t.createdAt),
+    byReleaseRef: unique("deploy_releases_release_ref_uk").on(
+      t.workspaceId,
+      t.ventureId,
+      t.releaseRef,
+    ),
     statusCk: check(
       "deploy_releases_status_ck",
-      sql`${t.status} IN ('deploy_failed','smoke_failed','rolled_back','promoted','escalated')`,
+      sql`${t.status} IN ('pending_promote','deploy_failed','smoke_failed','rolled_back','promoted','escalated')`,
     ),
   }),
 );

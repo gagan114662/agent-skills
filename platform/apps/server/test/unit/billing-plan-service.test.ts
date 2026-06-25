@@ -14,6 +14,7 @@ import {
   type PricingExperiment,
   type PricingExperimentStore,
   type PricingExperimentVariant,
+  type PlanFunnelAdvancer,
   type WorkspacePlanStore,
   type ActivePlan,
 } from "../../src/billing/plan-service.js";
@@ -86,10 +87,34 @@ function memPlanStore(): WorkspacePlanStore {
       row.status = "canceled";
       return Promise.resolve(row);
     },
+    cancel({ workspaceId }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.renewalStatus = "canceled";
+      row.status = "canceled";
+      row.retryScheduledAt = null;
+      return Promise.resolve(row);
+    },
+    downgrade({ workspaceId, planKey, caps }) {
+      const row = rows.get(workspaceId);
+      if (!row) return Promise.resolve(undefined);
+      row.planKey = planKey;
+      row.status = "active";
+      row.renewalStatus = "active";
+      row.agentSeats = caps.agentSeats;
+      row.monthlySessionBudgetCents = caps.monthlySessionBudgetCents;
+      row.fleetSize = caps.fleetSize;
+      row.retryScheduledAt = null;
+      row.lastPaymentFailedAt = null;
+      return Promise.resolve(row);
+    },
     dueForRetry(now) {
       return Promise.resolve(
         [...rows.values()].filter(
-          (row) => row.renewalStatus === "past_due" && row.retryScheduledAt !== null && row.retryScheduledAt <= now,
+          (row) =>
+            row.renewalStatus === "past_due" &&
+            row.retryScheduledAt !== null &&
+            row.retryScheduledAt <= now,
         ),
       );
     },
@@ -118,7 +143,9 @@ function memExperimentStore(): PricingExperimentStore {
     },
     active(workspaceId) {
       return Promise.resolve(
-        [...experiments.values()].find((e) => e.workspaceId === workspaceId && e.status === "active"),
+        [...experiments.values()].find(
+          (e) => e.workspaceId === workspaceId && e.status === "active",
+        ),
       );
     },
     get(workspaceId, experimentId) {
@@ -127,7 +154,9 @@ function memExperimentStore(): PricingExperimentStore {
     },
     assignment(experimentId, subjectKey) {
       return Promise.resolve(
-        [...assignments.values()].find((a) => a.experimentId === experimentId && a.subjectKey === subjectKey),
+        [...assignments.values()].find(
+          (a) => a.experimentId === experimentId && a.subjectKey === subjectKey,
+        ),
       );
     },
     assign(input: {
@@ -176,13 +205,15 @@ function memExperimentStore(): PricingExperimentStore {
     },
     assignments(workspaceId, experimentId) {
       return Promise.resolve(
-        [...assignments.values()].filter((a) => a.workspaceId === workspaceId && a.experimentId === experimentId),
+        [...assignments.values()].filter(
+          (a) => a.workspaceId === workspaceId && a.experimentId === experimentId,
+        ),
       );
     },
   };
 }
 
-function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
+function makeService(opts: { config?: Partial<ResolvedConfig> | null; funnel?: PlanFunnelAdvancer } = {}) {
   const provider = new NoneBillingProvider();
   const prices = memPriceStore();
   const plans = memPlanStore();
@@ -198,6 +229,7 @@ function makeService(opts: { config?: Partial<ResolvedConfig> | null } = {}) {
     pricingExperiments: memExperimentStore(),
     secrets: new StaticSecretsResolver({ STRIPE_SECRET_KEY: STRIPE_KEY }),
     loadConfig,
+    ...(opts.funnel ? { funnel: opts.funnel } : {}),
   });
   return { service, provider, prices, plans };
 }
@@ -212,11 +244,28 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
 
   it("mints a checkout link carrying plan-checkout metadata", async () => {
     const { service, provider } = makeService();
-    const out = await service.createCheckout({ workspaceId: WS, planKey: "pro" });
+    const out = await service.createCheckout({
+      workspaceId: WS,
+      planKey: "pro",
+      billingEmail: " Buyer@Example.COM ",
+    });
     expect(out.url).toMatch(/^https:\/\/.+/);
     expect(out.planKey).toBe("pro");
     const link = provider.links.at(-1)!;
-    expect(link.metadata).toMatchObject({ workspaceId: WS, planKey: "pro", kind: "plan_checkout" });
+    expect(link.metadata).toMatchObject({
+      workspaceId: WS,
+      planKey: "pro",
+      kind: "plan_checkout",
+      customerEmail: "buyer@example.com",
+    });
+    expect(link.customerEmail).toBe("buyer@example.com");
+    expect(link.collectTax).toBe(true);
+    expect(link.collectTaxIds).toBe(true);
+    expect(link.billingAddressCollection).toBe("required");
+    expect(provider.products.at(-1)).toMatchObject({
+      taxCode: "txcd_10103001",
+      taxBehavior: "exclusive",
+    });
   });
 
   it("ensures the price once — a second checkout reuses the registry (no duplicate product)", async () => {
@@ -259,6 +308,30 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     expect(current?.fleetSize).toBe(planCaps(getPlan("agency")!).fleetSize);
   });
 
+  it("advances a tracked paid checkout into the post-sales GTM stage", async () => {
+    const postSales: Array<{ workspaceId: string; prospectKey: string; externalRef: string; planKey: string; amountCents: number }> = [];
+    const { service } = makeService({
+      funnel: {
+        advancePostSales: async (input) => {
+          postSales.push(input);
+        },
+      },
+    });
+
+    await service.activate(WS, "pro", "evt_paid_1", { trackingRef: "ipop_paidprospect1" }, 4900);
+    await service.activate(WS, "agency", "evt_paid_2", { trackingRef: "not-ours" }, 9900);
+
+    expect(postSales).toEqual([
+      {
+        workspaceId: WS,
+        prospectKey: "ipop_paidprospect1",
+        externalRef: "evt_paid_1",
+        planKey: "pro",
+        amountCents: 4900,
+      },
+    ]);
+  });
+
   it("sets a renewal window on activation and moves failed renewals into dunning", async () => {
     const { service } = makeService();
     const active = await service.activate(WS, "pro", "evt_paid");
@@ -267,7 +340,11 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     expect(active.nextBillingAt.getTime()).toBe(active.expiresAt.getTime());
 
     const failed = await service.recordPaymentFailure(WS, "evt_failed");
-    expect(failed).toMatchObject({ renewalStatus: "past_due", retryCount: 1, providerEventId: "evt_failed" });
+    expect(failed).toMatchObject({
+      renewalStatus: "past_due",
+      retryCount: 1,
+      providerEventId: "evt_failed",
+    });
     expect(failed?.retryScheduledAt).toBeInstanceOf(Date);
   });
 
@@ -286,23 +363,45 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     expect(listing.current?.status).toBe("canceled");
   });
 
+  it("supports self-serve cancel and downgrade over the active workspace plan (#914)", async () => {
+    const { service } = makeService();
+    await service.activate(WS, "agency", "evt_paid");
+
+    const downgraded = await service.downgrade(WS, "starter");
+    expect(downgraded).toMatchObject({
+      planKey: "starter",
+      status: "active",
+      renewalStatus: "active",
+      fleetSize: planCaps(getPlan("starter")!).fleetSize,
+    });
+
+    const canceled = await service.cancel(WS);
+    expect(canceled).toMatchObject({
+      planKey: "starter",
+      status: "canceled",
+      renewalStatus: "canceled",
+    });
+  });
+
   it("rejects checkout for an unknown plan key", async () => {
     const { service } = makeService();
-    await expect(service.createCheckout({ workspaceId: WS, planKey: "enterprise" })).rejects.toThrow();
+    await expect(
+      service.createCheckout({ workspaceId: WS, planKey: "enterprise" }),
+    ).rejects.toThrow();
   });
 
   it("gates checkout: 409-equivalent when billing is not enabled (opt-in)", async () => {
     const { service } = makeService({ config: null });
-    await expect(service.createCheckout({ workspaceId: WS, planKey: "pro" })).rejects.toBeInstanceOf(
-      NoBillingConfigError,
-    );
+    await expect(
+      service.createCheckout({ workspaceId: WS, planKey: "pro" }),
+    ).rejects.toBeInstanceOf(NoBillingConfigError);
   });
 
   it("gates checkout: blocked under data-privacy mode (egress off)", async () => {
     const { service } = makeService({ config: { dataPrivacyMode: true } });
-    await expect(service.createCheckout({ workspaceId: WS, planKey: "pro" })).rejects.toBeInstanceOf(
-      BillingEgressBlocked,
-    );
+    await expect(
+      service.createCheckout({ workspaceId: WS, planKey: "pro" }),
+    ).rejects.toBeInstanceOf(BillingEgressBlocked);
   });
 
   it("redacts a provider failure (a leaked secret never reaches the thrown error)", async () => {
@@ -358,9 +457,17 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
       pricingVariantKey: first.pricingExperiment!.variantKey,
     });
 
-    await service.activate(WS, assignedPlan, "evt_pricing_1", link.metadata, getPlan(assignedPlan)!.priceCents);
+    await service.activate(
+      WS,
+      assignedPlan,
+      "evt_pricing_1",
+      link.metadata,
+      getPlan(assignedPlan)!.priceCents,
+    );
     const report = await service.pricingExperimentReport(WS, experiment.id);
-    const winner = report.variants.find((v) => v.variantKey === first.pricingExperiment!.variantKey)!;
+    const winner = report.variants.find(
+      (v) => v.variantKey === first.pricingExperiment!.variantKey,
+    )!;
     expect(winner.assignments).toBe(1);
     expect(winner.checkouts).toBe(1);
     expect(winner.conversions).toBe(1);

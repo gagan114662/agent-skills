@@ -75,4 +75,35 @@ describe("BillingSettings (#215)", () => {
     expect(screen.getByText(BILLING.panel.liveModeBody)).toBeInTheDocument();
     expect(screen.queryByText(BILLING.panel.testModeTitle)).not.toBeInTheDocument();
   });
+
+  it("shows invoice and receipt links when paid invoices exist (#860)", () => {
+    render(
+      <BillingSettings
+        current={ACTIVE}
+        plans={PLANS}
+        usage={USAGE}
+        invoices={[
+          {
+            id: "re_1",
+            providerEventId: "evt_1",
+            providerInvoiceId: "in_123",
+            number: "INV-123",
+            hostedInvoiceUrl: "https://billing.example/in_123",
+            invoicePdfUrl: "https://billing.example/in_123.pdf",
+            status: "paid",
+            amountCents: 19900,
+            currency: "usd",
+            createdAt: "2026-06-24T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("region", { name: BILLING.panel.invoicesTitle })).toBeInTheDocument();
+    expect(screen.getByText("INV-123")).toBeInTheDocument();
+    expect(screen.getByText("$199.00")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: BILLING.panel.invoicePdfLabel })).toHaveAttribute(
+      "href",
+      "https://billing.example/in_123.pdf",
+    );
+  });
 });

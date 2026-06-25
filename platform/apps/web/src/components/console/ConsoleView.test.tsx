@@ -7,12 +7,13 @@
  * a shortcut.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { ConsoleView } from "./ConsoleView.js";
 import { api, ApiError } from "../../api/client.js";
-import type { Channel, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
+import type { Channel, ClaudeConnectionHealth, FounderConsoleDto, MissionControlDto } from "../../api/types.js";
 import { CONSOLE } from "../../brand.js";
 import { renderWithStore, type FakeBackendOverrides } from "../../test/utils.js";
 
@@ -23,6 +24,7 @@ const mcDto = (over: Partial<MissionControlDto> = {}): MissionControlDto => ({
       channelId: "c1",
       agentMemberId: "ag1",
       status: "running",
+      agentStatus: "thinking",
       elapsedMs: 720_000,
       estimatedCostCents: 84,
       startedAt: null,
@@ -77,9 +79,17 @@ const req = (over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto => ({
   ...over,
 });
 
-function mockSeams(opts: { pending?: ApprovalRequestDto[]; fc?: FounderConsoleDto; mc?: MissionControlDto } = {}): void {
+function mockSeams(opts: {
+  pending?: ApprovalRequestDto[];
+  fc?: FounderConsoleDto;
+  mc?: MissionControlDto;
+  claudeHealth?: ClaudeConnectionHealth;
+} = {}): void {
   vi.spyOn(api.missionControl, "get").mockResolvedValue(opts.mc ?? mcDto());
   vi.spyOn(api, "getFounderConsole").mockResolvedValue(opts.fc ?? fcDto());
+  vi.spyOn(api, "getClaudeHealth").mockResolvedValue({
+    health: opts.claudeHealth ?? { state: "connected", reason: null },
+  });
   vi.spyOn(api.approvals, "list").mockImplementation(async (_w: string, status?: string) =>
     status === "pending" ? (opts.pending ?? [req()]) : [],
   );
@@ -102,11 +112,18 @@ function mockDepartment() {
   });
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
-async function mount(opts?: Parameters<typeof mockSeams>[0], over?: FakeBackendOverrides) {
+async function mount(
+  opts?: Parameters<typeof mockSeams>[0],
+  over?: FakeBackendOverrides,
+  viewProps?: ComponentProps<typeof ConsoleView>,
+) {
   mockSeams(opts);
-  const utils = renderWithStore(<ConsoleView />, over);
+  const utils = renderWithStore(<ConsoleView {...viewProps} />, over);
   await act(async () => {
     await utils.store.bootstrap();
   });
@@ -194,6 +211,25 @@ describe("ConsoleView", () => {
     ).toBeInTheDocument();
   });
 
+  it("requires Connect Claude before the first hire can complete (#916)", async () => {
+    const seedSpy = vi
+      .spyOn(api.department, "seed")
+      .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+    await mount({
+      mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }),
+      pending: [],
+      fc: firstRunFc(),
+      claudeHealth: { state: "not_connected", reason: null },
+    });
+
+    expect(await screen.findByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: CONSOLE.firstRun.connectFirstCta }));
+
+    expect(seedSpy).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog", { name: CONSOLE.shell.settingsTitle })).toBeInTheDocument();
+    expect(screen.getAllByText(/Connect Claude/i).length).toBeGreaterThan(0);
+  });
+
   it("starts a venture through the REAL #123/#138 department seed, not a fake (#213)", async () => {
     const seedSpy = vi
       .spyOn(api.department, "seed")
@@ -208,6 +244,29 @@ describe("ConsoleView", () => {
     );
     // Until the new sessions surface on the next poll, the panel confirms the team is clocking in.
     expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+    expect(document.querySelector(".firstrun__spinner")).toBeInTheDocument();
+  });
+
+  it("times out a seeded empty board into a recoverable Connect Claude blocker (#940)", async () => {
+    vi.spyOn(api.department, "seed")
+      .mockResolvedValue({ channels: [], agents: [], welcomeTasks: [] });
+    await mount(
+      { mc: mcDto({ sessions: [], count: 0, totalEstimatedCostCents: 0 }), pending: [], fc: firstRunFc() },
+      undefined,
+      { firstRunSeedTimeoutMs: 1 },
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: CONSOLE.firstRun.cta }));
+    expect(await screen.findByText(CONSOLE.firstRun.assembling)).toBeInTheDocument();
+
+    vi.mocked(api.getClaudeHealth).mockResolvedValue({
+      health: { state: "not_connected", reason: null },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(CONSOLE.firstRun.timeoutTitle);
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectErrorCta })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.timeoutRetry })).toBeInTheDocument();
   });
 
   it("surfaces a quiet retry line when the seed seam fails (#213)", async () => {

@@ -1,11 +1,14 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { SenderAuthInput } from "../email/deliverability.js";
-import type { ReachCaps } from "./caps.js";
+import { isPlausibleEmail } from "../leads/inbound.js";
+import { checkSpamRisk } from "../outreach/compose.js";
+import type { ReachCaps, ReachSendingDomain } from "./caps.js";
 import {
   DEFAULT_CADENCE,
   advanceEnrollment,
   newEnrollment,
   nextDueStep,
+  type CadenceEngagement,
   type CadenceEnrollment,
 } from "./cadence.js";
 import { deriveIcp, type IcpSeed } from "./icp.js";
@@ -42,6 +45,74 @@ import type {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TUNING_WINDOW_MS = 30 * DAY_MS;
 
+function warmupDailyCap(recentSent: number, configuredCap: number): number {
+  if (recentSent >= 100) return configuredCap;
+  if (recentSent >= 50) return Math.min(configuredCap, 40);
+  if (recentSent >= 20) return Math.min(configuredCap, 25);
+  return Math.min(configuredCap, 10);
+}
+
+function appendAuditDetail(base: string, extra: Record<string, unknown>): string {
+  const suffix = JSON.stringify(extra);
+  return base ? base + "; " + suffix : suffix;
+}
+
+interface DomainState {
+  from: string | null;
+  domain: string | null;
+  dailyCap: number;
+  sentToday: number;
+  effectiveDailyCap: number;
+  pauseReason: string | null;
+}
+
+function legacyDomainState(input: {
+  sentToday: number;
+  effectiveDailyCap: number;
+  dailyCap: number;
+  pauseReason: string | null;
+}): DomainState {
+  return {
+    from: null,
+    domain: null,
+    dailyCap: input.dailyCap,
+    sentToday: input.sentToday,
+    effectiveDailyCap: input.effectiveDailyCap,
+    pauseReason: input.pauseReason,
+  };
+}
+
+function domainPauseReason(input: {
+  sent: number;
+  bounceRate: number;
+  complaintRate: number;
+  maxBounceRate: number;
+  maxComplaintRate: number;
+}): string | null {
+  return input.sent > 0 && input.bounceRate > input.maxBounceRate
+    ? "bounce rate " +
+        (input.bounceRate * 100).toFixed(1) +
+        "% exceeds " +
+        (input.maxBounceRate * 100).toFixed(1) +
+        "%"
+    : input.sent > 0 && input.complaintRate > input.maxComplaintRate
+      ? "complaint rate " +
+        (input.complaintRate * 100).toFixed(2) +
+        "% exceeds " +
+        (input.maxComplaintRate * 100).toFixed(2) +
+        "%"
+      : null;
+}
+
+function chooseDomain(states: DomainState[]): DomainState | null {
+  return (
+    states
+      .filter((s) => !s.pauseReason && s.sentToday < s.effectiveDailyCap)
+      .sort((a, b) => b.effectiveDailyCap - b.sentToday - (a.effectiveDailyCap - a.sentToday))[0] ??
+    null
+  );
+}
+
 // ---- seams ---------------------------------------------------------------------------------------
 
 /** The ICP seed reader — pulls the workspace domain + founder-console hints. */
@@ -69,6 +140,7 @@ export interface ActiveEnrollment {
   channel: ReachChannel;
   currentStep: number;
   lastStepAtMs: number;
+  engagement?: CadenceEngagement;
   /** The enrolment's fit score, preserved across follow-up advances. */
   score: number;
   /** The signal the opener was built around, preserved across follow-up advances. */
@@ -130,12 +202,13 @@ export interface SendInsert {
   subject: string;
   externalId: string | null;
   sentHourUtc: number | null;
+  sendingDomain?: string | null;
   detail: string;
 }
 
 export interface ReachSendStore {
   /** Count messages actually SENT since `since` (the per-sending-domain rate-cap denominator). */
-  countSentSince(workspaceId: string, since: Date): Promise<number>;
+  countSentSince(workspaceId: string, since: Date, sendingDomain?: string | null): Promise<number>;
   insert(input: SendInsert): Promise<{ id: string }>;
   /** The most recent send for a contact (to attach a receipt to). */
   latestSendId(workspaceId: string, contactKey: string): Promise<string | null>;
@@ -187,6 +260,14 @@ export interface ReachRunStore {
 
 /** Parks a money-gated data-credit spend (#13). Returns the pending request id. */
 export interface ReachApprovalGate {
+  dataCreditSpend(
+    workspaceId: string,
+    provider: string,
+  ): Promise<{
+    pendingCents: number;
+    approvedCents: number;
+    pendingRequestId: string | null;
+  }>;
   submitDataCreditSpend(input: {
     workspaceId: string;
     provider: string;
@@ -280,7 +361,7 @@ export class ReachService {
 
   /** Pick the channel for a prospect: email when we have an address, else LinkedIn, else none. */
   private channelFor(email: string | null, linkedinUrl: string | null): ReachChannel | null {
-    if (email && email.trim()) return "email";
+    if (email && isPlausibleEmail(email.trim())) return "email";
     if (linkedinUrl && linkedinUrl.trim()) return "linkedin";
     return null;
   }
@@ -329,6 +410,42 @@ export class ReachService {
     if (source.paid) {
       const estCents = source.estimateCostCents(caps.batchSize);
       if (estCents > 0) {
+        const spend = await this.deps.approvals.dataCreditSpend(workspaceId, source.kind);
+        if (spend.pendingRequestId) {
+          await this.deps.runs.insert({
+            workspaceId,
+            sourceKind: source.kind,
+            status: "awaiting_data_funding",
+            prospectsFound: 0,
+            messagesSent: 0,
+            messagesQueued: 0,
+            suppressedCount: 0,
+            rateLimitedCount: 0,
+            tuningReport: null,
+          });
+          return {
+            ...empty("awaiting_data_funding", "paid data spend already awaiting owner approval"),
+            approvalRequestId: spend.pendingRequestId,
+          };
+        }
+        const projectedSpend = spend.pendingCents + spend.approvedCents + estCents;
+        if (projectedSpend > caps.dataCreditBudgetCents) {
+          await this.deps.runs.insert({
+            workspaceId,
+            sourceKind: source.kind,
+            status: "skipped",
+            prospectsFound: 0,
+            messagesSent: 0,
+            messagesQueued: 0,
+            suppressedCount: 0,
+            rateLimitedCount: 0,
+            tuningReport: null,
+          });
+          return empty(
+            "skipped",
+            `paid data credit budget exceeded (${projectedSpend}/${caps.dataCreditBudgetCents} cents)`,
+          );
+        }
         const { requestId } = await this.deps.approvals.submitDataCreditSpend({
           workspaceId,
           provider: source.kind,
@@ -384,12 +501,61 @@ export class ReachService {
     // Step 3 — score + dedupe + rank.
     const ranked = rankBatch(prospects, icp, contacted, nowMs, caps.batchSize);
 
-    // Per-domain rate cap: how many more emails may leave the sending domain today.
     const since24h = new Date(nowMs - DAY_MS);
-    const sentToday = await this.deps.sends.countSentSince(workspaceId, since24h);
-    let emailHeadroom = Math.max(0, caps.perDomainDailyCap - sentToday);
-
     const suppressed = await this.deps.suppressions.loadSuppressed(workspaceId);
+    const healthWindowStart = new Date(nowMs - TUNING_WINDOW_MS);
+    const [healthSendData, healthReceiptData] = await Promise.all([
+      this.deps.sends.sendsSince(workspaceId, healthWindowStart),
+      this.deps.receipts.receiptData(workspaceId, healthWindowStart),
+    ]);
+    const health = computeMetrics({
+      prospectsFound: healthSendData.length,
+      sends: healthSendData,
+      receipts: healthReceiptData,
+    });
+    const legacySentToday = await this.deps.sends.countSentSince(workspaceId, since24h);
+    const legacyPauseReason = domainPauseReason({
+      sent: health.sent,
+      bounceRate: health.bounceRate,
+      complaintRate: health.complaintRate,
+      maxBounceRate: caps.maxBounceRate,
+      maxComplaintRate: caps.maxComplaintRate,
+    });
+    const configuredDomains: ReachSendingDomain[] = caps.sendingDomains.filter((d) => d.enabled);
+    const domainStates: DomainState[] = configuredDomains.length
+      ? await Promise.all(
+          configuredDomains.map(async (d) => {
+            const sentToday = await this.deps.sends.countSentSince(workspaceId, since24h, d.domain);
+            const domainSends = healthSendData.filter((s) => s.sendingDomain === d.domain);
+            const domainHealth = computeMetrics({
+              prospectsFound: domainSends.length,
+              sends: domainSends,
+              receipts: healthReceiptData.filter((r) => r.sendingDomain === d.domain),
+            });
+            return {
+              from: d.from,
+              domain: d.domain,
+              dailyCap: d.dailyCap,
+              sentToday,
+              effectiveDailyCap: warmupDailyCap(domainHealth.sent, d.dailyCap),
+              pauseReason: domainPauseReason({
+                sent: domainHealth.sent,
+                bounceRate: domainHealth.bounceRate,
+                complaintRate: domainHealth.complaintRate,
+                maxBounceRate: caps.maxBounceRate,
+                maxComplaintRate: caps.maxComplaintRate,
+              }),
+            };
+          }),
+        )
+      : [
+          legacyDomainState({
+            sentToday: legacySentToday,
+            effectiveDailyCap: warmupDailyCap(health.sent, caps.perDomainDailyCap),
+            dailyCap: caps.perDomainDailyCap,
+            pauseReason: legacyPauseReason,
+          }),
+        ];
     const footerInfo = {
       brandName: caps.brandName ?? undefined,
       postalAddress: caps.postalAddress ?? undefined,
@@ -410,7 +576,55 @@ export class ReachService {
       enrollment: CadenceEnrollment,
       score: number,
     ): Promise<void> => {
-      if (channel === "email" && emailHeadroom <= 0) {
+      if (channel === "email" && !isPlausibleEmail(message.toAddress.trim())) {
+        await this.deps.sends.insert({
+          workspaceId,
+          contactKey: message.contactKey,
+          channel,
+          status: "skipped",
+          variant: message.variant,
+          signalKind: message.signalKind,
+          subject: message.subject,
+          externalId: null,
+          sentHourUtc: tuning.sendHourUtc,
+          detail: "invalid email address",
+        });
+        skippedCount += 1;
+        outcomes.push({ contactKey: message.contactKey, channel, status: "skipped" });
+        return;
+      }
+      const selectedDomain = channel === "email" ? chooseDomain(domainStates) : null;
+      const pausedDomains = domainStates.filter((s) => s.pauseReason);
+      if (
+        channel === "email" &&
+        !selectedDomain &&
+        pausedDomains.length === domainStates.length &&
+        pausedDomains[0]?.pauseReason
+      ) {
+        await this.deps.sends.insert({
+          workspaceId,
+          contactKey: message.contactKey,
+          channel,
+          status: "rate_limited",
+          variant: message.variant,
+          signalKind: message.signalKind,
+          subject: message.subject,
+          externalId: null,
+          sentHourUtc: tuning.sendHourUtc,
+          sendingDomain: pausedDomains[0].domain,
+          detail: "deliverability pause: " + pausedDomains[0].pauseReason,
+        });
+        rateLimitedCount += 1;
+        outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
+        return;
+      }
+      if (channel === "email" && !selectedDomain) {
+        const capped =
+          domainStates
+            .filter((s) => !s.pauseReason)
+            .sort(
+              (a, b) => b.effectiveDailyCap - b.sentToday - (a.effectiveDailyCap - a.sentToday),
+            )[0] ?? domainStates[0];
         await this.deps.sends.insert({
           workspaceId,
           contactKey: message.contactKey,
@@ -421,7 +635,15 @@ export class ReachService {
           subject: "",
           externalId: null,
           sentHourUtc: tuning.sendHourUtc,
-          detail: `per-domain daily cap (${caps.perDomainDailyCap}) reached`,
+          sendingDomain: capped?.domain ?? null,
+          detail:
+            capped && capped.effectiveDailyCap < capped.dailyCap
+              ? "per-domain warmup cap (" +
+                capped.effectiveDailyCap +
+                "/" +
+                capped.dailyCap +
+                ") reached"
+              : `per-domain daily cap (${capped?.dailyCap ?? caps.perDomainDailyCap}) reached`,
         });
         rateLimitedCount += 1;
         outcomes.push({ contactKey: message.contactKey, channel, status: "rate_limited" });
@@ -429,11 +651,14 @@ export class ReachService {
       }
       const deliverability =
         channel === "email" ? ((await this.deps.deliverability?.proof(workspaceId)) ?? null) : null;
+      const spamRisk = checkSpamRisk({ subject: message.subject, body: message.body });
       const outcome = await this.deps.channels[channel].send(message, {
         workspaceId,
         suppressed,
         footerInfo,
         deliverability,
+        from: selectedDomain?.from ?? null,
+        sendingDomain: selectedDomain?.domain ?? null,
       });
       await this.deps.sends.insert({
         workspaceId,
@@ -445,12 +670,16 @@ export class ReachService {
         subject: message.subject,
         externalId: outcome.externalId,
         sentHourUtc: tuning.sendHourUtc,
-        detail: outcome.detail,
+        sendingDomain: selectedDomain?.domain ?? null,
+        detail: appendAuditDetail(outcome.detail, {
+          spamRisk,
+          ...(selectedDomain?.domain ? { sendingDomain: selectedDomain.domain } : {}),
+        }),
       });
       outcomes.push({ contactKey: message.contactKey, channel, status: outcome.status });
       if (outcome.status === "sent") {
         messagesSent += 1;
-        if (channel === "email") emailHeadroom -= 1;
+        if (selectedDomain) selectedDomain.sentToday += 1;
       } else if (outcome.status === "queued") messagesQueued += 1;
       else if (outcome.status === "suppressed") suppressedCount += 1;
       else if (outcome.status === "skipped" || outcome.status === "failed") skippedCount += 1;
@@ -479,12 +708,12 @@ export class ReachService {
         lastStepAtMs: e.lastStepAtMs,
         status: "active",
       };
-      const step = nextDueStep(enrollment, DEFAULT_CADENCE, nowMs);
+      const step = nextDueStep(enrollment, DEFAULT_CADENCE, nowMs, { engagement: e.engagement });
       if (!step) continue;
       const followUp = composeFollowUp({
         contactKey: e.contactKey,
         recipientLabel: e.recipientLabel,
-        channel: e.channel,
+        channel: step.channel,
         variant: step.variant,
         step: step.stepIndex,
         brandName: caps.brandName ?? "the team",

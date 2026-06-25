@@ -1,10 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { SessionManager } from "../../src/runtime/manager.js";
+import {
+  SessionManager,
+  SpendCapBreachError,
+  type EnterpriseSpendGate,
+} from "../../src/runtime/manager.js";
 import type { ChannelPoster, SessionLogger, SessionStore } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { AdmissionError } from "../../src/scale/admission.js";
 import type { AdmissionController, AdmissionTicket } from "../../src/scale/admission.js";
 import type { UsageRecorder } from "../../src/scale/usage.js";
+import type { SpendAnomalyMonitor } from "../../src/scale/spend-anomaly.js";
 import type {
   AgentJob,
   AgentRuntime,
@@ -100,15 +105,58 @@ class CapturingRuntime implements AgentRuntime {
   }
 }
 
+class BlockingRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  canceled = 0;
+  private resolve!: (result: RuntimeResult) => void;
+  readonly done = new Promise<RuntimeResult>((resolve) => {
+    this.resolve = resolve;
+  });
+  start(_job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    hooks.onOutput("stdout", "working\n");
+    return Promise.resolve({
+      sessionId: "sess_test",
+      wait: () => this.done,
+      cancel: async () => {
+        this.canceled += 1;
+        this.resolve({ status: "canceled", exitCode: null });
+      },
+    });
+  }
+}
+
 class FakeAdmission implements AdmissionController {
   released = 0;
-  constructor(
-    private readonly behavior: { region?: string } | { deny: AdmissionError },
-  ) {}
+  acquired = 0;
+  constructor(private readonly behavior: { region?: string } | { deny: AdmissionError }) {}
   acquire(): Promise<AdmissionTicket> {
+    this.acquired += 1;
     if ("deny" in this.behavior) return Promise.reject(this.behavior.deny);
     const region = this.behavior.region;
     return Promise.resolve({ region, release: () => void (this.released += 1) });
+  }
+}
+
+class FakeEnterpriseGate implements EnterpriseSpendGate {
+  requests: { workspaceId: string; agentId: string; requesterMemberId: string; requestCents: number }[] = [];
+  constructor(private readonly status: "allowed" | "breach_gated" = "allowed") {}
+  async decideSpend(input: {
+    workspaceId: string;
+    agentId: string;
+    requesterMemberId: string;
+    requestCents: number;
+  }) {
+    this.requests.push(input);
+    const decision = {
+      allowed: this.status === "allowed",
+      requiresOwner: this.status === "breach_gated",
+      actionType: "enterprise.budget_breach" as const,
+      breaches: [],
+      reason: this.status === "allowed" ? "within all budget caps" : "enterprise cap breached",
+    };
+    return this.status === "allowed"
+      ? { status: "allowed" as const, decision }
+      : { status: "breach_gated" as const, decision, approvalRequestId: "apr_925" };
   }
 }
 
@@ -138,7 +186,11 @@ function makeManager(over: {
   runtime?: AgentRuntime;
   admission?: AdmissionController;
   usage?: UsageRecorder;
+  spendAnomaly?: SpendAnomalyMonitor;
+  spendAnomalyIntervalMs?: number;
   failCreate?: boolean;
+  enterprise?: EnterpriseSpendGate;
+  enterpriseComputeRateCentsPerMinute?: () => number;
 }): { manager: SessionManager; store: FakeStore } {
   const store = new FakeStore(over.failCreate);
   const manager = new SessionManager({
@@ -151,6 +203,10 @@ function makeManager(over: {
     logger: silentLogger,
     admission: over.admission,
     usage: over.usage,
+    spendAnomaly: over.spendAnomaly,
+    spendAnomalyIntervalMs: over.spendAnomalyIntervalMs,
+    enterprise: over.enterprise,
+    enterpriseComputeRateCentsPerMinute: over.enterpriseComputeRateCentsPerMinute,
   });
   return { manager, store };
 }
@@ -200,6 +256,70 @@ describe("SessionManager × scale (#71 — admission gate, placement, usage, slo
     expect(usage.computes).toHaveLength(1);
     expect(usage.computes[0]?.workspaceId).toBe("ws_1");
     expect(usage.computes[0]?.seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("blocks over-enterprise-cap launches before session creation or scale admission (#925)", async () => {
+    const admission = new FakeAdmission({ region: "iad1" });
+    const enterprise = new FakeEnterpriseGate("breach_gated");
+    const { manager, store } = makeManager({
+      admission,
+      enterprise,
+      enterpriseComputeRateCentsPerMinute: () => 60,
+    });
+
+    const blocked = await manager.launch(launch).catch((err: unknown) => err);
+    expect(blocked).toBeInstanceOf(SpendCapBreachError);
+    expect(blocked).toMatchObject({ approvalRequestId: "apr_925", requestCents: 10 });
+    expect(enterprise.requests[0]).toMatchObject({
+      workspaceId: "ws_1",
+      agentId: "mem_agent",
+      requesterMemberId: "mem_human",
+      requestCents: 10,
+    });
+    expect(store.createdCount).toBe(0);
+    expect(admission.acquired).toBe(0);
+  });
+
+  it("cancels a running session when the spend anomaly guard trips (#926)", async () => {
+    const runtime = new BlockingRuntime();
+    const spendAnomaly: SpendAnomalyMonitor = {
+      async begin() {
+        return {
+          async check() {
+            return {
+              kill: true,
+              reason: "session_spend_exceeded_half_remaining_budget",
+              alerts: [50],
+              live: {
+                sessionId: "sess_test",
+                workspaceId: "ws_1",
+                channelId: "ch_1",
+                agentMemberId: "mem_agent",
+                startedAtMs: 0,
+                elapsedSeconds: 1,
+                estimatedCostCents: 50,
+                budgetCents: 100,
+                utilization: 0.5,
+                threshold: 50,
+              },
+            };
+          },
+          close() {},
+        };
+      },
+    };
+    const { manager, store } = makeManager({
+      runtime,
+      admission: new FakeAdmission({}),
+      spendAnomaly,
+      spendAnomalyIntervalMs: 250,
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.canceled).toBe(1);
+    expect(store.finalized?.status).toBe("canceled");
   });
 
   it("does not record a usage start when session creation fails (#949)", async () => {

@@ -21,6 +21,7 @@
 import type { ServiceKind } from "../onboarding/types.js";
 import type { BuyerBriefRecord } from "../decision-maker/types.js";
 import type { DiscoveryQueue } from "../discovery/contract.js";
+import type { GtmStage } from "../discovery/score.js";
 import { decideToolGate } from "../realworld/decide.js";
 import type { OutreachCaps } from "./caps.js";
 import {
@@ -71,16 +72,16 @@ export interface BriefReader {
 }
 
 /**
- * Advance the #222 GTM pipeline when an EXTERNAL receipt lands. Deliberately narrow: it can ONLY record an
- * externally-grounded conversion (it wraps `DiscoveryService.ingestSignal({kind:"conversion", externalRef})`).
- * The outreach engine holds no other discovery capability.
+ * Advance the #222 GTM pipeline when an EXTERNAL receipt lands. Deliberately narrow: it can ONLY advance
+ * one named prospect to a canonical GTM stage. The outreach engine holds no other discovery capability.
  */
 export interface PipelineAdvancer {
-  recordConversion(
+  recordStage(
     workspaceId: string,
     input: {
       ideaId: string | null;
       prospectKey: string;
+      stage: GtmStage;
       externalRef: string;
       detail: Record<string, unknown>;
     },
@@ -164,6 +165,7 @@ export interface OutreachApprovalGate {
     requesterMemberId: string;
     summary: string;
     payload: Record<string, unknown>;
+    actionType?: string;
   }): Promise<{ id: string }>;
 }
 
@@ -205,6 +207,22 @@ export type QueueResult =
       messageId: string;
       channel: OutreachChannel;
     };
+
+export interface OutreachCallPrepHandoff {
+  source: "outreach.call_prep";
+  messageId: string;
+  receiptId: string;
+  prospectKey: string;
+  externalRef: string;
+  buyerBriefId: string;
+  accountName: string;
+  accountDomain: string;
+  buyerName: string;
+  buyerTitle: string;
+  rationale: string;
+  caresAbout: string[];
+  hooks: Array<{ angle: string; sourceUrl: string; evidence: string }>;
+}
 
 /** The founder-console outreach roll-up (#104/#222 growth surface). All counts are real, never placeholders. */
 export interface OutreachSummary {
@@ -255,7 +273,8 @@ export class OutreachService {
   /**
    * The channels a send could actually go out on — i.e. whose #231 tool gate is satisfied by the
    * connected accounts. Authoritative: it reuses {@link decideToolGate} (send_email needs esp+registrar,
-   * post_social needs an ad account), so the engine never selects a channel that would be blocked.
+   * send_sms needs an opted-in SMS account, post_social needs an ad account), so the engine never selects
+   * a channel that would be blocked.
    */
   async availableChannels(workspaceId: string): Promise<Set<OutreachChannel>> {
     const connectedAccounts = await this.deps.connectedAccounts(workspaceId);
@@ -508,7 +527,7 @@ export class OutreachService {
       replyFrom?: string | null;
       replySubject?: string | null;
     },
-  ): Promise<{ receipt: OutreachReceiptRecord; created: boolean }> {
+  ): Promise<{ receipt: OutreachReceiptRecord; created: boolean; callPrep?: OutreachCallPrepHandoff }> {
     if (!isOutreachReceiptKind(input.kind)) {
       throw new OutreachValidationError("kind must be one of reply, meeting, signup");
     }
@@ -533,16 +552,43 @@ export class OutreachService {
       occurredAt: input.occurredAt ?? this.now(),
     });
 
-    // Route the reply/meeting/signup into the conversion step + advance the #222 pipeline (verified).
+    // Route real receipts into the GTM pipeline. Replies/meetings are sales conversions; signups are the
+    // first self-serve onboarding step. All require the external receipt above.
     if (created && this.deps.pipeline) {
-      await this.deps.pipeline.recordConversion(workspaceId, {
+      await this.deps.pipeline.recordStage(workspaceId, {
         ideaId: message.ideaId,
         prospectKey: message.prospectKey,
+        stage: input.kind === "signup" ? "onboarding" : "conversion",
         externalRef,
         detail: { receiptKind: input.kind, messageId: input.messageId, source: "outreach" },
       });
     }
-    return { receipt: record, created };
+    let callPrep: OutreachCallPrepHandoff | undefined;
+    if (created && input.kind === "meeting" && message.buyerBriefId) {
+      const brief = await this.deps.briefs.get(workspaceId, message.buyerBriefId);
+      if (brief) {
+        callPrep = {
+          source: "outreach.call_prep",
+          messageId: input.messageId,
+          receiptId: record.id,
+          prospectKey: message.prospectKey,
+          externalRef,
+          buyerBriefId: brief.id,
+          accountName: brief.accountName,
+          accountDomain: brief.accountDomain,
+          buyerName: brief.buyerName,
+          buyerTitle: brief.buyerTitle,
+          rationale: brief.rationale,
+          caresAbout: brief.caresAbout,
+          hooks: brief.hooks.map((hook) => ({
+            angle: hook.angle,
+            sourceUrl: hook.sourceUrl,
+            evidence: hook.evidence,
+          })),
+        };
+      }
+    }
+    return { receipt: record, created, ...(callPrep ? { callPrep } : {}) };
   }
 
   async replyThreads(workspaceId: string): Promise<OutreachReplyThread[]> {
@@ -604,12 +650,12 @@ export class OutreachService {
       string,
       { experimentKey: string; variant: ValuePropVariant }
     >();
-    // key: `${experimentKey} ${variant}` → tally
+    // key: `${experimentKey}\u001f${variant}` → tally
     const tallies = new Map<string, VariantTally>();
     const experimentKeys = new Set<string>();
 
     const tallyKey = (experimentKey: string, variant: ValuePropVariant): string =>
-      `${experimentKey} ${variant}`;
+      `${experimentKey}\u001f${variant}`;
     const ensure = (experimentKey: string, variant: ValuePropVariant): VariantTally => {
       const k = tallyKey(experimentKey, variant);
       let t = tallies.get(k);

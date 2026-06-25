@@ -9,6 +9,7 @@ import {
   type RevenueEvent,
   type RevenueEvidence,
   type RevenueSummary,
+  type BillingInvoiceRecord,
   type CreatePaymentLinkRow,
   type CreateRevenueEventRow,
   type CreateEvidenceRow,
@@ -29,6 +30,11 @@ class MemoryBillingStore implements BillingStore {
   events: RevenueEvent[] = [];
   evidence: RevenueEvidence[] = [];
   firstCustomerStories: FirstCustomerStory[] = [];
+  billingContacts: Array<{
+    workspaceId: string;
+    billingEmail?: string | null;
+    stripeCustomerId?: string | null;
+  }> = [];
   private seq = 0;
 
   createPaymentLink(input: CreatePaymentLinkRow): Promise<PaymentLink> {
@@ -40,16 +46,59 @@ class MemoryBillingStore implements BillingStore {
     this.links.push(row);
     return Promise.resolve({ ...row });
   }
-  findRevenueEvent(workspaceId: string, providerEventId: string): Promise<RevenueEvent | undefined> {
+  findRevenueEvent(
+    workspaceId: string,
+    providerEventId: string,
+  ): Promise<RevenueEvent | undefined> {
     const row = this.events.find(
       (e) => e.workspaceId === workspaceId && e.providerEventId === providerEventId,
     );
     return Promise.resolve(row ? { ...row } : undefined);
   }
   createRevenueEvent(input: CreateRevenueEventRow): Promise<RevenueEvent> {
+    if (
+      this.events.some(
+        (e) => e.workspaceId === input.workspaceId && e.providerEventId === input.providerEventId,
+      )
+    ) {
+      return Promise.reject(new Error("duplicate revenue event"));
+    }
     const row: RevenueEvent = { id: `re_${++this.seq}`, createdAt: new Date(), ...input };
     this.events.push(row);
     return Promise.resolve({ ...row });
+  }
+  listInvoices(workspaceId: string): Promise<BillingInvoiceRecord[]> {
+    return Promise.resolve(
+      this.events
+        .filter((e) => e.workspaceId === workspaceId && e.invoiceId)
+        .slice()
+        .reverse()
+        .map((e) => ({
+          id: e.id,
+          providerEventId: e.providerEventId,
+          providerInvoiceId: e.invoiceId!,
+          number: e.invoiceNumber,
+          hostedInvoiceUrl: e.invoiceUrl,
+          invoicePdfUrl: e.invoicePdfUrl,
+          status: e.invoiceStatus,
+          amountCents: e.amountCents,
+          currency: e.currency,
+          createdAt: e.createdAt,
+        })),
+    );
+  }
+  getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
+    return this.listInvoices(workspaceId).then((rows) =>
+      rows.find((i) => i.providerInvoiceId === invoiceId),
+    );
+  }
+  updateWorkspaceBillingContact(input: {
+    workspaceId: string;
+    billingEmail?: string | null;
+    stripeCustomerId?: string | null;
+  }): Promise<unknown> {
+    this.billingContacts.push({ ...input });
+    return Promise.resolve({ ok: true });
   }
   createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence> {
     const row: RevenueEvidence = { id: `ev_${++this.seq}`, createdAt: new Date(), ...input };
@@ -93,7 +142,10 @@ interface Harness {
   logs: Array<{ obj: unknown; msg?: string }>;
 }
 
-function makeHarness(cfg: Partial<ResolvedConfig> = {}, planActivate: () => Promise<void> = async () => {}): Harness {
+function makeHarness(
+  cfg: Partial<ResolvedConfig> = {},
+  planActivate: () => Promise<void> = async () => {},
+): Harness {
   const store = new MemoryBillingStore();
   const provider = new NoneBillingProvider();
   const events: BillingStatusEvent[] = [];
@@ -125,7 +177,12 @@ function makeHarness(cfg: Partial<ResolvedConfig> = {}, planActivate: () => Prom
     },
     publish: (_cid, event) => events.push(event),
     logger: {
-      child: () => ({ child: () => undefined as never, info: () => {}, warn: () => {}, error: () => {} }),
+      child: () => ({
+        child: () => undefined as never,
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      }),
       info: (obj, msg) => logs.push({ obj, msg }),
       warn: (obj, msg) => logs.push({ obj, msg }),
       error: (obj, msg) => logs.push({ obj, msg }),
@@ -148,7 +205,11 @@ const LINK_REQ = {
   interval: "month" as const,
 };
 
-function successEvent(extraMeta: Record<string, string> = {}, id = "evt_pay_1"): string {
+function successEvent(
+  extraMeta: Record<string, string> = {},
+  id = "evt_pay_1",
+  over: Record<string, unknown> = {},
+): string {
   return JSON.stringify({
     id,
     type: "checkout.session.completed",
@@ -158,6 +219,7 @@ function successEvent(extraMeta: Record<string, string> = {}, id = "evt_pay_1"):
         currency: "usd",
         status: "complete",
         payment_status: "paid",
+        ...over,
         metadata: {
           workspaceId: "ws_1",
           channelId: "chan_1",
@@ -211,6 +273,12 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(h.provider.links.length).toBe(1);
   });
 
+  it("round-trips a sanitized billing email into payment-link metadata", async () => {
+    await h.manager.createPaymentLink({ ...LINK_REQ, billingEmail: " Buyer@Example.COM " });
+    expect(h.provider.links[0]?.customerEmail).toBe("buyer@example.com");
+    expect(h.provider.links[0]?.metadata.customerEmail).toBe("buyer@example.com");
+  });
+
   it("redacts a secret from a provider error (never leaks the key)", async () => {
     h.provider.failNext = `stripe auth failed using ${SECRET}`;
     const err = await h.manager.createPaymentLink(LINK_REQ).catch((e) => e as Error);
@@ -221,13 +289,17 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
 
   it("refuses to create a payment link under data-privacy mode (off-platform egress gate)", async () => {
     const priv = makeHarness({ dataPrivacyMode: true });
-    await expect(priv.manager.createPaymentLink(LINK_REQ)).rejects.toBeInstanceOf(BillingEgressBlocked);
+    await expect(priv.manager.createPaymentLink(LINK_REQ)).rejects.toBeInstanceOf(
+      BillingEgressBlocked,
+    );
     expect(priv.provider.products.length).toBe(0); // never called the provider
   });
 
   it("throws when the tenant has not enabled billing (opt-in)", async () => {
     const none = makeHarness({ billing: undefined });
-    await expect(none.manager.createPaymentLink(LINK_REQ)).rejects.toBeInstanceOf(NoBillingConfigError);
+    await expect(none.manager.createPaymentLink(LINK_REQ)).rejects.toBeInstanceOf(
+      NoBillingConfigError,
+    );
   });
 
   it("ingests a signed webhook into a revenue event AND willingness-to-pay evidence, posting to the channel", async () => {
@@ -246,6 +318,95 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(h.events.some((e) => e.kind === "payment_received")).toBe(true);
   });
 
+  it("stores the workspace billing contact from a paid checkout webhook (#862)", async () => {
+    const raw = successEvent({}, "evt_contact", {
+      customer: "cus_123",
+      customer_details: { email: "Buyer@Example.COM" },
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    await h.manager.ingestWebhook("ws_1", raw, sig);
+
+    expect(h.store.billingContacts).toContainEqual({
+      workspaceId: "ws_1",
+      billingEmail: "buyer@example.com",
+      stripeCustomerId: "cus_123",
+    });
+  });
+
+  it("stores invoice URLs from a paid checkout webhook (#860)", async () => {
+    const raw = successEvent({}, "evt_invoice", {
+      invoice: {
+        id: "in_123",
+        number: "INV-123",
+        hosted_invoice_url: "https://billing.stripe.com/invoice/in_123",
+        invoice_pdf: "https://pay.stripe.com/invoice/in_123/pdf",
+        status: "paid",
+      },
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+    const invoices = await h.manager.invoices("ws_1");
+
+    expect(res.event).toMatchObject({
+      invoiceId: "in_123",
+      invoiceNumber: "INV-123",
+      invoiceUrl: "https://billing.stripe.com/invoice/in_123",
+      invoicePdfUrl: "https://pay.stripe.com/invoice/in_123/pdf",
+      invoiceStatus: "paid",
+    });
+    expect(invoices).toEqual([
+      expect.objectContaining({
+        providerInvoiceId: "in_123",
+        number: "INV-123",
+        hostedInvoiceUrl: "https://billing.stripe.com/invoice/in_123",
+        invoicePdfUrl: "https://pay.stripe.com/invoice/in_123/pdf",
+        status: "paid",
+      }),
+    ]);
+    await expect(h.manager.invoice("ws_1", "in_123")).resolves.toMatchObject({
+      providerInvoiceId: "in_123",
+    });
+  });
+
+  it("persists Stripe Tax amount and collected VAT id for audit (#861)", async () => {
+    const raw = successEvent({}, "evt_tax", {
+      total_details: { amount_tax: 1900 },
+      customer_details: {
+        email: "Buyer@Example.COM",
+        tax_ids: [{ type: "eu_vat", value: "DE123456789" }],
+      },
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+
+    expect(res.event).toMatchObject({
+      amountCents: 2500,
+      taxAmountCents: 1900,
+      customerVatId: "DE123456789",
+      effectiveTaxRateBps: 31667,
+    });
+  });
+
+  it("can repair the workspace billing contact from a replayed deduped webhook", async () => {
+    const raw = successEvent({}, "evt_contact_replay", {
+      customer_email: "replay@example.com",
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    await h.manager.ingestWebhook("ws_1", raw, sig);
+    h.store.billingContacts = [];
+    const replay = await h.manager.ingestWebhook("ws_1", raw, sig);
+
+    expect(replay.deduped).toBe(true);
+    expect(h.store.billingContacts).toContainEqual({
+      workspaceId: "ws_1",
+      billingEmail: "replay@example.com",
+    });
+  });
+
   it("records a metric when plan activation fails after the revenue event is durable (#993)", async () => {
     const failing = makeHarness({}, async () => {
       throw new Error("activation down");
@@ -257,8 +418,14 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
 
     expect(res.deduped).toBe(false);
     expect(failing.store.events).toHaveLength(1);
-    expect(renderMetrics()).toContain('async_side_effect_failures_total{kind="billing_plan_activation"} 1');
-    expect(failing.logs.some((l) => l.msg?.includes("plan activation failed after durable revenue event"))).toBe(true);
+    expect(renderMetrics()).toContain(
+      'async_side_effect_failures_total{kind="billing_plan_activation"} 1',
+    );
+    expect(
+      failing.logs.some((l) =>
+        l.msg?.includes("plan activation failed after durable revenue event"),
+      ),
+    ).toBe(true);
   });
 
   it("captures the first paying customer as a case-study draft and visible celebration exactly once", async () => {
@@ -325,6 +492,28 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(second.deduped).toBe(true);
     expect(h.store.events.length).toBe(1); // no second row
     expect(h.store.evidence.length).toBe(1); // no second evidence row
+    expect(h.logs).toContainEqual({
+      obj: expect.objectContaining({
+        workspaceId: "ws_1",
+        providerEventId: "evt_pay_1",
+        amountCents: 2500,
+      }),
+      msg: "billing webhook deduped",
+    });
+  });
+
+  it("dedupes concurrent webhook deliveries of the same event without duplicate evidence (#878)", async () => {
+    const raw = successEvent();
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const [first, second] = await Promise.all([
+      h.manager.ingestWebhook("ws_1", raw, sig),
+      h.manager.ingestWebhook("ws_1", raw, sig),
+    ]);
+
+    expect([first.deduped, second.deduped].sort()).toEqual([false, true]);
+    expect(h.store.events).toHaveLength(1);
+    expect(h.store.evidence).toHaveLength(1);
     expect(h.logs).toContainEqual({
       obj: expect.objectContaining({
         workspaceId: "ws_1",

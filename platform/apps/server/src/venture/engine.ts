@@ -1,4 +1,5 @@
 import type { SessionLogger } from "../runtime/manager.js";
+import { isVentureGateEnabledForWorkspace, type VentureCaps } from "./caps.js";
 import type { VentureService } from "./service.js";
 
 /**
@@ -12,6 +13,8 @@ export interface VentureEngineDeps {
   service: VentureService;
   /** Distinct workspaces with an active evaluation — the timer's work-list. */
   listActiveEvaluationWorkspaces: () => Promise<string[]>;
+  /** Workspace-scoped feature policy; disabled/unnamed owners do not receive autonomous ticks. */
+  caps: (workspaceId: string) => VentureCaps;
   logger: SessionLogger;
 }
 
@@ -39,6 +42,7 @@ export class VentureEngine {
   async tickAll(): Promise<void> {
     const workspaceIds = await this.deps.listActiveEvaluationWorkspaces();
     for (const workspaceId of workspaceIds) {
+      if (!isVentureGateEnabledForWorkspace(this.deps.caps(workspaceId), workspaceId)) continue;
       try {
         await this.deps.service.tick(workspaceId);
       } catch (err) {

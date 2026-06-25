@@ -27,9 +27,18 @@ describe("agent.deliverable review card (#248)", () => {
     expect(validateAgentDeliverable({ sessionId: "s1", draft: 42 }).ok).toBe(false);
     expect(validateAgentDeliverable({ sessionId: "s1", task: { a: 1 } }).ok).toBe(false);
     expect(validateAgentDeliverable({ sessionId: "s1", channelId: 7 }).ok).toBe(false);
+    expect(validateAgentDeliverable({ sessionId: "s1", computeSeconds: -1 }).ok).toBe(false);
+    expect(validateAgentDeliverable({ sessionId: "s1", estimatedCostCents: 1.5 }).ok).toBe(false);
     // a well-typed full payload still passes
     expect(
-      validateAgentDeliverable({ sessionId: "s1", draft: "d", task: "t", channelId: "c1" }).ok,
+      validateAgentDeliverable({
+        sessionId: "s1",
+        draft: "d",
+        task: "t",
+        channelId: "c1",
+        computeSeconds: 12,
+        estimatedCostCents: 3,
+      }).ok,
     ).toBe(true);
   });
 

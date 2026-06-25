@@ -5,6 +5,7 @@ import {
   type VerifierClaimSource,
   type VerifierEscalator,
   type VerifierResultStore,
+  type VerifiedWinRecorder,
 } from "../../src/verifiers/engine.js";
 import { VERIFIER_DEFAULTS, type VerifierCaps } from "../../src/verifiers/caps.js";
 import { resetMetrics } from "../../src/observability/metrics.js";
@@ -84,6 +85,7 @@ function build(opts: {
   killSwitch?: boolean;
   maintenance?: boolean;
   due?: VerifierClaim[];
+  playbooks?: VerifiedWinRecorder;
 }): Harness {
   const store = memStore();
   const escalator = countingEscalator();
@@ -98,6 +100,7 @@ function build(opts: {
     activeWorkspaces: async () => ["ws-1"],
     redact: (t) => t,
     maintenancePaused: async () => opts.maintenance ?? false,
+    playbooks: opts.playbooks,
     logger: silentLogger,
     now: () => NOW,
   });
@@ -116,6 +119,39 @@ describe("VerifierRunner.verify", () => {
     expect(store.rows).toHaveLength(1);
     expect(store.rows[0]).toMatchObject({ status: "passed", escalationRequestId: null });
     expect(escalator.calls).toBe(0);
+  });
+
+  it("distills a passed verifier outcome into the playbook learning hook (#888)", async () => {
+    const wins: Parameters<VerifiedWinRecorder["record"]>[0][] = [];
+    const { runner, store } = build({
+      observation: { kind: "deploy_live", httpStatus: 200, healthy: true },
+      playbooks: { record: async (input) => void wins.push(input) },
+    });
+
+    const { action } = await runner.verify(claim);
+
+    expect(action).toBe("record_pass");
+    expect(wins).toHaveLength(1);
+    expect(wins[0]!.claim).toBe(claim);
+    expect(wins[0]!.record).toBe(store.rows[0]);
+    expect(wins[0]!.outcome.detail).toContain("deploy live");
+  });
+
+  it("does not let playbook distillation failures change the verifier verdict (#888)", async () => {
+    const { runner, store } = build({
+      observation: { kind: "deploy_live", httpStatus: 200, healthy: true },
+      playbooks: {
+        record: async () => {
+          throw new Error("playbook store down");
+        },
+      },
+    });
+
+    const { action, record } = await runner.verify(claim);
+
+    expect(action).toBe("record_pass");
+    expect(record.status).toBe("passed");
+    expect(store.rows).toHaveLength(1);
   });
 
   it("persists a failed row AND opens exactly one escalation, stamping the request id", async () => {

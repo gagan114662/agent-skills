@@ -1,5 +1,6 @@
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
 import type { SessionStatus } from "../db/repositories/agent-sessions.js";
+import { getAgentSessionStatus } from "../db/repositories/agent-sessions.js";
 import {
   recordAutonomyAction,
   recordAutonomyTick,
@@ -10,7 +11,7 @@ import {
   type LoopFailureRecorder,
 } from "../observability/loop-failures.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
-import { getTask, updateStatus, assignTask, addTaskLink } from "../db/repositories/tasks.js";
+import { getTask, updateStatus } from "../db/repositories/tasks.js";
 import { canTransition } from "../tasks/status.js";
 import { upsertMemory } from "../db/repositories/memories.js";
 import {
@@ -20,10 +21,16 @@ import {
   refundActionsUsed,
   listActiveWorkflows,
   listActiveWorkflowWorkspaces,
-  advanceWorkflowStage,
   bumpWorkflowAction,
+  attachWorkflowSession,
+  clearWorkflowSession,
   setWorkflowStatus,
+  handoffWorkflowStage,
+  markWorkflowAwaitingApproval,
+  completeWorkflowWithTask,
+  spawnRecurringWorkflowSuccessor,
   createApproval,
+  findWorkflowApproval,
   getApproval,
   decideApproval,
   getWorkflow,
@@ -32,6 +39,7 @@ import {
 import { budgetExhausted, tickLimitReached } from "./guards.js";
 import { decideWorkflowAction, type AutonomyAction } from "./decide.js";
 import { evaluatePolicy, AUTONOMY_COMPLETE_ACTION, type PolicyRule } from "../approvals/policy.js";
+import { DEFAULT_WORKSPACE_LOOP_CONCURRENCY, runBounded } from "../loops/concurrency.js";
 
 /**
  * AutonomyEngine (#17, ADR-0017; real-session execution #84, ADR-0042) — the server-owned activity
@@ -58,10 +66,12 @@ export interface AutonomyLauncher {
   launch(input: {
     workspaceId: string;
     channelId: string;
+    taskId?: string;
     agentMemberId: string;
     createdByMemberId: string;
     task: string;
     harnessEnv?: Record<string, string>;
+    idempotencyKey?: string;
   }): Promise<{ id: string }>;
   join(id: string): Promise<void>;
   status(id: string): Promise<SessionStatus>;
@@ -100,11 +110,36 @@ export interface AutonomyEngineDeps {
   listActiveWorkspaces?: () => Promise<string[]>;
   /** Optional #117 flywheel recorder for deduped per-workspace loop infrastructure failures (#887). */
   failureRecorder?: LoopFailureRecorder;
+  workspaceConcurrency?: number;
 }
 
 /** Compose the task/prompt handed to the harness for a stage (data, never argv). */
-function composeStageTask(taskTitle: string, role: string): string {
-  return `You are the ${role} on an autonomous workflow. Work the task to completion: ${taskTitle}`;
+function composeStageTask(input: {
+  workspaceId: string;
+  taskId: string;
+  taskTitle: string;
+  role: string;
+  handoffContext?: string;
+}): string {
+  const contextPath = `/workspaces/${input.workspaceId}/tasks/${input.taskId}/context`;
+  const handoff =
+    input.handoffContext && input.handoffContext.trim().length > 0
+      ? `\n\nPrior-stage handoff context:\n${input.handoffContext.trim()}`
+      : "";
+  return (
+    `You are the ${input.role} on an autonomous workflow. Work the task to completion: ${input.taskTitle}\n\n` +
+    `Before starting new work, read the prior-stage handoff context for this task from ${contextPath} ` +
+    `or use AGENT_TASK_ID=${input.taskId} to fetch the same linked context. Incorporate any handoff memory into your plan and output.` +
+    handoff
+  );
+}
+
+function autonomyStageIdempotencyKey(workflowId: string, stageIndex: number): string {
+  return `workflow:${workflowId}:stage:${stageIndex}`;
+}
+
+function isLiveSessionStatus(status: SessionStatus | undefined): boolean {
+  return status === "provisioning" || status === "running";
 }
 
 export interface AppliedAction {
@@ -129,6 +164,28 @@ export class AutonomyEngine {
   private readonly inflight = new Map<string, Promise<void>>();
 
   constructor(private readonly deps: AutonomyEngineDeps) {}
+
+  private async getOrCreateCompletionApproval(input: {
+    wf: AgentWorkflow;
+    taskId: string;
+    agentMemberId: string;
+  }) {
+    const action = "complete_workflow";
+    const existing = await findWorkflowApproval({
+      workspaceId: input.wf.workspaceId,
+      workflowId: input.wf.id,
+      taskId: input.taskId,
+      action,
+    });
+    if (existing) return existing;
+    return createApproval({
+      workspaceId: input.wf.workspaceId,
+      workflowId: input.wf.id,
+      taskId: input.taskId,
+      requestedByMemberId: input.agentMemberId,
+      action,
+    });
+  }
 
   /** Start the periodic loop over every workspace with active work. No-op if interval ≤ 0. */
   start(intervalMs: number): void {
@@ -156,19 +213,23 @@ export class AutonomyEngine {
       }
       const listWorkspaces = this.deps.listActiveWorkspaces ?? listActiveWorkflowWorkspaces;
       const workspaceIds = await listWorkspaces();
-      for (const workspaceId of workspaceIds) {
-        try {
-          await this.tick(workspaceId);
-        } catch (err) {
-          await recordLoopWorkspaceFailure({
-            recorder: this.deps.failureRecorder,
-            loop: "autonomy",
-            workspaceId,
-            err,
-          });
-          this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
-        }
-      }
+      await runBounded(
+        workspaceIds,
+        this.deps.workspaceConcurrency ?? DEFAULT_WORKSPACE_LOOP_CONCURRENCY,
+        async (workspaceId) => {
+          try {
+            await this.tick(workspaceId);
+          } catch (err) {
+            await recordLoopWorkspaceFailure({
+              recorder: this.deps.failureRecorder,
+              loop: "autonomy",
+              workspaceId,
+              err,
+            });
+            this.deps.logger.error({ err, workspaceId }, "autonomy tickAll: workspace tick failed");
+          }
+        },
+      );
     } catch (err) {
       recordLoopTickFailure("autonomy");
       this.deps.logger.error({ err }, "autonomy tickAll failed");
@@ -209,6 +270,36 @@ export class AutonomyEngine {
         actions.push({ workflowId: wf.id, action: "noop", reason: "session_running" });
         continue;
       }
+      if (wf.currentSessionId) {
+        const status = await getAgentSessionStatus(wf.currentSessionId);
+        if (isLiveSessionStatus(status)) {
+          recordAutonomyAction("noop:session_running");
+          actions.push({ workflowId: wf.id, action: "noop", reason: "session_running" });
+          continue;
+        }
+        await clearWorkflowSession({ workflowId: wf.id, sessionId: wf.currentSessionId });
+      }
+
+      const task = await getTask(wf.taskId);
+      if (!task) {
+        recordAutonomyAction("noop:task_missing");
+        continue;
+      }
+
+      if (
+        wf.status === "awaiting_approval" &&
+        wf.deadlineAt &&
+        wf.deadlineAt.getTime() <= Date.now()
+      ) {
+        await this.apply(wf, task.id, task.title, agentMemberId, "timeout_approval", log);
+        recordAutonomyAction("timeout_approval");
+        actions.push({
+          workflowId: wf.id,
+          action: "timeout_approval",
+          reason: "approval_deadline_exceeded",
+        });
+        continue;
+      }
 
       const autonomy = await getAutonomy(workspaceId, agentMemberId);
       if (!autonomy || !autonomy.enabled) {
@@ -224,12 +315,6 @@ export class AutonomyEngine {
         continue;
       }
 
-      const task = await getTask(wf.taskId);
-      if (!task) {
-        recordAutonomyAction("noop:task_missing");
-        continue;
-      }
-
       const decision = decideWorkflowAction({
         task: { status: task.status },
         workflow: {
@@ -237,6 +322,10 @@ export class AutonomyEngine {
           currentStage: wf.currentStage,
           stageCount: wf.stages.length,
           actionCount: wf.actionCount,
+          approvalOverdue:
+            wf.status === "awaiting_approval" &&
+            !!wf.deadlineAt &&
+            wf.deadlineAt.getTime() <= Date.now(),
         },
         killSwitch: false, // already gated above
         budgetExhausted: budgetExhausted(autonomy.actionsUsed, autonomy.actionBudget),
@@ -306,15 +395,17 @@ export class AutonomyEngine {
           sourceId: taskId,
           createdByMemberId: agentMemberId,
         });
-        await addTaskLink({
-          workspaceId: wf.workspaceId,
+        const handoff = await handoffWorkflowStage({
+          workflowId: wf.id,
+          expectedCurrentStage: wf.currentStage,
+          toStage: wf.currentStage + 1,
           taskId,
-          targetType: "memory",
-          targetId: mem.id,
-          createdByMemberId: agentMemberId,
+          workspaceId: wf.workspaceId,
+          nextAgentMemberId: next.agentMemberId,
+          actorMemberId: agentMemberId,
+          memoryId: mem.id,
         });
-        await assignTask(taskId, next.agentMemberId, agentMemberId);
-        await advanceWorkflowStage(wf.id, wf.currentStage + 1);
+        if (!handoff.advanced) return;
         const nextMember = await getWorkspaceMember(next.agentMemberId, wf.workspaceId);
         await this.post(
           wf,
@@ -324,23 +415,52 @@ export class AutonomyEngine {
           log,
         );
         // The next stage's agent now actually does the work (#84): launch its session as that member.
-        await this.launchStage(wf, taskId, taskTitle, wf.currentStage + 1, next.agentMemberId, log);
+        await this.launchStage(
+          wf,
+          taskId,
+          taskTitle,
+          wf.currentStage + 1,
+          next.agentMemberId,
+          log,
+          note,
+        );
         return;
       }
       case "request_approval": {
-        await createApproval({
-          workspaceId: wf.workspaceId,
-          workflowId: wf.id,
-          taskId,
-          requestedByMemberId: agentMemberId,
-          action: "complete_workflow",
-        });
-        await setWorkflowStatus(wf.id, "awaiting_approval");
-        await bumpWorkflowAction(wf.id);
+        await this.getOrCreateCompletionApproval({ wf, taskId, agentMemberId });
+        await markWorkflowAwaitingApproval(wf.id);
         await this.post(
           wf,
           agentMemberId,
           `⛔ awaiting human approval to complete “${taskTitle}”.`,
+          log,
+        );
+        return;
+      }
+      case "timeout_approval": {
+        const approval = await findWorkflowApproval({
+          workspaceId: wf.workspaceId,
+          workflowId: wf.id,
+          taskId,
+          action: "complete_workflow",
+        });
+        if (approval?.status === "pending") {
+          await decideApproval(approval.id, {
+            status: "rejected",
+            decidedByMemberId: null,
+            decisionSource: "policy",
+            policyRuleId: null,
+          });
+        }
+        await setWorkflowStatus(wf.id, "canceled");
+        const task = await getTask(taskId);
+        if (task && task.status !== "blocked" && canTransition(task.status, "blocked")) {
+          await updateStatus(taskId, "blocked", agentMemberId);
+        }
+        await this.post(
+          wf,
+          agentMemberId,
+          `⚠️ approval deadline exceeded for “${taskTitle}”; workflow timed out and the task is blocked for owner review.`,
           log,
         );
         return;
@@ -361,6 +481,7 @@ export class AutonomyEngine {
     stageIndex: number,
     agentMemberId: string,
     log: SessionLogger,
+    handoffContext?: string,
   ): Promise<void> {
     const role = wf.stages[stageIndex]?.role ?? "agent";
     if (!this.deps.launcher) {
@@ -377,10 +498,18 @@ export class AutonomyEngine {
       session = await this.deps.launcher.launch({
         workspaceId: wf.workspaceId,
         channelId: wf.channelId,
+        taskId,
         agentMemberId,
         createdByMemberId: agentMemberId,
-        task: composeStageTask(taskTitle, role),
-        harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role },
+        idempotencyKey: autonomyStageIdempotencyKey(wf.id, stageIndex),
+        task: composeStageTask({
+          workspaceId: wf.workspaceId,
+          taskId,
+          taskTitle,
+          role,
+          handoffContext,
+        }),
+        harnessEnv: { AGENT_AUTONOMY: "1", AGENT_ROLE: role, AGENT_TASK_ID: taskId },
       });
     } catch (err) {
       // A launch that never starts must not silently strand the task — surface it as blocked.
@@ -403,6 +532,18 @@ export class AutonomyEngine {
         `(stage ${stageIndex + 1}/${wf.stages.length}, ${role}).`,
       log,
     );
+    const attached = await attachWorkflowSession({
+      workflowId: wf.id,
+      expectedCurrentStage: stageIndex,
+      sessionId: session.id,
+    });
+    if (!attached) {
+      log.warn(
+        { workflowId: wf.id, sessionId: session.id },
+        "autonomy session attached to stale workflow",
+      );
+      return;
+    }
     this.trackSession(wf, taskId, taskTitle, stageIndex, agentMemberId, session.id, log);
   }
 
@@ -416,6 +557,7 @@ export class AutonomyEngine {
     sessionId: string,
     log: SessionLogger,
   ): void {
+    let settled = false;
     const run = (async (): Promise<void> => {
       try {
         await this.deps.launcher!.join(sessionId);
@@ -430,14 +572,18 @@ export class AutonomyEngine {
           status,
           log,
         );
+        settled = true;
       } catch (err) {
         log.error({ err, sessionId, workflowId: wf.id }, "autonomy session tracking failed");
+        throw err;
       }
     })();
     this.inflight.set(wf.id, run);
-    void run.finally(() => {
-      if (this.inflight.get(wf.id) === run) this.inflight.delete(wf.id);
-    });
+    void run
+      .finally(() => {
+        if (settled && this.inflight.get(wf.id) === run) this.inflight.delete(wf.id);
+      })
+      .catch(() => {});
   }
 
   /**
@@ -474,6 +620,7 @@ export class AutonomyEngine {
     status: SessionStatus,
     log: SessionLogger,
   ): Promise<void> {
+    await clearWorkflowSession({ workflowId: wf.id, sessionId });
     const task = await getTask(taskId);
     if (!task) return;
 
@@ -486,13 +633,7 @@ export class AutonomyEngine {
         // trusted workflow skip the human: the gate is decided BY POLICY (recording which rule fired)
         // and the task goes straight to `done` + the workflow to `completed`. With no rule the gate
         // holds exactly as before.
-        const approval = await createApproval({
-          workspaceId: wf.workspaceId,
-          workflowId: wf.id,
-          taskId,
-          requestedByMemberId: agentMemberId,
-          action: "complete_workflow",
-        });
+        const approval = await this.getOrCreateCompletionApproval({ wf, taskId, agentMemberId });
         const policy = await this.completionDecision(wf.workspaceId);
         if (policy.autoApprove) {
           await decideApproval(approval.id, {
@@ -501,11 +642,17 @@ export class AutonomyEngine {
             decisionSource: "policy",
             policyRuleId: policy.ruleId,
           });
-          if (task.status !== "done" && canTransition(task.status, "done")) {
-            await updateStatus(taskId, "done", agentMemberId);
-          }
-          await setWorkflowStatus(wf.id, "completed");
-          await bumpWorkflowAction(wf.id);
+          await completeWorkflowWithTask({
+            workflowId: wf.id,
+            taskId,
+            actorMemberId: agentMemberId,
+            completeTask: task.status === "done" || canTransition(task.status, "done"),
+          });
+          await spawnRecurringWorkflowSuccessor({
+            workflowId: wf.id,
+            completedTaskTitle: taskTitle,
+            actorMemberId: agentMemberId,
+          });
           await this.post(
             wf,
             agentMemberId,
@@ -514,8 +661,7 @@ export class AutonomyEngine {
             log,
           );
         } else {
-          await setWorkflowStatus(wf.id, "awaiting_approval");
-          await bumpWorkflowAction(wf.id);
+          await markWorkflowAwaitingApproval(wf.id);
           await this.post(
             wf,
             agentMemberId,
@@ -571,11 +717,24 @@ export class AutonomyEngine {
     if (!decided) return { ok: false, reason: "not_pending" };
 
     const task = await getTask(approval.taskId);
-    if (task && task.status !== "done" && canTransition(task.status, "done")) {
+    if (approval.workflowId) {
+      await completeWorkflowWithTask({
+        workflowId: approval.workflowId,
+        taskId: approval.taskId,
+        actorMemberId: humanMemberId,
+        completeTask: !!task && task.status !== "done" && canTransition(task.status, "done"),
+      });
+      if (task) {
+        await spawnRecurringWorkflowSuccessor({
+          workflowId: approval.workflowId,
+          completedTaskTitle: task.title,
+          actorMemberId: humanMemberId,
+        });
+      }
+    } else if (task && task.status !== "done" && canTransition(task.status, "done")) {
       await updateStatus(approval.taskId, "done", humanMemberId);
     }
     if (approval.workflowId) {
-      await setWorkflowStatus(approval.workflowId, "completed");
       const wf = await getWorkflow(approval.workflowId, workspaceId);
       if (wf) {
         await this.post(

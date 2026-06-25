@@ -22,6 +22,10 @@ export interface CreateProductPriceInput {
   currency: string;
   /** Recurring interval, or null for a one-time price. */
   interval: PriceInterval | null;
+  /** Stripe Tax product tax code, e.g. digital services. */
+  taxCode?: string | null;
+  /** Whether the price is tax-inclusive or tax-exclusive. */
+  taxBehavior?: "inclusive" | "exclusive" | "unspecified" | null;
   /** Per-tenant provider credentials (e.g. STRIPE_SECRET_KEY); never logged. */
   secrets: Record<string, string>;
 }
@@ -38,6 +42,14 @@ export interface CreatePaymentLinkInput {
   slug: string;
   /** Metadata echoed back on the webhook so the manager can re-scope the revenue event (channel/session). */
   metadata: Record<string, string>;
+  /** Optional payer contact to carry through checkout/webhook metadata for support, renewals, and dunning. */
+  customerEmail?: string;
+  /** Enable automatic tax calculation/collection when the provider supports it. */
+  collectTax?: boolean;
+  /** Collect business tax IDs, so B2B VAT reverse-charge/exemption can be evaluated by Stripe Tax. */
+  collectTaxIds?: boolean;
+  /** Billing address collection mode used by Stripe Tax to establish customer location. */
+  billingAddressCollection?: "auto" | "required";
   /**
    * Where to send the customer **after** a successful payment (an in-app URL like
    * `https://app.ipop.ai/?checkout=success`). When set, the hosted link redirects back here so the SPA can
@@ -56,6 +68,19 @@ export interface PaymentLinkResult {
   url: string;
 }
 
+export interface BillingInvoice {
+  providerInvoiceId: string;
+  number: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  status: string | null;
+}
+
+export interface RetrieveInvoiceInput {
+  providerInvoiceId: string;
+  secrets: Record<string, string>;
+}
+
 /**
  * The inbound-only billing seam. `createProductPrice` + `createPaymentLink` set up collection; there is
  * deliberately no way to move money out. Errors are thrown raw — the {@link
@@ -68,4 +93,6 @@ export interface BillingProvider {
   createProductPrice(input: CreateProductPriceInput): Promise<ProductPrice>;
   /** Create a hosted payment link / checkout session for a price. */
   createPaymentLink(input: CreatePaymentLinkInput): Promise<PaymentLinkResult>;
+  /** Retrieve hosted invoice/receipt URLs when a webhook only carries the provider invoice id. */
+  retrieveInvoice?(input: RetrieveInvoiceInput): Promise<BillingInvoice | null>;
 }

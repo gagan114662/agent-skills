@@ -40,6 +40,13 @@ export const BRAND: Brand = {
   accent: env.VITE_BRAND_ACCENT ?? "#ff4524",
 };
 
+/** Public human escalation path (#864): used by the contact fallback and footer links. */
+export const SUPPORT_CONTACT = {
+  email: "support@ipop.ai",
+  href: "mailto:support@ipop.ai",
+  label: "Email support",
+} as const;
+
 /**
  * The house voice (Innocent Drinks school): warm, first-person plural, a little silly, receipts over
  * adjectives. Empty states and errors are moments, not dead ends. The server fleet (#123) carries the
@@ -66,13 +73,13 @@ export const VOICE = {
   /** Shown above the sign-in card when auth fails. The voice turns a dead end into a moment (#145). */
   authError: "Well, that didn't pop. Give it another go —",
   /** Empty approvals queue (per status reads naturally: "Nothing pending. …"). */
-  emptyApprovals: "All clear here. The agents will ping you the moment something needs a human.",
+  emptyApprovals: "nothing waiting on you. go get a coffee - we'll shout if money needs a grown-up.",
   /** No agent sessions in a channel (Deploy / Review / Run rails). */
   noSessions: "No agent sessions here yet. Kick one off and it'll show up on this rail.",
   /** Deploy rail: a session is picked but nothing deployed. */
   pickSessionToDeploy: "Pick a session on the left and we'll ship its app to a live URL.",
   /** Founder console: nothing waiting. */
-  noPendingApprovals: "Nothing waiting on you. Go get a coffee — we've got this.",
+  noPendingApprovals: "nothing waiting on you. go get a coffee - we've got this.",
 
   // --- Composer + automations interactions (#167) -------------------------------------------------
   /** Automations form: no name yet. */
@@ -182,6 +189,9 @@ export const EXTERNAL_ACCOUNTS = {
     "them forever. Keys are stored encrypted and never shown again.",
   loading: "Loading…",
   neededTitle: "To do real work, connect:",
+  dryRunTitle: "Publishing is in dry-run",
+  dryRunBody:
+    "Published pages will show dryrun.reload.app preview URLs, but they are not live until a real publishing provider is connected.",
   allConnected: "All set — every account a venture needs for real work is connected.",
   noneYet: "No external accounts connected yet.",
   connectedBadge: "Connected",
@@ -260,8 +270,8 @@ export const GARDEN = {
   pending: "Awaiting your approval",
   needsApproval: "Needs your approval",
   capabilitiesLabel: "What they do",
-  moneyGated: "Money-gated",
-  moneyGatedTitle: "Acts outside the building — needs your approval before it can spend or send.",
+  moneyGated: "needs your yes",
+  moneyGatedTitle: "Tries to spend or send outside the building - so it waits for your yes.",
   riskReadOnly: "Reads only",
   riskInternalDraft: "Drafts for review",
   riskExternalSend: "Acts outside",
@@ -627,7 +637,12 @@ export const LANDING = {
       { href: "#how", label: "How it works" },
       { href: "#agents", label: "The department" },
       { href: "#pricing", label: "Pricing" },
+      { href: "/company", label: "Company" },
       { href: "/security", label: "Security & trust" },
+      { href: "/refund-policy", label: "Refund policy" },
+      { href: "/terms", label: "Terms" },
+      { href: "/privacy", label: "Privacy" },
+      { href: "/dpa", label: "DPA" },
     ],
     resourcesTitle: "Resources",
     resources: [
@@ -635,6 +650,7 @@ export const LANDING = {
       { href: "/stories", label: "Stories" },
       { href: "/changelog", label: "Changelog" },
       { href: "/compare", label: "Compare" },
+      { href: SUPPORT_CONTACT.href, label: SUPPORT_CONTACT.label },
     ],
     socialTitle: "Find us",
     /** No public profile links are rendered until real external accounts exist. */
@@ -662,7 +678,8 @@ export const PRICING = {
   /** Per-plan CTA — starts a free trial of that tier. */
   planCta: "Start free",
   /** Reassurance under the grid (honest: free trial, no card, you set the ceiling). */
-  footnote: "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it.",
+  footnote:
+    "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
   /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
   faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
@@ -987,13 +1004,14 @@ export const CONSOLE = {
   firstRun: {
     eyebrow: "New here",
     headline: "Your company's an empty desk. Let's staff it.",
-    sub: "Hire your founding team — seven departments, each with a named lead — and hand them their first brief. About a minute from here to your first running task.",
+    sub: "Connect Claude first, then hire your founding team — seven departments, each with a named lead — and hand them their first brief.",
     steps: [
       { k: "team", title: "Hire the team", body: "Seven departments — growth, product, design and the rest — each led by a named agent." },
       { k: "work", title: "They clock in", body: "Every lead opens their first task the moment they're hired. You'll watch the board fill up." },
       { k: "control", title: "You hold the keys", body: "Only money needs your yes — a charge, a payout, real spend. Everything else the fleet ships on its own, every step on the record." },
     ],
     cta: "Start your first venture",
+    connectFirstCta: "Connect Claude first",
     ctaBusy: "Hiring your team…",
     ctaError: "That didn't take — give it another go.",
     /** Shown when the seed is rate-limited (429). Pairs with {@link consoleSeedRetryNote} for the countdown. */
@@ -1006,8 +1024,11 @@ export const CONSOLE = {
     connectError: "Your team can't run yet — connect Claude so they can actually clock in.",
     connectErrorCta: "Connect Claude",
     assembling: "Your team's clocking in. The board fills in as each lead opens their first task — hang tight.",
-    connectHint: "Bringing your own Claude? Connect it in Settings so the team can actually run.",
+    connectHint: "Required before hiring: connect Claude in Settings so the team can actually run.",
     connectCta: "Open Settings",
+    timeoutTitle: "Your team is ready, but Claude is not connected.",
+    timeoutBody: "Nothing has appeared on the board yet. Connect Claude to start the work, or retry the hire flow.",
+    timeoutRetry: "Retry hire",
     /**
      * First-run auto-deliverable (#301): the moment a fresh workspace lands on the board, Scout quietly
      * takes a real, no-spend first pass — an SEO audit of the workspace's own site — so the owner has
@@ -1148,8 +1169,14 @@ export const CONSOLE = {
     collapse: "Collapse",
     expand: "Expand",
     steps: {
+      target: {
+        label: "Tell us what to market",
+        hint: "Goals, audience, positioning, and competitors so agents stop guessing.",
+        cta: "Set target",
+      },
       brand: { label: "Set your brand", hint: "Name, palette, and voice so the team sounds like you.", cta: "Set brand" },
-      connect: { label: "Connect an account", hint: "Link one place your work goes out — the agents take it from there.", cta: "Connect" },
+      claude: { label: "Connect Claude", hint: "Required runtime access before the hired team can clock in.", cta: "Connect Claude" },
+      connect: { label: "Connect an output account", hint: "Link one place your work goes out — the agents take it from there.", cta: "Connect" },
       run: { label: "Run an agent", hint: "Ask a teammate in any channel, e.g. “@scout audit our homepage.”", cta: "Got it" },
       approve: { label: "See & approve the result", hint: "Review what the team drafted and give it the green light.", cta: "Review" },
     },
@@ -1236,7 +1263,7 @@ export const CONSOLE = {
   },
   /** Per-project settings sheet: tab labels + field copy. */
   settings: {
-    tabs: { general: "General", models: "Models", agents: "Agents", budget: "Budget", approvals: "Approvals" },
+    tabs: { general: "General", models: "Models", agents: "Agents", budget: "Budget", approvals: "Approvals", skillopt: "SkillOpt" },
     general: {
       repoLabel: "REPOSITORY",
       repoHint: "one project = one repo = one company",
@@ -1269,6 +1296,21 @@ export const CONSOLE = {
       gateSub: "money moves are gated in code; the fleet ships everything else on its own",
       approverLabel: "APPROVERS",
       approverHint: "every yes is on the record",
+    },
+    skillopt: {
+      title: "SkillOpt proposals",
+      hint: "staged runbook edits with held-out validation receipts. adopt or reject through the same approval gate.",
+      loading: "loading proposals...",
+      empty: "no staged self-improvements yet.",
+      verified: "external receipt verified",
+      unverified: "not externally verified",
+      adopt: "Adopt",
+      reject: "Reject",
+      working: "Working...",
+      adoptReason: "Owner adopted the staged SkillOpt edit from the console.",
+      rejectReason: "Owner rejected the staged SkillOpt edit from the console.",
+      error: "Couldn't load SkillOpt proposals.",
+      decisionError: "Couldn't update that SkillOpt approval.",
     },
     close: "Done",
   },
@@ -1543,7 +1585,11 @@ export const BILLING = {
     /** Shown instead of the test-mode note once the owner has flipped go-live (#481): real money is on. */
     liveModeTitle: "Live — real payments are on",
     liveModeBody:
-      "Checkout is live: real cards are charged and your plan activates the moment payment clears. Manage subscriptions, receipts, and refunds in the Stripe dashboard.",
+      "Checkout is live: real cards are charged and your plan activates the moment payment clears. Invoices and receipts appear here after payment.",
+    invoicesTitle: "Invoices & receipts",
+    noInvoices: "No invoices yet. Paid invoices and PDFs appear here after checkout.",
+    invoiceLinkLabel: "Open invoice",
+    invoicePdfLabel: "Open PDF",
   },
 } as const;
 
@@ -1585,6 +1631,10 @@ export const FAQ = {
       a: "Start free, no card. Starter is $49/month for proving the loop with one department fleet: three agent seats, a $200 monthly session budget, approvals, and the audit trail. Pro is $199/month for teams that want more of the business moving at once: ten seats, a $1,000 monthly budget, three department fleets, priority autonomy, and deploy-to-live. Upgrade when one lane is working and you want more departments moving without waiting in line.",
     },
     {
+      q: "What is the refund policy and support SLA?",
+      a: "Paid customers can request a refund within 14 days of the first charge if the fleet cannot deliver the promised starter work after support has had a fair chance to help. We acknowledge support requests within one business day, and urgent billing or access issues are prioritized first.",
+    },
+    {
       q: "What do priority autonomy and deploy-to-live mean?",
       a: "Priority autonomy means Pro work gets a larger budget and earlier background-run capacity, so agents can keep planning, drafting, and checking without you restarting every step. Deploy-to-live means approved site or venture changes can move from preview to the live customer URL through the product flow, with receipts and rollback paths instead of a manual handoff.",
     },
@@ -1614,13 +1664,150 @@ export const CONTACT = {
   messagePlaceholder: "We publish twice a week and our SEO is a mess…",
   submitLabel: "Send it over",
   trialLinkLabel: "Send me a trial link",
+  trialCta: "Start a free trial",
+  trialHref: "/start?source=landing_contact_cta",
+  bookingCta: "Book a 15-minute call",
+  bookingHref: "https://cal.com/ipop/intro",
   nextStepIntro: "Want to keep moving now?",
   /** In-flight label while the lead is posting. */
   sendingLabel: "Sending…",
   /** Shown after the lead is captured (GAP 1, ADR-0400) — it now really persists + reaches a human. */
   sentNote: "Got it — your note's in. A person will read it and reply, usually within a day.",
   /** Shown if the post fails — honest, with a fallback so the lead is never silently lost. */
-  errorNote: "That didn't go through. Mind trying again, or email us directly and we'll pick it up.",
+  errorNote: `That didn't go through. Mind trying again, or email us at ${SUPPORT_CONTACT.email} and we'll pick it up.`,
+  consentLabel: "I agree to be contacted about ipop and accept the public legal terms, privacy notice, and DPA.",
+  consentHelp:
+    "We use this to reply to your note, keep a consent record, and honor privacy or data-subject-rights requests sent to support@ipop.ai.",
+} as const;
+
+/** Public company-level legal pages (#863). Factual product terms, not per-venture generated docs. */
+export const LEGAL = {
+  terms: {
+    eyebrow: "Terms of Service",
+    title: "Terms for using ipop",
+    sub:
+      "These are the public platform terms for creating an account, running agents, approving work, and paying for ipop.",
+    navLabel: "Terms",
+    href: "/terms",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "What ipop provides",
+        body:
+          "ipop gives your workspace AI-agent tools for marketing operations, research, drafting, analytics, and approved publishing. You are responsible for the goals, inputs, accounts, and approvals you provide.",
+      },
+      {
+        title: "Accounts and acceptable use",
+        body:
+          "Keep account details accurate, protect credentials, and do not use the service for unlawful, abusive, deceptive, spam, malware, or rights-infringing activity. We may restrict access when safety, security, or legal risk requires it.",
+      },
+      {
+        title: "Approvals, spend, and third-party services",
+        body:
+          "Money movement and external publishing require the product's approval gates where configured. Third-party platforms, ad networks, payment processors, and model providers may apply their own terms and fees.",
+      },
+      {
+        title: "Customer content and outputs",
+        body:
+          "You keep ownership of content you provide. Outputs are generated from your instructions and connected tools; review them before relying on them, publishing them, or using them in regulated contexts.",
+      },
+      {
+        title: "Billing, refunds, and support",
+        body:
+          "Paid plans, budget caps, refunds, and support response targets are described before checkout and on the refund policy page. Approved third-party spend may not be refundable.",
+      },
+      {
+        title: "Changes and contact",
+        body:
+          "We may update these terms as the product changes. Material changes will be reflected on this page. Questions go to support@ipop.ai.",
+      },
+    ],
+  },
+  privacy: {
+    eyebrow: "Privacy Policy",
+    title: "How ipop handles personal data",
+    sub:
+      "This policy explains what we collect from visitors and customers, why we use it, and how to contact us about privacy requests.",
+    navLabel: "Privacy",
+    href: "/privacy",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "Data we collect",
+        body:
+          "We collect account details such as name, email, workspace slug, authentication events, contact-form messages, support requests, billing metadata, connected-tool status, and product usage needed to run the service.",
+      },
+      {
+        title: "How we use it",
+        body:
+          "We use data to create accounts, operate workspaces, respond to messages, provide support, secure the service, measure product health, process billing, and improve agent workflows.",
+      },
+      {
+        title: "Connected tools and processors",
+        body:
+          "When you connect external tools, ipop uses the granted access to perform requested work. Payment, hosting, analytics, email, and model providers process data for us under their own processor terms.",
+      },
+      {
+        title: "Marketing contact and consent",
+        body:
+          "Contact and signup forms ask for consent before we store and use your details to reply. You can opt out of marketing or request deletion by contacting support@ipop.ai.",
+      },
+      {
+        title: "Security and retention",
+        body:
+          "We use workspace isolation, scoped credentials, approval gates, and audit logs. We keep personal data only as long as needed for the service, legal obligations, security, and customer support.",
+      },
+      {
+        title: "Your choices",
+        body:
+          "You can request access, correction, deletion, export, or restriction of personal data by emailing support@ipop.ai. We may need to verify the request before acting on it.",
+      },
+    ],
+  },
+  dpa: {
+    eyebrow: "Data Processing Agreement",
+    title: "DPA for customer data",
+    sub:
+      "This DPA explains how ipop processes customer personal data, supports GDPR Article 28 obligations, and handles data-subject requests.",
+    navLabel: "DPA",
+    href: "/dpa",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "Roles and scope",
+        body:
+          "When ipop processes personal data on behalf of a customer to provide the service, the customer acts as controller or business and ipop acts as processor or service provider.",
+      },
+      {
+        title: "Processing instructions",
+        body:
+          "We process customer personal data only to provide, secure, support, and improve the service; follow documented customer instructions; and comply with applicable law.",
+      },
+      {
+        title: "Security measures",
+        body:
+          "The service uses workspace isolation, scoped credentials, approval gates, audit logs, and reasonable technical and organizational safeguards appropriate to the data processed.",
+      },
+      {
+        title: "Subprocessors",
+        body:
+          "We may use hosting, payment, analytics, email, and model providers as subprocessors where needed to run ipop. We remain responsible for subprocessors we engage for the service.",
+      },
+      {
+        title: "Data-subject rights",
+        body:
+          "Customers and data subjects can request access, export, deletion, correction, objection, or restriction by emailing support@ipop.ai. We may verify requests before acting.",
+      },
+      {
+        title: "Return, deletion, and transfers",
+        body:
+          "On termination or verified request, we delete or return personal data unless retention is required for legal, security, billing, or audit obligations. Where transfer mechanisms are required, the parties use an appropriate lawful mechanism.",
+      },
+    ],
+  },
+  backCta: "Back home",
+  securityCta: "Security & trust",
+  consentVersion: "public-legal-dpa-2026-06-25",
 } as const;
 
 /**
@@ -1672,11 +1859,13 @@ export const SECURITY = {
     },
   ],
   guaranteesTitle: "Built and enforced today",
+  slaTitle: "Support SLA",
+  sla:
+    "We acknowledge customer support requests within one business day. Billing, access, and live-work blockers are prioritized first, and every support case keeps an auditable status instead of disappearing into email.",
   /** NOT built / NOT certified. Each carries an explicit status so it can never be read as a claim. */
   roadmapTitle: "On the roadmap — not yet",
   roadmap: [
     { title: "SOC 2 Type II", status: "Planned — not yet certified", body: "We're building toward an audit. We are not certified today and don't claim to be." },
-    { title: "GDPR data-processing agreement", status: "Planned — not yet offered", body: "A formal DPA and the tooling behind it are on the roadmap, not shipped." },
     { title: "SSO / SAML", status: "Designed seam — not yet built", body: "The wiring point exists in the code; no identity provider is connected yet." },
     { title: "Kernel-level network policy", status: "Partial — application-enforced today", body: "Egress is enforced at the application layer now; in-sandbox kernel enforcement is the next step." },
   ],
@@ -1686,6 +1875,98 @@ export const SECURITY = {
   backCta: "Back to home",
   /** The footer/nav link label that points visitors at this page. */
   navLabel: "Security & trust",
+} as const;
+
+/** Public support and refund terms (#865). Kept factual: it describes the current money gate and support SLA. */
+export const REFUND_POLICY = {
+  eyebrow: "Refunds & support",
+  title: "Plain terms before you pay",
+  sub:
+    "No mystery policy hidden after checkout. Here is how refunds, billing support, and response times work for paid ipop customers.",
+  sections: [
+    {
+      title: "14-day first-charge refund window",
+      body:
+        "If your first paid workspace cannot deliver the promised starter work, contact support within 14 days of the charge. We will either help unblock the fleet or process a refund through the money-approval path.",
+    },
+    {
+      title: "Human-reviewed money actions",
+      body:
+        "Refunds are never fired automatically by an agent. They are recorded, reviewed, and approved by a human with the amount visible before money moves.",
+    },
+    {
+      title: "Support SLA",
+      body:
+        "We acknowledge customer support requests within one business day. Billing, access, and live-work blockers are prioritized first.",
+    },
+    {
+      title: "What is not refundable",
+      body:
+        "Approved third-party spend, completed custom services, abuse, fraud, and repeated policy violations are not refundable. We will still provide receipts and a clear explanation.",
+    },
+  ],
+  cta: "Back to pricing",
+  ctaHref: "/pricing",
+  securityCta: "Security & trust",
+  securityHref: "/security",
+  navLabel: "Refund policy",
+} as const;
+
+function companyValue(key: string, fallback: string): string {
+  const value = (env as unknown as Record<string, string | undefined>)[key];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
+}
+
+/** Public company information (#866): buyer/procurement basics, with env-overridable details. */
+export const COMPANY = {
+  eyebrow: "Company",
+  title: "Company information",
+  sub:
+    "The factual details a buyer, payment processor, or legal team needs before contracts, invoices, and payouts.",
+  navLabel: "Company",
+  href: "/company",
+  updated: "Updated June 25, 2026",
+  factsTitle: "Business details",
+  details: [
+    {
+      label: "Legal entity",
+      value: companyValue("VITE_COMPANY_LEGAL_ENTITY", "ipop.ai operator"),
+    },
+    {
+      label: "Jurisdiction",
+      value: companyValue("VITE_COMPANY_JURISDICTION", "United States"),
+    },
+    {
+      label: "Postal address",
+      value: companyValue(
+        "VITE_COMPANY_POSTAL_ADDRESS",
+        "Postal notices are coordinated through support@ipop.ai until a registered office is published.",
+      ),
+    },
+    {
+      label: "Principal",
+      value: companyValue("VITE_COMPANY_PRINCIPAL", "Gagan Arora, owner"),
+    },
+  ],
+  sections: [
+    {
+      title: "Contracting and notices",
+      body:
+        "For vendor onboarding, tax forms, security questionnaires, postal notices, or procurement review, contact support@ipop.ai and include the workspace or buying organization name.",
+    },
+    {
+      title: "Public legal documents",
+      body:
+        "Company-level terms, privacy, refund, and security pages are linked from the footer so buyers can review baseline operating terms before talking to the team.",
+    },
+  ],
+  legalLinks: [
+    { href: LEGAL.terms.href, label: LEGAL.terms.navLabel },
+    { href: LEGAL.privacy.href, label: LEGAL.privacy.navLabel },
+    { href: "/security", label: SECURITY.navLabel },
+    { href: "/refund-policy", label: REFUND_POLICY.navLabel },
+  ],
+  backCta: "Back home",
 } as const;
 
 /**
@@ -1745,6 +2026,7 @@ export const SITE = {
   ctaSecondary: "Sign in",
   /** The dogfood credit on every content page — the agents drafted it, a human approved it. */
   maintainedBy: "This page is maintained by Quill, our content agent — drafted by AI, approved by a human.",
+  support: SUPPORT_CONTACT,
   /** Shown when a section or page has no published content yet (graceful, on-voice empty state). */
   empty: "Nothing published here yet. Quill's still drafting — check back soon.",
   /** Shown when the content API can't be reached (the page degrades instead of crashing). */
@@ -1846,6 +2128,140 @@ export const BRAND_ASSETS = {
   spectrumBody: "One hue per marketing function, a warm-to-cool arc anchored on Pop Vermilion.",
 } as const;
 
+export interface SegmentLandingPage {
+  readonly slug: string;
+  readonly path: string;
+  readonly navLabel: string;
+  readonly seoTitleSubject: string;
+  readonly seoDescription: string;
+  readonly hero: {
+    readonly eyebrow: string;
+    readonly title: string;
+    readonly sub: string;
+  };
+  readonly proof: {
+    readonly title: string;
+    readonly body: string;
+    readonly metric: string;
+  };
+  readonly bullets: readonly string[];
+  readonly cta: {
+    readonly label: string;
+    readonly href: string;
+  };
+  readonly experiment: {
+    readonly id: string;
+    readonly variants: readonly { readonly key: "a" | "b"; readonly label: string; readonly href: string }[];
+  };
+}
+
+/** #599: approved ICP-specific landing pages generated from campaign briefs and kept behind this fact gate. */
+export const SEGMENT_LANDING_PAGES = [
+  {
+    slug: "startups",
+    path: "/segments/startups",
+    navLabel: "Startups",
+    seoTitleSubject: "AI marketing team for startups",
+    seoDescription:
+      "A startup landing page for founders who need strategy, content, launch assets, and weekly proof without hiring a full marketing team.",
+    hero: {
+      eyebrow: "For founder-led startups",
+      title: "Ship the marketing team before you can hire one",
+      sub:
+        "ipop turns a launch brief into positioning, content, landing-page updates, and approval-ready outreach while the founder keeps final say.",
+    },
+    proof: {
+      title: "Built for the week after the roadmap changed",
+      body:
+        "The fleet keeps copy, experiments, and founder updates moving in parallel, then brings spend and outbound back to the approval queue.",
+      metric: "3 launch surfaces from one brief",
+    },
+    bullets: [
+      "Turn one product brief into ICP pages, launch posts, and founder updates.",
+      "Keep approvals human for spend, publishing, and outbound sends.",
+      "Use the same workspace to inspect every draft, revision, and shipped artifact.",
+    ],
+    cta: { label: "Start the startup brief", href: "/start?segment=startups" },
+    experiment: {
+      id: "segment-startups-hero",
+      variants: [
+        { key: "a", label: "Outcome-first headline", href: "/segments/startups?ab=a" },
+        { key: "b", label: "Team-before-hiring headline", href: "/segments/startups?ab=b" },
+      ],
+    },
+  },
+  {
+    slug: "agencies",
+    path: "/segments/agencies",
+    navLabel: "Agencies",
+    seoTitleSubject: "AI marketing agents for agencies",
+    seoDescription:
+      "A segment landing page for agencies that need overflow research, drafts, QA, and client-ready marketing assets without adding headcount.",
+    hero: {
+      eyebrow: "For lean agencies",
+      title: "Give every account team a back office that ships",
+      sub:
+        "ipop drafts research, content, briefs, and QA notes so strategists spend less time chasing blank pages and more time steering quality.",
+    },
+    proof: {
+      title: "Overflow work without mystery labor",
+      body:
+        "Every deliverable stays visible in the decision queue, with receipts for who drafted it and what still needs client approval.",
+      metric: "Review-ready drafts before standup",
+    },
+    bullets: [
+      "Spin up account-specific research, content, and campaign drafts from one client brief.",
+      "Keep client-sensitive approvals inside the queue before anything leaves the workspace.",
+      "Standardize QA so every strategist sees the same proof, sources, and next action.",
+    ],
+    cta: { label: "Build an agency pod", href: "/start?segment=agencies" },
+    experiment: {
+      id: "segment-agencies-hero",
+      variants: [
+        { key: "a", label: "Back-office headline", href: "/segments/agencies?ab=a" },
+        { key: "b", label: "Overflow headline", href: "/segments/agencies?ab=b" },
+      ],
+    },
+  },
+  {
+    slug: "solo-operators",
+    path: "/segments/solo-operators",
+    navLabel: "Solo operators",
+    seoTitleSubject: "AI marketing department for solo operators",
+    seoDescription:
+      "A segment landing page for solo operators who need a small AI marketing department to turn offers into proof, pages, and follow-up.",
+    hero: {
+      eyebrow: "For one-person teams",
+      title: "A tiny department for the work you keep postponing",
+      sub:
+        "ipop turns the offer in your head into pages, posts, follow-up drafts, and proof checks without pretending you suddenly have spare time.",
+    },
+    proof: {
+      title: "Small enough to steer, useful enough to trust",
+      body:
+        "You get one place to brief, review, and approve the work, with clear gates before publishing, spending, or sending anything externally.",
+      metric: "One brief, one queue, many finished drafts",
+    },
+    bullets: [
+      "Convert a messy offer into page copy, proof points, and follow-up drafts.",
+      "See what is done, what needs your yes, and what should wait.",
+      "Keep the system honest: no fake customers, no silent sending, no mystery spend.",
+    ],
+    cta: { label: "Start the solo brief", href: "/start?segment=solo-operators" },
+    experiment: {
+      id: "segment-solo-operators-hero",
+      variants: [
+        { key: "a", label: "Tiny-department headline", href: "/segments/solo-operators?ab=a" },
+        { key: "b", label: "Postponed-work headline", href: "/segments/solo-operators?ab=b" },
+      ],
+    },
+  },
+] as const satisfies readonly SegmentLandingPage[];
+
+export function segmentLandingPage(slug: string | undefined): SegmentLandingPage | undefined {
+  return SEGMENT_LANDING_PAGES.find((page) => page.slug === slug);
+}
+
 /**
  * Per-route SEO metadata for the prerendered public surfaces (#467). Scout's audit found every route —
  * home, login, start, pricing, the marketing sections — shared the homepage's `<title>`, description, and
@@ -1863,6 +2279,31 @@ export const PAGE_SEO = {
     name: "Pricing",
     title: `Pricing — ${BRAND.name}, your marketing agency of AI agents`,
     description: PRICING.sub,
+  },
+  "/refund-policy": {
+    name: "Refund policy",
+    title: `Refund policy — ${BRAND.name} support SLA and billing terms`,
+    description: REFUND_POLICY.sub,
+  },
+  "/terms": {
+    name: "Terms",
+    title: `Terms of Service — ${BRAND.name} platform terms`,
+    description: LEGAL.terms.sub,
+  },
+  "/privacy": {
+    name: "Privacy",
+    title: `Privacy Policy — how ${BRAND.name} handles customer data`,
+    description: LEGAL.privacy.sub,
+  },
+  "/company": {
+    name: COMPANY.navLabel,
+    title: `Company information — ${BRAND.name} legal and operator details`,
+    description: COMPANY.sub,
+  },
+  "/dpa": {
+    name: "DPA",
+    title: `DPA / Data Processing Agreement — ${BRAND.name} customer data terms`,
+    description: LEGAL.dpa.sub,
   },
   "/compare": {
     name: "Compare",
@@ -1893,12 +2334,12 @@ export const PAGE_SEO = {
 
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {
-  title: "You're flying — time for more runway",
+  title: "tiny runway situation",
   body:
-    "Your free trial workspace hit a cap. Nothing's lost; your agents are just waiting on more room to work. " +
-    "Pick a plan and they're back at it in seconds.",
-  cta: "See plans",
-  dismiss: "Not now",
+    "Your trial hit its cap. Nothing's lost; the agents are lined up at the door, politely not spending " +
+    "another penny until you give them more room.",
+  cta: "show me plans",
+  dismiss: "not now",
   /** Shown as the small print under the nudge, naming the current plan. */
-  onPlan: (planName: string): string => `You're on the ${planName} trial.`,
+  onPlan: (planName: string): string => `currently on ${planName}. modest, but respectable.`,
 } as const;

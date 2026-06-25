@@ -52,7 +52,7 @@ describe("classifyReversibility", () => {
 
   it("has an entry for every service kind", () => {
     expect(Object.keys(REVERSIBILITY_BY_KIND).sort()).toEqual(
-      ["ad_account", "analytics", "esp", "hosting", "other", "payment", "registrar"].sort(),
+      ["ad_account", "analytics", "esp", "hosting", "other", "payment", "registrar", "sms"].sort(),
     );
   });
 });

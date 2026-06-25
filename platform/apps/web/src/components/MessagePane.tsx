@@ -8,9 +8,12 @@ import { EmptyState } from "./EmptyState.js";
 import { Composer } from "./Composer.js";
 import { decideOnNewMessages, isNearBottom, scrollTopForPreservedAnchor, type ScrollMetrics } from "./message-scroll.js";
 import { useLiveChannelMessages } from "./console/useLiveChannelMessages.js";
+import { useTheaterStream } from "./theater/useTheaterStream.js";
 import type { Message } from "../api/types.js";
+import type { EventSourceLike, TheaterEventDto } from "../api/theater.js";
 
 const MESSAGE_RENDER_WINDOW = 200;
+const CHANNEL_STEP_CAP = 20;
 
 export interface MessagePaneProps {
   /**
@@ -19,9 +22,11 @@ export interface MessagePaneProps {
    * channel's (an agent's 1:1 is its department channel), so the history is real, not invented.
    */
   dmPeer?: DirectoryEntry | null;
+  /** Test seam for the live trace SSE stream (#1051); production uses the browser EventSource. */
+  stepEventSourceFactory?: (url: string) => EventSourceLike;
 }
 
-export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Element {
+export function MessagePane({ dmPeer, stepEventSourceFactory }: MessagePaneProps = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
   const { channels, activeChannelId, messagesByChannel, identity, liveSessions, directory } = state;
@@ -31,10 +36,23 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
   // "Scout is working…" where the work is happening instead of only the global "N running" pill. Empty ⇒
   // nothing running here.
   const workingHere = activeChannelId ? liveSessions.filter((s) => s.channelId === activeChannelId) : [];
-  // De-duplicated by display name (a teammate could in theory have two sessions).
-  const workingNames = workingHere
-    .map((s) => authorLabel(directory, s.agentMemberId))
-    .filter((name, i, all) => all.indexOf(name) === i);
+  const workingPills = workingHere.map((s) => ({
+    id: s.id,
+    name: authorLabel(directory, s.agentMemberId),
+    label: agentStatusLabel(s.agentStatus),
+  }));
+  const workingSessionIds = new Set(workingHere.map((s) => s.id));
+  const { lanes: traceLanes } = useTheaterStream(identity?.workspaceId, undefined, stepEventSourceFactory);
+  const liveSteps = traceLanes
+    .flatMap((lane) => {
+      if (!lane.run.sessionId || !workingSessionIds.has(lane.run.sessionId)) return [];
+      const agentName = lane.run.agentMemberId
+        ? authorLabel(directory, lane.run.agentMemberId)
+        : (lane.run.label ?? "Agent");
+      return lane.events.map((event) => ({ event, agentName }));
+    })
+    .sort((a, b) => a.event.seq - b.event.seq)
+    .slice(-CHANNEL_STEP_CAP);
   // The server's message list/stream is flat and inclusive of replies (ADR-0006). Slack-style, a
   // reply stays in its thread unless it was explicitly "also sent to channel" — so the channel view
   // shows top-level messages plus replies flagged for the channel.
@@ -158,6 +176,7 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
             {visibleMessages.map((m) => <MessageItem key={m.id} message={m} state={state} />)}
           </>
         )}
+        {liveSteps.length > 0 && <AgentStepFeed steps={liveSteps} />}
       </div>
 
       {unread > 0 && (
@@ -173,7 +192,7 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
         </button>
       )}
 
-      {workingNames.length > 0 && (
+      {workingPills.length > 0 && (
         <div className="typingind" role="status" aria-live="polite">
           <span className="typingind__dots" aria-hidden="true">
             <i />
@@ -181,7 +200,12 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
             <i />
           </span>
           <span className="typingind__label">
-            {formatWorking(workingNames)} {workingNames.length === 1 ? "is" : "are"} working…
+            {workingPills.map((p) => (
+              <span className="typingind__pill" key={p.id}>
+                <strong>{p.name}</strong>
+                <span>{p.label}</span>
+              </span>
+            ))}
           </span>
           {/* #469: a per-run cancel — the user can stop a run that's taking too long, right where they see it. */}
           <button
@@ -198,6 +222,40 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
       <Composer queue draftKey={activeChannelId ?? undefined} prefill={prefill} />
     </section>
   );
+}
+
+function AgentStepFeed({
+  steps,
+}: {
+  steps: { event: TheaterEventDto; agentName: string }[];
+}): React.JSX.Element {
+  return (
+    <ol className="agentsteps" aria-label="Live agent steps">
+      {steps.map(({ event, agentName }) => (
+        <li className={"agentsteps__item agentsteps__item--" + event.phase} key={event.id}>
+          <span className="agentsteps__agent">{agentName}</span>
+          <span className="agentsteps__phase">{phaseLabel(event.phase)}</span>
+          {event.label ? <span className="agentsteps__tool">{event.label}</span> : null}
+          <span className="agentsteps__summary">{event.summary}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function phaseLabel(phase: TheaterEventDto["phase"]): string {
+  switch (phase) {
+    case "context":
+      return "context";
+    case "reasoning":
+      return "thinking";
+    case "action":
+      return "action";
+    case "artifact":
+      return "artifact";
+    case "approval":
+      return "approval";
+  }
 }
 
 /**
@@ -239,11 +297,22 @@ function ChannelStarters({
   );
 }
 
-/** "Scout" · "Scout and Quill" · "Scout, Quill and 1 more" — a compact list for the working indicator. */
-function formatWorking(names: string[]): string {
-  if (names.length === 1) return names[0]!;
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+function agentStatusLabel(status: AppState["liveSessions"][number]["agentStatus"]): string {
+  switch (status) {
+    case "thinking":
+      return "thinking";
+    case "drafting":
+      return "drafting";
+    case "waiting":
+      return "waiting";
+    case "handoff":
+      return "handoff";
+    case "done":
+      return "done";
+    case "idle":
+    default:
+      return "idle";
+  }
 }
 
 function MessageItem({ message, state }: { message: Message; state: AppState }): React.JSX.Element {

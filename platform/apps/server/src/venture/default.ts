@@ -269,7 +269,12 @@ export async function kickoffFoundingVenture(
     ? `Our founding venture is in flight — ${idea.wedge} Pick up your first task from the venture board ` +
       `and produce real, reviewable work toward it.`
     : "Our founding venture is in flight — pick up your first task and produce real, reviewable work.";
-  return { epicTaskId: result.epicTaskId, iterations: result.iterations, verdict: result.verdict, brief };
+  return {
+    epicTaskId: result.epicTaskId,
+    iterations: result.iterations,
+    verdict: result.verdict,
+    brief,
+  };
 }
 
 /** Build the production VentureEngine (#96 scheduled tick). The timer is started in `index.ts`. */
@@ -281,6 +286,7 @@ export function createDefaultVentureEngine(
   return new VentureEngine({
     service: createDefaultVentureService(undefined, demand, constitution),
     listActiveEvaluationWorkspaces,
+    caps: (workspaceId) => resolveVentureCaps(loadConfig(workspaceId).venture),
     logger,
   });
 }

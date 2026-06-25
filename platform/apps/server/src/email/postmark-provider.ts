@@ -54,10 +54,11 @@ export class PostmarkEspProvider implements EspSender {
     to: string;
     subject: string;
     body: string;
+    from?: string | null;
     headers?: Record<string, string>;
   }): Promise<{ externalId: string }> {
     const payload: Record<string, unknown> = {
-      From: this.from,
+      From: input.from?.trim() || this.from,
       To: input.to,
       Subject: input.subject,
       [this.html ? "HtmlBody" : "TextBody"]: input.body,

@@ -10,6 +10,8 @@ import { renderMetrics, resetMetrics } from "../../src/observability/metrics.js"
  */
 
 const recordLead = vi.fn(async () => ({ id: "lead-1" }));
+const findRecentLeadDuplicate = vi.fn(async () => null);
+const verifyLeadByTokenHash = vi.fn(async () => null);
 const listLeads = vi.fn(async () => []);
 const getLead = vi.fn(async () => null);
 const updateLead = vi.fn(async () => null);
@@ -18,6 +20,8 @@ const getWorkspaceOwnerMemberId = vi.fn(async () => "33333333-2222-3333-4444-555
 const notify = vi.fn(async () => ({ id: "notif-1" }));
 vi.mock("../../src/db/repositories/inbound-leads.js", () => ({
   recordLead,
+  findRecentLeadDuplicate,
+  verifyLeadByTokenHash,
   listLeads,
   getLead,
   updateLead,
@@ -56,6 +60,7 @@ async function buildRoute(
   ownerWorkspaceId: string | undefined,
   discovery: FakeDiscovery,
   warmLeadFollowup?: Parameters<typeof inboundLeadsRoutes>[1]["warmLeadFollowup"],
+  confirmation?: Parameters<typeof inboundLeadsRoutes>[1]["confirmation"],
 ): Promise<{ app: FastifyInstance; warn: ReturnType<typeof vi.spyOn> }> {
   const app = Fastify();
   const warn = vi.spyOn(app.log, "warn");
@@ -63,6 +68,7 @@ async function buildRoute(
     discovery: discovery as unknown as Parameters<typeof inboundLeadsRoutes>[1]["discovery"],
     ownerWorkspaceId,
     warmLeadFollowup,
+    confirmation,
   });
   await app.ready();
   return { app, warn };
@@ -75,9 +81,37 @@ function fakeDiscovery(impl?: () => Promise<unknown>): FakeDiscovery {
   };
 }
 
+function verifiedLead(over: Record<string, unknown> = {}) {
+  return {
+    id: "lead-1",
+    workspaceId: OWNER_WID,
+    name: "Ada",
+    email: "ada@example.com",
+    message: "fix our SEO",
+    source: "landing_form",
+    trackingRef: null,
+    verified: true,
+    verifiedAtMs: Date.now(),
+    status: "new",
+    assigneeMemberId: null,
+    nextAction: null,
+    respondedAtMs: null,
+    slaDueAtMs: Date.now() + 86_400_000,
+    slaNotifiedAtMs: null,
+    slaBreached: false,
+    reachContactKey: "email:ada@example.com",
+    createdAtMs: Date.now(),
+    ...over,
+  };
+}
+
 beforeEach(() => {
   resetMetrics();
   recordLead.mockClear();
+  findRecentLeadDuplicate.mockReset();
+  findRecentLeadDuplicate.mockResolvedValue(null);
+  verifyLeadByTokenHash.mockReset();
+  verifyLeadByTokenHash.mockResolvedValue(null);
   listLeads.mockReset();
   listLeads.mockResolvedValue([]);
   getLead.mockClear();
@@ -88,10 +122,11 @@ beforeEach(() => {
 });
 
 describe("POST /inbound/leads (public capture)", () => {
-  it("persists a clean lead, qualifies it, triggers follow-up, and returns an actionable next step", async () => {
+  it("persists a clean lead as unverified, sends confirmation, then activates it on click", async () => {
     const disc = fakeDiscovery();
     const followup = { handle: vi.fn(async () => undefined) };
-    const { app } = await buildRoute(OWNER_WID, disc, followup);
+    const confirmation = { secret: "test-secret", baseUrl: "https://ipop.ai", send: vi.fn(async () => undefined) };
+    const { app } = await buildRoute(OWNER_WID, disc, followup, confirmation);
     const res = await app.inject({
       method: "POST",
       url: "/inbound/leads",
@@ -108,8 +143,31 @@ describe("POST /inbound/leads (public capture)", () => {
       email: "ada@example.com",
       message: "fix our SEO",
       source: "landing_form",
+      emailHash: expect.any(String),
+      submitterHash: expect.any(String),
+      verificationTokenHash: expect.any(String),
+      verificationSentAt: expect.any(Date),
     });
-    // Best-effort discovery feed: a default role_match definition plus an opaque (non-email) prospect key.
+    expect(confirmation.send).toHaveBeenCalledWith({
+      to: "ada@example.com",
+      name: "Ada",
+      confirmationUrl: expect.stringContaining("https://ipop.ai/inbound/leads/confirm?"),
+    });
+    expect(disc.defineSignal).not.toHaveBeenCalled();
+    expect(followup.handle).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+
+    verifyLeadByTokenHash.mockResolvedValueOnce(verifiedLead());
+    const confirmationUrl = confirmation.send.mock.calls[0]![0].confirmationUrl;
+    const confirm = await app.inject({
+      method: "GET",
+      url: confirmationUrl.replace("https://ipop.ai", ""),
+    });
+    expect(confirm.statusCode).toBe(200);
+    expect(confirm.json()).toMatchObject({ verified: true });
+    expect(verifyLeadByTokenHash).toHaveBeenCalledWith(expect.any(String));
+
+    // Best-effort discovery feed starts only after confirmation: a default role_match definition plus an opaque key.
     expect(disc.defineSignal).toHaveBeenCalledWith(
       OWNER_WID,
       expect.objectContaining({
@@ -215,18 +273,38 @@ describe("POST /inbound/leads (public capture)", () => {
     await app.close();
   });
 
+  it("suppresses duplicate same-IP/email submissions within the dedupe window", async () => {
+    findRecentLeadDuplicate.mockResolvedValueOnce({ id: "lead-existing" });
+    const confirmation = { secret: "test-secret", baseUrl: "https://ipop.ai", send: vi.fn(async () => undefined) };
+    const { app } = await buildRoute(OWNER_WID, fakeDiscovery(), undefined, confirmation);
+    const res = await app.inject({
+      method: "POST",
+      url: "/inbound/leads",
+      payload: { email: "ada@example.com", message: "fix our SEO" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(recordLead).not.toHaveBeenCalled();
+    expect(confirmation.send).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("still returns 202 when the discovery feed throws (capture must not fail)", async () => {
     const disc = fakeDiscovery(async () => {
       throw new Error("discovery down");
     });
-    const { app } = await buildRoute(OWNER_WID, disc);
+    const confirmation = { secret: "test-secret", baseUrl: "https://ipop.ai", send: vi.fn(async () => undefined) };
+    const { app } = await buildRoute(OWNER_WID, disc, undefined, confirmation);
     const res = await app.inject({
       method: "POST",
       url: "/inbound/leads",
       payload: { email: "a@b.co", message: "hi" },
     });
     expect(res.statusCode).toBe(202);
-    expect(recordLead).toHaveBeenCalledTimes(1); // the lead was persisted before discovery ran
+    expect(recordLead).toHaveBeenCalledTimes(1);
+    verifyLeadByTokenHash.mockResolvedValueOnce(verifiedLead({ email: "a@b.co", message: "hi" }));
+    const confirmationUrl = confirmation.send.mock.calls[0]![0].confirmationUrl;
+    const confirm = await app.inject({ method: "GET", url: confirmationUrl.replace("https://ipop.ai", "") });
+    expect(confirm.statusCode).toBe(200);
     expect(renderMetrics()).toContain(
       'async_side_effect_failures_total{kind="inbound_lead_discovery_ingest"} 1',
     );
@@ -239,7 +317,8 @@ describe("POST /inbound/leads (public capture)", () => {
         throw new Error("reach down");
       }),
     };
-    const { app } = await buildRoute(OWNER_WID, fakeDiscovery(), followup);
+    const confirmation = { secret: "test-secret", baseUrl: "https://ipop.ai", send: vi.fn(async () => undefined) };
+    const { app } = await buildRoute(OWNER_WID, fakeDiscovery(), followup, confirmation);
     const res = await app.inject({
       method: "POST",
       url: "/inbound/leads",
@@ -247,6 +326,10 @@ describe("POST /inbound/leads (public capture)", () => {
     });
     expect(res.statusCode).toBe(202);
     expect(recordLead).toHaveBeenCalledTimes(1);
+    verifyLeadByTokenHash.mockResolvedValueOnce(verifiedLead({ email: "a@b.co", message: "hi" }));
+    const confirmationUrl = confirmation.send.mock.calls[0]![0].confirmationUrl;
+    const confirm = await app.inject({ method: "GET", url: confirmationUrl.replace("https://ipop.ai", "") });
+    expect(confirm.statusCode).toBe(200);
     expect(followup.handle).toHaveBeenCalledTimes(1);
     await app.close();
   });

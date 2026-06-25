@@ -5,6 +5,7 @@ import { newId } from "./db/id.js";
 import { REDACTION_MASK } from "./runtime/redact.js";
 import { registerObservability } from "./observability/plugin.js";
 import { registerCors } from "./http/cors.js";
+import { registerPublicRateLimits } from "./http/rate-limit.js";
 import { registerMaintenance } from "./maintenance/gate.js";
 import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
@@ -120,7 +121,7 @@ import { CustomerVoiceService } from "./voice/service.js";
 import { moatRoutes } from "./routes/moat.js";
 import { MoatService } from "./moat/service.js";
 import { createDefaultMoatService } from "./moat/default.js";
-import { listEvaluations } from "./db/repositories/venture.js";
+import { getIdeaById, listEvaluations } from "./db/repositories/venture.js";
 import type { WatchdogEngine } from "./watchdog/engine.js";
 import { createDefaultWatchdogEngine } from "./watchdog/default.js";
 import type { SreEngine } from "./sre/engine.js";
@@ -150,6 +151,9 @@ import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
 import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
+import { customerDeliverableRoutes } from "./routes/customer-deliverables.js";
+import { deliverableFeedbackRoutes } from "./routes/deliverable-feedback.js";
+import { deliverablePerformanceRoutes } from "./routes/deliverable-performance.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
 import type { FounderConsoleService } from "./founder-console/service.js";
 import { founderBriefingsRoutes } from "./routes/founder-briefings.js";
@@ -168,10 +172,12 @@ import { createDefaultDnsManager } from "./onboarding/dns/default.js";
 import type { DnsManager } from "./onboarding/dns/manager.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
+import { workspaceCapabilityRoutes } from "./routes/workspace-capabilities.js";
 import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { gardenRoutes } from "./routes/garden.js";
+import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
 import { departmentRoutes } from "./routes/department.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
@@ -192,6 +198,9 @@ import type { MonetizationService } from "./monetization/service.js";
 import type { MonetizationEngine } from "./monetization/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
+import { attributionMetadata, type SignupAttribution } from "./attribution/signup.js";
+import { createDefaultReferralService } from "./referrals/default.js";
+import type { ReferralService } from "./referrals/service.js";
 import { decisionMakerRoutes } from "./routes/decision-maker.js";
 import { createDefaultDecisionMakerService } from "./decision-maker/default.js";
 import type { DecisionMakerService } from "./decision-maker/service.js";
@@ -200,6 +209,7 @@ import { createDefaultDiscoveryService } from "./discovery/default.js";
 import type { DiscoveryService } from "./discovery/service.js";
 import { inboundLeadsRoutes } from "./routes/inbound-leads.js";
 import {
+  createDefaultInboundLeadConfirmationSender,
   createDefaultInboundLeadFollowup,
   resolveInboundLeadsOwnerWorkspaceId,
 } from "./leads/default.js";
@@ -259,10 +269,13 @@ import type { AutomationEngine } from "./automations/engine.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { workflowRoutes } from "./routes/workflows.js";
 import { createDefaultWorkflowEngine } from "./workflows/default.js";
+import { dependencySchedulerRoutes } from "./routes/dependency-scheduler.js";
+import { createDefaultDependencySchedulerService } from "./dependency-scheduler/default.js";
 import { createDefaultScheduler } from "./scheduler/default.js";
 import type { DurableScheduler } from "./scheduler/scheduler.js";
 import { workflowStore } from "./db/repositories/workflows.js";
 import type { WorkflowEngine } from "./workflows/engine.js";
+import type { DependencySchedulerService } from "./dependency-scheduler/service.js";
 import { missionControlRoutes } from "./routes/mission-control.js";
 import { createDefaultMissionControlService } from "./mission-control/default.js";
 import type { MissionControlService } from "./mission-control/service.js";
@@ -272,6 +285,7 @@ import type { AuditService } from "./audit/service.js";
 import { createDefaultGatePricingService } from "./gate-pricing/default.js";
 import type { GatePricingService } from "./gate-pricing/service.js";
 import { AdmissionError } from "./scale/admission.js";
+import { SpendCapBreachError } from "./runtime/manager.js";
 import { recordAdmissionDenied } from "./observability/metrics.js";
 
 /**
@@ -477,6 +491,8 @@ export interface BuildAppOptions {
   gatePricing?: GatePricingService;
   /** #102 growth loop: tests inject a service over fakes; default builds the real repo-backed one. */
   growth?: GrowthService;
+  /** #603 referral loop: tests inject a service; default stores signup attribution and incentives in Postgres. */
+  referrals?: ReferralService;
   /** #223 decision-maker resolver: tests inject a service over fakes; default builds the real one. */
   decisionMaker?: DecisionMakerService;
   /** #225 outreach engine: tests inject a service over fakes; default builds the real repo-backed one. */
@@ -494,6 +510,8 @@ export interface BuildAppOptions {
   automations?: AutomationEngine;
   /** #152 workflows: tests inject an engine over fake action seams; default builds the real repo-backed one. */
   workflows?: WorkflowEngine;
+  /** #590 dependency-aware scheduler: tests inject a service; default builds the self-managed Postgres-backed one. */
+  dependencyScheduler?: DependencySchedulerService;
   /** #559 scheduler: tests inject a scheduler over an in-memory store; default builds the Postgres-backed one. */
   scheduler?: DurableScheduler;
   /** #147 mission control: tests inject a read-only service over fakes; default reads the live #25 sessions. */
@@ -553,6 +571,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     genReqId: () => newId(),
   });
   app.register(cookie);
+  registerPublicRateLimits(app);
   // #108: env-gated CORS so the Vercel-hosted console (https://ipop.ai) can make credentialed calls
   // to this API on a different origin (https://api.ipop.ai). No-op unless RELOAD_WEB_ORIGIN is set.
   registerCors(app);
@@ -599,12 +618,26 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AdmissionError) {
       recordAdmissionDenied(err.reason);
-      const status = err.reason === "budget_exceeded" ? 402 : 429;
+      const status = err.reason === "budget_exceeded" || err.reason === "plan_expired" ? 402 : 429;
       // #221: a 429 (capacity / kill switch) carries a `Retry-After` so the client can show an honest
       // "retry in Ns" and hold the retry control until then, instead of re-firing straight into the cap.
       // Additive metadata only — the denial itself is unchanged (no gate is weakened).
       if (status === 429) reply.header("retry-after", String(ADMISSION_RETRY_AFTER_SECONDS));
-      return reply.code(status).send({ error: err.message, reason: err.reason });
+      return reply.code(status).send({
+        error: err.message,
+        reason: err.reason,
+        ...(err.reason === "budget_exceeded" || err.reason === "plan_expired"
+          ? { upgradePath: "Open Billing settings to raise or upgrade the workspace session budget." }
+          : {}),
+      });
+    }
+    if (err instanceof SpendCapBreachError) {
+      return reply.code(402).send({
+        error: err.message,
+        reason: err.reason,
+        approvalRequestId: err.approvalRequestId,
+        requestCents: err.requestCents,
+      });
     }
     // #96: the venture admission gate denies an autonomy launch lacking a fundable scorecard → 403.
     if (err instanceof VentureAdmissionError) {
@@ -630,7 +663,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(sampleRoutes, { ...opts.sample });
   // #99 maintenance control: GET/POST /maintenance backs `reload maintenance on|off|status`.
   app.register(maintenanceRoutes);
-  // #123 signup auto-seed needs the SessionManager (welcome launches), so authRoutes is registered
+  // #123/#902 signup auto-seed needs the SessionManager (welcome launches when enabled), so authRoutes is registered
   // below, right after the manager is built.
   app.register(meRoutes);
   // #262 in-app one-click Connect Claude (replaces the `claude setup-token` CLI; default OFF, owner-first).
@@ -680,7 +713,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // default) it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
   app.register(agentSessionRoutes, { sessionManager });
-  app.register(scaleRoutes, { admission: scale.admission, config: scale.config });
+  app.register(scaleRoutes, { admission: scale.admission, config: scale.config, activePlans: scale.activePlans });
   // #69 preflight/doctor: GET /preflight reports whether the configured cloud + real-agent posture
   // is runnable (auth + harness availability), backing `reload doctor`. Secret-free (names only).
   app.register(preflightRoutes, { preflight: opts.preflight });
@@ -695,14 +728,72 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
   // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
   app.register(subagentRoutes, { sessionManager });
+  // #901 signup attribution: construct growth before auth/OAuth so both entry points can record the
+  // acquisition denominator without waiting for the growth routes to be registered.
+  const growthService = opts.growth ?? createDefaultGrowthService();
+  const referralService = opts.referrals ?? createDefaultReferralService();
+  // #222 customer discovery engine: one instance shared by signup, billing, outreach, and the console.
+  const discoveryService =
+    opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
+  // #101/#125/#607/#602 billing + lifecycle services are shared by signup, billing routes, and webhook
+  // activation so a trial signup can enter the nurture sequence before the owner opens the billing panel.
+  const demandService = opts.demand ?? createDefaultDemandService(app.log);
+  const billingDefaults =
+    !opts.billingManager || !opts.planService || !opts.trialNurture
+      ? createDefaultBilling(app.log, demandService, {
+          funnel: {
+            advancePostSales: (input) =>
+              discoveryService.advancePipelineStage(input.workspaceId, {
+                prospectKey: input.prospectKey,
+                stage: "post_sales",
+                externalRef: input.externalRef,
+              }),
+          },
+        })
+      : null;
+  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
+  const planService = opts.planService ?? billingDefaults!.planService;
+  const trialNurture = opts.trialNurture ?? billingDefaults!.trialNurture;
+  // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
+  const billingStatusValue =
+    opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
   // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
   // per marketing function), turn an @mention into a REAL harness session through the venture-gated
   // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
   // sends stay #13-gated, sensitive-by-default. authRoutes is registered here too so signup can
   // auto-seed (config default-OFF) through the SAME SessionManager.
   app.register(authRoutes, {
-    onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
-      maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+    onWorkspaceCreated: async (
+      workspaceId: string,
+      ownerMemberId: string,
+      attribution: SignupAttribution,
+    ) => {
+      await Promise.allSettled([
+        maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+        growthService.recordEvent(workspaceId, {
+          kind: "acquisition",
+          source: attribution.source,
+          metadata: attributionMetadata(attribution),
+        }),
+        referralService.ensureWorkspaceReferralCode(workspaceId, ownerMemberId),
+        referralService.attributeSignup({
+          referralCode: attribution.referralCode,
+          referredWorkspaceId: workspaceId,
+          referredMemberId: ownerMemberId,
+          trackingRef: attribution.trackingRef,
+        }),
+        trialNurture.enrollSignup(workspaceId, ownerMemberId, { source: "auth.signup" }),
+        ...(attribution.trackingRef
+          ? [
+              discoveryService.advancePipelineStage(workspaceId, {
+                prospectKey: attribution.trackingRef,
+                stage: "onboarding",
+                externalRef: `signup:${ownerMemberId}`,
+              }),
+            ]
+          : []),
+      ]);
+    },
   });
   const authSessionCleanupEngine =
     opts.authSessionCleanupEngine ?? createDefaultAuthSessionCleanupEngine(app.log);
@@ -714,7 +805,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // create/attach the workspace, seal the connection, kick Scout to verify the domain + submit the sitemap,
   // land on the board. Default reads Google config from env (off until configured) and builds the real
   // bootstrap over THIS SessionManager; tests inject a fake client + recording bootstrap.
-  app.register(googleAuthRoutes, { sessionManager, ...opts.googleAuth });
+  app.register(googleAuthRoutes, { sessionManager, growth: growthService, ...opts.googleAuth });
   app.register(marketingRoutes, { sessionManager });
   // #282 agent registry + A2A: list the fleet's declared contracts and run governed, observable
   // agent-to-agent calls. Default OFF + owner-workspace-first; the call route reuses the marketing
@@ -837,17 +928,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #101 demand validation rails: ONE service instance shared by the demand routes, the billing webhook's
   // `demandIngestor` (so a `demand_smoke` checkout becomes an external `paid` signal), and the #96 venture
   // demand overlay (so the scorecard's demand dimension consumes only this externally-attributed evidence).
-  const demandService = opts.demand ?? createDefaultDemandService(app.log);
-  const billingDefaults =
-    !opts.billingManager || !opts.planService || !opts.trialNurture
-      ? createDefaultBilling(app.log, demandService)
-      : null;
-  const billingManager = opts.billingManager ?? billingDefaults!.billingManager;
-  const planService = opts.planService ?? billingDefaults!.planService;
-  const trialNurture = opts.trialNurture ?? billingDefaults!.trialNurture;
-  // #481 go-live status: from env by default; tests injecting a manager can override (else test/none).
-  const billingStatusValue =
-    opts.billingStatus ?? billingDefaults?.status ?? billingStatus("none", "test");
   app.register(billingRoutes, {
     billingManager,
     planService,
@@ -893,13 +973,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   // Built before the console + portfolio loop so both can read per-venture growth.
-  const growthService = opts.growth ?? createDefaultGrowthService();
   // #222 customer discovery engine: per-venture signal layer → ranked "who to reach out to now" queue +
   // PQL events + the 5-stage GTM pipeline. READ-ONLY (it never sends — outreach is #225). Shares the live
   // `growthService` so an ingested signal lights up the founder-console growth panel (#104) with real,
   // event-driven counts. Built before the console so the console can read the pipeline pane.
-  const discoveryService =
-    opts.discovery ?? createDefaultDiscoveryService({ growth: growthService });
   // #223 decision-maker resolver — built here (before the console) so the #225 outreach engine can consume
   // its buyer briefs and the console can surface the outreach pane. Enrichment stays in a QUARANTINED
   // reader with no send/spend capability (#200).
@@ -913,6 +990,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     createDefaultOutreachService({
       discovery: discoveryService,
       decisionMaker: decisionMakerService,
+      planService,
     });
   // #280 Reach outbound demand-gen: the self-improving loop service. Default-OFF + mock source + dry-run
   // sender, so it spends nothing and sends nothing until an owner opts in (caps) and connects a real ESP.
@@ -953,7 +1031,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       moat: moatService,
       growth: growthService,
       demand: demandService,
-      billing: billingManager,
     });
   const founderConsole =
     opts.founderConsole ??
@@ -968,6 +1045,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       outreach: outreachService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
+  app.register(customerDeliverableRoutes);
+  app.register(deliverableFeedbackRoutes);
+  app.register(deliverablePerformanceRoutes);
   // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
   // (Stripe events + the #71 usage estimate) into a per-venture ledger, closes the monthly books, and
   // forecasts runway. Read routes are caps-gated (409 when off); the opt-in tick (FINANCE_INTERVAL_MS,
@@ -1047,6 +1127,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(onboardingRoutes, { service: onboarding, dnsManager });
   const realworld = opts.realworld ?? createDefaultRealworldActuatorService();
   app.register(realworldRoutes, { service: realworld });
+  app.register(workspaceCapabilityRoutes);
   // #266 ipop hosted publishing: customer blogs + landing pages, zero repo, zero deploy. `/me/hosted/*`
   // drafts + parks a #13 approval (nothing goes live without the owner approving); the public serve route
   // returns only `published` pages. Default-OFF, owner-workspace-first.
@@ -1063,6 +1144,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.
   app.register(gardenRoutes);
+  // #1065 SkillOpt review console: list staged self-improvement proposals + held-out validation receipts.
+  // Adoption/rejection stays on the linked #13 approval request; this route is read-only.
+  app.register(skilloptRoutes);
   // #464 agent execution tools: the runtime seam where an "acts outside" agent requests a real-world action
   // (publish/post/spend). Every invocation parks a PENDING #13 approval and NEVER fires on its own — the
   // action runs only after the owner approves it. The catalog is read-only and always listable.
@@ -1091,13 +1175,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // the ranked prospect queue / PQL events / GTM pipeline. Always-live ingest + reads (READ-ONLY surface).
   app.register(discoveryRoutes, { service: discoveryService });
   // GAP 1 leads centre: the autonomous loop's INBOUND mouth (ADR-0400). The public landing form posts to a
-  // PUBLIC (unauth) `POST /inbound/leads` which persists the lead, best-effort qualifies it into #222, and
-  // hands it to Reach for the opener/cadence loop. Capture is the safe default, ON whenever an owner
-  // workspace is resolved (marketing.ownerWorkspaceId); 503 until then.
+  // PUBLIC (unauth) `POST /inbound/leads` which persists an unverified lead, sends a signed confirmation,
+  // then best-effort qualifies it into #222 and hands it to Reach only after the address verifies. Capture is
+  // the safe default, ON whenever an owner workspace is resolved (marketing.ownerWorkspaceId); 503 until then.
   app.register(inboundLeadsRoutes, {
     discovery: discoveryService,
     ownerWorkspaceId: opts.inboundLeadsOwnerWorkspaceId ?? resolveInboundLeadsOwnerWorkspaceId(),
     warmLeadFollowup: createDefaultInboundLeadFollowup(reachService),
+    confirmation: createDefaultInboundLeadConfirmationSender(),
   });
   // #225 outreach engine: preview drafts, PARK a message for one-tap owner approval (never auto-sent),
   // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send
@@ -1228,7 +1313,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const ventureService =
     opts.venture ??
     createDefaultVentureService(undefined, demandService, constitutionGuard, voiceService);
-  app.register(ventureRoutes, { service: ventureService });
+  app.register(ventureRoutes, {
+    service: ventureService,
+    monetization,
+    resolveVentureWorkspaceId: async (ventureIdeaId) =>
+      (await getIdeaById(ventureIdeaId))?.workspaceId,
+  });
   // #101 demand routes: register/launch a fake-door smoke test, capture funnel signals, read the verdict
   // against the LOCKED bar. The apex `paid` signal has no route — it arrives only via the #98 webhook.
   app.register(demandRoutes, { service: demandService });
@@ -1362,6 +1452,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(catalogRoutes, { workflowEngine });
   app.register(workflowRoutes, { engine: workflowEngine, store: workflowStore });
   app.decorate("workflowEngine", workflowEngine);
+  // #590 dependency-aware scheduler: declare content/review/publish task graphs and only claim runnable work.
+  // The service is default-OFF for execution (DEP_SCHEDULER_ENABLED) but planning/listing remain visible.
+  const dependencyScheduler = opts.dependencyScheduler ?? createDefaultDependencySchedulerService();
+  app.register(dependencySchedulerRoutes, { service: dependencyScheduler });
   // #559 durable, single-leader scheduler: the restart-safe replacement for the per-engine `setInterval`
   // tick loops (planning / venture-memory / verifiers / workflows). `index.ts` registers each engine's
   // `tickAll` as a durable job (persisted cursor + leader lease in `scheduler_jobs`) and calls `start()`;

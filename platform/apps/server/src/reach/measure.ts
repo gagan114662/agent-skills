@@ -23,6 +23,8 @@ export interface SendDatum {
   signalKind: ReachSignalKind | null;
   /** UTC hour (0–23) the send fired, or null. */
   sentHourUtc: number | null;
+  /** Sending domain used for email, when known. */
+  sendingDomain?: string | null;
 }
 
 /** One external engagement receipt, carrying the originating send's attribution. */
@@ -31,6 +33,8 @@ export interface ReceiptDatum {
   variant: ReachVariant | null;
   signalKind: ReachSignalKind | null;
   sentHourUtc: number | null;
+  /** Sending domain of the originating email send, when known. */
+  sendingDomain?: string | null;
 }
 
 export interface VariantTally {
@@ -69,10 +73,14 @@ export interface ReachMetrics {
   opens: number;
   replies: number;
   booked: number;
+  bounces: number;
+  complaints: number;
   /** Rates over `sent` (the deliverable denominator), each in [0,1]. */
   openRate: number;
   replyRate: number;
   bookedRate: number;
+  bounceRate: number;
+  complaintRate: number;
   byVariant: VariantTally[];
   bySignalKind: SignalTally[];
   byHour: HourTally[];
@@ -99,6 +107,8 @@ export function computeMetrics(input: MeasureInput): ReachMetrics {
   const opens = receipts.filter((r) => r.kind === "open").length;
   const replies = receipts.filter((r) => r.kind === "reply").length;
   const booked = receipts.filter((r) => r.kind === "booked").length;
+  const bounces = receipts.filter((r) => r.kind === "bounce").length;
+  const complaints = receipts.filter((r) => r.kind === "complaint").length;
 
   // Per-variant: count only delivered ("sent") messages in the denominator.
   const variantMap = new Map<ReachVariant, VariantTally>();
@@ -169,9 +179,13 @@ export function computeMetrics(input: MeasureInput): ReachMetrics {
     opens,
     replies,
     booked,
+    bounces,
+    complaints,
     openRate: rate(opens, sent),
     replyRate: rate(replies, sent),
     bookedRate: rate(booked, sent),
+    bounceRate: rate(bounces, sent),
+    complaintRate: rate(complaints, sent),
     byVariant,
     bySignalKind,
     byHour,

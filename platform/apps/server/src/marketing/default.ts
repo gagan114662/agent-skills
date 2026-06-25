@@ -15,6 +15,7 @@ import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { listMentionsOnMessage } from "../db/repositories/mentions.js";
 import { getPersona, getPersonaByHandle, definePersona } from "../db/repositories/personas.js";
 import { createMarketingTask, listMarketingTasks } from "../db/repositories/marketing-tasks.js";
+import { upsertMemory } from "../db/repositories/memories.js";
 import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/repositories/venture.js";
 import { foundingVentureFor } from "./blueprint.js";
 import { personaMentionsOnMessage } from "../messaging/subagent-mentions.js";
@@ -50,6 +51,7 @@ import {
   resolveWorkspaceFacts,
   enrichTaskWithContext,
   shouldInjectForWorkspace,
+  hasExplicitMarketingTarget,
   BRAND_VOICE_LINE,
 } from "./workspace-context.js";
 import { composeSiteFactsBlock } from "./site-reader/distill.js";
@@ -218,6 +220,25 @@ function seedDeps(sessionManager: SessionManager): MarketingSeedDeps {
     ...baseSeedDeps(),
     launchWelcome: async (input) => launcher.launch(input),
     recordTask: async (input) => createMarketingTask(input),
+    hasMarketingTarget: async (workspaceId) =>
+      hasExplicitMarketingTarget(await getWorkspaceOnboarding(workspaceId)),
+    storeDiscoveryContext: async ({ workspaceId, task, createdByMemberId }) => {
+      const memory = await upsertMemory({
+        workspaceId,
+        type: "market_discovery",
+        content: {
+          text:
+            "Market discovery is required before channel work. The discovery task asks for product, ICP, competitors, positioning, proof, and channel constraints. " +
+            `Task: ${task}`,
+        },
+        entity: "marketing-target",
+        dedupeKey: "marketing:market-discovery:first-run",
+        sourceType: "event",
+        sourceId: workspaceId,
+        createdByMemberId,
+      });
+      return { id: memory.id };
+    },
     ensureFirstVenture: ({ workspaceId, createdByMemberId }) =>
       ensureFoundingVenture(workspaceId, createdByMemberId),
     // #230: drive the venture through the #96 loop on activation so it produces a funded venture with an
@@ -246,8 +267,9 @@ export async function seedDepartmentForWorkspace(
 }
 
 /**
- * Seed the fleet on signup when the workspace's `marketing` policy opts in (#58, default OFF). Best
- * effort: a seed failure is logged and never fails the signup that already succeeded.
+ * Seed the fleet on signup so email/password users land on the same working board as Google OAuth users
+ * (#902). Welcome launches still respect the marketing policy; default signup creates channels + agents
+ * without spending on welcome sessions.
  */
 export async function maybeAutoSeedOnSignup(
   sessionManager: SessionManager,
@@ -257,9 +279,12 @@ export async function maybeAutoSeedOnSignup(
 ): Promise<void> {
   try {
     const caps = resolveMarketingCaps(loadConfig(workspaceId).marketing);
-    if (!caps.enabled) return;
     await seedMarketingDepartment(
-      { workspaceId, createdByMemberId: memberId, postWelcomeTasks: caps.seedWelcomeTasks },
+      {
+        workspaceId,
+        createdByMemberId: memberId,
+        postWelcomeTasks: caps.enabled ? caps.seedWelcomeTasks : false,
+      },
       seedDeps(sessionManager),
     );
   } catch (err) {

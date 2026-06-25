@@ -91,6 +91,11 @@ export interface ExternalAccountsChecklist {
 /** The real-world readiness summary (#231, `GET /me/realworld`) — what to connect for real work. */
 export interface RealworldReadiness {
   enabled: boolean;
+  publish?: {
+    provider: string;
+    live: boolean;
+    dryRun: boolean;
+  };
   neededAccounts: string[];
 }
 
@@ -153,6 +158,34 @@ export interface GardenResponse {
   /** True iff this workspace may enable/disable (flag on + owner-first satisfied). Catalog lists regardless. */
   canManage: boolean;
   agents: GardenAgentView[];
+}
+
+export type SkillOptProposalStatus = "staged" | "deduped" | "skipped";
+
+/** One SkillOpt-Sleep proposal/outcome row (#1065), from GET /me/skillopt/proposals. */
+export interface SkillOptProposalDto {
+  id: string;
+  runId: string;
+  workspaceId: string;
+  agentHandle: string;
+  skillId: string;
+  status: SkillOptProposalStatus;
+  skipReason: string | null;
+  clusterKey: string | null;
+  metric: string | null;
+  higherIsBetter: boolean | null;
+  baseline: number | null;
+  candidate: number | null;
+  improvementRatio: number | null;
+  sampleSize: number | null;
+  externallyVerified: boolean | null;
+  currentDocSha: string | null;
+  requestId: string | null;
+  createdAt: string;
+}
+
+export interface SkillOptProposalsResponse {
+  proposals: SkillOptProposalDto[];
 }
 
 /** The brand kit (#271) — the owner's one-time brand identity the fleet draws from. */
@@ -531,6 +564,20 @@ export interface FounderConsoleDto {
     meetings: number;
     signups: number;
   };
+  /** Per-artifact attributed revenue (#868), computed from verified payment receipts. */
+  attribution?: {
+    totalAttributedCents: number;
+    attributedPaymentCount: number;
+    unattributedPaymentCount: number;
+    topArtifacts: {
+      artifactId: string;
+      artifactKind: string;
+      channel: string;
+      attributedCents: number;
+      currency: string;
+      paymentCount: number;
+    }[];
+  };
   /**
    * The per-department PROOF scorecard (#253): one tile per marketing department with a real, sourced outcome
    * metric + trend — or "not connected" where a source isn't wired yet. Optional only for backward-compat with
@@ -887,11 +934,15 @@ export interface AuditEventDto {
 }
 
 /** A live session row, from `GET /workspaces/:wid/mission-control`. */
+export type AgentActivityStatus = "thinking" | "drafting" | "waiting" | "handoff" | "idle" | "done";
+
 export interface LiveSessionDto {
   id: string;
   channelId: string;
   agentMemberId: string;
   status: string;
+  /** What the agent is doing now (#1050), separate from lifecycle status. */
+  agentStatus: AgentActivityStatus;
   elapsedMs: number;
   estimatedCostCents: number;
   startedAt: string | null;

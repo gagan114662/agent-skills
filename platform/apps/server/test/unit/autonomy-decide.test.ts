@@ -69,6 +69,15 @@ describe("decideWorkflowAction (#17)", () => {
     );
   });
 
+  it("escalates an awaiting approval workflow after its deadline", () => {
+    const d = decide("in_progress", {
+      status: "awaiting_approval",
+      currentStage: 1,
+      approvalOverdue: true,
+    });
+    expect(d).toEqual({ action: "timeout_approval", reason: "approval_deadline_exceeded" });
+  });
+
   it("completed/canceled workflows and terminal tasks are inert", () => {
     expect(decide("in_progress", { status: "completed" }).reason).toBe("workflow_completed");
     expect(decide("done").reason).toBe("task_terminal");

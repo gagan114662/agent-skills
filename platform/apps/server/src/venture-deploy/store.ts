@@ -35,14 +35,24 @@ export interface CreateReleaseReceiptInput {
   requiresApproval: boolean;
   approvalRequestId?: string | null;
   smokeCriticalCount: number;
+  promoteHealthOk?: boolean | null;
+  promoteHealthDetail?: string | null;
   url?: string | null;
   incidentFiled: boolean;
   detail: string;
 }
 
 export interface ReleaseStore {
+  /** Existing receipt for the immutable release ref, if another trigger already handled it. */
+  getByRelease?(
+    workspaceId: string,
+    ventureId: string,
+    releaseRef: string,
+  ): Promise<ReleaseReceipt | null>;
   /** Append an immutable release receipt (the audit trail, #195 AC4). */
   create(input: CreateReleaseReceiptInput): Promise<ReleaseReceipt>;
+  /** Update a pre-created pending-promote receipt after the external cutover/rollback finishes. */
+  update?(id: string, input: Partial<CreateReleaseReceiptInput>): Promise<ReleaseReceipt>;
   /** Recent releases across the workspace, newest first — for the daily brief (#173). */
   listRecentForWorkspace(workspaceId: string, limit?: number): Promise<ReleaseReceipt[]>;
 }

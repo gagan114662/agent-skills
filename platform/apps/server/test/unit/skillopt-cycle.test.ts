@@ -164,3 +164,47 @@ describe("skillopt/cycle — #390 revenue learning signal (more of what earns)",
     expect(res.proposal.clusterKey).toBe(seoKey);
   });
 });
+
+describe("skillopt/cycle — #889 eval regression negative signal", () => {
+  const seoSamples = [
+    sample("s1", "Audit the homepage for top 5 SEO issues"),
+    sample("s2", "Audit the homepage for top 9 SEO issues"),
+  ];
+  const emailSamples = [
+    sample("e1", "Draft the weekly email newsletter"),
+    sample("e2", "Draft the weekly email newsletter"),
+  ];
+  const seoKey = "audit the homepage for top seo issues";
+  const emailKey = "draft the weekly email newsletter";
+
+  function twoClusterInput(over: Partial<SkillOptCycleInput> = {}): SkillOptCycleInput {
+    return {
+      enabled: true,
+      agentHandle: "scout",
+      skillId: "scout/runbook",
+      currentDocSha: "sha-1",
+      samples: [...seoSamples, ...emailSamples],
+      mine: { minRecurrence: 2 },
+      candidates: [candidate({ clusterKey: seoKey }), candidate({ clusterKey: emailKey })],
+      ...over,
+    };
+  }
+
+  it("downranks a cluster tied to a recent eval regression", () => {
+    const res = decideSkillOptCycle(
+      twoClusterInput({ evalRegressionReweight: { regressedClusterKeys: [seoKey] } }),
+    );
+    expect(res.status).toBe("staged");
+    if (res.status !== "staged") return;
+    expect(res.proposal.clusterKey).toBe(emailKey);
+  });
+
+  it("blocks staging when evals regressed but no cluster-safe mapping exists", () => {
+    const res = decideSkillOptCycle(
+      twoClusterInput({ evalRegressionReweight: { blockReason: "recent eval regression for scout" } }),
+    );
+    expect(res.status).toBe("skipped");
+    if (res.status !== "skipped") return;
+    expect(res.reason).toMatch(/eval regression guard.*scout/);
+  });
+});

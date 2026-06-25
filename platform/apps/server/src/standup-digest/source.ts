@@ -2,18 +2,16 @@
  * Daily agent standup digest — the **data-source seam** (issue #589).
  *
  * {@link DailyActivitySource} is the narrow interface the service consumes: given a workspace and a day,
- * return that day's raw {@link DailyActivityData} (per-agent artifacts, decisions, blockers, plans). The
- * production binding (wiring this to the real trace/run/deliverable/decision repositories) would touch shared
- * files, so it is a deliberate follow-up; see `standup-digest/default.ts`.
+ * return that day's raw {@link DailyActivityData} (per-agent artifacts, decisions, blockers, plans).
  *
- * The default binding is {@link FakeDailyActivitySource} — a **deterministic** generator seeded from the
- * workspace id + day, so the module produces a coherent, link-carrying digest with **zero external calls**
- * until a real source is wired in and the feature is enabled. Determinism (no clock, no `Math.random`) is
- * what lets the acceptance test assert on an exact digest.
+ * The production binding adapts the repository-backed source in `db-source.ts`; the fake source below remains
+ * a deterministic no-IO fixture for tests and demos. Determinism (no clock, no `Math.random`) is what lets
+ * the acceptance test assert on an exact digest.
  */
 
 import type {
   AgentActivityInput,
+  BlockerSeverity,
   DailyActivityData,
   DigestPeriod,
 } from "./types.js";
@@ -22,6 +20,235 @@ import type {
 export interface DailyActivitySource {
   /** Fetch every agent's activity for `workspaceId` over `period`. */
   fetch(workspaceId: string, period: DigestPeriod): Promise<DailyActivityData>;
+}
+
+export interface DigestAgentRef {
+  id: string;
+  name: string;
+  role?: string | null;
+}
+
+export type DigestSessionStatus =
+  | "provisioning"
+  | "running"
+  | "completed"
+  | "failed"
+  | "timeout"
+  | "idle_reaped"
+  | "canceled";
+
+export interface DigestSessionRow {
+  id: string;
+  agentMemberId: string;
+  agentName?: string | null;
+  command: string;
+  status: DigestSessionStatus;
+  result?: string | null;
+  branch?: string | null;
+  headSha?: string | null;
+  createdAt: Date;
+  endedAt: Date | null;
+}
+
+export interface DigestDecisionRow {
+  id: string;
+  decidedByMemberId: string | null;
+  title: string;
+  rationale?: string | null;
+  createdAt: Date;
+}
+
+export interface DigestArtifactRow {
+  id: string;
+  tool: string;
+  provider: string;
+  status: string;
+  url: string | null;
+  detail: string;
+  createdAt: Date;
+}
+
+export interface DigestTaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  assigneeMemberId: string | null;
+  updatedAt: Date;
+}
+
+export interface RepositoryDailyActivitySourceDeps {
+  listAgents(workspaceId: string): Promise<DigestAgentRef[]>;
+  listSessions(workspaceId: string, from: Date, to: Date): Promise<DigestSessionRow[]>;
+  listDecisions(workspaceId: string, from: Date, to: Date): Promise<DigestDecisionRow[]>;
+  listArtifacts(workspaceId: string, from: Date, to: Date): Promise<DigestArtifactRow[]>;
+  listOpenTasks(workspaceId: string): Promise<DigestTaskRow[]>;
+}
+
+function utcDayBounds(period: DigestPeriod): { from: Date; to: Date } {
+  const from = new Date(`${period.day}T00:00:00.000Z`);
+  if (Number.isNaN(from.getTime())) throw new Error(`invalid digest day: ${period.day}`);
+  const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
+  return { from, to };
+}
+
+function truncateLine(input: string, max = 140): string {
+  const oneLine = input.replace(/\s+/g, " ").trim();
+  return oneLine.length <= max ? oneLine : `${oneLine.slice(0, max - 3)}...`;
+}
+
+function shortSha(sha: string | null | undefined): string | undefined {
+  return sha ? sha.slice(0, 7) : undefined;
+}
+
+function sessionTitle(s: DigestSessionRow): string {
+  const head = truncateLine(s.result || s.command);
+  const ref = shortSha(s.headSha);
+  return ref ? `${head} (${ref})` : head;
+}
+
+function taskSeverity(status: string): BlockerSeverity {
+  return status === "blocked" ? "high" : "medium";
+}
+
+function artifactSummary(a: DigestArtifactRow): string {
+  const detail = truncateLine(a.detail || `${a.provider} ${a.tool}`);
+  return detail || `${a.tool} via ${a.provider}`;
+}
+
+function isPublishedArtifact(a: DigestArtifactRow): boolean {
+  return a.status === "published" || a.status === "pending_approval";
+}
+
+function isBlockingArtifact(a: DigestArtifactRow): boolean {
+  return a.status === "blocked" || a.status === "failed";
+}
+
+function ensureAgent(map: Map<string, AgentActivityInput>, ref: DigestAgentRef): AgentActivityInput {
+  const existing = map.get(ref.id);
+  if (existing) return existing;
+  const next: AgentActivityInput = {
+    agentId: ref.id,
+    agentName: ref.name,
+    role: ref.role ?? undefined,
+    artifacts: [],
+    decisions: [],
+    blockers: [],
+    planned: [],
+  };
+  map.set(ref.id, next);
+  return next;
+}
+
+/**
+ * Repository-backed source for the real daily digest. It reads already-durable product data: sessions,
+ * decisions, real-world artifacts, and tasks. The synthesized digest can therefore replace raw-log reading
+ * instead of summarizing a demo roster.
+ */
+export class RepositoryDailyActivitySource implements DailyActivitySource {
+  constructor(private readonly deps: RepositoryDailyActivitySourceDeps) {}
+
+  async fetch(workspaceId: string, period: DigestPeriod): Promise<DailyActivityData> {
+    const { from, to } = utcDayBounds(period);
+    const [agents, sessions, decisions, artifacts, tasks] = await Promise.all([
+      this.deps.listAgents(workspaceId),
+      this.deps.listSessions(workspaceId, from, to),
+      this.deps.listDecisions(workspaceId, from, to),
+      this.deps.listArtifacts(workspaceId, from, to),
+      this.deps.listOpenTasks(workspaceId),
+    ]);
+
+    const byAgent = new Map<string, AgentActivityInput>();
+    for (const agent of agents) ensureAgent(byAgent, agent);
+
+    const fallbackAgent = (id: string | null | undefined, name?: string | null): AgentActivityInput =>
+      ensureAgent(byAgent, {
+        id: id || "workspace-unassigned",
+        name: name || (id ? `Agent ${id.slice(0, 8)}` : "Unassigned work"),
+        role: id ? "agent" : "workspace",
+      });
+
+    for (const s of sessions) {
+      const agent = fallbackAgent(s.agentMemberId, s.agentName);
+      const receipt = { label: "Session", url: `/workspaces/${workspaceId}/agent-sessions/${s.id}` };
+      if (s.status === "completed") {
+        agent.artifacts.push({
+          id: `session:${s.id}`,
+          title: sessionTitle(s),
+          kind: "session",
+          receipt,
+        });
+      } else if (["failed", "timeout", "idle_reaped", "canceled"].includes(s.status)) {
+        agent.blockers.push({
+          id: `session:${s.id}`,
+          summary: `${s.status.replace("_", " ")}: ${truncateLine(s.result || s.command)}`,
+          severity: s.status === "failed" || s.status === "timeout" ? "high" : "medium",
+          receipt,
+        });
+      } else {
+        agent.planned.push({
+          id: `session:${s.id}`,
+          summary: `${s.status}: ${truncateLine(s.command)}`,
+          receipt,
+        });
+      }
+    }
+
+    for (const d of decisions) {
+      fallbackAgent(d.decidedByMemberId).decisions.push({
+        id: `decision:${d.id}`,
+        summary: truncateLine(d.title || d.rationale || "Recorded decision"),
+        receipt: { label: "Decision", url: `/workspaces/${workspaceId}/decisions/${d.id}` },
+      });
+    }
+
+    const fleet = ensureAgent(byAgent, { id: "workspace-artifacts", name: "Workspace artifacts", role: "fleet" });
+    for (const a of artifacts) {
+      const receipt = { label: "Artifact", url: a.url || `/workspaces/${workspaceId}/realworld-artifacts/${a.id}` };
+      if (isPublishedArtifact(a)) {
+        fleet.artifacts.push({
+          id: `artifact:${a.id}`,
+          title: artifactSummary(a),
+          kind: a.tool,
+          receipt,
+        });
+      } else if (isBlockingArtifact(a)) {
+        fleet.blockers.push({
+          id: `artifact:${a.id}`,
+          summary: `${a.status}: ${artifactSummary(a)}`,
+          severity: a.status === "failed" ? "high" : "medium",
+          receipt,
+        });
+      }
+    }
+
+    for (const t of tasks) {
+      const agent = fallbackAgent(t.assigneeMemberId);
+      const receipt = { label: "Task", url: `/workspaces/${workspaceId}/tasks/${t.id}` };
+      if (t.status === "blocked") {
+        agent.blockers.push({
+          id: `task:${t.id}`,
+          summary: truncateLine(t.title),
+          severity: taskSeverity(t.status),
+          receipt,
+        });
+      } else {
+        agent.planned.push({
+          id: `task:${t.id}`,
+          summary: truncateLine(t.title),
+          receipt,
+        });
+      }
+    }
+
+    return {
+      workspaceId,
+      period,
+      agents: [...byAgent.values()].filter(
+        (a) => a.artifacts.length || a.decisions.length || a.blockers.length || a.planned.length,
+      ),
+    };
+  }
 }
 
 /** FNV-1a 32-bit hash — a stable, dependency-free seed from a string. */

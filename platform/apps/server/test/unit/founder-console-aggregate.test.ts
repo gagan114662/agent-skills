@@ -257,6 +257,26 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     ]);
   });
 
+  it("surfaces proactive lifecycle retention work as founder attention (#914)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        lifecycle: {
+          dormantWorkspaces: 1,
+          highChurnEscalations: 2,
+          renewalReminders: 1,
+          cancellationOffers: 1,
+        },
+      }),
+    );
+
+    expect(out.attention.reasons).toEqual([
+      "1 workspace dormant (retention check due)",
+      "2 high-churn signals need same-day escalation",
+      "1 renewal need reminder or right-size offer",
+      "1 cancellation need save offer",
+    ]);
+  });
+
   it("surfaces the #119 autonomy boundaries: classes agents own + the change history", () => {
     const out = aggregateFounderConsole(
       input({
@@ -455,5 +475,43 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(content.value).toBe(5);
     expect(content.trend).toBe("up");
     expect(content.delta).toBe(3);
+  });
+
+  it("surfaces per-artifact attributed revenue sorted by receipted dollars (#868)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        attribution: {
+          totalAttributedCents: 16400,
+          attributedPaymentCount: 4,
+          unattributedPaymentCount: 2,
+          topArtifacts: [
+            {
+              artifactId: "https://example.com/pricing",
+              artifactKind: "seo_page",
+              channel: "seo",
+              attributedCents: 4200,
+              currency: "usd",
+              paymentCount: 1,
+            },
+            {
+              artifactId: "post-1",
+              artifactKind: "social_post",
+              channel: "social",
+              attributedCents: 12200,
+              currency: "usd",
+              paymentCount: 3,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(out.attribution.totalAttributedCents).toBe(16400);
+    expect(out.attribution.attributedPaymentCount).toBe(4);
+    expect(out.attribution.unattributedPaymentCount).toBe(2);
+    expect(out.attribution.topArtifacts.map((a) => a.artifactId)).toEqual([
+      "post-1",
+      "https://example.com/pricing",
+    ]);
   });
 });

@@ -18,10 +18,10 @@ export interface ExecutorContext {
   requesterMemberId: string;
   log: FastifyBaseLogger;
   /**
-   * The #13 approval request id this execution belongs to, when run through the approve path (#295). It
-   * lets a post-approval executor tie a production-grounded receipt back to the approval that authorized
-   * it (the proof nothing ships without an approval record). Absent on the auto-approve path (the request
-   * row is created AFTER execution there) — executors that need it MUST fail closed when it is missing.
+   * The #13 approval request id this execution belongs to. The gated and auto-approved paths both create
+   * the durable request row before execution, so executors can tie production-grounded receipts back to the
+   * audit record that authorized them. Optional only for legacy direct tests/seams; production executors
+   * that need it should fail closed when it is missing.
    */
   requestId?: string;
 }
@@ -63,6 +63,10 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function nonnegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && typeof value === "number" && value >= 0;
+}
+
 /** `chat.post_message` payload: `{ channelId, body }`, both non-empty strings. */
 export function validateChatPostMessage(payload: unknown): ValidationResult {
   const p = asRecord(payload);
@@ -92,6 +96,12 @@ export function validateAgentDeliverable(payload: unknown): ValidationResult {
   }
   if (p.channelId !== undefined && typeof p.channelId !== "string") {
     return { ok: false, error: "channelId must be a string" };
+  }
+  if (p.computeSeconds !== undefined && !nonnegativeInteger(p.computeSeconds)) {
+    return { ok: false, error: "computeSeconds must be a nonnegative integer" };
+  }
+  if (p.estimatedCostCents !== undefined && !nonnegativeInteger(p.estimatedCostCents)) {
+    return { ok: false, error: "estimatedCostCents must be a nonnegative integer" };
   }
   return { ok: true };
 }
@@ -249,6 +259,15 @@ export function validateSkillOptAdoptEdit(payload: unknown): ValidationResult {
   if (!nonEmptyString(p.skillId)) return { ok: false, error: "skillId required" };
   if (!nonEmptyString(p.currentDocSha)) return { ok: false, error: "currentDocSha required" };
   if (!nonEmptyString(p.appendText)) return { ok: false, error: "appendText required" };
+  return { ok: true };
+}
+
+/** Validate a one-click revert for a previously applied SkillOpt edit block. */
+export function validateSkillOptRevertEdit(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.skillId)) return { ok: false, error: "skillId required" };
+  if (!nonEmptyString(p.adoptionId)) return { ok: false, error: "adoptionId required" };
   return { ok: true };
 }
 

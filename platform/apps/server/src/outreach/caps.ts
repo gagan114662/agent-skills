@@ -10,7 +10,7 @@ export interface OutreachCaps {
   enabled: boolean;
   sendProvider: string;
   perChannelDailyCap: number;
-  /** Append a trackable pay link to the composed body (GAP 3, ADR-0401). Default OFF — body unchanged. */
+  /** Append a trackable trial/checkout link to the composed body (GAP 3/#899). */
   payLinkInOutreach: boolean;
 }
 
@@ -18,7 +18,7 @@ export const OUTREACH_DEFAULTS: OutreachCaps = {
   enabled: false,
   sendProvider: "dryrun",
   perChannelDailyCap: 50,
-  payLinkInOutreach: false,
+  payLinkInOutreach: true,
 };
 
 export function resolveOutreachCaps(cfg: OutreachConfig | undefined): OutreachCaps {

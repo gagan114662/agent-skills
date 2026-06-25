@@ -3,7 +3,8 @@
  * pure `executor.ts` (which the unit job imports). `chat.post_message` is a real side effect — it
  * reuses #4 `postMessage` + #5 realtime and runs **as the requester**, re-checking the requester's
  * #9 capability at execution time (ADR-0013 §3). `external.send` is recorded-only unless a dispatcher is
- * injected; `outreach.send` dispatches through the configured outreach sender after owner approval.
+ * injected; support replies fail closed without a support delivery dispatcher. `outreach.send` dispatches
+ * through the configured outreach sender after owner approval.
  */
 import { effectiveCapability, satisfies } from "../auth/access.js";
 import { getChannel, isChannelMember } from "../db/repositories/channels.js";
@@ -29,6 +30,7 @@ import {
   validateOutreachSend,
   validateReachDataCreditSpend,
   validateSkillOptAdoptEdit,
+  validateSkillOptRevertEdit,
   validateOzLoopsPublish,
   validateConnectAccount,
   validateProvisioningCustomerSpend,
@@ -39,6 +41,7 @@ import {
 } from "./executor.js";
 import { ventureWeeklyPlanExecutor } from "../venture-memory/executor.js";
 import type { AcquisitionDispatcher } from "../acquisition/execution.js";
+import type { SupportReplyDeliveryDispatcher } from "../support/delivery.js";
 import type { DeliveryDispatcher } from "../delivery/dispatcher.js";
 import type { HostedPublishDispatcher } from "../hosted/dispatcher.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
@@ -59,6 +62,7 @@ import {
   OUTREACH_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
+  SKILLOPT_REVERT_EDIT_ACTION,
   OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
   PROVISIONING_CUSTOMER_SPEND_ACTION,
@@ -79,6 +83,13 @@ import {
   GARDEN_ENABLE_AGENT_ACTION,
   ENTERPRISE_BUDGET_BREACH_ACTION,
 } from "./policy.js";
+import {
+  SkillOptSkillDocApplier,
+  type SkillOptAdoptInput,
+  type SkillOptApplyResult,
+  type SkillOptRevertInput,
+  type SkillOptRevertResult,
+} from "../skillopt/adopt.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
 export { ActionExecutionError };
@@ -302,6 +313,7 @@ function makeExternalSend(
   egress: EgressEnforcer,
   compliance: ComplianceEnforcer,
   dispatcher?: AcquisitionDispatcher,
+  supportDispatcher?: SupportReplyDeliveryDispatcher,
 ): ActionExecutor {
   return {
     actionType: "external.send",
@@ -335,6 +347,24 @@ function makeExternalSend(
         envelope,
       });
       if (unlawful) throw new ActionExecutionError(unlawful);
+      if (kind === "support.reply") {
+        if (!supportDispatcher) {
+          throw new ActionExecutionError(
+            "support reply delivery path not configured — approval was recorded but no message was delivered",
+          );
+        }
+        const delivered = await supportDispatcher.dispatch(payload, {
+          workspaceId: ctx.workspaceId,
+          requesterMemberId: ctx.requesterMemberId,
+          requestId: ctx.requestId,
+        });
+        if (!delivered) {
+          throw new ActionExecutionError(
+            "support reply delivery path declined the send — approval was recorded but no message was delivered",
+          );
+        }
+        return delivered;
+      }
       // #189: hand the approved (and now compliance-cleared) send to the acquisition dispatcher. A non-null
       // result means a real (or dry-run) campaign action ran; null means this is not an acquisition send, or
       // the channel is not cleared to execute → fall back to recorded-only (the default, no-egress behavior).
@@ -553,28 +583,54 @@ const reachDataCreditSpend: ActionExecutor = {
 /**
  * SkillOpt-Sleep skill-edit adoption (#283) — a recorded-only, behavior-altering decision the owner gates.
  * The self-improvement loop never adopts an edit itself; it parks this PENDING request and the owner
- * decides. Approving RECORDS the owner's go (the audit trail proves nothing changed an agent without a
- * human yes); actually applying the bounded append to the versioned skill doc is a deliberate follow-up, so
- * the executor writes no file and makes no network call.
- */
-const skillOptAdoptEdit: ActionExecutor = {
-  actionType: SKILLOPT_ADOPT_EDIT_ACTION,
-  validate: validateSkillOptAdoptEdit,
-  summarize: (p) =>
-    (
-      `adopt @${String(p.handle ?? "?")} skill edit (${String(p.skillId ?? "?")}): ` +
-      `${String(p.appendText ?? "").slice(0, 80)}`
-    ).slice(0, 160),
-  execute(payload): Promise<Record<string, unknown>> {
-    return Promise.resolve({
-      recorded: true,
-      executed: false, // applying the edit to the versioned skill doc is a deliberate follow-up ADR.
-      handle: typeof payload.handle === "string" ? payload.handle : null,
-      skillId: typeof payload.skillId === "string" ? payload.skillId : null,
-      currentDocSha: typeof payload.currentDocSha === "string" ? payload.currentDocSha : null,
-    });
-  },
-};
+ * decides. Approving re-checks the pinned doc sha, appends the bounded edit to the versioned #155 skill doc,
+ * bumps the manifest version, and returns a revert payload. The loop still has no autonomous-adopt path.
+*/
+export interface SkillOptApplier {
+  apply(input: SkillOptAdoptInput): Promise<SkillOptApplyResult>;
+  revert(input: SkillOptRevertInput): Promise<SkillOptRevertResult>;
+}
+
+function makeSkillOptAdoptEdit(applier: SkillOptApplier): ActionExecutor {
+  return {
+    actionType: SKILLOPT_ADOPT_EDIT_ACTION,
+    validate: validateSkillOptAdoptEdit,
+    summarize: (p) =>
+      (
+        `adopt @${String(p.handle ?? "?")} skill edit (${String(p.skillId ?? "?")}): ` +
+        `${String(p.appendText ?? "").slice(0, 80)}`
+      ).slice(0, 160),
+    async execute(payload, ctx): Promise<Record<string, unknown>> {
+      if (!ctx.requestId) throw new ActionExecutionError("skillopt adoption requires an approval request id");
+      return {
+        ...(await applier.apply({
+          handle: String(payload.handle),
+          skillId: String(payload.skillId),
+          currentDocSha: String(payload.currentDocSha),
+          appendText: String(payload.appendText),
+          requestId: ctx.requestId,
+        })),
+      };
+    },
+  };
+}
+
+function makeSkillOptRevertEdit(applier: SkillOptApplier): ActionExecutor {
+  return {
+    actionType: SKILLOPT_REVERT_EDIT_ACTION,
+    validate: validateSkillOptRevertEdit,
+    summarize: (p) =>
+      `revert SkillOpt edit ${String(p.adoptionId ?? "?")} on ${String(p.skillId ?? "?")}`.slice(0, 160),
+    async execute(payload): Promise<Record<string, unknown>> {
+      return {
+        ...(await applier.revert({
+          skillId: String(payload.skillId),
+          adoptionId: String(payload.adoptionId),
+        })),
+      };
+    },
+  };
+}
 
 /**
  * Oz-loops publish proposal (#356) — a recorded-only, OUTWARD decision the owner gates. The triage/spec/
@@ -770,12 +826,14 @@ export function buildDefaultRegistry(
   outreachDispatcher: OutreachSendDispatcher = createDefaultOutreachSendDispatcher(),
   social?: SocialPublishDispatcher,
   searchConsole: SearchConsoleService = createDefaultSearchConsoleService(),
+  supportDispatcher?: SupportReplyDeliveryDispatcher,
+  skillOptApplier: SkillOptApplier = new SkillOptSkillDocApplier(),
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
     makeAgentDeliverable(delivery),
     makeHostedPublish(hosted),
-    makeExternalSend(egress, compliance, dispatcher),
+    makeExternalSend(egress, compliance, dispatcher, supportDispatcher),
     billingRefund,
     browserAction,
     ventureWeeklyPlanExecutor,
@@ -784,7 +842,8 @@ export function buildDefaultRegistry(
     monetizationPayoutSettings,
     makeOutreachSend(outreachDispatcher),
     reachDataCreditSpend,
-    skillOptAdoptEdit,
+    makeSkillOptAdoptEdit(skillOptApplier),
+    makeSkillOptRevertEdit(skillOptApplier),
     ozLoopsPublishProposal,
     connectAccount,
     provisioningCustomerSpend,

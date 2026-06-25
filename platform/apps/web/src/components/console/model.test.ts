@@ -32,6 +32,7 @@ function session(over: Partial<LiveSessionDto> & { id: string }): LiveSessionDto
     channelId: "c-seo",
     agentMemberId: "ag-scout",
     status: "running",
+    agentStatus: "thinking",
     elapsedMs: 60_000,
     estimatedCostCents: 84,
     startedAt: null,

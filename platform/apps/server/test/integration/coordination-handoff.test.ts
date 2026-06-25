@@ -5,8 +5,9 @@ import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
-import { createChannel } from "../../src/db/repositories/channels.js";
-import { listChannelMessages } from "../../src/db/repositories/messages.js";
+import { createChannel, listChannels } from "../../src/db/repositories/channels.js";
+import { getAgentMemberByHandle } from "../../src/db/repositories/auth.js";
+import { latestMessageId, listChannelMessages } from "../../src/db/repositories/messages.js";
 
 /**
  * #361 (epic #359) — ACCEPTANCE: with the coordination layers enabled for the OWNER workspace
@@ -74,6 +75,18 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
+async function ensureDepartmentChannel(workspaceId: string, name: string): Promise<{ id: string }> {
+  const existing = (await listChannels(workspaceId)).find((c) => c.name === name);
+  if (existing) return { id: existing.id };
+  return createChannel({ workspaceId, kind: "public", name });
+}
+
+async function bridgeResolvedAgentMemberId(workspaceId: string, handle: string): Promise<string> {
+  const member = await getAgentMemberByHandle(workspaceId, handle);
+  expect(member, `expected @${handle} to resolve to an active agent member`).toBeTruthy();
+  return member!.memberId;
+}
+
 /** Register an agent whose @handle (display name) is a real department handle so the bridge can route it. */
 async function newAgent(
   owner: { cookie: string; workspaceId: string },
@@ -97,6 +110,30 @@ const rpc = (method: string, params: unknown, id: number | string = 1) => ({
   method,
   params,
 });
+
+async function waitForMessages(
+  channelId: string,
+  afterMessageId: string | null,
+  match: (messages: Awaited<ReturnType<typeof listChannelMessages>>) => boolean,
+  label: string,
+): Promise<Awaited<ReturnType<typeof listChannelMessages>>> {
+  const deadline = Date.now() + 2_000;
+  let messages = await listChannelMessagesAfter(channelId, afterMessageId);
+  while (!match(messages) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    messages = await listChannelMessagesAfter(channelId, afterMessageId);
+  }
+  expect(messages, label).toSatisfy(match);
+  return messages;
+}
+
+async function listChannelMessagesAfter(
+  channelId: string,
+  afterMessageId: string | null,
+): Promise<Awaited<ReturnType<typeof listChannelMessages>>> {
+  const messages = await listChannelMessages(channelId);
+  return afterMessageId ? messages.filter((m) => m.id > afterMessageId) : messages;
+}
 
 /** Drive a delegation: scout hands `task` off to quill via JSON-RPC `message/send`. Returns the task id. */
 async function delegate(
@@ -123,26 +160,36 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     // bridge resolves Quill's department → the "content" channel.
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    // The department channel must exist for the bridge to post into it (seeded in prod by #123).
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    // The bridge posts to the first department channel matching the blueprint name.
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     enableCoordinationFor(owner.workspaceId);
+    const bridgeScoutMemberId = await bridgeResolvedAgentMemberId(owner.workspaceId, "scout");
+    const bridgeQuillMemberId = await bridgeResolvedAgentMemberId(owner.workspaceId, "quill");
 
     const task = "Draft the launch announcement blog from the SEO brief";
     const taskId = await delegate(scout.token, quill.agentId, task);
 
-    const messages = await listChannelMessages(content.id);
+    const messages = await waitForMessages(
+      content.id,
+      beforeDelegation,
+      (rows) =>
+        rows.some((m) => m.body.includes("Handing this off to @quill")) &&
+        rows.some((m) => m.body.startsWith("📋 Task")),
+      "expected handoff narration in #content",
+    );
 
     // The delegating lead (scout) posts the handoff status line naming the assignee + the (DATA) task.
     const handoff = messages.find((m) => m.body.includes("Handing this off to @quill"));
     expect(handoff, "expected a handoff line in #content").toBeTruthy();
-    expect(handoff!.authorMemberId).toBe(scout.memberId);
+    expect(handoff!.authorMemberId).toBe(bridgeScoutMemberId);
     expect(handoff!.body).toContain(task);
 
     // The assignee (quill) posts the inline task card linking the created task id.
     const card = messages.find((m) => m.body.startsWith("📋 Task"));
     expect(card, "expected an inline task card in #content").toBeTruthy();
-    expect(card!.authorMemberId).toBe(quill.memberId);
+    expect(card!.authorMemberId).toBe(bridgeQuillMemberId);
     expect(card!.body).toContain("@quill");
     expect(card!.body).toContain(taskId.slice(0, 8)); // the card references the real task id
 
@@ -160,12 +207,13 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const owner = await newOwner();
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     // No coordination env set ⇒ channel posting is OFF (the prod default).
     const taskId = await delegate(scout.token, quill.agentId, "should not be narrated");
 
-    expect(await listChannelMessages(content.id)).toHaveLength(0);
+    expect(await listChannelMessagesAfter(content.id, beforeDelegation)).toHaveLength(0);
     // …yet the handoff itself still happened (the bridge is best-effort narration, never the write).
     const native = await app.inject({
       method: "GET",
@@ -179,12 +227,13 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const owner = await newOwner();
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
+    const beforeDelegation = await latestMessageId(content.id);
 
     // Posting is enabled, but named for some OTHER owner workspace — this workspace must stay quiet.
     enableCoordinationFor(`someone-else-${newId()}`);
     await delegate(scout.token, quill.agentId, "still should not be narrated");
 
-    expect(await listChannelMessages(content.id)).toHaveLength(0);
+    expect(await listChannelMessagesAfter(content.id, beforeDelegation)).toHaveLength(0);
   });
 });

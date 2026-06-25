@@ -9,6 +9,7 @@ import {
   type DailyBrief,
   type DecisionItem,
   type DecisionQueue,
+  type AttributionBriefingSection,
   type FinanceBriefingSection,
   type PremortemPanelInput,
   type ShippedItem,
@@ -126,6 +127,8 @@ export interface FounderBriefingsDeps {
   backlog: BacklogReader;
   /** Optional #194 finance close-pack section for the weekly report; absent ⇒ report unchanged. */
   finance?: FinanceSectionReader;
+  /** Optional #868 per-artifact ROI proof for the weekly report; absent ⇒ report unchanged. */
+  attribution?: AttributionSectionReader;
   /** Optional premortem-panel counters (#200 AC2); absent ⇒ the weekly report omits the panel. */
   premortem?: PremortemReader;
   notifier: BriefingNotifier;
@@ -150,6 +153,11 @@ export interface VentureDeployReader {
 /** The #194 finance close-pack section (or null when the finance layer is off for the workspace). */
 export interface FinanceSectionReader {
   section(workspaceId: string): Promise<FinanceBriefingSection | null>;
+}
+
+/** The #868 per-artifact ROI proof section (or null when no attribution reader is wired). */
+export interface AttributionSectionReader {
+  section(workspaceId: string): Promise<AttributionBriefingSection | null>;
 }
 
 /**
@@ -259,12 +267,13 @@ export class FounderBriefingsService {
   async weeklyReport(workspaceId: string): Promise<WeeklyReport> {
     const now = this.now();
     const caps = this.deps.caps(workspaceId);
-    const [ventures, revenue, voice, backlog, financeSection, premortemCounters] = await Promise.all([
+    const [ventures, revenue, voice, backlog, financeSection, attribution, premortemCounters] = await Promise.all([
       this.deps.ventures.ventures(workspaceId),
       this.deps.revenue.total(workspaceId),
       this.deps.voice.signals(workspaceId, caps.digestVoiceLimit),
       this.deps.backlog.upcoming(workspaceId, caps.backlogLimit),
       this.deps.finance ? this.deps.finance.section(workspaceId) : Promise.resolve(null),
+      this.deps.attribution ? this.deps.attribution.section(workspaceId) : Promise.resolve(null),
       this.deps.premortem ? this.deps.premortem.counters(workspaceId) : Promise.resolve(null),
     ]);
     // The service owns `attentionBudget` (the caps top-N) so the panel + the rest of the brief read one
@@ -283,6 +292,7 @@ export class FounderBriefingsService {
       backlog,
       maxWords: caps.maxReportWords,
       ...(financeSection ? { financeSection } : {}),
+      ...(attribution ? { attribution } : {}),
       ...(premortem ? { premortem } : {}),
     });
   }

@@ -5,6 +5,7 @@
 
 export type ServiceKind =
   | "esp"
+  | "sms"
   | "ad_account"
   | "analytics"
   | "registrar"
@@ -15,7 +16,7 @@ export type ServiceKind =
 /**
  * The service kinds whose connection is a MONEY action under #243 — connecting/using LIVE payment
  * credentials (e.g. a live Stripe key). ONLY these park a #13 owner-approval; every other external-account
- * connect (hosting, ESP, registrar, analytics, ads) is autonomous. A non-money connect still surfaces on
+ * connect (hosting, ESP, SMS, registrar, analytics, ads) is autonomous. A non-money connect still surfaces on
  * the setup checklist as a human paste-the-key step, but it never pauses for an owner approval.
  */
 export const MONEY_SERVICE_KINDS: readonly ServiceKind[] = ["payment"];

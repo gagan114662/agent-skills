@@ -73,4 +73,26 @@ describe("TrialNurtureService (#607)", () => {
     expect(variant.upgradeClicks).toBe(1);
     expect(variant.revenueCents).toBe(19_900);
   });
+
+  it("enrolls a trial signup into the first email sequence and logs each draft (#602)", async () => {
+    const events: Array<{ kind: string; detail?: Record<string, unknown> }> = [];
+    const store = memStore();
+    const originalRecordSignal = store.recordSignal.bind(store);
+    store.recordSignal = async (input) => {
+      events.push({ kind: input.kind, detail: input.detail });
+      return originalRecordSignal(input);
+    };
+    const service = new TrialNurtureService(store);
+
+    const plan = await service.enrollSignup("ws-1", "member-a", { source: "auth.signup" });
+
+    expect(plan.emailDrafts.map((draft) => draft.key)).toHaveLength(2);
+    expect(events.map((event) => event.kind)).toEqual(["email_draft", "email_draft"]);
+    expect(events[0]?.detail).toMatchObject({
+      trigger: "trial_signup",
+      source: "auth.signup",
+      draftKey: plan.emailDrafts[0]?.key,
+      subject: plan.emailDrafts[0]?.subject,
+    });
+  });
 });

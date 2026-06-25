@@ -18,11 +18,26 @@ const listActiveWorkflows = vi.fn();
 const tryReserveActionsUsed = vi.fn(() => Promise.resolve(true));
 const refundActionsUsed = vi.fn(() => Promise.resolve());
 const bumpWorkflowAction = vi.fn(() => Promise.resolve());
+const attachWorkflowSession = vi.fn(() => Promise.resolve(true));
+const clearWorkflowSession = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
+const handoffWorkflowStage = vi.fn(() =>
+  Promise.resolve({ advanced: true, alreadyAdvanced: false }),
+);
+const markWorkflowAwaitingApproval = vi.fn(() => Promise.resolve());
+const completeWorkflowWithTask = vi.fn(() => Promise.resolve());
+const spawnRecurringWorkflowSuccessor = vi.fn(() => Promise.resolve(undefined));
 const createApproval = vi.fn(() => Promise.resolve({ id: "appr_1" }));
+const findWorkflowApproval = vi.fn(() => Promise.resolve(undefined));
 const decideApproval = vi.fn(() => Promise.resolve({ id: "appr_1", status: "approved" }));
+const advanceWorkflowStage = vi.fn(() => Promise.resolve());
 const getTask = vi.fn();
 const updateStatus = vi.fn(() => Promise.resolve());
+const assignTask = vi.fn(() => Promise.resolve());
+const addTaskLink = vi.fn(() => Promise.resolve());
+const getWorkspaceMember = vi.fn(() => Promise.resolve(undefined));
+const upsertMemory = vi.fn(() => Promise.resolve({ id: "mem_1" }));
+const getAgentSessionStatus = vi.fn(() => Promise.resolve(undefined));
 
 vi.mock("../../src/db/repositories/autonomy.js", () => ({
   getControls,
@@ -31,26 +46,36 @@ vi.mock("../../src/db/repositories/autonomy.js", () => ({
   tryReserveActionsUsed,
   refundActionsUsed,
   bumpWorkflowAction,
+  attachWorkflowSession,
+  clearWorkflowSession,
   setWorkflowStatus,
+  handoffWorkflowStage,
+  markWorkflowAwaitingApproval,
+  completeWorkflowWithTask,
+  spawnRecurringWorkflowSuccessor,
   createApproval,
+  findWorkflowApproval,
   decideApproval,
   // unused by the launch path, but imported by the engine module:
-  advanceWorkflowStage: vi.fn(() => Promise.resolve()),
+  advanceWorkflowStage,
   getApproval: vi.fn(() => Promise.resolve(undefined)),
   getWorkflow: vi.fn(() => Promise.resolve(undefined)),
   listActiveWorkflowWorkspaces: vi.fn(() => Promise.resolve([])),
 }));
+vi.mock("../../src/db/repositories/agent-sessions.js", () => ({
+  getAgentSessionStatus,
+}));
 vi.mock("../../src/db/repositories/tasks.js", () => ({
   getTask,
   updateStatus,
-  assignTask: vi.fn(() => Promise.resolve()),
-  addTaskLink: vi.fn(() => Promise.resolve()),
+  assignTask,
+  addTaskLink,
 }));
 vi.mock("../../src/db/repositories/members.js", () => ({
-  getWorkspaceMember: vi.fn(() => Promise.resolve(undefined)),
+  getWorkspaceMember,
 }));
 vi.mock("../../src/db/repositories/memories.js", () => ({
-  upsertMemory: vi.fn(() => Promise.resolve({ id: "mem_1" })),
+  upsertMemory,
 }));
 vi.mock("../../src/observability/metrics.js", () => ({
   recordAutonomyAction: vi.fn(),
@@ -70,9 +95,12 @@ const silentLogger: SessionLogger = {
 interface LaunchCall {
   workspaceId: string;
   channelId: string;
+  taskId: string;
   agentMemberId: string;
   createdByMemberId: string;
   task: string;
+  idempotencyKey?: string;
+  harnessEnv?: Record<string, string>;
 }
 
 function makeLauncher(opts: { status?: "completed" | "failed"; joinResolves?: boolean } = {}) {
@@ -102,6 +130,12 @@ const runningWorkflow: AgentWorkflow = {
   currentStage: 0,
   status: "running",
   actionCount: 0,
+  maxAgeMs: 86_400_000,
+  deadlineAt: null,
+  currentSessionId: null,
+  currentSessionStage: null,
+  recurring: false,
+  sourceWorkflowId: null,
   createdAt: new Date(0),
 };
 
@@ -134,11 +168,109 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     expect(launches[0]).toMatchObject({
       workspaceId: "ws_1",
       channelId: "ch_1",
+      taskId: "task_1",
       agentMemberId: "agent_r",
     });
     expect(launches[0].task).toContain("summarize the repo");
+    expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
+    expect(launches[0].harnessEnv?.AGENT_TASK_ID).toBe("task_1");
+    expect(launches[0].idempotencyKey).toBe("workflow:wf_1:stage:0");
+    expect(attachWorkflowSession).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      expectedCurrentStage: 0,
+      sessionId: "sess_1",
+    });
     // The task was driven to in_progress as part of starting.
     expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
+  });
+
+  it("does NOT launch when the workflow already has a live persisted session after restart", async () => {
+    listActiveWorkflows.mockResolvedValue([
+      { ...runningWorkflow, currentSessionId: "sess_existing", currentSessionStage: 0 },
+    ]);
+    getAgentSessionStatus.mockResolvedValueOnce("running");
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")).toEqual({
+      workflowId: "wf_1",
+      action: "noop",
+      reason: "session_running",
+    });
+    expect(launcher.launch).not.toHaveBeenCalled();
+    expect(clearWorkflowSession).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale persisted session before deciding the next action", async () => {
+    listActiveWorkflows.mockResolvedValue([
+      { ...runningWorkflow, currentSessionId: "sess_done", currentSessionStage: 0 },
+    ]);
+    getAgentSessionStatus.mockResolvedValueOnce("completed");
+    const { launcher } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+
+    expect(clearWorkflowSession).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      sessionId: "sess_done",
+    });
+    expect(launcher.launch).toHaveBeenCalledTimes(1);
+  });
+
+  it("launches a handoff stage with task id and linked-context retrieval instructions", async () => {
+    const workflow: AgentWorkflow = {
+      ...runningWorkflow,
+      stages: [
+        { agentMemberId: "agent_r", role: "researcher" },
+        { agentMemberId: "agent_w", role: "writer" },
+      ],
+      currentStage: 0,
+    };
+    listActiveWorkflows.mockResolvedValue([workflow]);
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
+    getWorkspaceMember.mockResolvedValue({ id: "agent_w", displayName: "Writer" });
+    const { launcher, launches } = makeLauncher();
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")?.action).toBe("handoff");
+    expect(upsertMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "handoff", sourceId: "task_1" }),
+    );
+    expect(handoffWorkflowStage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowId: "wf_1",
+        expectedCurrentStage: 0,
+        toStage: 1,
+        taskId: "task_1",
+        workspaceId: "ws_1",
+        nextAgentMemberId: "agent_w",
+        actorMemberId: "agent_r",
+        memoryId: "mem_1",
+      }),
+    );
+    expect(launcher.launch).toHaveBeenCalledTimes(1);
+    expect(launches[0]).toMatchObject({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      taskId: "task_1",
+      agentMemberId: "agent_w",
+      harnessEnv: expect.objectContaining({
+        AGENT_AUTONOMY: "1",
+        AGENT_ROLE: "writer",
+        AGENT_TASK_ID: "task_1",
+      }),
+    });
+    expect(launches[0].task).toContain("handoff context");
+    expect(launches[0].task).toContain("Prior-stage handoff context:");
+    expect(launches[0].task).toContain("stage 1/2 (researcher) complete; continuing as writer");
+    expect(launches[0].task).toContain("/workspaces/ws_1/tasks/task_1/context");
+    expect(launches[0].task).toContain("AGENT_TASK_ID=task_1");
+    expect(launches[0].idempotencyKey).toBe("workflow:wf_1:stage:1");
   });
 
   it("does NOT launch when the kill switch is engaged (guard blocks launch)", async () => {
@@ -202,12 +334,107 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     // The completion is parked at the human gate, not auto-completed.
     expect(createApproval).toHaveBeenCalledTimes(1);
     expect(createApproval).toHaveBeenCalledWith(
-      expect.objectContaining({ workflowId: "wf_1", taskId: "task_1", action: "complete_workflow" }),
+      expect.objectContaining({
+        workflowId: "wf_1",
+        taskId: "task_1",
+        action: "complete_workflow",
+      }),
     );
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
     // The only status write was the `in_progress` on start — never `done`.
     expect(updateStatus).toHaveBeenCalledWith("task_1", "in_progress", "agent_r");
     expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
+  });
+
+  it("keeps failed settlement in admission so the next tick cannot double-launch", async () => {
+    getTask.mockReset();
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "todo" });
+    createApproval.mockRejectedValueOnce(new Error("transient db outage"));
+    const { launcher } = makeLauncher({ status: "completed", joinResolves: true });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+    await engine.drain();
+    const second = await engine.tick("ws_1");
+
+    expect(launcher.launch).toHaveBeenCalledTimes(1);
+    expect(second.actions.find((a) => a.workflowId === "wf_1")).toEqual({
+      workflowId: "wf_1",
+      action: "noop",
+      reason: "session_running",
+    });
+  });
+
+  it("reuses an existing workflow completion approval instead of stacking duplicates", async () => {
+    findWorkflowApproval.mockResolvedValueOnce({
+      id: "appr_existing",
+      workspaceId: "ws_1",
+      workflowId: "wf_1",
+      taskId: "task_1",
+      requestedByMemberId: "agent_r",
+      action: "complete_workflow",
+      status: "pending",
+      decidedByMemberId: null,
+      decisionSource: "human",
+      policyRuleId: null,
+      createdAt: new Date(0),
+      decidedAt: null,
+    });
+    const { launcher } = makeLauncher({ status: "completed", joinResolves: true });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher });
+
+    await engine.tick("ws_1");
+    await engine.drain();
+
+    expect(findWorkflowApproval).toHaveBeenCalledWith({
+      workspaceId: "ws_1",
+      workflowId: "wf_1",
+      taskId: "task_1",
+      action: "complete_workflow",
+    });
+    expect(createApproval).not.toHaveBeenCalled();
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
+  });
+
+  it("times out an overdue approval gate instead of leaving the workflow parked forever", async () => {
+    listActiveWorkflows.mockResolvedValueOnce([
+      {
+        ...runningWorkflow,
+        status: "awaiting_approval",
+        actionCount: 3,
+        deadlineAt: new Date(Date.now() - 1_000),
+      },
+    ]);
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
+    findWorkflowApproval.mockResolvedValueOnce({
+      id: "appr_1",
+      workspaceId: "ws_1",
+      workflowId: "wf_1",
+      taskId: "task_1",
+      requestedByMemberId: "agent_r",
+      action: "complete_workflow",
+      status: "pending",
+      decidedByMemberId: null,
+      decisionSource: "human",
+      policyRuleId: null,
+      createdAt: new Date(0),
+      decidedAt: null,
+    });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")).toEqual({
+      workflowId: "wf_1",
+      action: "timeout_approval",
+      reason: "approval_deadline_exceeded",
+    });
+    expect(decideApproval).toHaveBeenCalledWith(
+      "appr_1",
+      expect.objectContaining({ status: "rejected", decisionSource: "policy" }),
+    );
+    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "canceled");
+    expect(updateStatus).toHaveBeenCalledWith("task_1", "blocked", "agent_r");
   });
 
   it("on a failed session, blocks the task (no approval gate for work that did not land)", async () => {
@@ -253,19 +480,38 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
       "appr_1",
       expect.objectContaining({ status: "approved", decisionSource: "policy", policyRuleId: null }),
     );
-    expect(updateStatus).toHaveBeenCalledWith("task_1", "done", "agent_r");
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "completed");
-    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(completeWorkflowWithTask).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      taskId: "task_1",
+      actorMemberId: "agent_r",
+      completeTask: true,
+    });
+    expect(spawnRecurringWorkflowSuccessor).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      completedTaskTitle: "summarize the repo",
+      actorMemberId: "agent_r",
+    });
+    expect(markWorkflowAwaitingApproval).not.toHaveBeenCalledWith("wf_1");
   });
 
   it("with an auto-approve rule, drives completed → done and records which rule fired", async () => {
     const { launcher } = makeLauncher({ status: "completed", joinResolves: true });
     const completionPolicies = vi.fn(() =>
       Promise.resolve([
-        { id: "rule_auto", actionType: "autonomy.complete", requiresApproval: false, maxAutoAmount: null },
+        {
+          id: "rule_auto",
+          actionType: "autonomy.complete",
+          requiresApproval: false,
+          maxAutoAmount: null,
+        },
       ]),
     );
-    const engine = new AutonomyEngine({ poster, logger: silentLogger, launcher, completionPolicies });
+    const engine = new AutonomyEngine({
+      poster,
+      logger: silentLogger,
+      launcher,
+      completionPolicies,
+    });
 
     await engine.tick("ws_1");
     await engine.drain();
@@ -276,12 +522,20 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
     expect(createApproval).toHaveBeenCalledTimes(1);
     expect(decideApproval).toHaveBeenCalledWith(
       "appr_1",
-      expect.objectContaining({ status: "approved", decisionSource: "policy", policyRuleId: "rule_auto" }),
+      expect.objectContaining({
+        status: "approved",
+        decisionSource: "policy",
+        policyRuleId: "rule_auto",
+      }),
     );
     // The loop closes to done + completed without a human.
-    expect(updateStatus).toHaveBeenCalledWith("task_1", "done", "agent_r");
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "completed");
-    expect(setWorkflowStatus).not.toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(completeWorkflowWithTask).toHaveBeenCalledWith({
+      workflowId: "wf_1",
+      taskId: "task_1",
+      actorMemberId: "agent_r",
+      completeTask: true,
+    });
+    expect(markWorkflowAwaitingApproval).not.toHaveBeenCalledWith("wf_1");
   });
 
   it("with a rule that still requires approval, keeps the human gate", async () => {
@@ -292,14 +546,19 @@ describe("AutonomyEngine auto-approve policy (#84 follow-up, ADR-0042)", () => {
       launcher,
       completionPolicies: () =>
         Promise.resolve([
-          { id: "rule_gate", actionType: "autonomy.complete", requiresApproval: true, maxAutoAmount: null },
+          {
+            id: "rule_gate",
+            actionType: "autonomy.complete",
+            requiresApproval: true,
+            maxAutoAmount: null,
+          },
         ]),
     });
 
     await engine.tick("ws_1");
     await engine.drain();
 
-    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "awaiting_approval");
+    expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
     expect(decideApproval).not.toHaveBeenCalled();
     expect(updateStatus).not.toHaveBeenCalledWith("task_1", "done", expect.anything());
   });

@@ -7,6 +7,8 @@ import type {
   ApprovalEventDto,
   ApprovalPolicyDto,
   ApprovalRequestDto,
+  BillingInvoiceDto,
+  BillingInvoicesResponseDto,
   BillingStatusDto,
   CheckoutResponseDto,
   CheckRunDto,
@@ -76,6 +78,8 @@ import type {
   ExternalAccountConnectInput,
   ConnectionsResponse,
   GardenResponse,
+  SkillOptProposalsResponse,
+  SkillOptProposalStatus,
   SampleConsoleResponse,
   StatusPageDto,
   PublicSupportTicketStatusDto,
@@ -285,7 +289,15 @@ export function checkoutReturnUrl(): string {
  * the server that holds the session cookie.
  */
 export function googleStartUrl(domain: string): string {
-  return apiUrl(`/auth/google/start?domain=${encodeURIComponent(domain)}`);
+  const params = new URLSearchParams({ domain });
+  if (typeof window !== "undefined") {
+    const current = new URLSearchParams(window.location.search);
+    for (const key of ["utm_source", "utm_medium", "utm_campaign", "source", "ref"]) {
+      const value = current.get(key);
+      if (value) params.set(key, value);
+    }
+  }
+  return apiUrl(`/auth/google/start?${params.toString()}`);
 }
 
 export const api = {
@@ -294,9 +306,26 @@ export const api = {
     email: string;
     password: string;
     displayName: string;
-    workspaceSlug: string;
+    workspaceSlug?: string;
+    source?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    trackingRef?: string;
+    termsAccepted?: boolean;
+    legalConsentVersion?: string;
+    legalConsentAt?: string;
   }): Promise<{ ok: true }> {
-    return post("/auth/signup", input) as Promise<{ ok: true }>;
+    const enriched = { ...input };
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      enriched.source ??= params.get("source") ?? params.get("utm_source") ?? undefined;
+      enriched.utmSource ??= params.get("utm_source") ?? undefined;
+      enriched.utmMedium ??= params.get("utm_medium") ?? undefined;
+      enriched.utmCampaign ??= params.get("utm_campaign") ?? undefined;
+      enriched.trackingRef ??= params.get("ref") ?? undefined;
+    }
+    return post("/auth/signup", enriched) as Promise<{ ok: true }>;
   },
   login(email: string, password: string): Promise<{ ok: true }> {
     return post("/auth/login", { email, password }) as Promise<{ ok: true }>;
@@ -449,6 +478,14 @@ export const api = {
     return (res as { garden: GardenResponse }).garden;
   },
 
+  // --- SkillOpt-Sleep proposals (#1065): staged edits + held-out validation receipts ---
+  skillopt: {
+    proposals(status?: SkillOptProposalStatus): Promise<SkillOptProposalsResponse> {
+      const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<SkillOptProposalsResponse>(`/me/skillopt/proposals${qs}`);
+    },
+  },
+
   // --- venture intake (#387): brief ANY company idea into the already-built #96 venture loop ---
   // POSTs the typed intake to the live `POST /workspaces/:wid/ventures` (201 → the persisted idea). The
   // route is gated server-side behind the default-OFF owner-first `ventureIntake` flag (409 when off); the
@@ -573,6 +610,14 @@ export const api = {
      */
     status(workspaceId: string): Promise<BillingStatusDto> {
       return request<BillingStatusDto>(`/workspaces/${workspaceId}/billing/status`);
+    },
+    listInvoices(workspaceId: string): Promise<BillingInvoicesResponseDto> {
+      return request<BillingInvoicesResponseDto>(`/workspaces/${workspaceId}/billing/invoices`);
+    },
+    getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceDto> {
+      return request<BillingInvoiceDto>(
+        `/workspaces/${workspaceId}/billing/invoices/${encodeURIComponent(invoiceId)}`,
+      );
     },
     /**
      * Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on

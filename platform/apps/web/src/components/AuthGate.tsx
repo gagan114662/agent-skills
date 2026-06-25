@@ -8,7 +8,7 @@
  */
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND, LANDING, PRICING, VOICE } from "../brand.js";
+import { BRAND, COMPANY, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
 import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -17,19 +17,77 @@ import { SampleConsole } from "./SampleConsole.js";
 import { isMarketingPath } from "./site/paths.js";
 
 type Mode = "login" | "signup";
+type AuthError =
+  | { kind: "plain"; message: string }
+  | { kind: "email-taken"; message: string }
+  | { kind: "slug-taken"; message: string; suggestion: string };
 
 // Code-split the marketing site: signed-in users never download it.
 const Landing = lazy(() => import("./landing/Landing.js").then((m) => ({ default: m.Landing })));
 // #214: the dedicated public pricing page. Its own lazy chunk; public at every phase like the landing.
 const PricingPage = lazy(() => import("./landing/PricingPage.js").then((m) => ({ default: m.PricingPage })));
+const RefundPolicy = lazy(() =>
+  import("./landing/RefundPolicy.js").then((m) => ({ default: m.RefundPolicy })),
+);
+const LegalPage = lazy(() => import("./landing/LegalPage.js").then((m) => ({ default: m.LegalPage })));
+const CompanyPage = lazy(() => import("./landing/CompanyPage.js").then((m) => ({ default: m.CompanyPage })));
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
+const PASSWORD_MIN_LENGTH = 8;
+const DISPLAY_NAME_MIN_LENGTH = 2;
+const WORKSPACE_SLUG_MIN_LENGTH = 2;
+const WORKSPACE_SLUG_PATTERN = "[a-z0-9][a-z0-9-]{1,62}";
+
+function workspaceSlugFrom(raw: string): string {
+  return (
+    raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-+/g, "-")
+      .slice(0, 50) || "workspace"
+  );
+}
+
+function suggestedWorkspaceSlug(raw: string): string {
+  return `${workspaceSlugFrom(raw)}-2`;
+}
+
+function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthError {
+  const message = err instanceof Error ? err.message : "Something went wrong";
+  const lower = message.toLowerCase();
+  if (
+    mode === "signup" &&
+    lower.includes("email") &&
+    (lower.includes("use") || lower.includes("taken"))
+  ) {
+    return { kind: "email-taken", message: "That email already has an account." };
+  }
+  if (mode === "signup" && lower.includes("slug")) {
+    return {
+      kind: "slug-taken",
+      message: "That workspace URL is already taken.",
+      suggestion: suggestedWorkspaceSlug(workspaceSlug),
+    };
+  }
+  if (
+    lower.includes("password") &&
+    (lower.includes("minimum") || lower.includes("least") || lower.includes("short"))
+  ) {
+    return {
+      kind: "plain",
+      message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+    };
+  }
+  return { kind: "plain", message };
+}
 
 /** Read a `?plan=<key>` hint off the URL and resolve it to a known plan teaser (or null). */
 function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
   const key = new URLSearchParams(window.location.search).get("plan");
-  return key ? LANDING.plans.find((p) => p.key === key) ?? null : null;
+  return key ? (LANDING.plans.find((p) => p.key === key) ?? null) : null;
 }
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
@@ -80,6 +138,30 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     return (
       <Suspense fallback={<Splash />}>
         <Security />
+      </Suspense>
+    );
+  }
+
+  if (path === "/refund-policy") {
+    return (
+      <Suspense fallback={<Splash />}>
+        <RefundPolicy />
+      </Suspense>
+    );
+  }
+
+  if (path === LEGAL.terms.href || path === LEGAL.privacy.href || path === LEGAL.dpa.href) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <LegalPage kind={path === LEGAL.terms.href ? "terms" : path === LEGAL.privacy.href ? "privacy" : "dpa"} />
+      </Suspense>
+    );
+  }
+
+  if (path === COMPANY.href) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <CompanyPage />
       </Suspense>
     );
   }
@@ -198,7 +280,8 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [error, setError] = useState<AuthError | null>(null);
   const [busy, setBusy] = useState(false);
   // #214: a plan chosen on `/pricing` arrives as `?plan=<key>`. We frame it as a free trial here and
   // hand it off (sessionStorage seam) for the post-signup activation/first-run to pick up — we don't
@@ -209,6 +292,14 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
     e.preventDefault();
     setBusy(true);
     setError(null);
+    if (mode === "signup" && password.length < PASSWORD_MIN_LENGTH) {
+      setError({
+        kind: "plain",
+        message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+      });
+      setBusy(false);
+      return;
+    }
     try {
       if (mode === "login") {
         await store.login(email, password);
@@ -220,10 +311,19 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             // sessionStorage can throw in private mode — the plan hint is a nicety, not load-bearing.
           }
         }
-        await store.signup({ email, password, displayName, workspaceSlug });
+        const trimmedSlug = workspaceSlug.trim();
+        await store.signup({
+          email,
+          password,
+          displayName,
+          termsAccepted,
+          legalConsentVersion: LEGAL.consentVersion,
+          legalConsentAt: new Date().toISOString(),
+          ...(trimmedSlug ? { workspaceSlug: trimmedSlug } : {}),
+        });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(authErrorFor(err, mode, workspaceSlug));
     } finally {
       setBusy(false);
     }
@@ -253,7 +353,37 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Ada Lovelace"
               autoComplete="name"
+              required
+              aria-required="true"
+              minLength={DISPLAY_NAME_MIN_LENGTH}
             />
+          </label>
+        )}
+
+        {mode === "signup" && (
+          <label className="auth__consent">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              required
+              aria-required="true"
+            />
+            <span>
+              I agree to the{" "}
+              <Link href={LEGAL.terms.href} className="linklike">
+                {LEGAL.terms.navLabel}
+              </Link>{" "}
+              and{" "}
+              <Link href={LEGAL.privacy.href} className="linklike">
+                {LEGAL.privacy.navLabel}
+              </Link>{" "}
+              and{" "}
+              <Link href={LEGAL.dpa.href} className="linklike">
+                {LEGAL.dpa.navLabel}
+              </Link>
+              .
+            </span>
           </label>
         )}
 
@@ -265,6 +395,8 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
             autoComplete="email"
+            required
+            aria-required="true"
           />
         </label>
 
@@ -276,6 +408,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             autoComplete={mode === "login" ? "current-password" : "new-password"}
+            required
+            aria-required="true"
+            minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
           />
         </label>
 
@@ -285,14 +420,23 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
             <input
               value={workspaceSlug}
               onChange={(e) => setWorkspaceSlug(e.target.value)}
-              placeholder="acme"
+              placeholder={workspaceSlugFrom(displayName || email.split("@")[0] || "workspace")}
+              minLength={WORKSPACE_SLUG_MIN_LENGTH}
+              pattern={WORKSPACE_SLUG_PATTERN}
+              title="Optional. Use lowercase letters, numbers, and hyphens."
             />
           </label>
         )}
 
         {error && (
           <p className="auth__error" role="alert">
-            {VOICE.authError} {error}
+            {VOICE.authError} {error.message}{" "}
+            {error.kind === "email-taken" && (
+              <Link href="/login" className="linklike">
+                Sign in instead
+              </Link>
+            )}
+            {error.kind === "slug-taken" && <span>Try {error.suggestion}.</span>}
           </p>
         )}
 

@@ -4,7 +4,7 @@ slug: autonomous-marketing-agents-explained
 description: Learn what autonomous marketing agents can do, where human approval still matters, and why bounded autonomy protects live brands.
 author: quill
 date: 2026-06-16
-status: draft
+status: published
 ---
 
 # Autonomous marketing agents, explained

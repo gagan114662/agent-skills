@@ -40,6 +40,7 @@ function makeDeps(over: Omit<Partial<SkillOptDeps>, "caps"> & { caps?: SkillOptC
     harvest: over.harvest ?? (() => Promise.resolve(harvestSamples())),
     replay: over.replay ?? (() => Promise.resolve([candidate])),
     loadSkillDoc: over.loadSkillDoc ?? (() => Promise.resolve({ sha: "sha-1", text: "# runbook" })),
+    evalRegressionReweightFor: over.evalRegressionReweightFor,
     stage:
       over.stage ??
       (async (input) => {
@@ -84,6 +85,24 @@ describe("skillopt/service — SkillOptService.runWorkspace", () => {
     expect(res.agents[0]!.requestId).toBe("req-1");
     expect(staged).toHaveLength(1);
     expect(staged[0]!.proposal.appendText).toContain("Homepage audit shortcut");
+  });
+
+  it("stages NOTHING when a recent eval regression blocks unscoped SkillOpt edits (#889)", async () => {
+    const { deps, staged } = makeDeps({
+      evalRegressionReweightFor: async ({ agentHandle }) => ({
+        blockReason: `recent eval regression for ${agentHandle}`,
+      }),
+    });
+
+    const res = await new SkillOptService(deps).runWorkspace({
+      workspaceId: "ws-owner",
+      requesterMemberId: "owner",
+    });
+
+    expect(res.agents[0]!.result.status).toBe("skipped");
+    if (res.agents[0]!.result.status !== "skipped") return;
+    expect(res.agents[0]!.result.reason).toMatch(/eval regression guard.*scout/);
+    expect(staged).toHaveLength(0);
   });
 
   it("stages NOTHING when the replay seam yields no candidates (the safe production default)", async () => {

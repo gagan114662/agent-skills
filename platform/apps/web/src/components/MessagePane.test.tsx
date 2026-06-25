@@ -1,9 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { act, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessagePane } from "./MessagePane.js";
 import { CHANNEL_STARTERS, VOICE } from "../brand.js";
 import { makeMessage, renderWithStore } from "../test/utils.js";
+import type { EventSourceLike, TheaterEventDto, TheaterRunDto } from "../api/theater.js";
+
+class FakeStepSource implements EventSourceLike {
+  onerror: ((ev: unknown) => void) | null = null;
+  onopen: ((ev: unknown) => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, (ev: { data: string }) => void>();
+
+  addEventListener(type: string, listener: (ev: { data: string }) => void): void {
+    this.listeners.set(type, listener);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emit(type: string, data: unknown): void {
+    this.listeners.get(type)?.({ data: JSON.stringify(data) });
+  }
+}
+
+let currentStepSource: FakeStepSource | undefined;
+const stepFactory = (): EventSourceLike => (currentStepSource = new FakeStepSource());
+
+afterEach(() => {
+  currentStepSource = undefined;
+});
+
+function traceRun(over: Partial<TheaterRunDto> & { id: string }): TheaterRunDto {
+  return {
+    workspaceId: "w1",
+    sessionId: null,
+    agentMemberId: null,
+    taskId: null,
+    label: null,
+    status: "open",
+    eventCount: 0,
+    startedAt: "2026-06-24T00:00:00.000Z",
+    endedAt: null,
+    ...over,
+  };
+}
+
+function traceEvent(over: Partial<TheaterEventDto> & { id: string; runId: string; seq: number }): TheaterEventDto {
+  return {
+    turn: 0,
+    type: "model_response",
+    phase: "reasoning",
+    label: null,
+    summary: "thinking through the brief",
+    occurredAt: "2026-06-24T00:00:00.000Z",
+    ...over,
+  };
+}
 
 describe("MessagePane", () => {
   it("renders messages with resolved author names", async () => {
@@ -26,6 +80,78 @@ describe("MessagePane", () => {
     expect(screen.getAllByRole("article")).toHaveLength(200);
   });
 
+  // #1051: while an agent is running in this channel, its trace steps stream into the work feed live.
+  it("streams active agent trace steps into the open channel feed", async () => {
+    const { store } = renderWithStore(<MessagePane stepEventSourceFactory={stepFactory} />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    act(() => {
+      store.setLiveSessions([
+        { id: "sess-1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "drafting" },
+      ]);
+    });
+    await waitFor(() => expect(currentStepSource).toBeDefined());
+
+    act(() => {
+      currentStepSource!.emit("run", traceRun({ id: "run-1", sessionId: "sess-1", agentMemberId: "ag1" }));
+      currentStepSource!.emit(
+        "event",
+        traceEvent({
+          id: "step-1",
+          runId: "run-1",
+          seq: 1,
+          phase: "action",
+          label: "web_search",
+          summary: "checking launch keywords",
+        }),
+      );
+    });
+
+    const steps = await screen.findByRole("list", { name: /live agent steps/i });
+    expect(within(steps).getByText("Atlas")).toBeInTheDocument();
+    expect(within(steps).getByText("action")).toBeInTheDocument();
+    expect(within(steps).getByText("web_search")).toBeInTheDocument();
+    expect(within(steps).getByText("checking launch keywords")).toBeInTheDocument();
+
+    act(() => {
+      currentStepSource!.emit("run", traceRun({ id: "run-2", sessionId: "sess-2", agentMemberId: "ag1" }));
+      currentStepSource!.emit(
+        "event",
+        traceEvent({ id: "step-foreign", runId: "run-2", seq: 1, summary: "wrong channel step" }),
+      );
+    });
+    expect(screen.queryByText("wrong channel step")).toBeNull();
+  });
+
+  it("keeps only a bounded tail of streamed agent steps in the channel feed", async () => {
+    const { store } = renderWithStore(<MessagePane stepEventSourceFactory={stepFactory} />);
+    await store.bootstrap();
+    await screen.findByText("first post");
+
+    act(() => {
+      store.setLiveSessions([
+        { id: "sess-1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "drafting" },
+      ]);
+    });
+    await waitFor(() => expect(currentStepSource).toBeDefined());
+
+    act(() => {
+      currentStepSource!.emit("run", traceRun({ id: "run-1", sessionId: "sess-1", agentMemberId: "ag1" }));
+      for (let i = 1; i <= 25; i++) {
+        currentStepSource!.emit(
+          "event",
+          traceEvent({ id: `step-${i}`, runId: "run-1", seq: i, summary: `bounded step ${i}` }),
+        );
+      }
+    });
+
+    const steps = await screen.findByRole("list", { name: /live agent steps/i });
+    expect(within(steps).queryByText("bounded step 1")).toBeNull();
+    expect(within(steps).getByText("bounded step 25")).toBeInTheDocument();
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(20);
+  });
+
   // #480: a live session in THIS channel shows an in-channel "working…" indicator (not just the global pill).
   it("shows an in-channel 'working…' indicator for a live session in the open channel", async () => {
     const { store } = renderWithStore(<MessagePane />);
@@ -33,15 +159,16 @@ describe("MessagePane", () => {
     await screen.findByText("first post"); // channel c1 is open
 
     act(() => {
-      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "drafting" }]);
     });
-    expect(await screen.findByText(/Atlas is working/i)).toBeInTheDocument();
+    expect(await screen.findByText("Atlas")).toBeInTheDocument();
+    expect(screen.getByText("drafting")).toBeInTheDocument();
 
     // A session in a DIFFERENT channel does not show here.
     act(() => {
-      store.setLiveSessions([{ id: "s2", channelId: "c2", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s2", channelId: "c2", agentMemberId: "ag1", status: "running", agentStatus: "drafting" }]);
     });
-    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByText("drafting")).toBeNull());
   });
 
   // #469: the user can cancel a run in-channel — the Stop button clears the indicator and calls the stop API.
@@ -51,13 +178,13 @@ describe("MessagePane", () => {
     await screen.findByText("first post");
 
     act(() => {
-      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running" }]);
+      store.setLiveSessions([{ id: "s1", channelId: "c1", agentMemberId: "ag1", status: "running", agentStatus: "thinking" }]);
     });
     const stop = await screen.findByRole("button", { name: /stop this run/i });
     await userEvent.click(stop);
 
     // The indicator clears optimistically and the session is no longer live.
-    await waitFor(() => expect(screen.queryByText(/is working/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByText("thinking")).toBeNull());
     expect(store.getState().liveSessions).toEqual([]);
   });
 

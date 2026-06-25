@@ -13,6 +13,7 @@
  * missing runtime routes to Settings → Connect Claude; anything else falls back to a plain retry line.
  */
 import { CONSOLE, consoleSeedRetryNote } from "../../brand.js";
+import type { MissionDiagnosticDto } from "../../api/types.js";
 import { PopMark } from "../PopMark.js";
 
 /** Why the seed didn't produce a running venture (#221) — drives the panel's actionable failure copy. */
@@ -21,6 +22,8 @@ export type SeedError =
   | { kind: "rate"; retryAfterSeconds: number }
   /** No Claude runtime connected: the team can't run until the owner connects one (→ Settings). */
   | { kind: "connect" }
+  /** Seed succeeded but no work appeared before the first-run timeout and Claude is not connected. */
+  | { kind: "timeout-connect" }
   /** Anything else: a plain, quiet retry line. */
   | { kind: "generic" };
 
@@ -33,6 +36,10 @@ export interface ConsoleEmptyStateProps {
   seeded: boolean;
   /** The seed call failed — surface the matching actionable message by the CTA (null = no error). */
   error: SeedError | null;
+  /** Whether the workspace has connected Claude runtime auth (#916). */
+  claudeConnected: boolean;
+  /** Server-side activation diagnostic while the seed landed but the board has not filled yet (#917). */
+  activationDiagnostic?: MissionDiagnosticDto | null;
   /**
    * Seconds left on the authoritative rate-limit hold (#227), owned by the parent so the same countdown
    * governs every seed affordance. While > 0 (with a `rate` error) the CTA is hard-held — it cannot re-fire.
@@ -40,6 +47,8 @@ export interface ConsoleEmptyStateProps {
   coolOff: number;
   /** Open workspace settings (where Claude/Slack connect lives). */
   onConnect: () => void;
+  /** Clear the stalled seeded state and re-run the hire flow. */
+  onRetry: () => void;
 }
 
 export function ConsoleEmptyState({
@@ -47,15 +56,59 @@ export function ConsoleEmptyState({
   busy,
   seeded,
   error,
+  claudeConnected,
+  activationDiagnostic,
   coolOff,
   onConnect,
+  onRetry,
 }: ConsoleEmptyStateProps): React.JSX.Element {
   const copy = CONSOLE.firstRun;
 
   if (seeded) {
+    if (activationDiagnostic && activationDiagnostic.state !== "running" && activationDiagnostic.state !== "no_venture") {
+      return (
+        <div className="firstrun" role="alert">
+          <PopMark className="firstrun__mark" />
+          <div className="firstrun__blocked">
+            <p className="firstrun__blocked-title">{activationDiagnostic.headline}</p>
+            <p className="firstrun__blocked-body">{activationDiagnostic.detail}</p>
+            <div className="firstrun__actions">
+              <button className="btn btn--primary" type="button" onClick={onConnect}>
+                {copy.connectErrorCta}
+              </button>
+              <button className="btn" type="button" onClick={onRetry}>
+                {copy.timeoutRetry}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error?.kind === "timeout-connect") {
+      return (
+        <div className="firstrun" role="alert">
+          <PopMark className="firstrun__mark" />
+          <div className="firstrun__blocked">
+            <p className="firstrun__blocked-title">{copy.timeoutTitle}</p>
+            <p className="firstrun__blocked-body">{copy.timeoutBody}</p>
+            <div className="firstrun__actions">
+              <button className="btn btn--primary" type="button" onClick={onConnect}>
+                {copy.connectErrorCta}
+              </button>
+              <button className="btn" type="button" onClick={onRetry}>
+                {copy.timeoutRetry}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="firstrun" role="status">
+      <div className="firstrun" role="status" aria-live="polite">
         <PopMark className="firstrun__mark" />
+        <span className="firstrun__spinner" aria-hidden="true" />
         <p className="firstrun__assembling">{copy.assembling}</p>
         <p className="firstrun__hint">
           {copy.connectHint}{" "}
@@ -68,7 +121,7 @@ export function ConsoleEmptyState({
   }
 
   const held = error?.kind === "rate" && coolOff > 0;
-  const ctaLabel = busy ? copy.ctaBusy : held ? copy.retryWait : copy.cta;
+  const ctaLabel = !claudeConnected ? copy.connectFirstCta : busy ? copy.ctaBusy : held ? copy.retryWait : copy.cta;
 
   return (
     <div className="firstrun">
@@ -91,7 +144,11 @@ export function ConsoleEmptyState({
         ))}
       </ol>
 
-      <button className="btn btn--primary firstrun__cta" onClick={onStart} disabled={busy || held}>
+      <button
+        className="btn btn--primary firstrun__cta"
+        onClick={claudeConnected ? onStart : onConnect}
+        disabled={claudeConnected && (busy || held)}
+      >
         {ctaLabel}
       </button>
 

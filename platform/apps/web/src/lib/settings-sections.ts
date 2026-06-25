@@ -30,10 +30,14 @@ export const SETTINGS_SECTION_ATTR = "data-settings-section";
  */
 export function firstRunSettingsSection(key: FirstRunStepKey): SettingsSection | null {
   switch (key) {
+    case "target":
+      return "marketing";
     case "brand":
       return "brand";
-    case "connect":
+    case "claude":
       return "connect";
+    case "connect":
+      return "connections";
     default:
       return null;
   }

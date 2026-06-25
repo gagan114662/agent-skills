@@ -19,6 +19,13 @@ export interface OAuthStatePayload {
    * #260 state stays byte-for-byte identical and round-trips to exactly `{ domain, nonce }`.
    */
   intent?: "signup" | "seo";
+  attribution?: {
+    source?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    trackingRef?: string | null;
+  };
 }
 
 interface SignedState {
@@ -27,6 +34,7 @@ interface SignedState {
   nonce: string;
   ts: number;
   intent?: "signup" | "seo";
+  attribution?: OAuthStatePayload["attribution"];
 }
 
 export const OAUTH_STATE_DEFAULT_KEY_ID = "oauth-state:v1";
@@ -56,6 +64,9 @@ export function signState(
   const signed: SignedState = { kid: keyId, domain: payload.domain, nonce: payload.nonce, ts: now };
   // Only carry `intent` when explicitly "seo" — so a #260 signup state is byte-for-byte unchanged.
   if (payload.intent === "seo") signed.intent = "seo";
+  if (payload.attribution && Object.values(payload.attribution).some((value) => Boolean(value))) {
+    signed.attribution = payload.attribution;
+  }
   const body = b64url(Buffer.from(JSON.stringify(signed), "utf8"));
   return `${body}.${sign(body, secret)}`;
 }
@@ -90,9 +101,22 @@ export function verifyState(
     return null;
   }
   // Only surface a recognised intent ("seo"); anything else (incl. absent) round-trips to {domain, nonce}.
-  return parsed.intent === "seo"
-    ? { domain: parsed.domain, nonce: parsed.nonce, intent: "seo" }
-    : { domain: parsed.domain, nonce: parsed.nonce };
+  const payload: OAuthStatePayload = { domain: parsed.domain, nonce: parsed.nonce };
+  if (parsed.intent === "seo") payload.intent = "seo";
+  if (parsed.attribution && typeof parsed.attribution === "object") {
+    payload.attribution = {
+      source: typeof parsed.attribution.source === "string" ? parsed.attribution.source : undefined,
+      utmSource:
+        typeof parsed.attribution.utmSource === "string" ? parsed.attribution.utmSource : undefined,
+      utmMedium:
+        typeof parsed.attribution.utmMedium === "string" ? parsed.attribution.utmMedium : undefined,
+      utmCampaign:
+        typeof parsed.attribution.utmCampaign === "string" ? parsed.attribution.utmCampaign : undefined,
+      trackingRef:
+        typeof parsed.attribution.trackingRef === "string" ? parsed.attribution.trackingRef : null,
+    };
+  }
+  return payload;
 }
 
 /**

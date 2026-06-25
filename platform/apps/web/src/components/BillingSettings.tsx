@@ -6,7 +6,7 @@
  * and {@link ConnectClaude}. The actual upgrade buttons (→ Stripe checkout) are the embedded
  * {@link PricingPanel}; this component is the summary that sits above it.
  */
-import type { ActivePlanDto, PlanDto } from "@reload/shared";
+import type { ActivePlanDto, BillingInvoiceDto, PlanDto } from "@reload/shared";
 import type { UsageReport } from "../api/types.js";
 import { BILLING } from "../brand.js";
 
@@ -20,12 +20,14 @@ export function BillingSettings({
   plans,
   usage,
   live = false,
+  invoices = [],
 }: {
   current: ActivePlanDto | null;
   plans: readonly PlanDto[];
   usage: UsageReport | null;
   /** #481 go-live: true once real payments are on (stripe + live mode) — flips the safety note. */
   live?: boolean;
+  invoices?: readonly BillingInvoiceDto[];
 }): React.JSX.Element {
   // The display name of the active plan (catalog lookup); a workspace with no activated plan is on trial.
   const planName = current ? (plans.find((p) => p.key === current.planKey)?.name ?? current.planKey) : null;
@@ -80,6 +82,30 @@ export function BillingSettings({
         <strong>{live ? BILLING.panel.liveModeTitle : BILLING.panel.testModeTitle}</strong>
         <span>{live ? BILLING.panel.liveModeBody : BILLING.panel.testModeBody}</span>
       </p>
+
+      <section className="billing-settings__invoices" aria-label={BILLING.panel.invoicesTitle}>
+        <h3>{BILLING.panel.invoicesTitle}</h3>
+        {invoices.length === 0 ? (
+          <p>{BILLING.panel.noInvoices}</p>
+        ) : (
+          <ul>
+            {invoices.map((invoice) => {
+              const href = invoice.invoicePdfUrl ?? invoice.hostedInvoiceUrl;
+              return (
+                <li key={invoice.providerInvoiceId}>
+                  <span>{invoice.number ?? invoice.providerInvoiceId}</span>
+                  <span>{dollars(invoice.amountCents)}</span>
+                  {href && (
+                    <a href={href} target="_blank" rel="noreferrer">
+                      {invoice.invoicePdfUrl ? BILLING.panel.invoicePdfLabel : BILLING.panel.invoiceLinkLabel}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </section>
   );
 }

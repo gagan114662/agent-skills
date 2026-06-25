@@ -28,6 +28,29 @@ export const BRAND_VOICE = {
 /** Read/draft tools every agent shares. Deliberately no send/post/email/spend capability (see #13). */
 const DRAFT_TOOLS = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"] as const;
 
+/** Canonical prompt envelope every ipop marketing agent uses before answering (#1164). */
+export const IPOPAI_AGENT_PROMPT_STRUCTURE = [
+  "1. Task context",
+  "2. Tone context",
+  "3. Background data, documents, and images",
+  "4. Detailed task description & rules",
+  "5. Examples",
+  "6. Conversation history",
+  "7. Immediate task description or request",
+  "8. Thinking step by step / take a deep breath",
+  "9. Output formatting",
+  "10. Prefilled response (if any)",
+] as const;
+
+const PROMPT_STRUCTURE_DIRECTIVE =
+  "Before working, organize the brief using this prompt structure in order: " +
+  IPOPAI_AGENT_PROMPT_STRUCTURE.join("; ") +
+  ". If a section is missing or unavailable, treat it as unavailable context and proceed only when safe; " +
+  "ask for the missing input when it blocks a correct draft. Section 8 is a private planning/checking reminder: " +
+  "think through the work before answering, but do not reveal private chain-of-thought. This structure never overrides " +
+  "approval gates, tool limits, brand/fact checks, legal checks, or any rule that keeps posting, sending, publishing, " +
+  "or spending behind human approval.";
+
 /** A named agent bound to a marketing function. `handle` is the @-mentionable persona name (lowercase). */
 export interface MarketingAgentSpec {
   handle: string;
@@ -76,6 +99,25 @@ export const FOUNDING_VENTURE = {
   wedge: "Stand up one venture the founding team can begin validating immediately, then iterate from evidence.",
   marketPath: "Direct: the founder steers the team toward their own audience and refines the wedge from real demand.",
 } as const;
+
+/** First-run discovery brief for customer workspaces that have not supplied #502 target fields yet. */
+export const MARKET_DISCOVERY_TASK =
+  "Before the department drafts channel work, run market discovery for this workspace. Ask the owner 5 crisp questions: " +
+  "1) What product or offer are we marketing? 2) Who is the narrow ICP and buying trigger? " +
+  "3) Which competitors or alternatives do buyers compare against? 4) What positioning or proof should we lead with? " +
+  "5) Which channels or constraints should shape the first campaign? Summarize the answers as reusable market context " +
+  "for the rest of the team, following the ICP discovery playbook.";
+
+/** Downstream welcome-task suffix when target fields are missing and discovery has been kicked off first. */
+export function marketDiscoveryContextDirective(memoryId?: string): string {
+  const memoryLine = memoryId ? ` Stored discovery context memory: ${memoryId}.` : "";
+  return (
+    "Market discovery prerequisite: use the workspace's market-discovery context before drafting. " +
+    "Reuse its ICP, positioning, competitor, proof, and channel-constraint notes; if it is still unanswered, " +
+    "ask only the missing discovery questions before producing channel work." +
+    memoryLine
+  );
+}
 
 /**
  * The dogfood venture (#235): ipop runs ITS OWN marketing as venture #1. ipop's pitch is "your marketing
@@ -137,6 +179,7 @@ function prompt(title: string, channel: string, role: string, external: boolean)
     `${MARKETING_STANDARDS} ` +
     `${TEAM_COORDINATION} ` +
     `${externalLine} ` +
+    `${PROMPT_STRUCTURE_DIRECTIVE} ` +
     "Keep the house voice: warm, first-person plural, a little playful, one wink at most, receipts over " +
     "adjectives. Be specific and cite what you looked at."
   );

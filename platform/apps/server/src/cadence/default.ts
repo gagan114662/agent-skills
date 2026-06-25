@@ -2,6 +2,10 @@ import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { loadConfig } from "../config/loader.js";
 import { conversionsByChannelSince, failingChannelsSince } from "../db/repositories/acquisition.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
+import { listMemories } from "../db/repositories/memories.js";
+import { getPersonaByHandle } from "../db/repositories/personas.js";
+import { createTask } from "../db/repositories/tasks.js";
+import { createWorkflow } from "../db/repositories/autonomy.js";
 import { createMarketingBriefService } from "../marketing/default.js";
 import { resolveCadenceCaps } from "./caps.js";
 import { CadenceEngine } from "./engine.js";
@@ -53,6 +57,26 @@ export function createDefaultCadenceEngine(
       if (!result.ok) {
         throw new Error(`cadence: brief denied (${result.code}) ${result.error}`);
       }
+      for (const launched of result.launched) {
+        const persona = await getPersonaByHandle(workspaceId, launched.handle);
+        if (!persona) continue;
+        const workflowTask = await createTask({
+          workspaceId,
+          title: task.goal.slice(0, 180),
+          description: "Auto-created from cadence brief " + result.messageId + ".",
+          labels: ["cadence", "autonomy"],
+          assigneeMemberId: persona.agentMemberId,
+          createdByMemberId: ownerMemberId,
+        });
+        await createWorkflow({
+          workspaceId,
+          channelId: result.channelId,
+          taskId: workflowTask.id,
+          stages: [{ agentMemberId: persona.agentMemberId, role: launched.department }],
+          createdByMemberId: ownerMemberId,
+          recurring: true,
+        });
+      }
     },
     outcomes: async (workspaceId): Promise<CadenceOutcome[]> => {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -71,6 +95,13 @@ export function createDefaultCadenceEngine(
           result: "failed" as const,
         })),
       ];
+    },
+    memoryContext: async (workspaceId) => {
+      const memories = await listMemories(workspaceId, { limit: 5 });
+      return memories.map((memory) => ({
+        text: memory.content.text,
+        source: memory.entity ?? memory.sourceType,
+      }));
     },
     logger,
   });

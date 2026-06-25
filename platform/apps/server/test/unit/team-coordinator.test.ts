@@ -25,7 +25,8 @@ function makeChannel(): { channel: TeamChannel; events: () => TeamEvent[] } {
     publish: () => Promise.resolve(),
     listMessages: () => Promise.resolve(posted),
   });
-  const events = () => posted.map((p) => tryParseTeamEvent(p.body)).filter((e): e is TeamEvent => !!e);
+  const events = () =>
+    posted.map((p) => tryParseTeamEvent(p.body)).filter((e): e is TeamEvent => !!e);
   return { channel, events };
 }
 
@@ -177,5 +178,39 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     const seen = await coordinator.readEvents("ch_1");
     expect(seen.length).toBeGreaterThanOrEqual(4); // 2 started + 2 done
     expect(seen.every((e) => e.teamRunId === "run_1")).toBe(true);
+  });
+
+  it("queues and retries announcement persistence failures before peers read events", async () => {
+    const launcher = new FakeLauncher();
+    const posted: { body: string }[] = [];
+    let failPosts = 1;
+    const channel = new TeamChannel({
+      poster: {
+        post: (input) => {
+          if (failPosts > 0) {
+            failPosts -= 1;
+            return Promise.reject(new Error("database unavailable"));
+          }
+          posted.push({ body: input.body });
+          return Promise.resolve({ id: `m${posted.length}` });
+        },
+      },
+      publish: () => Promise.resolve(),
+      listMessages: () => Promise.resolve(posted),
+    });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam(runInput(1));
+
+    expect(result.visibilityDegraded).toBe(true);
+    expect(result.results[0]?.visibilityDegraded).toBe(true);
+    const seen = await coordinator.readEvents("ch_1");
+    expect(seen.map((e) => e.kind)).toEqual(["started", "done"]);
   });
 });

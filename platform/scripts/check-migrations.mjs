@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { readFile, readdir } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, relative } from "node:path";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(ROOT, "../apps/server/drizzle");
-const UP_RE = /^(\d{4})_(?!.*\.down\.sql$)(.+)\.sql$/;
-const DOWN_RE = /^(\d{4})_(.+)\.down\.sql$/;
+const LEGACY_PREFIX_RE = /^\d{4}_/;
+const UP_RE = /^((?:\d{4})|(?:\d{14}))_(?!.*\.down\.sql$)(.+)\.sql$/;
+const DOWN_RE = /^((?:\d{4})|(?:\d{14}))_(.+)\.down\.sql$/;
 
 function stripSqlComments(sql) {
   return sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -36,17 +38,26 @@ function baseName(file) {
   return file.replace(/\.down\.sql$/, ".sql");
 }
 
-export function validateMigrationSet(entries) {
+export function validateMigrationSet(entries, options = {}) {
   const files = [...entries].sort((a, b) => a.file.localeCompare(b.file));
   const up = files.filter((entry) => UP_RE.test(entry.file));
   const down = files.filter((entry) => DOWN_RE.test(entry.file));
   const upNames = new Set(up.map((entry) => entry.file));
   const downBases = new Set(down.map((entry) => baseName(entry.file)));
+  const addedFiles = new Set(options.addedFiles ?? []);
   const errors = [];
 
   for (const entry of files) {
     if (!UP_RE.test(entry.file) && !DOWN_RE.test(entry.file) && entry.file !== "README.md") {
-      errors.push(entry.file + ": migration files must be NNNN_name.sql or NNNN_name.down.sql");
+      errors.push(
+        entry.file + ": migration files must be YYYYMMDDHHMMSS_name.sql or legacy NNNN_name.sql",
+      );
+    }
+    if (addedFiles.has(entry.file) && LEGACY_PREFIX_RE.test(entry.file)) {
+      errors.push(
+        entry.file +
+          ": new migrations must use timestamp prefixes; run node scripts/new-migration.mjs <slug>",
+      );
     }
   }
 
@@ -96,6 +107,29 @@ export function validateMigrationSet(entries) {
   };
 }
 
+function addedMigrationFilesFromGit() {
+  const base = process.env.MIGRATION_BASE_REF ?? "origin/main";
+  try {
+    const output = execFileSync(
+      "git",
+      ["diff", "--name-status", base + "...HEAD", "--", "apps/server/drizzle"],
+      { cwd: join(ROOT, ".."), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    return output
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/))
+      .filter(([status, file]) => status === "A" && file?.endsWith(".sql"))
+      .map(([, file]) => file.split("/").pop())
+      .filter(Boolean);
+  } catch (err) {
+    if (process.env.CI) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("Warning: failed to get added migration files from git: " + message);
+    }
+    return [];
+  }
+}
+
 async function main() {
   const names = await readdir(MIGRATIONS_DIR);
   const entries = await Promise.all(
@@ -106,7 +140,7 @@ async function main() {
         sql: file.endsWith(".sql") ? await readFile(join(MIGRATIONS_DIR, file), "utf8") : "",
       })),
   );
-  const result = validateMigrationSet(entries);
+  const result = validateMigrationSet(entries, { addedFiles: addedMigrationFilesFromGit() });
   if (!result.ok) {
     console.error("migration guard failed in " + relative(process.cwd(), MIGRATIONS_DIR) + ":");
     for (const error of result.errors) console.error("- " + error);

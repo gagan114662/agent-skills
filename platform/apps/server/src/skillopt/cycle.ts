@@ -35,6 +35,16 @@ export interface RevenueReweight {
 }
 
 /**
+ * OPTIONAL negative learning signal (#889). When a regression can be tied to specific mined clusters, those
+ * clusters are pushed behind non-regressed work before the cycle picks a candidate. When the caller only
+ * knows the agent regressed but cannot safely map it to a cluster, it can provide a fail-closed blockReason.
+ */
+export interface EvalRegressionReweight {
+  regressedClusterKeys?: readonly string[];
+  blockReason?: string;
+}
+
+/**
  * The per-cluster candidate the replay/draft step produced for a recurring task: the held-out external
  * reading that judges it, and the bounded text it proposes to append. In this first slice these are
  * supplied to the cycle (the service's replay seam fills them); a richer replay engine is a follow-up.
@@ -69,6 +79,11 @@ export interface SkillOptCycleInput {
    * revenue (the #386 receipts) before the top is chosen. Unset ⇒ today's frequency ordering, unchanged.
    */
   revenueReweight?: RevenueReweight;
+  /**
+   * OPTIONAL #889 eval-regression signal. Known regressed clusters are down-ranked; unscoped agent-level
+   * regressions can block staging entirely so the loop does not reinforce a bad runbook.
+   */
+  evalRegressionReweight?: EvalRegressionReweight;
 }
 
 /**
@@ -90,13 +105,19 @@ export function decideSkillOptCycle(input: SkillOptCycleInput): SkillOptCycleRes
   // revenue so the cycle improves revenue-producing work first ("more of what earns"). With no signal — or
   // an empty reward (no receipts) — the order is unchanged, so the default (flag OFF) path is byte-for-byte
   // identical to frequency-only ranking.
-  const orderedClusters: TaskCluster[] = input.revenueReweight
+  const revenueOrderedClusters: TaskCluster[] = input.revenueReweight
     ? reweightClustersByRevenue(
         clusters,
         input.revenueReweight.reward,
         input.revenueReweight.options,
       ).map((r) => r.cluster)
     : clusters;
+
+  if (input.evalRegressionReweight?.blockReason) {
+    return { status: "skipped", reason: `eval regression guard: ${input.evalRegressionReweight.blockReason}` };
+  }
+
+  const orderedClusters = downrankEvalRegressedClusters(revenueOrderedClusters, input.evalRegressionReweight);
 
   const top = orderedClusters[0]!;
   const candidate = input.candidates.find((c) => c.clusterKey === top.key);
@@ -123,4 +144,18 @@ export function decideSkillOptCycle(input: SkillOptCycleInput): SkillOptCycleRes
   }
 
   return { status: "staged", proposal: built.proposal };
+}
+
+function downrankEvalRegressedClusters(
+  clusters: TaskCluster[],
+  signal: EvalRegressionReweight | undefined,
+): TaskCluster[] {
+  const regressed = new Set(signal?.regressedClusterKeys ?? []);
+  if (regressed.size === 0) return clusters;
+  return [...clusters].sort((a, b) => {
+    const aRegressed = regressed.has(a.key);
+    const bRegressed = regressed.has(b.key);
+    if (aRegressed === bRegressed) return 0;
+    return aRegressed ? 1 : -1;
+  });
 }

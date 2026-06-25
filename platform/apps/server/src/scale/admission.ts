@@ -1,6 +1,6 @@
 import type { ResolvedConfig } from "../config/schema.js";
 import { decideAdmission, type AdmissionReason } from "./decide.js";
-import { resolveScaleCaps } from "./caps.js";
+import { resolveScaleCaps, type ScalePlanBudget } from "./caps.js";
 import { planRegion, type RegionLoad } from "./region.js";
 import { budgetExceeded, windowKey, type UsageReader } from "./usage.js";
 
@@ -29,6 +29,8 @@ export interface AdmissionDeps {
   killSwitch: KillSwitchReader;
   /** Resolve a tenant's config — caps/budget/regions live in its managed/per-tenant layer (#58). */
   config: (workspaceId: string) => ResolvedConfig;
+  /** Active paid plan projection; when present its session budget overrides the trial/config cap (#873). */
+  activePlans?: { getActive(workspaceId: string): Promise<ScalePlanBudget | undefined> };
   /** Fleet-wide in-flight ceiling; 0 = unlimited (the server default derives from TEAM_MAX_CONCURRENCY). */
   globalMax: number;
   /** Injectable clock for the usage window (tests pin it; prod uses the real clock). */
@@ -74,6 +76,7 @@ export class Admission {
   private readonly tenant = new Map<string, number>();
   private readonly region = new Map<string, number>();
   private readonly now: () => Date;
+  private admissionLock: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: AdmissionDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -81,40 +84,46 @@ export class Admission {
 
   /** Try to admit a launch. Resolves to a ticket, or throws {@link AdmissionError} on denial. */
   async acquire(workspaceId: string): Promise<AdmissionTicket> {
-    const caps = resolveScaleCaps(this.deps.config(workspaceId).scale);
     const window = windowKey(this.now());
-    const [killSwitch, usage] = await Promise.all([
+    const [killSwitch, usage, activePlan] = await Promise.all([
       this.deps.killSwitch.isEngaged(workspaceId),
       this.deps.usage.read(workspaceId, window),
+      this.deps.activePlans?.getActive(workspaceId) ?? Promise.resolve(undefined),
     ]);
+    const caps = resolveScaleCaps(this.deps.config(workspaceId).scale, activePlan);
+    const planExpired =
+      activePlan?.status === "active" && activePlan.expiresAt !== undefined && activePlan.expiresAt <= this.now();
 
-    const decision = decideAdmission({
-      killSwitch,
-      budgetExceeded: budgetExceeded(usage.estimatedCostCents, caps.budgetCents),
-      tenantInFlight: this.tenant.get(workspaceId) ?? 0,
-      tenantMax: caps.tenantConcurrency,
-      globalInFlight: this.global,
-      globalMax: this.deps.globalMax,
+    return this.withAdmissionLock(() => {
+      const decision = decideAdmission({
+        killSwitch,
+        budgetExceeded: budgetExceeded(usage.estimatedCostCents, caps.budgetCents),
+        planExpired,
+        tenantInFlight: this.tenant.get(workspaceId) ?? 0,
+        tenantMax: caps.tenantConcurrency,
+        globalInFlight: this.global,
+        globalMax: this.deps.globalMax,
+      });
+      if (!decision.ok) throw new AdmissionError(decision.reason);
+
+      const region = planRegion(caps.regions, this.regionLoad(), caps.preferredRegion);
+      this.global += 1;
+      this.tenant.set(workspaceId, (this.tenant.get(workspaceId) ?? 0) + 1);
+      if (region) {
+        this.region.set(region, (this.region.get(region) ?? 0) + 1);
+        this.deps.onPlace?.(region);
+      }
+
+      let released = false;
+      const release = (): void => {
+        if (released) return;
+        released = true;
+        this.global = Math.max(0, this.global - 1);
+        this.tenant.set(workspaceId, Math.max(0, (this.tenant.get(workspaceId) ?? 0) - 1));
+        if (region) this.region.set(region, Math.max(0, (this.region.get(region) ?? 0) - 1));
+      };
+      return { region, release };
     });
-    if (!decision.ok) throw new AdmissionError(decision.reason);
-
-    const region = planRegion(caps.regions, this.regionLoad(), caps.preferredRegion);
-    this.global += 1;
-    this.tenant.set(workspaceId, (this.tenant.get(workspaceId) ?? 0) + 1);
-    if (region) {
-      this.region.set(region, (this.region.get(region) ?? 0) + 1);
-      this.deps.onPlace?.(region);
-    }
-
-    let released = false;
-    const release = (): void => {
-      if (released) return;
-      released = true;
-      this.global = Math.max(0, this.global - 1);
-      this.tenant.set(workspaceId, Math.max(0, (this.tenant.get(workspaceId) ?? 0) - 1));
-      if (region) this.region.set(region, Math.max(0, (this.region.get(region) ?? 0) - 1));
-    };
-    return { region, release };
   }
 
   /** Live counters for a tenant (the usage dashboard surface). */
@@ -130,5 +139,19 @@ export class Admission {
     const out: RegionLoad = {};
     for (const [r, n] of this.region) out[r] = n;
     return out;
+  }
+
+  private async withAdmissionLock<T>(fn: () => T): Promise<T> {
+    const previous = this.admissionLock;
+    let release!: () => void;
+    this.admissionLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return fn();
+    } finally {
+      release();
+    }
   }
 }

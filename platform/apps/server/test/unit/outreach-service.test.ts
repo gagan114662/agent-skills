@@ -195,17 +195,27 @@ class FakeApprovalGate implements OutreachApprovalGate {
 }
 
 class FakePipeline implements PipelineAdvancer {
-  conversions: { prospectKey: string; externalRef: string }[] = [];
-  async recordConversion(
+  stages: { prospectKey: string; stage: string; externalRef: string }[] = [];
+  get conversions(): { prospectKey: string; externalRef: string }[] {
+    return this.stages
+      .filter((s) => s.stage === "conversion")
+      .map((s) => ({ prospectKey: s.prospectKey, externalRef: s.externalRef }));
+  }
+  async recordStage(
     _ws: string,
     input: {
       ideaId: string | null;
       prospectKey: string;
+      stage: string;
       externalRef: string;
       detail: Record<string, unknown>;
     },
   ): Promise<void> {
-    this.conversions.push({ prospectKey: input.prospectKey, externalRef: input.externalRef });
+    this.stages.push({
+      prospectKey: input.prospectKey,
+      stage: input.stage,
+      externalRef: input.externalRef,
+    });
   }
 }
 
@@ -336,6 +346,39 @@ describe("OutreachService.queue — owner-gated, never auto-sent", () => {
     expect(res.missingAccounts.length).toBeGreaterThan(0);
   });
 
+  it("selects SMS only for warm opted-in signals and parks it at the owner gate", async () => {
+    const { service, messages, approvals } = build({
+      connected: ["sms"],
+      signalKinds: ["meeting_reminder", "sms_opt_in"],
+    });
+    const res = await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    expect(res.status).toBe("pending_approval");
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    expect(res.channel).toBe("sms");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.channel).toBe("sms");
+    expect(stored.subject).toBe("");
+    expect(stored.recipientRef).toBe("sms:contact-9");
+    expect(approvals.submitted[0].payload.channel).toBe("sms");
+    expect(messages.rows.every((m) => m.status !== "sent")).toBe(true);
+  });
+
+  it("does not fall back to SMS for ordinary non-opted-in signals", async () => {
+    const { service } = build({ connected: ["sms"], signalKinds: ["pricing_page_visit"] });
+    const res = await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    expect(res.status).toBe("blocked");
+    if (res.status !== "blocked") throw new Error("unreachable");
+    expect(res.missingAccounts).toContain("esp");
+  });
+
   it("rate-limits per channel (deliverability/brand)", async () => {
     const { service } = build({ caps: { perChannelDailyCap: 1 } });
     const first = await service.queue("ws-1", {
@@ -353,7 +396,7 @@ describe("OutreachService.queue — owner-gated, never auto-sent", () => {
   });
 });
 
-describe("OutreachService — trackable pay link in outreach (GAP 3, ADR-0401, default-OFF)", () => {
+describe("OutreachService — trackable pay link in outreach (GAP 3/#899)", () => {
   it("appends the tracked pay link to the parked body when the flag is ON and a minter is wired", async () => {
     const minter = new FakePayLinkMinter();
     const { service, messages } = build({ caps: { payLinkInOutreach: true }, payLinks: minter });
@@ -372,9 +415,9 @@ describe("OutreachService — trackable pay link in outreach (GAP 3, ADR-0401, d
     expect(minter.calls).toEqual([{ leadOrArtifactId: "p-1", channel: "email", planId: "pro" }]);
   });
 
-  it("leaves the body unchanged when the flag is OFF (default) even if a minter is wired", async () => {
+  it("leaves the body unchanged when the flag is explicitly OFF even if a minter is wired", async () => {
     const minter = new FakePayLinkMinter();
-    const { service, messages } = build({ payLinks: minter });
+    const { service, messages } = build({ caps: { payLinkInOutreach: false }, payLinks: minter });
     const res = await service.queue("ws-1", {
       prospectKey: "p-1",
       buyerBriefId: "brief-1",
@@ -479,6 +522,31 @@ describe("OutreachService.recordReceipt — external receipts only, advances #22
     });
     expect(r.created).toBe(true);
     expect(pipeline.conversions).toEqual([{ prospectKey: "p-1", externalRef: "evt-123" }]);
+  });
+
+  it("records signup receipts as onboarding and booked meetings as call-prep handoffs", async () => {
+    const { service, messages, pipeline } = build();
+    await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    const mid = messages.rows[0].id;
+    await service.recordReceipt("ws-1", { messageId: mid, kind: "signup", externalRef: "signup-1" });
+    const meeting = await service.recordReceipt("ws-1", { messageId: mid, kind: "meeting", externalRef: "cal-1" });
+
+    expect(pipeline.stages).toEqual([
+      { prospectKey: "p-1", stage: "onboarding", externalRef: "signup-1" },
+      { prospectKey: "p-1", stage: "conversion", externalRef: "cal-1" },
+    ]);
+    expect(meeting.callPrep).toMatchObject({
+      source: "outreach.call_prep",
+      buyerBriefId: "brief-1",
+      buyerName: "Dana Vp",
+      buyerTitle: "VP of Engineering",
+      accountName: "Acme",
+      prospectKey: "p-1",
+    });
   });
 
   it("is idempotent (a re-delivered receipt advances the pipeline once)", async () => {

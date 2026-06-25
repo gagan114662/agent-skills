@@ -36,6 +36,20 @@ describe("ExternalAccounts (#231)", () => {
     expect(screen.getByText(/all set/i)).toBeInTheDocument();
   });
 
+  it("#872: warns when publishing is configured as dry-run, not live", () => {
+    render(
+      <ExternalAccounts
+        checklist={EMPTY}
+        needed={[]}
+        publishStatus={{ provider: "dryrun", live: false, dryRun: true }}
+        onConnect={() => {}}
+        onDisconnect={() => {}}
+      />,
+    );
+    expect(screen.getByText(/publishing is in dry-run/i)).toBeInTheDocument();
+    expect(screen.getByText(/dryrun.reload.app/i)).toBeInTheDocument();
+  });
+
   it("disables Connect until a name and a masked secret are entered, then calls onConnect", () => {
     const onConnect = vi.fn();
     render(<ExternalAccounts checklist={EMPTY} needed={["hosting"]} onConnect={onConnect} onDisconnect={() => {}} />);

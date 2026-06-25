@@ -31,6 +31,8 @@ import { resolveEgressPolicy } from "./egress-allowlist.js";
 import { loadConfig } from "../config/loader.js";
 import type { WorkspaceProvisioner } from "../config/workspace.js";
 import type { AdmissionController, AdmissionTicket } from "../scale/admission.js";
+import type { SpendAnomalyMonitor, SpendGuardSession } from "../scale/spend-anomaly.js";
+import type { DecideSpendInput, SpendOutcome } from "../enterprise/service.js";
 import type { UsageRecorder } from "../scale/usage.js";
 import type { AgentRuntime, RunningSession, RuntimeResult } from "./types.js";
 import { statusForReason } from "./types.js";
@@ -44,7 +46,16 @@ import {
   type FailureReasonClass,
 } from "./outcome.js";
 import { resolveLaunchModel } from "./models.js";
-import { noopTracer, type AgentSessionOutcome, type AgentTracer } from "../observability/tracing.js";
+import {
+  noopTracer,
+  type AgentSessionOutcome,
+  type AgentTracer,
+} from "../observability/tracing.js";
+import {
+  createReasoningLoopGuard,
+  prepareAgentContext,
+  type ContextCircuitPolicy,
+} from "./context-circuit.js";
 
 /**
  * Thrown when a per-session harness selection is invalid (not in the allowlist) or cannot be honored
@@ -57,6 +68,20 @@ export class HarnessKindError extends Error {
   }
 }
 
+/** Thrown before session creation when enterprise hard budget caps park an owner approval (#925). */
+export class SpendCapBreachError extends Error {
+  readonly reason = "enterprise_budget_cap_breached";
+
+  constructor(
+    readonly approvalRequestId: string,
+    readonly requestCents: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SpendCapBreachError";
+  }
+}
+
 /** Persistence seam (real impl wraps the agent-sessions repository; tests inject a fake). */
 export interface SessionStore {
   create(input: {
@@ -66,6 +91,8 @@ export interface SessionStore {
     createdByMemberId: string;
     runtime: RuntimeKind;
     command: string;
+    /** Optional caller-owned idempotency key; duplicate launches return the existing session row. */
+    idempotencyKey?: string | null;
     caps: ResourceCaps;
     /** Coding-agent harness the session ran on (#50); omitted → null (env default unselected). */
     harness?: HarnessKind | null;
@@ -119,6 +146,10 @@ export interface ChannelPoster {
     body: string;
     parentMessageId?: string;
   }): Promise<{ id: string }>;
+}
+
+export interface EnterpriseSpendGate {
+  decideSpend(input: DecideSpendInput): Promise<SpendOutcome>;
 }
 
 /** Minimal structural logger — Fastify's pino `app.log` satisfies this; tests pass a no-op. */
@@ -214,6 +245,20 @@ export interface SessionManagerDeps {
    */
   usage?: UsageRecorder;
   /**
+   * Runtime spend anomaly guard (#926): estimates in-flight session cost, emits threshold alerts, and
+   * asks the manager to cancel a runaway session before it drains the workspace budget. Absent means no
+   * realtime spend guard; finalized usage accounting still runs through usage.
+   */
+  spendAnomaly?: SpendAnomalyMonitor;
+  /** Poll cadence for the spend anomaly guard. Prod defaults conservatively; tests inject a tiny value. */
+  spendAnomalyIntervalMs?: number;
+  /**
+   * Enterprise hard budget caps (#925): preflight a session's upper-bound compute cost before admission,
+   * row creation, or runtime start. Absent/default rate 0 keeps existing behavior unchanged.
+   */
+  enterprise?: EnterpriseSpendGate;
+  enterpriseComputeRateCentsPerMinute?: (workspaceId: string) => number;
+  /**
    * Optional harness-aware output decoder (#81): converts each raw stdout line into readable channel
    * text, keeping the parsed event for structured consumers. The `claude-code` harness emits
    * stream-json (one JSON event per line), so without this the channel shows raw JSON blobs. Absent
@@ -302,6 +347,8 @@ export interface SessionManagerDeps {
     task: string;
     /** The already-redacted, bounded result tail (the deliverable/draft). */
     result: string;
+    /** Wall-clock compute consumed by the producing session. */
+    computeSeconds: number;
   }): Promise<void>;
   /**
    * Optional deliverable-message sink (#393): called best-effort when a session COMPLETES cleanly with a
@@ -318,15 +365,26 @@ export interface SessionManagerDeps {
     task: string;
     result: string;
   }): Promise<void>;
+  /**
+   * Context-rot circuit breaker (#557): compacts oversized launch context before it reaches AGENT_TASK
+   * and nudges repeated planning spirals in the live stream. Undefined uses safe defaults; false disables.
+   */
+  contextCircuit?: ContextCircuitPolicy | false;
 }
 
 export interface LaunchInput {
   workspaceId: string;
   channelId: string;
+  /** Optional task row id for workflow launches; exposed to the harness as AGENT_TASK_ID. */
+  taskId?: string;
   agentMemberId: string;
   createdByMemberId: string;
   /** The user's task/prompt — passed to the harness as data (env), never as a command. */
   task: string;
+  /** True when this launch resumes after an interrupted prior run; appended as a synthetic context turn. */
+  interrupted?: boolean;
+  /** Optional caller-owned idempotency key; duplicate launches return the existing session row. */
+  idempotencyKey?: string | null;
   /**
    * Per-session coding-agent harness (#50): overrides the deployment default for THIS session.
    * Validated against the {@link HarnessKind} allowlist (invalid → {@link HarnessKindError}, mapped
@@ -485,7 +543,13 @@ export class SessionManager {
 
   /** Persist + start a session, returning immediately. The run continues server-side. */
   async launch(input: LaunchInput): Promise<AgentSession> {
-    const task = redactPotentialSecrets(input.task);
+    const redactedTask = redactPotentialSecrets(input.task);
+    const task =
+      this.deps.contextCircuit === false
+        ? redactedTask
+        : prepareAgentContext(redactedTask, this.deps.contextCircuit, {
+            interrupted: input.interrupted,
+          }).task;
     // Preflight gate (#69): fail fast on a misconfigured cloud/real-agent posture BEFORE we persist
     // a row, acquire an admission slot, or make any runtime/cloud call — so a half-broken session
     // never starts. The default local/demo posture always passes; no gate wired (unit tests) = no-op.
@@ -508,6 +572,9 @@ export class SessionManager {
     const auto = await this.maybeAutoSelectModel({ ...input, task });
     const selectionRow = auto?.selectionRow ?? input.selection;
     let harnessEnv = auto ? auto.harnessEnv : input.harnessEnv;
+    if (input.taskId) {
+      harnessEnv = { ...harnessEnv, AGENT_TASK_ID: input.taskId };
+    }
 
     // Model preflight: resolve the EFFECTIVE model at the runtime boundary and ALWAYS inject a launchable
     // model as ANTHROPIC_MODEL BEFORE the session spawns. The fleet runs on a managed, always-valid
@@ -524,9 +591,10 @@ export class SessionManager {
     harnessEnv = modelPreflight.harnessEnv;
     const effectiveModel = modelPreflight.model;
 
-    // #71: the admission chokepoint. A denied launch throws (kill switch / budget / capacity) BEFORE
-    // any row is created — so the route maps it to 429/402 and the fleet never breaches a cap. When
-    // no admission is wired this is a no-op and the session is unplaced (today's #25 behavior).
+    // #925 + #71: the enterprise budget cap and scale admission chokepoints. Both deny BEFORE any row is
+    // created or runtime/cloud call starts. Enterprise checks first so a blocked launch never acquires a
+    // scale slot that would need releasing.
+    await this.checkEnterpriseBudget(input, caps);
     const ticket = this.deps.admission
       ? await this.deps.admission.acquire(input.workspaceId)
       : undefined;
@@ -540,6 +608,7 @@ export class SessionManager {
         createdByMemberId: input.createdByMemberId,
         runtime: this.deps.runtime.kind,
         command: harness.spec.command,
+        idempotencyKey: input.idempotencyKey ?? null,
         harness: harness.kind,
         caps,
         provider: selectionRow?.provider ?? null,
@@ -550,6 +619,10 @@ export class SessionManager {
         selectionMeta: auto?.decision ?? null,
         region: ticket?.region ?? null,
       });
+      if (session.reusedIdempotencyKey) {
+        ticket?.release();
+        return session;
+      }
       await this.deps.usage?.recordStart(input.workspaceId);
     } catch (err) {
       // The slot was acquired but the session never started — free it so it isn't leaked.
@@ -589,6 +662,27 @@ export class SessionManager {
     return session;
   }
 
+  private async checkEnterpriseBudget(input: LaunchInput, caps: ResourceCaps): Promise<void> {
+    if (!this.deps.enterprise) return;
+    const rate = this.deps.enterpriseComputeRateCentsPerMinute?.(input.workspaceId) ?? 0;
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    const requestCents = Math.max(0, Math.round((caps.wallClockMs / 60_000) * rate));
+    if (requestCents <= 0) return;
+    const outcome = await this.deps.enterprise.decideSpend({
+      workspaceId: input.workspaceId,
+      agentId: input.agentMemberId,
+      requesterMemberId: input.createdByMemberId,
+      requestCents,
+    });
+    if (outcome.status === "breach_gated") {
+      throw new SpendCapBreachError(
+        outcome.approvalRequestId,
+        requestCents,
+        outcome.decision.reason,
+      );
+    }
+  }
+
   /**
    * Resolve the harness for a launch (#50): the env default, or a validated per-session override.
    * Returns the trusted spec + its output decoder + the kind to persist. Throws
@@ -623,7 +717,10 @@ export class SessionManager {
     }
     if (!isHarnessKind(override)) throw new HarnessKindError(override);
     if (!this.deps.harnessOverrides) {
-      throw new HarnessKindError(override, "cannot be selected (no harness override resolver wired)");
+      throw new HarnessKindError(
+        override,
+        "cannot be selected (no harness override resolver wired)",
+      );
     }
     const resolved = this.deps.harnessOverrides(override, { fast });
     return {
@@ -642,7 +739,12 @@ export class SessionManager {
    */
   private async maybeAutoSelectModel(input: LaunchInput): Promise<
     | {
-        selectionRow: { provider: ProviderKind; model: string; effort: EffortLevel; mode: SessionMode };
+        selectionRow: {
+          provider: ProviderKind;
+          model: string;
+          effort: EffortLevel;
+          mode: SessionMode;
+        };
         harnessEnv: Record<string, string>;
         decision: AutoModelDecision;
       }
@@ -908,6 +1010,11 @@ export class SessionManager {
     let finalAnswer = "";
     let lastToolCall: HarnessToolCall | null = null;
     let failedTool: ToolFailureContext | null = null;
+    const reasoningGuard =
+      this.deps.contextCircuit === false
+        ? undefined
+        : createReasoningLoopGuard(this.deps.contextCircuit);
+    let runningRef: RunningSession | undefined;
     // #436 idempotency anchors: did the SESSION ever emit output / fire a heartbeat across its attempts?
     // The moment either is true, a dead attempt may have taken a real/money action, so it is NEVER retried.
     let sawOutput = false;
@@ -925,7 +1032,10 @@ export class SessionManager {
         if (harnessEventReportsError(decoded.raw)) {
           harnessReportedError = true;
           if (!failedTool && lastToolCall) {
-            failedTool = { tool: lastToolCall, error: eventError ?? "agent run ended with an error" };
+            failedTool = {
+              tool: lastToolCall,
+              error: eventError ?? "agent run ended with an error",
+            };
           }
         }
         const answer = finalAnswerFromEvent(decoded.raw);
@@ -937,6 +1047,22 @@ export class SessionManager {
         tail.push(clean);
         if (tail.length > RESULT_TAIL_LINES) tail.shift();
         postChain = postChain.then(() => this.safePost(session, clean, log, parentMessageId));
+        const nudge = reasoningGuard?.observe(clean);
+        if (nudge) {
+          tail.push(nudge);
+          if (tail.length > RESULT_TAIL_LINES) tail.shift();
+          postChain = postChain.then(() => this.safePost(session, nudge, log, parentMessageId));
+          const steer = runningRef?.steer;
+          if (steer) {
+            void steer(nudge).catch((err: unknown) =>
+              log.error({ err }, "reasoning-loop guard steer failed"),
+            );
+          } else {
+            void runningRef
+              ?.cancel("idle")
+              .catch((err: unknown) => log.error({ err }, "reasoning-loop guard cancel failed"));
+          }
+        }
       }
     };
 
@@ -996,18 +1122,75 @@ export class SessionManager {
     };
     const wallTimer = setTimeout(() => fireReap("timeout"), opts.caps.wallClockMs);
 
-    let runningRef: RunningSession | undefined;
     let result: RuntimeResult = { status: "failed", exitCode: null };
     // #71: the session's wall-clock lifetime is the compute-seconds we bill the tenant for.
     const runStart = Date.now();
+    let spendGuard: SpendGuardSession | null = null;
+    let spendTimer: NodeJS.Timeout | undefined;
+    let spendKilled = false;
+    const checkSpend = async (): Promise<void> => {
+      if (!spendGuard || spendKilled) return;
+      const elapsedSeconds = Math.max(0, Math.round((Date.now() - runStart) / 1000));
+      try {
+        const check = await spendGuard.check(elapsedSeconds);
+        if (!check.kill) return;
+        spendKilled = true;
+        log.warn(
+          {
+            reason: check.reason,
+            elapsedSeconds,
+            estimatedCostCents: check.live.estimatedCostCents,
+            budgetCents: check.live.budgetCents,
+          },
+          "agent session spend anomaly guard canceled runaway session",
+        );
+        await this.safePost(
+          session,
+          "Warning: session " +
+            session.id +
+            " paused: spend guard hit " +
+            (check.reason ?? "budget threshold") +
+            " (" +
+            check.live.estimatedCostCents +
+            "c estimated this session).",
+          log,
+          parentMessageId,
+        );
+        await runningRef
+          ?.cancel("canceled")
+          .catch((err: unknown) => log.error({ err }, "spend anomaly cancel failed"));
+      } catch (err) {
+        log.error({ err }, "spend anomaly check failed");
+      }
+    };
     try {
+      spendGuard =
+        (await this.deps.spendAnomaly?.begin({
+          sessionId: session.id,
+          workspaceId: session.workspaceId,
+          channelId: session.channelId,
+          agentMemberId: session.agentMemberId,
+          createdByMemberId: session.createdByMemberId ?? session.agentMemberId,
+          task,
+          startedAtMs: runStart,
+        })) ?? null;
+      if (spendGuard) {
+        spendTimer = setInterval(
+          () => void checkSpend(),
+          Math.max(250, this.deps.spendAnomalyIntervalMs ?? 15_000),
+        );
+        spendTimer.unref?.();
+      }
       // #58: prepare the per-session workspace (copy files-to-copy in) when a provisioner is wired.
       const prepared = await this.deps.workspace?.prepare({
         sessionId: session.id,
         workspaceId: session.workspaceId,
       });
       const safeHarnessEnv = Object.fromEntries(
-        Object.entries(opts.harnessEnv ?? {}).map(([key, value]) => [key, redactPotentialSecrets(value)]),
+        Object.entries(opts.harnessEnv ?? {}).map(([key, value]) => [
+          key,
+          redactPotentialSecrets(value),
+        ]),
       );
       const startSpec = {
         sessionId: session.id,
@@ -1074,7 +1257,10 @@ export class SessionManager {
         } catch (attemptErr) {
           // `start()`/`markRunning()` threw: a pre-process death (no exit code). Tear down any started
           // child best-effort so a retry never leaves an orphan running, then treat it as a null-exit failure.
-          log.warn({ attempt, err: redactError(attemptErr, redact) }, "agent session attempt failed to start");
+          log.warn(
+            { attempt, err: redactError(attemptErr, redact) },
+            "agent session attempt failed to start",
+          );
           if (running) await running.cancel("failed").catch(() => {});
           result = { status: "failed", exitCode: null };
         } finally {
@@ -1104,6 +1290,11 @@ export class SessionManager {
       log.error({ err: redactError(err, redact) }, "agent session failed to run");
       result = { status: "failed", exitCode: null };
     } finally {
+      if (spendTimer) clearInterval(spendTimer);
+      if (spendGuard) {
+        await checkSpend();
+        spendGuard.close();
+      }
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(wallTimer);
       if (graceTimer) clearTimeout(graceTimer); // #394: drop the reap grace timer on every teardown path
@@ -1150,7 +1341,11 @@ export class SessionManager {
     // reason class (auth markers) and is never echoed back into the message.
     await this.safePost(
       session,
-      renderSessionOutcome({ status: result.status, exitCode: result.exitCode, outputTail: resultText }),
+      renderSessionOutcome({
+        status: result.status,
+        exitCode: result.exitCode,
+        outputTail: resultText,
+      }),
       log,
     );
     await this.deps.store.finalize(session.id, {
@@ -1203,6 +1398,7 @@ export class SessionManager {
         .onSessionRecovered({ workspaceId: session.workspaceId, sessionId: session.id })
         .catch((err: unknown) => log.error({ err }, "session recovery routing failed"));
     }
+    const computeSeconds = Math.max(0, Math.round((Date.now() - runStart) / 1000));
     // #248: surface a clean completion's deliverable as a board artifact so a briefed task NEVER
     // vanishes — its draft lands in the APPROVAL NEEDED queue instead of living only as a channel
     // message + result row. #319: gated on `disposition.done` — the ONE source of truth — so a run that
@@ -1220,6 +1416,7 @@ export class SessionManager {
           agentMemberId: session.agentMemberId,
           task,
           result: deliverable,
+          computeSeconds,
         })
         .catch((err: unknown) => log.error({ err }, "session deliverable surfacing failed"));
     }
@@ -1242,7 +1439,6 @@ export class SessionManager {
     // #71: account the compute consumed so a per-tenant budget can bite on the next launch. Pure
     // accounting — a recorder hiccup must never fail an already-finalized session.
     if (this.deps.usage) {
-      const computeSeconds = Math.max(0, (Date.now() - runStart) / 1000);
       await this.deps.usage
         .recordCompute(session.workspaceId, computeSeconds)
         .catch((err: unknown) => log.error({ err }, "usage compute accounting failed"));
@@ -1272,7 +1468,11 @@ export class SessionManager {
           exitCode: null,
         });
       } else {
-        await this.deps.store.finalize(session.id, { status: "failed", exitCode: null, result: detail });
+        await this.deps.store.finalize(session.id, {
+          status: "failed",
+          exitCode: null,
+          result: detail,
+        });
         finalized = true;
       }
     } catch (e: unknown) {

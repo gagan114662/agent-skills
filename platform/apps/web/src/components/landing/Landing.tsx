@@ -14,9 +14,11 @@
 import { useEffect } from "react";
 import {
   BRAND,
+  COMPANY,
   CONTACT,
   FLEET,
   LANDING,
+  LEGAL,
   PUBLIC_PROOF,
   SECURITY,
   STORY,
@@ -319,8 +321,20 @@ function LandingFooter(): React.JSX.Element {
         </div>
       </div>
       <div className="landing__footer-bottom">
+        <Link href={COMPANY.href} className="linklike landing__footer-link">
+          {COMPANY.navLabel}
+        </Link>
         <Link href="/security" className="linklike landing__footer-link">
           {SECURITY.navLabel}
+        </Link>
+        <Link href={LEGAL.terms.href} className="linklike landing__footer-link">
+          {LEGAL.terms.navLabel}
+        </Link>
+        <Link href={LEGAL.privacy.href} className="linklike landing__footer-link">
+          {LEGAL.privacy.navLabel}
+        </Link>
+        <Link href={LEGAL.dpa.href} className="linklike landing__footer-link">
+          {LEGAL.dpa.navLabel}
         </Link>
       </div>
     </footer>
@@ -338,9 +352,15 @@ function FooterCol({
     <nav className="landing__footer-col" aria-label={title}>
       <p className="landing__footer-col-title">{title}</p>
       {links.map((l) => (
-        <Link key={l.href} href={l.href} className="linklike landing__footer-link">
-          {l.label}
-        </Link>
+        l.href.startsWith("mailto:") ? (
+          <a key={l.href} href={l.href} className="linklike landing__footer-link">
+            {l.label}
+          </a>
+        ) : (
+          <Link key={l.href} href={l.href} className="linklike landing__footer-link">
+            {l.label}
+          </Link>
+        )
       ))}
     </nav>
   );

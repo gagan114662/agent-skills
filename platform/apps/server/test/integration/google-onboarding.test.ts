@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
-import { workspaces, users } from "../../src/db/schema/index.js";
+import { growthEvents, workspaces, users } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 import { listServiceStatuses } from "../../src/db/repositories/external-credentials.js";
 import {
@@ -125,6 +125,40 @@ describe("Google onboarding (#260, real Postgres)", () => {
     // Scout was kicked to verify the domain + submit the sitemap.
     expect(bootstrapCalls).toHaveLength(1);
     expect(bootstrapCalls[0]).toMatchObject({ workspaceId, domain: "acme.com", siteUrl: "https://acme.com" });
+  });
+
+  it("Google signup carries UTM state through callback and records acquisition (#901)", { timeout: 60000 }, async () => {
+    const email = `google-utm-${newId()}@acme-${newId()}.com`;
+    createdEmails.push(email);
+    currentUser = { sub: `sub-${newId()}`, email, emailVerified: true, name: "Utm Founder" };
+
+    const start = await app.inject({
+      method: "GET",
+      url: "/auth/google/start?domain=acme.com&utm_source=linkedin&utm_medium=paid&utm_campaign=founders&ref=gref_901",
+    });
+    const cb = await callback("auth-code", stateFrom(start.headers.location as string));
+    expect(cb.statusCode).toBe(302);
+    const cookie = cb.cookies.find((c) => c.name === "rid")!;
+    const me = await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie.value } });
+    const workspaceId = me.json().workspaceId as string;
+    createdWorkspaceIds.push(workspaceId);
+
+    const rows = await db
+      .select()
+      .from(growthEvents)
+      .where(eq(growthEvents.workspaceId, workspaceId));
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        kind: "acquisition",
+        source: "linkedin",
+        metadata: expect.objectContaining({
+          utmSource: "linkedin",
+          utmMedium: "paid",
+          utmCampaign: "founders",
+          trackingRef: "gref_901",
+        }),
+      }),
+    );
   });
 
   it("a returning Google user re-enters the same workspace and is NOT re-bootstrapped", async () => {

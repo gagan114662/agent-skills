@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import { boolean, pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
 
@@ -35,6 +35,12 @@ export const inboundLeads = pgTable(
     source: text("source").notNull().default("landing_form"),
     // Reserved for #386 attribution: the recovered tracking ref so a future payment credits this lead.
     trackingRef: text("tracking_ref"),
+    emailHash: text("email_hash"),
+    submitterHash: text("submitter_hash"),
+    verified: boolean("verified").notNull().default(false),
+    verificationTokenHash: text("verification_token_hash"),
+    verificationSentAt: timestamp("verification_sent_at", { withTimezone: true }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
     status: text("status", { enum: INBOUND_LEAD_STATUSES }).notNull().default("new"),
     assigneeMemberId: uuid("assignee_member_id"),
     nextAction: text("next_action"),
@@ -47,5 +53,7 @@ export const inboundLeads = pgTable(
   (t) => ({
     byWorkspace: index("inbound_leads_workspace_idx").on(t.workspaceId, t.createdAt),
     byWorkspaceStatus: index("inbound_leads_workspace_status_idx").on(t.workspaceId, t.status, t.createdAt),
+    byWorkspaceEmailHash: index("inbound_leads_workspace_email_hash_idx").on(t.workspaceId, t.emailHash, t.createdAt),
+    byVerifyToken: index("inbound_leads_verify_token_idx").on(t.verificationTokenHash),
   }),
 );

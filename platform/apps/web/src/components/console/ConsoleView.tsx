@@ -129,6 +129,7 @@ function askLineOf(item: ConsoleItem): string {
 
 /** Default cool-off when a 429 carries no `Retry-After` (matches the server's advertised default, #221). */
 const SEED_RETRY_FALLBACK_SECONDS = 30;
+export const FIRST_RUN_SEED_TIMEOUT_MS = 30_000;
 
 /**
  * Turn a failed first-run seed into an actionable {@link SeedError} (#221): a 429 becomes a held countdown
@@ -146,7 +147,11 @@ function classifySeedError(err: unknown): SeedError {
   return { kind: "generic" };
 }
 
-export function ConsoleView(): React.JSX.Element {
+export function ConsoleView({
+  firstRunSeedTimeoutMs = FIRST_RUN_SEED_TIMEOUT_MS,
+}: {
+  firstRunSeedTimeoutMs?: number;
+} = {}): React.JSX.Element {
   const { identity, channels, directory, messagesByChannel, paywall, activeChannelId } = useAppState();
   const store = useStore();
   const workspaceId = identity?.workspaceId;
@@ -189,6 +194,7 @@ export function ConsoleView(): React.JSX.Element {
   const [pricingOpen, setPricingOpen] = useState(false);
   // #479 first-run checklist: real setup signals (brand kit set / an account connected). Fetched once; the
   // run + approve signals come from already-loaded state below.
+  const [targetSet, setTargetSet] = useState(false);
   const [brandSet, setBrandSet] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
   // #505: the checklist's dismissed/docked state is a per-user UI preference, hydrated from storage once we
@@ -326,11 +332,11 @@ export function ConsoleView(): React.JSX.Element {
     return () => window.clearInterval(timer);
   }, [workspaceId]);
 
-  // #365: refresh the connection-health chip on mount and whenever Settings closes (so reconnecting in the
-  // Connect-Claude panel updates the chip immediately, not on a later poll). Only fetches for the named
-  // owner workspace; a transient failure leaves the prior snapshot (or null → the chip renders nothing).
+  // #365/#916: refresh the token-free Claude connection-health signal on mount and whenever Settings closes.
+  // The header chip remains owner-flagged, but the first-run hire gate needs this for every workspace so a
+  // new customer cannot reach a "team ready" state while the real runtime prerequisite is absent.
   useEffect(() => {
-    if (!connectHealthEnabled || !workspaceId) return;
+    if (!workspaceId) return;
     let live = true;
     void api
       .getClaudeHealth()
@@ -410,6 +416,17 @@ export function ConsoleView(): React.JSX.Element {
   // The board is shown (not the no-venture empty-state pitch, which owns its own guided activation). The
   // first-run auto-deliverable only applies once the owner is on a real board with departments (#301).
   const boardShown = !(!hasVenture && model.projects.length === 0);
+  const seedAwaitingBoard = seeded && !hasVenture && model.projects.length === 0;
+
+  // #940: after a successful hire, the empty desk must not spin forever. If no work appears before the
+  // activation timeout and Claude is not confirmed connected, surface the real blocker with recovery CTAs.
+  useEffect(() => {
+    if (!seedAwaitingBoard || claudeHealth?.state === "connected") return;
+    const id = window.setTimeout(() => {
+      if (mounted.current) setSeedError({ kind: "timeout-connect" });
+    }, firstRunSeedTimeoutMs);
+    return () => window.clearTimeout(id);
+  }, [seedAwaitingBoard, claudeHealth?.state, firstRunSeedTimeoutMs]);
 
   // #301: auto-run the safe first deliverable on a fresh-but-ready board, then silently retry only while a
   // transient runner failure is in play (#299). Re-evaluated on every poll; `shouldAutoRunFirstRun` guards
@@ -480,16 +497,26 @@ export function ConsoleView(): React.JSX.Element {
   useEffect(() => {
     const active = (mc?.sessions ?? [])
       .filter((s) => s.status === "running" || s.status === "provisioning")
-      .map((s) => ({ id: s.id, channelId: s.channelId, agentMemberId: s.agentMemberId, status: s.status }));
+      .map((s) => ({
+        id: s.id,
+        channelId: s.channelId,
+        agentMemberId: s.agentMemberId,
+        status: s.status,
+        agentStatus: s.agentStatus,
+      }));
     store.setLiveSessions(active);
   }, [mc, store]);
 
-  // #479 first-run checklist: fetch the two setup signals that aren't already in state (brand kit + any
-  // connected account), once, only on the coordination surface — so the board (prod) makes no extra fetch.
+  // #479/#950 first-run checklist: fetch the setup signals that aren't already in state (marketing target,
+  // brand kit, any connected account), once, only on the coordination surface — so the board makes no extra
+  // fetch when the checklist is not mounted. A failure leaves the step actionable.
   // Re-runs only when the surface flips on; a failure leaves the signal false (the step stays actionable).
   useEffect(() => {
     if (!showCoordinationSurface || !workspaceId) return;
     let live = true;
+    void api.getMarketingTarget().then((t) => {
+      if (live) setTargetSet(t.configured);
+    }).catch(() => {});
     void api.getBrandKit().then((b) => {
       if (live) setBrandSet(b.connected);
     }).catch(() => {});
@@ -519,7 +546,9 @@ export function ConsoleView(): React.JSX.Element {
     pending.length > 0 ||
     Object.values(messagesByChannel).some((ms) => ms.some((m) => directory[m.authorMemberId]?.kind === "agent"));
   const firstRunSteps = deriveFirstRunChecklist({
+    targetSet,
     brandSet,
+    claudeConnected: claudeHealth?.state === "connected",
     hasConnection,
     agentRan,
     resultApproved: shipped.length > 0,
@@ -652,6 +681,10 @@ export function ConsoleView(): React.JSX.Element {
     // request at all — that is what kept re-hitting the limit and resetting the window. The hold elapses on
     // its own (seedCoolOff ticks to 0), after which a click can fire again.
     if (!workspaceId || seeding || seedHeld) return;
+    if (claudeHealth?.state !== "connected") {
+      openShellSettings("connect");
+      return;
+    }
     setSeeding(true);
     setSeedError(null);
     try {
@@ -670,6 +703,12 @@ export function ConsoleView(): React.JSX.Element {
     } finally {
       if (mounted.current) setSeeding(false);
     }
+  }
+
+  function retrySeededStart(): void {
+    setSeeded(false);
+    setSeedError(null);
+    void startVenture();
   }
 
   /**
@@ -947,8 +986,11 @@ export function ConsoleView(): React.JSX.Element {
             busy={seeding}
             seeded={seeded}
             error={seedError}
+            claudeConnected={claudeHealth?.state === "connected"}
+            activationDiagnostic={seedAwaitingBoard ? (mc?.diagnostic ?? null) : null}
             coolOff={seedCoolOff}
             onConnect={() => openShellSettings()}
+            onRetry={retrySeededStart}
           />
         ) : (
           <>

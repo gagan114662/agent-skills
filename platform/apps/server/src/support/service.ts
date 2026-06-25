@@ -422,10 +422,11 @@ export class SupportDeskService {
   }
 
   /**
-   * Reply path. Always enqueues a #13 `external.send` (sensitive-by-default, recorded-only). For an
+   * Reply path. Always enqueues a #13 `external.send` (sensitive-by-default). For an
    * `auto_send` route with a wired `AutoApprover` and the kill switch off, it approves+executes through the
-   * SAME #13 chokepoint and records an `auto_sent` audit receipt (the cap counter). Otherwise it leaves a
-   * pending human approval — the safe default.
+   * SAME #13 chokepoint and records an `auto_sent` audit receipt (the cap counter). Without a delivery
+   * dispatcher, execution fails loudly in the approval executor rather than recording a fake send. Otherwise
+   * it leaves a pending human approval — the safe default.
    */
   private async toReply(
     ticket: SupportTicket,

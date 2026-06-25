@@ -8,19 +8,15 @@ import {
   getReview,
   setReviewSunset,
 } from "../db/repositories/portfolio.js";
+import { dbFinanceStore } from "../db/repositories/finance.js";
 import { listEvaluations, updateIdeaStatus } from "../db/repositories/venture.js";
 import { getUsage } from "../db/repositories/tenant-usage.js";
-import {
-  createRequest,
-  getRequest,
-  listPolicyRules,
-} from "../db/repositories/approvals.js";
+import { createRequest, getRequest, listPolicyRules } from "../db/repositories/approvals.js";
 import { upsertMemory } from "../db/repositories/memories.js";
 import { evaluatePolicy, PORTFOLIO_SUNSET_ACTION } from "../approvals/policy.js";
 import type { MoatService } from "../moat/service.js";
 import type { GrowthService } from "../growth/service.js";
 import type { DemandValidationService } from "../demand/service.js";
-import type { BillingManager } from "../billing/manager.js";
 
 /**
  * Production wiring for the Portfolio Lifecycle Loop (#107, ADR-0107). Reads the LIVE moat (#103),
@@ -34,10 +30,9 @@ export function createDefaultPortfolioService(deps: {
   moat: MoatService;
   growth: GrowthService;
   demand: DemandValidationService;
-  billing: BillingManager;
   now?: () => Date;
 }): PortfolioService {
-  const { moat, growth, demand, billing } = deps;
+  const { moat, growth, demand } = deps;
 
   const wiring: PortfolioDeps = {
     // Launched = a funded venture (#96 `terminalVerdict === 'FUND'`); launchedAt = went-terminal time.
@@ -66,9 +61,13 @@ export function createDefaultPortfolioService(deps: {
       signalCount: async (workspaceId, ventureIdeaId) =>
         (await demand.externalDemandEvidence(workspaceId, ventureIdeaId)).length,
     },
-    // #98 workspace revenue (per-workspace in the current rails; see ADR-0107).
+    // #386/#194 per-venture verified revenue from external receipts only.
     revenue: {
-      workspaceRevenueCents: async (workspaceId) => (await billing.revenue(workspaceId)).totalCents,
+      ventureVerifiedRevenueCents: async (workspaceId, ventureIdeaId) =>
+        (await dbFinanceStore.listClosePacks(workspaceId, { ventureIdeaId, limit: 12 })).reduce(
+          (sum, pack) => sum + pack.verifiedRevenueCents,
+          0,
+        ),
     },
     // #71 current-window infra burn.
     cost: {
@@ -85,10 +84,8 @@ export function createDefaultPortfolioService(deps: {
     // when gated create a PENDING request a human must approve (an agent never approves its own kill).
     gate: {
       requiresApproval: async (workspaceId) =>
-        evaluatePolicy(
-          { actionType: PORTFOLIO_SUNSET_ACTION },
-          await listPolicyRules(workspaceId),
-        ).requiresApproval,
+        evaluatePolicy({ actionType: PORTFOLIO_SUNSET_ACTION }, await listPolicyRules(workspaceId))
+          .requiresApproval,
       submit: async (input) => {
         const req = await createRequest({
           workspaceId: input.workspaceId,
@@ -111,7 +108,11 @@ export function createDefaultPortfolioService(deps: {
         await upsertMemory({
           workspaceId: input.workspaceId,
           type: "decision",
-          content: { text: input.reasoning, kind: "portfolio_sunset", ventureIdeaId: input.ventureIdeaId },
+          content: {
+            text: input.reasoning,
+            kind: "portfolio_sunset",
+            ventureIdeaId: input.ventureIdeaId,
+          },
           entity: input.ventureIdeaId,
           dedupeKey: `portfolio:sunset:${input.ventureIdeaId}`,
           // within the memories_source_type_ck set (message|task|file|event|manual); a sunset is a

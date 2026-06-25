@@ -33,4 +33,17 @@ describe("marketing skill references — every promised expertise file exists an
     expect(text).toContain("kind: reference");
     expect(text.toLowerCase()).toContain("made by robots, steered by humans");
   });
+
+  it("design-facing agents can discover the Taste Skill reference (#1162)", () => {
+    for (const agent of ["mark", "quill", "scout"]) {
+      expect(manifest.agents[agent]?.references).toContain("design/taste-skill");
+    }
+
+    const taste = readFileSync(join(refRoot, "design/taste-skill.md"), "utf8");
+    expect(taste).toContain("https://github.com/Leonxlnx/taste-skill");
+    expect(taste).toContain("design-taste-frontend");
+    expect(taste).toContain("redesign-existing-projects");
+    expect(taste).toContain("image-to-code");
+    expect(taste).toContain("approval queue");
+  });
 });

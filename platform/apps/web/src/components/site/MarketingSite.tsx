@@ -4,11 +4,12 @@
  * the right page inside the shared {@link SiteShell}. Code-split so it never ships in the signed-in app
  * bundle. Public: it renders for logged-out *and* logged-in visitors (AuthGate matches it first).
  */
-import { COMPARE, STORIES, GUIDES, CHANGELOG } from "../../brand.js";
+import { COMPARE, STORIES, GUIDES, CHANGELOG, segmentLandingPage } from "../../brand.js";
 import { useRoute } from "../../routing.js";
 import { SiteShell } from "./SiteShell.js";
 import { SectionPage, type SectionCopy } from "./SectionPage.js";
 import { Brand } from "./Brand.js";
+import { SegmentLandingPage } from "./SegmentLandingPage.js";
 import { parseMarketingPath } from "./paths.js";
 
 const SECTION_COPY: Record<string, SectionCopy> = {
@@ -23,7 +24,10 @@ export default function MarketingSite(): React.JSX.Element {
   const { section, slug } = parseMarketingPath(path);
 
   let page: React.JSX.Element;
-  if (section === "brand") {
+  const segment = section === "segments" ? segmentLandingPage(slug) : undefined;
+  if (segment) {
+    page = <SegmentLandingPage page={segment} />;
+  } else if (section === "brand") {
     page = <Brand />;
   } else if (SECTION_COPY[section]) {
     page = <SectionPage section={section} slug={slug} copy={SECTION_COPY[section]!} />;

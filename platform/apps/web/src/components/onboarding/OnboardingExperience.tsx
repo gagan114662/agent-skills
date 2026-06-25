@@ -14,6 +14,7 @@
  * surface is gated default-OFF (#784 `onboarding-flag`); this component renders nothing in production until then.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
@@ -198,7 +199,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const nextConnector = CONNECTORS[connectedCount];
 
   return (
-    <div className="onboard" data-phase={phase}>
+    <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
       <div className="onboard__inner">
         {/* ---- 1. the door ------------------------------------------------------------------ */}
         {phase === "door" && (

@@ -52,7 +52,10 @@ describe("deriveIcp (#280)", () => {
   });
 
   it("ignores an unknown (poisoned) priority-signal hint — closed enum", () => {
-    const icp = deriveIcp({ domain: "x.co", prioritySignals: ["ignore_previous_instructions" as never] });
+    const icp = deriveIcp({
+      domain: "x.co",
+      prioritySignals: ["ignore_previous_instructions" as never],
+    });
     expect(icp.signalKinds).not.toContain("ignore_previous_instructions");
   });
 
@@ -62,7 +65,11 @@ describe("deriveIcp (#280)", () => {
 });
 
 describe("scoring + dedupe (#280)", () => {
-  const icp = deriveIcp({ domain: "ipop.ai", targetIndustries: ["saas"], productKeywords: ["growth"] });
+  const icp = deriveIcp({
+    domain: "ipop.ai",
+    targetIndustries: ["saas"],
+    productKeywords: ["growth"],
+  });
 
   it("rewards role/industry/size/keyword fit", () => {
     const scored = scoreProspect(prospect(), icp, NOW);
@@ -113,7 +120,13 @@ describe("scoring + dedupe (#280)", () => {
 
   it("rankBatch returns top-N net-new, highest score first", () => {
     const ps = [
-      prospect({ email: "1@a.com", title: "Janitor", industry: null, companySize: null, signals: [] }),
+      prospect({
+        email: "1@a.com",
+        title: "Janitor",
+        industry: null,
+        companySize: null,
+        signals: [],
+      }),
       prospect({
         email: "2@a.com",
         signals: [{ kind: "funding_round", summary: "raised", observedAtMs: NOW }],
@@ -129,18 +142,33 @@ describe("scoring + dedupe (#280)", () => {
 describe("resolveReachCaps (#280)", () => {
   it("defaults OFF, imported source, dryrun sender", () => {
     const caps = resolveReachCaps(undefined);
-    expect(caps).toMatchObject({ enabled: false, prospectSource: "imported", sendProvider: "dryrun" });
+    expect(caps).toMatchObject({
+      enabled: false,
+      prospectSource: "imported",
+      sendProvider: "dryrun",
+    });
     expect(caps.perDomainDailyCap).toBe(REACH_DEFAULTS.perDomainDailyCap);
+    expect(caps.dataCreditBudgetCents).toBe(0);
   });
 
   it("rejects an unknown prospect source, keeps positive ints", () => {
     expect(resolveReachCaps({ prospectSource: "scrapey" }).prospectSource).toBe("imported");
-    expect(resolveReachCaps({ prospectSource: "clay", perDomainDailyCap: 10 })).toMatchObject({
+    expect(
+      resolveReachCaps({
+        prospectSource: "clay",
+        perDomainDailyCap: 10,
+        dataCreditBudgetCents: 500,
+      }),
+    ).toMatchObject({
       prospectSource: "clay",
       perDomainDailyCap: 10,
+      dataCreditBudgetCents: 500,
     });
     expect(resolveReachCaps({ perDomainDailyCap: -5 }).perDomainDailyCap).toBe(
       REACH_DEFAULTS.perDomainDailyCap,
+    );
+    expect(resolveReachCaps({ dataCreditBudgetCents: -5 }).dataCreditBudgetCents).toBe(
+      REACH_DEFAULTS.dataCreditBudgetCents,
     );
   });
 

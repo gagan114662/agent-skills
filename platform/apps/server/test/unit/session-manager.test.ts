@@ -20,6 +20,10 @@ import type {
 import { statusForReason } from "../../src/runtime/types.js";
 import type { AgentSession, ResourceCaps, SessionStatus } from "../../src/db/repositories/agent-sessions.js";
 import { REDACTION_MASK } from "../../src/runtime/redact.js";
+import {
+  INTERRUPTED_SYNTHETIC_TURN,
+  REASONING_LOOP_NUDGE,
+} from "../../src/runtime/context-circuit.js";
 
 // --- fakes ------------------------------------------------------------------
 
@@ -41,6 +45,7 @@ class FakeStore implements SessionStore {
     createdByMemberId: string;
     runtime: "local" | "sandbox";
     command: string;
+    idempotencyKey?: string | null;
     caps: ResourceCaps;
     harness?: string | null;
   }): Promise<AgentSession> {
@@ -52,12 +57,24 @@ class FakeStore implements SessionStore {
       createdByMemberId: input.createdByMemberId,
       runtime: input.runtime,
       status: "provisioning",
+      agentStatus: "idle",
       command: input.command,
+      idempotencyKey: input.idempotencyKey ?? null,
       harness: (input.harness ?? null) as AgentSession["harness"],
       sandboxId: null,
       snapshotId: null,
       exitCode: null,
       result: null,
+      branch: null,
+      baseBranch: null,
+      headSha: null,
+      provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      selectionMeta: null,
+      region: null,
+      lastHeartbeatAt: null,
       caps: input.caps,
       startedAt: null,
       endedAt: null,
@@ -91,6 +108,44 @@ class FakeStore implements SessionStore {
   nextId(): string {
     this.seq += 1;
     return `msg_${this.seq}`;
+  }
+}
+
+class ReusedIdempotencyStore extends FakeStore {
+  override create(input: Parameters<SessionStore["create"]>[0]): Promise<AgentSession> {
+    this.created = {
+      id: "sess_existing",
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      agentMemberId: input.agentMemberId,
+      createdByMemberId: input.createdByMemberId,
+      runtime: input.runtime,
+      status: "running",
+      agentStatus: "thinking",
+      command: input.command,
+      idempotencyKey: input.idempotencyKey ?? null,
+      harness: (input.harness ?? null) as AgentSession["harness"],
+      sandboxId: null,
+      snapshotId: null,
+      exitCode: null,
+      result: null,
+      branch: null,
+      baseBranch: null,
+      headSha: null,
+      provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      selectionMeta: null,
+      region: null,
+      lastHeartbeatAt: null,
+      caps: input.caps,
+      startedAt: new Date(0),
+      endedAt: null,
+      createdAt: new Date(0),
+      reusedIdempotencyKey: true,
+    };
+    return Promise.resolve(this.created);
   }
 }
 
@@ -215,6 +270,44 @@ class SteerablePendingRuntime implements AgentRuntime {
   }
 }
 
+class AsyncPlanningLoopRuntime implements AgentRuntime {
+  readonly kind = "local" as const;
+  readonly steered: string[] = [];
+  start(job: AgentJob, hooks: RuntimeHooks): Promise<RunningSession> {
+    let resolved = false;
+    let resolve!: (r: RuntimeResult) => void;
+    const done = new Promise<RuntimeResult>((r) => {
+      resolve = r;
+    });
+    setTimeout(() => {
+      for (const line of [
+        "Let me implement the helper.",
+        "Now I will write the tests.",
+        "Next, I'll patch the file.",
+      ]) {
+        hooks.onOutput("stdout", line + "\n");
+      }
+      resolved = true;
+      resolve({ status: "completed", exitCode: 0 });
+    }, 0);
+    return Promise.resolve({
+      sessionId: job.sessionId,
+      wait: () => done,
+      cancel: (reason: TerminalReason) => {
+        if (!resolved) {
+          resolved = true;
+          resolve({ status: statusForReason(reason), exitCode: null });
+        }
+        return Promise.resolve();
+      },
+      steer: (text: string) => {
+        this.steered.push(text);
+        return Promise.resolve();
+      },
+    });
+  }
+}
+
 const caps = (over: Partial<ResourceCaps> = {}): ResourceCaps => ({
   wallClockMs: 10_000,
   idleMs: 10_000,
@@ -269,6 +362,28 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(poster.posts[1]?.parentMessageId).toBe("msg_1");
     expect(store.finalized?.status).toBe("completed");
     expect(store.finalized?.result).toContain("line one");
+  });
+
+  it("does not start a second runtime when an idempotent launch reuses an existing session", async () => {
+    const runtime = new CapturingRuntime();
+    const store = new ReusedIdempotencyStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+    });
+
+    const session = await manager.launch({ ...launch, idempotencyKey: "workflow:wf_1:stage:0" });
+
+    expect(session.id).toBe("sess_existing");
+    expect(runtime.job).toBeUndefined();
+    expect(poster.bodies()).toEqual([]);
+    expect(manager.activeSessionIds).toEqual([]);
   });
 
   it("redacts secret values from streamed output and the persisted result", async () => {
@@ -351,12 +466,84 @@ describe("SessionManager (#25 — server-owned run, streaming, reaper, redaction
     expect(runtime.job?.env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep");
   });
 
+  it("passes a workflow task id into the job env when provided (#921)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+
+    const session = await manager.launch({ ...launch, taskId: "task_1" });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).toBe("do the thing");
+    expect(runtime.job?.env.AGENT_TASK_ID).toBe("task_1");
+  });
+
   it("leaves the job env as AGENT_TASK-only when no harnessEnv is given (unchanged)", async () => {
     const runtime = new CapturingRuntime();
     const { manager } = makeManager(runtime, caps(), new Secrets({}));
     const session = await manager.launch(launch);
     await manager.join(session.id);
     expect(Object.keys(runtime.job?.env ?? {})).toEqual(["AGENT_TASK"]);
+  });
+
+  it("compacts oversized launch context before it reaches AGENT_TASK (#557)", async () => {
+    const runtime = new CapturingRuntime();
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+      contextCircuit: { tokenBudget: 260, keepLastTurns: 2 },
+    });
+    const longTask = Array.from(
+      { length: 14 },
+      (_, i) => "user: old turn " + i + " " + "x".repeat(120),
+    ).join("\n");
+
+    const session = await manager.launch({ ...launch, task: longTask });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK).toContain("Context compacted automatically");
+    expect(runtime.job?.env.AGENT_TASK).toContain("Older turn 1");
+    expect(runtime.job?.env.AGENT_TASK).toContain("user: old turn 13");
+    expect(runtime.job?.env.AGENT_TASK).not.toContain("user: old turn 0 " + "x".repeat(80));
+  });
+
+  it("adds an interruption synthetic turn before AGENT_TASK when resuming (#557)", async () => {
+    const runtime = new CapturingRuntime();
+    const { manager } = makeManager(runtime, caps(), new Secrets({}));
+
+    const session = await manager.launch({ ...launch, interrupted: true });
+    await manager.join(session.id);
+
+    expect(runtime.job?.env.AGENT_TASK.startsWith(INTERRUPTED_SYNTHETIC_TURN)).toBe(true);
+    expect(runtime.job?.env.AGENT_TASK).toContain("do the thing");
+  });
+
+  it("nudges a repeated reasoning loop once through the live steering seam (#557)", async () => {
+    const runtime = new AsyncPlanningLoopRuntime();
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "bash", args: ["x.sh"] },
+      caps: caps(),
+      logger: silentLogger,
+      contextCircuit: { reasoningLoopSignalLimit: 3 },
+    });
+
+    const session = await manager.launch(launch);
+    await manager.join(session.id);
+
+    expect(runtime.steered).toEqual([REASONING_LOOP_NUDGE]);
+    expect(poster.bodies()).toContain(REASONING_LOOP_NUDGE);
   });
 
   it("decodes claude-code stream-json into readable channel text and surfaces tool calls (#81)", async () => {

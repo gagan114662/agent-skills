@@ -1,12 +1,19 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
-import { firstCustomerStories, paymentLinks, revenueEvents, revenueEvidence } from "../schema/index.js";
+import {
+  firstCustomerStories,
+  paymentLinks,
+  revenueEvents,
+  revenueEvidence,
+} from "../schema/index.js";
+import { updateWorkspaceBillingContact } from "./workspaces.js";
 import type {
   BillingStore,
   CreateEvidenceRow,
   CreateFirstCustomerStoryRow,
   CreatePaymentLinkRow,
   CreateRevenueEventRow,
+  BillingInvoiceRecord,
   FirstCustomerStory,
   PaymentLink,
   RevenueEvent,
@@ -52,6 +59,14 @@ const EVENT_COLUMNS = {
   amountCents: revenueEvents.amountCents,
   currency: revenueEvents.currency,
   status: revenueEvents.status,
+  invoiceId: revenueEvents.invoiceId,
+  invoiceNumber: revenueEvents.invoiceNumber,
+  invoiceUrl: revenueEvents.invoiceUrl,
+  invoicePdfUrl: revenueEvents.invoicePdfUrl,
+  invoiceStatus: revenueEvents.invoiceStatus,
+  taxAmountCents: revenueEvents.taxAmountCents,
+  customerVatId: revenueEvents.customerVatId,
+  effectiveTaxRateBps: revenueEvents.effectiveTaxRateBps,
   trackingRef: revenueEvents.trackingRef,
   raw: revenueEvents.raw,
   createdAt: revenueEvents.createdAt,
@@ -70,6 +85,19 @@ const FIRST_CUSTOMER_STORY_COLUMNS = {
   celebrationTitle: firstCustomerStories.celebrationTitle,
   celebrationMessage: firstCustomerStories.celebrationMessage,
   createdAt: firstCustomerStories.createdAt,
+} as const;
+
+const INVOICE_COLUMNS = {
+  id: revenueEvents.id,
+  providerEventId: revenueEvents.providerEventId,
+  providerInvoiceId: revenueEvents.invoiceId,
+  number: revenueEvents.invoiceNumber,
+  hostedInvoiceUrl: revenueEvents.invoiceUrl,
+  invoicePdfUrl: revenueEvents.invoicePdfUrl,
+  status: revenueEvents.invoiceStatus,
+  amountCents: revenueEvents.amountCents,
+  currency: revenueEvents.currency,
+  createdAt: revenueEvents.createdAt,
 } as const;
 
 /** Coerce a selected `revenue_events` row (raw jsonb holds a JSON string) into the domain type. */
@@ -107,26 +135,63 @@ export const dbBillingStore: BillingStore = {
     const [row] = await db
       .insert(revenueEvents)
       .values({ ...input, raw: input.raw })
+      .onConflictDoNothing({
+        target: [revenueEvents.workspaceId, revenueEvents.providerEventId],
+      })
       .returning(EVENT_COLUMNS);
-    return toEvent(row!);
+    if (row) return toEvent(row);
+    const existing = await this.findRevenueEvent(input.workspaceId, input.providerEventId);
+    if (existing) return existing;
+    throw new Error("revenue event insert conflicted but existing row was not found");
+  },
+
+  async listInvoices(workspaceId: string, limit = 20): Promise<BillingInvoiceRecord[]> {
+    const rows = await db
+      .select(INVOICE_COLUMNS)
+      .from(revenueEvents)
+      .where(
+        and(
+          eq(revenueEvents.workspaceId, workspaceId),
+          sql`${revenueEvents.invoiceId} IS NOT NULL`,
+        ),
+      )
+      .orderBy(desc(revenueEvents.createdAt))
+      .limit(Math.max(1, Math.min(100, Math.trunc(limit))));
+    return rows as BillingInvoiceRecord[];
+  },
+
+  async getInvoice(
+    workspaceId: string,
+    invoiceId: string,
+  ): Promise<BillingInvoiceRecord | undefined> {
+    const [row] = await db
+      .select(INVOICE_COLUMNS)
+      .from(revenueEvents)
+      .where(
+        and(eq(revenueEvents.workspaceId, workspaceId), eq(revenueEvents.invoiceId, invoiceId)),
+      )
+      .orderBy(desc(revenueEvents.createdAt))
+      .limit(1);
+    return row as BillingInvoiceRecord | undefined;
+  },
+
+  async updateWorkspaceBillingContact(input): Promise<unknown> {
+    return updateWorkspaceBillingContact(input);
   },
 
   async createEvidence(input: CreateEvidenceRow): Promise<RevenueEvidence> {
-    const [row] = await db
-      .insert(revenueEvidence)
-      .values(input)
-      .returning({
-        id: revenueEvidence.id,
-        workspaceId: revenueEvidence.workspaceId,
-        sessionId: revenueEvidence.sessionId,
-        kind: revenueEvidence.kind,
-        source: revenueEvidence.source,
-        revenueEventId: revenueEvidence.revenueEventId,
-        amountCents: revenueEvidence.amountCents,
-        currency: revenueEvidence.currency,
-        summary: revenueEvidence.summary,
-        createdAt: revenueEvidence.createdAt,
-      });
+    const [row] = await db.insert(revenueEvidence).values(input).returning({
+      id: revenueEvidence.id,
+      workspaceId: revenueEvidence.workspaceId,
+      sessionId: revenueEvidence.sessionId,
+      kind: revenueEvidence.kind,
+      source: revenueEvidence.source,
+      revenueEventId: revenueEvidence.revenueEventId,
+      amountCents: revenueEvidence.amountCents,
+      currency: revenueEvidence.currency,
+      summary: revenueEvidence.summary,
+      createdAt: revenueEvidence.createdAt,
+    });
     return row as RevenueEvidence;
   },
 

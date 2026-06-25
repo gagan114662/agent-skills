@@ -7,13 +7,21 @@ import {
 
 describe("settings deep-linking (#506)", () => {
   describe("firstRunSettingsSection — which section a checklist CTA lands on", () => {
+    it("deep-links 'Set target' to the marketing target section", () => {
+      expect(firstRunSettingsSection("target")).toBe("marketing");
+    });
+
     it("deep-links 'Set brand' to the Brand kit section, not the top of settings", () => {
       // The acceptance criterion: the brand step targets the brand section.
       expect(firstRunSettingsSection("brand")).toBe("brand");
     });
 
-    it("deep-links 'Connect' to the Connect section", () => {
-      expect(firstRunSettingsSection("connect")).toBe("connect");
+    it("deep-links 'Connect Claude' to the Connect Claude section", () => {
+      expect(firstRunSettingsSection("claude")).toBe("connect");
+    });
+
+    it("deep-links output account connection to the Connections section", () => {
+      expect(firstRunSettingsSection("connect")).toBe("connections");
     });
 
     it("returns null for steps with no settings surface", () => {

@@ -10,7 +10,9 @@ import { newId } from "../../src/db/id.js";
 import { signWebhookPayload } from "../../src/billing/webhook.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
 import { createDefaultSupportDeskService } from "../../src/support/default.js";
-import { listRequests } from "../../src/db/repositories/approvals.js";
+import { approveAndLock, listRequests } from "../../src/db/repositories/approvals.js";
+import { executeApprovedRequest } from "../../src/approvals/execute.js";
+import { buildAcquisitionRegistry } from "../../src/acquisition/default.js";
 
 /**
  * Support Desk (#190) integration — real Postgres + Redis. Proves the SAFE DEFAULT (premortem #200): with
@@ -116,6 +118,37 @@ describe("Support Desk (#190 — real Postgres + Redis, default-safe: no autonom
     expect(pending).toHaveLength(1);
     expect(pending[0].actionType).toBe("external.send");
     // Nothing executed.
+    expect(await listRequests(w.workspaceId, { status: "executed" })).toHaveLength(0);
+  });
+
+  it("approving a support reply without a delivery dispatcher fails loudly instead of recording a fake send (#911)", async () => {
+    const app = await startApp();
+    const w = await seed(app);
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${w.workspaceId}/support/kb`,
+      cookies: { rid: w.cookie },
+      payload: { title: "Reset your password", body: "Open settings and click reset password to reset your password.", category: "support" },
+    });
+    const res = await ingestWidget(app, w.workspaceId, { body: "how do I reset my password?", contact: "b@e.com" });
+    expect(res.statusCode).toBe(202);
+
+    const [pending] = await listRequests(w.workspaceId, { status: "pending" });
+    expect(pending?.actionType).toBe("external.send");
+    const approved = await approveAndLock(
+      pending!.id,
+      w.workspaceId,
+      pending!.requesterMemberId,
+      "integration-test",
+    );
+    expect(approved.outcome).toBe("approved");
+    if (approved.outcome !== "approved") throw new Error("approval did not lock");
+
+    const execution = await executeApprovedRequest(buildAcquisitionRegistry(), approved.request, app.log);
+
+    expect(execution.outcome).toBe("failed");
+    expect(execution.request?.status).toBe("failed");
+    expect(execution.request?.error).toMatch(/support reply delivery path not configured/);
     expect(await listRequests(w.workspaceId, { status: "executed" })).toHaveLength(0);
   });
 

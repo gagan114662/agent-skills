@@ -7,18 +7,63 @@
  * body, and given a unique, front-loaded title + its own description + a breadcrumb.
  */
 import { describe, expect, it } from "vitest";
-import { prerenderPages } from "./entry-server.js";
-import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS } from "./brand.js";
+import { buildSitemap, prerenderPages } from "./entry-server.js";
+import {
+  BRAND,
+  PRICING,
+  COMPARE,
+  STORIES,
+  GUIDES,
+  CHANGELOG,
+  BRAND_ASSETS,
+  LEGAL,
+  COMPANY,
+  SEGMENT_LANDING_PAGES,
+} from "./brand.js";
 
 const pages = prerenderPages();
 const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
+const organicDiscoveryPosts = [
+  "/blog/what-is-an-ai-marketing-agency",
+  "/blog/ai-marketing-team-for-startups",
+  "/blog/autonomous-marketing-agents-explained",
+] as const;
 
 describe("prerenderPages — public marketing coverage (#467)", () => {
   it("prerenders every public marketing surface a crawler should index", () => {
     const paths = pages.map((p) => p.urlPath);
-    for (const expected of ["/", "/blog", "/pricing", "/compare", "/stories", "/guides", "/changelog", "/brand"]) {
+    for (const expected of [
+      "/",
+      "/blog",
+      "/pricing",
+      "/terms",
+      "/privacy",
+      "/company",
+      "/dpa",
+      "/compare",
+      "/stories",
+      "/guides",
+      "/changelog",
+      "/brand",
+    ]) {
       expect(paths, `missing prerendered route ${expected}`).toContain(expected);
     }
+    for (const segment of SEGMENT_LANDING_PAGES) {
+      expect(paths, `missing prerendered segment route ${segment.path}`).toContain(segment.path);
+    }
+  });
+
+  it.each([
+    ["/terms", "Terms", LEGAL.terms.title],
+    ["/privacy", "Privacy", LEGAL.privacy.title],
+    ["/dpa", "DPA", LEGAL.dpa.title],
+    ["/company", "Company", COMPANY.title],
+  ])("prerenders %s with public legal copy and breadcrumbs (#863)", (urlPath, titleWord, h1) => {
+    const page = byPath(urlPath)!;
+    expect(page.title).toContain(titleWord);
+    expect(page.description, `${urlPath} has no description`).toBeTruthy();
+    expect(page.html).toContain(h1);
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
   it("gives every route a unique <title> — no two pages share the homepage's title", () => {
@@ -67,5 +112,36 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       // urlPath is what injectPage() turns into the canonical/og:url — each must be its own route.
       expect(page.urlPath).not.toBe("/");
     }
+  });
+
+  it("prerenders the #903 organic-discovery pillar and spoke articles", () => {
+    const paths = pages.map((p) => p.urlPath);
+    for (const expected of organicDiscoveryPosts) {
+      expect(paths, `missing prerendered SEO article ${expected}`).toContain(expected);
+    }
+  });
+
+  it("includes the #903 organic-discovery articles in the sitemap", () => {
+    const sitemap = buildSitemap("https://ipop.ai", pages);
+    for (const expected of organicDiscoveryPosts) {
+      expect(sitemap).toContain(`<loc>https://ipop.ai${expected}</loc>`);
+    }
+  });
+
+  it("prerenders all #599 segment pages with unique ICP copy and experiment metadata", () => {
+    const sitemap = buildSitemap("https://ipop.ai", pages);
+    const titles = new Set<string>();
+    for (const segment of SEGMENT_LANDING_PAGES) {
+      const page = byPath(segment.path)!;
+      expect(page.title).toContain(segment.seoTitleSubject);
+      expect(page.description).toBe(segment.seoDescription);
+      expect(page.html).toContain(segment.hero.title);
+      expect(page.html).toContain(segment.proof.title);
+      expect(page.html).toContain(segment.experiment.id);
+      expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+      expect(sitemap).toContain(`<loc>https://ipop.ai${segment.path}</loc>`);
+      titles.add(page.title!);
+    }
+    expect(titles.size).toBe(SEGMENT_LANDING_PAGES.length);
   });
 });

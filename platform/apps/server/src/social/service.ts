@@ -27,6 +27,7 @@ import {
   type SocialConfigInput,
   type SocialFlags,
 } from "./decide.js";
+import { decideSocialRateCap, type SocialRateCaps } from "./rate-cap.js";
 import type { SocialAggregatorProvider, SocialNetworkReceipt } from "./aggregator.js";
 import type {
   RecordSocialResultInput,
@@ -197,6 +198,35 @@ export class SocialPublishService {
       return { status: "failed", error: "post not found in workspace" };
     }
 
+    const flags = this.deps.flags(input.workspaceId);
+    const capWindowMs = Math.max(
+      flags.workspaceWindowMs ?? 0,
+      flags.networkWindowMs ?? 0,
+      24 * 60 * 60 * 1000,
+    );
+    const since = new Date(this.now().getTime() - capWindowMs);
+    const recentReceipts = await this.deps.results.listRecentForWorkspace(input.workspaceId, since);
+    const posts = await this.deps.posts.listByWorkspace(input.workspaceId, 500);
+    const capDecision = decideSocialRateCap({
+      networks: post.networks,
+      recentReceipts,
+      posts,
+      now: this.now(),
+      caps: socialRateCapsFromFlags(flags),
+    });
+    if (!capDecision.allowed) {
+      const receipts: SocialNetworkReceipt[] = post.networks.map((network) => ({
+        network,
+        status: "failed",
+        externalId: null,
+        permalink: null,
+        error: capDecision.reason,
+      }));
+      await this.recordResults(input.workspaceId, post.id, receipts);
+      await this.deps.posts.applyStatus(post.id, { status: "failed", aggregatorRef: null });
+      return { status: "failed", error: capDecision.reason };
+    }
+
     const fanOut = await this.deps.aggregator.publish({
       workspaceId: input.workspaceId,
       body: post.body,
@@ -293,7 +323,11 @@ function enrichWithPermalinks(
     if (r.status !== "published") return r;
     const v = byNetwork.get(r.network);
     if (!v) return r;
-    return { ...r, permalink: v.permalink ?? r.permalink, externalId: r.externalId ?? v.externalId };
+    return {
+      ...r,
+      permalink: v.permalink ?? r.permalink,
+      externalId: r.externalId ?? v.externalId,
+    };
   });
 }
 
@@ -303,4 +337,16 @@ export function socialFlagsFromConfig(
   workspaceId: string,
 ): SocialFlags {
   return resolveSocialFlags(config, workspaceId);
+}
+
+function socialRateCapsFromFlags(flags: SocialFlags): Partial<SocialRateCaps> {
+  return {
+    workspaceWindowMs: flags.workspaceWindowMs,
+    workspaceCap: flags.workspaceWindowCap,
+    networkWindowMs: flags.networkWindowMs,
+    networkCap: flags.networkWindowCap,
+    warmupDays: flags.warmupDays,
+    warmupStartCap: flags.warmupStartCap,
+    warmupDailyIncrement: flags.warmupDailyIncrement,
+  };
 }

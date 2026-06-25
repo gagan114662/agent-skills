@@ -62,6 +62,7 @@ export interface DeployTarget {
 
 /** The lifecycle of a release attempt (one immutable row in `deploy_releases`). */
 export const RELEASE_STATUSES = [
+  "pending_promote",
   "deploy_failed",
   "smoke_failed",
   "rolled_back",
@@ -91,6 +92,10 @@ export interface ReleaseReceipt {
   approvalRequestId: string | null;
   /** Number of critical smoke findings (`-1` when smoke did not run — production-grounded, never a pass). */
   smokeCriticalCount: number;
+  /** Post-promote production URL health result; null when no prod cutover ran. */
+  promoteHealthOk: boolean | null;
+  /** Redacted detail from the post-promote production health probe. */
+  promoteHealthDetail: string | null;
   /** The live URL this release deployed to (preview), if the deploy succeeded. */
   url: string | null;
   /** Whether this release filed a self-healing incident (a failed smoke / regression). */

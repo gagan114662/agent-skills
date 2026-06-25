@@ -38,6 +38,7 @@ import {
 } from "./queue.js";
 import type {
   AgentProfile,
+  AgentActivityStatus,
   AgentSessionSummary,
   Channel,
   Identity,
@@ -158,6 +159,7 @@ export interface LiveSessionLite {
   channelId: string;
   agentMemberId: string;
   status: string;
+  agentStatus: AgentActivityStatus;
 }
 
 /** Re-export so consumers (components) get the queue types from the store barrel. */
@@ -295,7 +297,10 @@ export interface Store {
     email: string;
     password: string;
     displayName: string;
-    workspaceSlug: string;
+    workspaceSlug?: string;
+    termsAccepted?: boolean;
+    legalConsentVersion?: string;
+    legalConsentAt?: string;
   }): Promise<void>;
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;
@@ -838,14 +843,19 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     },
 
     setLiveSessions(sessions) {
-      // Cheap structural equality on (id,channelId,status) so the 15s poll doesn't re-render channels when the
-      // live set is unchanged. Order is stable (mission-control returns a consistent order).
+      // Cheap structural equality on (id,channelId,status,agentStatus) so the poll doesn't re-render channels
+      // when the live set is unchanged. Order is stable (mission-control returns a consistent order).
       const prev = state.liveSessions;
       const same =
         prev.length === sessions.length &&
         prev.every((p, i) => {
           const n = sessions[i]!;
-          return p.id === n.id && p.channelId === n.channelId && p.status === n.status;
+          return (
+            p.id === n.id &&
+            p.channelId === n.channelId &&
+            p.status === n.status &&
+            p.agentStatus === n.agentStatus
+          );
         });
       if (!same) set({ liveSessions: sessions });
     },

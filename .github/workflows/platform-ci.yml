@@ -156,7 +156,11 @@ jobs:
             if [ -z "$ok" ]; then echo "could not pull $img after retries"; exit 1; fi
           done
       - name: Build image + boot full stack
-        run: docker compose --profile full up -d --build
+        run: |
+          docker compose --profile full up -d --build || {
+            docker compose logs migrate
+            exit 1
+          }
       - name: Wait for server readiness (/readyz)
         run: |
           for i in $(seq 1 60); do
@@ -184,8 +188,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: quality
     continue-on-error: true
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -202,9 +209,42 @@ jobs:
           curl -fsSL -o /usr/local/bin/agg \
             https://github.com/asciinema/agg/releases/latest/download/agg-x86_64-unknown-linux-gnu
           chmod +x /usr/local/bin/agg
-      - name: Record all demos
+      - name: Select demos to record
+        id: demos
         run: |
-          for f in scripts/demos/*.sh; do
+          set -euo pipefail
+          demos_file="$(mktemp)"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            changed="$(git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" -- 'scripts/demos/*.sh' 'scripts/record-demo.sh' || true)"
+            if printf '%s\n' "$changed" | grep -qx 'scripts/record-demo.sh'; then
+              find scripts/demos -maxdepth 1 -name '*.sh' | sort | head -n 3 > "$demos_file"
+            else
+              printf '%s\n' "$changed" | awk '/^scripts\/demos\/.*\.sh$/ { print }' | sort -u > "$demos_file"
+            fi
+          else
+            find scripts/demos -maxdepth 1 -name '*.sh' | sort > "$demos_file"
+          fi
+
+          if [ ! -s "$demos_file" ]; then
+            echo "No changed demo scripts; skipping video recording."
+            echo "list=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf 'Selected demo scripts:\n'
+          sed 's/^/  /' "$demos_file"
+          {
+            echo "list<<EOF"
+            cat "$demos_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Record selected demos
+        if: steps.demos.outputs.list != ''
+        env:
+          DEMO_SCRIPTS: ${{ steps.demos.outputs.list }}
+        run: |
+          printf '%s\n' "$DEMO_SCRIPTS" | while IFS= read -r f; do
+            [ -n "$f" ] || continue
             slug="$(basename "$f" .sh)"
             bash scripts/record-demo.sh "$slug" || echo "demo $slug failed (non-blocking)"
           done

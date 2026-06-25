@@ -6,11 +6,26 @@
  * All copy from `brand.ts` (brand.test scans this file).
  */
 import { useState, type FormEvent } from "react";
-import { CONTACT } from "../../brand.js";
+import { CONTACT, LEGAL } from "../../brand.js";
 import { apiUrl } from "../../api/config.js";
+import { Link } from "../../routing.js";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type NextStep = { label: string; href: string };
+
+function attributionFromLocation(): {
+  source: string;
+  trackingRef?: string;
+} {
+  if (typeof window === "undefined") return { source: "landing_form" };
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref")?.trim();
+  const utmSource = params.get("utm_source")?.trim();
+  return {
+    source: params.get("source")?.trim() || utmSource || "landing_form",
+    ...(ref ? { trackingRef: ref } : {}),
+  };
+}
 
 export function ContactForm(): React.JSX.Element {
   const [status, setStatus] = useState<Status>("idle");
@@ -25,7 +40,11 @@ export function ContactForm(): React.JSX.Element {
       name: String(data.get("name") ?? ""),
       email: String(data.get("email") ?? ""),
       message: String(data.get("message") ?? ""),
-      source: "landing_form",
+      companyWebsite: String(data.get("companyWebsite") ?? ""),
+      termsAccepted: data.get("termsAccepted") === "on",
+      legalConsentVersion: LEGAL.consentVersion,
+      legalConsentAt: new Date().toISOString(),
+      ...attributionFromLocation(),
     };
     setStatus("sending");
     try {
@@ -66,6 +85,14 @@ export function ContactForm(): React.JSX.Element {
           {CONTACT.title}
         </h2>
         <p className="landing__contact-body">{CONTACT.body}</p>
+        <div className="contact-form__cta-row" aria-label="Contact next steps">
+          <a className="btn btn--primary" href={CONTACT.bookingHref}>
+            {CONTACT.bookingCta}
+          </a>
+          <a className="btn contact-form__trial-link" href={CONTACT.trialHref}>
+            {CONTACT.trialCta}
+          </a>
+        </div>
         <form className="contact-form" onSubmit={onSubmit}>
           <div className="contact-form__row">
             <label className="field">
@@ -81,6 +108,28 @@ export function ContactForm(): React.JSX.Element {
             {CONTACT.messageLabel}
             <textarea name="message" rows={3} placeholder={CONTACT.messagePlaceholder} required />
           </label>
+          <label className="contact-form__honeypot" aria-hidden="true">
+            Company website
+            <input type="text" name="companyWebsite" tabIndex={-1} autoComplete="off" />
+          </label>
+          <label className="contact-form__consent">
+            <input type="checkbox" name="termsAccepted" required aria-required="true" />
+            <span>
+              {CONTACT.consentLabel}{" "}
+              <Link href={LEGAL.terms.href} className="linklike">
+                {LEGAL.terms.navLabel}
+              </Link>{" "}
+              /{" "}
+              <Link href={LEGAL.privacy.href} className="linklike">
+                {LEGAL.privacy.navLabel}
+              </Link>{" "}
+              /{" "}
+              <Link href={LEGAL.dpa.href} className="linklike">
+                {LEGAL.dpa.navLabel}
+              </Link>
+            </span>
+          </label>
+          <p className="contact-form__consent-help">{CONTACT.consentHelp}</p>
           <button
             className="btn btn--primary contact-form__submit"
             type="submit"

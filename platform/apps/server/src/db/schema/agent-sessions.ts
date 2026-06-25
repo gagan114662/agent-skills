@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, jsonb, index, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, jsonb, index, unique, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { newId } from "../id.js";
 import { workspaces } from "./workspaces.js";
@@ -44,7 +44,17 @@ export const agentSessions = pgTable(
     })
       .notNull()
       .default("provisioning"),
+    // #1050: lifecycle status says whether the run is alive; agent_status says what the agent is doing now.
+    // It is intentionally separate so "running" can render as thinking/drafting/waiting/handoff in the feed.
+    agentStatus: text("agent_status", {
+      enum: ["thinking", "drafting", "waiting", "handoff", "idle", "done"],
+    })
+      .notNull()
+      .default("idle"),
     command: text("command").notNull(),
+    // Optional caller-owned idempotency key. Autonomy uses one key per workflow stage so a restart
+    // that retries launch observes the existing live session instead of creating duplicate work.
+    idempotencyKey: text("idempotency_key"),
     // Coding-agent harness the session ran on (#50): the per-session selection (env default unless
     // overridden at launch). Nullable — rows created before #50 leave it unset.
     harness: text("harness", { enum: ["demo", "claude-code", "codex"] }),
@@ -85,6 +95,10 @@ export const agentSessions = pgTable(
     byWorkspace: index("agent_sessions_workspace_idx").on(t.workspaceId),
     byChannel: index("agent_sessions_channel_idx").on(t.channelId, t.createdAt),
     byStatus: index("agent_sessions_status_idx").on(t.status),
+    idempotencyUniq: unique("agent_sessions_workspace_idempotency_uniq").on(
+      t.workspaceId,
+      t.idempotencyKey,
+    ),
     // #105: the watchdog scans non-terminal sessions ordered by liveness — a partial-ish index on
     // (status, last_heartbeat_at) keeps that scan cheap.
     byHeartbeat: index("agent_sessions_heartbeat_idx").on(t.status, t.lastHeartbeatAt),
@@ -96,6 +110,10 @@ export const agentSessions = pgTable(
     statusCk: check(
       "agent_sessions_status_ck",
       sql`${t.status} IN ('provisioning', 'running', 'completed', 'failed', 'timeout', 'idle_reaped', 'canceled')`,
+    ),
+    agentStatusCk: check(
+      "agent_sessions_agent_status_ck",
+      sql`${t.agentStatus} IN ('thinking', 'drafting', 'waiting', 'handoff', 'idle', 'done')`,
     ),
   }),
 );

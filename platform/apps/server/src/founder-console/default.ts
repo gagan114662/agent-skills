@@ -49,6 +49,10 @@ import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import { reachProofReading } from "../db/repositories/reach.js";
 import { dbSeoRankStore } from "../db/repositories/seo-ranks.js";
 import { dbSearchConsoleSubmissionStore } from "../db/repositories/search-console.js";
+import { projectAttributedRevenue, type AttributionServiceDeps } from "../attribution/service.js";
+import { maxChainAgeMs, resolveAttributionCaps } from "../attribution/caps.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { dbRevenueReader } from "../finance/default.js";
 import {
   spendByChannelSince,
   conversionsByChannelSince,
@@ -57,6 +61,11 @@ import {
 } from "../db/repositories/acquisition.js";
 import { buildAcquisitionBriefView } from "../acquisition/cac.js";
 import type { ProofMetricReading } from "./proof-scorecard.js";
+
+function describeSeoTargets(targetKeywords: readonly string[] | undefined): string {
+  const targets = (targetKeywords ?? []).map((keyword) => keyword.trim()).filter(Boolean);
+  return targets.length > 0 ? `tracking targets: ${targets.join(", ")}; ` : "";
+}
 
 /**
  * Production wiring for the Founder Console (#104, ADR-0050). Every read seam is backed by an EXISTING
@@ -315,6 +324,33 @@ export function createDefaultFounderConsoleService(deps: {
           },
         }
       : undefined,
+    // #868 ROI proof: project verified payment receipts through the existing attribution ledger and expose
+    // the top per-artifact revenue rows in the customer console. This is read-only; no checkout/webhook
+    // behavior changes here.
+    attribution: {
+      summary: async (workspaceId) => {
+        const caps = resolveAttributionCaps(loadConfig(workspaceId).attribution);
+        const attributionDeps: AttributionServiceDeps = {
+          store: dbAttributionExposureStore,
+          revenue: dbRevenueReader,
+          maxChainAgeMs: maxChainAgeMs(caps),
+          now: () => (deps.now ?? (() => new Date()))().getTime(),
+        };
+        const projection = await projectAttributedRevenue(attributionDeps, workspaceId);
+        return {
+          totalAttributedCents: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.attributedCents,
+            0,
+          ),
+          attributedPaymentCount: projection.byArtifact.reduce(
+            (sum, artifact) => sum + artifact.paymentCount,
+            0,
+          ),
+          unattributedPaymentCount: projection.unattributed.length,
+          topArtifacts: projection.byArtifact.slice(0, 5),
+        };
+      },
+    },
     // #115 planning roadmap pane: read the backlog, rank it off the SAME pure RICE scorer the routes use
     // (so the console roadmap matches the API), and reshape to the read-struct with the why-ranked-here
     // evidence link per item. Read-only; `enabled` comes from the resolved planning caps (default OFF).
@@ -593,6 +629,7 @@ export function createDefaultFounderConsoleService(deps: {
         // when a real provider/webhook has reported at least one observation; otherwise "not connected"
         // with the reason — never a fabricated rank (premortem #200 §2). The headline is target keywords
         // sitting on page 1 (positions 1–10) as of each keyword's latest external reading.
+        const seoTargets = describeSeoTargets(loadConfig(workspaceId).seo?.targetKeywords);
         const seoTotal = await dbSeoRankStore.count(workspaceId);
         // #265: the latest EXTERNALLY-VERIFIED indexed-page count from a Search Console submission, or null
         // (never fabricated). Folded into the SEO tile so indexed-page numbers surface automatically once a
@@ -630,7 +667,7 @@ export function createDefaultFounderConsoleService(deps: {
             unit: "count",
             metricLabel: "Target keywords on page 1",
             source: "No rank source connected",
-            note: "connect a rank tracker (Search Console / SERP API) or POST external rank receipts to /me/seo/observations to prove rankings",
+            note: `${seoTargets}connect a rank tracker (Search Console / SERP API) or POST external rank receipts to /me/seo/observations to prove rankings`,
           });
         }
 

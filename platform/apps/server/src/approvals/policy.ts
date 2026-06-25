@@ -132,6 +132,8 @@ export const SOCIAL_PUBLISH_POST_ACTION = "social.publish_post" as const;
  * social adapter behind this gate is a deliberate future ADR, never an autonomous call.
  */
 export const OUTREACH_SEND_ACTION = "outreach.send" as const;
+/** #900 informational call-prep handoff after a booked meeting; no executor, just founder-visible context. */
+export const OUTREACH_CALL_PREP_ACTION = "outreach.call_prep" as const;
 
 /**
  * #268 a real Postmark email send. Composing an email is free, but pushing it to a real inbox is the most
@@ -169,6 +171,7 @@ export const REACH_DATA_CREDIT_ACTION = "reach.data_credit_spend" as const;
  * so it is NOT in `IRREVERSIBLE_ACTIONS`.
  */
 export const SKILLOPT_ADOPT_EDIT_ACTION = "skillopt.adopt_skill_edit" as const;
+export const SKILLOPT_REVERT_EDIT_ACTION = "skillopt.revert_skill_edit" as const;
 
 /**
  * #356 the Oz-loops (triage/spec/review/pr-comment) produce ADVISORY proposals only. Acting on one — posting
@@ -310,6 +313,7 @@ export const APPROVAL_EXECUTOR_ACTION_TYPES: readonly string[] = [
   EMAIL_LIVE_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
+  SKILLOPT_REVERT_EDIT_ACTION,
   OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
   CAPABILITY_MINT_ACTION,

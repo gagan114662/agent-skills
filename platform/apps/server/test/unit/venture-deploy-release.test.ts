@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   VentureReleasePipeline,
   releasePipelineAsPostMergeVerifier,
@@ -51,6 +51,16 @@ function releaseStore(): ReleaseStore & { rows: ReleaseReceipt[] } {
   let seq = 0;
   return {
     rows,
+    async getByRelease(workspaceId: string, ventureId: string, releaseRef: string) {
+      return (
+        rows.find(
+          (row) =>
+            row.workspaceId === workspaceId &&
+            row.ventureId === ventureId &&
+            row.releaseRef === releaseRef,
+        ) ?? null
+      );
+    },
     async create(input: CreateReleaseReceiptInput) {
       const row: ReleaseReceipt = {
         id: `r${++seq}`,
@@ -62,6 +72,12 @@ function releaseStore(): ReleaseStore & { rows: ReleaseReceipt[] } {
       rows.push(row);
       return row;
     },
+    async update(id: string, input: Partial<CreateReleaseReceiptInput>) {
+      const idx = rows.findIndex((row) => row.id === id);
+      if (idx < 0) throw new Error(`missing receipt ${id}`);
+      rows[idx] = { ...rows[idx]!, ...input } as ReleaseReceipt;
+      return rows[idx]!;
+    },
     async listRecentForWorkspace() {
       return [...rows].reverse();
     },
@@ -71,24 +87,33 @@ function releaseStore(): ReleaseStore & { rows: ReleaseReceipt[] } {
 type FakeDeployer = ReleaseDeployer & {
   promoted: number;
   rolledBack: number;
+  healthChecked: string[];
   deployedSecrets: Record<string, string>[];
+  promoteStarts: string[];
+  promoteGate?: Promise<void>;
 };
 
-function fakeDeployer(over: {
-  deployOk?: boolean;
-  deployUrl?: string | null;
-  prior?: PriorProdDeploy | null;
-} = {}): FakeDeployer {
+function fakeDeployer(
+  over: {
+    deployOk?: boolean;
+    deployUrl?: string | null;
+    prior?: PriorProdDeploy | null;
+    promoteHealthOk?: boolean;
+    promoteHealthDetail?: string;
+  } = {},
+): FakeDeployer {
   const d: FakeDeployer = {
     promoted: 0,
     rolledBack: 0,
+    healthChecked: [],
     deployedSecrets: [],
+    promoteStarts: [],
     async deployPreview(input): Promise<ReleaseDeployOutcome> {
       d.deployedSecrets.push(input.secrets);
       const ok = over.deployOk ?? true;
       return {
         ok,
-        url: ok ? over.deployUrl ?? input.previewUrl : null,
+        url: ok ? (over.deployUrl ?? input.previewUrl) : null,
         providerDeploymentId: ok ? "dpl_1" : null,
         detail: ok ? "deployed" : "build failed",
       };
@@ -96,35 +121,64 @@ function fakeDeployer(over: {
     async latestProd() {
       return over.prior ?? null;
     },
-    async promote() {
+    async promote(input) {
+      d.promoteStarts.push(input.providerDeploymentId ?? "null");
+      if (d.promoteGate) await d.promoteGate;
       d.promoted += 1;
+    },
+    async healthCheck(url) {
+      d.healthChecked.push(url);
+      return {
+        ok: over.promoteHealthOk ?? true,
+        detail: over.promoteHealthDetail ?? "healthy",
+      };
     },
     async rollback(): Promise<ReleaseDeployOutcome> {
       d.rolledBack += 1;
-      return { ok: true, url: (over.prior ?? { url: "x" }).url, providerDeploymentId: "dpl_0", detail: "rolled back" };
+      return {
+        ok: true,
+        url: (over.prior ?? { url: "x" }).url,
+        providerDeploymentId: "dpl_0",
+        detail: "rolled back",
+      };
     },
   };
   return d;
 }
 
 function fakeSmoke(result: SmokeRunResult): SmokeRunner {
-  return { async run() { return result; } };
+  return {
+    async run() {
+      return result;
+    },
+  };
 }
 
-const PRIOR: PriorProdDeploy = { providerDeploymentId: "dpl_0", url: "https://acme.dryrun.reload.app" };
+const PRIOR: PriorProdDeploy = {
+  providerDeploymentId: "dpl_0",
+  url: "https://acme.dryrun.reload.app",
+};
 
-function build(over: {
-  caps?: VentureDeployCaps;
-  target?: DeployTarget | null;
-  deployer?: ReturnType<typeof fakeDeployer>;
-  smoke?: SmokeRunner;
-  withApprovals?: boolean;
-  withIncident?: boolean;
-  resolveSecrets?: (ws: string, key: string) => Promise<Record<string, string>>;
-} = {}) {
+function build(
+  over: {
+    caps?: VentureDeployCaps;
+    target?: DeployTarget | null;
+    deployer?: ReturnType<typeof fakeDeployer>;
+    smoke?: SmokeRunner;
+    withApprovals?: boolean;
+    withIncident?: boolean;
+    resolveSecrets?: (ws: string, key: string) => Promise<Record<string, string>>;
+  } = {},
+) {
   const releases = releaseStore();
   const incidents: OpsPostmortem[] = [];
-  const approvals = { submitted: [] as string[], async submit() { approvals.submitted.push("x"); return { id: "appr1" }; } };
+  const approvals = {
+    submitted: [] as string[],
+    async submit() {
+      approvals.submitted.push("x");
+      return { id: "appr1" };
+    },
+  };
   const pipeline = new VentureReleasePipeline({
     caps: () => over.caps ?? caps(),
     targets: targetStore(over.target === undefined ? TARGET : over.target),
@@ -132,14 +186,26 @@ function build(over: {
     deployer: over.deployer ?? fakeDeployer(),
     smoke: over.smoke ?? fakeSmoke({ ran: true, criticalCount: 0, detail: "ok" }),
     approvals: over.withApprovals === false ? undefined : approvals,
-    incident: over.withIncident === false ? undefined : { async file(pm) { incidents.push(pm); } },
+    incident:
+      over.withIncident === false
+        ? undefined
+        : {
+            async file(pm) {
+              incidents.push(pm);
+            },
+          },
     resolveSecrets: over.resolveSecrets,
     now: () => new Date(0),
   });
   return { pipeline, releases, incidents, approvals };
 }
 
-const releaseInput = { workspaceId: "ws1", ventureId: "v1", releaseRef: "abc123", requesterMemberId: "m1" };
+const releaseInput = {
+  workspaceId: "ws1",
+  ventureId: "v1",
+  releaseRef: "abc123",
+  requesterMemberId: "m1",
+};
 
 describe("VentureReleasePipeline (#195 AC2/AC3)", () => {
   it("a green smoke parks the prod cutover for owner approval by default", async () => {
@@ -164,7 +230,75 @@ describe("VentureReleasePipeline (#195 AC2/AC3)", () => {
     expect(r.status).toBe("promoted");
     expect(r.url).toBe(TARGET.prodUrl);
     expect(deployer.promoted).toBe(1);
+    expect(deployer.healthChecked).toEqual([TARGET.prodUrl]);
+    expect(r.promoteHealthOk).toBe(true);
+    expect(r.promoteHealthDetail).toBe("healthy");
     expect(releases.rows[0]!.incidentFiled).toBe(false);
+  });
+
+  it("serializes duplicate release triggers and returns the existing receipt without a second promote (#957)", async () => {
+    let releasePromote!: () => void;
+    const deployer = fakeDeployer({ prior: PRIOR });
+    deployer.promoteGate = new Promise<void>((resolve) => {
+      releasePromote = resolve;
+    });
+    const { pipeline, releases } = build({ caps: caps({ preCommitProdPromote: true }), deployer });
+
+    const first = pipeline.release(releaseInput);
+    await vi.waitFor(() => expect(deployer.promoteStarts).toHaveLength(1));
+    const second = pipeline.release(releaseInput);
+    releasePromote();
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(a.id).toBe(b.id);
+    expect(deployer.promoted).toBe(1);
+    expect(releases.rows).toHaveLength(1);
+    expect(releases.rows[0]).toMatchObject({ status: "promoted", releaseRef: "abc123" });
+  });
+
+  it("rolls back and does not record promoted when post-promote health fails", async () => {
+    const deployer = fakeDeployer({
+      prior: PRIOR,
+      promoteHealthOk: false,
+      promoteHealthDetail: "prod returned 404",
+    });
+    const { pipeline, releases, incidents } = build({
+      caps: caps({ preCommitProdPromote: true }),
+      deployer,
+    });
+    const r = await pipeline.release(releaseInput);
+    expect(deployer.promoted).toBe(1);
+    expect(deployer.healthChecked).toEqual([TARGET.prodUrl]);
+    expect(deployer.rolledBack).toBe(1);
+    expect(r.action).toBe("rollback");
+    expect(r.status).toBe("rolled_back");
+    expect(r.url).toBe(PRIOR.url);
+    expect(r.promoteHealthOk).toBe(false);
+    expect(r.promoteHealthDetail).toBe("prod returned 404");
+    expect(r.detail).toContain("promote health failed");
+    expect(r.detail).toContain("rolled back");
+    expect(r.incidentFiled).toBe(true);
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]!.rootCause).toContain("prod returned 404");
+    expect(releases.rows[0]!.status).toBe("rolled_back");
+  });
+
+  it("escalates a failed post-promote health check when there is no prior prod to roll back to", async () => {
+    const deployer = fakeDeployer({
+      prior: null,
+      promoteHealthOk: false,
+      promoteHealthDetail: "TLS handshake failed",
+    });
+    const { pipeline } = build({ caps: caps({ preCommitProdPromote: true }), deployer });
+    const r = await pipeline.release(releaseInput);
+    expect(deployer.promoted).toBe(1);
+    expect(deployer.rolledBack).toBe(0);
+    expect(r.action).toBe("escalate");
+    expect(r.status).toBe("escalated");
+    expect(r.requiresApproval).toBe(true);
+    expect(r.url).toBe(TARGET.previewUrl);
+    expect(r.promoteHealthOk).toBe(false);
+    expect(r.promoteHealthDetail).toBe("TLS handshake failed");
   });
 
   it("auto-rolls back a broken image (critical smoke) and files an incident — no human", async () => {
@@ -250,19 +384,28 @@ describe("releasePipelineAsPostMergeVerifier", () => {
   it("is a no-op for a non-venture run (byte-for-byte safe for agent-skills self-shipping)", async () => {
     const { pipeline, releases } = build();
     const verifier = releasePipelineAsPostMergeVerifier(pipeline, () => null);
-    const out = await verifier.verify({ workspaceId: "ws1", run: { workspaceId: "ws1", issueRef: "x#1" } });
+    const out = await verifier.verify({
+      workspaceId: "ws1",
+      run: { workspaceId: "ws1", issueRef: "x#1" },
+    });
     expect(out.regressions).toBe(0);
     expect(releases.rows).toHaveLength(0); // pipeline never ran
   });
 
   it("runs the release pipeline for a venture run; a promoted release is 0 regressions", async () => {
-    const { pipeline } = build({ caps: caps({ preCommitProdPromote: true }), deployer: fakeDeployer({ prior: PRIOR }) });
+    const { pipeline } = build({
+      caps: caps({ preCommitProdPromote: true }),
+      deployer: fakeDeployer({ prior: PRIOR }),
+    });
     const verifier = releasePipelineAsPostMergeVerifier(pipeline, () => ({
       ventureId: "v1",
       releaseRef: "abc123",
       requesterMemberId: "m1",
     }));
-    const out = await verifier.verify({ workspaceId: "ws1", run: { workspaceId: "ws1", issueRef: "acme#9" } });
+    const out = await verifier.verify({
+      workspaceId: "ws1",
+      run: { workspaceId: "ws1", issueRef: "acme#9" },
+    });
     expect(out.regressions).toBe(0);
   });
 
@@ -276,7 +419,10 @@ describe("releasePipelineAsPostMergeVerifier", () => {
       releaseRef: "abc123",
       requesterMemberId: "m1",
     }));
-    const out = await verifier.verify({ workspaceId: "ws1", run: { workspaceId: "ws1", issueRef: "acme#9" } });
+    const out = await verifier.verify({
+      workspaceId: "ws1",
+      run: { workspaceId: "ws1", issueRef: "acme#9" },
+    });
     expect(out.regressions).toBe(4);
   });
 });

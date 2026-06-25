@@ -24,7 +24,7 @@ import { createImportedProspectSource } from "../../src/reach/sources/imported.j
 import { createEmailChannel, type EspSender } from "../../src/reach/channels/email.js";
 import { createLinkedInChannel } from "../../src/reach/channels/linkedin.js";
 import { REACH_DEFAULTS, type ReachCaps } from "../../src/reach/caps.js";
-import { createRequest, getRequest } from "../../src/db/repositories/approvals.js";
+import { createRequest, getRequest, listRequests } from "../../src/db/repositories/approvals.js";
 import { REACH_DATA_CREDIT_ACTION } from "../../src/approvals/policy.js";
 import type { ProspectSource } from "../../src/reach/prospect-source.js";
 import type { SenderAuthInput } from "../../src/email/deliverability.js";
@@ -119,6 +119,31 @@ function service(
       : {}),
     caps: () => caps(capsOver),
     approvals: {
+      async dataCreditSpend(workspaceId, provider) {
+        const requests = (
+          await Promise.all([
+            listRequests(workspaceId, { status: "pending", limit: 500 }),
+            listRequests(workspaceId, { status: "approved", limit: 500 }),
+            listRequests(workspaceId, { status: "executed", limit: 500 }),
+          ])
+        ).flat();
+        let pendingCents = 0;
+        let approvedCents = 0;
+        let pendingRequestId: string | null = null;
+        for (const req of requests) {
+          if (req.actionType !== REACH_DATA_CREDIT_ACTION) continue;
+          if (req.payload.provider !== provider) continue;
+          const amount =
+            typeof req.amount === "number" && Number.isFinite(req.amount) ? req.amount : 0;
+          if (req.status === "pending") {
+            pendingCents += amount;
+            pendingRequestId ??= req.id;
+          } else {
+            approvedCents += amount;
+          }
+        }
+        return { pendingCents, approvedCents, pendingRequestId };
+      },
       async submitDataCreditSpend(input) {
         const req = await createRequest({
           workspaceId,
@@ -314,7 +339,12 @@ describe("Reach outbound loop on Postgres (#280)", () => {
         throw new Error("must not search before approval");
       },
     };
-    const svc = service(workspaceId, memberId, { batchSize: 10, prospectSource: "clay" }, paid);
+    const svc = service(
+      workspaceId,
+      memberId,
+      { batchSize: 10, prospectSource: "clay", dataCreditBudgetCents: 500 },
+      paid,
+    );
     const run = await svc.runBatch(workspaceId);
     expect(run.status).toBe("awaiting_data_funding");
     expect(run.approvalRequestId).toBeTruthy();

@@ -36,6 +36,7 @@ const caps: ResourceCaps = { wallClockMs: 20_000, idleMs: 8_000 };
 // Per-tenant scale policy the Admission/recorder read — set per test, keyed by workspace id. Using a
 // config function (instead of a managed TOML file) keeps the test hermetic and deterministic.
 const scaleByWs = new Map<string, ScaleConfig>();
+const activePlanByWs = new Map<string, { status: string; monthlySessionBudgetCents: number }>();
 const configFn = (workspaceId: string): ResolvedConfig => ({
   ...CONFIG_DEFAULTS,
   scale: scaleByWs.get(workspaceId) ?? {},
@@ -56,9 +57,15 @@ async function startApp(): Promise<{ app: FastifyInstance }> {
     usage: usageStore,
     killSwitch: { isEngaged: async (ws) => (await getControls(ws)).killSwitch },
     config: configFn,
+    activePlans: { getActive: async (ws) => activePlanByWs.get(ws) },
     globalMax: 0,
   });
-  const scale: Scale = { admission, usage: createUsageRecorder(usageStore, configFn), config: configFn };
+  const scale: Scale = {
+    admission,
+    usage: createUsageRecorder(usageStore, configFn),
+    config: configFn,
+    activePlans: { getActive: async (ws) => activePlanByWs.get(ws) },
+  };
   const manager = new SessionManager({
     runtime: new LocalRuntime(),
     store: dbStore,
@@ -163,6 +170,29 @@ describe("cloud scale (#71 — admission, budget, kill switch, placement, usage;
     expect(usage.overBudget).toBe(true);
     expect(usage.estimatedCostCents).toBe(100);
     expect(usage.caps.budgetCents).toBe(100);
+  });
+
+  it("an active paid plan budget replaces the trial/config cap for admission and usage (#873)", async () => {
+    const { app } = await startApp();
+    const w = await seed(app);
+    scaleByWs.set(w.workspaceId, { budgetCents: 100, computeRateCentsPerMinute: 1 });
+    activePlanByWs.set(w.workspaceId, { status: "active", monthlySessionBudgetCents: 20_000 });
+    const window = windowKey(new Date());
+    await recordSessionCompute(w.workspaceId, window, 6000, 100);
+
+    const admitted = await launch(app, w);
+    expect(admitted.statusCode).toBe(202);
+    await pollStatus(app, w, admitted.json().id);
+
+    const usage = (
+      await app.inject({
+        method: "GET",
+        url: `/workspaces/${w.workspaceId}/scale/usage`,
+        cookies: { rid: w.cookie },
+      })
+    ).json();
+    expect(usage.overBudget).toBe(false);
+    expect(usage.caps.budgetCents).toBe(20_000);
   });
 
   it("the #17 kill switch halts all launches (429), and disengaging admits again", async () => {

@@ -1,9 +1,9 @@
 /**
  * First-run setup checklist (#479) — presentational. Shows the four-step path from signup to first real
- * output (set brand → connect an account → run an agent → see & approve the result), each ticked off from
- * REAL signals (see lib/firstrun-checklist.ts). A done step shows a check and drops its call-to-action; an
- * outstanding step shows its CTA, which the parent routes to the right surface. The whole card hides once
- * every step is real, or when the user dismisses it.
+ * output (set target → set brand → connect an account → run an agent → see & approve the result), each
+ * ticked off from REAL signals (see lib/firstrun-checklist.ts). A done step shows a check and drops its
+ * call-to-action; an outstanding step shows its CTA, which the parent routes to the right surface. The
+ * whole card hides once every step is real, or when the user dismisses it.
  *
  * #505: the card docks. It is collapsible — when `collapsed`, only its compact one-line header bar renders
  * (title · progress · controls) and the tall steps list is hidden, so the checklist never takes over the

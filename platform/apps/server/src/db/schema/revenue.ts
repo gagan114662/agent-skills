@@ -75,6 +75,14 @@ export const revenueEvents = pgTable(
     amountCents: integer("amount_cents").notNull().default(0),
     currency: text("currency").notNull(),
     status: text("status").notNull(), // e.g. paid | succeeded | complete
+    invoiceId: text("invoice_id"),
+    invoiceNumber: text("invoice_number"),
+    invoiceUrl: text("invoice_url"),
+    invoicePdfUrl: text("invoice_pdf_url"),
+    invoiceStatus: text("invoice_status"),
+    taxAmountCents: integer("tax_amount_cents").notNull().default(0),
+    customerVatId: text("customer_vat_id"),
+    effectiveTaxRateBps: integer("effective_tax_rate_bps"),
     // The #386 tracking ref carried through Stripe checkout metadata (slice 3, #402). NULL ⇒ the payment
     // carried no ref (or pre-dates this column) ⇒ stays `unattributed` in the attribution projection.
     trackingRef: text("tracking_ref"),
@@ -84,6 +92,7 @@ export const revenueEvents = pgTable(
   (t) => ({
     byWorkspace: index("revenue_events_workspace_idx").on(t.workspaceId),
     bySession: index("revenue_events_session_idx").on(t.sessionId),
+    byInvoice: index("revenue_events_invoice_idx").on(t.workspaceId, t.invoiceId),
     // Webhook idempotency: at most one row per (workspace, provider event id).
     dedupe: unique("revenue_events_workspace_event_uq").on(t.workspaceId, t.providerEventId),
   }),

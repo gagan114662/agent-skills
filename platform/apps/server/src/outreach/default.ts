@@ -5,8 +5,15 @@ import { connectedAccountKinds } from "../realworld/default.js";
 import { loadConfig } from "../config/loader.js";
 import type { DiscoveryService } from "../discovery/service.js";
 import type { DecisionMakerService } from "../decision-maker/service.js";
+import type { PlanBillingService } from "../billing/plan-service.js";
+import { buildPayLinkSpec, buildTrackedPayUrl } from "../leads/pay-link.js";
+import { buildTrackedUrl } from "../attribution/tracking.js";
+import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
 import { resolveOutreachCaps } from "./caps.js";
 import { OutreachService } from "./service.js";
+import type { OutreachChannel } from "./types.js";
+
+const DEFAULT_OUTREACH_TRIAL_BASE_URL = "https://ipop.ai/start";
 
 /**
  * Production wiring for the outreach engine (#225, ADR-0225). Binds the service to the real seams:
@@ -25,7 +32,50 @@ import { OutreachService } from "./service.js";
 export function createDefaultOutreachService(deps: {
   discovery: DiscoveryService;
   decisionMaker: DecisionMakerService;
+  planService?: PlanBillingService;
 }): OutreachService {
+  const payLinks = deps.planService
+    ? {
+        mintForProspect: async (
+          workspaceId: string,
+          input: { leadOrArtifactId: string; channel: OutreachChannel; planId: string },
+        ) => {
+          const spec = buildPayLinkSpec(
+            {
+              workspaceId,
+              leadOrArtifactId: input.leadOrArtifactId,
+              channel: input.channel,
+            },
+            { planId: input.planId },
+            "outreach",
+          );
+          const checkout = await deps.planService!.createCheckout({
+            workspaceId,
+            planKey: input.planId,
+            trackingRef: spec.trackingRef,
+          }).catch(() => null);
+          await dbAttributionExposureStore
+            .recordExposure({
+              workspaceId,
+              artifactId: input.leadOrArtifactId,
+              artifactKind: "outreach_trial_link",
+              trackingRef: spec.trackingRef,
+              channel: input.channel,
+              occurredAtMs: Date.now(),
+            })
+            .catch(() => undefined);
+          return {
+            url: checkout
+              ? buildTrackedPayUrl(checkout.url, spec)
+              : buildTrackedUrl(
+                  DEFAULT_OUTREACH_TRIAL_BASE_URL + "?plan=" + encodeURIComponent(input.planId),
+                  spec.trackingRef,
+                  spec.utm,
+                ),
+          };
+        },
+      }
+    : undefined;
   return new OutreachService({
     prospects: {
       queue: (workspaceId, opts) => deps.discovery.queue(workspaceId, opts),
@@ -40,7 +90,7 @@ export function createDefaultOutreachService(deps: {
         const req = await createRequest({
           workspaceId: input.workspaceId,
           requesterMemberId: input.requesterMemberId,
-          actionType: OUTREACH_SEND_ACTION,
+          actionType: input.actionType ?? OUTREACH_SEND_ACTION,
           payload: input.payload,
           amount: null,
           summary: input.summary,
@@ -51,16 +101,26 @@ export function createDefaultOutreachService(deps: {
         return { id: req.id };
       },
     },
-    // The receipt advancer: record an externally-grounded #222 conversion (and nothing else).
+    ...(payLinks ? { payLinks } : {}),
+    // The receipt advancer: record an externally-grounded #222 GTM stage (and nothing else).
     pipeline: {
-      recordConversion: async (workspaceId, input) => {
-        await deps.discovery.ingestSignal(workspaceId, {
+      recordStage: async (workspaceId, input) => {
+        if (input.stage === "conversion") {
+          await deps.discovery.ingestSignal(workspaceId, {
+            ideaId: input.ideaId,
+            prospectKey: input.prospectKey,
+            kind: "conversion",
+            externalRef: input.externalRef,
+            source: "outreach",
+            detail: input.detail,
+          });
+          return;
+        }
+        await deps.discovery.advancePipelineStage(workspaceId, {
           ideaId: input.ideaId,
           prospectKey: input.prospectKey,
-          kind: "conversion",
+          stage: input.stage,
           externalRef: input.externalRef,
-          source: "outreach",
-          detail: input.detail,
         });
       },
     },

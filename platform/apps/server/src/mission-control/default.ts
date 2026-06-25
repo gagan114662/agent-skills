@@ -7,7 +7,15 @@ import {
 import { listEvaluations } from "../db/repositories/venture.js";
 import { getIdea } from "../db/repositories/venture.js";
 import { listTasks } from "../db/repositories/tasks.js";
+import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
+import {
+  createNotification,
+  getPreferences,
+  listNotificationsForMember,
+} from "../db/repositories/notifications.js";
 import { MissionControlService } from "./service.js";
+import { shouldQueueActivationHealthAlert } from "./activation-alert.js";
+import type { MissionDiagnostic, RecentFailureView } from "./diagnose.js";
 
 /**
  * Production wiring for mission control (#147, ADR-0147). Read-only over the #25 live-session list +
@@ -17,6 +25,31 @@ import { MissionControlService } from "./service.js";
  * #230: also wires the recent-sessions + activation reads behind the "why is nothing running?"
  * diagnostic, all over EXISTING workspace-scoped repos (no new query authority).
  */
+async function alertActivationHealth(input: {
+  workspaceId: string;
+  diagnostic: MissionDiagnostic;
+  recentFailures: RecentFailureView[];
+  now: Date;
+}): Promise<void> {
+  const ownerMemberId = await getWorkspaceOwnerMemberId(input.workspaceId);
+  if (!ownerMemberId) return;
+  const prefs = await getPreferences(ownerMemberId);
+  const existing = await listNotificationsForMember(input.workspaceId, ownerMemberId);
+  if (!shouldQueueActivationHealthAlert({
+    diagnostic: input.diagnostic,
+    recentFailures: input.recentFailures,
+    nowMs: input.now.getTime(),
+    prefs,
+    existing,
+  })) return;
+  await createNotification({
+    workspaceId: input.workspaceId,
+    recipientMemberId: ownerMemberId,
+    type: "activation_health",
+    excerpt: input.diagnostic.headline,
+  });
+}
+
 export function createDefaultMissionControlService(): MissionControlService {
   return new MissionControlService({
     listLiveSessions: (workspaceId) => listWorkspaceLiveSessions(workspaceId),
@@ -44,5 +77,6 @@ export function createDefaultMissionControlService(): MissionControlService {
       const tasks = await listTasks(workspaceId);
       return tasks.some((t) => t.labels.includes("venture"));
     },
+    activationHealthAlert: alertActivationHealth,
   });
 }

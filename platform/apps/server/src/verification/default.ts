@@ -7,12 +7,13 @@ import {
   type VerificationApprovalSink,
   type WorkerFeedback,
 } from "./engine.js";
-import type { CheckObservation, VerificationVerdict, DefinitionOfDone } from "./types.js";
+import type { VerificationVerdict, DefinitionOfDone } from "./types.js";
 import { definitionStore, verdictStore } from "../db/repositories/verification.js";
 import { listLiveSessions } from "../db/repositories/agent-sessions.js";
 import { getControls } from "../db/repositories/autonomy.js";
 import { createRequest } from "../db/repositories/approvals.js";
 import type { SessionLogger } from "../runtime/manager.js";
+import { createDefaultIndependentGrader } from "./content-grader.js";
 
 /**
  * Production wiring for the Deliverable Verification Layer (#191, ADR-0191). Default-OFF
@@ -20,33 +21,11 @@ import type { SessionLogger } from "../runtime/manager.js";
  * first). Every seam is real: the stores are the `verification_criteria` / `verification_verdicts` repos,
  * the approval/escalation sink is the #13 queue, and the kill switch is the #17 control.
  *
- * The INDEPENDENT grader (#191 AC #2) is the one seam a deployment must supply to grade for real: it
- * spawns a SEPARATE #59 verifier session under a different member id. Until that is wired, the default
- * grader **abstains** — it returns no satisfied observations, so a deliverable can never silently pass
- * (the premortem's whole point: an unverified claim is not trusted). An abstained verdict fails → returns
- * to the worker → escalates, never auto-proceeds.
+ * The default INDEPENDENT grader (#854) is deterministic and local: it checks the named content criteria it
+ * can actually verify (originality against supplied sources, brand/fact safety against the brand-fact gate,
+ * and obvious private-data leaks) and fails closed for unknown criteria. A deployment may still replace it
+ * with a separate #59 verifier session for model/browser-backed checks.
  */
-
-/**
- * The safe default grader: it ABSTAINS. It cannot independently confirm any criterion, so every required
- * check fails and nothing ships unverified. A deployment replaces this with a real #59-subagent grader.
- */
-const abstainingGrader: IndependentGrader = {
-  grade: async ({ dod }) => ({
-    // A sentinel grader id distinct from any worker — keeps the independence invariant honest while
-    // abstaining. (It never yields a pass, so this only ever flows to return_to_worker / escalate.)
-    graderMemberId: "00000000-0000-0000-0000-000000000000",
-    observations: dod.criteria.map(
-      (c): CheckObservation => ({
-        criterionId: c.id,
-        satisfied: false,
-        confidence: 0,
-        evidence: "no independent grader configured — abstaining (deliverable not verified)",
-        productionGrounded: false,
-      }),
-    ),
-  }),
-};
 
 /** Build the #13 proof payload shared by the approval card + the escalation (AC #4 — receipts on the card). */
 function proofPayload(dod: DefinitionOfDone, verdict: VerificationVerdict, redact: (t: string) => string) {
@@ -143,7 +122,7 @@ function makeWorkerFeedback(logger: SessionLogger, redact: (t: string) => string
 /** Build the production VerificationEngine. Decorated on `app`; invoked at deliverable chokepoints. */
 export function createDefaultVerificationEngine(
   logger: SessionLogger,
-  grader: IndependentGrader = abstainingGrader,
+  grader: IndependentGrader = createDefaultIndependentGrader(),
 ): VerificationEngine {
   const redactor = makeRedactor({});
   const redact = (text: string) => redactor(text);
