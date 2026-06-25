@@ -193,7 +193,28 @@ describe("OnboardingExperience (#784)", () => {
       /scout read acme\.comquill drafted from the findingready for your approval/i,
     );
     expect(within(instant).getByText(/your hero buries the offer below the fold/i)).toBeInTheDocument();
+    expect(
+      within(instant).getByRole("button", { name: /approve this first result/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+  });
+
+  it("lets a new user approve the first result without opening settings or connectors (#525)", async () => {
+    const ship = vi.fn(() => Promise.resolve({ shipped: true as const }));
+    render(<OnboardingExperience provider={fakeProvider({ ship })} hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+
+    const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
+    fireEvent.click(within(instant).getByRole("button", { name: /approve this first result/i }));
+
+    expect(await screen.findByText(/that's a real thing you just did/i)).toBeInTheDocument();
+    expect(ship).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/open real connections/i)).not.toBeInTheDocument();
   });
 
   it("walks the whole flow: read → finding → guided connects each with a real payoff → ship", async () => {
