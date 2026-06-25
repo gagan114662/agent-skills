@@ -3,12 +3,16 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { AuthGate } from "./AuthGate.js";
 import { navigate } from "../routing.js";
-import { PRICING } from "../brand.js";
+import { LEGAL, PRICING } from "../brand.js";
 import { TEST_IDENTITY, renderWithStore } from "../test/utils.js";
 
 const unauthorized = () => {
   throw Object.assign(new Error("unauthorized"), { status: 401 });
 };
+
+async function acceptSignupTerms(): Promise<void> {
+  await userEvent.click(screen.getByRole("checkbox", { name: /agree to the terms/i }));
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -88,6 +92,23 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
+  it.each([
+    [LEGAL.terms.href, LEGAL.terms.title],
+    [LEGAL.privacy.href, LEGAL.privacy.title],
+  ])("serves %s as a public legal page for logged-out visitors (#863)", async (path, title) => {
+    act(() => navigate(path));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
   it("serves the #260 onboarding screen at /start for a logged-out visitor (domain + Google, no password)", async () => {
     act(() => navigate("/start"));
     renderWithStore(
@@ -148,10 +169,13 @@ describe("AuthGate routing", () => {
     expect(screen.getByLabelText(/password/i)).toHaveAttribute("required");
     expect(screen.getByLabelText(/password/i)).toHaveAttribute("aria-required", "true");
     expect(screen.getByLabelText(/password/i)).toHaveAttribute("minlength", "8");
-    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("required");
-    expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("aria-required", "true");
     expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("minlength", "2");
     expect(screen.getByLabelText(/workspace/i)).toHaveAttribute("pattern", "[a-z0-9][a-z0-9-]{1,62}");
+    const consent = screen.getByRole("checkbox", { name: /agree to the terms/i });
+    expect(consent).toHaveAttribute("required");
+    expect(consent).toHaveAttribute("aria-required", "true");
+    expect(screen.getByRole("link", { name: LEGAL.terms.navLabel })).toHaveAttribute("href", LEGAL.terms.href);
+    expect(screen.getByRole("link", { name: LEGAL.privacy.navLabel })).toHaveAttribute("href", LEGAL.privacy.href);
   });
 
   it("explains email reuse with a sign-in action", async () => {
@@ -172,6 +196,7 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
     await userEvent.type(screen.getByLabelText(/password/i), "correct-horse");
     await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await acceptSignupTerms();
     fireEvent.submit(screen.getByRole("button", { name: /create account/i }).closest("form")!);
 
     const alert = await screen.findByRole("alert");
@@ -197,6 +222,7 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
     await userEvent.type(screen.getByLabelText(/password/i), "correct-horse");
     await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await acceptSignupTerms();
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("That workspace URL is already taken.");
@@ -217,10 +243,39 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
     await userEvent.type(screen.getByLabelText(/password/i), "short");
     await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await acceptSignupTerms();
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Password must be at least 8 characters.");
     expect(signup).not.toHaveBeenCalled();
+  });
+
+  it("passes public legal consent metadata with signup submissions (#863)", async () => {
+    act(() => navigate("/signup"));
+    const signup = vi.fn(async () => ({ ok: true }) as const);
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized, signup },
+    );
+
+    await userEvent.type(await screen.findByLabelText(/display name/i), "Ada Lovelace");
+    await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
+    await userEvent.type(screen.getByLabelText(/password/i), "correct-horse");
+    await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await acceptSignupTerms();
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() =>
+      expect(signup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          termsAccepted: true,
+          legalConsentVersion: LEGAL.consentVersion,
+          legalConsentAt: expect.any(String),
+        }),
+      ),
+    );
   });
 
   it("hands the chosen plan off to the activation/first-run via sessionStorage on signup", async () => {
@@ -241,6 +296,7 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/email/i), "ada@example.com");
     await userEvent.type(screen.getByLabelText(/password/i), "hunter22");
     await userEvent.type(screen.getByLabelText(/workspace/i), "acme");
+    await acceptSignupTerms();
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());

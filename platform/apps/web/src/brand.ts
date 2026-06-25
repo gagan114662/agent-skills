@@ -636,6 +636,8 @@ export const LANDING = {
       { href: "#pricing", label: "Pricing" },
       { href: "/security", label: "Security & trust" },
       { href: "/refund-policy", label: "Refund policy" },
+      { href: "/terms", label: "Terms" },
+      { href: "/privacy", label: "Privacy" },
     ],
     resourcesTitle: "Resources",
     resources: [
@@ -1653,6 +1655,98 @@ export const CONTACT = {
   sentNote: "Got it — your note's in. A person will read it and reply, usually within a day.",
   /** Shown if the post fails — honest, with a fallback so the lead is never silently lost. */
   errorNote: `That didn't go through. Mind trying again, or email us at ${SUPPORT_CONTACT.email} and we'll pick it up.`,
+  consentLabel: "I agree to be contacted about ipop and accept the public legal terms.",
+  consentHelp:
+    "We use this to reply to your note and keep a consent record. You can opt out any time.",
+} as const;
+
+/** Public company-level legal pages (#863). Factual product terms, not per-venture generated docs. */
+export const LEGAL = {
+  terms: {
+    eyebrow: "Terms of Service",
+    title: "Terms for using ipop",
+    sub:
+      "These are the public platform terms for creating an account, running agents, approving work, and paying for ipop.",
+    navLabel: "Terms",
+    href: "/terms",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "What ipop provides",
+        body:
+          "ipop gives your workspace AI-agent tools for marketing operations, research, drafting, analytics, and approved publishing. You are responsible for the goals, inputs, accounts, and approvals you provide.",
+      },
+      {
+        title: "Accounts and acceptable use",
+        body:
+          "Keep account details accurate, protect credentials, and do not use the service for unlawful, abusive, deceptive, spam, malware, or rights-infringing activity. We may restrict access when safety, security, or legal risk requires it.",
+      },
+      {
+        title: "Approvals, spend, and third-party services",
+        body:
+          "Money movement and external publishing require the product's approval gates where configured. Third-party platforms, ad networks, payment processors, and model providers may apply their own terms and fees.",
+      },
+      {
+        title: "Customer content and outputs",
+        body:
+          "You keep ownership of content you provide. Outputs are generated from your instructions and connected tools; review them before relying on them, publishing them, or using them in regulated contexts.",
+      },
+      {
+        title: "Billing, refunds, and support",
+        body:
+          "Paid plans, budget caps, refunds, and support response targets are described before checkout and on the refund policy page. Approved third-party spend may not be refundable.",
+      },
+      {
+        title: "Changes and contact",
+        body:
+          "We may update these terms as the product changes. Material changes will be reflected on this page. Questions go to support@ipop.ai.",
+      },
+    ],
+  },
+  privacy: {
+    eyebrow: "Privacy Policy",
+    title: "How ipop handles personal data",
+    sub:
+      "This policy explains what we collect from visitors and customers, why we use it, and how to contact us about privacy requests.",
+    navLabel: "Privacy",
+    href: "/privacy",
+    updated: "Updated June 25, 2026",
+    sections: [
+      {
+        title: "Data we collect",
+        body:
+          "We collect account details such as name, email, workspace slug, authentication events, contact-form messages, support requests, billing metadata, connected-tool status, and product usage needed to run the service.",
+      },
+      {
+        title: "How we use it",
+        body:
+          "We use data to create accounts, operate workspaces, respond to messages, provide support, secure the service, measure product health, process billing, and improve agent workflows.",
+      },
+      {
+        title: "Connected tools and processors",
+        body:
+          "When you connect external tools, ipop uses the granted access to perform requested work. Payment, hosting, analytics, email, and model providers process data for us under their own processor terms.",
+      },
+      {
+        title: "Marketing contact and consent",
+        body:
+          "Contact and signup forms ask for consent before we store and use your details to reply. You can opt out of marketing or request deletion by contacting support@ipop.ai.",
+      },
+      {
+        title: "Security and retention",
+        body:
+          "We use workspace isolation, scoped credentials, approval gates, and audit logs. We keep personal data only as long as needed for the service, legal obligations, security, and customer support.",
+      },
+      {
+        title: "Your choices",
+        body:
+          "You can request access, correction, deletion, export, or restriction of personal data by emailing support@ipop.ai. We may need to verify the request before acting on it.",
+      },
+    ],
+  },
+  backCta: "Back home",
+  securityCta: "Security & trust",
+  consentVersion: "public-legal-2026-06-25",
 } as const;
 
 /**
@@ -1939,6 +2033,16 @@ export const PAGE_SEO = {
     name: "Refund policy",
     title: `Refund policy — ${BRAND.name} support SLA and billing terms`,
     description: REFUND_POLICY.sub,
+  },
+  "/terms": {
+    name: "Terms",
+    title: `Terms of Service — ${BRAND.name} platform terms`,
+    description: LEGAL.terms.sub,
+  },
+  "/privacy": {
+    name: "Privacy",
+    title: `Privacy Policy — how ${BRAND.name} handles customer data`,
+    description: LEGAL.privacy.sub,
   },
   "/compare": {
     name: "Compare",

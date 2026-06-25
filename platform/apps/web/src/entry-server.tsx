@@ -17,6 +17,7 @@ import { BLOG, BRAND, COMPARE, STORIES, GUIDES, CHANGELOG, PAGE_SEO } from "./br
 import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
+import { LegalPage } from "./components/landing/LegalPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
 import { SectionPage } from "./components/site/SectionPage.js";
 import { Brand } from "./components/site/Brand.js";
@@ -66,6 +67,8 @@ function marketingPages(): PrerenderPage[] {
   const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
     "/pricing": <PricingPage />,
     "/refund-policy": <RefundPolicy />,
+    "/terms": <LegalPage kind="terms" />,
+    "/privacy": <LegalPage kind="privacy" />,
     "/compare": (
       <SiteShell>
         <SectionPage section="compare" copy={COMPARE} />

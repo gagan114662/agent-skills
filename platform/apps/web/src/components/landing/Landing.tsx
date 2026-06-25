@@ -17,6 +17,7 @@ import {
   CONTACT,
   FLEET,
   LANDING,
+  LEGAL,
   PUBLIC_PROOF,
   SECURITY,
   STORY,
@@ -321,6 +322,12 @@ function LandingFooter(): React.JSX.Element {
       <div className="landing__footer-bottom">
         <Link href="/security" className="linklike landing__footer-link">
           {SECURITY.navLabel}
+        </Link>
+        <Link href={LEGAL.terms.href} className="linklike landing__footer-link">
+          {LEGAL.terms.navLabel}
+        </Link>
+        <Link href={LEGAL.privacy.href} className="linklike landing__footer-link">
+          {LEGAL.privacy.navLabel}
         </Link>
       </div>
     </footer>
