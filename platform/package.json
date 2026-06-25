@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "pnpm --filter @reload/server test",
+    "migration:new": "node scripts/new-migration.mjs",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "demo": "bash scripts/record-demo.sh 01-foundation-scaffolding"
