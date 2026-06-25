@@ -21,7 +21,9 @@ const bumpWorkflowAction = vi.fn(() => Promise.resolve());
 const attachWorkflowSession = vi.fn(() => Promise.resolve(true));
 const clearWorkflowSession = vi.fn(() => Promise.resolve());
 const setWorkflowStatus = vi.fn(() => Promise.resolve());
-const handoffWorkflowStage = vi.fn(() => Promise.resolve({ advanced: true, alreadyAdvanced: false }));
+const handoffWorkflowStage = vi.fn(() =>
+  Promise.resolve({ advanced: true, alreadyAdvanced: false }),
+);
 const markWorkflowAwaitingApproval = vi.fn(() => Promise.resolve());
 const completeWorkflowWithTask = vi.fn(() => Promise.resolve());
 const spawnRecurringWorkflowSuccessor = vi.fn(() => Promise.resolve(undefined));
@@ -128,6 +130,8 @@ const runningWorkflow: AgentWorkflow = {
   currentStage: 0,
   status: "running",
   actionCount: 0,
+  maxAgeMs: 86_400_000,
+  deadlineAt: null,
   currentSessionId: null,
   currentSessionStage: null,
   recurring: false,
@@ -390,6 +394,47 @@ describe("AutonomyEngine real-session launch (#84)", () => {
     });
     expect(createApproval).not.toHaveBeenCalled();
     expect(markWorkflowAwaitingApproval).toHaveBeenCalledWith("wf_1");
+  });
+
+  it("times out an overdue approval gate instead of leaving the workflow parked forever", async () => {
+    listActiveWorkflows.mockResolvedValueOnce([
+      {
+        ...runningWorkflow,
+        status: "awaiting_approval",
+        actionCount: 3,
+        deadlineAt: new Date(Date.now() - 1_000),
+      },
+    ]);
+    getTask.mockResolvedValue({ id: "task_1", title: "summarize the repo", status: "in_progress" });
+    findWorkflowApproval.mockResolvedValueOnce({
+      id: "appr_1",
+      workspaceId: "ws_1",
+      workflowId: "wf_1",
+      taskId: "task_1",
+      requestedByMemberId: "agent_r",
+      action: "complete_workflow",
+      status: "pending",
+      decidedByMemberId: null,
+      decisionSource: "human",
+      policyRuleId: null,
+      createdAt: new Date(0),
+      decidedAt: null,
+    });
+    const engine = new AutonomyEngine({ poster, logger: silentLogger });
+
+    const result = await engine.tick("ws_1");
+
+    expect(result.actions.find((a) => a.workflowId === "wf_1")).toEqual({
+      workflowId: "wf_1",
+      action: "timeout_approval",
+      reason: "approval_deadline_exceeded",
+    });
+    expect(decideApproval).toHaveBeenCalledWith(
+      "appr_1",
+      expect.objectContaining({ status: "rejected", decisionSource: "policy" }),
+    );
+    expect(setWorkflowStatus).toHaveBeenCalledWith("wf_1", "canceled");
+    expect(updateStatus).toHaveBeenCalledWith("task_1", "blocked", "agent_r");
   });
 
   it("on a failed session, blocks the task (no approval gate for work that did not land)", async () => {

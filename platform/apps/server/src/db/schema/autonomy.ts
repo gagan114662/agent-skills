@@ -64,7 +64,10 @@ export const agentPoolMembers = pgTable(
     agentMemberId: uuid("agent_member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
-    roles: jsonb("roles").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    roles: jsonb("roles")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -139,6 +142,10 @@ export const agentWorkflows = pgTable(
     currentStage: integer("current_stage").notNull().default(0),
     status: text("status", { enum: WORKFLOW_STATUSES }).notNull().default("running"),
     actionCount: integer("action_count").notNull().default(0),
+    maxAgeMs: integer("max_age_ms")
+      .notNull()
+      .default(24 * 60 * 60 * 1000),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }),
     currentSessionId: uuid("current_session_id").references(() => agentSessions.id, {
       onDelete: "set null",
     }),
@@ -157,6 +164,7 @@ export const agentWorkflows = pgTable(
     taskUniq: unique("agent_workflows_task_uniq").on(t.taskId),
     sourceWorkflowUniq: unique("agent_workflows_source_workflow_uniq").on(t.sourceWorkflowId),
     byStatus: index("agent_workflows_workspace_status_idx").on(t.workspaceId, t.status),
+    byDeadline: index("agent_workflows_workspace_deadline_idx").on(t.workspaceId, t.deadlineAt),
     statusCk: check(
       "agent_workflows_status_ck",
       sql`${t.status} IN ('running','awaiting_approval','completed','canceled')`,

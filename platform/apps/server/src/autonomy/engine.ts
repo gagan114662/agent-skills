@@ -280,6 +280,27 @@ export class AutonomyEngine {
         await clearWorkflowSession({ workflowId: wf.id, sessionId: wf.currentSessionId });
       }
 
+      const task = await getTask(wf.taskId);
+      if (!task) {
+        recordAutonomyAction("noop:task_missing");
+        continue;
+      }
+
+      if (
+        wf.status === "awaiting_approval" &&
+        wf.deadlineAt &&
+        wf.deadlineAt.getTime() <= Date.now()
+      ) {
+        await this.apply(wf, task.id, task.title, agentMemberId, "timeout_approval", log);
+        recordAutonomyAction("timeout_approval");
+        actions.push({
+          workflowId: wf.id,
+          action: "timeout_approval",
+          reason: "approval_deadline_exceeded",
+        });
+        continue;
+      }
+
       const autonomy = await getAutonomy(workspaceId, agentMemberId);
       if (!autonomy || !autonomy.enabled) {
         recordAutonomyAction("noop:agent_disabled");
@@ -294,12 +315,6 @@ export class AutonomyEngine {
         continue;
       }
 
-      const task = await getTask(wf.taskId);
-      if (!task) {
-        recordAutonomyAction("noop:task_missing");
-        continue;
-      }
-
       const decision = decideWorkflowAction({
         task: { status: task.status },
         workflow: {
@@ -307,6 +322,10 @@ export class AutonomyEngine {
           currentStage: wf.currentStage,
           stageCount: wf.stages.length,
           actionCount: wf.actionCount,
+          approvalOverdue:
+            wf.status === "awaiting_approval" &&
+            !!wf.deadlineAt &&
+            wf.deadlineAt.getTime() <= Date.now(),
         },
         killSwitch: false, // already gated above
         budgetExhausted: budgetExhausted(autonomy.actionsUsed, autonomy.actionBudget),
@@ -418,6 +437,34 @@ export class AutonomyEngine {
         );
         return;
       }
+      case "timeout_approval": {
+        const approval = await findWorkflowApproval({
+          workspaceId: wf.workspaceId,
+          workflowId: wf.id,
+          taskId,
+          action: "complete_workflow",
+        });
+        if (approval?.status === "pending") {
+          await decideApproval(approval.id, {
+            status: "rejected",
+            decidedByMemberId: null,
+            decisionSource: "policy",
+            policyRuleId: null,
+          });
+        }
+        await setWorkflowStatus(wf.id, "canceled");
+        const task = await getTask(taskId);
+        if (task && task.status !== "blocked" && canTransition(task.status, "blocked")) {
+          await updateStatus(taskId, "blocked", agentMemberId);
+        }
+        await this.post(
+          wf,
+          agentMemberId,
+          `⚠️ approval deadline exceeded for “${taskTitle}”; workflow timed out and the task is blocked for owner review.`,
+          log,
+        );
+        return;
+      }
     }
   }
 
@@ -491,7 +538,10 @@ export class AutonomyEngine {
       sessionId: session.id,
     });
     if (!attached) {
-      log.warn({ workflowId: wf.id, sessionId: session.id }, "autonomy session attached to stale workflow");
+      log.warn(
+        { workflowId: wf.id, sessionId: session.id },
+        "autonomy session attached to stale workflow",
+      );
       return;
     }
     this.trackSession(wf, taskId, taskTitle, stageIndex, agentMemberId, session.id, log);
@@ -682,7 +732,7 @@ export class AutonomyEngine {
         });
       }
     } else if (task && task.status !== "done" && canTransition(task.status, "done")) {
-        await updateStatus(approval.taskId, "done", humanMemberId);
+      await updateStatus(approval.taskId, "done", humanMemberId);
     }
     if (approval.workflowId) {
       const wf = await getWorkflow(approval.workflowId, workspaceId);

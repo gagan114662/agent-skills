@@ -7,7 +7,7 @@ import { loopGuardTripped } from "./guards.js";
  * this tick. One action per workflow per tick keeps progression observable and the guards
  * meaningful. The engine does the side effects; this function does the choice.
  */
-export type AutonomyAction = "start" | "handoff" | "request_approval" | "noop";
+export type AutonomyAction = "start" | "handoff" | "request_approval" | "timeout_approval" | "noop";
 
 export type WorkflowStatus = "running" | "awaiting_approval" | "completed" | "canceled";
 
@@ -19,6 +19,8 @@ export interface WorkflowState {
   stageCount: number;
   /** Autonomous actions already taken on this workflow (loop-guard input). */
   actionCount: number;
+  /** True when an approval-gated workflow has exceeded its disclosed SLA/deadline. */
+  approvalOverdue?: boolean;
 }
 
 export interface DecisionInput {
@@ -51,6 +53,9 @@ export function decideWorkflowAction(input: DecisionInput): AutonomyDecision {
   if (budgetExhausted) return noop("budget_exhausted");
   if (loopGuardTripped(workflow.actionCount, loopGuardMax)) return noop("loop_guard");
 
+  if (workflow.status === "awaiting_approval" && workflow.approvalOverdue) {
+    return { action: "timeout_approval", reason: "approval_deadline_exceeded" };
+  }
   if (workflow.status !== "running") return noop(`workflow_${workflow.status}`);
   if (workflow.stageCount === 0) return noop("no_stages");
 
