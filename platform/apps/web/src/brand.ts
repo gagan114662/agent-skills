@@ -2125,6 +2125,140 @@ export const BRAND_ASSETS = {
   spectrumBody: "One hue per marketing function, a warm-to-cool arc anchored on Pop Vermilion.",
 } as const;
 
+export interface SegmentLandingPage {
+  readonly slug: string;
+  readonly path: string;
+  readonly navLabel: string;
+  readonly seoTitleSubject: string;
+  readonly seoDescription: string;
+  readonly hero: {
+    readonly eyebrow: string;
+    readonly title: string;
+    readonly sub: string;
+  };
+  readonly proof: {
+    readonly title: string;
+    readonly body: string;
+    readonly metric: string;
+  };
+  readonly bullets: readonly string[];
+  readonly cta: {
+    readonly label: string;
+    readonly href: string;
+  };
+  readonly experiment: {
+    readonly id: string;
+    readonly variants: readonly { readonly key: "a" | "b"; readonly label: string; readonly href: string }[];
+  };
+}
+
+/** #599: approved ICP-specific landing pages generated from campaign briefs and kept behind this fact gate. */
+export const SEGMENT_LANDING_PAGES = [
+  {
+    slug: "startups",
+    path: "/segments/startups",
+    navLabel: "Startups",
+    seoTitleSubject: "AI marketing team for startups",
+    seoDescription:
+      "A startup landing page for founders who need strategy, content, launch assets, and weekly proof without hiring a full marketing team.",
+    hero: {
+      eyebrow: "For founder-led startups",
+      title: "Ship the marketing team before you can hire one",
+      sub:
+        "ipop turns a launch brief into positioning, content, landing-page updates, and approval-ready outreach while the founder keeps final say.",
+    },
+    proof: {
+      title: "Built for the week after the roadmap changed",
+      body:
+        "The fleet keeps copy, experiments, and founder updates moving in parallel, then brings spend and outbound back to the approval queue.",
+      metric: "3 launch surfaces from one brief",
+    },
+    bullets: [
+      "Turn one product brief into ICP pages, launch posts, and founder updates.",
+      "Keep approvals human for spend, publishing, and outbound sends.",
+      "Use the same workspace to inspect every draft, revision, and shipped artifact.",
+    ],
+    cta: { label: "Start the startup brief", href: "/start?segment=startups" },
+    experiment: {
+      id: "segment-startups-hero",
+      variants: [
+        { key: "a", label: "Outcome-first headline", href: "/segments/startups?ab=a" },
+        { key: "b", label: "Team-before-hiring headline", href: "/segments/startups?ab=b" },
+      ],
+    },
+  },
+  {
+    slug: "agencies",
+    path: "/segments/agencies",
+    navLabel: "Agencies",
+    seoTitleSubject: "AI marketing agents for agencies",
+    seoDescription:
+      "A segment landing page for agencies that need overflow research, drafts, QA, and client-ready marketing assets without adding headcount.",
+    hero: {
+      eyebrow: "For lean agencies",
+      title: "Give every account team a back office that ships",
+      sub:
+        "ipop drafts research, content, briefs, and QA notes so strategists spend less time chasing blank pages and more time steering quality.",
+    },
+    proof: {
+      title: "Overflow work without mystery labor",
+      body:
+        "Every deliverable stays visible in the decision queue, with receipts for who drafted it and what still needs client approval.",
+      metric: "Review-ready drafts before standup",
+    },
+    bullets: [
+      "Spin up account-specific research, content, and campaign drafts from one client brief.",
+      "Keep client-sensitive approvals inside the queue before anything leaves the workspace.",
+      "Standardize QA so every strategist sees the same proof, sources, and next action.",
+    ],
+    cta: { label: "Build an agency pod", href: "/start?segment=agencies" },
+    experiment: {
+      id: "segment-agencies-hero",
+      variants: [
+        { key: "a", label: "Back-office headline", href: "/segments/agencies?ab=a" },
+        { key: "b", label: "Overflow headline", href: "/segments/agencies?ab=b" },
+      ],
+    },
+  },
+  {
+    slug: "solo-operators",
+    path: "/segments/solo-operators",
+    navLabel: "Solo operators",
+    seoTitleSubject: "AI marketing department for solo operators",
+    seoDescription:
+      "A segment landing page for solo operators who need a small AI marketing department to turn offers into proof, pages, and follow-up.",
+    hero: {
+      eyebrow: "For one-person teams",
+      title: "A tiny department for the work you keep postponing",
+      sub:
+        "ipop turns the offer in your head into pages, posts, follow-up drafts, and proof checks without pretending you suddenly have spare time.",
+    },
+    proof: {
+      title: "Small enough to steer, useful enough to trust",
+      body:
+        "You get one place to brief, review, and approve the work, with clear gates before publishing, spending, or sending anything externally.",
+      metric: "One brief, one queue, many finished drafts",
+    },
+    bullets: [
+      "Convert a messy offer into page copy, proof points, and follow-up drafts.",
+      "See what is done, what needs your yes, and what should wait.",
+      "Keep the system honest: no fake customers, no silent sending, no mystery spend.",
+    ],
+    cta: { label: "Start the solo brief", href: "/start?segment=solo-operators" },
+    experiment: {
+      id: "segment-solo-operators-hero",
+      variants: [
+        { key: "a", label: "Tiny-department headline", href: "/segments/solo-operators?ab=a" },
+        { key: "b", label: "Postponed-work headline", href: "/segments/solo-operators?ab=b" },
+      ],
+    },
+  },
+] as const satisfies readonly SegmentLandingPage[];
+
+export function segmentLandingPage(slug: string | undefined): SegmentLandingPage | undefined {
+  return SEGMENT_LANDING_PAGES.find((page) => page.slug === slug);
+}
+
 /**
  * Per-route SEO metadata for the prerendered public surfaces (#467). Scout's audit found every route —
  * home, login, start, pricing, the marketing sections — shared the homepage's `<title>`, description, and

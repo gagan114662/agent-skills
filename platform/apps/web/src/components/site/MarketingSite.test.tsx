@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import MarketingSite from "./MarketingSite.js";
 import { api } from "../../api/client.js";
-import { SITE, ASK_AI, BRAND_ASSETS } from "../../brand.js";
+import { SITE, ASK_AI, BRAND_ASSETS, SEGMENT_LANDING_PAGES } from "../../brand.js";
 import type { SiteBlock } from "../../api/types.js";
 
 /** Point the (history-API) router at a path before rendering the lazy-free site component. */
@@ -90,6 +90,18 @@ describe("#153 marketing site", () => {
     expect(screen.getByText(BRAND_ASSETS.title)).toBeInTheDocument();
     // Pop Vermilion shows in the palette and again as Scout's department hue — at least one swatch.
     expect(screen.getAllByText("#ff4524").length).toBeGreaterThan(0);
+  });
+
+  it("renders a segment-specific landing page without calling the content API", () => {
+    const spy = vi.spyOn(api.site, "section").mockResolvedValue([]);
+    const segment = SEGMENT_LANDING_PAGES[0]!;
+    at(segment.path);
+    render(<MarketingSite />);
+
+    expect(screen.getByRole("heading", { level: 1, name: segment.hero.title })).toBeInTheDocument();
+    expect(screen.getByText(segment.proof.title)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: segment.cta.label })).toHaveAttribute("href", segment.cta.href);
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("links every nav section in the shared shell", async () => {
