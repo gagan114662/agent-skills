@@ -29,6 +29,8 @@ import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { Security } from "./components/landing/Security.js";
 import { Onboarding } from "./components/Onboarding.js";
+import { DemoSandbox } from "./components/demo/DemoSandbox.js";
+import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
 import { LegalPage } from "./components/landing/LegalPage.js";
 import { CompanyPage } from "./components/landing/CompanyPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
@@ -80,8 +82,15 @@ function articleMeta(post: BlogPostMeta): string {
 function marketingPages(): PrerenderPage[] {
   const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
     "/start": <Onboarding />,
+    "/welcome": <OnboardingExperience hour={14} />,
+    "/demo": <DemoSandbox />,
+    "/sandbox": <DemoSandbox />,
     "/login": <StaticAuthPage mode="login" />,
     "/signup": <StaticAuthPage mode="signup" />,
+    "/everyday": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Everyday workspace" body="Review approvals, receipts, and the work queue after signing in. This route never serves the homepage to crawlers." />,
+    "/theater": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Agent theater" body="Watch workspace-scoped reasoning, actions, artifacts, and receipts after signing in." />,
+    "/support/status": <StaticAppRouteShell eyebrow="Support ticket" title="Ticket status" body="Open a ticket status link with its secure parameters to see SLA, response state, and timeline." />,
+    "/status/test": <StaticAppRouteShell eyebrow="Public status" title="Workspace status" body="Published status pages show component health and incident history for workspaces that opt in." />,
     "/pricing": <PricingPage />,
     "/refund-policy": <RefundPolicy />,
     "/security": <Security />,
@@ -116,7 +125,7 @@ function marketingPages(): PrerenderPage[] {
     ),
   };
   // Pricing is a primary conversion + SEO destination, so it outranks the content-section indexes.
-  const priority: Partial<Record<keyof typeof PAGE_SEO, number>> = { "/pricing": 0.9 };
+  const priority: Partial<Record<keyof typeof PAGE_SEO, number>> = { "/demo": 0.9, "/pricing": 0.9, "/welcome": 0.9 };
 
   return (Object.keys(PAGE_SEO) as (keyof typeof PAGE_SEO)[]).map((urlPath) => {
     const seo = PAGE_SEO[urlPath];
@@ -138,6 +147,19 @@ function marketingPages(): PrerenderPage[] {
       ),
     };
   });
+}
+
+function StaticAppRouteShell(props: { eyebrow: string; title: string; body: string }): React.JSX.Element {
+  return (
+    <main className="splash">
+      <p className="auth__trial-badge">{props.eyebrow}</p>
+      <h1>{props.title}</h1>
+      <p>{props.body}</p>
+      <a className="btn btn--primary" href="/login">
+        Sign in
+      </a>
+    </main>
+  );
 }
 
 function StaticAuthPage({ mode }: { mode: "login" | "signup" }): React.JSX.Element {
