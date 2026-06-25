@@ -9,9 +9,12 @@
 # One slug per line. Blank lines and lines starting with `#` are ignored.
 
 ai-marketing-agency-vs-hiring-an-agency
+ai-marketing-team-for-startups
+autonomous-marketing-agents-explained
 how-much-does-an-ai-marketing-agency-cost
 how-to-brief-an-ai-agent-to-write-like-you
 how-to-do-marketing-without-hiring-a-team
 the-best-ai-marketing-tools-for-startups-in-2026-and-how-to-actually-pick
 welcome-to-the-ipop-blog
+what-is-an-ai-marketing-agency
 why-client-rendered-sites-are-invisible-to-google
