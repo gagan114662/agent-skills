@@ -10,7 +10,7 @@ import {
   type LoopFailureRecorder,
 } from "../observability/loop-failures.js";
 import { getWorkspaceMember } from "../db/repositories/members.js";
-import { getTask, updateStatus, assignTask, addTaskLink } from "../db/repositories/tasks.js";
+import { getTask, updateStatus } from "../db/repositories/tasks.js";
 import { canTransition } from "../tasks/status.js";
 import { upsertMemory } from "../db/repositories/memories.js";
 import {
@@ -20,9 +20,11 @@ import {
   refundActionsUsed,
   listActiveWorkflows,
   listActiveWorkflowWorkspaces,
-  advanceWorkflowStage,
   bumpWorkflowAction,
   setWorkflowStatus,
+  handoffWorkflowStage,
+  markWorkflowAwaitingApproval,
+  completeWorkflowWithTask,
   createApproval,
   findWorkflowApproval,
   getApproval,
@@ -346,15 +348,17 @@ export class AutonomyEngine {
           sourceId: taskId,
           createdByMemberId: agentMemberId,
         });
-        await addTaskLink({
-          workspaceId: wf.workspaceId,
+        const handoff = await handoffWorkflowStage({
+          workflowId: wf.id,
+          expectedCurrentStage: wf.currentStage,
+          toStage: wf.currentStage + 1,
           taskId,
-          targetType: "memory",
-          targetId: mem.id,
-          createdByMemberId: agentMemberId,
+          workspaceId: wf.workspaceId,
+          nextAgentMemberId: next.agentMemberId,
+          actorMemberId: agentMemberId,
+          memoryId: mem.id,
         });
-        await assignTask(taskId, next.agentMemberId, agentMemberId);
-        await advanceWorkflowStage(wf.id, wf.currentStage + 1);
+        if (!handoff.advanced) return;
         const nextMember = await getWorkspaceMember(next.agentMemberId, wf.workspaceId);
         await this.post(
           wf,
@@ -377,8 +381,7 @@ export class AutonomyEngine {
       }
       case "request_approval": {
         await this.getOrCreateCompletionApproval({ wf, taskId, agentMemberId });
-        await setWorkflowStatus(wf.id, "awaiting_approval");
-        await bumpWorkflowAction(wf.id);
+        await markWorkflowAwaitingApproval(wf.id);
         await this.post(
           wf,
           agentMemberId,
@@ -550,11 +553,12 @@ export class AutonomyEngine {
             decisionSource: "policy",
             policyRuleId: policy.ruleId,
           });
-          if (task.status !== "done" && canTransition(task.status, "done")) {
-            await updateStatus(taskId, "done", agentMemberId);
-          }
-          await setWorkflowStatus(wf.id, "completed");
-          await bumpWorkflowAction(wf.id);
+          await completeWorkflowWithTask({
+            workflowId: wf.id,
+            taskId,
+            actorMemberId: agentMemberId,
+            completeTask: task.status === "done" || canTransition(task.status, "done"),
+          });
           await this.post(
             wf,
             agentMemberId,
@@ -563,8 +567,7 @@ export class AutonomyEngine {
             log,
           );
         } else {
-          await setWorkflowStatus(wf.id, "awaiting_approval");
-          await bumpWorkflowAction(wf.id);
+          await markWorkflowAwaitingApproval(wf.id);
           await this.post(
             wf,
             agentMemberId,
@@ -620,11 +623,17 @@ export class AutonomyEngine {
     if (!decided) return { ok: false, reason: "not_pending" };
 
     const task = await getTask(approval.taskId);
-    if (task && task.status !== "done" && canTransition(task.status, "done")) {
-      await updateStatus(approval.taskId, "done", humanMemberId);
+    if (approval.workflowId) {
+      await completeWorkflowWithTask({
+        workflowId: approval.workflowId,
+        taskId: approval.taskId,
+        actorMemberId: humanMemberId,
+        completeTask: !!task && task.status !== "done" && canTransition(task.status, "done"),
+      });
+    } else if (task && task.status !== "done" && canTransition(task.status, "done")) {
+        await updateStatus(approval.taskId, "done", humanMemberId);
     }
     if (approval.workflowId) {
-      await setWorkflowStatus(approval.workflowId, "completed");
       const wf = await getWorkflow(approval.workflowId, workspaceId);
       if (wf) {
         await this.post(

@@ -7,6 +7,9 @@ import {
   autonomyControls,
   agentWorkflows,
   agentApprovals,
+  tasks,
+  taskEvents,
+  taskLinks,
 } from "../schema/index.js";
 import type { WorkflowStatus } from "../../autonomy/decide.js";
 
@@ -421,6 +424,93 @@ export async function advanceWorkflowStage(id: string, toStage: number): Promise
     .where(eq(agentWorkflows.id, id));
 }
 
+export async function handoffWorkflowStage(input: {
+  workflowId: string;
+  expectedCurrentStage: number;
+  toStage: number;
+  taskId: string;
+  workspaceId: string;
+  nextAgentMemberId: string;
+  actorMemberId: string;
+  memoryId: string;
+}): Promise<{ advanced: boolean; alreadyAdvanced: boolean }> {
+  return db.transaction(async (tx) => {
+    const [workflow] = await tx
+      .select({ currentStage: agentWorkflows.currentStage, status: agentWorkflows.status })
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, input.workflowId))
+      .limit(1);
+    if (!workflow) return { advanced: false, alreadyAdvanced: false };
+    if (workflow.currentStage === input.toStage) {
+      return { advanced: false, alreadyAdvanced: workflow.status === "running" };
+    }
+    if (workflow.status !== "running" || workflow.currentStage !== input.expectedCurrentStage) {
+      return { advanced: false, alreadyAdvanced: false };
+    }
+
+    const [advanced] = await tx
+      .update(agentWorkflows)
+      .set({
+        currentStage: input.toStage,
+        actionCount: sql`${agentWorkflows.actionCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(agentWorkflows.id, input.workflowId),
+          eq(agentWorkflows.status, "running"),
+          eq(agentWorkflows.currentStage, input.expectedCurrentStage),
+        ),
+      )
+      .returning({ id: agentWorkflows.id });
+    if (!advanced) return { advanced: false, alreadyAdvanced: false };
+
+    const insertedLink = await tx
+      .insert(taskLinks)
+      .values({
+        workspaceId: input.workspaceId,
+        taskId: input.taskId,
+        targetType: "memory",
+        targetId: input.memoryId,
+        createdByMemberId: input.actorMemberId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: taskLinks.id });
+    if (insertedLink.length > 0) {
+      await tx.insert(taskEvents).values({
+        workspaceId: input.workspaceId,
+        taskId: input.taskId,
+        type: "linked",
+        actorMemberId: input.actorMemberId,
+        toValue: `memory:${input.memoryId}`,
+      });
+    }
+
+    const [task] = await tx
+      .select({ assigneeMemberId: tasks.assigneeMemberId })
+      .from(tasks)
+      .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, input.workspaceId)))
+      .limit(1);
+    if (!task) throw new Error(`task ${input.taskId} not found`);
+    if (task.assigneeMemberId !== input.nextAgentMemberId) {
+      await tx
+        .update(tasks)
+        .set({ assigneeMemberId: input.nextAgentMemberId, updatedAt: new Date() })
+        .where(and(eq(tasks.id, input.taskId), eq(tasks.workspaceId, input.workspaceId)));
+      await tx.insert(taskEvents).values({
+        workspaceId: input.workspaceId,
+        taskId: input.taskId,
+        type: task.assigneeMemberId === null ? "assigned" : "reassigned",
+        actorMemberId: input.actorMemberId,
+        fromValue: task.assigneeMemberId,
+        toValue: input.nextAgentMemberId,
+      });
+    }
+
+    return { advanced: true, alreadyAdvanced: false };
+  });
+}
+
 /** Count one action without moving the stage (start / request_approval). */
 export async function bumpWorkflowAction(id: string): Promise<void> {
   await db
@@ -434,6 +524,72 @@ export async function setWorkflowStatus(id: string, status: WorkflowStatus): Pro
     .update(agentWorkflows)
     .set({ status, updatedAt: new Date() })
     .where(eq(agentWorkflows.id, id));
+}
+
+export async function markWorkflowAwaitingApproval(id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [workflow] = await tx
+      .select({ status: agentWorkflows.status })
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, id))
+      .limit(1);
+    if (!workflow || workflow.status !== "running") return;
+    await tx
+      .update(agentWorkflows)
+      .set({
+        status: "awaiting_approval",
+        actionCount: sql`${agentWorkflows.actionCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentWorkflows.id, id));
+  });
+}
+
+export async function completeWorkflowWithTask(input: {
+  workflowId: string;
+  taskId: string;
+  actorMemberId: string;
+  completeTask: boolean;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [workflow] = await tx
+      .select({ status: agentWorkflows.status })
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, input.workflowId))
+      .limit(1);
+    if (!workflow || workflow.status === "completed") return;
+
+    const [task] = await tx
+      .select({ workspaceId: tasks.workspaceId, status: tasks.status })
+      .from(tasks)
+      .where(eq(tasks.id, input.taskId))
+      .limit(1);
+    if (!task) throw new Error(`task ${input.taskId} not found`);
+
+    if (input.completeTask && task.status !== "done") {
+      await tx
+        .update(tasks)
+        .set({ status: "done", updatedAt: new Date() })
+        .where(eq(tasks.id, input.taskId));
+      await tx.insert(taskEvents).values({
+        workspaceId: task.workspaceId,
+        taskId: input.taskId,
+        type: "status_changed",
+        actorMemberId: input.actorMemberId,
+        fromValue: task.status,
+        toValue: "done",
+      });
+    }
+
+    await tx
+      .update(agentWorkflows)
+      .set({
+        status: "completed",
+        actionCount: sql`${agentWorkflows.actionCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentWorkflows.id, input.workflowId));
+  });
 }
 
 // ---- approvals (the human gate) ---------------------------------------------
