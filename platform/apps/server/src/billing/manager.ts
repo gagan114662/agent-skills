@@ -428,28 +428,46 @@ export class BillingManager {
 
     const redact = makeRedactor(secrets);
     const invoice = await this.resolveInvoice(parsed, secrets, redact);
-    const event = await this.store.createRevenueEvent({
-      workspaceId,
-      channelId: parsed.metadata.channelId ?? null,
-      sessionId: parsed.metadata.sessionId ?? null,
-      deploymentId: parsed.metadata.deploymentId ?? null,
-      provider: this.provider.kind,
-      providerEventId: parsed.id,
-      type: parsed.type,
-      amountCents: parsed.amountCents,
-      currency: parsed.currency,
-      status: parsed.status,
-      invoiceId: invoice?.providerInvoiceId ?? parsed.invoice?.providerInvoiceId ?? null,
-      invoiceNumber: invoice?.number ?? parsed.invoice?.number ?? null,
-      invoiceUrl: invoice?.hostedInvoiceUrl ?? parsed.invoice?.hostedInvoiceUrl ?? null,
-      invoicePdfUrl: invoice?.invoicePdfUrl ?? parsed.invoice?.invoicePdfUrl ?? null,
-      invoiceStatus: invoice?.status ?? parsed.invoice?.status ?? null,
-      // #386 slice 3: carry the tracking ref through Stripe metadata onto the row so the attribution
-      // projection can credit the artifact/lead that drove this dollar. Sanitized — it comes off an
-      // external webhook (#200 §6); a missing/garbage ref lands as null ⇒ this payment stays unattributed.
-      trackingRef: sanitizeTrackingRef(parsed.metadata.trackingRef),
-      raw: redact(rawBody),
-    });
+    let event: RevenueEvent;
+    try {
+      event = await this.store.createRevenueEvent({
+        workspaceId,
+        channelId: parsed.metadata.channelId ?? null,
+        sessionId: parsed.metadata.sessionId ?? null,
+        deploymentId: parsed.metadata.deploymentId ?? null,
+        provider: this.provider.kind,
+        providerEventId: parsed.id,
+        type: parsed.type,
+        amountCents: parsed.amountCents,
+        currency: parsed.currency,
+        status: parsed.status,
+        invoiceId: invoice?.providerInvoiceId ?? parsed.invoice?.providerInvoiceId ?? null,
+        invoiceNumber: invoice?.number ?? parsed.invoice?.number ?? null,
+        invoiceUrl: invoice?.hostedInvoiceUrl ?? parsed.invoice?.hostedInvoiceUrl ?? null,
+        invoicePdfUrl: invoice?.invoicePdfUrl ?? parsed.invoice?.invoicePdfUrl ?? null,
+        invoiceStatus: invoice?.status ?? parsed.invoice?.status ?? null,
+        // #386 slice 3: carry the tracking ref through Stripe metadata onto the row so the attribution
+        // projection can credit the artifact/lead that drove this dollar. Sanitized — it comes off an
+        // external webhook (#200 §6); a missing/garbage ref lands as null ⇒ this payment stays unattributed.
+        trackingRef: sanitizeTrackingRef(parsed.metadata.trackingRef),
+        raw: redact(rawBody),
+      });
+    } catch (err) {
+      const raced = await this.store.findRevenueEvent(workspaceId, parsed.id);
+      if (!raced) throw err;
+      await this.persistBillingContact(workspaceId, parsed);
+      this.logger?.info(
+        {
+          workspaceId,
+          provider: this.provider.kind,
+          providerEventId: parsed.id,
+          amountCents: raced.amountCents,
+          currency: raced.currency,
+        },
+        "billing webhook deduped",
+      );
+      return { deduped: true, event: raced };
+    }
 
     if (isPaymentEvent(parsed.type)) {
       await this.persistBillingContact(workspaceId, parsed);
@@ -660,11 +678,17 @@ export class BillingManager {
       return parsed.invoice;
     }
     try {
-      const invoice = await this.provider.retrieveInvoice({ providerInvoiceId: invoiceId, secrets });
+      const invoice = await this.provider.retrieveInvoice({
+        providerInvoiceId: invoiceId,
+        secrets,
+      });
       return sanitizeInvoice(invoice) ?? parsed.invoice;
     } catch (err) {
       this.logger?.warn(
-        { providerInvoiceId: invoiceId, err: redact(err instanceof Error ? err.message : String(err)) },
+        {
+          providerInvoiceId: invoiceId,
+          err: redact(err instanceof Error ? err.message : String(err)),
+        },
         "billing: invoice retrieval failed",
       );
       return parsed.invoice;
@@ -810,7 +834,13 @@ function parseInvoice(data: Record<string, unknown> | undefined): BillingInvoice
   if (typeof rawInvoice === "string" && rawInvoice) {
     const providerInvoiceId = cleanMetadata(rawInvoice);
     return providerInvoiceId
-      ? { providerInvoiceId, number: null, hostedInvoiceUrl: null, invoicePdfUrl: null, status: null }
+      ? {
+          providerInvoiceId,
+          number: null,
+          hostedInvoiceUrl: null,
+          invoicePdfUrl: null,
+          status: null,
+        }
       : null;
   }
   const invoiceObject =
