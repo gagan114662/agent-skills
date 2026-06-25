@@ -268,6 +268,8 @@ describe("landing workspace simulation copy (#165)", () => {
       label: "Refund policy",
     });
     expect(CONTACT.errorNote).toContain(SUPPORT_CONTACT.email);
+    expect(CONTACT.bookingHref).toMatch(/^https:\/\/cal\.com\//);
+    expect(CONTACT.trialHref).toContain("/start");
     expect(SITE.support).toBe(SUPPORT_CONTACT);
     expect(LANDING.footer.social.map((s) => s.href).filter((href) => href.startsWith("/social/"))).toEqual([]);
   });

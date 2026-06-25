@@ -5475,6 +5475,12 @@ select:focus-visible {
 .landing__contact-title { margin: 6px 0 10px; }
 .landing__contact-body { color: var(--text-dim); font-size: 16px; margin: 0 auto 24px; max-width: 50ch; }
 .contact-form { text-align: left; display: flex; flex-direction: column; gap: 14px; }
+.contact-form__cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 16px; align-items: center; }
+.contact-form__trial-link {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
 .contact-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .contact-form__honeypot {
   position: absolute;

@@ -81,6 +81,14 @@ export function ContactForm(): React.JSX.Element {
           {CONTACT.title}
         </h2>
         <p className="landing__contact-body">{CONTACT.body}</p>
+        <div className="contact-form__cta-row" aria-label="Contact next steps">
+          <a className="btn btn--primary" href={CONTACT.bookingHref}>
+            {CONTACT.bookingCta}
+          </a>
+          <a className="btn contact-form__trial-link" href={CONTACT.trialHref}>
+            {CONTACT.trialCta}
+          </a>
+        </div>
         <form className="contact-form" onSubmit={onSubmit}>
           <div className="contact-form__row">
             <label className="field">
