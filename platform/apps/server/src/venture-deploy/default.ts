@@ -120,7 +120,7 @@ export function createDryRunReleaseDeployer(): ReleaseDeployer {
         ok: out.status === "ready",
         url: out.url ?? null,
         providerDeploymentId: out.providerDeploymentId ?? null,
-        detail: out.status === "ready" ? "deployed to preview" : out.error ?? "deploy error",
+        detail: out.status === "ready" ? "deployed to preview" : (out.error ?? "deploy error"),
       };
     },
     async latestProd({ workspaceId, ventureId }) {
@@ -131,6 +131,13 @@ export function createDryRunReleaseDeployer(): ReleaseDeployer {
         providerDeploymentId: providerDeploymentId ?? `dpl_${ventureId}`,
         url: prodUrl,
       });
+    },
+    async healthCheck(url) {
+      const health = await provider.healthCheck(url);
+      return {
+        ok: health.healthy,
+        detail: health.detail ?? (health.healthy ? "healthy" : "unhealthy"),
+      };
     },
     async rollback({ prior }): Promise<ReleaseDeployOutcome> {
       const out = await provider.rollback({
