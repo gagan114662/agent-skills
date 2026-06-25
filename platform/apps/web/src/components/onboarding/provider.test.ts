@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createDefaultProvider, parseTarget, OnboardingReadError } from "./provider.js";
+import {
+  createDefaultProvider,
+  parseTarget,
+  OnboardingConnectUnavailableError,
+  OnboardingReadError,
+} from "./provider.js";
 import type { DemoDeliverableDto, FetchLike } from "../../api/demo.js";
 
 /**
@@ -48,14 +53,15 @@ describe("createDefaultProvider (#784)", () => {
     await expect(provider.readSite("acme.com")).rejects.toBeInstanceOf(OnboardingReadError);
   });
 
-  it("connect produces a real, tool-shaped payoff personalized from the target", async () => {
+  it("connect refuses to fake OAuth-backed payoffs", async () => {
     const provider = createDefaultProvider({ fetchImpl: okFetch() });
-    const gmail = await provider.connect("gmail", "acme.com");
-    const social = await provider.connect("social", "acme.com");
-    const site = await provider.connect("site", "acme.com");
-    expect(gmail.tool).toBe("gmail");
-    expect(social.tool === "social" && social.threads).toHaveLength(3);
-    expect(site.tool === "site" && site.after).toMatch(/Acme/);
+    await expect(provider.connect("gmail", "acme.com")).rejects.toBeInstanceOf(OnboardingConnectUnavailableError);
+    await expect(provider.connect("social", "acme.com")).rejects.toMatchObject({
+      message: expect.stringMatching(/reddit\/x needs the real connections panel/i),
+    });
+    await expect(provider.connect("site", "acme.com")).rejects.toMatchObject({
+      message: expect.stringMatching(/your site needs the real connections panel/i),
+    });
   });
 
   it("ship records the ship and the deliverable never silently spends money", async () => {

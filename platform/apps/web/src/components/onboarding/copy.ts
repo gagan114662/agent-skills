@@ -58,14 +58,15 @@ export const ONBOARD_COPY = {
   },
 
   /**
-   * SURFACE 1 · step 3 — THE MAGIC. Guided Cowork-style connections, one Allow at a time, each IMMEDIATELY
-   * followed by a real visible result that uses it. Copy per connector; the result content comes from the
-   * provider so the user feels actual work done with their own accounts.
+   * SURFACE 1 · step 3 — THE MAGIC when the connectors are real. The public default must not pretend OAuth
+   * happened; if the provider cannot connect a tool, the user sees the honest unavailable copy below.
    */
   connect: {
     sectionTitle: "let's borrow your tools. one at a time, no funny business.",
     allow: "allow",
     allowing: "plugging in…",
+    unavailable: "not hooked up yet. we'd rather tell you than do a little theatre.",
+    realConnections: "open real connections",
     /** Shown the instant a connection lands, above its real result. */
     doneBadge: "connected",
     /** After the last connection's payoff — onto the real deliverable. */

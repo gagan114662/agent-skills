@@ -112,6 +112,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   const [results, setResults] = useState<ConnectResult[]>([]);
   const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const [deliverable, setDeliverable] = useState<DeliverableDraft | null>(null);
   const [building, setBuilding] = useState(false);
@@ -152,9 +153,12 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   const allow = async (tool: ConnectTool): Promise<void> => {
     setConnecting(true);
+    setConnectError(null);
     try {
       const result = await provider.connect(tool, input);
       setResults((prev) => [...prev, result]);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : ONBOARD_COPY.connect.unavailable);
     } finally {
       setConnecting(false);
     }
@@ -287,7 +291,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           </section>
         )}
 
-        {/* ---- 3. THE MAGIC: guided connects, each with an immediate real payoff ------------- */}
+        {/* ---- 3. THE MAGIC: guided connects, each with an immediate real payoff when real access exists. */}
         {phase === "connect" && (
           <section className="onboard-connect" aria-label="connect your tools">
             <h2 className="onboard-connect__title">{ONBOARD_COPY.connect.sectionTitle}</h2>
@@ -312,6 +316,16 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                 >
                   {connecting ? ONBOARD_COPY.connect.allowing : ONBOARD_COPY.connect.allow}
                 </button>
+                {connectError && (
+                  <>
+                    <p className="onboard-error" role="alert">
+                      {connectError}
+                    </p>
+                    <button className="onboard-cta onboard-cta--ghost" type="button" onClick={onEnterApp}>
+                      {ONBOARD_COPY.connect.realConnections}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 

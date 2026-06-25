@@ -6,11 +6,8 @@
  *
  * The DEFAULT provider reads the user's real site through the public #633 / #610 deliverable endpoint
  * (`fetchDemoDeliverable`) so the narrated finding is genuinely derived from their site (server-sanitized
- * text). The connect payoffs and deliverable are produced LOCALLY and DETERMINISTICALLY, personalized from
- * the typed target — the real OAuth Allow + live account reads are the documented follow-up; this PR ships
- * the experience behind a default-OFF flag with honest, believable content and never a faked "send". No
- * connection ever spends money or sends anything: the only real action is the human approving the
- * deliverable, and sends/spend stay behind the existing approval gate.
+ * text). It must not invent Gmail, Reddit/X, or site-authoring access. Until those OAuth connectors are real,
+ * the connect step degrades honestly with an unavailable error instead of returning a fake payoff.
  */
 import { fetchDemoDeliverable, DemoError, type FetchLike } from "../../api/demo.js";
 
@@ -71,6 +68,14 @@ export class OnboardingReadError extends Error {
   }
 }
 
+/** Thrown when a connector is not backed by real OAuth/live account access. */
+export class OnboardingConnectUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OnboardingConnectUnavailableError";
+  }
+}
+
 /**
  * Turn the typed target into a host + a presentable product name. Accepts a bare product name ("Acme
  * Invoicing"), a domain ("acme.com"), or a full URL — pure and deterministic so every downstream payoff is
@@ -94,51 +99,10 @@ export function parseTarget(input: string): { host: string; name: string } {
   return { host: `${slug}.com`, name: raw };
 }
 
-/** Deterministic believable payoff content for a tool, personalized from the parsed target. */
-function fakeConnectResult(tool: ConnectTool, name: string, host: string): ConnectResult {
-  switch (tool) {
-    case "gmail":
-      return {
-        tool,
-        lead: { from: "priya@brightfox.io", subject: `re: does ${name} do team plans?` },
-        draft:
-          `hi priya — yes, ${name} has team plans and they're our most popular pick. happy to set you up ` +
-          `with a quick walkthrough this week. what does your team look like? — sent from ${host}`,
-      };
-    case "social":
-      return {
-        tool,
-        threads: [
-          {
-            source: "r/marketing",
-            title: `"best tool for a tiny team that can't afford an agency?"`,
-            draft: `gentle, non-salesy reply: share how ${name} fits a 2-person team, link only if asked.`,
-          },
-          {
-            source: "x · #buildinpublic",
-            title: `someone shipping a launch and asking how to get the word out`,
-            draft: `offer one concrete tip from ${name}'s playbook, then "happy to share more if useful".`,
-          },
-          {
-            source: "r/SaaS",
-            title: `"how are you all handling onboarding emails?"`,
-            draft: `answer the actual question first; mention ${name} as one of a few options, no hard pitch.`,
-          },
-        ],
-      };
-    case "site":
-      return {
-        tool,
-        before: `Welcome to ${name}. The all-in-one platform for modern teams.`,
-        after: `${name}: the work gets done while you sleep. you wake up, you approve, you ship.`,
-      };
-  }
-}
-
 /**
  * The default provider used in the live app. `readSite` is REAL (it reads the user's site via the public
- * deliverable endpoint and narrates its first insight); the rest is deterministic, personalized, and
- * side-effect-free. `fetchImpl` is injectable so even the real read is testable.
+ * deliverable endpoint and narrates its first insight). Connectors require real OAuth/live account reads, so
+ * this provider refuses them until those backends exist. `fetchImpl` is injectable so the real read is testable.
  */
 export function createDefaultProvider(opts: { fetchImpl?: FetchLike } = {}): OnboardingProvider {
   return {
@@ -162,17 +126,19 @@ export function createDefaultProvider(opts: { fetchImpl?: FetchLike } = {}): Onb
       }
     },
     async connect(tool, input) {
-      // No real OAuth/spend here; the parsed target makes the payoff concrete. (Real connect = follow-up.)
-      const { host, name } = parseTarget(input);
-      return fakeConnectResult(tool, name, host);
+      void input;
+      const label = tool === "social" ? "reddit/x" : tool === "site" ? "your site" : "gmail";
+      throw new OnboardingConnectUnavailableError(
+        `${label} needs the real connections panel before ipop can use it.`,
+      );
     },
     async buildDeliverable(input) {
       const { name } = parseTarget(input);
       return {
         title: `${name}'s new homepage hero + a week of posts to launch it`,
         body:
-          `the rewritten hero (from your site read), a 5-post launch week (echo), and the warm-lead reply ` +
-          `(postmark) — all drafted from your real accounts and queued. approve and the hero publishes.`,
+          `the rewritten hero (from your site read) and a 5-post launch week are ready as a preview. ` +
+          `connect real accounts before ipop drafts replies or queues anything to publish.`,
         spendsMoney: false,
       };
     },
