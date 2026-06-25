@@ -2,6 +2,7 @@ import type { SessionLogger, SessionManager } from "../runtime/manager.js";
 import { loadConfig } from "../config/loader.js";
 import { conversionsByChannelSince, failingChannelsSince } from "../db/repositories/acquisition.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
+import { listMemories } from "../db/repositories/memories.js";
 import { createMarketingBriefService } from "../marketing/default.js";
 import { resolveCadenceCaps } from "./caps.js";
 import { CadenceEngine } from "./engine.js";
@@ -71,6 +72,13 @@ export function createDefaultCadenceEngine(
           result: "failed" as const,
         })),
       ];
+    },
+    memoryContext: async (workspaceId) => {
+      const memories = await listMemories(workspaceId, { limit: 5 });
+      return memories.map((memory) => ({
+        text: memory.content.text,
+        source: memory.entity ?? memory.sourceType,
+      }));
     },
     logger,
   });
