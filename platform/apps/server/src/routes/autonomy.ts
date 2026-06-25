@@ -244,7 +244,7 @@ export async function autonomyRoutes(
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
 
-    const b = req.body as { taskId?: string; stages?: WorkflowStage[] };
+    const b = req.body as { taskId?: string; stages?: WorkflowStage[]; recurring?: boolean };
     if (!b.taskId) return reply.code(400).send({ error: "taskId required" });
     if (!b.stages || b.stages.length === 0) {
       return reply.code(400).send({ error: "at least one stage required" });
@@ -288,6 +288,7 @@ export async function autonomyRoutes(
       taskId: b.taskId,
       stages: b.stages,
       createdByMemberId: id.memberId,
+      recurring: b.recurring === true,
     });
     return reply.code(201).send(workflow);
   });

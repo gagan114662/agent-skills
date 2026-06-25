@@ -28,6 +28,7 @@ import {
   handoffWorkflowStage,
   markWorkflowAwaitingApproval,
   completeWorkflowWithTask,
+  spawnRecurringWorkflowSuccessor,
   createApproval,
   findWorkflowApproval,
   getApproval,
@@ -597,6 +598,11 @@ export class AutonomyEngine {
             actorMemberId: agentMemberId,
             completeTask: task.status === "done" || canTransition(task.status, "done"),
           });
+          await spawnRecurringWorkflowSuccessor({
+            workflowId: wf.id,
+            completedTaskTitle: taskTitle,
+            actorMemberId: agentMemberId,
+          });
           await this.post(
             wf,
             agentMemberId,
@@ -668,6 +674,13 @@ export class AutonomyEngine {
         actorMemberId: humanMemberId,
         completeTask: !!task && task.status !== "done" && canTransition(task.status, "done"),
       });
+      if (task) {
+        await spawnRecurringWorkflowSuccessor({
+          workflowId: approval.workflowId,
+          completedTaskTitle: task.title,
+          actorMemberId: humanMemberId,
+        });
+      }
     } else if (task && task.status !== "done" && canTransition(task.status, "done")) {
         await updateStatus(approval.taskId, "done", humanMemberId);
     }
