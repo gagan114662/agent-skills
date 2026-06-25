@@ -6,7 +6,7 @@ import { makeRedactor } from "../runtime/redact.js";
 import type { ChannelPoster, SessionLogger } from "../runtime/manager.js";
 import { publishBillingEvent } from "../realtime/bus.js";
 import type { BillingStatusEvent } from "../realtime/protocol.js";
-import type { BillingProvider, PriceInterval } from "./provider.js";
+import type { BillingInvoice, BillingProvider, PriceInterval } from "./provider.js";
 import { verifyWebhookSignature } from "./webhook.js";
 import { sanitizeTrackingRef } from "../attribution/tracking.js";
 import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
@@ -70,6 +70,11 @@ export interface CreateRevenueEventRow {
   amountCents: number;
   currency: string;
   status: string;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  invoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  invoiceStatus: string | null;
   /** The #386 tracking ref carried through Stripe checkout metadata (slice 3). Null ⇒ no ref ⇒ unattributed. */
   trackingRef: string | null;
   /** The REDACTED webhook payload (stored verbatim as a JSON string value). */
@@ -120,11 +125,26 @@ export interface RevenueSummary {
   recent: RevenueEvent[];
 }
 
+export interface BillingInvoiceRecord {
+  id: string;
+  providerEventId: string;
+  providerInvoiceId: string;
+  number: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  status: string | null;
+  amountCents: number;
+  currency: string;
+  createdAt: Date;
+}
+
 /** The injectable persistence seam (the DB repo in prod; an in-memory store in unit tests). */
 export interface BillingStore {
   createPaymentLink(input: CreatePaymentLinkRow): Promise<PaymentLink>;
   findRevenueEvent(workspaceId: string, providerEventId: string): Promise<RevenueEvent | undefined>;
   createRevenueEvent(input: CreateRevenueEventRow): Promise<RevenueEvent>;
+  listInvoices(workspaceId: string, limit?: number): Promise<BillingInvoiceRecord[]>;
+  getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined>;
   updateWorkspaceBillingContact(input: {
     workspaceId: string;
     billingEmail?: string | null;
@@ -407,6 +427,7 @@ export class BillingManager {
     }
 
     const redact = makeRedactor(secrets);
+    const invoice = await this.resolveInvoice(parsed, secrets, redact);
     const event = await this.store.createRevenueEvent({
       workspaceId,
       channelId: parsed.metadata.channelId ?? null,
@@ -418,6 +439,11 @@ export class BillingManager {
       amountCents: parsed.amountCents,
       currency: parsed.currency,
       status: parsed.status,
+      invoiceId: invoice?.providerInvoiceId ?? parsed.invoice?.providerInvoiceId ?? null,
+      invoiceNumber: invoice?.number ?? parsed.invoice?.number ?? null,
+      invoiceUrl: invoice?.hostedInvoiceUrl ?? parsed.invoice?.hostedInvoiceUrl ?? null,
+      invoicePdfUrl: invoice?.invoicePdfUrl ?? parsed.invoice?.invoicePdfUrl ?? null,
+      invoiceStatus: invoice?.status ?? parsed.invoice?.status ?? null,
       // #386 slice 3: carry the tracking ref through Stripe metadata onto the row so the attribution
       // projection can credit the artifact/lead that drove this dollar. Sanitized — it comes off an
       // external webhook (#200 §6); a missing/garbage ref lands as null ⇒ this payment stays unattributed.
@@ -567,6 +593,14 @@ export class BillingManager {
     return this.store.revenueSummary(workspaceId, limit);
   }
 
+  invoices(workspaceId: string, limit = 20): Promise<BillingInvoiceRecord[]> {
+    return this.store.listInvoices(workspaceId, limit);
+  }
+
+  invoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
+    return this.store.getInvoice(workspaceId, invoiceId);
+  }
+
   // --- internals ---
 
   /** Enforce the opt-in + egress invariants for an outbound Stripe call. Returns the resolved config. */
@@ -615,6 +649,27 @@ export class BillingManager {
       this.logger?.warn({ workspaceId, err }, "billing: workspace billing contact update failed");
     }
   }
+
+  private async resolveInvoice(
+    parsed: ParsedEvent,
+    secrets: Record<string, string>,
+    redact: (value: string) => string,
+  ): Promise<BillingInvoice | null> {
+    const invoiceId = parsed.invoice?.providerInvoiceId;
+    if (!invoiceId || parsed.invoice?.hostedInvoiceUrl || !this.provider.retrieveInvoice) {
+      return parsed.invoice;
+    }
+    try {
+      const invoice = await this.provider.retrieveInvoice({ providerInvoiceId: invoiceId, secrets });
+      return sanitizeInvoice(invoice) ?? parsed.invoice;
+    } catch (err) {
+      this.logger?.warn(
+        { providerInvoiceId: invoiceId, err: redact(err instanceof Error ? err.message : String(err)) },
+        "billing: invoice retrieval failed",
+      );
+      return parsed.invoice;
+    }
+  }
 }
 
 // --- pure helpers ------------------------------------------------------------------------------------
@@ -628,6 +683,7 @@ interface ParsedEvent {
   metadata: Record<string, string>;
   customerEmail: string | null;
   stripeCustomerId: string | null;
+  invoice: BillingInvoice | null;
 }
 
 function buildFirstCustomerStory(input: {
@@ -740,12 +796,62 @@ function parseEvent(rawBody: string, defaultCurrency: string): ParsedEvent {
       (typeof data?.status === "string" && data.status) ||
       "succeeded",
     metadata,
+    invoice: parseInvoice(data),
     customerEmail:
       sanitizeBillingEmail(stringValue(data?.customer_email)) ??
       sanitizeBillingEmail(nestedString(data?.customer_details, "email")) ??
       sanitizeBillingEmail(metadata.customerEmail),
     stripeCustomerId: cleanStripeCustomerId(stringValue(data?.customer)),
   };
+}
+
+function parseInvoice(data: Record<string, unknown> | undefined): BillingInvoice | null {
+  const rawInvoice = data?.invoice;
+  if (typeof rawInvoice === "string" && rawInvoice) {
+    const providerInvoiceId = cleanMetadata(rawInvoice);
+    return providerInvoiceId
+      ? { providerInvoiceId, number: null, hostedInvoiceUrl: null, invoicePdfUrl: null, status: null }
+      : null;
+  }
+  const invoiceObject =
+    rawInvoice && typeof rawInvoice === "object"
+      ? (rawInvoice as Record<string, unknown>)
+      : data?.object === "invoice"
+        ? data
+        : undefined;
+  const providerInvoiceId = cleanMetadata(stringValue(invoiceObject?.id) ?? undefined);
+  if (!providerInvoiceId) return null;
+  return sanitizeInvoice({
+    providerInvoiceId,
+    number: cleanMetadata(stringValue(invoiceObject?.number) ?? undefined) ?? null,
+    hostedInvoiceUrl: safeInvoiceUrl(stringValue(invoiceObject?.hosted_invoice_url)),
+    invoicePdfUrl: safeInvoiceUrl(stringValue(invoiceObject?.invoice_pdf)),
+    status: cleanMetadata(stringValue(invoiceObject?.status) ?? undefined) ?? null,
+  });
+}
+
+function sanitizeInvoice(invoice: BillingInvoice | null | undefined): BillingInvoice | null {
+  if (!invoice?.providerInvoiceId) return null;
+  const providerInvoiceId = cleanMetadata(invoice.providerInvoiceId);
+  if (!providerInvoiceId) return null;
+  return {
+    providerInvoiceId: providerInvoiceId.slice(0, 200),
+    number: cleanMetadata(invoice.number ?? undefined)?.slice(0, 120) ?? null,
+    hostedInvoiceUrl: safeInvoiceUrl(invoice.hostedInvoiceUrl),
+    invoicePdfUrl: safeInvoiceUrl(invoice.invoicePdfUrl),
+    status: cleanMetadata(invoice.status ?? undefined)?.slice(0, 120) ?? null,
+  };
+}
+
+function safeInvoiceUrl(value: string | null | undefined): string | null {
+  const clean = cleanMetadata(value ?? undefined);
+  if (!clean || clean.length > 2048) return null;
+  try {
+    const url = new URL(clean);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeBillingEmail(value: string | null | undefined): string | null {

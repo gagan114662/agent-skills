@@ -13,6 +13,7 @@ import type {
   CreateFirstCustomerStoryRow,
   CreatePaymentLinkRow,
   CreateRevenueEventRow,
+  BillingInvoiceRecord,
   FirstCustomerStory,
   PaymentLink,
   RevenueEvent,
@@ -58,6 +59,11 @@ const EVENT_COLUMNS = {
   amountCents: revenueEvents.amountCents,
   currency: revenueEvents.currency,
   status: revenueEvents.status,
+  invoiceId: revenueEvents.invoiceId,
+  invoiceNumber: revenueEvents.invoiceNumber,
+  invoiceUrl: revenueEvents.invoiceUrl,
+  invoicePdfUrl: revenueEvents.invoicePdfUrl,
+  invoiceStatus: revenueEvents.invoiceStatus,
   trackingRef: revenueEvents.trackingRef,
   raw: revenueEvents.raw,
   createdAt: revenueEvents.createdAt,
@@ -76,6 +82,19 @@ const FIRST_CUSTOMER_STORY_COLUMNS = {
   celebrationTitle: firstCustomerStories.celebrationTitle,
   celebrationMessage: firstCustomerStories.celebrationMessage,
   createdAt: firstCustomerStories.createdAt,
+} as const;
+
+const INVOICE_COLUMNS = {
+  id: revenueEvents.id,
+  providerEventId: revenueEvents.providerEventId,
+  providerInvoiceId: revenueEvents.invoiceId,
+  number: revenueEvents.invoiceNumber,
+  hostedInvoiceUrl: revenueEvents.invoiceUrl,
+  invoicePdfUrl: revenueEvents.invoicePdfUrl,
+  status: revenueEvents.invoiceStatus,
+  amountCents: revenueEvents.amountCents,
+  currency: revenueEvents.currency,
+  createdAt: revenueEvents.createdAt,
 } as const;
 
 /** Coerce a selected `revenue_events` row (raw jsonb holds a JSON string) into the domain type. */
@@ -115,6 +134,26 @@ export const dbBillingStore: BillingStore = {
       .values({ ...input, raw: input.raw })
       .returning(EVENT_COLUMNS);
     return toEvent(row!);
+  },
+
+  async listInvoices(workspaceId: string, limit = 20): Promise<BillingInvoiceRecord[]> {
+    const rows = await db
+      .select(INVOICE_COLUMNS)
+      .from(revenueEvents)
+      .where(and(eq(revenueEvents.workspaceId, workspaceId), sql`${revenueEvents.invoiceId} IS NOT NULL`))
+      .orderBy(desc(revenueEvents.createdAt))
+      .limit(Math.max(1, Math.min(100, Math.trunc(limit))));
+    return rows as BillingInvoiceRecord[];
+  },
+
+  async getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
+    const [row] = await db
+      .select(INVOICE_COLUMNS)
+      .from(revenueEvents)
+      .where(and(eq(revenueEvents.workspaceId, workspaceId), eq(revenueEvents.invoiceId, invoiceId)))
+      .orderBy(desc(revenueEvents.createdAt))
+      .limit(1);
+    return row as BillingInvoiceRecord | undefined;
   },
 
   async updateWorkspaceBillingContact(input): Promise<unknown> {

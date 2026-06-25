@@ -9,6 +9,7 @@ import {
   type RevenueEvent,
   type RevenueEvidence,
   type RevenueSummary,
+  type BillingInvoiceRecord,
   type CreatePaymentLinkRow,
   type CreateRevenueEventRow,
   type CreateEvidenceRow,
@@ -58,6 +59,29 @@ class MemoryBillingStore implements BillingStore {
     const row: RevenueEvent = { id: `re_${++this.seq}`, createdAt: new Date(), ...input };
     this.events.push(row);
     return Promise.resolve({ ...row });
+  }
+  listInvoices(workspaceId: string): Promise<BillingInvoiceRecord[]> {
+    return Promise.resolve(
+      this.events
+        .filter((e) => e.workspaceId === workspaceId && e.invoiceId)
+        .slice()
+        .reverse()
+        .map((e) => ({
+          id: e.id,
+          providerEventId: e.providerEventId,
+          providerInvoiceId: e.invoiceId!,
+          number: e.invoiceNumber,
+          hostedInvoiceUrl: e.invoiceUrl,
+          invoicePdfUrl: e.invoicePdfUrl,
+          status: e.invoiceStatus,
+          amountCents: e.amountCents,
+          currency: e.currency,
+          createdAt: e.createdAt,
+        })),
+    );
+  }
+  getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
+    return this.listInvoices(workspaceId).then((rows) => rows.find((i) => i.providerInvoiceId === invoiceId));
   }
   updateWorkspaceBillingContact(input: {
     workspaceId: string;
@@ -298,6 +322,42 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
       workspaceId: "ws_1",
       billingEmail: "buyer@example.com",
       stripeCustomerId: "cus_123",
+    });
+  });
+
+  it("stores invoice URLs from a paid checkout webhook (#860)", async () => {
+    const raw = successEvent({}, "evt_invoice", {
+      invoice: {
+        id: "in_123",
+        number: "INV-123",
+        hosted_invoice_url: "https://billing.stripe.com/invoice/in_123",
+        invoice_pdf: "https://pay.stripe.com/invoice/in_123/pdf",
+        status: "paid",
+      },
+    });
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const res = await h.manager.ingestWebhook("ws_1", raw, sig);
+    const invoices = await h.manager.invoices("ws_1");
+
+    expect(res.event).toMatchObject({
+      invoiceId: "in_123",
+      invoiceNumber: "INV-123",
+      invoiceUrl: "https://billing.stripe.com/invoice/in_123",
+      invoicePdfUrl: "https://pay.stripe.com/invoice/in_123/pdf",
+      invoiceStatus: "paid",
+    });
+    expect(invoices).toEqual([
+      expect.objectContaining({
+        providerInvoiceId: "in_123",
+        number: "INV-123",
+        hostedInvoiceUrl: "https://billing.stripe.com/invoice/in_123",
+        invoicePdfUrl: "https://pay.stripe.com/invoice/in_123/pdf",
+        status: "paid",
+      }),
+    ]);
+    await expect(h.manager.invoice("ws_1", "in_123")).resolves.toMatchObject({
+      providerInvoiceId: "in_123",
     });
   });
 

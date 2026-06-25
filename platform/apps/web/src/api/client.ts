@@ -7,6 +7,8 @@ import type {
   ApprovalEventDto,
   ApprovalPolicyDto,
   ApprovalRequestDto,
+  BillingInvoiceDto,
+  BillingInvoicesResponseDto,
   BillingStatusDto,
   CheckoutResponseDto,
   CheckRunDto,
@@ -573,6 +575,14 @@ export const api = {
      */
     status(workspaceId: string): Promise<BillingStatusDto> {
       return request<BillingStatusDto>(`/workspaces/${workspaceId}/billing/status`);
+    },
+    listInvoices(workspaceId: string): Promise<BillingInvoicesResponseDto> {
+      return request<BillingInvoicesResponseDto>(`/workspaces/${workspaceId}/billing/invoices`);
+    },
+    getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceDto> {
+      return request<BillingInvoiceDto>(
+        `/workspaces/${workspaceId}/billing/invoices/${encodeURIComponent(invoiceId)}`,
+      );
     },
     /**
      * Start checkout for a plan; returns the hosted URL to send the customer to. Throws ApiError on

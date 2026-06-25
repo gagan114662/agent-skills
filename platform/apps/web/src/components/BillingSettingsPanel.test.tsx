@@ -67,6 +67,7 @@ describe("BillingSettingsPanel (#215)", () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
     vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
     vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "none", mode: "test", live: false });
+    vi.spyOn(api.billing, "listInvoices").mockResolvedValue({ invoices: [] });
     const store = await bootedStore("ws-billing");
 
     await act(async () => {
@@ -90,6 +91,22 @@ describe("BillingSettingsPanel (#215)", () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
     vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
     vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "stripe", mode: "live", live: true });
+    vi.spyOn(api.billing, "listInvoices").mockResolvedValue({
+      invoices: [
+        {
+          id: "re_1",
+          providerEventId: "evt_1",
+          providerInvoiceId: "in_123",
+          number: "INV-123",
+          hostedInvoiceUrl: "https://billing.example/in_123",
+          invoicePdfUrl: null,
+          status: "paid",
+          amountCents: 19900,
+          currency: "usd",
+          createdAt: "2026-06-24T00:00:00.000Z",
+        },
+      ],
+    });
     const store = await bootedStore("ws-billing-live");
 
     await act(async () => {
@@ -101,6 +118,7 @@ describe("BillingSettingsPanel (#215)", () => {
     });
 
     expect(await screen.findByText(BILLING.panel.liveModeTitle)).toBeInTheDocument();
+    expect(screen.getByText("INV-123")).toBeInTheDocument();
     expect(screen.queryByText(BILLING.panel.testModeTitle)).not.toBeInTheDocument();
   });
 });

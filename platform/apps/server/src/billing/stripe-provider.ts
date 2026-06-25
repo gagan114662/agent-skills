@@ -1,9 +1,11 @@
 import type {
   BillingProvider,
+  BillingInvoice,
   CreatePaymentLinkInput,
   CreateProductPriceInput,
   PaymentLinkResult,
   ProductPrice,
+  RetrieveInvoiceInput,
 } from "./provider.js";
 import { assertKeyMatchesMode, type BillingMode } from "./mode.js";
 
@@ -46,6 +48,15 @@ interface StripeClient {
       metadata?: Record<string, string>;
       after_completion?: { type: "redirect"; redirect: { url: string } };
     }): Promise<{ id: string; url: string }>;
+  };
+  invoices: {
+    retrieve(id: string): Promise<{
+      id: string;
+      number?: string | null;
+      hosted_invoice_url?: string | null;
+      invoice_pdf?: string | null;
+      status?: string | null;
+    }>;
   };
 }
 
@@ -129,5 +140,17 @@ export class StripeBillingProvider implements BillingProvider {
         : {}),
     });
     return { providerLinkId: link.id, url: link.url };
+  }
+
+  async retrieveInvoice(input: RetrieveInvoiceInput): Promise<BillingInvoice | null> {
+    const client = await loadClient(input.secrets, this.mode, this.loadModule);
+    const invoice = await client.invoices.retrieve(input.providerInvoiceId);
+    return {
+      providerInvoiceId: invoice.id,
+      number: invoice.number ?? null,
+      hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+      invoicePdfUrl: invoice.invoice_pdf ?? null,
+      status: invoice.status ?? null,
+    };
   }
 }

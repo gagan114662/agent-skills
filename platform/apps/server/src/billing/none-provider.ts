@@ -4,6 +4,7 @@ import type {
   CreateProductPriceInput,
   PaymentLinkResult,
   ProductPrice,
+  RetrieveInvoiceInput,
 } from "./provider.js";
 
 /**
@@ -44,5 +45,9 @@ export class NoneBillingProvider implements BillingProvider {
       providerLinkId: `plink_none_${++this.seq}`,
       url: `https://pay.none.reload.test/${input.slug}`,
     });
+  }
+
+  retrieveInvoice(_input: RetrieveInvoiceInput): Promise<null> {
+    return Promise.resolve(null);
   }
 }

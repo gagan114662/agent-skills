@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   ActivePlanDto,
+  BillingInvoiceDto,
+  BillingInvoicesResponseDto,
   BillingStatusDto,
   CheckoutResponseDto,
   PaymentLinkDto,
@@ -17,6 +19,7 @@ import {
   BillingProviderError,
   NoBillingConfigError,
   type BillingManager,
+  type BillingInvoiceRecord,
   type PaymentLink,
   type RevenueSummary,
 } from "../billing/manager.js";
@@ -137,6 +140,21 @@ export async function billingRoutes(
         status: e.status,
         createdAt: e.createdAt.toISOString(),
       })),
+    };
+  }
+
+  function toInvoiceDto(i: BillingInvoiceRecord): BillingInvoiceDto {
+    return {
+      id: i.id,
+      providerEventId: i.providerEventId,
+      providerInvoiceId: i.providerInvoiceId,
+      number: i.number,
+      hostedInvoiceUrl: i.hostedInvoiceUrl,
+      invoicePdfUrl: i.invoicePdfUrl,
+      status: i.status,
+      amountCents: i.amountCents,
+      currency: i.currency,
+      createdAt: i.createdAt.toISOString(),
     };
   }
 
@@ -331,6 +349,32 @@ export async function billingRoutes(
       live: status.live,
     };
     return reply.send(dto);
+  });
+
+  app.get("/workspaces/:wid/billing/invoices", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const query = req.query as { limit?: unknown };
+    const limit =
+      typeof query.limit === "string" && /^\d+$/.test(query.limit)
+        ? Math.max(1, Math.min(100, Number(query.limit)))
+        : 20;
+    const dto: BillingInvoicesResponseDto = {
+      invoices: (await billingManager.invoices(wid, limit)).map(toInvoiceDto),
+    };
+    return reply.send(dto);
+  });
+
+  app.get("/workspaces/:wid/billing/invoices/:invoiceId", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid, invoiceId } = req.params as { wid: string; invoiceId: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const invoice = await billingManager.invoice(wid, invoiceId);
+    if (!invoice) return reply.code(404).send({ error: "invoice not found" });
+    return reply.send(toInvoiceDto(invoice));
   });
 
   app.get("/workspaces/:wid/billing/trial-nurture", async (req, reply) => {

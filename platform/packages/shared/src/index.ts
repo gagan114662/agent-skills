@@ -319,6 +319,25 @@ export interface RevenueSummaryDto {
   recent: RevenueEventDto[];
 }
 
+/** One customer-visible invoice/receipt record (#860). */
+export interface BillingInvoiceDto {
+  id: string;
+  providerEventId: string;
+  providerInvoiceId: string;
+  number: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  status: string | null;
+  amountCents: number;
+  currency: string;
+  createdAt: string;
+}
+
+/** GET /workspaces/:wid/billing/invoices payload (#860). */
+export interface BillingInvoicesResponseDto {
+  invoices: BillingInvoiceDto[];
+}
+
 /** One pricing plan card on the `/pricing` page (#125). Mirrors the server's pure plan catalog. */
 export interface PlanDto {
   /** Stable plan key (`starter` | `pro` | `agency`). */
