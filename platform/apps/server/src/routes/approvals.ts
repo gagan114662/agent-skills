@@ -9,6 +9,7 @@ import { decideApprovalClear, resolveRbacConfig, type WorkspaceRole } from "../t
 import { notify } from "../notifications/service.js";
 import { evaluatePolicy, isActionType, isApprovalStatus } from "../approvals/policy.js";
 import { classifyRisk, gateWithRisk, type RiskModel } from "../approvals/risk-classifier.js";
+import { filterReviewQueueApprovals } from "../approvals/review-queue.js";
 import { fireApprovalPending } from "../approvals/pending-hook.js";
 import { broadcastApprovalCompletion } from "../approvals/notifications.js";
 import { formatApprovalExpiry, normalizeTimeZone } from "../approvals/expiry-timezone.js";
@@ -429,16 +430,17 @@ export async function approvalRoutes(
     }
     const status = isApprovalStatus(q.status) ? q.status : undefined;
     const limit = clampApprovalRequestListLimit(typeof q.limit === "string" ? Number(q.limit) : undefined);
-    const requests = await listRequests(wid, { status, limit });
+    const rawRequests = await listRequests(wid, { status, limit });
+    const requests = filterReviewQueueApprovals(rawRequests);
     // #322: collapse duplicate Spend-Approval deliverable drafts (the dozen near-identical "audit"
     // cards the duplicate-launch bug produced) to ONE card per real objective — but only for the
     // PENDING queue and only when dedup is enabled for this workspace (DEFAULT-OFF, owner-first). Other
     // statuses and non-deliverable approvals are returned untouched, so governance is never masked.
     if (status === "pending" && resolveDedupeEnabled(loadConfig(wid).marketing, wid)) {
       const items = collapseDuplicateDeliverables(requests).map(approvalRequestView);
-      return { items, hasMore: requests.length === limit };
+      return { items, hasMore: rawRequests.length === limit };
     }
-    return { items: requests.map(approvalRequestView), hasMore: requests.length === limit };
+    return { items: requests.map(approvalRequestView), hasMore: rawRequests.length === limit };
   });
 
   app.get("/approvals/:rid", async (req, reply) => {
