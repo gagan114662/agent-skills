@@ -49,6 +49,7 @@ export interface DeliveryReceiptRow {
   estimatedCostCents: number;
   externalRef: string | null;
   status: string;
+  detail: Record<string, unknown>;
   shippedAtMs: number;
 }
 
@@ -137,11 +138,14 @@ function toReceiptRow(row: typeof deliveryReceipts.$inferSelect): DeliveryReceip
     estimatedCostCents: row.estimatedCostCents,
     externalRef: row.externalRef,
     status: row.status,
+    detail: (row.detail ?? {}) as Record<string, unknown>,
     shippedAtMs: row.shippedAt.getTime(),
   };
 }
 
-function toPerformanceRow(row: typeof deliverablePerformance.$inferSelect): DeliverablePerformanceRow {
+function toPerformanceRow(
+  row: typeof deliverablePerformance.$inferSelect,
+): DeliverablePerformanceRow {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -213,7 +217,12 @@ export async function recordDeliverablePerformance(input: {
   const [receipt] = await db
     .select()
     .from(deliveryReceipts)
-    .where(and(eq(deliveryReceipts.workspaceId, input.workspaceId), eq(deliveryReceipts.id, input.deliveryReceiptId)))
+    .where(
+      and(
+        eq(deliveryReceipts.workspaceId, input.workspaceId),
+        eq(deliveryReceipts.id, input.deliveryReceiptId),
+      ),
+    )
     .limit(1);
   if (!receipt || receipt.status !== "shipped") return null;
 
@@ -241,7 +250,12 @@ export async function getDeliverablePerformance(
   const [receipt] = await db
     .select()
     .from(deliveryReceipts)
-    .where(and(eq(deliveryReceipts.workspaceId, workspaceId), eq(deliveryReceipts.id, deliveryReceiptId)))
+    .where(
+      and(
+        eq(deliveryReceipts.workspaceId, workspaceId),
+        eq(deliveryReceipts.id, deliveryReceiptId),
+      ),
+    )
     .limit(1);
   if (!receipt) return null;
   const rows = await db
@@ -290,11 +304,12 @@ export async function listRankedDeliverablePerformance(
       };
     })
     .filter((row) => row.views > 0 || row.engagements > 0 || row.conversions > 0)
-    .sort((a, b) =>
-      b.conversions - a.conversions ||
-      b.engagements - a.engagements ||
-      b.views - a.views ||
-      (b.latestMeasuredAtMs ?? 0) - (a.latestMeasuredAtMs ?? 0),
+    .sort(
+      (a, b) =>
+        b.conversions - a.conversions ||
+        b.engagements - a.engagements ||
+        b.views - a.views ||
+        (b.latestMeasuredAtMs ?? 0) - (a.latestMeasuredAtMs ?? 0),
     )
     .slice(0, limit);
 }
