@@ -41,6 +41,23 @@ If chub is unavailable, the agent records that in the work receipt and falls bac
 other primary sources. When Context Hub influenced the implementation, the receipt should include the
 doc id(s) and commands used so reviewers can reproduce the source.
 
+## Trinity Production Runtime (#1212)
+
+Long-running, scheduled, multi-agent, auto-recovered, or production-audited fleet work should run through
+[Trinity](https://github.com/Abilityai/trinity) when the ipop Trinity instance is available. Trinity is
+the preferred production home for ipop agents because it provides the scheduler, audit trail, health and
+uptime monitoring, auto-recovery, multi-user operator access, isolated containers, and inside-our-perimeter
+execution that an autonomous marketing engine needs.
+
+Production Trinity state must use PostgreSQL; SQLite is only acceptable for local development or evaluation.
+If Trinity is unavailable or an agent has not been onboarded yet, the agent must say so in the work receipt
+and fall back only to the approved local/manual path.
+
+When work runs through Trinity, the agent receipt should include the Trinity agent id, schedule or execution
+id, audit reference, health/recovery status, and the unaudited-tool-call count. The production bar is simple:
+scheduled work should not be an ad hoc local loop, and externally meaningful work should have a replayable
+audit trail.
+
 ## How they're maintained (eval gate + colocation)
 
 - **Eval gate** — `scripts/run-evals.ts` (CI `evals` job) runs every suite through the SAME semantic-layer

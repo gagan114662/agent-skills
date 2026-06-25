@@ -60,6 +60,16 @@ export const CONTEXT_HUB_DIRECTIVE =
   "fall back to official docs or primary sources. When Context Hub influenced the work, record the doc id(s) and " +
   "commands used in the receipt.";
 
+/** Production runtime workflow for scheduled/audited ipop agent work (#1212). */
+export const TRINITY_RUNTIME_DIRECTIVE =
+  "Production runtime rule: for long-running, scheduled, multi-agent, auto-recovered, or production-audited work, " +
+  "prefer the ipop Trinity runtime when it is available. Trinity is the self-hosted production home for agents: " +
+  "scheduler, audit trail, health/uptime monitoring, auto-recovery, multi-user operator access, isolated containers, " +
+  "and inside-our-perimeter execution. Production Trinity must use PostgreSQL state, not local SQLite. If Trinity " +
+  "is unavailable or the agent is not onboarded yet, say so in the work receipt and fall back only to the approved " +
+  "local/manual path. When work runs through Trinity, include the Trinity agent id, schedule/execution id, audit " +
+  "reference, health/recovery status, and any unaudited-tool-call count in the receipt.";
+
 /** A named agent bound to a marketing function. `handle` is the @-mentionable persona name (lowercase). */
 export interface MarketingAgentSpec {
   handle: string;
@@ -190,6 +200,7 @@ function prompt(title: string, channel: string, role: string, external: boolean)
     `${externalLine} ` +
     `${PROMPT_STRUCTURE_DIRECTIVE} ` +
     `${CONTEXT_HUB_DIRECTIVE} ` +
+    `${TRINITY_RUNTIME_DIRECTIVE} ` +
     "Keep the house voice: warm, first-person plural, a little playful, one wink at most, receipts over " +
     "adjectives. Be specific and cite what you looked at."
   );
