@@ -8146,3 +8146,109 @@ select:focus-visible {
     transform: none;
   }
 }
+
+/* ---- public dogfood receipts -------------------------------------------------------------- */
+.dogfood {
+  min-height: 100vh;
+  background: var(--o-bg);
+  color: var(--o-text);
+  padding: 56px clamp(18px, 5vw, 72px);
+}
+.dogfood__head {
+  max-width: 840px;
+  margin: 0 auto 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dogfood__eyebrow {
+  margin: 0;
+  color: var(--o-pop);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.dogfood h1 {
+  margin: 0;
+  font-family: var(--o-serif);
+  font-size: clamp(34px, 7vw, 72px);
+  line-height: 1;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.dogfood__head p,
+.dogfood__empty p,
+.dogfood--empty p,
+.dogfood--loading p {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--o-text-dim);
+  line-height: 1.55;
+}
+.dogfood__head time {
+  color: var(--o-text-dim);
+  font-size: 13px;
+}
+.dogfood__receipts {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.dogfood__receipt,
+.dogfood__empty,
+.dogfood--empty,
+.dogfood--loading {
+  max-width: 840px;
+  margin: 0 auto;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: var(--o-surface);
+  padding: 18px;
+}
+.dogfood__receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dogfood__receipt-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--o-text-dim);
+  font-size: 12px;
+}
+.dogfood__phase {
+  color: var(--o-pop);
+  font-weight: 600;
+}
+.dogfood__receipt h2,
+.dogfood__empty h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+.dogfood__receipt p {
+  margin: 0;
+  color: var(--o-text);
+  line-height: 1.55;
+}
+.dogfood__receipt dl {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+.dogfood__receipt dl div {
+  display: flex;
+  gap: 6px;
+}
+.dogfood__receipt dt {
+  color: var(--o-text-dim);
+}
+.dogfood__receipt dd {
+  margin: 0;
+}

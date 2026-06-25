@@ -10,6 +10,7 @@ import { registerMaintenance } from "./maintenance/gate.js";
 import { maintenanceRoutes } from "./routes/maintenance.js";
 import { healthRoutes } from "./routes/health.js";
 import { siteRoutes } from "./routes/site.js";
+import { publicDogfoodRoutes } from "./routes/public-dogfood.js";
 import type { ContentSource } from "./site/content.js";
 import { authRoutes } from "./routes/auth.js";
 import { createDefaultAuthSessionCleanupEngine } from "./auth/default-session-cleanup.js";
@@ -548,6 +549,7 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
+  const env = loadEnv();
   const app = Fastify({
     logger: {
       redact: {
@@ -580,7 +582,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // readers. Built here (before observability) so the #113 saturation sampler can read its global
   // in-flight count as the scrape-time queue-depth signal. When managed config sets no global cap,
   // admission falls back to TEAM_MAX_CONCURRENCY so parallel local/demo runs cannot stampede the host.
-  const scale = opts.scale ?? createScale(loadEnv().team.maxConcurrency);
+  const scale = opts.scale ?? createScale(env.team.maxConcurrency);
   const retentionLoop = startRetentionLoop({ logger: app.log });
   app.addHook("onClose", async () => {
     retentionLoop.stop();
@@ -658,6 +660,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(healthRoutes);
   // #153 public marketing-site content API (CMS-lite over repo markdown) — unauthenticated, published-only.
   app.register(siteRoutes, { contentSource: opts.contentSource });
+  // #461 public dogfood feed: unauthenticated but explicit opt-in by workspace slug, with a second public
+  // projection over already-redacted trace receipts. Unset PUBLIC_DOGFOOD_SLUGS => 404 for every slug.
+  app.register(publicDogfoodRoutes, {
+    enabledSlugs: env.publicDogfood.enabledSlugs,
+    limit: env.publicDogfood.limit,
+  });
   // #300 low-commitment front door: the read-only sample workspace (unauthenticated, read-only). Default
   // OFF — answers `{ offered: false }` until the deployment turns on `signupEntry.sampleWorkspace`.
   app.register(sampleRoutes, { ...opts.sample });

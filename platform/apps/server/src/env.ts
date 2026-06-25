@@ -87,6 +87,8 @@ export interface Env {
   billing: BillingEnv;
   /** Auto model-selection via convene-llm-gateway (Claude-orchestrated). */
   autoModel: AutoModelEnv;
+  /** Public dogfood receipt feed (#461). Default off until a deployment opts slugs in. */
+  publicDogfood: PublicDogfoodEnv;
 }
 
 /**
@@ -105,6 +107,13 @@ export interface AutoModelEnv {
   gatewayUrl?: string;
   /** Request timeout (ms) for the routing call. A slow/unreachable gateway falls back, never blocks. */
   timeoutMs: number;
+}
+
+export interface PublicDogfoodEnv {
+  /** Comma-separated workspace slugs allowed to expose a public dogfood feed. Empty = disabled. */
+  enabledSlugs: string[];
+  /** Maximum public receipts returned per feed request. */
+  limit: number;
 }
 
 /**
@@ -383,6 +392,13 @@ function num(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function list(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function parseHarnessArgs(raw: string | undefined, fallback: string[]): string[] {
   if (!raw) return fallback;
   try {
@@ -407,6 +423,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     // #113 worker-concurrency knob: pg pool size per process. Default 10 (the prior hard-coded value).
     databasePoolMax: num(source.DATABASE_POOL_MAX, 10),
     redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
+    publicDogfood: {
+      enabledSlugs: list(source.PUBLIC_DOGFOOD_SLUGS),
+      limit: num(source.PUBLIC_DOGFOOD_LIMIT, 30),
+    },
     agent: (() => {
       // Posture profile (#69): pick a named preset (dev=local/demo, prod=sandbox/claude-code) that
       // supplies the runtime/harness DEFAULTS. Precedence is explicit env > profile preset > built-in
