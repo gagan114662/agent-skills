@@ -50,4 +50,59 @@ describe("external.send egress enforcement (#151)", () => {
     expect(out).toEqual({ recorded: true, target: null, summary: "no target" });
     expect(called).toBe(false);
   });
+
+  it("fails closed for support replies when no delivery dispatcher is wired (#911)", async () => {
+    const send = buildDefaultRegistry().get("external.send")!;
+    await expect(
+      send.execute({ kind: "support.reply", summary: "We fixed it", target: "user@example.com" }, ctx),
+    ).rejects.toThrow(/support reply delivery path not configured/);
+  });
+
+  it("executes support replies only through an injected delivery dispatcher (#911)", async () => {
+    const delivered: unknown[] = [];
+    const send = buildDefaultRegistry(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        async dispatch(payload, context) {
+          delivered.push({ payload, context });
+          return {
+            recorded: true,
+            executed: true,
+            provider: "support-api",
+            externalId: "msg-1",
+          };
+        },
+      },
+    ).get("external.send")!;
+
+    const out = await send.execute(
+      { kind: "support.reply", summary: "We fixed it", target: "user@example.com", ticketId: "tic-1" },
+      { ...ctx, requestId: "req-1" },
+    );
+
+    expect(out).toEqual({
+      recorded: true,
+      executed: true,
+      provider: "support-api",
+      externalId: "msg-1",
+    });
+    expect(delivered).toEqual([
+      {
+        payload: {
+          kind: "support.reply",
+          summary: "We fixed it",
+          target: "user@example.com",
+          ticketId: "tic-1",
+        },
+        context: { workspaceId: "ws-1", requesterMemberId: "m-1", requestId: "req-1" },
+      },
+    ]);
+  });
 });

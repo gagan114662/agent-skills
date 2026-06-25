@@ -21,7 +21,8 @@ import type { CustomerVoiceService } from "../voice/service.js";
  *
  * Inbound intake reuses the #114 voice `ingestTicket` (classify + persist). The inbound webhook secret is
  * resolved per tenant via the #25 secrets path (default name `SUPPORT_WEBHOOK_SECRET`); when unset the
- * widget/receipts routes 503 (default-OFF). No change to `approvals/policy.ts` or any executor.
+ * widget/receipts routes 503 (default-OFF). The approval executor fail-closes support replies unless a
+ * deployment wires a support delivery dispatcher, so approval never silently records a no-op as delivered.
  */
 export const DEFAULT_SUPPORT_WEBHOOK_SECRET_NAME = "SUPPORT_WEBHOOK_SECRET";
 
