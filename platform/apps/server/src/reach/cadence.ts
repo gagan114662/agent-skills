@@ -37,6 +37,18 @@ export interface CadenceEnrollment {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ENGAGED_FOLLOW_UP_WAIT_DAYS = 1;
+const COLD_PAUSE_AFTER_DAYS = 14;
+
+export interface CadenceEngagement {
+  opensCount: number;
+  lastOpenAtMs: number | null;
+  hasReplied: boolean;
+}
+
+export interface CadenceDecisionOptions {
+  engagement?: CadenceEngagement;
+}
 
 /** A fresh enrolment for a net-new prospect (about to take step 0). */
 export function newEnrollment(contactKey: string): CadenceEnrollment {
@@ -52,12 +64,26 @@ export function nextDueStep(
   enrollment: CadenceEnrollment,
   cadence: readonly CadenceStep[],
   nowMs: number,
+  options: CadenceDecisionOptions = {},
 ): CadenceStep | null {
   if (enrollment.status !== "active") return null;
+  if (options.engagement?.hasReplied) return null;
   if (enrollment.currentStep >= cadence.length) return null;
   const step = cadence[enrollment.currentStep];
   if (!step) return null;
-  const dueAt = enrollment.lastStepAtMs + step.waitDays * DAY_MS;
+  const engaged = (options.engagement?.opensCount ?? 0) > 0;
+  if (
+    enrollment.currentStep > 0 &&
+    !engaged &&
+    nowMs >= enrollment.lastStepAtMs + COLD_PAUSE_AFTER_DAYS * DAY_MS
+  ) {
+    return null;
+  }
+  const waitDays =
+    engaged && enrollment.currentStep > 0
+      ? Math.min(step.waitDays, ENGAGED_FOLLOW_UP_WAIT_DAYS)
+      : step.waitDays;
+  const dueAt = enrollment.lastStepAtMs + waitDays * DAY_MS;
   if (enrollment.currentStep > 0 && nowMs < dueAt) return null;
   return step;
 }

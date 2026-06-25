@@ -10,7 +10,14 @@ import type {
   ReachSendStore,
 } from "../../reach/service.js";
 import type { ReceiptDatum, SendDatum } from "../../reach/measure.js";
-import type { RawProspect, ReachChannel, ReachReceiptKind, ReachSendStatus, ReachSignalKind, ReachVariant } from "../../reach/types.js";
+import type {
+  RawProspect,
+  ReachChannel,
+  ReachReceiptKind,
+  ReachSendStatus,
+  ReachSignalKind,
+  ReachVariant,
+} from "../../reach/types.js";
 import { isReachSignalKind, type ReachRunStatus } from "../../reach/types.js";
 import type { ReachTuningConfig } from "../../reach/self-tune.js";
 
@@ -34,7 +41,9 @@ function sendingDomainFromDetail(detail: string | null | undefined): string | nu
   return match?.[1] ?? null;
 }
 
-function contactKey(input: Pick<ImportedProspectInput, "email" | "linkedinUrl" | "fullName" | "company">): string | null {
+function contactKey(
+  input: Pick<ImportedProspectInput, "email" | "linkedinUrl" | "fullName" | "company">,
+): string | null {
   const email = clean(input.email)?.toLowerCase();
   if (email) return `email:${email}`;
   const linkedin = clean(input.linkedinUrl)?.toLowerCase();
@@ -47,11 +56,14 @@ function contactKey(input: Pick<ImportedProspectInput, "email" | "linkedinUrl" |
 
 function importedSignals(input: ImportedProspectInput, fallbackMs: number): RawProspect["signals"] {
   if (!input.signalKind || !isReachSignalKind(input.signalKind)) return [];
-  return [{
-    kind: input.signalKind,
-    summary: clean(input.signalSummary) ?? "Imported prospect",
-    observedAtMs: input.observedAtMs && Number.isFinite(input.observedAtMs) ? input.observedAtMs : fallbackMs,
-  }];
+  return [
+    {
+      kind: input.signalKind,
+      summary: clean(input.signalSummary) ?? "Imported prospect",
+      observedAtMs:
+        input.observedAtMs && Number.isFinite(input.observedAtMs) ? input.observedAtMs : fallbackMs,
+    },
+  ];
 }
 
 function rawSignals(value: unknown): RawProspect["signals"] {
@@ -60,11 +72,19 @@ function rawSignals(value: unknown): RawProspect["signals"] {
     if (!item || typeof item !== "object") return [];
     const rec = item as { kind?: unknown; summary?: unknown; observedAtMs?: unknown };
     if (typeof rec.kind !== "string" || !isReachSignalKind(rec.kind)) return [];
-    return [{
-      kind: rec.kind,
-      summary: typeof rec.summary === "string" && rec.summary.trim() ? rec.summary.trim() : "Imported prospect",
-      observedAtMs: typeof rec.observedAtMs === "number" && Number.isFinite(rec.observedAtMs) ? rec.observedAtMs : Date.now(),
-    }];
+    return [
+      {
+        kind: rec.kind,
+        summary:
+          typeof rec.summary === "string" && rec.summary.trim()
+            ? rec.summary.trim()
+            : "Imported prospect",
+        observedAtMs:
+          typeof rec.observedAtMs === "number" && Number.isFinite(rec.observedAtMs)
+            ? rec.observedAtMs
+            : Date.now(),
+      },
+    ];
   });
 }
 
@@ -76,7 +96,11 @@ export const dbReachContactStore: ReachContactStore = {
       .where(and(eq(reachContacts.workspaceId, workspaceId), ne(reachContacts.status, "imported")));
     return new Set(rows.map((r) => r.contactKey));
   },
-  async importProspects(workspaceId, prospects, now): Promise<{ imported: number; updated: number; skipped: number }> {
+  async importProspects(
+    workspaceId,
+    prospects,
+    now,
+  ): Promise<{ imported: number; updated: number; skipped: number }> {
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -105,7 +129,10 @@ export const dbReachContactStore: ReachContactStore = {
           currentStep: 0,
           lastStepAt: null,
           score: 0,
-          signalKind: prospect.signalKind && isReachSignalKind(prospect.signalKind) ? prospect.signalKind : null,
+          signalKind:
+            prospect.signalKind && isReachSignalKind(prospect.signalKind)
+              ? prospect.signalKind
+              : null,
           fullName,
           title: clean(prospect.title),
           company,
@@ -185,7 +212,9 @@ export const dbReachContactStore: ReachContactStore = {
         set: {
           status: input.enrollment.status,
           currentStep: input.enrollment.currentStep,
-          lastStepAt: input.enrollment.lastStepAtMs ? new Date(input.enrollment.lastStepAtMs) : null,
+          lastStepAt: input.enrollment.lastStepAtMs
+            ? new Date(input.enrollment.lastStepAtMs)
+            : null,
           score: input.score,
           signalKind: input.signalKind,
           updatedAt: new Date(),
@@ -196,7 +225,9 @@ export const dbReachContactStore: ReachContactStore = {
     await db
       .update(reachContacts)
       .set({ status, updatedAt: new Date() })
-      .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)));
+      .where(
+        and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)),
+      );
   },
   async activeEnrollments(workspaceId): Promise<ActiveEnrollment[]> {
     const rows = await db
@@ -211,15 +242,37 @@ export const dbReachContactStore: ReachContactStore = {
       })
       .from(reachContacts)
       .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.status, "active")));
-    return rows.map((r) => ({
-      contactKey: r.contactKey,
-      recipientLabel: r.recipientLabel,
-      channel: r.channel as ReachChannel,
-      currentStep: r.currentStep,
-      lastStepAtMs: r.lastStepAt ? r.lastStepAt.getTime() : 0,
-      score: r.score,
-      signalKind: r.signalKind,
-    }));
+    return Promise.all(
+      rows.map(async (r) => {
+        const [engagement] = await db
+          .select({
+            opensCount: sql<number>`count(*) filter (where ${reachReceipts.kind} = 'open')`,
+            lastOpenAt: sql<Date | null>`max(${reachReceipts.occurredAt}) filter (where ${reachReceipts.kind} = 'open')`,
+            repliesCount: sql<number>`count(*) filter (where ${reachReceipts.kind} = 'reply')`,
+          })
+          .from(reachReceipts)
+          .where(
+            and(
+              eq(reachReceipts.workspaceId, workspaceId),
+              eq(reachReceipts.contactKey, r.contactKey),
+            ),
+          );
+        return {
+          contactKey: r.contactKey,
+          recipientLabel: r.recipientLabel,
+          channel: r.channel as ReachChannel,
+          currentStep: r.currentStep,
+          lastStepAtMs: r.lastStepAt ? r.lastStepAt.getTime() : 0,
+          engagement: {
+            opensCount: Number(engagement?.opensCount ?? 0),
+            lastOpenAtMs: engagement?.lastOpenAt ? engagement.lastOpenAt.getTime() : null,
+            hasReplied: Number(engagement?.repliesCount ?? 0) > 0,
+          },
+          score: r.score,
+          signalKind: r.signalKind,
+        };
+      }),
+    );
   },
 };
 
@@ -269,7 +322,10 @@ export const dbReachSendStore: ReachSendStore = {
       .limit(1);
     return row?.id ?? null;
   },
-  async findByExternalId(workspaceId, externalId): Promise<{ id: string; contactKey: string } | null> {
+  async findByExternalId(
+    workspaceId,
+    externalId,
+  ): Promise<{ id: string; contactKey: string } | null> {
     const [row] = await db
       .select({ id: reachSends.id, contactKey: reachSends.contactKey })
       .from(reachSends)
@@ -302,11 +358,16 @@ export const dbReachSendStore: ReachSendStore = {
 };
 
 /** Resolve a Reach contact's current email address from its stable contact key. Tenant-scoped. */
-export async function getReachContactEmail(workspaceId: string, contactKey: string): Promise<string | null> {
+export async function getReachContactEmail(
+  workspaceId: string,
+  contactKey: string,
+): Promise<string | null> {
   const [row] = await db
     .select({ email: reachContacts.email })
     .from(reachContacts)
-    .where(and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)))
+    .where(
+      and(eq(reachContacts.workspaceId, workspaceId), eq(reachContacts.contactKey, contactKey)),
+    )
     .limit(1);
   return clean(row?.email) ? row!.email!.trim().toLowerCase() : null;
 }
@@ -327,7 +388,12 @@ export const dbReachReceiptStore: ReachReceiptStore = {
         occurredAt: input.occurredAt,
       })
       .onConflictDoNothing({
-        target: [reachReceipts.workspaceId, reachReceipts.sendId, reachReceipts.kind, reachReceipts.externalRef],
+        target: [
+          reachReceipts.workspaceId,
+          reachReceipts.sendId,
+          reachReceipts.kind,
+          reachReceipts.externalRef,
+        ],
       })
       .returning({ id: reachReceipts.id });
     return { recorded: rows.length > 0 };
@@ -381,7 +447,13 @@ export const dbReachReceiptStore: ReachReceiptStore = {
 export async function reachProofReading(
   workspaceId: string,
   since: Date,
-): Promise<{ sentAll: number; sentSince: number; prospects: number; replies: number; booked: number }> {
+): Promise<{
+  sentAll: number;
+  sentSince: number;
+  prospects: number;
+  replies: number;
+  booked: number;
+}> {
   const [sentAllRow, sentSinceRow, prospectsRow, replyRow, bookedRow] = await Promise.all([
     db
       .select({ n: count() })
@@ -390,7 +462,13 @@ export async function reachProofReading(
     db
       .select({ n: count() })
       .from(reachSends)
-      .where(and(eq(reachSends.workspaceId, workspaceId), eq(reachSends.status, "sent"), gte(reachSends.createdAt, since))),
+      .where(
+        and(
+          eq(reachSends.workspaceId, workspaceId),
+          eq(reachSends.status, "sent"),
+          gte(reachSends.createdAt, since),
+        ),
+      ),
     db.select({ n: count() }).from(reachContacts).where(eq(reachContacts.workspaceId, workspaceId)),
     db
       .select({ n: count() })
@@ -433,7 +511,12 @@ export const dbReachRunStore: ReachRunStore = {
     const [row] = await db
       .select({ status: reachRuns.status, tuningReport: reachRuns.tuningReport })
       .from(reachRuns)
-      .where(and(eq(reachRuns.workspaceId, workspaceId), eq(reachRuns.status, "completed" satisfies ReachRunStatus)))
+      .where(
+        and(
+          eq(reachRuns.workspaceId, workspaceId),
+          eq(reachRuns.status, "completed" satisfies ReachRunStatus),
+        ),
+      )
       .orderBy(desc(reachRuns.createdAt))
       .limit(1);
     const report = row?.tuningReport as { next?: ReachTuningConfig } | null | undefined;
