@@ -5,7 +5,7 @@ import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
-import { createChannel } from "../../src/db/repositories/channels.js";
+import { createChannel, listChannels } from "../../src/db/repositories/channels.js";
 import { listChannelMessages } from "../../src/db/repositories/messages.js";
 
 /**
@@ -74,6 +74,12 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
+async function ensureDepartmentChannel(workspaceId: string, name: string): Promise<{ id: string }> {
+  const existing = (await listChannels(workspaceId)).find((c) => c.name === name);
+  if (existing) return { id: existing.id };
+  return createChannel({ workspaceId, kind: "public", name });
+}
+
 /** Register an agent whose @handle (display name) is a real department handle so the bridge can route it. */
 async function newAgent(
   owner: { cookie: string; workspaceId: string },
@@ -138,8 +144,8 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     // bridge resolves Quill's department → the "content" channel.
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    // The department channel must exist for the bridge to post into it (seeded in prod by #123).
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    // The bridge posts to the first department channel matching the blueprint name.
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
 
     enableCoordinationFor(owner.workspaceId);
 
@@ -181,7 +187,7 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const owner = await newOwner();
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
 
     // No coordination env set ⇒ channel posting is OFF (the prod default).
     const taskId = await delegate(scout.token, quill.agentId, "should not be narrated");
@@ -200,7 +206,7 @@ describe("#361 coordination acceptance — delegate → handoff appears in the c
     const owner = await newOwner();
     const scout = await newAgent(owner, "scout");
     const quill = await newAgent(owner, "quill");
-    const content = await createChannel({ workspaceId: owner.workspaceId, kind: "public", name: "content" });
+    const content = await ensureDepartmentChannel(owner.workspaceId, "content");
 
     // Posting is enabled, but named for some OTHER owner workspace — this workspace must stay quiet.
     enableCoordinationFor(`someone-else-${newId()}`);
