@@ -178,6 +178,24 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByText(/blocked until real access: Gmail, Reddit\/X, site publishing/i)).toBeInTheDocument();
   });
 
+  it("streams a personalized first deliverable before asking for setup or connectors (#570)", async () => {
+    render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+
+    const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
+    expect(within(instant).getByText(/streaming now/i)).toBeInTheDocument();
+    expect(within(instant).getByText(/Acme's first useful thing/i)).toBeInTheDocument();
+    expect(within(instant).getByRole("list", { name: /agent work stream/i })).toHaveTextContent(
+      /scout read acme\.comquill drafted from the findingready for your approval/i,
+    );
+    expect(within(instant).getByText(/your hero buries the offer below the fold/i)).toBeInTheDocument();
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+  });
+
   it("walks the whole flow: read → finding → guided connects each with a real payoff → ship", async () => {
     const onEnterApp = vi.fn();
     render(<OnboardingExperience provider={fakeProvider()} hour={14} onEnterApp={onEnterApp} />);
