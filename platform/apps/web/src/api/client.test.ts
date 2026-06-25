@@ -79,9 +79,15 @@ describe("api client", () => {
     } satisfies Partial<ApiError>);
   });
 
-  it("startCheckout posts the plan + a return URL so the hosted link comes back into the app (#215)", async () => {
+  it("startCheckout posts the plan, return URL, and optional attribution ref (#215/#605)", async () => {
     const fetchMock = stubFetch(201, { url: "https://pay.example/abc", planKey: "pro" });
-    await api.billing.startCheckout("w1", "pro");
+    await api.billing.startCheckout(
+      "w1",
+      "pro",
+      "month",
+      "https://ipop.ai/?checkout=success",
+      "ipop_deadbeefdeadbeef",
+    );
 
     const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(url).toBe("/workspaces/w1/billing/checkout");
@@ -89,7 +95,8 @@ describe("api client", () => {
     const body = JSON.parse(init.body);
     expect(body.planKey).toBe("pro");
     expect(body.billingInterval).toBe("month");
-    // The default return URL carries the success flag the SPA reads on return.
+    expect(body.trackingRef).toBe("ipop_deadbeefdeadbeef");
+    // The return URL carries the success flag the SPA reads on return.
     expect(body.returnUrl).toMatch(/checkout=success/);
   });
 });

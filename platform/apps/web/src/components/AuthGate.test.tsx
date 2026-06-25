@@ -282,8 +282,8 @@ describe("AuthGate routing", () => {
     );
   });
 
-  it("opens hosted checkout after signup for the chosen plan and billing interval (#606)", async () => {
-    act(() => navigate("/signup?plan=agency&billing=year"));
+  it("opens hosted checkout after signup for the chosen plan, billing interval, and tracking ref (#605/#606)", async () => {
+    act(() => navigate("/signup?plan=agency&billing=year&ref=ipop_deadbeefdeadbeef"));
     const checkout = vi
       .spyOn(api.billing, "startCheckout")
       .mockResolvedValue({ url: "#checkout", planKey: "agency", billingInterval: "year" });
@@ -307,9 +307,18 @@ describe("AuthGate routing", () => {
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
-    await waitFor(() => expect(checkout).toHaveBeenCalledWith("w1", "agency", "year"));
+    await waitFor(() =>
+      expect(checkout).toHaveBeenCalledWith(
+        "w1",
+        "agency",
+        "year",
+        undefined,
+        "ipop_deadbeefdeadbeef",
+      ),
+    );
     await waitFor(() => expect(window.sessionStorage.getItem("plan-intent")).toBeNull());
     expect(window.sessionStorage.getItem("billing-interval-intent")).toBeNull();
+    expect(window.sessionStorage.getItem("checkout-tracking-ref-intent")).toBeNull();
   });
 
   it("redirects a logged-out app-route hit to sign-in, preserving the return path (#304)", async () => {

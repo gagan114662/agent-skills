@@ -249,6 +249,7 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
       workspaceId: WS,
       planKey: "pro",
       billingEmail: " Buyer@Example.COM ",
+      trackingRef: "ipop_deadbeefdeadbeef",
     });
     expect(out.url).toMatch(/^https:\/\/.+/);
     expect(out.planKey).toBe("pro");
@@ -260,6 +261,7 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
       billingInterval: "month",
       kind: "plan_checkout",
       customerEmail: "buyer@example.com",
+      trackingRef: "ipop_deadbeefdeadbeef",
     });
     expect(link.customerEmail).toBe("buyer@example.com");
     expect(link.collectTax).toBe(true);
