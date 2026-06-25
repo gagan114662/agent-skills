@@ -497,7 +497,13 @@ export function ConsoleView({
   useEffect(() => {
     const active = (mc?.sessions ?? [])
       .filter((s) => s.status === "running" || s.status === "provisioning")
-      .map((s) => ({ id: s.id, channelId: s.channelId, agentMemberId: s.agentMemberId, status: s.status }));
+      .map((s) => ({
+        id: s.id,
+        channelId: s.channelId,
+        agentMemberId: s.agentMemberId,
+        status: s.status,
+        agentStatus: s.agentStatus,
+      }));
     store.setLiveSessions(active);
   }, [mc, store]);
 

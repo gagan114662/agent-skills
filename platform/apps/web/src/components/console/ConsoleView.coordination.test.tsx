@@ -183,8 +183,8 @@ describe("ConsoleView slim reload.chat header (#384)", () => {
       ...mcDto(),
       count: 2,
       sessions: [
-        { id: "s1", channelId: "c-seo", agentMemberId: "ag1", status: "running", elapsedMs: 1000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
-        { id: "s2", channelId: "c-seo", agentMemberId: "ag1", status: "running", elapsedMs: 2000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
+        { id: "s1", channelId: "c-seo", agentMemberId: "ag1", status: "running", agentStatus: "thinking", elapsedMs: 1000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
+        { id: "s2", channelId: "c-seo", agentMemberId: "ag1", status: "running", agentStatus: "drafting", elapsedMs: 2000, estimatedCostCents: 0, startedAt: null, progressAt: "2026-06-19T00:00:00Z" },
       ],
     });
     const utils = renderWithStore(<ConsoleView />);

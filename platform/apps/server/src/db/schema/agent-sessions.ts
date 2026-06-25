@@ -44,6 +44,13 @@ export const agentSessions = pgTable(
     })
       .notNull()
       .default("provisioning"),
+    // #1050: lifecycle status says whether the run is alive; agent_status says what the agent is doing now.
+    // It is intentionally separate so "running" can render as thinking/drafting/waiting/handoff in the feed.
+    agentStatus: text("agent_status", {
+      enum: ["thinking", "drafting", "waiting", "handoff", "idle", "done"],
+    })
+      .notNull()
+      .default("idle"),
     command: text("command").notNull(),
     // Coding-agent harness the session ran on (#50): the per-session selection (env default unless
     // overridden at launch). Nullable — rows created before #50 leave it unset.
@@ -96,6 +103,10 @@ export const agentSessions = pgTable(
     statusCk: check(
       "agent_sessions_status_ck",
       sql`${t.status} IN ('provisioning', 'running', 'completed', 'failed', 'timeout', 'idle_reaped', 'canceled')`,
+    ),
+    agentStatusCk: check(
+      "agent_sessions_agent_status_ck",
+      sql`${t.agentStatus} IN ('thinking', 'drafting', 'waiting', 'handoff', 'idle', 'done')`,
     ),
   }),
 );

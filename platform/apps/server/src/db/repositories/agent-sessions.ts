@@ -21,6 +21,8 @@ export type SessionStatus =
   | "idle_reaped"
   | "canceled";
 
+export type AgentActivityStatus = "thinking" | "drafting" | "waiting" | "handoff" | "idle" | "done";
+
 export type RuntimeKind = "local" | "sandbox";
 
 /** Resolved per-session resource + wall-clock budget (persisted on the row for audit). */
@@ -38,6 +40,7 @@ export interface AgentSession {
   createdByMemberId: string | null;
   runtime: RuntimeKind;
   status: SessionStatus;
+  agentStatus: AgentActivityStatus;
   command: string;
   /** Coding-agent harness the session ran on (#50). Null for rows created before #50. */
   harness: HarnessKind | null;
@@ -77,6 +80,7 @@ export interface LiveSessionRow {
   agentMemberId: string;
   createdByMemberId: string | null;
   status: SessionStatus;
+  agentStatus: AgentActivityStatus;
   /** COALESCE(last_heartbeat_at, started_at, created_at) — the session's last proof of progress. */
   progressAt: Date;
 }
@@ -89,6 +93,7 @@ const COLUMNS = {
   createdByMemberId: agentSessions.createdByMemberId,
   runtime: agentSessions.runtime,
   status: agentSessions.status,
+  agentStatus: agentSessions.agentStatus,
   command: agentSessions.command,
   harness: agentSessions.harness,
   sandboxId: agentSessions.sandboxId,
@@ -161,13 +166,23 @@ export async function markSessionRunning(id: string, sandboxId?: string): Promis
     .update(agentSessions)
     // #105: seed the heartbeat at start so a freshly-running session isn't instantly "stale" before
     // its first output chunk.
-    .set({ status: "running", startedAt: now, lastHeartbeatAt: now, sandboxId: sandboxId ?? null })
+    .set({
+      status: "running",
+      agentStatus: "thinking",
+      startedAt: now,
+      lastHeartbeatAt: now,
+      sandboxId: sandboxId ?? null,
+    })
     .where(eq(agentSessions.id, id));
 }
 
 /** Bump a session's liveness heartbeat (#105): the SessionManager calls this on every output chunk. */
-export async function heartbeatSession(id: string, at: Date = new Date()): Promise<void> {
-  await db.update(agentSessions).set({ lastHeartbeatAt: at }).where(eq(agentSessions.id, id));
+export async function heartbeatSession(
+  id: string,
+  at: Date = new Date(),
+  agentStatus: AgentActivityStatus = "drafting",
+): Promise<void> {
+  await db.update(agentSessions).set({ lastHeartbeatAt: at, agentStatus }).where(eq(agentSessions.id, id));
 }
 
 /** Finalize a session: terminal status + result/exit/snapshot + `endedAt`. */
@@ -184,6 +199,7 @@ export async function finalizeSession(
     .update(agentSessions)
     .set({
       status: fields.status,
+      agentStatus: "done",
       exitCode: fields.exitCode ?? null,
       result: fields.result ?? null,
       snapshotId: fields.snapshotId ?? null,
@@ -207,6 +223,7 @@ export async function forceFinalizeIfLive(
     .update(agentSessions)
     .set({
       status: fields.status,
+      agentStatus: "done",
       result: fields.result ?? null,
       exitCode: fields.exitCode ?? null,
       endedAt: new Date(),
@@ -280,6 +297,7 @@ export async function listLiveSessions(): Promise<LiveSessionRow[]> {
       agentMemberId: agentSessions.agentMemberId,
       createdByMemberId: agentSessions.createdByMemberId,
       status: agentSessions.status,
+      agentStatus: agentSessions.agentStatus,
       // A raw COALESCE loses drizzle/pg's timestamptz parser, so the value can come back as a string —
       // coerce to a Date below so callers always get a real Date.
       progressAt: sql<string>`COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.startedAt}, ${agentSessions.createdAt})`,
@@ -295,6 +313,7 @@ export interface WorkspaceLiveSession {
   channelId: string;
   agentMemberId: string;
   status: SessionStatus;
+  agentStatus: AgentActivityStatus;
   /** When the session was created (the elapsed-time anchor when `startedAt` is null). */
   createdAt: Date;
   /** When the session began running, or null (provisioning). */
@@ -310,6 +329,7 @@ export async function listWorkspaceLiveSessions(workspaceId: string): Promise<Wo
       channelId: agentSessions.channelId,
       agentMemberId: agentSessions.agentMemberId,
       status: agentSessions.status,
+      agentStatus: agentSessions.agentStatus,
       createdAt: agentSessions.createdAt,
       startedAt: agentSessions.startedAt,
       progressAt: sql<string>`COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.startedAt}, ${agentSessions.createdAt})`,

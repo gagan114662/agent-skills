@@ -31,10 +31,11 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
   // "Scout is working…" where the work is happening instead of only the global "N running" pill. Empty ⇒
   // nothing running here.
   const workingHere = activeChannelId ? liveSessions.filter((s) => s.channelId === activeChannelId) : [];
-  // De-duplicated by display name (a teammate could in theory have two sessions).
-  const workingNames = workingHere
-    .map((s) => authorLabel(directory, s.agentMemberId))
-    .filter((name, i, all) => all.indexOf(name) === i);
+  const workingPills = workingHere.map((s) => ({
+    id: s.id,
+    name: authorLabel(directory, s.agentMemberId),
+    label: agentStatusLabel(s.agentStatus),
+  }));
   // The server's message list/stream is flat and inclusive of replies (ADR-0006). Slack-style, a
   // reply stays in its thread unless it was explicitly "also sent to channel" — so the channel view
   // shows top-level messages plus replies flagged for the channel.
@@ -173,7 +174,7 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
         </button>
       )}
 
-      {workingNames.length > 0 && (
+      {workingPills.length > 0 && (
         <div className="typingind" role="status" aria-live="polite">
           <span className="typingind__dots" aria-hidden="true">
             <i />
@@ -181,7 +182,12 @@ export function MessagePane({ dmPeer }: MessagePaneProps = {}): React.JSX.Elemen
             <i />
           </span>
           <span className="typingind__label">
-            {formatWorking(workingNames)} {workingNames.length === 1 ? "is" : "are"} working…
+            {workingPills.map((p) => (
+              <span className="typingind__pill" key={p.id}>
+                <strong>{p.name}</strong>
+                <span>{p.label}</span>
+              </span>
+            ))}
           </span>
           {/* #469: a per-run cancel — the user can stop a run that's taking too long, right where they see it. */}
           <button
@@ -239,11 +245,22 @@ function ChannelStarters({
   );
 }
 
-/** "Scout" · "Scout and Quill" · "Scout, Quill and 1 more" — a compact list for the working indicator. */
-function formatWorking(names: string[]): string {
-  if (names.length === 1) return names[0]!;
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+function agentStatusLabel(status: AppState["liveSessions"][number]["agentStatus"]): string {
+  switch (status) {
+    case "thinking":
+      return "thinking";
+    case "drafting":
+      return "drafting";
+    case "waiting":
+      return "waiting";
+    case "handoff":
+      return "handoff";
+    case "done":
+      return "done";
+    case "idle":
+    default:
+      return "idle";
+  }
 }
 
 function MessageItem({ message, state }: { message: Message; state: AppState }): React.JSX.Element {
