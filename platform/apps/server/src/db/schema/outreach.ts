@@ -29,7 +29,7 @@ import { workspaces } from "./workspaces.js";
  * #155 colocation gate does not class them as governed metric surfaces.
  */
 
-export const OUTREACH_CHANNELS = ["email", "linkedin", "x"] as const;
+export const OUTREACH_CHANNELS = ["email", "linkedin", "x", "sms"] as const;
 export const OUTREACH_VARIANTS = ["time_saved", "productivity", "cost"] as const;
 export const OUTREACH_MESSAGE_STATUSES = [
   "drafted",
@@ -79,7 +79,7 @@ export const outreachMessages = pgTable(
       t.createdAt,
     ),
     byExperiment: index("outreach_messages_experiment_idx").on(t.workspaceId, t.experimentKey),
-    channelCk: check("outreach_messages_channel_ck", sql`${t.channel} IN ('email','linkedin','x')`),
+    channelCk: check("outreach_messages_channel_ck", sql`${t.channel} IN ('email','linkedin','x','sms')`),
     variantCk: check(
       "outreach_messages_variant_ck",
       sql`${t.variant} IN ('time_saved','productivity','cost')`,

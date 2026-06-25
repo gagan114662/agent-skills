@@ -16,12 +16,23 @@ import {
 } from "../../src/realworld/decide.js";
 
 const NONE = new Set<ServiceKind>();
-const ALL = new Set<ServiceKind>(["hosting", "esp", "registrar", "ad_account"]);
+const ALL = new Set<ServiceKind>(["hosting", "esp", "registrar", "ad_account", "sms"]);
 
 describe("real-world tool surface (#231) — safety invariants", () => {
   it("enumerates exactly the issue capabilities (incl. #250 publish_site) and is a closed surface", () => {
     expect([...REAL_WORLD_TOOL_NAMES].sort()).toEqual(
-      ["browse", "call_api", "generate_image", "post_social", "publish", "publish_site", "research", "send_email", "store_asset"].sort(),
+      [
+        "browse",
+        "call_api",
+        "generate_image",
+        "post_social",
+        "publish",
+        "publish_site",
+        "research",
+        "send_email",
+        "send_sms",
+        "store_asset",
+      ].sort(),
     );
     // unknown names throw — a new tool can never bypass the gate by being unclassified.
     expect(() => realWorldToolSpec("fly_a_drone" as never)).toThrow(/unknown real-world tool/);
@@ -71,7 +82,7 @@ describe("real-world tool surface (#231) — safety invariants", () => {
   it("classifies browse/research as read and the outward capabilities as gated actuators", () => {
     expect(decideToolGate("browse", { connectedAccounts: NONE }).requiresApproval).toBe(false);
     expect(decideToolGate("research", { connectedAccounts: NONE }).dataFlow).toBe("read");
-    for (const name of ["publish", "send_email", "post_social", "call_api"] as const) {
+    for (const name of ["publish", "send_email", "send_sms", "post_social", "call_api"] as const) {
       expect(isActuator(name)).toBe(true);
       expect(realWorldToolSpec(name).requiresApproval).toBe(true);
     }
@@ -95,6 +106,11 @@ describe("decideToolGate (#231) — account-gated readiness", () => {
     expect(decideToolGate("send_email", { connectedAccounts: ALL }).allowed).toBe(true);
   });
 
+  it("send_sms needs an opted-in SMS account", () => {
+    expect(missingAccountsFor("send_sms", new Set<ServiceKind>())).toEqual(["sms"]);
+    expect(decideToolGate("send_sms", { connectedAccounts: ALL }).allowed).toBe(true);
+  });
+
   it("read-only and internal tools are allowed with no accounts connected", () => {
     for (const name of ["browse", "research", "store_asset"] as const) {
       const d = decideToolGate(name, { connectedAccounts: NONE });
@@ -107,13 +123,13 @@ describe("decideToolGate (#231) — account-gated readiness", () => {
 describe("realWorldReadiness (#231) — what the owner must connect for real work", () => {
   it("required kinds are the union across outward tools", () => {
     expect(realWorldRequiredAccountKinds().sort()).toEqual(
-      ["ad_account", "esp", "hosting", "registrar"].sort(),
+      ["ad_account", "esp", "hosting", "registrar", "sms"].sort(),
     );
   });
 
   it("with nothing connected, every real-work account is still needed", () => {
     expect(realWorldReadinessNeeded(NONE).sort()).toEqual(
-      ["ad_account", "esp", "hosting", "registrar"].sort(),
+      ["ad_account", "esp", "hosting", "registrar", "sms"].sort(),
     );
   });
 

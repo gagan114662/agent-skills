@@ -346,6 +346,39 @@ describe("OutreachService.queue — owner-gated, never auto-sent", () => {
     expect(res.missingAccounts.length).toBeGreaterThan(0);
   });
 
+  it("selects SMS only for warm opted-in signals and parks it at the owner gate", async () => {
+    const { service, messages, approvals } = build({
+      connected: ["sms"],
+      signalKinds: ["meeting_reminder", "sms_opt_in"],
+    });
+    const res = await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    expect(res.status).toBe("pending_approval");
+    if (res.status !== "pending_approval") throw new Error("unreachable");
+    expect(res.channel).toBe("sms");
+    const stored = messages.rows.find((m) => m.id === res.messageId)!;
+    expect(stored.channel).toBe("sms");
+    expect(stored.subject).toBe("");
+    expect(stored.recipientRef).toBe("sms:contact-9");
+    expect(approvals.submitted[0].payload.channel).toBe("sms");
+    expect(messages.rows.every((m) => m.status !== "sent")).toBe(true);
+  });
+
+  it("does not fall back to SMS for ordinary non-opted-in signals", async () => {
+    const { service } = build({ connected: ["sms"], signalKinds: ["pricing_page_visit"] });
+    const res = await service.queue("ws-1", {
+      prospectKey: "p-1",
+      buyerBriefId: "brief-1",
+      requesterMemberId: "mem-1",
+    });
+    expect(res.status).toBe("blocked");
+    if (res.status !== "blocked") throw new Error("unreachable");
+    expect(res.missingAccounts).toContain("esp");
+  });
+
   it("rate-limits per channel (deliverability/brand)", async () => {
     const { service } = build({ caps: { perChannelDailyCap: 1 } });
     const first = await service.queue("ws-1", {

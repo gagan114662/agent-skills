@@ -273,7 +273,8 @@ export class OutreachService {
   /**
    * The channels a send could actually go out on — i.e. whose #231 tool gate is satisfied by the
    * connected accounts. Authoritative: it reuses {@link decideToolGate} (send_email needs esp+registrar,
-   * post_social needs an ad account), so the engine never selects a channel that would be blocked.
+   * send_sms needs an opted-in SMS account, post_social needs an ad account), so the engine never selects
+   * a channel that would be blocked.
    */
   async availableChannels(workspaceId: string): Promise<Set<OutreachChannel>> {
     const connectedAccounts = await this.deps.connectedAccounts(workspaceId);

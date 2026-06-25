@@ -28,6 +28,7 @@ export const REVERSIBILITY_BY_KIND: Record<ServiceKind, Reversibility> = {
   hosting: "cheap",
   ad_account: "cheap",
   esp: "reversible",
+  sms: "reversible",
   analytics: "reversible",
   other: "reversible",
 };

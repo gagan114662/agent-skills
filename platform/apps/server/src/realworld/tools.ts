@@ -13,7 +13,8 @@ import { REAL_WORLD_TOOL_NAMES } from "./types.js";
  *
  * - `publish` is OUTWARD (a public page = brand surface) so it is gated, but reversible (redeploy/take
  *   down) so it does not count as irreversible exposure.
- * - `send_email` / `post_social` / `call_api` are irreversible (deliverability/brand/money) → always gated.
+ * - `send_email` / `send_sms` / `post_social` / `call_api` are irreversible
+ *   (deliverability/brand/money) → always gated.
  * - `browse` / `research` are read-only DATA tools → free, and live in a service with no actuator.
  * - `store_asset` is an INTERNAL actuator (workspace asset storage, not outward) → reversible + free.
  */
@@ -45,6 +46,14 @@ export const REAL_WORLD_TOOLS: readonly RealWorldToolSpec[] = [
     requiresApproval: true,
     requiredAccounts: ["esp", "registrar"],
     description: "Send email through a connected, authenticated sending domain (gated — deliverability/brand)",
+  },
+  {
+    name: "send_sms",
+    reversibility: "irreversible",
+    dataFlow: "actuate",
+    requiresApproval: true,
+    requiredAccounts: ["sms"],
+    description: "Send SMS through a connected opted-in SMS provider (gated — deliverability/brand)",
   },
   {
     name: "post_social",

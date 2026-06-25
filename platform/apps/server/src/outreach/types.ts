@@ -20,7 +20,7 @@ import type { RealWorldToolName } from "../realworld/types.js";
  * The channels the engine can reach a buyer on. Each maps to a #231 real-world tool + the connected
  * account kind that send needs, so the existing tool-surface gate decides availability + what to connect.
  */
-export const OUTREACH_CHANNELS = ["email", "linkedin", "x"] as const;
+export const OUTREACH_CHANNELS = ["email", "linkedin", "x", "sms"] as const;
 export type OutreachChannel = (typeof OUTREACH_CHANNELS)[number];
 
 export function isOutreachChannel(value: unknown): value is OutreachChannel {
@@ -71,12 +71,16 @@ export function isOutreachReceiptKind(value: unknown): value is OutreachReceiptK
 
 /** The #231 tool a channel sends through (drives the connected-account gate). */
 export function channelTool(channel: OutreachChannel): RealWorldToolName {
-  return channel === "email" ? "send_email" : "post_social";
+  if (channel === "email") return "send_email";
+  if (channel === "sms") return "send_sms";
+  return "post_social";
 }
 
 /** The connected-account kind a channel needs (mirrors the #231 tool spec). */
 export function channelAccountKind(channel: OutreachChannel): ServiceKind {
-  return channel === "email" ? "esp" : "ad_account";
+  if (channel === "email") return "esp";
+  if (channel === "sms") return "sms";
+  return "ad_account";
 }
 
 /**
