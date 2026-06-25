@@ -78,6 +78,29 @@ describe("Admission (#71 — launch chokepoint: kill switch, budget, concurrency
     await expect(admission.acquire("ws2")).resolves.toBeDefined();
   });
 
+  it("serializes concurrent acquires so exactly the tenant cap is admitted (#879)", async () => {
+    const { admission } = makeAdmission({ ws1: { tenantConcurrency: 5 } });
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 10 }, () => admission.acquire("ws1")),
+    );
+
+    const admitted = attempts.filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<Admission["acquire"]>>> =>
+        result.status === "fulfilled",
+    );
+    const rejected = attempts.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    expect(admitted).toHaveLength(5);
+    expect(rejected).toHaveLength(5);
+    expect(rejected.every((result) => result.reason?.reason === "tenant_capacity")).toBe(true);
+    expect(admission.snapshot("ws1")).toMatchObject({ tenant: 5, global: 5 });
+
+    for (const ticket of admitted) ticket.value.release();
+    expect(admission.snapshot("ws1")).toMatchObject({ tenant: 0, global: 0 });
+  });
+
   it("enforces the global ceiling across tenants", async () => {
     const { admission } = makeAdmission({}, { globalMax: 1 });
     await admission.acquire("ws1");
