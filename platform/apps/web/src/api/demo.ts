@@ -83,5 +83,9 @@ export async function fetchDemoDeliverable(
     throw new DemoError("Something went wrong building your demo — please try again.", false);
   }
 
-  return (await res.json()) as DemoDeliverableDto;
+  try {
+    return (await res.json()) as DemoDeliverableDto;
+  } catch {
+    throw new DemoError("The demo service returned a non-JSON response — please try again.", false);
+  }
 }

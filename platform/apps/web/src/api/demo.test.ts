@@ -75,6 +75,19 @@ describe("fetchDemoDeliverable", () => {
     expect((err as DemoError).badInput).toBe(false);
   });
 
+  it("maps a 200 non-JSON response to a specific service-unavailable DemoError", async () => {
+    const impl: FetchLike = () =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+      });
+    const err = await fetchDemoDeliverable("acme.com", { fetchImpl: impl }).catch((e) => e);
+    expect(err).toBeInstanceOf(DemoError);
+    expect((err as DemoError).badInput).toBe(false);
+    expect((err as DemoError).message).toContain("non-JSON response");
+  });
+
   it("passes the abort signal through to fetch", async () => {
     const seen: (AbortSignal | undefined)[] = [];
     const impl: FetchLike = (_input, init) => {
