@@ -23,6 +23,8 @@ export interface SendDatum {
   signalKind: ReachSignalKind | null;
   /** UTC hour (0–23) the send fired, or null. */
   sentHourUtc: number | null;
+  /** Sending domain used for email, when known. */
+  sendingDomain?: string | null;
 }
 
 /** One external engagement receipt, carrying the originating send's attribution. */
@@ -31,6 +33,8 @@ export interface ReceiptDatum {
   variant: ReachVariant | null;
   signalKind: ReachSignalKind | null;
   sentHourUtc: number | null;
+  /** Sending domain of the originating email send, when known. */
+  sendingDomain?: string | null;
 }
 
 export interface VariantTally {

@@ -25,6 +25,10 @@ export interface ChannelSendContext {
     auth: SenderAuthInput;
     authResultsHeader?: string | null;
   } | null;
+  /** Selected sender address for this message, when a workspace has a sender pool. */
+  from?: string | null;
+  /** Selected sending domain for audit/rate-limit accounting. */
+  sendingDomain?: string | null;
 }
 
 export interface ReachChannelAdapter {

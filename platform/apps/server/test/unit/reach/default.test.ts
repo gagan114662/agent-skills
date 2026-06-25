@@ -41,4 +41,19 @@ describe("Reach default email sender wiring (#850)", () => {
     expect(sender.kind).toBe("postmark");
     expect(sender).not.toBe(dryRunEspSender);
   });
+
+  it("uses a configured sender pool address when the legacy From secret is absent (#907)", () => {
+    const sender = resolveReachPostmarkSender({
+      caps: {
+        ...LIVE_CAPS,
+        sendingDomains: [
+          { from: "founder@warm.example", domain: "warm.example", dailyCap: 25, enabled: true },
+        ],
+      },
+      secrets: { POSTMARK_SERVER_TOKEN: "pm-token" },
+    });
+
+    expect(sender.kind).toBe("postmark");
+    expect(sender).not.toBe(dryRunEspSender);
+  });
 });

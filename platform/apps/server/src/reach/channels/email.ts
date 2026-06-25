@@ -33,6 +33,7 @@ export interface EspSender {
     to: string;
     subject: string;
     body: string;
+    from?: string | null;
     headers?: Record<string, string>;
   }): Promise<{ externalId: string }>;
 }
@@ -149,7 +150,7 @@ export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAda
       }
 
       try {
-        const { externalId } = await sender.send({ to, subject: message.subject, body });
+        const { externalId } = await sender.send({ to, subject: message.subject, body, from: ctx.from });
         return {
           status: "sent",
           channel: "email",
@@ -157,7 +158,7 @@ export function createEmailChannel(deps: EmailChannelDeps = {}): ReachChannelAda
           detail:
             sender.kind === "dryrun"
               ? "dry-run (recorded-only, no network)"
-              : `sent via ${sender.kind}`,
+              : `sent via ${sender.kind}${ctx.sendingDomain ? ` from ${ctx.sendingDomain}` : ""}`,
         };
       } catch (err) {
         return {
