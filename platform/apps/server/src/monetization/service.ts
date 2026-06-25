@@ -22,6 +22,7 @@ import {
 } from "../approvals/policy.js";
 import type { BillingProvider } from "../billing/provider.js";
 import { verifyWebhookSignature } from "../billing/webhook.js";
+import { sanitizeTrackingRef } from "../attribution/tracking.js";
 import { makeRedactor } from "../runtime/redact.js";
 import {
   formatPrice,
@@ -80,6 +81,7 @@ export interface RevenueRecord {
   providerEventId: string;
   amountCents: number;
   currency: string;
+  trackingRef: string | null;
   occurredAtMs: number;
 }
 
@@ -181,6 +183,7 @@ export interface MonetizationStore {
     amountCents: number;
     currency: string;
     status: string;
+    trackingRef?: string | null;
     raw: string;
     occurredAtMs: number;
   }): Promise<{ deduped: boolean; revenue: RevenueRecord }>;
@@ -707,6 +710,7 @@ export class MonetizationService {
       amountCents: parsed.amountCents,
       currency: parsed.currency,
       status: parsed.status,
+      trackingRef: sanitizeTrackingRef(parsed.metadata.trackingRef),
       raw: redact(input.rawBody),
       occurredAtMs: this.now().getTime(),
     });
@@ -727,6 +731,7 @@ interface ParsedEvent {
   amountCents: number;
   currency: string;
   status: string;
+  metadata: Record<string, string | undefined>;
 }
 
 /**
@@ -743,6 +748,15 @@ function parseWebhookEvent(rawBody: string, defaultCurrency: string): ParsedEven
   }
   const data = (obj.data as Record<string, unknown> | undefined)?.object as Record<string, unknown> | undefined;
   const amount = num(data?.amount_total) ?? num(data?.amount) ?? num(data?.amount_received) ?? 0;
+  const metadata =
+    data?.metadata && typeof data.metadata === "object"
+      ? Object.fromEntries(
+          Object.entries(data.metadata as Record<string, unknown>).map(([key, value]) => [
+            key,
+            typeof value === "string" ? value : undefined,
+          ]),
+        )
+      : {};
   return {
     id: typeof obj.id === "string" && obj.id ? obj.id : "evt_unknown",
     type: typeof obj.type === "string" ? obj.type : "unknown",
@@ -752,6 +766,7 @@ function parseWebhookEvent(rawBody: string, defaultCurrency: string): ParsedEven
       (typeof data?.payment_status === "string" && data.payment_status) ||
       (typeof data?.status === "string" && data.status) ||
       "succeeded",
+    metadata,
   };
 }
 

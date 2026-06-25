@@ -19,6 +19,7 @@ import type { ApprovalStatus } from "../../src/approvals/policy.js";
 import type { BillingProvider } from "../../src/billing/provider.js";
 import { signWebhookPayload } from "../../src/billing/webhook.js";
 import { WebhookVerificationError } from "../../src/billing/webhook.js";
+import { attributeRevenue } from "../../src/attribution/chain.js";
 
 /** In-memory store mirroring the repo's idempotency on (workspace, providerEventId). */
 class MemoryStore implements MonetizationStore {
@@ -152,6 +153,7 @@ class MemoryStore implements MonetizationStore {
       providerEventId: input.providerEventId,
       amountCents: input.amountCents,
       currency: input.currency,
+      trackingRef: input.trackingRef ?? null,
       occurredAtMs: input.occurredAtMs,
     };
     this.revenue.push(revenue);
@@ -524,6 +526,57 @@ describe("MonetizationService — per-venture webhook ingestion (#188 AC4)", () 
     const replay = await service.ingestVentureWebhook({ workspaceId: WS, ventureIdeaId: VENTURE, rawBody: body, signature: sig });
     expect(replay.deduped).toBe(true);
     expect(store.revenue).toHaveLength(1); // no double count
+  });
+
+  it("carries a signed checkout tracking ref into the attribution ledger receipt (#1062)", async () => {
+    const trackingRef = "ipop_deadbeefdeadbeef";
+    const bodyWithRef = JSON.stringify({
+      id: "evt_pay_attr",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          amount_total: 4900,
+          currency: "usd",
+          payment_status: "paid",
+          metadata: { trackingRef },
+        },
+      },
+    });
+    const { service, vault } = build();
+    await vault.connect({ workspaceId: WS, ventureIdeaId: VENTURE, secrets: { STRIPE_WEBHOOK_SECRET: "whsec_v" } });
+    const sig = signWebhookPayload(bodyWithRef, "whsec_v", Math.floor(NOW.getTime() / 1000));
+
+    const result = await service.ingestVentureWebhook({
+      workspaceId: WS,
+      ventureIdeaId: VENTURE,
+      rawBody: bodyWithRef,
+      signature: sig,
+    });
+
+    expect(result.revenue?.trackingRef).toBe(trackingRef);
+    const credited = attributeRevenue(
+      [
+        {
+          artifactId: "https://example.com/pricing",
+          artifactKind: "seo_page",
+          channel: "seo",
+          trackingRef,
+          occurredAtMs: NOW.getTime() - 1_000,
+        },
+      ],
+      [
+        {
+          providerEventId: result.revenue!.providerEventId,
+          trackingRef: result.revenue!.trackingRef,
+          amountCents: result.revenue!.amountCents,
+          currency: result.revenue!.currency,
+          verified: true,
+          occurredAtMs: result.revenue!.occurredAtMs,
+        },
+      ],
+    );
+    expect(credited.attributed[0]?.providerEventId).toBe("evt_pay_attr");
+    expect(credited.attributed[0]?.amountCents).toBe(4900);
   });
 
   it("requires the venture's webhook secret (not connected ⇒ refuse)", async () => {

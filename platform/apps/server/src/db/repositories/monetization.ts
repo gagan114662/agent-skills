@@ -69,6 +69,7 @@ function toRevenue(row: typeof monetizationRevenue.$inferSelect): RevenueRecord 
     providerEventId: row.providerEventId,
     amountCents: row.amountCents,
     currency: row.currency,
+    trackingRef: row.trackingRef ?? null,
     occurredAtMs: row.occurredAt.getTime(),
   };
 }
@@ -261,6 +262,7 @@ export const dbMonetizationStore: MonetizationStore = {
         amountCents: input.amountCents,
         currency: input.currency,
         status: input.status,
+        trackingRef: input.trackingRef ?? null,
         raw: input.raw,
         occurredAt: new Date(input.occurredAtMs),
       })
@@ -298,6 +300,7 @@ export async function listVentureRevenueReceipts(
       providerEventId: monetizationRevenue.providerEventId,
       amountCents: monetizationRevenue.amountCents,
       currency: monetizationRevenue.currency,
+      trackingRef: monetizationRevenue.trackingRef,
       occurredAt: monetizationRevenue.occurredAt,
       ventureIdeaId: monetizationRevenue.ventureIdeaId,
     })
@@ -311,5 +314,6 @@ export async function listVentureRevenueReceipts(
     currency: r.currency,
     createdAtMs: r.occurredAt.getTime(),
     ventureIdeaId: r.ventureIdeaId,
+    trackingRef: r.trackingRef ?? null,
   }));
 }

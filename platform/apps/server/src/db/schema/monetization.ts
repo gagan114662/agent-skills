@@ -173,6 +173,9 @@ export const monetizationRevenue = pgTable(
     amountCents: integer("amount_cents").notNull().default(0),
     currency: text("currency").notNull().default("usd"),
     status: text("status").notNull(), // succeeded | paid | ...
+    // The #386 tracking ref carried through the venture's own Stripe checkout metadata. NULL ⇒ this
+    // external payment remains verified but unattributed in the attribution projection.
+    trackingRef: text("tracking_ref"),
     raw: jsonb("raw").notNull().default(sql`'{}'::jsonb`), // REDACTED webhook body
     /** When the payment happened — the period-bucketing basis for the ledger (NOT created_at). */
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
