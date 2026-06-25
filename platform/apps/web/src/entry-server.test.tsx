@@ -18,6 +18,7 @@ import {
   BRAND_ASSETS,
   LEGAL,
   COMPANY,
+  SECURITY,
   SEGMENT_LANDING_PAGES,
 } from "./brand.js";
 
@@ -36,6 +37,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       "/",
       "/blog",
       "/pricing",
+      "/security",
       "/terms",
       "/privacy",
       "/company",
@@ -58,6 +60,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     ["/privacy", "Privacy", LEGAL.privacy.title],
     ["/dpa", "DPA", LEGAL.dpa.title],
     ["/company", "Company", COMPANY.title],
+    ["/security", "Security", SECURITY.title],
   ])("prerenders %s with public legal copy and breadcrumbs (#863)", (urlPath, titleWord, h1) => {
     const page = byPath(urlPath)!;
     expect(page.title).toContain(titleWord);

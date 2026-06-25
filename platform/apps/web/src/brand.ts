@@ -2303,6 +2303,11 @@ export const PAGE_SEO = {
     title: `Refund policy — ${BRAND.name} support SLA and billing terms`,
     description: REFUND_POLICY.sub,
   },
+  "/security": {
+    name: SECURITY.navLabel,
+    title: `Security & trust — ${BRAND.name} shipped controls and roadmap`,
+    description: SECURITY.sub,
+  },
   "/terms": {
     name: "Terms",
     title: `Terms of Service — ${BRAND.name} platform terms`,
