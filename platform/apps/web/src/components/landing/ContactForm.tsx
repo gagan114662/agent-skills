@@ -12,6 +12,20 @@ import { apiUrl } from "../../api/config.js";
 type Status = "idle" | "sending" | "sent" | "error";
 type NextStep = { label: string; href: string };
 
+function attributionFromLocation(): {
+  source: string;
+  trackingRef?: string;
+} {
+  if (typeof window === "undefined") return { source: "landing_form" };
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref")?.trim();
+  const utmSource = params.get("utm_source")?.trim();
+  return {
+    source: params.get("source")?.trim() || utmSource || "landing_form",
+    ...(ref ? { trackingRef: ref } : {}),
+  };
+}
+
 export function ContactForm(): React.JSX.Element {
   const [status, setStatus] = useState<Status>("idle");
   const [nextStep, setNextStep] = useState<NextStep | null>(null);
@@ -26,7 +40,7 @@ export function ContactForm(): React.JSX.Element {
       email: String(data.get("email") ?? ""),
       message: String(data.get("message") ?? ""),
       companyWebsite: String(data.get("companyWebsite") ?? ""),
-      source: "landing_form",
+      ...attributionFromLocation(),
     };
     setStatus("sending");
     try {

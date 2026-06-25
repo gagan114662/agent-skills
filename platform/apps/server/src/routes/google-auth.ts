@@ -33,6 +33,12 @@ import { createGoogleOAuthClient, type GoogleOAuthClient } from "../auth/google-
 import type { SessionManager } from "../runtime/manager.js";
 import { makeDefaultOnboardingBootstrap } from "../auth/onboarding-bootstrap-default.js";
 import type { OnboardingBootstrapInput } from "../auth/onboarding-bootstrap.js";
+import type { GrowthService } from "../growth/service.js";
+import {
+  attributionMetadata,
+  readSignupAttribution,
+  type SignupAttribution,
+} from "../attribution/signup.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days, matching the email/password flow
 
@@ -72,6 +78,8 @@ export interface GoogleAuthRoutesOptions {
    * tests pin the behavior. Default OFF ⇒ today's single full-scope #260 consent at signup.
    */
   signupEntry?: SignupEntryCaps;
+  /** Best-effort signup acquisition instrumentation. */
+  growth?: GrowthService;
 }
 
 /**
@@ -122,6 +130,9 @@ export async function googleAuthRoutes(
     const raw = (req.query as { intent?: unknown }).intent;
     return raw === "seo" ? "seo" : "signup";
   }
+  function attributionFromQuery(req: { query: unknown }): SignupAttribution {
+    return readSignupAttribution({ query: req.query as Record<string, unknown> });
+  }
   function redirectError(reply: FastifyReply, code: string): FastifyReply {
     return reply.redirect(`${ONBOARDING_PATH}?error=${encodeURIComponent(code)}`);
   }
@@ -166,11 +177,17 @@ export async function googleAuthRoutes(
     // SEO step. Default OFF ⇒ the full set at every step (today's #260 single consent). The intent rides in
     // the signed state so the callback records the matching connection capabilities.
     const intent = intentFromQuery(req);
+    const attribution = attributionFromQuery(req);
     const progressive = signupEntryCaps.progressiveScopes;
     const scopes = resolveOnboardingScopes({ progressive, intent });
     const kid = stateKeyId();
     app.log.info({ kid }, "google oauth state signed");
-    const state = signState({ domain: result.domain, nonce: newStateNonce(), intent }, stateSecret(), now(), kid);
+    const state = signState(
+      { domain: result.domain, nonce: newStateNonce(), intent, attribution },
+      stateSecret(),
+      now(),
+      kid,
+    );
     return reply.redirect(buildGoogleAuthorizeUrl({ config, state, scopes }));
   });
 
@@ -222,6 +239,14 @@ export async function googleAuthRoutes(
       userId = created.userId;
       memberId = created.memberId;
       workspaceId = ws.id;
+      const attribution = { ...readSignupAttribution({}), ...payload.attribution };
+      await opts.growth
+        ?.recordEvent(workspaceId, {
+          kind: "acquisition",
+          source: attribution.source,
+          metadata: attributionMetadata(attribution),
+        })
+        .catch((err: unknown) => app.log.error({ err }, "google signup acquisition event failed"));
     }
 
     // Seal the Google tokens into the encrypted per-workspace connection (#192 vault, service_key `google`).

@@ -14,6 +14,7 @@ import {
   SIGNUP_PUBLIC_RATE_LIMIT,
   publicRateLimitPreHandler,
 } from "../http/rate-limit.js";
+import { readSignupAttribution, type SignupAttribution } from "../attribution/signup.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MIN_PASSWORD_LENGTH = 2;
@@ -81,7 +82,11 @@ export interface AuthRoutesOptions {
    * Best-effort hook fired after a new workspace + owner are created (#123 seed-on-signup). It must
    * not throw — a failure here never fails the signup that already succeeded.
    */
-  onWorkspaceCreated?: (workspaceId: string, ownerMemberId: string) => Promise<void>;
+  onWorkspaceCreated?: (
+    workspaceId: string,
+    ownerMemberId: string,
+    attribution: SignupAttribution,
+  ) => Promise<void>;
 }
 
 export async function authRoutes(
@@ -97,7 +102,20 @@ export async function authRoutes(
       password?: string;
       displayName?: string;
       workspaceSlug?: string;
+      source?: string;
+      utmSource?: string;
+      utm_source?: string;
+      utmMedium?: string;
+      utm_medium?: string;
+      utmCampaign?: string;
+      utm_campaign?: string;
+      trackingRef?: string;
+      ref?: string;
     };
+    const attribution = readSignupAttribution({
+      body: b as Record<string, unknown>,
+      query: req.query as Record<string, unknown>,
+    });
     if (!b.email || !b.password || !b.displayName) {
       return reply.code(400).send({ error: "email, password, displayName required" });
     }
@@ -140,7 +158,7 @@ export async function authRoutes(
     setSessionCookie(reply, raw);
     // #123/#902: seed the department fleet so the owner lands inside a working agency. Best-effort —
     // the hook never throws, so signup can't be broken.
-    if (opts.onWorkspaceCreated) await opts.onWorkspaceCreated(ws.id, memberId);
+    if (opts.onWorkspaceCreated) await opts.onWorkspaceCreated(ws.id, memberId, attribution);
     return reply.code(201).send({ ok: true });
   });
 

@@ -80,15 +80,16 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
           cookies: { rid: w.cookie },
         })
       ).json();
-      expect(summary.funnel).toEqual({ acquisition: 100, activation: 40, conversion: 10, retention: 20 });
-      // activationRate .4 (*.4) + conversionRate .25 (*.35) + retentionRate .5 (*.25) = .16+.0875+.125 = .3725
-      expect(summary.score).toBeCloseTo(37.25, 1);
-      expect(summary.ventureSignal).toBeCloseTo(3.725, 2);
+      // #901: signup itself is the first acquisition, so the manually-recorded 100 sits on top of it.
+      expect(summary.funnel).toEqual({ acquisition: 101, activation: 40, conversion: 10, retention: 20 });
+      // activationRate 40/101 (*.4) + conversionRate .25 (*.35) + retentionRate .5 (*.25) ≈ .3709
+      expect(summary.score).toBeCloseTo(37.09, 1);
+      expect(summary.ventureSignal).toBeCloseTo(3.709, 2);
       expect(summary.topSources[0]).toEqual({ source: "producthunt", value: 80 });
       expect(summary.sourceMetrics).toEqual([
         expect.objectContaining({ source: "producthunt", acquisition: 80, conversion: 4, conversionRate: 0.05 }),
         expect.objectContaining({ source: "organic", acquisition: 20, conversion: 6, conversionRate: 0.3 }),
-        expect.objectContaining({ source: "(unattributed)", activation: 40, retention: 20 }),
+        expect.objectContaining({ source: "(unattributed)", acquisition: 1, activation: 40, retention: 20 }),
       ]);
       expect(summary.recommendations).toHaveLength(3);
       // conversionRate (.25) is the weakest stage → first recommendation.
@@ -153,15 +154,14 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
           cookies: { rid: w.cookie },
         })
       ).json();
-      expect(console.growth.totalEvents).toBe(6);
-      expect(console.growth.acquisition).toBe(100);
-      expect(console.growth.score).toBeCloseTo(37.25, 1);
+      expect(console.growth.totalEvents).toBe(7);
+      expect(console.growth.acquisition).toBe(101);
+      expect(console.growth.score).toBeCloseTo(37.09, 1);
       expect(console.growth.topSource).toBe("producthunt");
       expect(console.growth.experimentsTotal).toBe(1);
       expect(console.growth.externalPostsSubmitted).toBe(1);
 
-      // (6) tenant isolation: the sibling workspace recorded nothing → zeroed funnel + score, and never
-      // saw w's events.
+      // (6) tenant isolation: the sibling workspace sees only its own signup acquisition and never w's events.
       const otherSummary = (
         await app.inject({
           method: "GET",
@@ -169,13 +169,13 @@ describe("growth loop (real Postgres): instrument → score → experiment → #
           cookies: { rid: other.cookie },
         })
       ).json();
-      expect(otherSummary.funnel).toEqual({ acquisition: 0, activation: 0, conversion: 0, retention: 0 });
+      expect(otherSummary.funnel).toEqual({ acquisition: 1, activation: 0, conversion: 0, retention: 0 });
       expect(otherSummary.score).toBe(0);
       const otherEvents = await db
         .select()
         .from(growthEvents)
         .where(eq(growthEvents.workspaceId, other.workspaceId));
-      expect(otherEvents).toHaveLength(0);
+      expect(otherEvents).toHaveLength(1);
     },
   );
 });

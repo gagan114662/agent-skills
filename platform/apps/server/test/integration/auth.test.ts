@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { growthEvents, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
 
 let app: FastifyInstance;
@@ -75,6 +75,44 @@ describe("auth & identity (real Postgres)", () => {
 
     expect(channels.length).toBeGreaterThan(0);
     expect(agents.length).toBeGreaterThan(0);
+  });
+
+  it("email signup with UTM params creates the acquisition growth denominator (#901)", async () => {
+    const slug = `utm-${newId()}`;
+    createdWorkspaceSlugs.push(slug);
+    const signup = await app.inject({
+      method: "POST",
+      url: "/auth/signup?utm_source=producthunt&utm_medium=launch&utm_campaign=alpha&ref=trk_901",
+      payload: {
+        email: `utm-${newId()}@example.com`,
+        password: "s3cret-pw",
+        displayName: "UTM Founder",
+        workspaceSlug: slug,
+      },
+    });
+    expect(signup.statusCode).toBe(201);
+    const cookie = sessionCookie(signup);
+    const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json() as {
+      workspaceId: string;
+    };
+
+    const rows = await db
+      .select()
+      .from(growthEvents)
+      .where(eq(growthEvents.workspaceId, me.workspaceId));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "acquisition",
+        source: "producthunt",
+        value: 1,
+        metadata: expect.objectContaining({
+          utmSource: "producthunt",
+          utmMedium: "launch",
+          utmCampaign: "alpha",
+          trackingRef: "trk_901",
+        }),
+      }),
+    ]);
   });
 
   it("rejects malformed email signup before workspace access", async () => {

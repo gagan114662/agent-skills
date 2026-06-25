@@ -195,6 +195,7 @@ import type { MonetizationService } from "./monetization/service.js";
 import type { MonetizationEngine } from "./monetization/engine.js";
 import { growthRoutes } from "./routes/growth.js";
 import { createDefaultGrowthService } from "./growth/default.js";
+import { attributionMetadata, type SignupAttribution } from "./attribution/signup.js";
 import { decisionMakerRoutes } from "./routes/decision-maker.js";
 import { createDefaultDecisionMakerService } from "./decision-maker/default.js";
 import type { DecisionMakerService } from "./decision-maker/service.js";
@@ -700,14 +701,29 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager, scoped to its tools, with its result threaded under the invoking @mention. The
   // SubagentService is the single RBAC gate (reuses the #9 capability ladder — no new authority).
   app.register(subagentRoutes, { sessionManager });
+  // #901 signup attribution: construct growth before auth/OAuth so both entry points can record the
+  // acquisition denominator without waiting for the growth routes to be registered.
+  const growthService = opts.growth ?? createDefaultGrowthService();
   // #123 marketing department fleet: seed a workspace into a working agency (a channel + a named agent
   // per marketing function), turn an @mention into a REAL harness session through the venture-gated
   // launcher (kill-switch + tenant-budget aware), and expose the team panel + its task records. External
   // sends stay #13-gated, sensitive-by-default. authRoutes is registered here too so signup can
   // auto-seed (config default-OFF) through the SAME SessionManager.
   app.register(authRoutes, {
-    onWorkspaceCreated: (workspaceId: string, ownerMemberId: string) =>
-      maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+    onWorkspaceCreated: async (
+      workspaceId: string,
+      ownerMemberId: string,
+      attribution: SignupAttribution,
+    ) => {
+      await Promise.allSettled([
+        maybeAutoSeedOnSignup(sessionManager, workspaceId, ownerMemberId, app.log),
+        growthService.recordEvent(workspaceId, {
+          kind: "acquisition",
+          source: attribution.source,
+          metadata: attributionMetadata(attribution),
+        }),
+      ]);
+    },
   });
   const authSessionCleanupEngine =
     opts.authSessionCleanupEngine ?? createDefaultAuthSessionCleanupEngine(app.log);
@@ -719,7 +735,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // create/attach the workspace, seal the connection, kick Scout to verify the domain + submit the sitemap,
   // land on the board. Default reads Google config from env (off until configured) and builds the real
   // bootstrap over THIS SessionManager; tests inject a fake client + recording bootstrap.
-  app.register(googleAuthRoutes, { sessionManager, ...opts.googleAuth });
+  app.register(googleAuthRoutes, { sessionManager, growth: growthService, ...opts.googleAuth });
   app.register(marketingRoutes, { sessionManager });
   // #282 agent registry + A2A: list the fleet's declared contracts and run governed, observable
   // agent-to-agent calls. Default OFF + owner-workspace-first; the call route reuses the marketing
@@ -898,7 +914,6 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // portfolio loop + #104 console, and let the marketing fleet (#123) propose channel experiments —
   // external posting stays behind the existing #13 `external.send` gate (a human posts). Default-OFF.
   // Built before the console + portfolio loop so both can read per-venture growth.
-  const growthService = opts.growth ?? createDefaultGrowthService();
   // #222 customer discovery engine: per-venture signal layer → ranked "who to reach out to now" queue +
   // PQL events + the 5-stage GTM pipeline. READ-ONLY (it never sends — outreach is #225). Shares the live
   // `growthService` so an ingested signal lights up the founder-console growth panel (#104) with real,
