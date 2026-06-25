@@ -44,12 +44,14 @@ export interface SubtaskResult {
   subtaskId: string;
   sessionId: string | null;
   ok: boolean;
+  visibilityDegraded?: boolean;
   error?: string;
 }
 
 export interface TeamRunResult {
   teamRunId: string;
   results: SubtaskResult[];
+  visibilityDegraded: boolean;
 }
 
 export interface TeamCoordinatorDeps {
@@ -80,6 +82,11 @@ export interface TeamCoordinatorDeps {
 export class TeamCoordinator {
   private readonly tracer: AgentTracer;
   private readonly now: () => string;
+  private readonly pendingAnnouncements: Array<{
+    workspaceId: string;
+    channelId: string;
+    event: TeamEvent;
+  }> = [];
 
   constructor(private readonly deps: TeamCoordinatorDeps) {
     this.tracer = deps.tracer ?? noopTracer;
@@ -118,11 +125,16 @@ export class TeamCoordinator {
     } else {
       await body({});
     }
-    return { teamRunId: input.teamRunId, results };
+    return {
+      teamRunId: input.teamRunId,
+      results,
+      visibilityDegraded: results.some((r) => r.visibilityDegraded),
+    };
   }
 
   /** Read a channel's recent team events (peers catching up before they act). */
-  readEvents(channelId: string, opts?: { limit?: number }): Promise<TeamEvent[]> {
+  async readEvents(channelId: string, opts?: { limit?: number }): Promise<TeamEvent[]> {
+    await this.flushPending(channelId);
     return this.deps.channel.readRecentEvents(channelId, opts);
   }
 
@@ -132,7 +144,9 @@ export class TeamCoordinator {
     subtask: Subtask,
     parentSpanId: string | undefined,
   ): Promise<SubtaskResult> {
-    await this.announce(input, subtask, "started", `started: ${subtask.task}`);
+    let visibilityDegraded = false;
+    let delivered = await this.announce(input, subtask, "started", `started: ${subtask.task}`);
+    visibilityDegraded = visibilityDegraded || !delivered;
     try {
       const { id } = await this.deps.launcher.launch({
         workspaceId: input.workspaceId,
@@ -144,23 +158,31 @@ export class TeamCoordinator {
         parentSpanId,
       });
       await this.deps.launcher.join(id);
-      await this.announce(input, subtask, "done", `done: ${subtask.task}`);
-      return { subtaskId: subtask.subtaskId, sessionId: id, ok: true };
+      delivered = await this.announce(input, subtask, "done", `done: ${subtask.task}`);
+      visibilityDegraded = visibilityDegraded || !delivered;
+      return { subtaskId: subtask.subtaskId, sessionId: id, ok: true, visibilityDegraded };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       this.deps.logger.error({ err: error, subtaskId: subtask.subtaskId }, "team subtask failed");
-      await this.announce(input, subtask, "blocked", `blocked: ${error}`);
-      return { subtaskId: subtask.subtaskId, sessionId: null, ok: false, error };
+      delivered = await this.announce(input, subtask, "blocked", `blocked: ${error}`);
+      visibilityDegraded = visibilityDegraded || !delivered;
+      return {
+        subtaskId: subtask.subtaskId,
+        sessionId: null,
+        ok: false,
+        error,
+        visibilityDegraded,
+      };
     }
   }
 
-  /** Post a coordinator-authored lifecycle event to the team channel (best-effort, never fatal). */
+  /** Post a coordinator-authored lifecycle event to the team channel (queued on failure). */
   private async announce(
     input: TeamRunInput,
     subtask: Subtask,
     kind: TeamEventKind,
     summary: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const event: TeamEvent = {
       teamRunId: input.teamRunId,
       subtaskId: subtask.subtaskId,
@@ -170,18 +192,52 @@ export class TeamCoordinator {
       branch: subtask.branch,
       createdAt: this.now(),
     };
+    const flushed = await this.flushPending(input.channelId);
     try {
       await this.deps.channel.postEvent({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         event,
       });
+      return flushed;
     } catch (err) {
-      // A notification failure must not break the run — the session itself is the work of record.
+      this.pendingAnnouncements.push({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        event,
+      });
       this.deps.logger.warn(
         { err: err instanceof Error ? err.message : String(err), kind },
-        "team event post failed",
+        "team event post failed; queued for retry",
       );
+      return false;
     }
+  }
+
+  private async flushPending(channelId: string): Promise<boolean> {
+    let flushedAll = true;
+    for (let i = 0; i < this.pendingAnnouncements.length; ) {
+      const pending = this.pendingAnnouncements[i];
+      if (!pending || pending.channelId !== channelId) {
+        i += 1;
+        continue;
+      }
+      try {
+        await this.deps.channel.postEvent(pending);
+        this.pendingAnnouncements.splice(i, 1);
+      } catch (err) {
+        flushedAll = false;
+        this.deps.logger.warn(
+          {
+            err: err instanceof Error ? err.message : String(err),
+            kind: pending.event.kind,
+            subtaskId: pending.event.subtaskId,
+          },
+          "queued team event retry failed",
+        );
+        i += 1;
+      }
+    }
+    return flushedAll;
   }
 }
