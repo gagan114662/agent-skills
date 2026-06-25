@@ -1,92 +1,108 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DeliverablePreview } from "./DeliverablePreview.js";
 import { ONBOARDING } from "../brand.js";
-import type { EventSourceLike } from "../api/deliverable.js";
+import type { DemoDeliverableDto, FetchLike } from "../api/demo.js";
 
 /**
- * #633: the live deliverable view streams a real artifact in (start → sections → done) while the parallel
- * sign-in sits beside it. A fake EventSource (jsdom has none) drives the frames so we can assert sections
- * appear, the sign-in is always reachable (config is never a gate), and a failed stream degrades honestly.
+ * #633/#1221: the live deliverable view fetches one robust JSON artifact and reveals it section by section
+ * while the parallel sign-in sits beside it. Fake fetches keep this deterministic under jsdom and prove a
+ * failed build degrades honestly instead of faking output.
  */
 
-class FakeEventSource implements EventSourceLike {
-  url: string;
-  closed = false;
-  onerror: ((ev: unknown) => void) | null = null;
-  onopen: ((ev: unknown) => void) | null = null;
-  listeners = new Map<string, (ev: { data: string }) => void>();
-  constructor(url: string) {
-    this.url = url;
-  }
-  addEventListener(type: string, listener: (ev: { data: string }) => void): void {
-    this.listeners.set(type, listener);
-  }
-  close(): void {
-    this.closed = true;
-  }
-  emit(type: string, data: unknown): void {
-    act(() => this.listeners.get(type)?.({ data: JSON.stringify(data) }));
-  }
-  fail(): void {
-    act(() => this.onerror?.(null));
-  }
+const PLAN: DemoDeliverableDto = {
+  business: { url: "https://acme.com", host: "acme.com", name: "Acme" },
+  title: "Acme's first-week growth teardown",
+  subtitle: "A real deliverable for acme.com",
+  sections: [
+    { id: "snapshot", kind: "insight", heading: "Snapshot", body: "Body one" },
+    { id: "wins", kind: "action", heading: "Quick wins", body: "Body two" },
+  ],
+};
+
+function okFetch(plan: DemoDeliverableDto = PLAN, calls: string[] = []): FetchLike {
+  return async (input) => {
+    calls.push(input);
+    return { ok: true, status: 200, json: async () => plan };
+  };
 }
 
-let source: FakeEventSource | undefined;
-const factory = (url: string): EventSourceLike => (source = new FakeEventSource(url));
+function failingFetch(): FetchLike {
+  return async () => ({ ok: false, status: 500, json: async () => ({}) });
+}
+
+function deferredFetch(calls: string[] = []): { fetchImpl: FetchLike; resolve: (plan?: DemoDeliverableDto) => void } {
+  let resolve!: (plan?: DemoDeliverableDto) => void;
+  const promise = new Promise<DemoDeliverableDto | undefined>((r) => {
+    resolve = r;
+  });
+  return {
+    resolve,
+    fetchImpl: async (input) => {
+      calls.push(input);
+      const plan = await promise;
+      return { ok: true, status: 200, json: async () => plan ?? PLAN };
+    },
+  };
+}
 
 afterEach(() => {
-  source = undefined;
   vi.restoreAllMocks();
 });
 
-function renderPreview(overrides?: { onSignIn?: () => void; onRestart?: () => void }) {
+function renderPreview(overrides?: {
+  fetchImpl?: FetchLike;
+  revealDelayMs?: number;
+  onSignIn?: () => void;
+  onRestart?: () => void;
+}) {
   const onSignIn = overrides?.onSignIn ?? vi.fn();
   const onRestart = overrides?.onRestart ?? vi.fn();
   render(
-    <DeliverablePreview url="acme.com" onSignIn={onSignIn} onRestart={onRestart} eventSourceFactory={factory} />,
+    <DeliverablePreview
+      url="acme.com"
+      onSignIn={onSignIn}
+      onRestart={onRestart}
+      fetchImpl={overrides?.fetchImpl ?? okFetch()}
+      revealDelayMs={overrides?.revealDelayMs ?? 0}
+    />,
   );
   return { onSignIn, onRestart };
 }
 
-describe("DeliverablePreview (#633)", () => {
-  it("opens the stream for the typed url and shows a working state before any frame", () => {
-    renderPreview();
-    expect(source?.url).toBe("/onboarding/deliverable/stream?url=acme.com");
+describe("DeliverablePreview (#633/#1221)", () => {
+  it("fetches the single-shot deliverable for the typed url and shows a working state while pending", async () => {
+    const calls: string[] = [];
+    const pending = deferredFetch(calls);
+    renderPreview({ fetchImpl: pending.fetchImpl });
+
+    expect(calls).toEqual(["/onboarding/deliverable?url=acme.com"]);
     expect(screen.getByRole("status")).toHaveTextContent(ONBOARDING.deliverable.working);
+
+    pending.resolve();
+    await screen.findByRole("heading", { level: 1, name: /Acme's first-week growth teardown/i });
   });
 
-  it("renders the header and each section as it streams in", () => {
+  it("renders the header and each section from the fetched artifact", async () => {
     renderPreview();
-    source!.emit("start", {
-      business: { url: "https://acme.com", host: "acme.com", name: "Acme" },
-      title: "Acme's first-week growth teardown",
-      subtitle: "A real deliverable for acme.com",
-      sectionCount: 2,
-    });
-    source!.emit("section", { id: "snapshot", kind: "insight", heading: "Snapshot", body: "Body one", index: 0 });
-    source!.emit("section", { id: "wins", kind: "action", heading: "Quick wins", body: "Body two", index: 1 });
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Acme's first-week growth teardown");
-    expect(screen.getByText("Snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Quick wins")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Acme's first-week growth teardown",
+    );
+    expect(await screen.findByText("Snapshot")).toBeInTheDocument();
+    expect(await screen.findByText("Quick wins")).toBeInTheDocument();
     expect(screen.getByText(ONBOARDING.deliverable.kinds.insight)).toBeInTheDocument();
     expect(screen.getByText(ONBOARDING.deliverable.kinds.action)).toBeInTheDocument();
   });
 
-  it("shows the done message and closes the source when the stream finishes", () => {
+  it("shows the done message after the fetched sections are revealed", async () => {
     renderPreview();
-    source!.emit("section", { id: "a", kind: "draft", heading: "H", body: "B", index: 0 });
-    source!.emit("done", { sectionCount: 1 });
-    expect(screen.getByText(ONBOARDING.deliverable.ready)).toBeInTheDocument();
-    expect(source!.closed).toBe(true);
+    await screen.findByText(ONBOARDING.deliverable.ready);
   });
 
   it("keeps the sign-in reachable the whole time (config is never a gate)", async () => {
     const { onSignIn } = renderPreview();
-    // Even before any artifact streams in, the parallel sign-in is present and works.
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
     expect(onSignIn).toHaveBeenCalledOnce();
   });
@@ -97,11 +113,20 @@ describe("DeliverablePreview (#633)", () => {
     expect(onRestart).toHaveBeenCalledOnce();
   });
 
-  it("degrades honestly when the stream fails before any section (no faked artifact)", () => {
-    renderPreview();
-    source!.fail();
-    expect(screen.getByRole("alert")).toHaveTextContent(ONBOARDING.deliverable.error);
-    // The sign-in is still offered so the visitor is never stuck.
+  it("degrades honestly when the preview fetch fails before any section (no faked artifact)", async () => {
+    renderPreview({ fetchImpl: failingFetch() });
+    expect(await screen.findByRole("alert")).toHaveTextContent(ONBOARDING.deliverable.error);
+    expect(screen.queryByText("Snapshot")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") })).toBeInTheDocument();
+  });
+
+  it("paces section reveal locally after the full artifact is fetched", async () => {
+    renderPreview({ revealDelayMs: 10 });
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText("Snapshot")).not.toBeInTheDocument();
+
+    expect(await screen.findByText("Snapshot")).toBeInTheDocument();
+    expect(await screen.findByText("Quick wins")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(ONBOARDING.deliverable.ready)).toBeInTheDocument());
   });
 });
