@@ -5,5 +5,21 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "buildCommand": "VITE_RELOAD_BUILD_SHA=\"${VERCEL_GIT_COMMIT_SHA:-}\" pnpm --filter @reload/web build",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/healthz", "destination": "https://api.ipop.ai/healthz" },
+    { "source": "/livez", "destination": "https://api.ipop.ai/livez" },
+    { "source": "/readyz", "destination": "https://api.ipop.ai/readyz" },
+    { "source": "/version", "destination": "https://api.ipop.ai/version" },
+    { "source": "/ws", "destination": "https://api.ipop.ai/ws" },
+    { "source": "/auth/:path*", "destination": "https://api.ipop.ai/auth/:path*" },
+    { "source": "/me", "destination": "https://api.ipop.ai/me" },
+    { "source": "/me/:path*", "destination": "https://api.ipop.ai/me/:path*" },
+    { "source": "/site/:path*", "destination": "https://api.ipop.ai/site/:path*" },
+    { "source": "/onboarding/:path*", "destination": "https://api.ipop.ai/onboarding/:path*" },
+    { "source": "/inbound/:path*", "destination": "https://api.ipop.ai/inbound/:path*" },
+    { "source": "/workspaces/:path*", "destination": "https://api.ipop.ai/workspaces/:path*" },
+    { "source": "/channels/:path*", "destination": "https://api.ipop.ai/channels/:path*" },
+    { "source": "/approvals/:path*", "destination": "https://api.ipop.ai/approvals/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

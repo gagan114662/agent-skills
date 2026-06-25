@@ -43,6 +43,7 @@ import {
   DEFAULT_STARTERS,
   starterPromptsFor,
   LEGAL,
+  REFUND_POLICY,
 } from "./brand.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -277,6 +278,36 @@ describe("landing workspace simulation copy (#165)", () => {
     expect(CONTACT.trialHref).toContain("/start");
     expect(SITE.support).toBe(SUPPORT_CONTACT);
     expect(LANDING.footer.social.map((s) => s.href).filter((href) => href.startsWith("/social/"))).toEqual([]);
+  });
+});
+
+describe("company/procurement page copy (#1188)", () => {
+  it("does not fall back to vague operator wording for legal/procurement facts", () => {
+    const details = COMPANY.details.map((detail) => `${detail.label}: ${detail.value}`).join("\n");
+
+    expect(details).not.toMatch(/ipop\.ai operator/i);
+    expect(details).toMatch(/not yet published/i);
+    expect(details).toMatch(/support@ipop\.ai/i);
+    expect(details).toMatch(/W-9|tax|vendor/i);
+  });
+
+  it("lists the buyer packet and all public review links", () => {
+    const packet = COMPANY.sections.map((section) => `${section.title}: ${section.body}`).join("\n");
+
+    for (const term of ["contracting entity", "tax", "security questionnaire", "subprocessors", "DPA", "terms", "privacy", "refund"]) {
+      expect(packet, term).toMatch(new RegExp(term, "i"));
+    }
+
+    expect(COMPANY.legalLinks).toEqual(
+      expect.arrayContaining([
+        { href: LEGAL.terms.href, label: LEGAL.terms.navLabel },
+        { href: LEGAL.privacy.href, label: LEGAL.privacy.navLabel },
+        { href: LEGAL.dpa.href, label: LEGAL.dpa.navLabel },
+        { href: "/security", label: SECURITY.navLabel },
+        { href: "/refund-policy", label: REFUND_POLICY.navLabel },
+        { href: SUPPORT_CONTACT.href, label: SUPPORT_CONTACT.label },
+      ]),
+    );
   });
 });
 

@@ -21,9 +21,8 @@ const ORG_DESCRIPTION =
   "The marketing agency of AI agents. A whole marketing department — Scout, Quill, Echo and the rest — " +
   "that drafts, researches, and plans around the clock. You steer, they ship.";
 
-/** The logo / social image. NOTE: this is an SVG; raster (1200×630 PNG) is the documented follow-up. */
 function imageUrl(origin: string): string {
-  return `${origin}/og.svg`;
+  return `${origin}/og-image.png`;
 }
 
 /** The Organization node — the stable ipop entity (sameAs left empty until real profiles are confirmed). */
