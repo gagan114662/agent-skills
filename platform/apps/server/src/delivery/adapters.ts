@@ -172,8 +172,14 @@ export class PublishChannelAdapter implements ChannelAdapter {
     return {
       provider: this.provider.kind,
       live: health.ok,
-      externalRef: outcome.url,
-      detail: { slug, providerId: outcome.providerId ?? null, healthStatus: health.status },
+      externalRef: health.ok ? outcome.url : null,
+      detail: {
+        slug,
+        providerId: outcome.providerId ?? null,
+        healthStatus: health.status,
+        attemptedUrl: outcome.url,
+        dryRun: this.provider.kind === "dryrun",
+      },
     };
   }
 }
@@ -242,13 +248,16 @@ export class SitePrChannelAdapter implements ChannelAdapter {
     return {
       provider: this.publisher.kind,
       live: health.ok,
-      externalRef: result.url,
+      externalRef: health.ok ? result.url : null,
       detail: {
-        prUrl: result.prUrl ?? result.url,
+        prUrl: health.ok ? (result.prUrl ?? result.url) : null,
+        attemptedUrl: result.url,
+        attemptedPrUrl: result.prUrl ?? result.url,
         branch: result.branch ?? null,
         path: result.path ?? null,
         providerId: result.providerId ?? null,
         headStatus: health.status,
+        dryRun: !this.headCheck,
       },
     };
   }
