@@ -58,6 +58,14 @@ function angleLine(variant: ReachVariant, problem: string, company: string): str
   }
 }
 
+function prospectContext(title: string, company: string): string {
+  const role = sanitizeText(title, 80);
+  if (role && company !== "your team") return `As ${role} at ${company}, `;
+  if (role) return `In your ${role} role, `;
+  if (company !== "your team") return `At ${company}, `;
+  return "";
+}
+
 export interface PersonalizeInput {
   scored: ScoredProspect;
   icp: Icp;
@@ -77,6 +85,7 @@ export function personalizeOpener(input: PersonalizeInput): ReachMessage {
   const p = scored.prospect;
   const name = firstName(p.fullName);
   const company = sanitizeText(p.company, 60) || "your team";
+  const context = prospectContext(p.title, company);
   const problem = icp.keywords[0] ?? "growth";
 
   // The "what you just did" hook — our phrasing + an optional sanitised snippet of the provider summary.
@@ -84,7 +93,9 @@ export function personalizeOpener(input: PersonalizeInput): ReachMessage {
   if (scored.freshSignal) {
     const phrase = SIGNAL_PHRASE[scored.freshSignal.kind];
     const snippet = sanitizeText(scored.freshSignal.summary, 110);
-    hook = snippet ? `I ${phrase} — ${snippet}. ` : `I ${phrase}. `;
+    hook = snippet ? `${context}I ${phrase} — ${snippet}. ` : `${context}I ${phrase}. `;
+  } else {
+    hook = context;
   }
 
   const subject =

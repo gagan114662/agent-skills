@@ -68,6 +68,14 @@ describe("personalizeOpener (#280)", () => {
     expect(msg.subject).not.toBe("");
   });
 
+  it("#601 grounds the opener in the buyer role, company, and trigger detail", () => {
+    const scored = scoreProspect(prospect(), icp, NOW);
+    const msg = personalizeOpener({ scored, icp, channel: "email", variant: "pain", brandName: "ipop" });
+    expect(msg.body).toContain("Head of Growth");
+    expect(msg.body).toContain("Acme");
+    expect(msg.body).toContain("Raised a $5M seed round");
+  });
+
   it("LinkedIn target uses the linkedin url and an empty subject", () => {
     const scored = scoreProspect(prospect(), icp, NOW);
     const msg = personalizeOpener({ scored, icp, channel: "linkedin", variant: "outcome", brandName: "ipop" });
