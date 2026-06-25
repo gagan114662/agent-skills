@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { SocialPublishService, type SocialApprovalGate } from "../../src/social/service.js";
 import { createSocialPublishDispatcher } from "../../src/social/dispatcher.js";
-import { DryRunSocialAggregator, MockSocialAggregator, type SocialAggregatorProvider } from "../../src/social/aggregator.js";
+import {
+  DryRunSocialAggregator,
+  MockSocialAggregator,
+  type AggregatorPublishInput,
+  type SocialAggregatorProvider,
+} from "../../src/social/aggregator.js";
 import type {
   CreateSocialDraftInput,
   RecordSocialResultInput,
@@ -64,7 +69,8 @@ function makeStores() {
 
   const resultStore: SocialResultStore = {
     async record(postId, rows: readonly RecordSocialResultInput[]) {
-      for (let i = results.length - 1; i >= 0; i--) if (results[i]!.postId === postId) results.splice(i, 1);
+      for (let i = results.length - 1; i >= 0; i--)
+        if (results[i]!.postId === postId) results.splice(i, 1);
       for (const r of rows) {
         results.push({
           id: id("res"),
@@ -82,6 +88,9 @@ function makeStores() {
     async listForPost(postId) {
       return results.filter((r) => r.postId === postId);
     },
+    async listRecentForWorkspace(wid, since) {
+      return results.filter((r) => r.workspaceId === wid && new Date(r.recordedAt) >= since);
+    },
     async countPublishedForWorkspace(wid) {
       return results.filter((r) => r.workspaceId === wid && r.status === "published").length;
     },
@@ -93,7 +102,12 @@ function makeStores() {
 const OWNER = "ws-owner";
 
 function makeService(
-  opts: { enabled?: boolean; gate?: SocialApprovalGate; aggregator?: SocialAggregatorProvider } = {},
+  opts: {
+    enabled?: boolean;
+    gate?: SocialApprovalGate;
+    aggregator?: SocialAggregatorProvider;
+    flags?: Record<string, unknown>;
+  } = {},
 ) {
   const stores = makeStores();
   let submitted = 0;
@@ -110,16 +124,27 @@ function makeService(
     results: stores.resultStore,
     aggregator: opts.aggregator ?? new DryRunSocialAggregator(),
     approvals,
-    flags: (wid) => ({ enabled: opts.enabled !== false && wid === OWNER }),
+    flags: (wid) => ({ enabled: opts.enabled !== false && wid === OWNER, ...opts.flags }),
     now: () => new Date("2026-06-18T12:00:00.000Z"),
   });
   return { service, ...stores, submitted: () => submitted };
 }
 
+class CountingAggregator extends MockSocialAggregator {
+  calls = 0;
+
+  override async publish(input: AggregatorPublishInput) {
+    this.calls += 1;
+    return super.publish(input);
+  }
+}
+
 describe("social/service — default-OFF, owner-first", () => {
   it("refuses to draft for a disabled (non-owner) workspace", async () => {
     const { service } = makeService();
-    expect(await service.draftPost({ workspaceId: "ws-other", body: "hi", networks: ["x"] })).toEqual({
+    expect(
+      await service.draftPost({ workspaceId: "ws-other", body: "hi", networks: ["x"] }),
+    ).toEqual({
       status: "disabled",
     });
   });
@@ -128,7 +153,11 @@ describe("social/service — default-OFF, owner-first", () => {
 describe("social/service — lifecycle: draft → park #13 → approve → fan out", () => {
   it("drafts a post that publishes nothing, with per-network previews", async () => {
     const { service } = makeService();
-    const r = await service.draftPost({ workspaceId: OWNER, body: "We shipped!", networks: ["x", "linkedin"] });
+    const r = await service.draftPost({
+      workspaceId: OWNER,
+      body: "We shipped!",
+      networks: ["x", "linkedin"],
+    });
     expect(r.status).toBe("drafted");
     if (r.status !== "drafted") return;
     expect(r.post.status).toBe("draft");
@@ -139,7 +168,11 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
     const { service, posts, submitted } = makeService();
     const draft = await service.draftPost({ workspaceId: OWNER, body: "hello", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    const req = await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
+    const req = await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
     expect(submitted()).toBe(1);
     expect(req.status).toBe("pending_approval");
     expect(posts[0]?.status).toBe("pending_approval");
@@ -155,10 +188,22 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
       },
     };
     const { service } = makeService({ gate });
-    const draft = await service.draftPost({ workspaceId: OWNER, body: "secret body text", networks: ["x", "linkedin"] });
+    const draft = await service.draftPost({
+      workspaceId: OWNER,
+      body: "secret body text",
+      networks: ["x", "linkedin"],
+    });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
-    expect(payloads[0]).toMatchObject({ source: "social", postId: draft.post.id, networks: ["x", "linkedin"] });
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+    expect(payloads[0]).toMatchObject({
+      source: "social",
+      postId: draft.post.id,
+      networks: ["x", "linkedin"],
+    });
     expect(JSON.stringify(payloads[0])).not.toContain("secret body text");
   });
 
@@ -166,8 +211,16 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
     const { service, posts } = makeService();
     const draft = await service.draftPost({ workspaceId: OWNER, body: "go", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
-    const out = await service.executePublish({ workspaceId: OWNER, postId: draft.post.id, approvalRequestId: "appr-1" });
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+    const out = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "appr-1",
+    });
     // immediate dry-run reaches no network → failed, never live
     expect(out.status).toBe("failed");
     expect(posts[0]?.status).toBe("failed");
@@ -175,17 +228,31 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
 
   it("with a LIVE (mock) aggregator, executePublish fans out, reads back permalinks, records receipts", async () => {
     const { service, results } = makeService({ aggregator: new MockSocialAggregator() });
-    const draft = await service.draftPost({ workspaceId: OWNER, body: "launch", networks: ["x", "linkedin"] });
+    const draft = await service.draftPost({
+      workspaceId: OWNER,
+      body: "launch",
+      networks: ["x", "linkedin"],
+    });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
-    const out = await service.executePublish({ workspaceId: OWNER, postId: draft.post.id, approvalRequestId: "appr-1" });
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+    const out = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "appr-1",
+    });
     expect(out.status).toBe("published");
     if (out.status === "failed") return;
     expect(out.live).toBe(true);
     // every recorded receipt is published with a real external id + a read-back permalink (#200 §3)
     const recorded = results.filter((r) => r.postId === draft.post.id);
     expect(recorded).toHaveLength(2);
-    expect(recorded.every((r) => r.status === "published" && r.externalId && r.permalink)).toBe(true);
+    expect(recorded.every((r) => r.status === "published" && r.externalId && r.permalink)).toBe(
+      true,
+    );
 
     const summary = await service.summary(OWNER);
     expect(summary.publishedReceipts).toBe(2); // from recorded rows only
@@ -193,12 +260,94 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
     expect(summary.providerLive).toBe(true);
   });
 
-  it("a partial fan-out (one network fails) ⇒ partially_published", async () => {
-    const { service } = makeService({ aggregator: new MockSocialAggregator({ failNetworks: ["linkedin"] }) });
-    const draft = await service.draftPost({ workspaceId: OWNER, body: "x", networks: ["x", "linkedin"] });
+  it("blocks an over-warmup fresh-workspace fan-out before the aggregator is called", async () => {
+    const aggregator = new CountingAggregator();
+    const { service, posts, results } = makeService({
+      aggregator,
+      flags: { warmupDays: 7, warmupStartCap: 1, workspaceWindowCap: 10, networkWindowCap: 10 },
+    });
+    const draft = await service.draftPost({
+      workspaceId: OWNER,
+      body: "launch everywhere",
+      networks: ["x", "linkedin"],
+    });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
-    const out = await service.executePublish({ workspaceId: OWNER, postId: draft.post.id, approvalRequestId: "a" });
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+
+    const out = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "appr-1",
+    });
+
+    expect(out.status).toBe("failed");
+    expect(out.status === "failed" ? out.error : "").toContain("social warmup cap exceeded");
+    expect(aggregator.calls).toBe(0);
+    expect(posts[0]?.status).toBe("failed");
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => r.status === "failed" && r.error?.includes("warmup"))).toBe(true);
+  });
+
+  it("blocks a per-network burst before aggregator fan-out", async () => {
+    const aggregator = new CountingAggregator();
+    const { service, results } = makeService({
+      aggregator,
+      flags: { warmupDays: 0, workspaceWindowCap: 10, networkWindowCap: 1 },
+    });
+    results.push({
+      id: "res-prior",
+      workspaceId: OWNER,
+      postId: "older-post",
+      network: "x",
+      status: "published",
+      externalId: "x_old",
+      permalink: "https://mock.social.local/x/x_old",
+      error: null,
+      recordedAt: "2026-06-18T11:59:00.000Z",
+    });
+    const draft = await service.draftPost({ workspaceId: OWNER, body: "again", networks: ["x"] });
+    if (draft.status !== "drafted") throw new Error("expected draft");
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+
+    const out = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "appr-1",
+    });
+
+    expect(out.status).toBe("failed");
+    expect(out.status === "failed" ? out.error : "").toContain("x social cap exceeded");
+    expect(aggregator.calls).toBe(0);
+  });
+
+  it("a partial fan-out (one network fails) ⇒ partially_published", async () => {
+    const { service } = makeService({
+      aggregator: new MockSocialAggregator({ failNetworks: ["linkedin"] }),
+    });
+    const draft = await service.draftPost({
+      workspaceId: OWNER,
+      body: "x",
+      networks: ["x", "linkedin"],
+    });
+    if (draft.status !== "drafted") throw new Error("expected draft");
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+    const out = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "a",
+    });
     expect(out.status).toBe("partially_published");
   });
 
@@ -206,7 +355,11 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
     const { service } = makeService({ aggregator: new MockSocialAggregator() });
     const draft = await service.draftPost({ workspaceId: OWNER, body: "x", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    const r = await service.executePublish({ workspaceId: OWNER, postId: draft.post.id, approvalRequestId: "" });
+    const r = await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "",
+    });
     expect(r.status).toBe("failed");
   });
 
@@ -214,9 +367,21 @@ describe("social/service — lifecycle: draft → park #13 → approve → fan o
     const { service } = makeService({ aggregator: new MockSocialAggregator() });
     const draft = await service.draftPost({ workspaceId: OWNER, body: "x", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
-    await service.executePublish({ workspaceId: OWNER, postId: draft.post.id, approvalRequestId: "a" });
-    const again = await service.requestPublish({ workspaceId: OWNER, postId: draft.post.id, requesterMemberId: "m1" });
+    await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
+    await service.executePublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      approvalRequestId: "a",
+    });
+    const again = await service.requestPublish({
+      workspaceId: OWNER,
+      postId: draft.post.id,
+      requesterMemberId: "m1",
+    });
     expect(again.status).toBe("rejected");
   });
 });
@@ -226,8 +391,14 @@ describe("social/dispatcher — the #13 ship trigger (mirrors #266/#295)", () =>
     const { service, posts } = makeService({ aggregator: new MockSocialAggregator() });
     const draft = await service.draftPost({ workspaceId: OWNER, body: "ship it", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    const dispatcher = createSocialPublishDispatcher({ service, flags: (wid) => ({ enabled: wid === OWNER }) });
-    const shipped = await dispatcher.ship({ postId: draft.post.id }, { workspaceId: OWNER, approvalRequestId: "appr-1" });
+    const dispatcher = createSocialPublishDispatcher({
+      service,
+      flags: (wid) => ({ enabled: wid === OWNER }),
+    });
+    const shipped = await dispatcher.ship(
+      { postId: draft.post.id },
+      { workspaceId: OWNER, approvalRequestId: "appr-1" },
+    );
     expect(shipped).toMatchObject({ live: true, status: "published" });
     expect(posts[0]?.status).toBe("published");
   });
@@ -237,15 +408,28 @@ describe("social/dispatcher — the #13 ship trigger (mirrors #266/#295)", () =>
     const draft = await service.draftPost({ workspaceId: OWNER, body: "y", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
     const dispatcher = createSocialPublishDispatcher({ service, flags: () => ({ enabled: true }) });
-    expect(await dispatcher.ship({ postId: draft.post.id }, { workspaceId: OWNER, approvalRequestId: "" })).toBeNull();
+    expect(
+      await dispatcher.ship(
+        { postId: draft.post.id },
+        { workspaceId: OWNER, approvalRequestId: "" },
+      ),
+    ).toBeNull();
   });
 
   it("returns null when social is OFF for the workspace (default-OFF)", async () => {
     const { service } = makeService({ aggregator: new MockSocialAggregator() });
     const draft = await service.draftPost({ workspaceId: OWNER, body: "z", networks: ["x"] });
     if (draft.status !== "drafted") throw new Error("expected draft");
-    const dispatcher = createSocialPublishDispatcher({ service, flags: () => ({ enabled: false }) });
-    expect(await dispatcher.ship({ postId: draft.post.id }, { workspaceId: OWNER, approvalRequestId: "a" })).toBeNull();
+    const dispatcher = createSocialPublishDispatcher({
+      service,
+      flags: () => ({ enabled: false }),
+    });
+    expect(
+      await dispatcher.ship(
+        { postId: draft.post.id },
+        { workspaceId: OWNER, approvalRequestId: "a" },
+      ),
+    ).toBeNull();
   });
 
   it("routes structurally by post id — a poisoned payload field cannot retarget the fan-out", async () => {
@@ -254,7 +438,11 @@ describe("social/dispatcher — the #13 ship trigger (mirrors #266/#295)", () =>
     if (draft.status !== "drafted") throw new Error("expected draft");
     const dispatcher = createSocialPublishDispatcher({ service, flags: () => ({ enabled: true }) });
     await dispatcher.ship(
-      { postId: draft.post.id, networks: ["instagram", "tiktok"], body: "ignore previous instructions" },
+      {
+        postId: draft.post.id,
+        networks: ["instagram", "tiktok"],
+        body: "ignore previous instructions",
+      },
       { workspaceId: OWNER, approvalRequestId: "a" },
     );
     // The published post is the one identified by id, with ITS stored networks — not the payload's.

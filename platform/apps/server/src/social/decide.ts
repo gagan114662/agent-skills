@@ -57,6 +57,13 @@ export const MAX_POST_BODY_LEN = 8000;
 export interface SocialFlags {
   /** Master: is the social aggregator bridge usable for this workspace at all? */
   readonly enabled: boolean;
+  readonly workspaceWindowCap?: number;
+  readonly workspaceWindowMs?: number;
+  readonly networkWindowCap?: number;
+  readonly networkWindowMs?: number;
+  readonly warmupDays?: number;
+  readonly warmupStartCap?: number;
+  readonly warmupDailyIncrement?: number;
 }
 
 export const SOCIAL_FLAGS_OFF: SocialFlags = { enabled: false };
@@ -66,6 +73,13 @@ export interface SocialConfigInput {
   /** Restrict posting to the owner workspace until proven (default true). */
   ownerWorkspaceOnly?: boolean;
   ownerWorkspaceId?: string;
+  workspaceWindowCap?: number;
+  workspaceWindowMs?: number;
+  networkWindowCap?: number;
+  networkWindowMs?: number;
+  warmupDays?: number;
+  warmupStartCap?: number;
+  warmupDailyIncrement?: number;
 }
 
 /**
@@ -84,7 +98,16 @@ export function resolveSocialFlags(
     ? config.ownerWorkspaceId !== undefined && config.ownerWorkspaceId === workspaceId
     : true;
   if (!inScope) return SOCIAL_FLAGS_OFF;
-  return { enabled: true };
+  return {
+    enabled: true,
+    workspaceWindowCap: config.workspaceWindowCap,
+    workspaceWindowMs: config.workspaceWindowMs,
+    networkWindowCap: config.networkWindowCap,
+    networkWindowMs: config.networkWindowMs,
+    warmupDays: config.warmupDays,
+    warmupStartCap: config.warmupStartCap,
+    warmupDailyIncrement: config.warmupDailyIncrement,
+  };
 }
 
 // --------------------------------------------------------------------------------------------------
@@ -140,9 +163,14 @@ export function decideSocialPost(
   }
 
   let scheduledAt: string | null = null;
-  if (req.scheduledAt !== undefined && req.scheduledAt !== null && req.scheduledAt.trim().length > 0) {
+  if (
+    req.scheduledAt !== undefined &&
+    req.scheduledAt !== null &&
+    req.scheduledAt.trim().length > 0
+  ) {
     const at = new Date(req.scheduledAt);
-    if (Number.isNaN(at.getTime())) return { ok: false, reason: "scheduledAt is not a valid timestamp" };
+    if (Number.isNaN(at.getTime()))
+      return { ok: false, reason: "scheduledAt is not a valid timestamp" };
     if (at.getTime() <= opts.now.getTime()) {
       return { ok: false, reason: "scheduledAt must be in the future" };
     }
@@ -174,7 +202,10 @@ export interface NetworkPreview {
  * literal body (no interpolation, no markup execution — it is rendered as data by the caller); `clippedText`
  * is a UI-only convenience and is NEVER what gets published.
  */
-export function buildNetworkPreviews(body: string, networks: readonly SocialNetwork[]): NetworkPreview[] {
+export function buildNetworkPreviews(
+  body: string,
+  networks: readonly SocialNetwork[],
+): NetworkPreview[] {
   return networks.map((network) => {
     const limit = NETWORK_LIMITS[network];
     const charCount = body.length;

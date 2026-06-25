@@ -289,10 +289,41 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // constraint (owner approval before any post fans out — a post is irreversible) is enforced in the service.
   const socialEnabled = env.RELOAD_SOCIAL_ENABLED;
   const socialOwner = env.RELOAD_SOCIAL_OWNER_WORKSPACE_ID ?? mktOwner;
-  if (socialEnabled !== undefined || socialOwner) {
+  const socialWorkspaceWindowCap = env.RELOAD_SOCIAL_WORKSPACE_WINDOW_CAP;
+  const socialWorkspaceWindowMs = env.RELOAD_SOCIAL_WORKSPACE_WINDOW_MS;
+  const socialNetworkWindowCap = env.RELOAD_SOCIAL_NETWORK_WINDOW_CAP;
+  const socialNetworkWindowMs = env.RELOAD_SOCIAL_NETWORK_WINDOW_MS;
+  const socialWarmupDays = env.RELOAD_SOCIAL_WARMUP_DAYS;
+  const socialWarmupStartCap = env.RELOAD_SOCIAL_WARMUP_START_CAP;
+  const socialWarmupDailyIncrement = env.RELOAD_SOCIAL_WARMUP_DAILY_INCREMENT;
+  if (
+    socialEnabled !== undefined ||
+    socialOwner ||
+    socialWorkspaceWindowCap !== undefined ||
+    socialWorkspaceWindowMs !== undefined ||
+    socialNetworkWindowCap !== undefined ||
+    socialNetworkWindowMs !== undefined ||
+    socialWarmupDays !== undefined ||
+    socialWarmupStartCap !== undefined ||
+    socialWarmupDailyIncrement !== undefined
+  ) {
     const social: Record<string, unknown> = {};
-    if (socialEnabled !== undefined) social.enabled = socialEnabled === "true" || socialEnabled === "1";
+    if (socialEnabled !== undefined)
+      social.enabled = socialEnabled === "true" || socialEnabled === "1";
     if (socialOwner) social.ownerWorkspaceId = socialOwner;
+    if (socialWorkspaceWindowCap !== undefined) {
+      social.workspaceWindowCap = envInt(socialWorkspaceWindowCap, 10);
+    }
+    if (socialWorkspaceWindowMs !== undefined)
+      social.workspaceWindowMs = envInt(socialWorkspaceWindowMs, 60 * 60 * 1000);
+    if (socialNetworkWindowCap !== undefined)
+      social.networkWindowCap = envInt(socialNetworkWindowCap, 5);
+    if (socialNetworkWindowMs !== undefined)
+      social.networkWindowMs = envInt(socialNetworkWindowMs, 60 * 60 * 1000);
+    if (socialWarmupDays !== undefined) social.warmupDays = envInt(socialWarmupDays, 7);
+    if (socialWarmupStartCap !== undefined) social.warmupStartCap = envInt(socialWarmupStartCap, 3);
+    if (socialWarmupDailyIncrement !== undefined)
+      social.warmupDailyIncrement = envInt(socialWarmupDailyIncrement, 2);
     raw.social = social;
   }
   // #151 governance: let the deployment env turn workspace-role enforcement + the egress allowlist on
