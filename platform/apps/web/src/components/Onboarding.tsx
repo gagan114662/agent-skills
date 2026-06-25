@@ -20,6 +20,7 @@ import { Link } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 import { DeliverablePreview } from "./DeliverablePreview.js";
+import { AcquisitionPipelinePreview } from "./acquisition/AcquisitionPipelinePreview.js";
 
 /** Read the `?error=<code>` the OAuth routes redirect with, mapped to a friendly line (or null). */
 function errorFromUrl(): string | null {
@@ -32,6 +33,7 @@ function errorFromUrl(): string | null {
 
 export function Onboarding(): React.JSX.Element {
   const [domain, setDomain] = useState("");
+  const [icp, setIcp] = useState("");
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
   // #633: once a visitor submits a website we switch to the live deliverable view (config runs alongside,
@@ -91,14 +93,19 @@ export function Onboarding(): React.JSX.Element {
   // #633: once a website is submitted, the live deliverable IS the screen — config sits beside it.
   if (previewUrl) {
     return (
-      <DeliverablePreview
-        url={previewUrl}
-        onSignIn={signInWithGoogle}
-        onRestart={() => {
-          setPreviewUrl(null);
-          setBusy(false);
-        }}
-      />
+      <div className="auth auth--pipeline">
+        <div className="auth__pipeline">
+          <AcquisitionPipelinePreview domain={previewUrl} icp={icp} />
+          <DeliverablePreview
+            url={previewUrl}
+            onSignIn={signInWithGoogle}
+            onRestart={() => {
+              setPreviewUrl(null);
+              setBusy(false);
+            }}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -121,6 +128,16 @@ export function Onboarding(): React.JSX.Element {
             autoComplete="url"
             inputMode="url"
             autoFocus
+          />
+        </label>
+
+        <label className="field">
+          Ideal customer profile
+          <textarea
+            value={icp}
+            onChange={(e) => setIcp(e.target.value)}
+            placeholder="e.g. seed-stage B2B SaaS teams hiring their first marketer"
+            rows={3}
           />
         </label>
 
