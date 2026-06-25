@@ -262,6 +262,15 @@ export function validateSkillOptAdoptEdit(payload: unknown): ValidationResult {
   return { ok: true };
 }
 
+/** Validate a one-click revert for a previously applied SkillOpt edit block. */
+export function validateSkillOptRevertEdit(payload: unknown): ValidationResult {
+  const p = asRecord(payload);
+  if (!p) return { ok: false, error: "payload must be an object" };
+  if (!nonEmptyString(p.skillId)) return { ok: false, error: "skillId required" };
+  if (!nonEmptyString(p.adoptionId)) return { ok: false, error: "adoptionId required" };
+  return { ok: true };
+}
+
 /**
  * Validate a connect-once LIVE connect (#258 Stage 2) — a recorded-only CONSENT decision the owner gates.
  * Needs the `connectionId` (which connector is being connected, e.g. `google`/`x`/`linkedin`) and the

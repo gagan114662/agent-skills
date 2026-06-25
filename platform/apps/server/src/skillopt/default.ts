@@ -10,10 +10,9 @@
  *     transcripts and replaying them against external receipts (real spawns, real receipts — premortem #200
  *     §3) is the deliberate next slice of this epic, so until it lands the loop stages NOTHING even when
  *     enabled. This is the safest honest default: no self-reported signal can ever move a skill doc.
- *   - `loadSkillDoc` — a stable placeholder sha (never reached in production because `replay` returns `[]`;
- *     exercised only by unit tests with injected candidates).
- */
-import { createHash } from "node:crypto";
+ *   - `loadSkillDoc` — reads the versioned #155 skill doc from `agents/skills/manifest.json`, so staged
+ *     proposals pin the exact repo doc that approval later appends to.
+*/
 import { createRequest } from "../db/repositories/approvals.js";
 import { listEvalRuns } from "../db/repositories/evals.js";
 import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketing-tasks.js";
@@ -33,6 +32,7 @@ import { reduceMarketingTasksToSamples } from "./harvest.js";
 import { resolveSkillOptCaps } from "./caps.js";
 import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./service.js";
 import type { EvalRegressionReweight } from "./cycle.js";
+import { loadVersionedSkillDoc } from "./adopt.js";
 
 /** The fleet agents the loop improves: each registry agent's runbook (its #155 procedure doc). */
 export function skillOptAgentTargets(): SkillOptAgentTarget[] {
@@ -100,8 +100,7 @@ export function createDefaultSkillOptService(): SkillOptService {
     // receipts → `ValidationReading`). Until it lands the loop sources no candidates, so even with real
     // harvested data it stages NOTHING — the safest honest default (#200 §2/§3).
     replay: () => Promise.resolve([]),
-    loadSkillDoc: (skillId) =>
-      Promise.resolve({ sha: createHash("sha256").update(skillId).digest("hex").slice(0, 16), text: "" }),
+    loadSkillDoc: (skillId) => loadVersionedSkillDoc(skillId),
     // #390 (ADR-0390): build the live revenue reward from the #386 projection so the cycle learns toward
     // what earns. Gated default-OFF, owner-first inside the helper; null/empty ⇒ frequency-only, unchanged.
     revenueRewardFor: (workspaceId) => liveRevenueRewardFor(workspaceId),
