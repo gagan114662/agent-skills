@@ -18,6 +18,19 @@ async function submit(): Promise<void> {
 }
 
 describe("ContactForm failure visibility (#938)", () => {
+  it("offers booking and free-trial CTAs beside the lead form (#899)", () => {
+    render(<ContactForm />);
+
+    expect(screen.getByRole("link", { name: CONTACT.bookingCta })).toHaveAttribute(
+      "href",
+      CONTACT.bookingHref,
+    );
+    expect(screen.getByRole("link", { name: CONTACT.trialCta })).toHaveAttribute(
+      "href",
+      CONTACT.trialHref,
+    );
+  });
+
   it("posts the hidden honeypot field empty for human submissions (#929)", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(
       async () => new Response(JSON.stringify({}), { status: 202 }),

@@ -933,6 +933,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     createDefaultOutreachService({
       discovery: discoveryService,
       decisionMaker: decisionMakerService,
+      planService,
     });
   // #280 Reach outbound demand-gen: the self-improving loop service. Default-OFF + mock source + dry-run
   // sender, so it spends nothing and sends nothing until an owner opts in (caps) and connects a real ESP.

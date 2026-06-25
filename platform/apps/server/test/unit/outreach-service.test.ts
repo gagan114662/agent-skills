@@ -353,7 +353,7 @@ describe("OutreachService.queue — owner-gated, never auto-sent", () => {
   });
 });
 
-describe("OutreachService — trackable pay link in outreach (GAP 3, ADR-0401, default-OFF)", () => {
+describe("OutreachService — trackable pay link in outreach (GAP 3/#899)", () => {
   it("appends the tracked pay link to the parked body when the flag is ON and a minter is wired", async () => {
     const minter = new FakePayLinkMinter();
     const { service, messages } = build({ caps: { payLinkInOutreach: true }, payLinks: minter });
@@ -372,9 +372,9 @@ describe("OutreachService — trackable pay link in outreach (GAP 3, ADR-0401, d
     expect(minter.calls).toEqual([{ leadOrArtifactId: "p-1", channel: "email", planId: "pro" }]);
   });
 
-  it("leaves the body unchanged when the flag is OFF (default) even if a minter is wired", async () => {
+  it("leaves the body unchanged when the flag is explicitly OFF even if a minter is wired", async () => {
     const minter = new FakePayLinkMinter();
-    const { service, messages } = build({ payLinks: minter });
+    const { service, messages } = build({ caps: { payLinkInOutreach: false }, payLinks: minter });
     const res = await service.queue("ws-1", {
       prospectKey: "p-1",
       buyerBriefId: "brief-1",

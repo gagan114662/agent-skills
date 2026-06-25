@@ -1640,6 +1640,10 @@ export const CONTACT = {
   messagePlaceholder: "We publish twice a week and our SEO is a mess…",
   submitLabel: "Send it over",
   trialLinkLabel: "Send me a trial link",
+  trialCta: "Start a free trial",
+  trialHref: "/start?source=landing_contact_cta",
+  bookingCta: "Book a 15-minute call",
+  bookingHref: "https://cal.com/ipop/intro",
   nextStepIntro: "Want to keep moving now?",
   /** In-flight label while the lead is posting. */
   sendingLabel: "Sending…",
