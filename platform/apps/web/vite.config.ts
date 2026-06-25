@@ -21,6 +21,8 @@ export default defineConfig({
       "/me": API_ORIGIN,
       // #153 public marketing-site content API (CMS-lite). Proxied so the dev site fetches real content.
       "/site": API_ORIGIN,
+      // Public first-run demo/team-start route. Keep local dev aligned with production rewrites.
+      "/onboarding": API_ORIGIN,
       "/workspaces": API_ORIGIN,
       "/channels": API_ORIGIN,
       // Approval request/decision/audit routes are top-level (not under /workspaces) — #13/#18.

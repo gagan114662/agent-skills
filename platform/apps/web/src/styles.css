@@ -8074,6 +8074,14 @@ select:focus-visible {
   background: var(--o-pop);
   box-shadow: 0 0 0 4px rgba(255, 84, 112, 0.12);
 }
+.onboard-room-agent[data-status="blocked"] .onboard-room-agent__dot {
+  background: var(--o-text-dim);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+.onboard-room-agent[data-status="gated"] .onboard-room-agent__dot {
+  background: transparent;
+  border: 1px solid var(--o-pop);
+}
 .onboard-room-agent__who {
   font-weight: 500;
 }
@@ -8129,6 +8137,55 @@ select:focus-visible {
   font-size: 13.5px;
   line-height: 1.45;
   font-weight: 400;
+}
+.onboard-room__mission {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--o-border);
+  padding-top: 18px;
+}
+.onboard-room__mission strong {
+  font-family: var(--o-serif);
+  font-weight: 400;
+  color: var(--o-text);
+  font-size: 20px;
+  line-height: 1.15;
+}
+.onboard-room__handoffs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.onboard-room__handoffs li,
+.onboard-room__blocked {
+  margin: 0;
+  color: var(--o-text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.onboard-room__artifacts {
+  display: grid;
+  gap: 8px;
+}
+.onboard-room__artifacts article {
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.onboard-room__artifacts span {
+  color: var(--o-pop);
+  font-size: 12px;
+  font-weight: 500;
+}
+.onboard-room__artifacts p {
+  margin: 4px 0 0;
+  color: var(--o-text);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* ---- the door: greeting + ONE input, nothing else ------------------------------------------ */
