@@ -1000,12 +1000,27 @@ export const PUBLIC_PROOF = {
   eyebrow: "Proof",
   title: "Receipts before reach",
   sub:
-    "The homepage now has a public proof rail: real outcomes can ship here and into /stories, but only after the customer consents.",
+    "The homepage has a public proof rail: dogfood is labelled as dogfood, external proof stays pending until a customer consents, and independent customer outcomes get their own receipts.",
   cta: "Read customer stories",
   emptyTitle: "External customer proof slot",
   emptyBody: "Appears here after a paying customer approves the outcome, metric, and source for publication.",
   consentLabel: "Consented outcome",
   pendingLabel: "Awaiting consent",
+  ladderTitle: "What this proof is",
+  ladder: [
+    {
+      label: "Internal dogfood",
+      body: "ipop using ipop to build ipop. Useful, but not external customer proof.",
+    },
+    {
+      label: "Consent-pending customer proof",
+      body: "A real customer outcome can be tracked before publication, but appears publicly only after consent.",
+    },
+    {
+      label: "Independently validated customer proof",
+      body: "Published only with an approved metric, source, artifact trail, and customer permission.",
+    },
+  ],
   tiles: STORY_RECEIPTS.map((story) => ({
     customer: story.customer,
     customerType: story.customerType,
@@ -1929,6 +1944,31 @@ export const SECURITY = {
     { title: "SOC 2 Type II", status: "Planned — not yet certified", body: "We're building toward an audit. We are not certified today and don't claim to be." },
     { title: "SSO / SAML", status: "Designed seam — not yet built", body: "The wiring point exists in the code; no identity provider is connected yet." },
     { title: "Kernel-level network policy", status: "Partial — application-enforced today", body: "Egress is enforced at the application layer now; in-sandbox kernel enforcement is the next step." },
+  ],
+  readinessTitle: "Production readiness, without the fog machine",
+  readiness:
+    "If you are putting real marketing work through ipop, these are the controls to inspect before trusting autonomy.",
+  readinessItems: [
+    {
+      title: "External proof lane",
+      body:
+        "Dogfood receipts, consent-pending customer outcomes, and independently validated customer proof are tracked separately. If a customer has not approved publication, the public surface says so instead of borrowing the metric.",
+    },
+    {
+      title: "Policy setup and dry-runs",
+      body:
+        "Workspace policy is configured through approval policies and scoped connection settings. Teams should test a proposed policy in dry-run before enabling live sends, spend, publishing, or deploys.",
+    },
+    {
+      title: "Readable decisions and rollback",
+      body:
+        "Allowed, blocked, failed, and rolled-back actions need receipts a human can read: who requested it, which policy matched, what changed, what evidence came back, and what rollback path exists.",
+    },
+    {
+      title: "Setup and permission docs",
+      body:
+        "Production onboarding needs the integration, permission, credential, rollback, and failure-mode docs in front of the buyer before they hand agents live accounts.",
+    },
   ],
   notClaimedTitle: "What we don't claim",
   notClaimed:

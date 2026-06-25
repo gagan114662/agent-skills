@@ -80,6 +80,24 @@ export function Security(): React.JSX.Element {
         </section>
 
         <section
+          className="landing__section landing__security-readiness"
+          aria-labelledby="readiness-title"
+        >
+          <h2 id="readiness-title" className="landing__section-title">
+            {SECURITY.readinessTitle}
+          </h2>
+          <p className="landing__section-sub landing__security-disclaimer">{SECURITY.readiness}</p>
+          <ul className="landing__guarantees">
+            {SECURITY.readinessItems.map((item) => (
+              <li key={item.title} className="landing__guarantee">
+                <h3 className="landing__guarantee-title">{item.title}</h3>
+                <p className="landing__guarantee-body">{item.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section
           className="landing__section landing__security-honest"
           aria-labelledby="notclaimed-title"
         >

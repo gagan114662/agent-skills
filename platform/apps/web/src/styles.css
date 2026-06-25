@@ -4268,7 +4268,8 @@ select:focus-visible {
   }
   .landing__steps,
   .landing__plans,
-  .landing__proof-grid {
+  .landing__proof-grid,
+  .landing__proof-ladder ul {
     grid-template-columns: 1fr;
   }
   .landing__headline {
@@ -5606,6 +5607,44 @@ select:focus-visible {
 .landing__proof-link {
   margin: 24px auto 0;
   width: fit-content;
+}
+.landing__proof-ladder {
+  background: color-mix(in srgb, var(--paper) 86%, var(--accent) 14%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin: 18px auto 0;
+  max-width: 920px;
+  padding: 20px;
+}
+.landing__proof-ladder-title {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+.landing__proof-ladder ul {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.landing__proof-ladder li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.landing__proof-ladder strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.landing__proof-ladder span {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 /* department chips (story 01) */
