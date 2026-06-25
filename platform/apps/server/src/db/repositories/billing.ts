@@ -132,25 +132,41 @@ export const dbBillingStore: BillingStore = {
     const [row] = await db
       .insert(revenueEvents)
       .values({ ...input, raw: input.raw })
+      .onConflictDoNothing({
+        target: [revenueEvents.workspaceId, revenueEvents.providerEventId],
+      })
       .returning(EVENT_COLUMNS);
-    return toEvent(row!);
+    if (row) return toEvent(row);
+    const existing = await this.findRevenueEvent(input.workspaceId, input.providerEventId);
+    if (existing) return existing;
+    throw new Error("revenue event insert conflicted but existing row was not found");
   },
 
   async listInvoices(workspaceId: string, limit = 20): Promise<BillingInvoiceRecord[]> {
     const rows = await db
       .select(INVOICE_COLUMNS)
       .from(revenueEvents)
-      .where(and(eq(revenueEvents.workspaceId, workspaceId), sql`${revenueEvents.invoiceId} IS NOT NULL`))
+      .where(
+        and(
+          eq(revenueEvents.workspaceId, workspaceId),
+          sql`${revenueEvents.invoiceId} IS NOT NULL`,
+        ),
+      )
       .orderBy(desc(revenueEvents.createdAt))
       .limit(Math.max(1, Math.min(100, Math.trunc(limit))));
     return rows as BillingInvoiceRecord[];
   },
 
-  async getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
+  async getInvoice(
+    workspaceId: string,
+    invoiceId: string,
+  ): Promise<BillingInvoiceRecord | undefined> {
     const [row] = await db
       .select(INVOICE_COLUMNS)
       .from(revenueEvents)
-      .where(and(eq(revenueEvents.workspaceId, workspaceId), eq(revenueEvents.invoiceId, invoiceId)))
+      .where(
+        and(eq(revenueEvents.workspaceId, workspaceId), eq(revenueEvents.invoiceId, invoiceId)),
+      )
       .orderBy(desc(revenueEvents.createdAt))
       .limit(1);
     return row as BillingInvoiceRecord | undefined;

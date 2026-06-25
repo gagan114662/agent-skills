@@ -56,6 +56,13 @@ class MemoryBillingStore implements BillingStore {
     return Promise.resolve(row ? { ...row } : undefined);
   }
   createRevenueEvent(input: CreateRevenueEventRow): Promise<RevenueEvent> {
+    if (
+      this.events.some(
+        (e) => e.workspaceId === input.workspaceId && e.providerEventId === input.providerEventId,
+      )
+    ) {
+      return Promise.reject(new Error("duplicate revenue event"));
+    }
     const row: RevenueEvent = { id: `re_${++this.seq}`, createdAt: new Date(), ...input };
     this.events.push(row);
     return Promise.resolve({ ...row });
@@ -81,7 +88,9 @@ class MemoryBillingStore implements BillingStore {
     );
   }
   getInvoice(workspaceId: string, invoiceId: string): Promise<BillingInvoiceRecord | undefined> {
-    return this.listInvoices(workspaceId).then((rows) => rows.find((i) => i.providerInvoiceId === invoiceId));
+    return this.listInvoices(workspaceId).then((rows) =>
+      rows.find((i) => i.providerInvoiceId === invoiceId),
+    );
   }
   updateWorkspaceBillingContact(input: {
     workspaceId: string;
@@ -463,6 +472,28 @@ describe("BillingManager (#98 — inbound payment link + signed webhook → reve
     expect(second.deduped).toBe(true);
     expect(h.store.events.length).toBe(1); // no second row
     expect(h.store.evidence.length).toBe(1); // no second evidence row
+    expect(h.logs).toContainEqual({
+      obj: expect.objectContaining({
+        workspaceId: "ws_1",
+        providerEventId: "evt_pay_1",
+        amountCents: 2500,
+      }),
+      msg: "billing webhook deduped",
+    });
+  });
+
+  it("dedupes concurrent webhook deliveries of the same event without duplicate evidence (#878)", async () => {
+    const raw = successEvent();
+    const sig = signWebhookPayload(raw, WHSEC, NOW_SEC);
+
+    const [first, second] = await Promise.all([
+      h.manager.ingestWebhook("ws_1", raw, sig),
+      h.manager.ingestWebhook("ws_1", raw, sig),
+    ]);
+
+    expect([first.deduped, second.deduped].sort()).toEqual([false, true]);
+    expect(h.store.events).toHaveLength(1);
+    expect(h.store.evidence).toHaveLength(1);
     expect(h.logs).toContainEqual({
       obj: expect.objectContaining({
         workspaceId: "ws_1",
