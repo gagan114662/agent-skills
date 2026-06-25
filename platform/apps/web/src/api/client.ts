@@ -287,7 +287,15 @@ export function checkoutReturnUrl(): string {
  * the server that holds the session cookie.
  */
 export function googleStartUrl(domain: string): string {
-  return apiUrl(`/auth/google/start?domain=${encodeURIComponent(domain)}`);
+  const params = new URLSearchParams({ domain });
+  if (typeof window !== "undefined") {
+    const current = new URLSearchParams(window.location.search);
+    for (const key of ["utm_source", "utm_medium", "utm_campaign", "source", "ref"]) {
+      const value = current.get(key);
+      if (value) params.set(key, value);
+    }
+  }
+  return apiUrl(`/auth/google/start?${params.toString()}`);
 }
 
 export const api = {
@@ -297,8 +305,22 @@ export const api = {
     password: string;
     displayName: string;
     workspaceSlug?: string;
+    source?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    trackingRef?: string;
   }): Promise<{ ok: true }> {
-    return post("/auth/signup", input) as Promise<{ ok: true }>;
+    const enriched = { ...input };
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      enriched.source ??= params.get("source") ?? params.get("utm_source") ?? undefined;
+      enriched.utmSource ??= params.get("utm_source") ?? undefined;
+      enriched.utmMedium ??= params.get("utm_medium") ?? undefined;
+      enriched.utmCampaign ??= params.get("utm_campaign") ?? undefined;
+      enriched.trackingRef ??= params.get("ref") ?? undefined;
+    }
+    return post("/auth/signup", enriched) as Promise<{ ok: true }>;
   },
   login(email: string, password: string): Promise<{ ok: true }> {
     return post("/auth/login", { email, password }) as Promise<{ ok: true }>;

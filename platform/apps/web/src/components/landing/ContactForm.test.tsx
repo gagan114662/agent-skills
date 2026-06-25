@@ -33,6 +33,24 @@ describe("ContactForm failure visibility (#938)", () => {
     expect(body).toMatchObject({ email: "ada@example.com", companyWebsite: "" });
   });
 
+  it("posts the real UTM source and tracking ref from the landing URL (#901)", async () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?utm_source=producthunt&utm_medium=launch&ref=trk_901" },
+      writable: true,
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () => new Response(JSON.stringify({}), { status: 202 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    render(<ContactForm />);
+    await submit();
+
+    const [, init] = fetch.mock.calls[0]!;
+    const body = JSON.parse(String(init?.body));
+    expect(body).toMatchObject({ source: "producthunt", trackingRef: "trk_901" });
+  });
+
   it("logs non-2xx captures and shows the accessible error alert", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubGlobal(

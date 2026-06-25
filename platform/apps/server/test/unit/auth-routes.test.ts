@@ -38,6 +38,14 @@ async function buildRoute() {
   return app;
 }
 
+async function buildRouteWithHook(onWorkspaceCreated: Parameters<typeof authRoutes>[1]["onWorkspaceCreated"]) {
+  const app = Fastify();
+  await app.register(cookie);
+  await app.register(authRoutes, { onWorkspaceCreated });
+  await app.ready();
+  return app;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   findUserByEmail.mockResolvedValue(undefined);
@@ -62,6 +70,34 @@ describe("authRoutes", () => {
       expect(res.json()).toMatchObject({ error: "password must be at least 2 characters" });
       expect(findUserByEmail).not.toHaveBeenCalled();
       expect(createHumanAccount).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("passes signup attribution from query params into the workspace-created hook (#901)", async () => {
+    const onWorkspaceCreated = vi.fn(async () => undefined);
+    const app = await buildRouteWithHook(onWorkspaceCreated);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/auth/signup?utm_source=producthunt&utm_medium=launch&utm_campaign=alpha&ref=trk_123",
+        payload: {
+          email: "ada@example.com",
+          password: "pw",
+          displayName: "Ada",
+          workspaceSlug: "acme",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(onWorkspaceCreated).toHaveBeenCalledWith("w1", "m1", {
+        source: "producthunt",
+        utmSource: "producthunt",
+        utmMedium: "launch",
+        utmCampaign: "alpha",
+        trackingRef: "trk_123",
+      });
     } finally {
       await app.close();
     }

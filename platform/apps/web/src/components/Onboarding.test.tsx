@@ -38,6 +38,24 @@ describe("Onboarding screen (#260)", () => {
     expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com");
   });
 
+  it("keeps acquisition query params on the Google OAuth start URL (#901)", async () => {
+    Object.defineProperty(window, "location", {
+      value: {
+        ...window.location,
+        search: "?utm_source=linkedin&utm_medium=paid&utm_campaign=founders&ref=gref_901",
+        assign: assignSpy,
+      },
+      writable: true,
+    });
+    render(<Onboarding />);
+    await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
+
+    expect(assignSpy).toHaveBeenCalledWith(
+      "/auth/google/start?domain=acme.com&utm_source=linkedin&utm_medium=paid&utm_campaign=founders&ref=gref_901",
+    );
+  });
+
   it("nudges (and does not navigate) when the domain is empty", async () => {
     render(<Onboarding />);
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
