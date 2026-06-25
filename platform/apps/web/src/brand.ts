@@ -1929,42 +1929,60 @@ export const COMPANY = {
   factsTitle: "Business details",
   details: [
     {
-      label: "Legal entity",
-      value: companyValue("VITE_COMPANY_LEGAL_ENTITY", "ipop.ai operator"),
-    },
-    {
-      label: "Jurisdiction",
-      value: companyValue("VITE_COMPANY_JURISDICTION", "United States"),
-    },
-    {
-      label: "Postal address",
+      label: "Legal entity status",
       value: companyValue(
-        "VITE_COMPANY_POSTAL_ADDRESS",
-        "Postal notices are coordinated through support@ipop.ai until a registered office is published.",
+        "VITE_COMPANY_LEGAL_ENTITY",
+        "Owner-operated ipop.ai project; the public contracting entity name is not yet published. Buyers receive the current legal name before signature.",
       ),
     },
     {
-      label: "Principal",
-      value: companyValue("VITE_COMPANY_PRINCIPAL", "Gagan Arora, owner"),
+      label: "Jurisdiction",
+      value: companyValue(
+        "VITE_COMPANY_JURISDICTION",
+        "United States operating status; state and registered-office details are not yet published.",
+      ),
+    },
+    {
+      label: "Postal notices",
+      value: companyValue(
+        "VITE_COMPANY_POSTAL_ADDRESS",
+        "No public registered office is listed yet. Send notice requests to support@ipop.ai so the team can provide the correct notice path before contract signature.",
+      ),
+    },
+    {
+      label: "Principal contact",
+      value: companyValue("VITE_COMPANY_PRINCIPAL", "Gagan Arora, owner; procurement routes through support@ipop.ai."),
+    },
+    {
+      label: "Tax and vendor forms",
+      value:
+        "W-9, tax, and vendor onboarding forms are not published for anonymous download. Request the current packet at support@ipop.ai.",
     },
   ],
   sections: [
     {
-      title: "Contracting and notices",
+      title: "Procurement packet",
       body:
-        "For vendor onboarding, tax forms, security questionnaires, postal notices, or procurement review, contact support@ipop.ai and include the workspace or buying organization name.",
+        "For vendor onboarding, ask for the buyer packet: contracting entity confirmation, tax form status, security questionnaire, subprocessors, DPA, terms, privacy, refund policy, and support/SLA notes.",
+    },
+    {
+      title: "Security and subprocessors",
+      body:
+        "The public security page describes shipped controls and roadmap items; the DPA and privacy policy cover processor/subprocessor handling. If a current subprocessor list is needed for review, request it with the procurement packet.",
     },
     {
       title: "Public legal documents",
       body:
-        "Company-level terms, privacy, refund, and security pages are linked from the footer so buyers can review baseline operating terms before talking to the team.",
+        "Terms, privacy, DPA, refund policy, security, and support details are linked below so buyers can review baseline operating terms before talking to the team.",
     },
   ],
   legalLinks: [
     { href: LEGAL.terms.href, label: LEGAL.terms.navLabel },
     { href: LEGAL.privacy.href, label: LEGAL.privacy.navLabel },
+    { href: LEGAL.dpa.href, label: LEGAL.dpa.navLabel },
     { href: "/security", label: SECURITY.navLabel },
     { href: "/refund-policy", label: REFUND_POLICY.navLabel },
+    { href: SUPPORT_CONTACT.href, label: SUPPORT_CONTACT.label },
   ],
   backCta: "Back home",
 } as const;
