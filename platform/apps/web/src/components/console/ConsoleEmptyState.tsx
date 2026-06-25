@@ -13,6 +13,7 @@
  * missing runtime routes to Settings → Connect Claude; anything else falls back to a plain retry line.
  */
 import { CONSOLE, consoleSeedRetryNote } from "../../brand.js";
+import type { MissionDiagnosticDto } from "../../api/types.js";
 import { PopMark } from "../PopMark.js";
 
 /** Why the seed didn't produce a running venture (#221) — drives the panel's actionable failure copy. */
@@ -35,6 +36,8 @@ export interface ConsoleEmptyStateProps {
   seeded: boolean;
   /** The seed call failed — surface the matching actionable message by the CTA (null = no error). */
   error: SeedError | null;
+  /** Server-side activation diagnostic while the seed landed but the board has not filled yet (#917). */
+  activationDiagnostic?: MissionDiagnosticDto | null;
   /**
    * Seconds left on the authoritative rate-limit hold (#227), owned by the parent so the same countdown
    * governs every seed affordance. While > 0 (with a `rate` error) the CTA is hard-held — it cannot re-fire.
@@ -51,6 +54,7 @@ export function ConsoleEmptyState({
   busy,
   seeded,
   error,
+  activationDiagnostic,
   coolOff,
   onConnect,
   onRetry,
@@ -58,6 +62,26 @@ export function ConsoleEmptyState({
   const copy = CONSOLE.firstRun;
 
   if (seeded) {
+    if (activationDiagnostic && activationDiagnostic.state !== "running" && activationDiagnostic.state !== "no_venture") {
+      return (
+        <div className="firstrun" role="alert">
+          <PopMark className="firstrun__mark" />
+          <div className="firstrun__blocked">
+            <p className="firstrun__blocked-title">{activationDiagnostic.headline}</p>
+            <p className="firstrun__blocked-body">{activationDiagnostic.detail}</p>
+            <div className="firstrun__actions">
+              <button className="btn btn--primary" type="button" onClick={onConnect}>
+                {copy.connectErrorCta}
+              </button>
+              <button className="btn" type="button" onClick={onRetry}>
+                {copy.timeoutRetry}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (error?.kind === "timeout-connect") {
       return (
         <div className="firstrun" role="alert">

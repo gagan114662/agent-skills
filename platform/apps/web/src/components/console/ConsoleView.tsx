@@ -981,6 +981,7 @@ export function ConsoleView({
             busy={seeding}
             seeded={seeded}
             error={seedError}
+            activationDiagnostic={seedAwaitingBoard ? (mc?.diagnostic ?? null) : null}
             coolOff={seedCoolOff}
             onConnect={() => openShellSettings()}
             onRetry={retrySeededStart}

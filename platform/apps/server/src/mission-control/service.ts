@@ -30,6 +30,13 @@ export interface MissionControlDeps {
   hasVenture?: (workspaceId: string) => Promise<boolean>;
   /** Whether that venture has an epic / open tasks to pick up. Optional: absent ⇒ treated as false. */
   hasOpenWork?: (workspaceId: string) => Promise<boolean>;
+  /** Best-effort owner alert for sustained degraded activation states (#917). */
+  activationHealthAlert?: (input: {
+    workspaceId: string;
+    diagnostic: MissionDiagnostic;
+    recentFailures: RecentFailureView[];
+    now: Date;
+  }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -63,6 +70,9 @@ export class MissionControlService {
       hasOpenWork,
       nowMs: now.getTime(),
     });
+    if (diagnostic.state === "sessions_failing" || diagnostic.state === "no_work") {
+      await this.deps.activationHealthAlert?.({ workspaceId, diagnostic, recentFailures, now });
+    }
     return { ...mc, diagnostic, recentFailures };
   }
 }
