@@ -2078,6 +2078,21 @@ select:focus-visible {
   font-size: var(--fs-body);
   letter-spacing: -0.01em;
 }
+.review-row__preview {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.review-row__consequence {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .review-row__meta {
   display: flex;
   flex-wrap: wrap;
@@ -2153,6 +2168,78 @@ select:focus-visible {
 }
 .request-detail__error {
   color: var(--danger);
+}
+.request-detail__preview,
+.request-detail__decision {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: 12px;
+  margin: 14px 0;
+}
+.request-detail__eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.request-detail__preview h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.request-detail__preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.request-detail__decision dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+.request-detail__decision dt {
+  color: var(--text-faint);
+}
+.request-detail__decision dd {
+  margin: 0;
+}
+.request-detail__risk {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--away) 45%, var(--line));
+  background: color-mix(in srgb, var(--away) 10%, transparent);
+  color: var(--text);
+  font-size: 13px;
+}
+.request-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.request-detail__reject {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.request-detail__reason {
+  min-height: 70px;
+  resize: vertical;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
 }
 .pill {
   text-transform: capitalize;

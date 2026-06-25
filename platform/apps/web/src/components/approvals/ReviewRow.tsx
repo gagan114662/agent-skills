@@ -7,6 +7,7 @@ import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { popConfetti } from "../../lib/confetti.js";
 import { formatAge, formatTtl, isExpired } from "./ttl.js";
+import { approvalReview } from "./approval-review.js";
 
 export function ReviewRow({
   request,
@@ -25,6 +26,7 @@ export function ReviewRow({
   const isOwn = identity?.memberId === request.requesterMemberId;
   const canDecide = isHuman && !isOwn && request.status === "pending";
   const ttl = formatTtl(request.expiresAt, now);
+  const review = approvalReview(request);
 
   async function approve(e: MouseEvent<HTMLButtonElement>): Promise<void> {
     const r = e.currentTarget.getBoundingClientRect();
@@ -52,8 +54,10 @@ export function ReviewRow({
         aria-label={`Open request: ${request.summary}`}
       >
         <span className="review-row__summary">{request.summary}</span>
+        <span className="review-row__preview">{review.previewBody}</span>
+        <span className="review-row__consequence">{review.consequence}</span>
         <span className="review-row__meta">
-          <span className="review-row__action">{request.actionType}</span>
+          <span className="review-row__action">{review.actionLabel}</span>
           {request.amount !== null && (
             <span className="review-row__amount">${request.amount}</span>
           )}
