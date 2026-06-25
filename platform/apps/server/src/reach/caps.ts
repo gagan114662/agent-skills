@@ -18,6 +18,8 @@ export interface ReachCaps {
   liveSendEnabled: boolean;
   /** Per-sending-domain daily send ceiling (deliverability bound). */
   perDomainDailyCap: number;
+  /** Workspace-level hard cap for paid prospect-data credits. Zero means no paid data credits. */
+  dataCreditBudgetCents: number;
   /** Max prospects sourced + processed per cron batch. */
   batchSize: number;
   /** The owner's own workspace id (owner-first rollout marker), or null. */
@@ -33,6 +35,7 @@ export const REACH_DEFAULTS: ReachCaps = {
   sendProvider: "dryrun",
   liveSendEnabled: false,
   perDomainDailyCap: 50,
+  dataCreditBudgetCents: 0,
   batchSize: 25,
   ownerWorkspaceId: null,
   brandName: null,
@@ -41,18 +44,29 @@ export const REACH_DEFAULTS: ReachCaps = {
 };
 
 function positiveIntOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : fallback;
+}
+
+function nonnegativeIntOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : fallback;
 }
 
 export function resolveReachCaps(cfg: ReachConfig | undefined): ReachCaps {
   const source = cfg?.prospectSource;
   return {
     enabled: cfg?.enabled ?? REACH_DEFAULTS.enabled,
-    prospectSource:
-      source && isProspectSourceKind(source) ? source : REACH_DEFAULTS.prospectSource,
+    prospectSource: source && isProspectSourceKind(source) ? source : REACH_DEFAULTS.prospectSource,
     sendProvider: cfg?.sendProvider ?? REACH_DEFAULTS.sendProvider,
     liveSendEnabled: cfg?.liveSendEnabled ?? REACH_DEFAULTS.liveSendEnabled,
     perDomainDailyCap: positiveIntOr(cfg?.perDomainDailyCap, REACH_DEFAULTS.perDomainDailyCap),
+    dataCreditBudgetCents: nonnegativeIntOr(
+      cfg?.dataCreditBudgetCents,
+      REACH_DEFAULTS.dataCreditBudgetCents,
+    ),
     batchSize: positiveIntOr(cfg?.batchSize, REACH_DEFAULTS.batchSize),
     ownerWorkspaceId: cfg?.ownerWorkspaceId ?? REACH_DEFAULTS.ownerWorkspaceId,
     brandName: cfg?.brandName ?? REACH_DEFAULTS.brandName,

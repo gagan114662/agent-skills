@@ -1392,6 +1392,8 @@ export const reachSchema = z.object({
   liveSendEnabled: z.boolean().optional(),
   /** Per-sending-domain daily send cap (deliverability bound for the autonomous channel). */
   perDomainDailyCap: z.number().int().positive().optional(),
+  /** Workspace hard cap for paid prospect-data credits. Default 0 = no paid data-credit requests. */
+  dataCreditBudgetCents: z.number().int().nonnegative().optional(),
   /** Max prospects sourced + processed per cron batch. */
   batchSize: z.number().int().positive().optional(),
   /** The owner's own workspace id (the owner-first rollout marker). */

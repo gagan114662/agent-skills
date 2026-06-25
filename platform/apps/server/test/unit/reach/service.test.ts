@@ -20,21 +20,39 @@ interface SendRow extends SendDatum {
 function fakes() {
   const contacts = new Map<
     string,
-    { status: string; currentStep: number; lastStepAtMs: number; recipientLabel: string; channel: "email" | "linkedin"; score: number; signalKind: string | null }
+    {
+      status: string;
+      currentStep: number;
+      lastStepAtMs: number;
+      recipientLabel: string;
+      channel: "email" | "linkedin";
+      score: number;
+      signalKind: string | null;
+    }
   >();
   const sends: SendRow[] = [];
   const receipts: (ReceiptDatum & { sendId: string; externalRef: string })[] = [];
   const runs: { status: string; tuning: ReachTuningConfig | null }[] = [];
   const approvalCalls: { provider: string; amountCents: number }[] = [];
+  const dataCreditSpend = new Map<
+    string,
+    { pendingCents: number; approvedCents: number; pendingRequestId: string | null }
+  >();
   let sendSeq = 0;
 
   const deps: Omit<ReachDeps, "caps" | "resolveSource"> = {
     now: () => NOW,
-    icp: { async seed() { return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] }; } },
+    icp: {
+      async seed() {
+        return { domain: "ipop.ai", productKeywords: ["growth"], targetIndustries: ["saas"] };
+      },
+    },
     channels: { email: createEmailChannel(), linkedin: createLinkedInChannel() },
     contacts: {
       async contactedKeys() {
-        return new Set([...contacts.entries()].filter(([, c]) => c.status !== "imported").map(([k]) => k));
+        return new Set(
+          [...contacts.entries()].filter(([, c]) => c.status !== "imported").map(([k]) => k),
+        );
       },
       async importProspects() {
         return { imported: 0, updated: 0, skipped: 0 };
@@ -94,19 +112,24 @@ function fakes() {
         return matching.length ? matching[matching.length - 1]!.id : null;
       },
       async sendsSince(_w, since) {
-        return sends.filter((s) => s.createdAt >= since).map((s) => ({
-          channel: s.channel,
-          status: s.status,
-          variant: s.variant,
-          signalKind: s.signalKind,
-          sentHourUtc: s.sentHourUtc,
-        }));
+        return sends
+          .filter((s) => s.createdAt >= since)
+          .map((s) => ({
+            channel: s.channel,
+            status: s.status,
+            variant: s.variant,
+            signalKind: s.signalKind,
+            sentHourUtc: s.sentHourUtc,
+          }));
       },
     },
     receipts: {
       async record(input) {
         const dup = receipts.some(
-          (r) => r.sendId === input.sendId && r.kind === input.kind && r.externalRef === input.externalRef,
+          (r) =>
+            r.sendId === input.sendId &&
+            r.kind === input.kind &&
+            r.externalRef === input.externalRef,
         );
         if (dup) return { recorded: false };
         const send = sends.find((s) => s.id === input.sendId);
@@ -121,12 +144,20 @@ function fakes() {
         return { recorded: true };
       },
       async receiptData() {
-        return receipts.map((r) => ({ kind: r.kind, variant: r.variant, signalKind: r.signalKind, sentHourUtc: r.sentHourUtc }));
+        return receipts.map((r) => ({
+          kind: r.kind,
+          variant: r.variant,
+          signalKind: r.signalKind,
+          sentHourUtc: r.sentHourUtc,
+        }));
       },
     },
     runs: {
       async insert(input) {
-        runs.push({ status: input.status, tuning: (input.tuningReport as { next?: ReachTuningConfig } | null)?.next ?? null });
+        runs.push({
+          status: input.status,
+          tuning: (input.tuningReport as { next?: ReachTuningConfig } | null)?.next ?? null,
+        });
         return { id: `run-${runs.length}` };
       },
       async latestTuning() {
@@ -134,15 +165,33 @@ function fakes() {
         return completed?.tuning ?? null;
       },
     },
-    suppressions: { async loadSuppressed() { return new Set<string>(); } },
+    suppressions: {
+      async loadSuppressed() {
+        return new Set<string>();
+      },
+    },
     approvals: {
+      async dataCreditSpend(_workspaceId, provider) {
+        return (
+          dataCreditSpend.get(provider) ?? {
+            pendingCents: 0,
+            approvedCents: 0,
+            pendingRequestId: null,
+          }
+        );
+      },
       async submitDataCreditSpend(input) {
         approvalCalls.push({ provider: input.provider, amountCents: input.amountCents });
+        dataCreditSpend.set(input.provider, {
+          pendingCents: input.amountCents,
+          approvedCents: 0,
+          pendingRequestId: "req-1",
+        });
         return { requestId: "req-1" };
       },
     },
   };
-  return { deps, contacts, sends, receipts, runs, approvalCalls };
+  return { deps, contacts, sends, receipts, runs, approvalCalls, dataCreditSpend };
 }
 
 function caps(over: Partial<ReachCaps> = {}): ReachCaps {
@@ -156,12 +205,17 @@ function caps(over: Partial<ReachCaps> = {}): ReachCaps {
   };
 }
 
-const mockSource: ReachDeps["resolveSource"] = () => createMockProspectSource({ now: () => NOW.getTime() });
+const mockSource: ReachDeps["resolveSource"] = () =>
+  createMockProspectSource({ now: () => NOW.getTime() });
 
 describe("ReachService.runBatch (#280)", () => {
   it("runs the loop end-to-end: sources, sends (dry-run), enrols, measures, self-tunes", async () => {
     const f = fakes();
-    const svc = new ReachService({ ...f.deps, caps: () => caps({ batchSize: 5 }), resolveSource: mockSource });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 5 }),
+      resolveSource: mockSource,
+    });
     const res = await svc.runBatch("ws1");
     expect(res.status).toBe("completed");
     expect(res.prospectsFound).toBe(5);
@@ -173,7 +227,11 @@ describe("ReachService.runBatch (#280)", () => {
 
   it("dedupes against already-contacted on the next run (never re-touches the list)", async () => {
     const f = fakes();
-    const svc = new ReachService({ ...f.deps, caps: () => caps({ batchSize: 5 }), resolveSource: mockSource });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 5 }),
+      resolveSource: mockSource,
+    });
     await svc.runBatch("ws1");
     const firstKeys = new Set(f.contacts.keys());
     await svc.runBatch("ws1");
@@ -222,14 +280,25 @@ describe("ReachService.runBatch (#280)", () => {
     // suppress the first mock prospect's email
     const probe = createMockProspectSource({ now: () => NOW.getTime() });
     const { prospects } = await probe.search({
-      icp: { domain: "ipop.ai", industries: ["saas"], roles: ["head of growth"], companySizes: [], keywords: ["growth"], signalKinds: ["funding_round"] },
+      icp: {
+        domain: "ipop.ai",
+        industries: ["saas"],
+        roles: ["head of growth"],
+        companySizes: [],
+        keywords: ["growth"],
+        signalKinds: ["funding_round"],
+      },
       limit: 1,
       excludeKeys: new Set(),
     });
     const suppressedEmail = prospects[0]!.email!.toLowerCase();
     const svc = new ReachService({
       ...f.deps,
-      suppressions: { async loadSuppressed() { return new Set([suppressedEmail]); } },
+      suppressions: {
+        async loadSuppressed() {
+          return new Set([suppressedEmail]);
+        },
+      },
       caps: () => caps({ batchSize: 3 }),
       resolveSource: mockSource,
     });
@@ -262,7 +331,7 @@ describe("ReachService.runBatch (#280)", () => {
     };
     const svc = new ReachService({
       ...f.deps,
-      caps: () => caps({ batchSize: 10, prospectSource: "clay" }),
+      caps: () => caps({ batchSize: 10, prospectSource: "clay", dataCreditBudgetCents: 500 }),
       resolveSource: () => paid,
     });
     const res = await svc.runBatch("ws1");
@@ -272,9 +341,71 @@ describe("ReachService.runBatch (#280)", () => {
     expect(f.sends).toHaveLength(0); // nothing sent
   });
 
+  it("rejects paid prospect data before approval when the data-credit cap would be exceeded (#930)", async () => {
+    const f = fakes();
+    const paid: ProspectSource = {
+      kind: "clay",
+      paid: true,
+      estimateCostCents: (limit) => limit * 100,
+      async search() {
+        throw new Error("must not be called when over budget");
+      },
+    };
+    f.dataCreditSpend.set("clay", {
+      pendingCents: 300,
+      approvedCents: 200,
+      pendingRequestId: null,
+    });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 2, prospectSource: "clay", dataCreditBudgetCents: 600 }),
+      resolveSource: () => paid,
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.status).toBe("skipped");
+    expect(res.reason).toContain("paid data credit budget exceeded");
+    expect(f.approvalCalls).toEqual([]);
+    expect(f.runs.at(-1)?.status).toBe("skipped");
+  });
+
+  it("reuses an existing pending data-credit request for the same source (#930)", async () => {
+    const f = fakes();
+    const paid: ProspectSource = {
+      kind: "clay",
+      paid: true,
+      estimateCostCents: () => 50,
+      async search() {
+        throw new Error("must not be called while funding is pending");
+      },
+    };
+    f.dataCreditSpend.set("clay", {
+      pendingCents: 50,
+      approvedCents: 0,
+      pendingRequestId: "req-existing",
+    });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 10, prospectSource: "clay", dataCreditBudgetCents: 500 }),
+      resolveSource: () => paid,
+    });
+
+    const res = await svc.runBatch("ws1");
+
+    expect(res.status).toBe("awaiting_data_funding");
+    expect(res.approvalRequestId).toBe("req-existing");
+    expect(res.reason).toContain("already awaiting owner approval");
+    expect(f.approvalCalls).toEqual([]);
+  });
+
   it("records a skipped run (and sends nothing) when disabled", async () => {
     const f = fakes();
-    const svc = new ReachService({ ...f.deps, caps: () => caps({ enabled: false }), resolveSource: mockSource });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ enabled: false }),
+      resolveSource: mockSource,
+    });
     const res = await svc.runBatch("ws1");
     expect(res.status).toBe("skipped");
     expect(f.sends).toHaveLength(0);
@@ -285,11 +416,19 @@ describe("ReachService.runBatch (#280)", () => {
 describe("ReachService.recordReceipt (#280)", () => {
   it("records an external receipt idempotently and stops the cadence on a reply", async () => {
     const f = fakes();
-    const svc = new ReachService({ ...f.deps, caps: () => caps({ batchSize: 1 }), resolveSource: mockSource });
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ batchSize: 1 }),
+      resolveSource: mockSource,
+    });
     await svc.runBatch("ws1");
     const contactKey = [...f.contacts.keys()][0]!;
 
-    const first = await svc.recordReceipt("ws1", { contactKey, kind: "reply", externalRef: "evt-1" });
+    const first = await svc.recordReceipt("ws1", {
+      contactKey,
+      kind: "reply",
+      externalRef: "evt-1",
+    });
     expect(first.recorded).toBe(true);
     expect(f.contacts.get(contactKey)?.status).toBe("replied"); // cadence stopped
 

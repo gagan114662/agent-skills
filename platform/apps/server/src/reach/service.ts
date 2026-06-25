@@ -187,6 +187,14 @@ export interface ReachRunStore {
 
 /** Parks a money-gated data-credit spend (#13). Returns the pending request id. */
 export interface ReachApprovalGate {
+  dataCreditSpend(
+    workspaceId: string,
+    provider: string,
+  ): Promise<{
+    pendingCents: number;
+    approvedCents: number;
+    pendingRequestId: string | null;
+  }>;
   submitDataCreditSpend(input: {
     workspaceId: string;
     provider: string;
@@ -329,6 +337,42 @@ export class ReachService {
     if (source.paid) {
       const estCents = source.estimateCostCents(caps.batchSize);
       if (estCents > 0) {
+        const spend = await this.deps.approvals.dataCreditSpend(workspaceId, source.kind);
+        if (spend.pendingRequestId) {
+          await this.deps.runs.insert({
+            workspaceId,
+            sourceKind: source.kind,
+            status: "awaiting_data_funding",
+            prospectsFound: 0,
+            messagesSent: 0,
+            messagesQueued: 0,
+            suppressedCount: 0,
+            rateLimitedCount: 0,
+            tuningReport: null,
+          });
+          return {
+            ...empty("awaiting_data_funding", "paid data spend already awaiting owner approval"),
+            approvalRequestId: spend.pendingRequestId,
+          };
+        }
+        const projectedSpend = spend.pendingCents + spend.approvedCents + estCents;
+        if (projectedSpend > caps.dataCreditBudgetCents) {
+          await this.deps.runs.insert({
+            workspaceId,
+            sourceKind: source.kind,
+            status: "skipped",
+            prospectsFound: 0,
+            messagesSent: 0,
+            messagesQueued: 0,
+            suppressedCount: 0,
+            rateLimitedCount: 0,
+            tuningReport: null,
+          });
+          return empty(
+            "skipped",
+            `paid data credit budget exceeded (${projectedSpend}/${caps.dataCreditBudgetCents} cents)`,
+          );
+        }
         const { requestId } = await this.deps.approvals.submitDataCreditSpend({
           workspaceId,
           provider: source.kind,
