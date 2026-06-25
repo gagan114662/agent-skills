@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "issue": 1072,
+  "description": "Reference screenshot evidence for the ipop experience-system visual QA gate. Candidate captures can be added per target and compared with zero tolerance unless a target opts into a threshold.",
+  "targets": [
+    {
+      "name": "chat workspace",
+      "reference": "gallery/screenshots/after/chat.png",
+      "quality": { "minWidth": 1200, "minHeight": 800 }
+    },
+    {
+      "name": "approval queue",
+      "reference": "gallery/screenshots/after/approvals.png",
+      "quality": { "minWidth": 1200, "minHeight": 800 }
+    },
+    {
+      "name": "pricing page",
+      "reference": "gallery/screenshots/after/pricing.png",
+      "quality": { "minWidth": 1200, "minHeight": 800 }
+    },
+    {
+      "name": "login page",
+      "reference": "gallery/screenshots/after/login.png",
+      "quality": { "minWidth": 1200, "minHeight": 800 }
+    }
+  ],
+  "liveChecks": [
+    {
+      "name": "ipop public homepage",
+      "url": "https://ipop.ai/",
+      "contains": "ipop"
+    },
+    {
+      "name": "ipop pricing",
+      "url": "https://ipop.ai/pricing",
+      "contains": "Pricing"
+    },
+    {
+      "name": "ipop security",
+      "url": "https://ipop.ai/security",
+      "contains": "Security"
+    }
+  ]
+}

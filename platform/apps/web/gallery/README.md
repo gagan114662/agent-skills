@@ -19,3 +19,22 @@ pnpm dev                       # vite dev server (default :5173)
 ```
 
 `screenshots/before` and `screenshots/after` hold the captures embedded in the #145 PR.
+
+## Visual Verification (#1072)
+
+The screenshot evidence gate is dependency-free: it reads the PNGs listed in the visual-match manifest,
+verifies they are nonblank captures at the expected size, and can compare a new candidate capture to a
+reference when a target adds a candidate file.
+
+~~~bash
+pnpm visual:verify
+~~~
+
+Live production reachability is intentionally opt-in so normal CI does not depend on ipop.ai:
+
+~~~bash
+pnpm visual:verify -- --live
+~~~
+
+When refreshing a surface, capture the new screenshot from the gallery or live route, add it as the target's
+candidate, and keep maxRms / maxDiffPct at zero unless the PR documents why a small tolerance is necessary.
