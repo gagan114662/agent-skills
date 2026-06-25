@@ -111,6 +111,9 @@ export async function authRoutes(
       utm_campaign?: string;
       trackingRef?: string;
       ref?: string;
+      termsAccepted?: boolean;
+      legalConsentVersion?: string;
+      legalConsentAt?: string;
     };
     const attribution = readSignupAttribution({
       body: b as Record<string, unknown>,
@@ -159,6 +162,17 @@ export async function authRoutes(
     // #123/#902: seed the department fleet so the owner lands inside a working agency. Best-effort —
     // the hook never throws, so signup can't be broken.
     if (opts.onWorkspaceCreated) await opts.onWorkspaceCreated(ws.id, memberId, attribution);
+    if (b.termsAccepted === true) {
+      req.log.info(
+        {
+          workspaceId: ws.id,
+          userId,
+          consentVersion: typeof b.legalConsentVersion === "string" ? b.legalConsentVersion : "unknown",
+          consentAt: typeof b.legalConsentAt === "string" ? b.legalConsentAt : null,
+        },
+        "signup legal consent accepted",
+      );
+    }
     return reply.code(201).send({ ok: true });
   });
 

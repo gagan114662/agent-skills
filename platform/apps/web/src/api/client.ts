@@ -310,6 +310,9 @@ export const api = {
     utmMedium?: string;
     utmCampaign?: string;
     trackingRef?: string;
+    termsAccepted?: boolean;
+    legalConsentVersion?: string;
+    legalConsentAt?: string;
   }): Promise<{ ok: true }> {
     const enriched = { ...input };
     if (typeof window !== "undefined") {

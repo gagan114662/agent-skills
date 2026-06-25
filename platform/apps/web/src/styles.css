@@ -434,6 +434,19 @@ select:focus-visible {
   font-size: 13px;
   margin: 0;
 }
+.auth__consent,
+.contact-form__consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.auth__consent input,
+.contact-form__consent input {
+  margin-top: 2px;
+}
 .auth__switch {
   margin: 4px 0 0;
   font-size: 13px;
@@ -5494,6 +5507,11 @@ select:focus-visible {
   background: var(--paper); color: var(--ink); resize: vertical;
 }
 .contact-form__submit { align-self: flex-start; }
+.contact-form__consent-help {
+  margin: -8px 0 0 28px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .contact-form__sent { margin: 0; font-size: 14px; color: var(--dept-email); font-weight: 600; }
 .contact-form__error {
   margin: 0;
@@ -5503,6 +5521,9 @@ select:focus-visible {
   color: var(--vermilion);
   font-size: 14px;
   font-weight: 700;
+}
+.legal-page__updated {
+  margin-top: 12px;
 }
 
 /* ============================ richer footer ============================ */

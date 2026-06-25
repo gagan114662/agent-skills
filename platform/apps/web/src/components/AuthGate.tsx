@@ -8,7 +8,7 @@
  */
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
-import { BRAND, LANDING, PRICING, VOICE } from "../brand.js";
+import { BRAND, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
 import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -29,6 +29,7 @@ const PricingPage = lazy(() => import("./landing/PricingPage.js").then((m) => ({
 const RefundPolicy = lazy(() =>
   import("./landing/RefundPolicy.js").then((m) => ({ default: m.RefundPolicy })),
 );
+const LegalPage = lazy(() => import("./landing/LegalPage.js").then((m) => ({ default: m.LegalPage })));
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
@@ -148,6 +149,14 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     );
   }
 
+  if (path === LEGAL.terms.href || path === LEGAL.privacy.href) {
+    return (
+      <Suspense fallback={<Splash />}>
+        <LegalPage kind={path === LEGAL.terms.href ? "terms" : "privacy"} />
+      </Suspense>
+    );
+  }
+
   // #153 The public marketing site renders for everyone (anon AND signed-in), matched before the phase
   // checks — it fetches its own published content and degrades gracefully, so it works even while the
   // session is still bootstrapping or the API is offline.
@@ -262,6 +271,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState<AuthError | null>(null);
   const [busy, setBusy] = useState(false);
   // #214: a plan chosen on `/pricing` arrives as `?plan=<key>`. We frame it as a free trial here and
@@ -297,6 +307,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           email,
           password,
           displayName,
+          termsAccepted,
+          legalConsentVersion: LEGAL.consentVersion,
+          legalConsentAt: new Date().toISOString(),
           ...(trimmedSlug ? { workspaceSlug: trimmedSlug } : {}),
         });
       }
@@ -335,6 +348,29 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
               aria-required="true"
               minLength={DISPLAY_NAME_MIN_LENGTH}
             />
+          </label>
+        )}
+
+        {mode === "signup" && (
+          <label className="auth__consent">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              required
+              aria-required="true"
+            />
+            <span>
+              I agree to the{" "}
+              <Link href={LEGAL.terms.href} className="linklike">
+                {LEGAL.terms.navLabel}
+              </Link>{" "}
+              and{" "}
+              <Link href={LEGAL.privacy.href} className="linklike">
+                {LEGAL.privacy.navLabel}
+              </Link>
+              .
+            </span>
           </label>
         )}
 

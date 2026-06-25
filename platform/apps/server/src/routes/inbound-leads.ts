@@ -450,6 +450,17 @@ export async function inboundLeadsRoutes(
       source: lead.source,
       trackingRef: lead.trackingRef,
     });
+    if (body.termsAccepted === true) {
+      req.log.info(
+        {
+          workspaceId,
+          leadId: created.id,
+          consentVersion: typeof body.legalConsentVersion === "string" ? body.legalConsentVersion : "unknown",
+          consentAt: typeof body.legalConsentAt === "string" ? body.legalConsentAt : null,
+        },
+        "inbound lead legal consent accepted",
+      );
+    }
     const sig = confirmationSignature({
       leadId: created.id,
       email: lead.email,

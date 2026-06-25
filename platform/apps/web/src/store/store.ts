@@ -298,6 +298,9 @@ export interface Store {
     password: string;
     displayName: string;
     workspaceSlug?: string;
+    termsAccepted?: boolean;
+    legalConsentVersion?: string;
+    legalConsentAt?: string;
   }): Promise<void>;
   logout(): Promise<void>;
   selectChannel(channelId: string): Promise<void>;

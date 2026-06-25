@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { prerenderPages } from "./entry-server.js";
-import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS } from "./brand.js";
+import { BRAND, PRICING, COMPARE, STORIES, GUIDES, CHANGELOG, BRAND_ASSETS, LEGAL } from "./brand.js";
 
 const pages = prerenderPages();
 const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
@@ -16,9 +16,31 @@ const byPath = (urlPath: string) => pages.find((p) => p.urlPath === urlPath);
 describe("prerenderPages — public marketing coverage (#467)", () => {
   it("prerenders every public marketing surface a crawler should index", () => {
     const paths = pages.map((p) => p.urlPath);
-    for (const expected of ["/", "/blog", "/pricing", "/compare", "/stories", "/guides", "/changelog", "/brand"]) {
+    for (const expected of [
+      "/",
+      "/blog",
+      "/pricing",
+      "/terms",
+      "/privacy",
+      "/compare",
+      "/stories",
+      "/guides",
+      "/changelog",
+      "/brand",
+    ]) {
       expect(paths, `missing prerendered route ${expected}`).toContain(expected);
     }
+  });
+
+  it.each([
+    ["/terms", "Terms", LEGAL.terms.title],
+    ["/privacy", "Privacy", LEGAL.privacy.title],
+  ])("prerenders %s with public legal copy and breadcrumbs (#863)", (urlPath, titleWord, h1) => {
+    const page = byPath(urlPath)!;
+    expect(page.title).toContain(titleWord);
+    expect(page.description, `${urlPath} has no description`).toBeTruthy();
+    expect(page.html).toContain(h1);
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
   it("gives every route a unique <title> — no two pages share the homepage's title", () => {

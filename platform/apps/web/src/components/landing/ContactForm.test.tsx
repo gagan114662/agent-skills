@@ -14,6 +14,7 @@ afterEach(() => {
 async function submit(): Promise<void> {
   await userEvent.type(screen.getByLabelText(CONTACT.emailLabel), "ada@example.com");
   await userEvent.type(screen.getByLabelText(CONTACT.messageLabel), "We want to improve our SEO.");
+  await userEvent.click(screen.getByRole("checkbox", { name: /public legal terms/i }));
   await userEvent.click(screen.getByRole("button", { name: CONTACT.submitLabel }));
 }
 
@@ -43,7 +44,22 @@ describe("ContactForm failure visibility (#938)", () => {
     expect(fetch).toHaveBeenCalled();
     const [, init] = fetch.mock.calls[0]!;
     const body = JSON.parse(String(init?.body));
-    expect(body).toMatchObject({ email: "ada@example.com", companyWebsite: "" });
+    expect(body).toMatchObject({
+      email: "ada@example.com",
+      companyWebsite: "",
+      termsAccepted: true,
+      legalConsentVersion: "public-legal-2026-06-25",
+    });
+    expect(typeof body.legalConsentAt).toBe("string");
+  });
+
+  it("requires consent and links the public legal pages (#863)", () => {
+    render(<ContactForm />);
+
+    const consent = screen.getByRole("checkbox", { name: /public legal terms/i });
+    expect(consent).toHaveAttribute("required");
+    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+    expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   });
 
   it("posts the real UTM source and tracking ref from the landing URL (#901)", async () => {

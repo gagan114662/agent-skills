@@ -6,8 +6,9 @@
  * All copy from `brand.ts` (brand.test scans this file).
  */
 import { useState, type FormEvent } from "react";
-import { CONTACT } from "../../brand.js";
+import { CONTACT, LEGAL } from "../../brand.js";
 import { apiUrl } from "../../api/config.js";
+import { Link } from "../../routing.js";
 
 type Status = "idle" | "sending" | "sent" | "error";
 type NextStep = { label: string; href: string };
@@ -40,6 +41,9 @@ export function ContactForm(): React.JSX.Element {
       email: String(data.get("email") ?? ""),
       message: String(data.get("message") ?? ""),
       companyWebsite: String(data.get("companyWebsite") ?? ""),
+      termsAccepted: data.get("termsAccepted") === "on",
+      legalConsentVersion: LEGAL.consentVersion,
+      legalConsentAt: new Date().toISOString(),
       ...attributionFromLocation(),
     };
     setStatus("sending");
@@ -108,6 +112,20 @@ export function ContactForm(): React.JSX.Element {
             Company website
             <input type="text" name="companyWebsite" tabIndex={-1} autoComplete="off" />
           </label>
+          <label className="contact-form__consent">
+            <input type="checkbox" name="termsAccepted" required aria-required="true" />
+            <span>
+              {CONTACT.consentLabel}{" "}
+              <Link href={LEGAL.terms.href} className="linklike">
+                {LEGAL.terms.navLabel}
+              </Link>{" "}
+              /{" "}
+              <Link href={LEGAL.privacy.href} className="linklike">
+                {LEGAL.privacy.navLabel}
+              </Link>
+            </span>
+          </label>
+          <p className="contact-form__consent-help">{CONTACT.consentHelp}</p>
           <button
             className="btn btn--primary contact-form__submit"
             type="submit"
