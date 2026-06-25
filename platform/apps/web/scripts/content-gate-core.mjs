@@ -21,6 +21,8 @@ export const VALID_STATUSES = ["draft", "published"];
 export const TITLE_MAX_CHARS = 60;
 export const DESCRIPTION_MIN_CHARS = 110;
 export const DESCRIPTION_MAX_CHARS = 160;
+export const SITE_RESOURCE_SECTIONS = ["compare", "guides", "changelog"];
+export const REQUIRED_SITE_KEYS = ["title", "slug", "description", "kind", "agent", "date", "status", "receipt", "approval"];
 
 /**
  * Internal agent / channel markers that must never appear in a committed artifact (title, description, or
@@ -231,6 +233,69 @@ export function lintPost(opts) {
           message: `slug "${slug}" near-duplicates existing post "${other.slug}"`,
         });
       }
+    }
+  }
+
+  return { path, slug: slug || expectedSlug, ok: violations.length === 0, violations };
+}
+
+/**
+ * Lint a public marketing-site resource document. These pages are linked from the product footer/nav, so
+ * published entries must carry real evidence and approval metadata, not just a title plus the loading
+ * ellipsis that caused #1179.
+ *
+ * @param {{ path: string, raw: string, section: string }} opts
+ * @returns {LintResult}
+ */
+export function lintSiteResource(opts) {
+  const { path, raw, section } = opts;
+  /** @type {Violation[]} */
+  const violations = [];
+  const { meta, body } = parseFrontmatter(raw);
+  const slug = meta.slug ?? "";
+  const expectedSlug = slugFromPath(path);
+
+  for (const key of REQUIRED_SITE_KEYS) {
+    if (!meta[key] || meta[key].trim() === "") {
+      violations.push({ code: "missing-site-frontmatter", message: `missing required site frontmatter key: ${key}` });
+    }
+  }
+
+  if (slug && slug !== expectedSlug) {
+    violations.push({
+      code: "site-slug-filename-mismatch",
+      message: `slug "${slug}" does not match filename "${expectedSlug}"`,
+    });
+  }
+
+  if (meta.status && !VALID_STATUSES.includes(meta.status)) {
+    violations.push({ code: "invalid-site-status", message: `status "${meta.status}" is not one of ${VALID_STATUSES.join(", ")}` });
+  }
+
+  if (meta.status !== "published") {
+    violations.push({ code: "site-not-published", message: `${section} resource "${expectedSlug}" is not published` });
+  }
+
+  const expectedKind = section === "guides" ? "guide" : section;
+  if (meta.kind && meta.kind !== expectedKind) {
+    violations.push({ code: "site-kind-section-mismatch", message: `kind "${meta.kind}" does not match section "${section}"` });
+  }
+
+  const trimmedBody = body.trim();
+  if (!/^#\s+\S+/m.test(trimmedBody)) {
+    violations.push({ code: "site-missing-h1", message: "site resource body must include one H1 heading" });
+  }
+  if (trimmedBody.length < 600) {
+    violations.push({ code: "site-body-too-thin", message: `site resource body is ${trimmedBody.length} chars; publish substantive content` });
+  }
+  if (/^(?:\.{3}|…)\s*$/m.test(trimmedBody) || /\b(?:todo|coming soon|placeholder)\b/i.test(trimmedBody)) {
+    violations.push({ code: "site-placeholder-content", message: "site resource still looks like placeholder content" });
+  }
+
+  const haystack = `${meta.title ?? ""}\n${meta.description ?? ""}\n${trimmedBody}`;
+  for (const marker of INTERNAL_MARKERS) {
+    if (marker.pattern.test(haystack)) {
+      violations.push({ code: "site-internal-marker", message: `contains internal agent/channel marker: "${marker.label}"` });
     }
   }
 

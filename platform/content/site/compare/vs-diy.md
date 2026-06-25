@@ -8,6 +8,8 @@ date: 2026-06-11
 status: published
 competitor: diy
 competitorLabel: Doing it yourself
+receipt: Published resource content served by /site/content/compare and linked from the public resource nav.
+approval: Human-reviewed public comparison content carried forward into the #1179 resource gate.
 order: 2
 ---
 
@@ -36,9 +38,9 @@ voice nothing else can fake. This page is about the moment that stops being true
 
 ## What changes with a fleet
 
-You keep the voice and the judgement. You hand off the volume. You brief an agent the way you'd Slack a
-teammate — "@scout audit the homepage for SEO", "@quill draft a comparison page vs DIY" — and the work
-shows up in the channel for you to approve. The fleet drafts; **you still decide what ships**.
+You keep the voice and the judgement. You hand off the volume. You brief an agent the way you'd brief a
+teammate: audit the homepage for SEO, draft a comparison page, or turn a customer objection into a guide.
+The work shows up in the channel for you to approve. The fleet drafts; **you still decide what ships**.
 
 | | Doing it yourself | ipop |
 |---|---|---|

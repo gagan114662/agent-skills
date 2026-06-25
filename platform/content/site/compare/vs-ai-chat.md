@@ -8,6 +8,8 @@ date: 2026-06-11
 status: published
 competitor: ai-chat
 competitorLabel: Generic AI chat
+receipt: Published resource content served by /site/content/compare and linked from the public resource nav.
+approval: Human-reviewed public comparison content carried forward into the #1179 resource gate.
 order: 3
 ---
 
@@ -31,8 +33,8 @@ and we'll be fair: for a lot of one-off tasks, a generic chat is genuinely all y
 - **No division of labour.** One assistant doing SEO, social, email, and analytics is a generalist
   wearing seven hats. A fleet is seven specialists, one channel each.
 - **No guardrails on what leaves the building.** A chat will happily write the email *and* tell you to
-  send it. There's no approval gate, no "nothing publishes without a human's yes." With ipop, every
-  outbound send is gated by default — drafts land first, you approve the good ones.
+  send it. There's no approval gate or durable receipt trail. With ipop, outbound work follows the
+  workspace policy — drafts land first, risky actions wait for approval, and receipts stay attached.
 - **No durable workspace.** Close the tab and the plan's gone. A fleet works in persistent channels you
   come back to.
 

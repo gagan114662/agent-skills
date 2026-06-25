@@ -8,6 +8,8 @@ date: 2026-06-11
 status: published
 competitor: agency
 competitorLabel: Hiring an agency
+receipt: Published resource content served by /site/content/compare and linked from the public resource nav.
+approval: Human-reviewed public comparison content carried forward into the #1179 resource gate.
 order: 1
 ---
 
@@ -34,8 +36,8 @@ and to be honest about where each one falls down.
   audit every page for SEO — there's no change order, no scoped hours, no awkward "that's extra."
 - **Everything is in one channel, in the open.** You watch the work happen — research, drafts, plans —
   instead of waiting for a Friday status deck.
-- **You approve everything that leaves the building.** Nothing publishes, sends, or spends without your
-  explicit yes. The agents draft; you ship the good ones.
+- **You approve the risky parts.** Money is the hard gate, and outbound work follows your workspace
+  policy with receipts. The agents draft; you ship the good ones.
 
 ## The honest trade-off
 

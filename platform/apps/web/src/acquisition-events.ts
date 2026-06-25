@@ -13,7 +13,9 @@ export type AcquisitionEventName =
   | "workspace-created"
   | "demo-start"
   | "demo-complete"
-  | "demo-to-signup";
+  | "demo-to-signup"
+  | "resource-page-view"
+  | "resource-cta";
 
 export interface AcquisitionEventDetail {
   url?: string;
