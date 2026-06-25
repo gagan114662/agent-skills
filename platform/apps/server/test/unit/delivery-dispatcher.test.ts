@@ -506,7 +506,12 @@ describe("delivery adapters (#295)", () => {
       draft: "y",
     });
     expect(out.live).toBe(false);
-    expect(out.externalRef).toBe("https://x.example/p");
+    expect(out.externalRef).toBeNull();
+    expect(out.detail).toMatchObject({
+      attemptedUrl: "https://x.example/p",
+      healthStatus: 404,
+      dryRun: false,
+    });
   });
 
   it("SitePrChannelAdapter opens a real on-site PR and proves it live with the injected readback (#364)", async () => {
@@ -649,7 +654,13 @@ describe("delivery adapters (#295)", () => {
       draft: "y",
     });
     expect(out.live).toBe(false); // no readback ⇒ honestly not live
-    expect(out.externalRef).toBe("https://github.com/ipop/site/pull/dryrun-x");
+    expect(out.externalRef).toBeNull();
+    expect(out.detail).toMatchObject({
+      prUrl: null,
+      attemptedUrl: "https://github.com/ipop/site/pull/dryrun-x",
+      attemptedPrUrl: "https://github.com/ipop/site/pull/dryrun-x",
+      dryRun: true,
+    });
   });
 
   it("SitePrChannelAdapter throws (→ failed receipt) when the publisher cannot open a PR", async () => {

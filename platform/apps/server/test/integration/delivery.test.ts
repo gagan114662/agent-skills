@@ -20,7 +20,11 @@ import { GitHubSitePublisher } from "../../src/realworld/publish/site-publisher.
 import { DryRunSitePrProvider } from "../../src/realworld/publish/site-pr-provider.js";
 import { IpopSitePublishService } from "../../src/realworld/service.js";
 import { dryRunSocialProvider, dryRunEspProvider } from "../../src/acquisition/providers.js";
-import { dbDeliveryReceiptStore, listDeliveryReceipts, countLiveDeliveries } from "../../src/db/repositories/delivery.js";
+import {
+  dbDeliveryReceiptStore,
+  listDeliveryReceipts,
+  countLiveDeliveries,
+} from "../../src/db/repositories/delivery.js";
 import type { DeliveryFlags } from "../../src/delivery/decide.js";
 
 /**
@@ -53,21 +57,35 @@ async function newWorkspace(): Promise<{ cookie: string; workspaceId: string; me
   const signup = await app.inject({
     method: "POST",
     url: "/auth/signup",
-    payload: { email: `u-${newId()}@e.com`, password: "pw", displayName: "Owner", workspaceSlug: slug },
+    payload: {
+      email: `u-${newId()}@e.com`,
+      password: "pw",
+      displayName: "Owner",
+      workspaceSlug: slug,
+    },
   });
   const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
   const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
-const ALL_ON: DeliveryFlags = { enabled: true, publish: true, site_pr: false, social: true, email: true };
+const ALL_ON: DeliveryFlags = {
+  enabled: true,
+  publish: true,
+  site_pr: false,
+  social: true,
+  email: true,
+};
 const INTEGRATION_TIMEOUT_MS = 20_000;
 
 /** A dry-run site-PR publisher (opens no real PR — exercises the wiring without a token/network). */
 function dryRunSitePrAdapter(): SitePrChannelAdapter {
   return new SitePrChannelAdapter(
     new GitHubSitePublisher(
-      new IpopSitePublishService({ provider: new DryRunSitePrProvider(), contentDir: "content/blog" }),
+      new IpopSitePublishService({
+        provider: new DryRunSitePrProvider(),
+        contentDir: "content/blog",
+      }),
     ),
   );
 }
@@ -88,133 +106,198 @@ function dispatcher(flags: DeliveryFlags = ALL_ON) {
 }
 
 describe("deliverable delivery (#295, real Postgres)", () => {
-  it("resolves a real content channel to its department and persists a receipt tied to the approval", async () => {
-    const ws = await newWorkspace();
-    const channel = await createChannel({ workspaceId: ws.workspaceId, kind: "public", name: "content" });
+  it(
+    "resolves a real content channel to its department and persists a receipt tied to the approval",
+    async () => {
+      const ws = await newWorkspace();
+      const channel = await createChannel({
+        workspaceId: ws.workspaceId,
+        kind: "public",
+        name: "content",
+      });
 
-    // A pending deliverable card (#248) — the #13 row whose approval authorizes the ship.
-    const req = await createRequest({
-      workspaceId: ws.workspaceId,
-      requesterMemberId: ws.memberId,
-      actionType: "agent.deliverable",
-      payload: { sessionId: newId(), channelId: channel.id, task: "Launch blog post", draft: "Hello, world." },
-      amount: null,
-      summary: "Deliverable ready for review",
-      status: "pending",
-      expiresAt: null,
-      events: [{ type: "requested", detail: {} }],
-    });
+      // A pending deliverable card (#248) — the #13 row whose approval authorizes the ship.
+      const req = await createRequest({
+        workspaceId: ws.workspaceId,
+        requesterMemberId: ws.memberId,
+        actionType: "agent.deliverable",
+        payload: {
+          sessionId: newId(),
+          channelId: channel.id,
+          task: "Launch blog post",
+          draft: "Hello, world.",
+        },
+        amount: null,
+        summary: "Deliverable ready for review",
+        status: "pending",
+        expiresAt: null,
+        events: [{ type: "requested", detail: {} }],
+      });
 
-    const sessionId = newId();
-    const result = await dispatcher().ship(
-      {
-        sessionId,
-        channelId: channel.id,
-        task: "Launch blog post",
-        draft: "Hello, world.",
+      const sessionId = newId();
+      const result = await dispatcher().ship(
+        {
+          sessionId,
+          channelId: channel.id,
+          task: "Launch blog post",
+          draft: "Hello, world.",
+          computeSeconds: 90,
+          estimatedCostCents: 45,
+        },
+        { workspaceId: ws.workspaceId, approvalRequestId: req.id },
+      );
+      expect(result).toMatchObject({ shipped: true, channel: "publish", provider: "dryrun" });
+
+      const receipts = await listDeliveryReceipts(ws.workspaceId);
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({
+        approvalRequestId: req.id, // THE proof: the receipt is tied to the #13 approval
+        channel: "publish",
+        reversibility: "reversible",
+        status: "shipped",
+        live: false, // dry-run URL is not reachable — honestly recorded, never overclaimed
         computeSeconds: 90,
         estimatedCostCents: 45,
-      },
-      { workspaceId: ws.workspaceId, approvalRequestId: req.id },
-    );
-    expect(result).toMatchObject({ shipped: true, channel: "publish", provider: "dryrun" });
+      });
+      expect(receipts[0]?.externalRef).toBeNull();
+      expect(receipts[0]?.detail).toMatchObject({
+        attemptedUrl: expect.stringContaining("dryrun.reload.app"),
+        dryRun: true,
+      });
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
 
-    const receipts = await listDeliveryReceipts(ws.workspaceId);
-    expect(receipts).toHaveLength(1);
-    expect(receipts[0]).toMatchObject({
-      approvalRequestId: req.id, // THE proof: the receipt is tied to the #13 approval
-      channel: "publish",
-      reversibility: "reversible",
-      status: "shipped",
-      live: false, // dry-run URL is not reachable — honestly recorded, never overclaimed
-      computeSeconds: 90,
-      estimatedCostCents: 45,
-    });
-    expect(receipts[0]?.externalRef).toContain("dryrun.reload.app");
-  }, INTEGRATION_TIMEOUT_MS);
+  it(
+    "ships a content/SEO deliverable as a site PR when site_pr is on, recording a reversible receipt (#364)",
+    async () => {
+      const ws = await newWorkspace();
+      const channel = await createChannel({
+        workspaceId: ws.workspaceId,
+        kind: "public",
+        name: "content",
+      });
+      const req = await createRequest({
+        workspaceId: ws.workspaceId,
+        requesterMemberId: ws.memberId,
+        actionType: "agent.deliverable",
+        payload: {
+          sessionId: newId(),
+          channelId: channel.id,
+          task: "Homepage SEO copy",
+          draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity.",
+        },
+        amount: null,
+        summary: "Deliverable ready for review",
+        status: "pending",
+        expiresAt: null,
+        events: [{ type: "requested", detail: {} }],
+      });
 
-  it("ships a content/SEO deliverable as a site PR when site_pr is on, recording a reversible receipt (#364)", async () => {
-    const ws = await newWorkspace();
-    const channel = await createChannel({ workspaceId: ws.workspaceId, kind: "public", name: "content" });
-    const req = await createRequest({
-      workspaceId: ws.workspaceId,
-      requesterMemberId: ws.memberId,
-      actionType: "agent.deliverable",
-      payload: { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity." },
-      amount: null,
-      summary: "Deliverable ready for review",
-      status: "pending",
-      expiresAt: null,
-      events: [{ type: "requested", detail: {} }],
-    });
+      const result = await dispatcher({ ...ALL_ON, site_pr: true }).ship(
+        {
+          sessionId: newId(),
+          channelId: channel.id,
+          task: "Homepage SEO copy",
+          draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity.",
+        },
+        { workspaceId: ws.workspaceId, approvalRequestId: req.id },
+      );
+      // dry-run publisher: a deterministic fake PR url, opened nowhere real → honestly live:false.
+      expect(result).toMatchObject({
+        shipped: true,
+        channel: "site_pr",
+        reversibility: "reversible",
+        live: false,
+      });
 
-    const result = await dispatcher({ ...ALL_ON, site_pr: true }).ship(
-      { sessionId: newId(), channelId: channel.id, task: "Homepage SEO copy", draft: "# New homepage copy\n\nUpdated the meta tags and title for clarity." },
-      { workspaceId: ws.workspaceId, approvalRequestId: req.id },
-    );
-    // dry-run publisher: a deterministic fake PR url, opened nowhere real → honestly live:false.
-    expect(result).toMatchObject({ shipped: true, channel: "site_pr", reversibility: "reversible", live: false });
+      const receipts = await listDeliveryReceipts(ws.workspaceId);
+      expect(receipts[0]).toMatchObject({
+        approvalRequestId: req.id,
+        channel: "site_pr",
+        reversibility: "reversible",
+        status: "shipped",
+        live: false,
+      });
+      expect(receipts[0]?.externalRef).toBeNull();
+      expect(receipts[0]?.detail).toMatchObject({
+        prUrl: null,
+        attemptedPrUrl: expect.stringContaining("/pull/"),
+        dryRun: true,
+      });
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
 
-    const receipts = await listDeliveryReceipts(ws.workspaceId);
-    expect(receipts[0]).toMatchObject({
-      approvalRequestId: req.id,
-      channel: "site_pr",
-      reversibility: "reversible",
-      status: "shipped",
-      live: false,
-    });
-    expect(receipts[0]?.externalRef).toContain("/pull/");
-  }, INTEGRATION_TIMEOUT_MS);
+  it(
+    "does not ship a deliverable from a non-department channel (shared room → not shippable)",
+    async () => {
+      const ws = await newWorkspace();
+      const channel = await createChannel({
+        workspaceId: ws.workspaceId,
+        kind: "public",
+        name: "general",
+      });
+      const result = await dispatcher().ship(
+        { channelId: channel.id, task: "x", draft: "y" },
+        { workspaceId: ws.workspaceId, approvalRequestId: newId() },
+      );
+      expect(result).toBeNull();
+      expect(await listDeliveryReceipts(ws.workspaceId)).toHaveLength(0);
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
 
-  it("does not ship a deliverable from a non-department channel (shared room → not shippable)", async () => {
-    const ws = await newWorkspace();
-    const channel = await createChannel({ workspaceId: ws.workspaceId, kind: "public", name: "general" });
-    const result = await dispatcher().ship(
-      { channelId: channel.id, task: "x", draft: "y" },
-      { workspaceId: ws.workspaceId, approvalRequestId: newId() },
-    );
-    expect(result).toBeNull();
-    expect(await listDeliveryReceipts(ws.workspaceId)).toHaveLength(0);
-  }, INTEGRATION_TIMEOUT_MS);
+  it(
+    "does not cross tenants: a channel from another workspace resolves to not-shippable",
+    async () => {
+      const a = await newWorkspace();
+      const b = await newWorkspace();
+      const channelB = await createChannel({
+        workspaceId: b.workspaceId,
+        kind: "public",
+        name: "content",
+      });
+      // Workspace A tries to ship using B's channel id → resolveDeliveryDepartment returns null (tenant-scoped).
+      const result = await dispatcher().ship(
+        { channelId: channelB.id, task: "x", draft: "y" },
+        { workspaceId: a.workspaceId, approvalRequestId: newId() },
+      );
+      expect(result).toBeNull();
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
 
-  it("does not cross tenants: a channel from another workspace resolves to not-shippable", async () => {
-    const a = await newWorkspace();
-    const b = await newWorkspace();
-    const channelB = await createChannel({ workspaceId: b.workspaceId, kind: "public", name: "content" });
-    // Workspace A tries to ship using B's channel id → resolveDeliveryDepartment returns null (tenant-scoped).
-    const result = await dispatcher().ship(
-      { channelId: channelB.id, task: "x", draft: "y" },
-      { workspaceId: a.workspaceId, approvalRequestId: newId() },
-    );
-    expect(result).toBeNull();
-  }, INTEGRATION_TIMEOUT_MS);
-
-  it("countLiveDeliveries counts only genuinely-live receipts (dry-run sends do not inflate it)", async () => {
-    const ws = await newWorkspace();
-    await dbDeliveryReceiptStore.record({
-      workspaceId: ws.workspaceId,
-      approvalRequestId: newId(),
-      sessionId: null,
-      channel: "publish",
-      reversibility: "reversible",
-      provider: "github_pages",
-      live: true,
-      externalRef: "https://x.example/live",
-      status: "shipped",
-      detail: {},
-    });
-    await dbDeliveryReceiptStore.record({
-      workspaceId: ws.workspaceId,
-      approvalRequestId: newId(),
-      sessionId: null,
-      channel: "social",
-      reversibility: "irreversible",
-      provider: "dryrun",
-      live: false,
-      externalRef: "dryrun:abc",
-      status: "shipped",
-      detail: {},
-    });
-    expect(await countLiveDeliveries(ws.workspaceId)).toBe(1);
-  }, INTEGRATION_TIMEOUT_MS);
+  it(
+    "countLiveDeliveries counts only genuinely-live receipts (dry-run sends do not inflate it)",
+    async () => {
+      const ws = await newWorkspace();
+      await dbDeliveryReceiptStore.record({
+        workspaceId: ws.workspaceId,
+        approvalRequestId: newId(),
+        sessionId: null,
+        channel: "publish",
+        reversibility: "reversible",
+        provider: "github_pages",
+        live: true,
+        externalRef: "https://x.example/live",
+        status: "shipped",
+        detail: {},
+      });
+      await dbDeliveryReceiptStore.record({
+        workspaceId: ws.workspaceId,
+        approvalRequestId: newId(),
+        sessionId: null,
+        channel: "social",
+        reversibility: "irreversible",
+        provider: "dryrun",
+        live: false,
+        externalRef: "dryrun:abc",
+        status: "shipped",
+        detail: {},
+      });
+      expect(await countLiveDeliveries(ws.workspaceId)).toBe(1);
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
 });
