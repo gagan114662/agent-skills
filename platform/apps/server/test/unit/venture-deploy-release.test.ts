@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   VentureReleasePipeline,
   releasePipelineAsPostMergeVerifier,
@@ -51,6 +51,16 @@ function releaseStore(): ReleaseStore & { rows: ReleaseReceipt[] } {
   let seq = 0;
   return {
     rows,
+    async getByRelease(workspaceId: string, ventureId: string, releaseRef: string) {
+      return (
+        rows.find(
+          (row) =>
+            row.workspaceId === workspaceId &&
+            row.ventureId === ventureId &&
+            row.releaseRef === releaseRef,
+        ) ?? null
+      );
+    },
     async create(input: CreateReleaseReceiptInput) {
       const row: ReleaseReceipt = {
         id: `r${++seq}`,
@@ -61,6 +71,12 @@ function releaseStore(): ReleaseStore & { rows: ReleaseReceipt[] } {
       } as ReleaseReceipt;
       rows.push(row);
       return row;
+    },
+    async update(id: string, input: Partial<CreateReleaseReceiptInput>) {
+      const idx = rows.findIndex((row) => row.id === id);
+      if (idx < 0) throw new Error(`missing receipt ${id}`);
+      rows[idx] = { ...rows[idx]!, ...input } as ReleaseReceipt;
+      return rows[idx]!;
     },
     async listRecentForWorkspace() {
       return [...rows].reverse();
@@ -73,6 +89,8 @@ type FakeDeployer = ReleaseDeployer & {
   rolledBack: number;
   healthChecked: string[];
   deployedSecrets: Record<string, string>[];
+  promoteStarts: string[];
+  promoteGate?: Promise<void>;
 };
 
 function fakeDeployer(
@@ -89,6 +107,7 @@ function fakeDeployer(
     rolledBack: 0,
     healthChecked: [],
     deployedSecrets: [],
+    promoteStarts: [],
     async deployPreview(input): Promise<ReleaseDeployOutcome> {
       d.deployedSecrets.push(input.secrets);
       const ok = over.deployOk ?? true;
@@ -102,7 +121,9 @@ function fakeDeployer(
     async latestProd() {
       return over.prior ?? null;
     },
-    async promote() {
+    async promote(input) {
+      d.promoteStarts.push(input.providerDeploymentId ?? "null");
+      if (d.promoteGate) await d.promoteGate;
       d.promoted += 1;
     },
     async healthCheck(url) {
@@ -213,6 +234,26 @@ describe("VentureReleasePipeline (#195 AC2/AC3)", () => {
     expect(r.promoteHealthOk).toBe(true);
     expect(r.promoteHealthDetail).toBe("healthy");
     expect(releases.rows[0]!.incidentFiled).toBe(false);
+  });
+
+  it("serializes duplicate release triggers and returns the existing receipt without a second promote (#957)", async () => {
+    let releasePromote!: () => void;
+    const deployer = fakeDeployer({ prior: PRIOR });
+    deployer.promoteGate = new Promise<void>((resolve) => {
+      releasePromote = resolve;
+    });
+    const { pipeline, releases } = build({ caps: caps({ preCommitProdPromote: true }), deployer });
+
+    const first = pipeline.release(releaseInput);
+    await vi.waitFor(() => expect(deployer.promoteStarts).toHaveLength(1));
+    const second = pipeline.release(releaseInput);
+    releasePromote();
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(a.id).toBe(b.id);
+    expect(deployer.promoted).toBe(1);
+    expect(releases.rows).toHaveLength(1);
+    expect(releases.rows[0]).toMatchObject({ status: "promoted", releaseRef: "abc123" });
   });
 
   it("rolls back and does not record promoted when post-promote health fails", async () => {

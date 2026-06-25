@@ -67,6 +67,25 @@ export const dbDeployTargetStore: DeployTargetStore = {
 
 /** Repository-backed immutable release-receipt store (#195) — the audit trail (AC4). */
 export const dbReleaseStore: ReleaseStore = {
+  async getByRelease(
+    workspaceId: string,
+    ventureId: string,
+    releaseRef: string,
+  ): Promise<ReleaseReceipt | null> {
+    const [row] = await db
+      .select(RELEASE_COLUMNS)
+      .from(deployReleases)
+      .where(
+        and(
+          eq(deployReleases.workspaceId, workspaceId),
+          eq(deployReleases.ventureId, ventureId),
+          eq(deployReleases.releaseRef, releaseRef),
+        ),
+      )
+      .limit(1);
+    return (row as ReleaseReceipt | undefined) ?? null;
+  },
+
   async create(input: CreateReleaseReceiptInput): Promise<ReleaseReceipt> {
     const [row] = await db
       .insert(deployReleases)
@@ -87,6 +106,28 @@ export const dbReleaseStore: ReleaseStore = {
         incidentFiled: input.incidentFiled,
         detail: input.detail,
       })
+      .returning(RELEASE_COLUMNS);
+    return row as ReleaseReceipt;
+  },
+
+  async update(id: string, input: Partial<CreateReleaseReceiptInput>): Promise<ReleaseReceipt> {
+    const patch: Partial<typeof deployReleases.$inferInsert> = {};
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.action !== undefined) patch.action = input.action;
+    if (input.reversibility !== undefined) patch.reversibility = input.reversibility;
+    if (input.requiresApproval !== undefined) patch.requiresApproval = input.requiresApproval;
+    if (input.approvalRequestId !== undefined) patch.approvalRequestId = input.approvalRequestId;
+    if (input.smokeCriticalCount !== undefined) patch.smokeCriticalCount = input.smokeCriticalCount;
+    if (input.promoteHealthOk !== undefined) patch.promoteHealthOk = input.promoteHealthOk;
+    if (input.promoteHealthDetail !== undefined)
+      patch.promoteHealthDetail = input.promoteHealthDetail;
+    if (input.url !== undefined) patch.url = input.url;
+    if (input.incidentFiled !== undefined) patch.incidentFiled = input.incidentFiled;
+    if (input.detail !== undefined) patch.detail = input.detail;
+    const [row] = await db
+      .update(deployReleases)
+      .set(patch)
+      .where(eq(deployReleases.id, id))
       .returning(RELEASE_COLUMNS);
     return row as ReleaseReceipt;
   },

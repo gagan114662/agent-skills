@@ -129,6 +129,7 @@ export interface ReleaseInput {
 export class VentureReleasePipeline {
   private readonly deps: ReleasePipelineDeps;
   private readonly now: () => Date;
+  private readonly releaseLocks = new Map<string, Promise<void>>();
 
   constructor(deps: ReleasePipelineDeps) {
     this.deps = deps;
@@ -136,7 +137,14 @@ export class VentureReleasePipeline {
   }
 
   async release(input: ReleaseInput): Promise<ReleaseReceipt> {
+    return this.withReleaseLock(input, () => this.releaseLocked(input));
+  }
+
+  private async releaseLocked(input: ReleaseInput): Promise<ReleaseReceipt> {
     const { workspaceId, ventureId, releaseRef, requesterMemberId } = input;
+    const existing = await this.deps.releases.getByRelease?.(workspaceId, ventureId, releaseRef);
+    if (existing) return existing;
+
     const caps = this.deps.caps(workspaceId);
 
     const target = await this.deps.targets.getByVenture(workspaceId, ventureId);
@@ -181,6 +189,7 @@ export class VentureReleasePipeline {
     let promoteHealthOk: boolean | null = null;
     let promoteHealthDetail: string | null = null;
     let promoteHealthIncident = false;
+    let pendingReceipt: ReleaseReceipt | null = null;
 
     if (decision.action === "promote") {
       if (decision.requiresApproval) {
@@ -195,6 +204,25 @@ export class VentureReleasePipeline {
         approvalRequestId = req?.id ?? null;
         detail = "smoke green — prod cutover parked for owner approval";
       } else {
+        if (this.deps.releases.update) {
+          pendingReceipt = await this.deps.releases.create({
+            workspaceId,
+            ventureId,
+            targetId: target.id,
+            releaseRef,
+            status: "pending_promote",
+            action: "promote",
+            reversibility: decision.reversibility,
+            requiresApproval: false,
+            approvalRequestId: null,
+            smokeCriticalCount: smoke.ran ? smoke.criticalCount : -1,
+            promoteHealthOk: null,
+            promoteHealthDetail: null,
+            url: deployOutcome.url,
+            incidentFiled: false,
+            detail: "smoke green — prod cutover in progress",
+          });
+        }
         await this.deps.deployer.promote({
           workspaceId,
           ventureId,
@@ -270,7 +298,7 @@ export class VentureReleasePipeline {
             action === decision.action ? decision.reason : "promote_health_failed",
           );
 
-    return this.deps.releases.create({
+    const finalReceipt = {
       workspaceId,
       ventureId,
       targetId: target.id,
@@ -286,7 +314,11 @@ export class VentureReleasePipeline {
       url,
       incidentFiled,
       detail,
-    });
+    };
+    if (pendingReceipt && this.deps.releases.update) {
+      return this.deps.releases.update(pendingReceipt.id, finalReceipt);
+    }
+    return this.deps.releases.create(finalReceipt);
   }
 
   private buildIncident(args: {
@@ -360,6 +392,24 @@ export class VentureReleasePipeline {
       missingCheck:
         "A post-promote probe of the customer-facing production URL before recording a promoted receipt.",
     };
+  }
+
+  private async withReleaseLock<T>(input: ReleaseInput, fn: () => Promise<T>): Promise<T> {
+    const key = `${input.workspaceId}|${input.ventureId}`;
+    const previous = this.releaseLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.then(() => current);
+    this.releaseLocks.set(key, chained);
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.releaseLocks.get(key) === chained) this.releaseLocks.delete(key);
+    }
   }
 }
 

@@ -93,9 +93,14 @@ export const deployReleases = pgTable(
   (t) => ({
     byVenture: index("deploy_releases_venture_idx").on(t.ventureId, t.createdAt),
     byWorkspace: index("deploy_releases_workspace_idx").on(t.workspaceId, t.createdAt),
+    byReleaseRef: unique("deploy_releases_release_ref_uk").on(
+      t.workspaceId,
+      t.ventureId,
+      t.releaseRef,
+    ),
     statusCk: check(
       "deploy_releases_status_ck",
-      sql`${t.status} IN ('deploy_failed','smoke_failed','rolled_back','promoted','escalated')`,
+      sql`${t.status} IN ('pending_promote','deploy_failed','smoke_failed','rolled_back','promoted','escalated')`,
     ),
   }),
 );
