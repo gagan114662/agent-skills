@@ -1397,6 +1397,10 @@ export const reachSchema = z.object({
   sendProvider: z.string().optional(),
   /** Allow Reach to resolve a real ESP sender. Default OFF; missing credentials still fall back to dry-run. */
   liveSendEnabled: z.boolean().optional(),
+  /** LinkedIn sender kind (`none` default, `api` for a permitted LinkedIn Messaging/API gateway). */
+  linkedinSendProvider: z.string().optional(),
+  /** Allow Reach to resolve a real permitted LinkedIn sender. Default OFF; absent credentials queue. */
+  linkedinLiveSendEnabled: z.boolean().optional(),
   /** Per-sending-domain daily send cap (deliverability bound for the autonomous channel). */
   perDomainDailyCap: z.number().int().positive().optional(),
   /**

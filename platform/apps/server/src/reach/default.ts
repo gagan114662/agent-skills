@@ -18,7 +18,8 @@ import { REACH_DATA_CREDIT_ACTION } from "../approvals/policy.js";
 import { resolveReachCaps, isOwnerWorkspace } from "./caps.js";
 import { createEmailChannel } from "./channels/email.js";
 import { dryRunEspSender, type EspSender } from "./channels/email.js";
-import { createLinkedInChannel } from "./channels/linkedin.js";
+import { createLinkedInChannel, type LinkedInSender } from "./channels/linkedin.js";
+import { createLinkedInApiSender } from "./channels/linkedin-api.js";
 import { createProspectSource, type HttpFetch } from "./sources/index.js";
 import { ReachService, type ReachDeps } from "./service.js";
 
@@ -28,6 +29,9 @@ const POSTMARK_SERVICE_KEY = "postmark";
 const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
 const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
 const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
+const LINKEDIN_SERVICE_KEY = "linkedin";
+const LINKEDIN_TOKEN_KEYS = ["LINKEDIN_API_TOKEN", "LINKEDIN_ACCESS_TOKEN"] as const;
+const LINKEDIN_BASE_URL_KEY = "LINKEDIN_API_BASE_URL";
 
 /** Extract a bare host from a URL ("https://ipop.ai/x" → "ipop.ai"). */
 function hostOf(url: string): string {
@@ -111,19 +115,44 @@ async function resolveReachEmailSender(workspaceId: string): Promise<EspSender> 
   return resolveReachPostmarkSender({ caps, secrets });
 }
 
+export function resolveReachLinkedInSender(input: {
+  caps: ReturnType<typeof resolveReachCaps>;
+  secrets: Record<string, string>;
+}): LinkedInSender | undefined {
+  if (input.caps.linkedinSendProvider !== "api" || !input.caps.linkedinLiveSendEnabled) {
+    return undefined;
+  }
+  const token = firstSecret(input.secrets, LINKEDIN_TOKEN_KEYS);
+  const baseUrl = input.secrets[LINKEDIN_BASE_URL_KEY]?.trim() ?? "";
+  if (!token || !baseUrl) return undefined;
+  return createLinkedInApiSender({ token, baseUrl });
+}
+
+async function resolveReachLinkedInSenderForWorkspace(
+  workspaceId: string,
+): Promise<LinkedInSender | undefined> {
+  const caps = resolveReachCaps(loadConfig(workspaceId).reach);
+  if (caps.linkedinSendProvider !== "api" || !caps.linkedinLiveSendEnabled) return undefined;
+  const secrets = await resolveServiceSecrets(workspaceId, LINKEDIN_SERVICE_KEY);
+  return resolveReachLinkedInSender({ caps, secrets });
+}
+
 /**
  * Wire the production {@link ReachService} (#280). Default-OFF + `mock` source + `dryrun` email sender, so
  * a deployment that sets nothing spends nothing and sends nothing. The email channel resolves a tenant-scoped
  * Postmark sender only when Reach live send is explicitly enabled and the #192 vault has the token + From;
  * LinkedIn queues (no permitted send path wired). The paid sources resolve their key from the #192 vault
- * and never log it.
+ * and never log it. LinkedIn stays queue-only unless a workspace explicitly opts into the permitted API
+ * sender and connects its #192 `linkedin` vault token + API base URL; it never drives the LinkedIn UI.
  */
 export function createDefaultReachService(log?: FastifyBaseLogger): ReachService {
   const channels: ReachDeps["channels"] = {
     // Email stays recorded-only unless the workspace explicitly opts Reach into Postmark and connects #192
     // vault credentials; LinkedIn remains queue-only without a permitted API sender.
     email: createEmailChannel({ resolveSender: (ctx) => resolveReachEmailSender(ctx.workspaceId) }),
-    linkedin: createLinkedInChannel(),
+    linkedin: createLinkedInChannel({
+      resolveSender: (ctx) => resolveReachLinkedInSenderForWorkspace(ctx.workspaceId),
+    }),
   };
 
   return new ReachService({

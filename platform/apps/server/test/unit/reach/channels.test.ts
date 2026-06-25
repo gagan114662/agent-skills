@@ -207,6 +207,26 @@ describe("linkedin channel — permitted-API only, else queue (#280)", () => {
     expect(out.externalId).toBe("urn:li:1");
   });
 
+  it("resolves the permitted sender per workspace at send time", async () => {
+    const seen: string[] = [];
+    const sender: LinkedInSender = {
+      kind: "linkedin-api",
+      async send() {
+        return { externalId: "urn:li:workspace" };
+      },
+    };
+    const out = await createLinkedInChannel({
+      resolveSender(ctx) {
+        seen.push(ctx.workspaceId);
+        return sender;
+      },
+    }).send(liMsg, ctx({ workspaceId: "ws-live-li" }));
+
+    expect(out.status).toBe("sent");
+    expect(out.externalId).toBe("urn:li:workspace");
+    expect(seen).toEqual(["ws-live-li"]);
+  });
+
   it("honours the opt-out list", async () => {
     const out = await createLinkedInChannel().send(
       liMsg,

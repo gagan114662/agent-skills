@@ -23,6 +23,10 @@ export interface ReachCaps {
   sendProvider: string;
   /** Whether Reach may resolve a real ESP sender. Default OFF; dry-run remains byte-for-byte default. */
   liveSendEnabled: boolean;
+  /** LinkedIn sender kind. `none` means queue-only; `api` resolves a permitted API sender. */
+  linkedinSendProvider: string;
+  /** Whether Reach may resolve a real LinkedIn sender. Default OFF; queue-only remains default. */
+  linkedinLiveSendEnabled: boolean;
   /** Per-sending-domain daily send ceiling (deliverability bound). */
   perDomainDailyCap: number;
   /** Optional sender pool. Empty preserves the legacy single-domain path. */
@@ -47,6 +51,8 @@ export const REACH_DEFAULTS: ReachCaps = {
   prospectSource: "imported",
   sendProvider: "dryrun",
   liveSendEnabled: false,
+  linkedinSendProvider: "none",
+  linkedinLiveSendEnabled: false,
   perDomainDailyCap: 50,
   sendingDomains: [],
   maxBounceRate: 0.05,
@@ -101,6 +107,9 @@ export function resolveReachCaps(cfg: ReachConfig | undefined): ReachCaps {
     prospectSource: source && isProspectSourceKind(source) ? source : REACH_DEFAULTS.prospectSource,
     sendProvider: cfg?.sendProvider ?? REACH_DEFAULTS.sendProvider,
     liveSendEnabled: cfg?.liveSendEnabled ?? REACH_DEFAULTS.liveSendEnabled,
+    linkedinSendProvider: cfg?.linkedinSendProvider ?? REACH_DEFAULTS.linkedinSendProvider,
+    linkedinLiveSendEnabled:
+      cfg?.linkedinLiveSendEnabled ?? REACH_DEFAULTS.linkedinLiveSendEnabled,
     perDomainDailyCap,
     sendingDomains: normalizeSendingDomains(cfg, perDomainDailyCap),
     maxBounceRate:
