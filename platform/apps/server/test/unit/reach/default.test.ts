@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { dryRunEspSender } from "../../../src/reach/channels/email.js";
 import { REACH_DEFAULTS, type ReachCaps } from "../../../src/reach/caps.js";
-import { resolveReachPostmarkSender } from "../../../src/reach/default.js";
+import { resolveReachLinkedInSender, resolveReachPostmarkSender } from "../../../src/reach/default.js";
 
 const LIVE_CAPS: ReachCaps = {
   ...REACH_DEFAULTS,
@@ -55,5 +55,40 @@ describe("Reach default email sender wiring (#850)", () => {
 
     expect(sender.kind).toBe("postmark");
     expect(sender).not.toBe(dryRunEspSender);
+  });
+});
+
+describe("Reach default LinkedIn sender wiring (#856)", () => {
+  it("keeps LinkedIn queue-only when live send is OFF", () => {
+    expect(
+      resolveReachLinkedInSender({
+        caps: { ...LIVE_CAPS, linkedinSendProvider: "api", linkedinLiveSendEnabled: false },
+        secrets: {
+          LINKEDIN_API_TOKEN: "li-token",
+          LINKEDIN_API_BASE_URL: "https://api.linkedin.example",
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps LinkedIn queue-only when vault credentials are missing", () => {
+    expect(
+      resolveReachLinkedInSender({
+        caps: { ...LIVE_CAPS, linkedinSendProvider: "api", linkedinLiveSendEnabled: true },
+        secrets: { LINKEDIN_API_TOKEN: "li-token" },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("constructs the permitted LinkedIn API sender when enabled and vault credentials are present", () => {
+    const sender = resolveReachLinkedInSender({
+      caps: { ...LIVE_CAPS, linkedinSendProvider: "api", linkedinLiveSendEnabled: true },
+      secrets: {
+        LINKEDIN_API_TOKEN: "li-token",
+        LINKEDIN_API_BASE_URL: "https://api.linkedin.example",
+      },
+    });
+
+    expect(sender?.kind).toBe("linkedin-api");
   });
 });

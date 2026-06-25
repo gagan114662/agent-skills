@@ -488,6 +488,8 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   const reachSource = env.RELOAD_REACH_PROSPECT_SOURCE;
   const reachProvider = env.RELOAD_REACH_SEND_PROVIDER;
   const reachLiveSend = env.RELOAD_REACH_LIVE_SEND_ENABLED;
+  const reachLinkedInProvider = env.RELOAD_REACH_LINKEDIN_SEND_PROVIDER;
+  const reachLinkedInLiveSend = env.RELOAD_REACH_LINKEDIN_LIVE_SEND_ENABLED;
   const reachCap = env.RELOAD_REACH_PER_DOMAIN_DAILY_CAP;
   const reachBatch = env.RELOAD_REACH_BATCH_SIZE;
   const reachOwner = env.RELOAD_REACH_OWNER_WORKSPACE_ID;
@@ -496,6 +498,8 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     reachSource !== undefined ||
     reachProvider !== undefined ||
     reachLiveSend !== undefined ||
+    reachLinkedInProvider !== undefined ||
+    reachLinkedInLiveSend !== undefined ||
     reachCap !== undefined ||
     reachBatch !== undefined ||
     reachOwner !== undefined
@@ -505,6 +509,11 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     if (reachSource !== undefined) reach.prospectSource = reachSource;
     if (reachProvider !== undefined) reach.sendProvider = reachProvider;
     if (reachLiveSend !== undefined) reach.liveSendEnabled = reachLiveSend === "true" || reachLiveSend === "1";
+    if (reachLinkedInProvider !== undefined) reach.linkedinSendProvider = reachLinkedInProvider;
+    if (reachLinkedInLiveSend !== undefined) {
+      reach.linkedinLiveSendEnabled =
+        reachLinkedInLiveSend === "true" || reachLinkedInLiveSend === "1";
+    }
     if (reachOwner !== undefined) reach.ownerWorkspaceId = reachOwner;
     const cap = reachCap !== undefined ? Number.parseInt(reachCap, 10) : undefined;
     if (cap !== undefined && Number.isFinite(cap) && cap > 0) reach.perDomainDailyCap = cap;

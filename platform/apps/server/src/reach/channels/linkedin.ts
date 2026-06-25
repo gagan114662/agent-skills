@@ -20,10 +20,13 @@ export interface LinkedInSender {
 export interface LinkedInChannelDeps {
   /** A permitted-API sender. ABSENT (the default) ⇒ no permitted path ⇒ messages QUEUE, never send. */
   sender?: LinkedInSender;
+  /** Optional tenant-scoped sender resolver. Returning undefined preserves queue-only behavior. */
+  resolveSender?: (
+    ctx: ChannelSendContext,
+  ) => Promise<LinkedInSender | undefined> | LinkedInSender | undefined;
 }
 
 export function createLinkedInChannel(deps: LinkedInChannelDeps = {}): ReachChannelAdapter {
-  const sender = deps.sender;
   return {
     channel: "linkedin",
     async send(message: ReachMessage, ctx: ChannelSendContext): Promise<ReachSendOutcome> {
@@ -34,6 +37,7 @@ export function createLinkedInChannel(deps: LinkedInChannelDeps = {}): ReachChan
       if (ctx.suppressed.has(normalizeRecipient(to))) {
         return { status: "suppressed", channel: "linkedin", externalId: null, detail: "recipient on opt-out list" };
       }
+      const sender = deps.sender ?? (await deps.resolveSender?.(ctx));
       if (!sender) {
         // No permitted API → QUEUE. We never UI-automate and never pretend it was sent.
         return {
