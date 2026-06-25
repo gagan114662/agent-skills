@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ACQUISITION_EVENT_TARGET } from "../../acquisition-events.js";
 import { DemoSandbox } from "./DemoSandbox.js";
 import type { DemoDeliverableDto, FetchLike } from "../../api/demo.js";
 
@@ -58,6 +59,10 @@ describe("DemoSandbox (#610)", () => {
 
   it("builds a personalized deliverable from the typed URL and surfaces the signup CTA", async () => {
     const { impl, calls } = okFetch();
+    const events: string[] = [];
+    window.addEventListener(ACQUISITION_EVENT_TARGET, (event) => {
+      events.push((event as CustomEvent<{ event: string }>).detail.event);
+    });
     render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);
 
     fireEvent.change(screen.getByLabelText(/your website/i), { target: { value: "acme.com" } });
@@ -69,10 +74,16 @@ describe("DemoSandbox (#610)", () => {
     }
     expect(calls).toEqual(["/onboarding/deliverable?url=acme.com"]);
 
-    // The conversion close: personalized to the host, with a zero-card signup link to /start.
+    // The conversion close: personalized to the host, with a zero-card signup link that preserves context.
     expect(screen.getByText(/want this working on acme\.com for real/i)).toBeInTheDocument();
     const cta = screen.getByRole("link", { name: /start free/i });
-    expect(cta).toHaveAttribute("href", "/start");
+    expect(cta).toHaveAttribute(
+      "href",
+      "/signup?source=demo&demoHost=acme.com&demoUrl=https%3A%2F%2Facme.com",
+    );
+    fireEvent.click(cta);
+    expect(window.sessionStorage.getItem("ipop-demo-intent")).toContain("acme.com");
+    expect(events).toEqual(["demo-start", "demo-complete", "demo-to-signup"]);
   });
 
   it("refuses to fetch an empty URL and shows an inline error", () => {

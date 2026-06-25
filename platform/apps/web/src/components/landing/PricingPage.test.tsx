@@ -32,6 +32,11 @@ describe("PricingPage (#214)", () => {
     }
   });
 
+  it("keeps the no-signup demo visible from pricing", () => {
+    render(<PricingPage />);
+    expect(screen.getAllByRole("link", { name: /watch live demo/i })[0]).toHaveAttribute("href", "/demo");
+  });
+
   it("marks exactly one plan as most popular", () => {
     render(<PricingPage />);
     expect(screen.getAllByText(PRICING.popularBadge)).toHaveLength(1);

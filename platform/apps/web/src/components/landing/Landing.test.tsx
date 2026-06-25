@@ -45,6 +45,9 @@ describe("Landing", () => {
     expect(
       within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaSecondary, "i") }),
     ).toHaveAttribute("href", "/login");
+    expect(
+      within(hero).getByRole("link", { name: new RegExp(LANDING.hero.ctaDemo, "i") }),
+    ).toHaveAttribute("href", "/demo");
   });
 
   it("actually navigates to /start when the hero 'Start free' CTA is clicked (#305)", async () => {
