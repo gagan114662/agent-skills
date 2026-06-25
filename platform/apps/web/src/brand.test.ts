@@ -334,15 +334,17 @@ describe("pricing page + trial framing copy (#214)", () => {
     expect(PRICING.title).toBeTruthy();
     expect(PRICING.sub).toBeTruthy();
     expect(PRICING.planCta).toBeTruthy();
-    expect(PRICING.footnote.toLowerCase()).toMatch(/free trial|no card/);
+    expect(PRICING.footnote.toLowerCase()).toMatch(/self-serve checkout|stripe/);
+    expect(PRICING.monthlyLabel).toBeTruthy();
+    expect(PRICING.annualLabel).toBeTruthy();
     expect(PRICING.faqMatch.length).toBeGreaterThan(0);
   });
 
-  it("frames the chosen plan as a free trial with no card up front", () => {
+  it("frames the chosen plan as a quick checkout handoff", () => {
     expect(PRICING.trial.eyebrow).toBeTruthy();
     expect(PRICING.trial.onPlan("Pro")).toContain("Pro");
-    expect(PRICING.trial.onPlan("Pro").toLowerCase()).toMatch(/no card/);
-    expect(PRICING.trial.generic.toLowerCase()).toMatch(/free|no card/);
+    expect(PRICING.trial.onPlan("Pro").toLowerCase()).toMatch(/stripe|checkout/);
+    expect(PRICING.trial.generic.toLowerCase()).toMatch(/checkout|sales call/);
   });
 
   it("its faq filters surface at least one real pricing question from the shared FAQ", () => {

@@ -88,6 +88,7 @@ describe("api client", () => {
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body);
     expect(body.planKey).toBe("pro");
+    expect(body.billingInterval).toBe("month");
     // The default return URL carries the success flag the SPA reads on return.
     expect(body.returnUrl).toMatch(/checkout=success/);
   });

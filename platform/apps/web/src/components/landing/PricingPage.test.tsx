@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PricingPage } from "./PricingPage.js";
 import { FAQ, LANDING, PRICING, REFUND_POLICY } from "../../brand.js";
 
@@ -23,13 +24,24 @@ describe("PricingPage (#214)", () => {
     }
   });
 
-  it("carries one CTA per plan that hands the chosen plan into signup (/signup?plan=<key>)", () => {
+  it("carries one CTA per plan that hands the chosen monthly checkout into signup", () => {
     render(<PricingPage />);
     const grid = screen.getByRole("region", { name: PRICING.plansLabel });
     for (const plan of LANDING.plans) {
       const cta = within(grid).getByRole("link", { name: new RegExp(`${PRICING.planCta}.*${plan.name}`, "i") });
-      expect(cta).toHaveAttribute("href", `/signup?plan=${plan.key}`);
+      expect(cta).toHaveAttribute("href", `/signup?plan=${plan.key}&billing=month`);
     }
+  });
+
+  it("lets a price-shopping visitor switch to annual checkout before signup", async () => {
+    render(<PricingPage />);
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(PRICING.annualLabel, "i") }));
+    const grid = screen.getByRole("region", { name: PRICING.plansLabel });
+    expect(within(grid).getByText("$1,990")).toBeInTheDocument();
+    const pro = LANDING.plans.find((plan) => plan.key === "pro")!;
+    expect(
+      within(grid).getByRole("link", { name: new RegExp(`${PRICING.planCta}.*${pro.name}`, "i") }),
+    ).toHaveAttribute("href", "/signup?plan=pro&billing=year");
   });
 
   it("keeps the no-signup demo visible from pricing", () => {

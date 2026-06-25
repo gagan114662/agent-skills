@@ -411,6 +411,7 @@ export interface PlansResponseDto {
 export interface CheckoutResponseDto {
   url: string;
   planKey: string;
+  billingInterval?: "month" | "year";
   pricingAssignmentId?: string | null;
 }
 

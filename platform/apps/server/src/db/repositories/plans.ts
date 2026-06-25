@@ -351,6 +351,7 @@ export const dbPlanPriceStore: PlanPriceStore = {
     workspaceId: string,
     planKey: PlanKey,
     provider: string,
+    billingInterval = "month",
   ): Promise<{ productId: string; priceId: string } | undefined> {
     const [row] = await db
       .select({ productId: billingPlanPrices.productId, priceId: billingPlanPrices.priceId })
@@ -360,6 +361,7 @@ export const dbPlanPriceStore: PlanPriceStore = {
           eq(billingPlanPrices.workspaceId, workspaceId),
           eq(billingPlanPrices.planKey, planKey),
           eq(billingPlanPrices.provider, provider),
+          eq(billingPlanPrices.billingInterval, billingInterval),
         ),
       )
       .limit(1);
@@ -375,11 +377,17 @@ export const dbPlanPriceStore: PlanPriceStore = {
         workspaceId: row.workspaceId,
         planKey: row.planKey,
         provider: row.provider,
+        billingInterval: row.billingInterval,
         productId: row.productId,
         priceId: row.priceId,
       })
       .onConflictDoNothing({
-        target: [billingPlanPrices.workspaceId, billingPlanPrices.planKey, billingPlanPrices.provider],
+        target: [
+          billingPlanPrices.workspaceId,
+          billingPlanPrices.planKey,
+          billingPlanPrices.provider,
+          billingPlanPrices.billingInterval,
+        ],
       });
   },
 };

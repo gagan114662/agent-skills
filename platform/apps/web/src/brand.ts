@@ -673,24 +673,28 @@ export const LANDING = {
  * The dedicated public pricing page (#214). The landing teases pricing in-page (`BillingScreen`); this
  * is the focused, shareable, link-out destination an ad or a price-shopping visitor lands on — a clean
  * three-plan comparison with "what you get" bullets and one CTA per plan that carries the chosen plan
- * into signup (`/signup?plan=<key>`). The plans come from {@link LANDING.plans} (one pricing truth), so
- * this page adds no second copy of prices. The signup form then frames the chosen plan as a free trial
- * with no card — the friction-light hand-off into the activated trial.
+ * into signup + checkout (`/signup?plan=<key>&billing=<interval>`). The plans come from
+ * {@link LANDING.plans} (one pricing truth), so this page adds no second copy of monthly prices. The
+ * signup form then hands the chosen plan into hosted checkout instead of marooning the buyer in the app.
  */
 export const PRICING = {
   eyebrow: "Plans & pricing",
   title: "Pick your pop.",
-  sub: "Start free — no card. Pick a plan when the work pays for itself. Change or cancel any time.",
+  sub: "Choose monthly or annual, create the workspace, and checkout opens right away. No sales call. No interpretive dance.",
   /** Accessible label for the plans grid region (distinct from the hero heading). */
   plansLabel: "Plans",
   perMonth: "/mo",
+  perYear: "/yr",
+  monthlyLabel: "Monthly",
+  annualLabel: "Annual",
+  annualBadge: "Two months free",
   /** The one recommended-tier ribbon. */
   popularBadge: "Most popular",
-  /** Per-plan CTA — starts a free trial of that tier. */
-  planCta: "Start free",
-  /** Reassurance under the grid (honest: free trial, no card, you set the ceiling). */
+  /** Per-plan CTA — creates the account and opens hosted checkout for that tier. */
+  planCta: "Start checkout",
+  /** Reassurance under the grid (honest: self-serve checkout, no sales call, you set the ceiling). */
   footnote:
-    "Every plan starts on a free trial — no card up front. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
+    "Self-serve checkout takes card payment through Stripe after signup — no sales call, no mystery invoice. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
   /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
   faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
@@ -699,8 +703,8 @@ export const PRICING = {
   /** Signup trial framing (#214). `plan` is the chosen plan's display name. */
   trial: {
     eyebrow: "Free trial",
-    onPlan: (plan: string): string => `You're starting the ${plan} plan — free to try, no card up front.`,
-    generic: "Start free — no card up front. Pick a plan whenever the work pays for itself.",
+    onPlan: (plan: string): string => `You're starting the ${plan} checkout. Tiny form first, Stripe next.`,
+    generic: "Create the workspace, then checkout opens. No sales call. Blissfully few forms.",
   },
 } as const;
 

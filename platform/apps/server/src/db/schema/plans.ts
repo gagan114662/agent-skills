@@ -44,8 +44,8 @@ export const workspacePlans = pgTable("workspace_plans", {
 
 /**
  * The idempotent product/price registry. The composite PK `(workspace_id, plan_key, provider)` is what
- * makes "create products/prices idempotently" a one-line ON CONFLICT DO NOTHING — a second bootstrap (or
- * a concurrent checkout) creates no duplicate Stripe product. Ids only — no secret, no amount.
+ * makes "create products/prices idempotently" a one-line ON CONFLICT DO NOTHING. The interval is part of
+ * the key because annual checkout needs a distinct recurring provider price.
  */
 export const billingPlanPrices = pgTable(
   "billing_plan_prices",
@@ -55,12 +55,13 @@ export const billingPlanPrices = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     planKey: text("plan_key").notNull(),
     provider: text("provider").notNull(), // none | stripe
+    billingInterval: text("billing_interval").notNull().default("month"), // month | year
     productId: text("product_id").notNull(),
     priceId: text("price_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.workspaceId, t.planKey, t.provider] }),
+    pk: primaryKey({ columns: [t.workspaceId, t.planKey, t.provider, t.billingInterval] }),
   }),
 );
 

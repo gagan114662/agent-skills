@@ -18,25 +18,26 @@ import {
   type WorkspacePlanStore,
   type ActivePlan,
 } from "../../src/billing/plan-service.js";
-import { getPlan, planCaps } from "../../src/billing/plans.js";
+import { getPlan, planCaps, planPriceCents } from "../../src/billing/plans.js";
 
 const WS = "ws-1";
 const STRIPE_KEY = "sk-live-plan-secret-zzz";
 
-/** Minimal in-memory price registry: keyed by `${ws}|${plan}|${provider}` (the DB composite PK). */
+/** Minimal in-memory price registry: keyed like the DB composite PK, including billing interval. */
 function memPriceStore(): PlanPriceStore & { count: number } {
   const rows = new Map<string, { productId: string; priceId: string }>();
-  const k = (ws: string, plan: string, prov: string) => `${ws}|${plan}|${prov}`;
+  const k = (ws: string, plan: string, prov: string, interval = "month") =>
+    `${ws}|${plan}|${prov}|${interval}`;
   return {
     get count() {
       return rows.size;
     },
-    find(ws, plan, prov) {
-      return Promise.resolve(rows.get(k(ws, plan, prov)));
+    find(ws, plan, prov, interval = "month") {
+      return Promise.resolve(rows.get(k(ws, plan, prov, interval)));
     },
     upsert(row) {
       // ON CONFLICT DO NOTHING: first writer wins (idempotent under concurrent/repeat bootstrap).
-      const key = k(row.workspaceId, row.planKey, row.provider);
+      const key = k(row.workspaceId, row.planKey, row.provider, row.billingInterval);
       if (!rows.has(key)) rows.set(key, { productId: row.productId, priceId: row.priceId });
       return Promise.resolve();
     },
@@ -251,10 +252,12 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     });
     expect(out.url).toMatch(/^https:\/\/.+/);
     expect(out.planKey).toBe("pro");
+    expect(out.billingInterval).toBe("month");
     const link = provider.links.at(-1)!;
     expect(link.metadata).toMatchObject({
       workspaceId: WS,
       planKey: "pro",
+      billingInterval: "month",
       kind: "plan_checkout",
       customerEmail: "buyer@example.com",
     });
@@ -274,6 +277,26 @@ describe("PlanBillingService (#125 — no-network none provider)", () => {
     await service.createCheckout({ workspaceId: WS, planKey: "pro" });
     expect(provider.products).toHaveLength(1); // createProductPrice called exactly once
     expect(prices.count).toBe(1);
+  });
+
+  it("creates a distinct annual checkout price and metadata for self-serve yearly plans (#606)", async () => {
+    const { service, provider, prices } = makeService();
+    const out = await service.createCheckout({ workspaceId: WS, planKey: "pro", billingInterval: "year" });
+
+    expect(out).toMatchObject({ planKey: "pro", billingInterval: "year" });
+    expect(out.url).toContain("plan-pro-year");
+    expect(provider.products).toHaveLength(1);
+    expect(provider.products[0]).toMatchObject({
+      name: "ipop Pro annual",
+      amountCents: planPriceCents(getPlan("pro")!, "year"),
+      interval: "year",
+    });
+    expect(provider.links[0]?.metadata).toMatchObject({ planKey: "pro", billingInterval: "year" });
+    expect(prices.count).toBe(1);
+
+    await service.createCheckout({ workspaceId: WS, planKey: "pro", billingInterval: "month" });
+    expect(provider.products).toHaveLength(2);
+    expect(prices.count).toBe(2);
   });
 
   it("bootstrap creates every plan's price once and is idempotent on a second run", async () => {

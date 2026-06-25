@@ -30,7 +30,7 @@ import {
   type PlanListing,
   type PricingExperimentReport,
 } from "../billing/plan-service.js";
-import type { Plan } from "../billing/plans.js";
+import { isBillingInterval, type Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
 import type { PriceInterval } from "../billing/provider.js";
 import type { TrialNurtureService, TrialNurtureSignalKind } from "../billing/trial-nurture.js";
@@ -425,6 +425,7 @@ export async function billingRoutes(
       returnUrl?: unknown;
       pricingAssignmentId?: unknown;
       billingEmail?: unknown;
+      billingInterval?: unknown;
     };
     const planKey = typeof body.planKey === "string" ? body.planKey : "";
     if (!planKey) return reply.code(400).send({ error: "planKey required" });
@@ -437,6 +438,10 @@ export async function billingRoutes(
         createdByMemberId: id.memberId,
         ...(returnUrl ? { returnUrl } : {}),
         ...(typeof body.billingEmail === "string" ? { billingEmail: body.billingEmail } : {}),
+        billingInterval:
+          typeof body.billingInterval === "string" && isBillingInterval(body.billingInterval)
+            ? body.billingInterval
+            : "month",
         pricingAssignmentId:
           typeof body.pricingAssignmentId === "string" && body.pricingAssignmentId
             ? body.pricingAssignmentId
@@ -445,6 +450,7 @@ export async function billingRoutes(
       const dto: CheckoutResponseDto = {
         url: out.url,
         planKey: out.planKey,
+        billingInterval: out.billingInterval,
         pricingAssignmentId:
           typeof body.pricingAssignmentId === "string" && body.pricingAssignmentId
             ? body.pricingAssignmentId

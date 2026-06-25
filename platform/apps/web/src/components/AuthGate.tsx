@@ -6,11 +6,12 @@
  * code-split (lazy) so it never ships in the bundle a signed-in user downloads. Loading and API-offline
  * states keep their friendly house-voice screens.
  */
-import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, COMPANY, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
 import { trackAcquisitionEvent } from "../acquisition-events.js";
 import { Link, replace, useRoute } from "../routing.js";
+import { api } from "../api/client.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
 import { Onboarding } from "./Onboarding.js";
@@ -35,6 +36,7 @@ const CompanyPage = lazy(() => import("./landing/CompanyPage.js").then((m) => ({
 
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
+const BILLING_INTERVAL_INTENT_KEY = "billing-interval-intent";
 const PASSWORD_MIN_LENGTH = 8;
 const DISPLAY_NAME_MIN_LENGTH = 2;
 const WORKSPACE_SLUG_MIN_LENGTH = 2;
@@ -89,6 +91,10 @@ function authErrorFor(err: unknown, mode: Mode, workspaceSlug: string): AuthErro
 function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
   const key = new URLSearchParams(window.location.search).get("plan");
   return key ? (LANDING.plans.find((p) => p.key === key) ?? null) : null;
+}
+
+function intendedBillingIntervalFromUrl(): "month" | "year" {
+  return new URLSearchParams(window.location.search).get("billing") === "year" ? "year" : "month";
 }
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
@@ -204,7 +210,7 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
     );
   }
 
-  if (phase === "ready") return <>{children}</>;
+  if (phase === "ready") return <PostSignupCheckoutIntent>{children}</PostSignupCheckoutIntent>;
   if (phase === "loading") return <Splash />;
   if (phase === "offline") return <OfflineNotice onRetry={() => void store.bootstrap()} />;
 
@@ -288,6 +294,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   // hand it off (sessionStorage seam) for the post-signup activation/first-run to pick up — we don't
   // change signup itself, so the billing/activation work owns what happens with the chosen plan.
   const [intendedPlan] = useState(() => (initialMode === "signup" ? intendedPlanFromUrl() : null));
+  const [intendedBillingInterval] = useState(() =>
+    initialMode === "signup" ? intendedBillingIntervalFromUrl() : "month",
+  );
 
   async function onSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -312,6 +321,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
         if (intendedPlan) {
           try {
             window.sessionStorage.setItem(PLAN_INTENT_KEY, intendedPlan.key);
+            window.sessionStorage.setItem(BILLING_INTERVAL_INTENT_KEY, intendedBillingInterval);
           } catch {
             // sessionStorage can throw in private mode — the plan hint is a nicety, not load-bearing.
           }
@@ -474,4 +484,30 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
       </form>
     </div>
   );
+}
+
+function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.JSX.Element {
+  const { identity } = useAppState();
+  const attempted = useRef(false);
+
+  useEffect(() => {
+    if (attempted.current || !identity?.workspaceId || typeof window === "undefined") return;
+    const planKey = window.sessionStorage.getItem(PLAN_INTENT_KEY);
+    if (!planKey) return;
+    const billingInterval =
+      window.sessionStorage.getItem(BILLING_INTERVAL_INTENT_KEY) === "year" ? "year" : "month";
+    attempted.current = true;
+    void api.billing
+      .startCheckout(identity.workspaceId, planKey, billingInterval)
+      .then(({ url }) => {
+        window.sessionStorage.removeItem(PLAN_INTENT_KEY);
+        window.sessionStorage.removeItem(BILLING_INTERVAL_INTENT_KEY);
+        window.location.assign(url);
+      })
+      .catch(() => {
+        attempted.current = false;
+      });
+  }, [identity?.workspaceId]);
+
+  return <>{children}</>;
 }
