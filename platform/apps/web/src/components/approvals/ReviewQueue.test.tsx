@@ -11,7 +11,9 @@ describe("ReviewQueue", () => {
       pending: [makeRequest({ id: "r1", summary: "Send wire to ops", amount: 250 })],
     });
     expect(await screen.findByText("Send wire to ops")).toBeInTheDocument();
-    expect(screen.getByText("external.send")).toBeInTheDocument();
+    expect(screen.getByText("Outbound send")).toBeInTheDocument();
+    expect(screen.getByText(/wire \$250/)).toBeInTheDocument();
+    expect(screen.getByText(/Send this message to ops@example\.com outside the workspace/)).toBeInTheDocument();
     expect(screen.getByText("$250")).toBeInTheDocument();
     expect(screen.getByText("by Atlas")).toBeInTheDocument();
   });
