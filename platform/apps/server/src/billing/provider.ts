@@ -38,6 +38,8 @@ export interface CreatePaymentLinkInput {
   slug: string;
   /** Metadata echoed back on the webhook so the manager can re-scope the revenue event (channel/session). */
   metadata: Record<string, string>;
+  /** Optional payer contact to carry through checkout/webhook metadata for support, renewals, and dunning. */
+  customerEmail?: string;
   /**
    * Where to send the customer **after** a successful payment (an in-app URL like
    * `https://app.ipop.ai/?checkout=success`). When set, the hosted link redirects back here so the SPA can
