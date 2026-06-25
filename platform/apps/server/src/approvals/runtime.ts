@@ -30,6 +30,7 @@ import {
   validateOutreachSend,
   validateReachDataCreditSpend,
   validateSkillOptAdoptEdit,
+  validateSkillOptRevertEdit,
   validateOzLoopsPublish,
   validateConnectAccount,
   validateProvisioningCustomerSpend,
@@ -61,6 +62,7 @@ import {
   OUTREACH_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,
+  SKILLOPT_REVERT_EDIT_ACTION,
   OZ_LOOPS_PUBLISH_PROPOSAL_ACTION,
   CONNECTION_CONNECT_ACCOUNT_ACTION,
   PROVISIONING_CUSTOMER_SPEND_ACTION,
@@ -81,6 +83,13 @@ import {
   GARDEN_ENABLE_AGENT_ACTION,
   ENTERPRISE_BUDGET_BREACH_ACTION,
 } from "./policy.js";
+import {
+  SkillOptSkillDocApplier,
+  type SkillOptAdoptInput,
+  type SkillOptApplyResult,
+  type SkillOptRevertInput,
+  type SkillOptRevertResult,
+} from "../skillopt/adopt.js";
 
 /** Re-exported from the pure `executor.ts` (kept here for backward-compatible imports). */
 export { ActionExecutionError };
@@ -574,28 +583,54 @@ const reachDataCreditSpend: ActionExecutor = {
 /**
  * SkillOpt-Sleep skill-edit adoption (#283) — a recorded-only, behavior-altering decision the owner gates.
  * The self-improvement loop never adopts an edit itself; it parks this PENDING request and the owner
- * decides. Approving RECORDS the owner's go (the audit trail proves nothing changed an agent without a
- * human yes); actually applying the bounded append to the versioned skill doc is a deliberate follow-up, so
- * the executor writes no file and makes no network call.
- */
-const skillOptAdoptEdit: ActionExecutor = {
-  actionType: SKILLOPT_ADOPT_EDIT_ACTION,
-  validate: validateSkillOptAdoptEdit,
-  summarize: (p) =>
-    (
-      `adopt @${String(p.handle ?? "?")} skill edit (${String(p.skillId ?? "?")}): ` +
-      `${String(p.appendText ?? "").slice(0, 80)}`
-    ).slice(0, 160),
-  execute(payload): Promise<Record<string, unknown>> {
-    return Promise.resolve({
-      recorded: true,
-      executed: false, // applying the edit to the versioned skill doc is a deliberate follow-up ADR.
-      handle: typeof payload.handle === "string" ? payload.handle : null,
-      skillId: typeof payload.skillId === "string" ? payload.skillId : null,
-      currentDocSha: typeof payload.currentDocSha === "string" ? payload.currentDocSha : null,
-    });
-  },
-};
+ * decides. Approving re-checks the pinned doc sha, appends the bounded edit to the versioned #155 skill doc,
+ * bumps the manifest version, and returns a revert payload. The loop still has no autonomous-adopt path.
+*/
+export interface SkillOptApplier {
+  apply(input: SkillOptAdoptInput): Promise<SkillOptApplyResult>;
+  revert(input: SkillOptRevertInput): Promise<SkillOptRevertResult>;
+}
+
+function makeSkillOptAdoptEdit(applier: SkillOptApplier): ActionExecutor {
+  return {
+    actionType: SKILLOPT_ADOPT_EDIT_ACTION,
+    validate: validateSkillOptAdoptEdit,
+    summarize: (p) =>
+      (
+        `adopt @${String(p.handle ?? "?")} skill edit (${String(p.skillId ?? "?")}): ` +
+        `${String(p.appendText ?? "").slice(0, 80)}`
+      ).slice(0, 160),
+    async execute(payload, ctx): Promise<Record<string, unknown>> {
+      if (!ctx.requestId) throw new ActionExecutionError("skillopt adoption requires an approval request id");
+      return {
+        ...(await applier.apply({
+          handle: String(payload.handle),
+          skillId: String(payload.skillId),
+          currentDocSha: String(payload.currentDocSha),
+          appendText: String(payload.appendText),
+          requestId: ctx.requestId,
+        })),
+      };
+    },
+  };
+}
+
+function makeSkillOptRevertEdit(applier: SkillOptApplier): ActionExecutor {
+  return {
+    actionType: SKILLOPT_REVERT_EDIT_ACTION,
+    validate: validateSkillOptRevertEdit,
+    summarize: (p) =>
+      `revert SkillOpt edit ${String(p.adoptionId ?? "?")} on ${String(p.skillId ?? "?")}`.slice(0, 160),
+    async execute(payload): Promise<Record<string, unknown>> {
+      return {
+        ...(await applier.revert({
+          skillId: String(payload.skillId),
+          adoptionId: String(payload.adoptionId),
+        })),
+      };
+    },
+  };
+}
 
 /**
  * Oz-loops publish proposal (#356) — a recorded-only, OUTWARD decision the owner gates. The triage/spec/
@@ -792,6 +827,7 @@ export function buildDefaultRegistry(
   social?: SocialPublishDispatcher,
   searchConsole: SearchConsoleService = createDefaultSearchConsoleService(),
   supportDispatcher?: SupportReplyDeliveryDispatcher,
+  skillOptApplier: SkillOptApplier = new SkillOptSkillDocApplier(),
 ): ExecutorRegistry {
   return buildRegistry([
     chatPostMessage,
@@ -806,7 +842,8 @@ export function buildDefaultRegistry(
     monetizationPayoutSettings,
     makeOutreachSend(outreachDispatcher),
     reachDataCreditSpend,
-    skillOptAdoptEdit,
+    makeSkillOptAdoptEdit(skillOptApplier),
+    makeSkillOptRevertEdit(skillOptApplier),
     ozLoopsPublishProposal,
     connectAccount,
     provisioningCustomerSpend,
