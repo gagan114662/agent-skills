@@ -633,11 +633,13 @@ export const api = {
       planKey: string,
       billingInterval: "month" | "year" = "month",
       returnUrl: string = checkoutReturnUrl(),
+      trackingRef?: string | null,
     ): Promise<CheckoutResponseDto> {
       return post(`/workspaces/${workspaceId}/billing/checkout`, {
         planKey,
         billingInterval,
         returnUrl,
+        ...(trackingRef ? { trackingRef } : {}),
       }) as Promise<CheckoutResponseDto>;
     },
   },

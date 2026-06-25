@@ -426,6 +426,7 @@ export async function billingRoutes(
       pricingAssignmentId?: unknown;
       billingEmail?: unknown;
       billingInterval?: unknown;
+      trackingRef?: unknown;
     };
     const planKey = typeof body.planKey === "string" ? body.planKey : "";
     if (!planKey) return reply.code(400).send({ error: "planKey required" });
@@ -438,6 +439,7 @@ export async function billingRoutes(
         createdByMemberId: id.memberId,
         ...(returnUrl ? { returnUrl } : {}),
         ...(typeof body.billingEmail === "string" ? { billingEmail: body.billingEmail } : {}),
+        ...(typeof body.trackingRef === "string" ? { trackingRef: body.trackingRef } : {}),
         billingInterval:
           typeof body.billingInterval === "string" && isBillingInterval(body.billingInterval)
             ? body.billingInterval

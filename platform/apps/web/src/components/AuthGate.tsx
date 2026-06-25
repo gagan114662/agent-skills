@@ -37,6 +37,7 @@ const CompanyPage = lazy(() => import("./landing/CompanyPage.js").then((m) => ({
 /** Where the post-signup activation/first-run picks up a plan the visitor chose on `/pricing` (#214). */
 const PLAN_INTENT_KEY = "plan-intent";
 const BILLING_INTERVAL_INTENT_KEY = "billing-interval-intent";
+const TRACKING_REF_INTENT_KEY = "checkout-tracking-ref-intent";
 const PASSWORD_MIN_LENGTH = 8;
 const DISPLAY_NAME_MIN_LENGTH = 2;
 const WORKSPACE_SLUG_MIN_LENGTH = 2;
@@ -95,6 +96,10 @@ function intendedPlanFromUrl(): (typeof LANDING.plans)[number] | null {
 
 function intendedBillingIntervalFromUrl(): "month" | "year" {
   return new URLSearchParams(window.location.search).get("billing") === "year" ? "year" : "month";
+}
+
+function intendedTrackingRefFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get("ref");
 }
 // #151: the public trust page. Code-split + reachable at any phase (logged-in or out).
 const Security = lazy(() => import("./landing/Security.js").then((m) => ({ default: m.Security })));
@@ -297,6 +302,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
   const [intendedBillingInterval] = useState(() =>
     initialMode === "signup" ? intendedBillingIntervalFromUrl() : "month",
   );
+  const [intendedTrackingRef] = useState(() =>
+    initialMode === "signup" ? intendedTrackingRefFromUrl() : null,
+  );
 
   async function onSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -322,6 +330,11 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           try {
             window.sessionStorage.setItem(PLAN_INTENT_KEY, intendedPlan.key);
             window.sessionStorage.setItem(BILLING_INTERVAL_INTENT_KEY, intendedBillingInterval);
+            if (intendedTrackingRef) {
+              window.sessionStorage.setItem(TRACKING_REF_INTENT_KEY, intendedTrackingRef);
+            } else {
+              window.sessionStorage.removeItem(TRACKING_REF_INTENT_KEY);
+            }
           } catch {
             // sessionStorage can throw in private mode — the plan hint is a nicety, not load-bearing.
           }
@@ -496,12 +509,14 @@ function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.
     if (!planKey) return;
     const billingInterval =
       window.sessionStorage.getItem(BILLING_INTERVAL_INTENT_KEY) === "year" ? "year" : "month";
+    const trackingRef = window.sessionStorage.getItem(TRACKING_REF_INTENT_KEY);
     attempted.current = true;
     void api.billing
-      .startCheckout(identity.workspaceId, planKey, billingInterval)
+      .startCheckout(identity.workspaceId, planKey, billingInterval, undefined, trackingRef)
       .then(({ url }) => {
         window.sessionStorage.removeItem(PLAN_INTENT_KEY);
         window.sessionStorage.removeItem(BILLING_INTERVAL_INTENT_KEY);
+        window.sessionStorage.removeItem(TRACKING_REF_INTENT_KEY);
         window.location.assign(url);
       })
       .catch(() => {
