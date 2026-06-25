@@ -25,6 +25,8 @@ import { getControls } from "../db/repositories/autonomy.js";
 import { isMaintenanceActive } from "../maintenance/flag.js";
 import { makeRedactor } from "../runtime/redact.js";
 import type { SessionLogger, SessionManager } from "../runtime/manager.js";
+import { buildSocialPublishService } from "../social/default.js";
+import { createBuildInPublicNarrator } from "./narration.js";
 
 /**
  * Production wiring for the Self-Shipping Loop (#172, ADR-0172). Default-OFF (config `buildLoop.enabled`
@@ -156,6 +158,7 @@ export function createDefaultBuildLoopEngine(
     activeWorkspaces: listActiveBuildLoopWorkspaces,
     maintenancePaused: () => isMaintenanceActive(),
     logger,
+    narrator: createBuildInPublicNarrator(buildSocialPublishService()),
   });
 }
 
