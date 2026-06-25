@@ -936,6 +936,61 @@ export interface PublicProofTile {
   readonly consented: boolean;
 }
 
+export interface StoryReceipt {
+  readonly id: string;
+  readonly customer: string;
+  readonly customerType: "dogfood" | "external";
+  readonly context: string;
+  readonly problem: string;
+  readonly work: string;
+  readonly metric: string;
+  readonly result: string;
+  readonly receipt: string;
+  readonly consentStatus: string;
+  readonly date: string;
+  readonly artifacts: readonly { label: string; href: string }[];
+  readonly consented: boolean;
+}
+
+/** Source of truth for public proof: homepage tiles and /stories cards both read this list (#1178). */
+export const STORY_RECEIPTS: readonly StoryReceipt[] = [
+  {
+    id: "ipop-dogfood-site",
+    customer: "ipop.ai",
+    customerType: "dogfood",
+    context: "Internal dogfood launch for the public acquisition site",
+    problem: "The product claimed autonomous marketing work, but the site lacked pricing, trust, FAQ, and receipt-backed proof.",
+    work:
+      "The fleet audited the funnel, drafted public pages, added pricing and support surfaces, then shipped changes through review and approval receipts.",
+    metric: "Published dogfood story",
+    result: "Site, pricing, FAQ, security, and proof scorecard shipped through the product workflow.",
+    receipt: "Merged PRs and public route coverage in the agent-skills repo.",
+    consentStatus: "Consented because this is ipop's own dogfood story.",
+    date: "2026-06-25",
+    artifacts: [
+      { label: "Stories page", href: "/stories" },
+      { label: "Pricing page", href: "/pricing" },
+      { label: "Security page", href: "/security" },
+    ],
+    consented: true,
+  },
+  {
+    id: "external-proof-pending",
+    customer: "No external customer proof yet",
+    customerType: "external",
+    context: "External customer story slot",
+    problem: "We have not published a consented third-party customer outcome yet.",
+    work: "The next story needs a real customer context, approved metric, artifact trail, and safe public links.",
+    metric: "External-customer outcome pending",
+    result: "Appears only after a customer approves the outcome, metric, source, and artifacts for publication.",
+    receipt: "No external receipt published yet.",
+    consentStatus: "Awaiting explicit customer consent.",
+    date: "Pending",
+    artifacts: [],
+    consented: false,
+  },
+];
+
 /**
  * Public proof rail (#939). A tile may show a metric only when it is a real, consented outcome. External
  * customer slots render as guarded empty states until a customer approves publication.
@@ -951,26 +1006,15 @@ export const PUBLIC_PROOF = {
   emptyBody: "Appears here after a paying customer approves the outcome, metric, and source for publication.",
   consentLabel: "Consented outcome",
   pendingLabel: "Awaiting consent",
-  tiles: [
-    {
-      customer: "ipop.ai",
-      customerType: "dogfood",
-      metric: "Published story",
-      result: "Site, pricing, FAQ, and proof scorecard shipped through the product",
-      source: "Internal dogfood story",
-      href: "/stories",
-      consented: true,
-    },
-    {
-      customer: "Next real customer",
-      customerType: "external",
-      metric: "External-customer outcome",
-      result: "",
-      source: "",
-      href: "/stories",
-      consented: false,
-    },
-  ] as readonly PublicProofTile[],
+  tiles: STORY_RECEIPTS.map((story) => ({
+    customer: story.customer,
+    customerType: story.customerType,
+    metric: story.metric,
+    result: story.result,
+    source: story.receipt,
+    href: "/stories",
+    consented: story.consented,
+  })) as readonly PublicProofTile[],
 } as const;
 
 /** The remembered-decisions ledger (story 04 visual): an append-only audit row sample. */
@@ -2111,7 +2155,8 @@ export const COMPARE = {
 export const STORIES = {
   eyebrow: "Customer stories",
   title: "Receipts, not testimonials",
-  sub: "Real setups, real numbers. First up: how our own fleet built and runs this very site.",
+  sub: "Real setups, real numbers. First up: how our own fleet built and runs this very site. External proof is marked plainly until a customer approves it.",
+  proof: STORY_RECEIPTS,
 } as const;
 
 /** Copy for the `/guides` index. */

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import MarketingSite from "./MarketingSite.js";
 import { api } from "../../api/client.js";
-import { SITE, ASK_AI, BRAND_ASSETS, SEGMENT_LANDING_PAGES } from "../../brand.js";
+import { SITE, ASK_AI, BRAND_ASSETS, SEGMENT_LANDING_PAGES, STORY_RECEIPTS } from "../../brand.js";
 import type { SiteBlock } from "../../api/types.js";
 
 /** Point the (history-API) router at a path before rendering the lazy-free site component. */
@@ -82,6 +82,20 @@ describe("#153 marketing site", () => {
     at("/guides");
     render(<MarketingSite />);
     expect(await screen.findByText(SITE.empty)).toBeInTheDocument();
+  });
+
+  it("renders /stories from receipt-backed proof data instead of an ellipsis placeholder (#1178)", async () => {
+    vi.spyOn(api.site, "section").mockResolvedValue([]);
+    at("/stories");
+    render(<MarketingSite />);
+
+    expect(await screen.findByRole("region", { name: /receipt-backed stories/i })).toBeInTheDocument();
+    for (const story of STORY_RECEIPTS) {
+      expect(screen.getByRole("article", { name: story.customer })).toBeInTheDocument();
+      expect(screen.getByText(story.consentStatus)).toBeInTheDocument();
+    }
+    expect(screen.getByText("No external receipt published yet.")).toBeInTheDocument();
+    expect(screen.queryByText("…")).not.toBeInTheDocument();
   });
 
   it("renders the brand kit with the Pop Vermilion palette swatch", () => {

@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import type { SiteDocDetail, SiteDocMeta } from "../../api/types.js";
 import { api } from "../../api/client.js";
-import { SITE } from "../../brand.js";
+import { SITE, STORIES } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { Markdown } from "./Markdown.js";
 
@@ -33,6 +33,7 @@ export function SectionPage({
 
 function IndexView({ section, copy }: { section: string; copy: SectionCopy }): React.JSX.Element {
   const [state, setState] = useState<LoadState<SiteDocMeta[]>>({ status: "loading" });
+  const isStories = section === "stories";
 
   useEffect(() => {
     let live = true;
@@ -53,9 +54,10 @@ function IndexView({ section, copy }: { section: string; copy: SectionCopy }): R
         <h1 className="site-page__title">{copy.title}</h1>
         <p className="site-page__sub">{copy.sub}</p>
       </header>
-      {state.status === "loading" && <p className="site-page__note">…</p>}
-      {state.status === "error" && <p className="site-page__note">{SITE.offline}</p>}
-      {state.status === "ready" && state.data.length === 0 && <p className="site-page__note">{SITE.empty}</p>}
+      {isStories && <StoryProofList />}
+      {state.status === "loading" && !isStories && <p className="site-page__note">…</p>}
+      {state.status === "error" && !isStories && <p className="site-page__note">{SITE.offline}</p>}
+      {state.status === "ready" && state.data.length === 0 && !isStories && <p className="site-page__note">{SITE.empty}</p>}
       {state.status === "ready" && state.data.length > 0 && (
         <ul className="site-cards">
           {state.data.map((doc) => (
@@ -70,6 +72,50 @@ function IndexView({ section, copy }: { section: string; copy: SectionCopy }): R
         </ul>
       )}
     </article>
+  );
+}
+
+function StoryProofList(): React.JSX.Element {
+  return (
+    <section className="site-cards" aria-label="Receipt-backed stories">
+      {STORIES.proof.map((story) => (
+        <article key={story.id} className="site-card" aria-label={story.customer}>
+          <h2 className="site-card__title">{story.customer}</h2>
+          <p className="site-card__by">
+            {story.date} · {story.consented ? "consented receipt" : "external proof pending"}
+          </p>
+          <p className="site-card__desc">{story.context}</p>
+          <p className="site-card__desc">
+            <strong>Starting problem:</strong> {story.problem}
+          </p>
+          <p className="site-card__desc">
+            <strong>What the fleet did:</strong> {story.work}
+          </p>
+          <p className="site-card__desc">
+            <strong>Receipt/source:</strong> {story.receipt}
+          </p>
+          <p className="site-card__desc">
+            <strong>Approval/consent:</strong> {story.consentStatus}
+          </p>
+          <p className="site-card__desc">
+            <strong>Outcome:</strong> {story.result}
+          </p>
+          {story.artifacts.length > 0 && (
+            <p className="site-card__desc">
+              <strong>Artifacts:</strong>{" "}
+              {story.artifacts.map((artifact, index) => (
+                <span key={artifact.href}>
+                  {index > 0 ? ", " : ""}
+                  <Link href={artifact.href} className="linklike">
+                    {artifact.label}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
+        </article>
+      ))}
+    </section>
   );
 }
 

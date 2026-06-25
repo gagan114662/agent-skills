@@ -3,7 +3,18 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "./Landing.js";
 import { navigate } from "../../routing.js";
-import { BRAND, FLEET, LANDING, SUPPORT_CONTACT, WORKSPACE, STORY, FAQ, BILLING, PUBLIC_PROOF } from "../../brand.js";
+import {
+  BRAND,
+  FLEET,
+  LANDING,
+  SUPPORT_CONTACT,
+  WORKSPACE,
+  STORY,
+  FAQ,
+  BILLING,
+  PUBLIC_PROOF,
+  STORY_RECEIPTS,
+} from "../../brand.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -121,6 +132,7 @@ describe("Landing", () => {
     expect(within(proof).getByText(PUBLIC_PROOF.pendingLabel)).toBeInTheDocument();
     expect(within(proof).getByText(PUBLIC_PROOF.emptyBody)).toBeInTheDocument();
     expect(within(proof).getByRole("link", { name: PUBLIC_PROOF.cta })).toHaveAttribute("href", "/stories");
+    expect(PUBLIC_PROOF.tiles.map((tile) => tile.customer)).toEqual(STORY_RECEIPTS.map((story) => story.customer));
     for (const tile of PUBLIC_PROOF.tiles) {
       expect(within(proof).getByRole("article", { name: tile.customer })).toBeInTheDocument();
     }
