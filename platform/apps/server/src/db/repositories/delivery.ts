@@ -204,6 +204,18 @@ export async function listDeliveryReceipts(
   return rows.map(toReceiptRow);
 }
 
+export async function getDeliveryReceipt(
+  workspaceId: string,
+  deliveryReceiptId: string,
+): Promise<DeliveryReceiptRow | null> {
+  const [row] = await db
+    .select()
+    .from(deliveryReceipts)
+    .where(and(eq(deliveryReceipts.workspaceId, workspaceId), eq(deliveryReceipts.id, deliveryReceiptId)))
+    .limit(1);
+  return row ? toReceiptRow(row) : null;
+}
+
 export async function recordDeliverablePerformance(input: {
   workspaceId: string;
   deliveryReceiptId: string;

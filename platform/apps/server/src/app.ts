@@ -151,6 +151,7 @@ import { createDefaultCloudWorkspaceManager } from "./workspace/default.js";
 import { scaleRoutes } from "./routes/scale.js";
 import { createScale, type Scale } from "./scale/default.js";
 import { founderConsoleRoutes } from "./routes/founder-console.js";
+import { customerDeliverableRoutes } from "./routes/customer-deliverables.js";
 import { deliverableFeedbackRoutes } from "./routes/deliverable-feedback.js";
 import { deliverablePerformanceRoutes } from "./routes/deliverable-performance.js";
 import { createDefaultFounderConsoleService } from "./founder-console/default.js";
@@ -1022,6 +1023,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       outreach: outreachService,
     });
   app.register(founderConsoleRoutes, { service: founderConsole });
+  app.register(customerDeliverableRoutes);
   app.register(deliverableFeedbackRoutes);
   app.register(deliverablePerformanceRoutes);
   // #194 finance ledger: books that close themselves. The accounting layer posts external receipts
