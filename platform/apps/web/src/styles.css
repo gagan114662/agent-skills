@@ -8484,6 +8484,11 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.5;
 }
+.onboard-instant__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
 /* ---- guided connects + their real payoffs -------------------------------------------------- */
 .onboard-connect__title {
@@ -8700,7 +8705,8 @@ select:focus-visible {
     grid-template-columns: 10px minmax(42px, auto) 1fr;
   }
   .onboard-door__field,
-  .onboard-card__actions {
+  .onboard-card__actions,
+  .onboard-instant__actions {
     flex-direction: column;
   }
   .onboard-cta,

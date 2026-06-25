@@ -3,7 +3,8 @@
  *
  * One flow, five beats, all on the near-black canvas with a single coral pop:
  *   1. door      — a warm Instrument-Serif greeting and ONE input ("what are we marketing today?"). Nothing else.
- *   2. reading    — the fleet wakes, reads the REAL site, introduces itself in the thread, narrates a real finding.
+ *   2. reading    — the fleet wakes, reads the REAL site, introduces itself in the thread, narrates a real finding,
+ *                   and offers one instant no-spend result the user can approve immediately.
  *   3. connect    — THE MAGIC: guided Cowork-style connects, ONE Allow at a time (gmail → reddit/x → your site),
  *                   each IMMEDIATELY paid off with a real, visible result that uses it.
  *   4. deliverable — one real deliverable built from those connections; one approve and it ships.
@@ -217,7 +218,15 @@ function ConnectPayoff({ result }: { result: ConnectResult }): React.JSX.Element
   );
 }
 
-function InstantDeliverable({ finding }: { finding: SiteFinding }): React.JSX.Element {
+function InstantDeliverable({
+  finding,
+  approving,
+  onApprove,
+}: {
+  finding: SiteFinding;
+  approving: boolean;
+  onApprove: () => void;
+}): React.JSX.Element {
   return (
     <article className="onboard-instant" aria-label="instant personalized deliverable">
       <div className="onboard-instant__head">
@@ -235,6 +244,11 @@ function InstantDeliverable({ finding }: { finding: SiteFinding }): React.JSX.El
           Lead with this: {finding.finding} Then ship a homepage hero rewrite and a launch-week post
           plan before asking anyone to connect an account.
         </p>
+      </div>
+      <div className="onboard-instant__actions">
+        <button className="onboard-cta" type="button" disabled={approving} onClick={onApprove}>
+          {approving ? "approving" : "approve this first result"}
+        </button>
       </div>
     </article>
   );
@@ -472,8 +486,16 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                       </span>
                     </li>
                   </ul>
-                  <InstantDeliverable finding={finding} />
-                  <button className="onboard-cta" type="button" onClick={() => setPhase("connect")}>
+                  <InstantDeliverable
+                    finding={finding}
+                    approving={shipping}
+                    onApprove={() => void approve()}
+                  />
+                  <button
+                    className="onboard-cta onboard-cta--ghost"
+                    type="button"
+                    onClick={() => setPhase("connect")}
+                  >
                     {ONBOARD_COPY.reading.next}
                   </button>
                 </>
