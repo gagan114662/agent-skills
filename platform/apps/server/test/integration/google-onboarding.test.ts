@@ -127,6 +127,48 @@ describe("Google onboarding (#260, real Postgres)", () => {
     expect(bootstrapCalls[0]).toMatchObject({ workspaceId, domain: "acme.com", siteUrl: "https://acme.com" });
   });
 
+  it("split production redirects land back on the web origin and set a cross-site session cookie (#1220)", { timeout: 60000 }, async () => {
+    const prevWebOrigin = process.env.RELOAD_WEB_ORIGIN;
+    process.env.RELOAD_WEB_ORIGIN = "https://ipop.ai";
+    const split = buildApp({
+      googleAuth: {
+        config: CONFIG,
+        client: fakeClient,
+        stateSecret: SECRET,
+        webOrigin: "https://ipop.ai/",
+        bootstrap: async () => {},
+      },
+    });
+    await split.ready();
+    try {
+      const email = `split-${newId()}@acme-${newId()}.com`;
+      createdEmails.push(email);
+      currentUser = { sub: `sub-${newId()}`, email, emailVerified: true, name: "Split" };
+
+      const start = await split.inject({ method: "GET", url: "/auth/google/start?domain=acme.com" });
+      const cb = await split.inject({
+        method: "GET",
+        url: `/auth/google/callback?code=auth-code&state=${stateFrom(start.headers.location as string)}`,
+      });
+
+      expect(cb.statusCode).toBe(302);
+      expect(cb.headers.location).toBe("https://ipop.ai/");
+      const cookie = cb.cookies.find((c) => c.name === "rid");
+      expect(cookie, "rid cookie set").toBeTruthy();
+      const rawSetCookie = cb.headers["set-cookie"];
+      const setCookies = Array.isArray(rawSetCookie) ? rawSetCookie : [String(rawSetCookie)];
+      expect(setCookies).toEqual(expect.arrayContaining([expect.stringContaining("SameSite=None")]));
+      expect(setCookies).toEqual(expect.arrayContaining([expect.stringContaining("Secure")]));
+
+      const me = await split.inject({ method: "GET", url: "/me", cookies: { rid: cookie!.value } });
+      createdWorkspaceIds.push(me.json().workspaceId as string);
+    } finally {
+      if (prevWebOrigin === undefined) delete process.env.RELOAD_WEB_ORIGIN;
+      else process.env.RELOAD_WEB_ORIGIN = prevWebOrigin;
+      await split.close();
+    }
+  });
+
   it("Google signup carries UTM state through callback and records acquisition (#901)", { timeout: 60000 }, async () => {
     const email = `google-utm-${newId()}@acme-${newId()}.com`;
     createdEmails.push(email);
@@ -223,6 +265,18 @@ describe("Google onboarding (#260, real Postgres)", () => {
       const res = await off.inject({ method: "GET", url: "/auth/google/start?domain=acme.com" });
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe("/start?error=google_unavailable");
+    } finally {
+      await off.close();
+    }
+  });
+
+  it("split production Google-unavailable redirects do not strand the browser on the API host (#1220)", async () => {
+    const off = buildApp({ googleAuth: { config: null, webOrigin: "https://ipop.ai" } });
+    await off.ready();
+    try {
+      const res = await off.inject({ method: "GET", url: "/auth/google/start?domain=acme.com" });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("https://ipop.ai/start?error=google_unavailable");
     } finally {
       await off.close();
     }

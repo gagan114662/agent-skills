@@ -39,6 +39,8 @@ import {
   readSignupAttribution,
   type SignupAttribution,
 } from "../attribution/signup.js";
+import { parseEnvOrigins } from "../http/cors.js";
+import { resolveSessionCookieOptions } from "./auth.js";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days, matching the email/password flow
 
@@ -48,13 +50,25 @@ export const ONBOARDING_PATH = "/start";
 const BOARD_PATH = "/";
 
 function setSessionCookie(reply: FastifyReply, raw: string): void {
+  const { sameSite, secure } = resolveSessionCookieOptions();
   reply.setCookie(SESSION_COOKIE, raw, {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite,
     path: "/",
-    secure: process.env.NODE_ENV === "production",
+    secure,
     maxAge: SESSION_TTL_MS / 1000,
   });
+}
+
+function normalizeWebOrigin(origin: string | undefined): string {
+  const trimmed = (origin ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
 }
 
 export interface GoogleAuthRoutesOptions {
@@ -80,6 +94,8 @@ export interface GoogleAuthRoutesOptions {
   signupEntry?: SignupEntryCaps;
   /** Best-effort signup acquisition instrumentation. */
   growth?: GrowthService;
+  /** Web app origin for split deployments; defaults to the first RELOAD_WEB_ORIGIN entry. */
+  webOrigin?: string;
 }
 
 /**
@@ -125,6 +141,13 @@ export async function googleAuthRoutes(
   // event-loop block on the deployment-level signup flags (and a DoS lever on the public sample route).
   const signupEntryCaps: SignupEntryCaps =
     opts.signupEntry ?? resolveSignupEntryCaps(loadConfig().signupEntry);
+  function webOrigin(): string {
+    return normalizeWebOrigin(opts.webOrigin) || normalizeWebOrigin(parseEnvOrigins()[0]);
+  }
+  function webUrl(path: string): string {
+    const origin = webOrigin();
+    return origin ? `${origin}${path}` : path;
+  }
   /** Read the consent intent off the query (`?intent=seo` ⇒ the deferred GSC/Analytics grant). */
   function intentFromQuery(req: { query: unknown }): OnboardingIntent {
     const raw = (req.query as { intent?: unknown }).intent;
@@ -134,7 +157,7 @@ export async function googleAuthRoutes(
     return readSignupAttribution({ query: req.query as Record<string, unknown> });
   }
   function redirectError(reply: FastifyReply, code: string): FastifyReply {
-    return reply.redirect(`${ONBOARDING_PATH}?error=${encodeURIComponent(code)}`);
+    return reply.redirect(webUrl(`${ONBOARDING_PATH}?error=${encodeURIComponent(code)}`));
   }
 
   /** A workspace slug derived from the domain, suffixed if already taken (new customers only). */
@@ -291,6 +314,6 @@ export async function googleAuthRoutes(
       );
     }
 
-    return reply.redirect(BOARD_PATH);
+    return reply.redirect(webUrl(BOARD_PATH));
   });
 }
