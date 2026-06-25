@@ -7,15 +7,15 @@
  * the same parallel-merge-safety pattern as #588/#620/#670. The DDL is additive and idempotent, so it
  * composes safely with the migration runner.
  *
- * The default data source is {@link FakeDailyActivitySource} — a deterministic, offline generator — so a
- * deployment that enables the feature gets a coherent digest with NO external calls. Wiring a real data source
- * to the trace/run/deliverable/decision repositories (which would touch shared files) and the daily tick into
- * the #559 scheduler are deliberate follow-ups.
+ * The default data source is repository-backed: sessions, decisions, real-world artifacts, and tasks are read
+ * from the existing durable stores. The daily tick into the #559 scheduler remains a deliberate follow-up; the
+ * service still exposes a manual/idempotent generation seam.
  */
 
 import { getPool } from "../db/index.js";
+import { createDbDailyActivitySource } from "./db-source.js";
 import { StandupDigestService } from "./service.js";
-import { FakeDailyActivitySource, type DailyActivitySource } from "./source.js";
+import type { DailyActivitySource } from "./source.js";
 import type { StandupDigestRecord, StandupDigestStore } from "./store.js";
 import type { DailyDigest, DigestPeriod } from "./types.js";
 
@@ -110,9 +110,9 @@ export class PgStandupDigestStore implements StandupDigestStore {
 
 let cached: StandupDigestService | undefined;
 
-/** Build (once) the production standup-digest service over the self-managed Postgres store + offline source. */
+/** Build (once) the production standup-digest service over the self-managed Postgres store + DB source. */
 export function createDefaultStandupDigestService(
-  dataSource: DailyActivitySource = new FakeDailyActivitySource(),
+  dataSource: DailyActivitySource = createDbDailyActivitySource(),
 ): StandupDigestService {
   if (!cached) cached = new StandupDigestService({ store: new PgStandupDigestStore(), dataSource });
   return cached;
