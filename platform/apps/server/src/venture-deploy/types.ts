@@ -62,6 +62,7 @@ export interface DeployTarget {
 
 /** The lifecycle of a release attempt (one immutable row in `deploy_releases`). */
 export const RELEASE_STATUSES = [
+  "pending_promote",
   "deploy_failed",
   "smoke_failed",
   "rolled_back",
