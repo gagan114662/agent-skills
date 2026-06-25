@@ -90,7 +90,14 @@ export const billingSchema = z.object({
 });
 
 /** The providers the selection layer (#52) understands. */
-export const providerKinds = ["anthropic", "openai", "bedrock", "vertex", "custom"] as const;
+export const providerKinds = [
+  "anthropic",
+  "openai",
+  "openai-subscription",
+  "bedrock",
+  "vertex",
+  "custom",
+] as const;
 export const providerKindSchema = z.enum(providerKinds);
 /** Effort/thinking tiers (#52): `off` = no thinking budget; higher = larger `MAX_THINKING_TOKENS`. */
 export const effortLevels = ["off", "low", "medium", "high"] as const;

@@ -70,9 +70,31 @@ export interface ResolvedSelection {
   secretKeys: string[];
 }
 
+/**
+ * The explicit receipt returned when the owner asks for a ChatGPT/Codex subscription-backed OpenAI run
+ * but this deployment has no permitted machine-access bridge. This is intentionally separate from the
+ * OpenAI API/gateway path: an API key can run a provider, but it does not prove the owner's subscription
+ * powered the agent.
+ */
+export interface SubscriptionBackedModelBlockReceipt {
+  provider: "openai-subscription";
+  providerFamily: "openai";
+  model: string;
+  capability: "codex-seat-backed-agent-execution";
+  entitlementSource: "chatgpt-codex-subscription";
+  status: "blocked";
+  reason: "no_permitted_subscription_bridge";
+  fallback: "none";
+  apiKeySatisfies: false;
+  message: string;
+}
+
 /** Thrown when a request violates policy. Content-free + safe to surface as an HTTP 400. */
 export class SelectionError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly receipt?: SubscriptionBackedModelBlockReceipt,
+  ) {
     super(message);
     this.name = "SelectionError";
   }
@@ -111,6 +133,22 @@ function usesExternalUrl(provider: ProviderKind, conn: ProviderConnection | unde
   return Boolean(conn?.baseUrl);
 }
 
+function blockedOpenAISubscriptionReceipt(model: string): SubscriptionBackedModelBlockReceipt {
+  return {
+    provider: "openai-subscription",
+    providerFamily: "openai",
+    model,
+    capability: "codex-seat-backed-agent-execution",
+    entitlementSource: "chatgpt-codex-subscription",
+    status: "blocked",
+    reason: "no_permitted_subscription_bridge",
+    fallback: "none",
+    apiKeySatisfies: false,
+    message:
+      "No permitted ChatGPT/Codex subscription-backed machine-access bridge is configured; OpenAI API keys are a separate billing path and do not satisfy this provider.",
+  };
+}
+
 /** Provider → secret-free env flags. Credentials are NOT touched here (only `secretKeys` names them). */
 function providerEnv(
   provider: ProviderKind,
@@ -128,6 +166,11 @@ function providerEnv(
       env.ANTHROPIC_BASE_URL = baseUrl;
       return { env, secretKeys: ["ANTHROPIC_API_KEY"] };
     }
+    case "openai-subscription":
+      throw new SelectionError(
+        "OpenAI subscription-backed provider is unavailable: no permitted ChatGPT/Codex machine-access bridge is configured",
+        blockedOpenAISubscriptionReceipt("unknown"),
+      );
     case "bedrock":
       env.CLAUDE_CODE_USE_BEDROCK = "1";
       if (conn?.region) env.AWS_REGION = conn.region;
@@ -186,6 +229,13 @@ export function resolveSelection(input: SelectionInput, policy: ModelPolicy): Re
   const effortRaw = input.effort ?? policy.defaultEffort;
   if (!isEffort(effortRaw)) throw new SelectionError("unknown effort level");
   const effort = effortRaw;
+
+  if (provider === "openai-subscription") {
+    throw new SelectionError(
+      "OpenAI subscription-backed provider is unavailable: no permitted ChatGPT/Codex machine-access bridge is configured",
+      blockedOpenAISubscriptionReceipt(model),
+    );
+  }
 
   // --- assemble the secret-free env Claude Code reads natively ---
   const { env: provEnv, secretKeys } = providerEnv(provider, conn);

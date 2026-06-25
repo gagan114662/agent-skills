@@ -70,7 +70,9 @@ export const agentSessions = pgTable(
     // Model/provider selection (#52): the non-secret selection a session ran with (audit + review UI).
     // Nullable — a session launched without explicit selection (or on demo) leaves them unset.
     // Credentials NEVER live here; they stay on the #25 SecretsResolver path.
-    provider: text("provider", { enum: ["anthropic", "openai", "bedrock", "vertex", "custom"] }),
+    provider: text("provider", {
+      enum: ["anthropic", "openai", "openai-subscription", "bedrock", "vertex", "custom"],
+    }),
     model: text("model"),
     effort: text("effort", { enum: ["off", "low", "medium", "high"] }),
     mode: text("mode", { enum: ["single", "auto"] }),

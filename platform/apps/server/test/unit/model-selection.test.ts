@@ -12,7 +12,7 @@ function policy(over: Partial<ModelPolicy> = {}): ModelPolicy {
   return {
     defaultProvider: "anthropic",
     defaultModel: "claude-sonnet-4-6",
-    allowedProviders: ["anthropic", "openai", "bedrock", "vertex", "custom"],
+    allowedProviders: ["anthropic", "openai", "openai-subscription", "bedrock", "vertex", "custom"],
     allowedModels: undefined,
     defaultEffort: "off",
     defaultMode: "single",
@@ -64,10 +64,45 @@ describe("model selection (#52)", () => {
     expect(s.secretKeys).toEqual([]);
   });
 
-  it("a custom/openai provider routes through ANTHROPIC_BASE_URL", () => {
+  it("custom and OpenAI gateway providers route through a Claude-compatible API-key path", () => {
     const s = resolveSelection({ provider: "custom", model: "my-model" }, policy());
     expect(s.env.ANTHROPIC_BASE_URL).toBe("https://llm.internal.example/v1");
     expect(s.secretKeys).toEqual(["ANTHROPIC_API_KEY"]);
+
+    const openaiGateway = resolveSelection({ provider: "openai", model: "gpt-4.1" }, policy());
+    expect(openaiGateway.env.ANTHROPIC_BASE_URL).toBe("https://gw.example.com/v1");
+    expect(openaiGateway.secretKeys).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+
+  it("blocks the ChatGPT/Codex subscription-backed OpenAI provider until a permitted bridge exists", () => {
+    try {
+      resolveSelection({ provider: "openai-subscription", model: "gpt-5.5-codex" }, policy());
+      throw new Error("expected openai-subscription to be blocked");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SelectionError);
+      const receipt = (err as SelectionError).receipt;
+      expect(receipt).toMatchObject({
+        provider: "openai-subscription",
+        providerFamily: "openai",
+        model: "gpt-5.5-codex",
+        capability: "codex-seat-backed-agent-execution",
+        entitlementSource: "chatgpt-codex-subscription",
+        status: "blocked",
+        reason: "no_permitted_subscription_bridge",
+        apiKeySatisfies: false,
+        fallback: "none",
+      });
+    }
+  });
+
+  it("does not treat API-key-only OpenAI gateway config as subscription-backed access", () => {
+    const apiKeyGateway = resolveSelection({ provider: "openai", model: "gpt-4.1" }, policy());
+    expect(apiKeyGateway.provider).toBe("openai");
+    expect(apiKeyGateway.secretKeys).toEqual(["ANTHROPIC_API_KEY"]);
+
+    expect(() =>
+      resolveSelection({ provider: "openai-subscription", model: "gpt-5.5-codex" }, policy()),
+    ).toThrow(SelectionError);
   });
 
   it("effort level changes the invocation (distinct thinking budgets)", () => {
