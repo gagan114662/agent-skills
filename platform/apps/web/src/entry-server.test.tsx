@@ -35,6 +35,9 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     const paths = pages.map((p) => p.urlPath);
     for (const expected of [
       "/",
+      "/start",
+      "/login",
+      "/signup",
       "/blog",
       "/pricing",
       "/security",
@@ -93,6 +96,20 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(pricing.html).toContain("Start free");
     expect(pricing.headExtra).toContain('"@type":"BreadcrumbList"');
     expect(pricing.headExtra).toContain("/pricing");
+  });
+
+  it.each([
+    ["/start", "Start", "your website"],
+    ["/login", "Sign in", "Sign in"],
+    ["/signup", "Sign up", "Create account"],
+  ])("prerenders %s as its own activation/auth route, not homepage fallback (#1176)", (urlPath, titleWord, bodyText) => {
+    const page = byPath(urlPath)!;
+    const home = byPath("/")!;
+    expect(page.title).toContain(titleWord);
+    expect(page.description, `${urlPath} has no description`).toBeTruthy();
+    expect(page.html).toContain(bodyText);
+    expect(page.html).not.toBe(home.html);
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
   it.each([

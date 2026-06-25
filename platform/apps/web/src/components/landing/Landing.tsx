@@ -28,6 +28,7 @@ import {
 } from "../../brand.js";
 import { I18N, currentLocale, type LandingCopy } from "../../i18n.js";
 import { Link } from "../../routing.js";
+import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
 import { WorkspaceSim } from "./WorkspaceSim.js";
@@ -40,6 +41,10 @@ import {
   MemoryLedger,
   MissionControl,
 } from "./Vignettes.js";
+
+function trackCta(href: string, source: string): void {
+  trackAcquisitionEvent("cta-click", { url: href, source });
+}
 
 export function Landing(): React.JSX.Element {
   const locale = currentLocale();
@@ -99,10 +104,10 @@ function LandingNav({ landing }: { landing: LandingCopy }): React.JSX.Element {
         ))}
       </nav>
       <nav className="landing__nav-actions">
-        <Link href="/login" className="linklike">
+        <Link href="/login" className="linklike" onClick={() => trackCta("/login", "landing-nav")}>
           {landing.hero.ctaSecondary}
         </Link>
-        <Link href="/start" className="btn btn--primary landing__nav-cta">
+        <Link href="/start" className="btn btn--primary landing__nav-cta" onClick={() => trackCta("/start", "landing-nav")}>
           {landing.hero.ctaPrimary}
         </Link>
       </nav>
@@ -120,10 +125,10 @@ function Hero({ landing }: { landing: LandingCopy }): React.JSX.Element {
         </h1>
         <p className="landing__sub">{landing.hero.sub}</p>
         <div className="landing__cta-row">
-          <Link href="/start" className="btn btn--primary landing__cta">
+          <Link href="/start" className="btn btn--primary landing__cta" onClick={() => trackCta("/start", "landing-hero")}>
             {landing.hero.ctaPrimary}
           </Link>
-          <Link href="/login" className="btn landing__cta landing__cta--ghost">
+          <Link href="/login" className="btn landing__cta landing__cta--ghost" onClick={() => trackCta("/login", "landing-hero")}>
             {landing.hero.ctaSecondary}
           </Link>
           <Link href="/demo" className="btn landing__cta landing__cta--ghost">
@@ -292,7 +297,7 @@ function ClosingCta({ landing }: { landing: LandingCopy }): React.JSX.Element {
         {landing.sections.ctaTitle}
       </h2>
       <p className="landing__final-sub">{landing.sections.ctaSub}</p>
-      <Link href="/start" className="btn btn--primary landing__cta landing__final-cta">
+      <Link href="/start" className="btn btn--primary landing__cta landing__final-cta" onClick={() => trackCta("/start", "landing-final")}>
         {landing.sections.ctaButton}
       </Link>
     </section>

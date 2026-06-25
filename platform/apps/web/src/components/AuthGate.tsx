@@ -9,6 +9,7 @@
 import { Suspense, lazy, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, COMPANY, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
+import { trackAcquisitionEvent } from "../acquisition-events.js";
 import { Link, replace, useRoute } from "../routing.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
@@ -292,6 +293,10 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
     e.preventDefault();
     setBusy(true);
     setError(null);
+    trackAcquisitionEvent("activation-start", {
+      source: mode,
+      ...(mode === "signup" && intendedPlan ? { host: intendedPlan.key } : {}),
+    });
     if (mode === "signup" && password.length < PASSWORD_MIN_LENGTH) {
       setError({
         kind: "plain",
@@ -320,6 +325,11 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           legalConsentVersion: LEGAL.consentVersion,
           legalConsentAt: new Date().toISOString(),
           ...(trimmedSlug ? { workspaceSlug: trimmedSlug } : {}),
+        });
+        trackAcquisitionEvent("workspace-created", {
+          source: "signup",
+          ...(trimmedSlug ? { host: trimmedSlug } : {}),
+          ...(intendedPlan ? { url: `/signup?plan=${intendedPlan.key}` } : { url: "/signup" }),
         });
       }
     } catch (err) {

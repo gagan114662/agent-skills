@@ -7,7 +7,13 @@
 
 export const ACQUISITION_EVENT_TARGET = "ipop:acquisition";
 
-export type AcquisitionEventName = "demo-start" | "demo-complete" | "demo-to-signup";
+export type AcquisitionEventName =
+  | "cta-click"
+  | "activation-start"
+  | "workspace-created"
+  | "demo-start"
+  | "demo-complete"
+  | "demo-to-signup";
 
 export interface AcquisitionEventDetail {
   url?: string;
