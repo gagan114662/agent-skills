@@ -56,6 +56,79 @@ const TRUST_LINKS = [
   { href: SUPPORT_CONTACT.href, label: "Contact" },
 ] as const;
 
+function roomReceipt(
+  phase: Phase,
+  results: readonly ConnectResult[],
+  deliverable: DeliverableDraft | null,
+): string {
+  if (phase === "shipped") return ONBOARD_COPY.room.receipts.shipped;
+  if (deliverable) return ONBOARD_COPY.room.receipts.deliverable;
+  if (results.length > 0) return ONBOARD_COPY.room.receipts.connected;
+  if (phase === "reading") return ONBOARD_COPY.room.receipts.reading;
+  return ONBOARD_COPY.room.receipts.waiting;
+}
+
+function CoworkStage({
+  phase,
+  input,
+  finding,
+  results,
+  deliverable,
+  readError,
+  connectError,
+}: {
+  phase: Phase;
+  input: string;
+  finding: SiteFinding | null;
+  results: readonly ConnectResult[];
+  deliverable: DeliverableDraft | null;
+  readError: string | null;
+  connectError: string | null;
+}): React.JSX.Element {
+  const lanes = ONBOARD_COPY.room.lanes[phase];
+  const target = input.trim() || "waiting for the thing";
+  const signal =
+    (finding ? ONBOARD_COPY.room.receipts.reading : undefined) ??
+    readError ??
+    connectError ??
+    deliverable?.title ??
+    roomReceipt(phase, results, deliverable);
+  return (
+    <aside className="onboard-room" aria-label="ipop cowork room">
+      <div className="onboard-room__head">
+        <p className="onboard-room__eyebrow">{ONBOARD_COPY.room.eyebrow}</p>
+        <h2 className="onboard-room__title">{ONBOARD_COPY.room.title}</h2>
+        <p className="onboard-room__sub">{ONBOARD_COPY.room.sub}</p>
+      </div>
+
+      <ul className="onboard-room__agents" aria-label="agent team">
+        {ONBOARD_COPY.room.agents.map((agent) => (
+          <li key={agent.who} className="onboard-room-agent">
+            <span className="onboard-room-agent__dot" aria-hidden="true" />
+            <span className="onboard-room-agent__who">{agent.who}</span>
+            <span className="onboard-room-agent__job">{agent.job}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="onboard-room__desk">
+        <p className="onboard-room__label">{ONBOARD_COPY.room.lanesTitle}</p>
+        <p className="onboard-room__target">{target}</p>
+        <ul className="onboard-room__lanes">
+          {lanes.map((lane) => (
+            <li key={lane}>{lane}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="onboard-room__receipt">
+        <span>{ONBOARD_COPY.room.receiptTitle}</span>
+        <strong>{signal}</strong>
+      </div>
+    </aside>
+  );
+}
+
 export interface OnboardingExperienceProps {
   /** The data seam (defaults to the live provider: a REAL site read + deterministic payoffs). */
   provider?: OnboardingProvider;
@@ -112,7 +185,10 @@ function ConnectPayoff({ result }: { result: ConnectResult }): React.JSX.Element
 
 function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React.JSX.Element {
   return (
-    <nav className={"onboard-trust onboard-trust--" + placement} aria-label={placement + " public links"}>
+    <nav
+      className={"onboard-trust onboard-trust--" + placement}
+      aria-label={placement + " public links"}
+    >
       {TRUST_LINKS.map((link) => (
         <a key={placement + "-" + link.href} className="onboard-trust__link" href={link.href}>
           {link.label}
@@ -155,9 +231,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         const f = await provider.readSite(value);
         setFinding(f);
       } catch (err) {
-        setReadError(
-          err instanceof OnboardingReadError ? err.message : ONBOARD_COPY.reading.error,
-        );
+        setReadError(err instanceof OnboardingReadError ? err.message : ONBOARD_COPY.reading.error);
       }
     },
     [provider],
@@ -235,203 +309,214 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         <PublicTrustLinks placement="nav" />
       </header>
       <div className="onboard__inner">
-        {/* ---- 1. the door ------------------------------------------------------------------ */}
-        {phase === "door" && (
-          <form className="onboard-door" onSubmit={onDoorSubmit} noValidate>
-            <PopMark className="onboard__mark" />
-            <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
-            <label className="onboard-door__label" htmlFor="onboard-target">
-              {ONBOARD_COPY.door.inputLabel}
-            </label>
-            <div className="onboard-door__field">
-              <input
-                id="onboard-target"
-                className="onboard-input"
-                type="text"
-                value={input}
-                placeholder={ONBOARD_COPY.door.placeholder}
-                onChange={(e) => setInput(e.target.value)}
-                aria-invalid={doorError ? true : undefined}
-                aria-describedby={doorError ? "onboard-door-error" : undefined}
-                autoFocus
-              />
-              <button className="onboard-cta" type="submit">
-                {ONBOARD_COPY.door.submit}
-              </button>
-            </div>
-            {doorError && (
-              <p id="onboard-door-error" className="onboard-error" role="alert">
-                {doorError}
-              </p>
-            )}
-            <p className="onboard-door__reassurance">{ONBOARD_COPY.door.reassurance}</p>
-          </form>
-        )}
-
-        {/* ---- 2. the fleet wakes + reads the real site ------------------------------------- */}
-        {phase === "reading" && (
-          <section className="onboard-reading" aria-label="the fleet reads your site">
-            {!finding && !readError && (
-              <p className="onboard-working" role="status">
-                <span className="onboard-spinner" aria-hidden="true" />
-                {ONBOARD_COPY.reading.working}
-              </p>
-            )}
-
-            {readError && (
-              <div className="onboard-reading__error">
-                <p className="onboard-error" role="alert">
-                  {readError}
-                </p>
-                <button
-                  className="onboard-cta onboard-cta--ghost"
-                  type="button"
-                  onClick={() => void startReading(input)}
-                >
+        <main className="onboard__primary">
+          {/* ---- 1. the door ------------------------------------------------------------------ */}
+          {phase === "door" && (
+            <form className="onboard-door" onSubmit={onDoorSubmit} noValidate>
+              <PopMark className="onboard__mark" />
+              <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
+              <label className="onboard-door__label" htmlFor="onboard-target">
+                {ONBOARD_COPY.door.inputLabel}
+              </label>
+              <div className="onboard-door__field">
+                <input
+                  id="onboard-target"
+                  className="onboard-input"
+                  type="text"
+                  value={input}
+                  placeholder={ONBOARD_COPY.door.placeholder}
+                  onChange={(e) => setInput(e.target.value)}
+                  aria-invalid={doorError ? true : undefined}
+                  aria-describedby={doorError ? "onboard-door-error" : undefined}
+                  autoFocus
+                />
+                <button className="onboard-cta" type="submit">
                   {ONBOARD_COPY.door.submit}
                 </button>
               </div>
-            )}
-
-            {finding && (
-              <>
-                <ul className="onboard-thread-list">
-                  {ONBOARD_COPY.reading.intros.map((intro) => (
-                    <li key={intro.who} className="onboard-msg">
-                      <span className="onboard-msg__who">{intro.who}</span>
-                      <span className="onboard-msg__line">{intro.line}</span>
-                    </li>
-                  ))}
-                  <li className="onboard-msg onboard-msg--finding">
-                    <span className="onboard-msg__who">scout</span>
-                    <span className="onboard-msg__line">
-                      {ONBOARD_COPY.reading.findingLead} {finding.finding}
-                    </span>
-                  </li>
-                </ul>
-                <button
-                  className="onboard-cta"
-                  type="button"
-                  onClick={() => setPhase("connect")}
-                >
-                  {ONBOARD_COPY.reading.next}
-                </button>
-              </>
-            )}
-          </section>
-        )}
-
-        {/* ---- 3. THE MAGIC: guided connects, each with an immediate real payoff when real access exists. */}
-        {phase === "connect" && (
-          <section className="onboard-connect" aria-label="connect your tools">
-            <h2 className="onboard-connect__title">{ONBOARD_COPY.connect.sectionTitle}</h2>
-
-            {/* Accumulated payoffs — the thread of real work done with the user's own accounts. */}
-            {results.map((result) => (
-              <div key={result.tool} className="onboard-connected">
-                <span className="onboard-badge">{ONBOARD_COPY.connect.doneBadge}</span>
-                <ConnectPayoff result={result} />
-              </div>
-            ))}
-
-            {/* The current Allow prompt, one tool at a time. */}
-            {nextConnector && (
-              <div className="onboard-allow">
-                <p className="onboard-allow__prompt">{nextConnector.copy.prompt}</p>
-                <button
-                  className="onboard-cta"
-                  type="button"
-                  disabled={connecting}
-                  onClick={() => void allow(nextConnector.tool)}
-                >
-                  {connecting ? ONBOARD_COPY.connect.allowing : ONBOARD_COPY.connect.allow}
-                </button>
-                {connectError && (
-                  <>
-                    <p className="onboard-error" role="alert">
-                      {connectError}
-                    </p>
-                    <button className="onboard-cta onboard-cta--ghost" type="button" onClick={onEnterApp}>
-                      {ONBOARD_COPY.connect.realConnections}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* All three connected — onto the real deliverable. */}
-            {!nextConnector && (
-              <button
-                className="onboard-cta"
-                type="button"
-                onClick={() => setPhase("deliverable")}
-              >
-                {ONBOARD_COPY.connect.toDeliverable}
-              </button>
-            )}
-          </section>
-        )}
-
-        {/* ---- 4. one real deliverable → one approve → it ships ----------------------------- */}
-        {phase === "deliverable" && (
-          <section className="onboard-deliverable" aria-label="your first deliverable">
-            <p className="onboard-eyebrow">{ONBOARD_COPY.deliverable.eyebrow}</p>
-
-            {rejected && !deliverable && (
-              <p className="onboard-redo">{ONBOARD_COPY.deliverable.redo}</p>
-            )}
-
-            {building && (
-              <p className="onboard-working" role="status">
-                <span className="onboard-spinner" aria-hidden="true" />
-                {ONBOARD_COPY.deliverable.building}
-              </p>
-            )}
-
-            {deliverable && (
-              <div className="onboard-card">
-                <h2 className="onboard-card__title">{deliverable.title}</h2>
-                <p className="onboard-card__body">{deliverable.body}</p>
-                {deliverable.spendsMoney && (
-                  <p className="onboard-card__money">{ONBOARD_COPY.deliverable.moneyGate}</p>
-                )}
-                <p className="onboard-card__consequence">
-                  {ONBOARD_COPY.deliverable.consequence}
+              {doorError && (
+                <p id="onboard-door-error" className="onboard-error" role="alert">
+                  {doorError}
                 </p>
-                <div className="onboard-card__actions">
-                  <button
-                    className="onboard-cta"
-                    type="button"
-                    disabled={shipping}
-                    onClick={() => void approve()}
-                  >
-                    {ONBOARD_COPY.deliverable.approve}
-                  </button>
+              )}
+              <p className="onboard-door__reassurance">{ONBOARD_COPY.door.reassurance}</p>
+            </form>
+          )}
+
+          {/* ---- 2. the fleet wakes + reads the real site ------------------------------------- */}
+          {phase === "reading" && (
+            <section className="onboard-reading" aria-label="the fleet reads your site">
+              {!finding && !readError && (
+                <p className="onboard-working" role="status">
+                  <span className="onboard-spinner" aria-hidden="true" />
+                  {ONBOARD_COPY.reading.working}
+                </p>
+              )}
+
+              {readError && (
+                <div className="onboard-reading__error">
+                  <p className="onboard-error" role="alert">
+                    {readError}
+                  </p>
                   <button
                     className="onboard-cta onboard-cta--ghost"
                     type="button"
-                    disabled={shipping}
-                    onClick={reject}
+                    onClick={() => void startReading(input)}
                   >
-                    {ONBOARD_COPY.deliverable.reject}
+                    {ONBOARD_COPY.door.submit}
                   </button>
                 </div>
-              </div>
-            )}
-          </section>
-        )}
+              )}
 
-        {/* ---- 5. shipped — a small, earned delight ---------------------------------------- */}
-        {phase === "shipped" && (
-          <section className="onboard-shipped" aria-label="shipped">
-            <PopMark burst className="onboard__mark" />
-            <h1 className="onboard-shipped__headline">{ONBOARD_COPY.shipped.headline}</h1>
-            <p className="onboard-shipped__sub">{ONBOARD_COPY.shipped.sub}</p>
-            <button className="onboard-cta" type="button" onClick={onEnterApp}>
-              {ONBOARD_COPY.shipped.enter}
-            </button>
-          </section>
-        )}
+              {finding && (
+                <>
+                  <ul className="onboard-thread-list">
+                    {ONBOARD_COPY.reading.intros.map((intro) => (
+                      <li key={intro.who} className="onboard-msg">
+                        <span className="onboard-msg__who">{intro.who}</span>
+                        <span className="onboard-msg__line">{intro.line}</span>
+                      </li>
+                    ))}
+                    <li className="onboard-msg onboard-msg--finding">
+                      <span className="onboard-msg__who">scout</span>
+                      <span className="onboard-msg__line">
+                        {ONBOARD_COPY.reading.findingLead} {finding.finding}
+                      </span>
+                    </li>
+                  </ul>
+                  <button className="onboard-cta" type="button" onClick={() => setPhase("connect")}>
+                    {ONBOARD_COPY.reading.next}
+                  </button>
+                </>
+              )}
+            </section>
+          )}
+
+          {/* ---- 3. THE MAGIC: guided connects, each with an immediate real payoff when real access exists. */}
+          {phase === "connect" && (
+            <section className="onboard-connect" aria-label="connect your tools">
+              <h2 className="onboard-connect__title">{ONBOARD_COPY.connect.sectionTitle}</h2>
+
+              {/* Accumulated payoffs — the thread of real work done with the user's own accounts. */}
+              {results.map((result) => (
+                <div key={result.tool} className="onboard-connected">
+                  <span className="onboard-badge">{ONBOARD_COPY.connect.doneBadge}</span>
+                  <ConnectPayoff result={result} />
+                </div>
+              ))}
+
+              {/* The current Allow prompt, one tool at a time. */}
+              {nextConnector && (
+                <div className="onboard-allow">
+                  <p className="onboard-allow__prompt">{nextConnector.copy.prompt}</p>
+                  <button
+                    className="onboard-cta"
+                    type="button"
+                    disabled={connecting}
+                    onClick={() => void allow(nextConnector.tool)}
+                  >
+                    {connecting ? ONBOARD_COPY.connect.allowing : ONBOARD_COPY.connect.allow}
+                  </button>
+                  {connectError && (
+                    <>
+                      <p className="onboard-error" role="alert">
+                        {connectError}
+                      </p>
+                      <button
+                        className="onboard-cta onboard-cta--ghost"
+                        type="button"
+                        onClick={onEnterApp}
+                      >
+                        {ONBOARD_COPY.connect.realConnections}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* All three connected — onto the real deliverable. */}
+              {!nextConnector && (
+                <button
+                  className="onboard-cta"
+                  type="button"
+                  onClick={() => setPhase("deliverable")}
+                >
+                  {ONBOARD_COPY.connect.toDeliverable}
+                </button>
+              )}
+            </section>
+          )}
+
+          {/* ---- 4. one real deliverable → one approve → it ships ----------------------------- */}
+          {phase === "deliverable" && (
+            <section className="onboard-deliverable" aria-label="your first deliverable">
+              <p className="onboard-eyebrow">{ONBOARD_COPY.deliverable.eyebrow}</p>
+
+              {rejected && !deliverable && (
+                <p className="onboard-redo">{ONBOARD_COPY.deliverable.redo}</p>
+              )}
+
+              {building && (
+                <p className="onboard-working" role="status">
+                  <span className="onboard-spinner" aria-hidden="true" />
+                  {ONBOARD_COPY.deliverable.building}
+                </p>
+              )}
+
+              {deliverable && (
+                <div className="onboard-card">
+                  <h2 className="onboard-card__title">{deliverable.title}</h2>
+                  <p className="onboard-card__body">{deliverable.body}</p>
+                  {deliverable.spendsMoney && (
+                    <p className="onboard-card__money">{ONBOARD_COPY.deliverable.moneyGate}</p>
+                  )}
+                  <p className="onboard-card__consequence">
+                    {ONBOARD_COPY.deliverable.consequence}
+                  </p>
+                  <div className="onboard-card__actions">
+                    <button
+                      className="onboard-cta"
+                      type="button"
+                      disabled={shipping}
+                      onClick={() => void approve()}
+                    >
+                      {ONBOARD_COPY.deliverable.approve}
+                    </button>
+                    <button
+                      className="onboard-cta onboard-cta--ghost"
+                      type="button"
+                      disabled={shipping}
+                      onClick={reject}
+                    >
+                      {ONBOARD_COPY.deliverable.reject}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ---- 5. shipped — a small, earned delight ---------------------------------------- */}
+          {phase === "shipped" && (
+            <section className="onboard-shipped" aria-label="shipped">
+              <PopMark burst className="onboard__mark" />
+              <h1 className="onboard-shipped__headline">{ONBOARD_COPY.shipped.headline}</h1>
+              <p className="onboard-shipped__sub">{ONBOARD_COPY.shipped.sub}</p>
+              <button className="onboard-cta" type="button" onClick={onEnterApp}>
+                {ONBOARD_COPY.shipped.enter}
+              </button>
+            </section>
+          )}
+        </main>
+        <CoworkStage
+          phase={phase}
+          input={input}
+          finding={finding}
+          results={results}
+          deliverable={deliverable}
+          readError={readError}
+          connectError={connectError}
+        />
       </div>
       <footer className="onboard__footer">
         <PublicTrustLinks placement="footer" />
