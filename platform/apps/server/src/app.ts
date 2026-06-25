@@ -171,6 +171,7 @@ import { createDefaultDnsManager } from "./onboarding/dns/default.js";
 import type { DnsManager } from "./onboarding/dns/manager.js";
 import type { OnboardingService } from "./onboarding/service.js";
 import { realworldRoutes } from "./routes/realworld.js";
+import { workspaceCapabilityRoutes } from "./routes/workspace-capabilities.js";
 import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
@@ -1103,6 +1104,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(onboardingRoutes, { service: onboarding, dnsManager });
   const realworld = opts.realworld ?? createDefaultRealworldActuatorService();
   app.register(realworldRoutes, { service: realworld });
+  app.register(workspaceCapabilityRoutes);
   // #266 ipop hosted publishing: customer blogs + landing pages, zero repo, zero deploy. `/me/hosted/*`
   // drafts + parks a #13 approval (nothing goes live without the owner approving); the public serve route
   // returns only `published` pages. Default-OFF, owner-workspace-first.
