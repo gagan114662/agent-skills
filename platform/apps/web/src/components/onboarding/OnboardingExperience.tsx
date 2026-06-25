@@ -7,7 +7,7 @@
  *   3. connect    — THE MAGIC: guided Cowork-style connects, ONE Allow at a time (gmail → reddit/x → your site),
  *                   each IMMEDIATELY paid off with a real, visible result that uses it.
  *   4. deliverable — one real deliverable built from those connections; one approve and it ships.
- *   5. shipped    — a small, earned delight. Sends/spend stay human-gated; money is the only hard gate.
+ *   5. shipped    — a small, earned delight. Spend stays human-gated; no-spend work follows policy.
  *
  * Presentational only — every datum (the finding, each connect payoff, the deliverable) comes from an injected
  * {@link OnboardingProvider}, and every word comes from {@link ONBOARD_COPY} in the cheeky Innocent voice. The

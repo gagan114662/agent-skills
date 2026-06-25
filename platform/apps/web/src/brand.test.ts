@@ -32,6 +32,7 @@ import {
   WORKSPACE,
   STORY,
   FAQ,
+  APPROVAL_POLICY,
   BILLING,
   CONSOLE,
   consoleWaitingChip,
@@ -160,6 +161,23 @@ describe("landing fleet + copy (#149)", () => {
     expect(LANDING.steps).toHaveLength(3);
     expect(LANDING.plans).toHaveLength(3);
     expect(LANDING.plans.filter((p) => p.featured)).toHaveLength(1); // one recommended tier
+  });
+
+  it("keeps the public approval/autonomy contract consistent (#1180)", () => {
+    expect(APPROVAL_POLICY.money).toMatch(/paid ad spend|approval/i);
+    expect(APPROVAL_POLICY.external).toMatch(/workspace policy/i);
+    expect(APPROVAL_POLICY.internal).toMatch(/do not need approval/i);
+
+    const approvalFaq = FAQ.items.find((item) => /approval/i.test(item.q));
+    expect(approvalFaq?.a).toContain(APPROVAL_POLICY.money);
+    expect(approvalFaq?.a).toContain(APPROVAL_POLICY.external);
+    expect(approvalFaq?.a).toContain(APPROVAL_POLICY.internal);
+
+    const publicCopy = JSON.stringify({ LANDING, STORY, FAQ });
+    expect(publicCopy).not.toMatch(/Money\s*[—-]\s*and only money/i);
+    expect(publicCopy).not.toMatch(/nothing leaves[^.?!]*(without|unless)[^.?!]*(yes|approval|nod)/i);
+    expect(publicCopy).toMatch(/money waits|spend/i);
+    expect(publicCopy).toMatch(/workspace policy/i);
   });
 
   it("every plan carries a stable key (for /signup?plan=) and 'what you get' highlights (#214)", () => {
