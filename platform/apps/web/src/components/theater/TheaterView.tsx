@@ -136,6 +136,46 @@ function TracePanel({
   );
 }
 
+function BrowserScreen({ events }: { events: TheaterEventDto[] }): React.JSX.Element | null {
+  const browserEvents = events.filter((event) => event.browser);
+  const latest = browserEvents[browserEvents.length - 1]?.browser;
+  if (!latest) return null;
+  const held = latest.decision === "needs_approval";
+  return (
+    <section className="theater-browser" aria-label={THEATER.browserRegion}>
+      <header className="theater-browser__head">
+        <span>{THEATER.browserTitle}</span>
+        <span className={"theater-browser__decision" + (held ? " theater-browser__decision--held" : "")}>
+          {held ? THEATER.browserHeld : latest.decision ?? THEATER.browserObserved}
+        </span>
+      </header>
+      <div className="theater-browser__viewport">
+        <div className="theater-browser__bar">
+          <span className="theater-browser__dot" aria-hidden="true" />
+          <span className="theater-browser__url">{latest.url ?? THEATER.browserNoUrl}</span>
+        </div>
+        <div className="theater-browser__body">
+          <strong>{latest.tool}</strong>
+          <span>{latest.summary}</span>
+          {latest.screenshotPath ? (
+            <span className="theater-browser__shot">{THEATER.browserScreenshot}</span>
+          ) : null}
+        </div>
+      </div>
+      <dl className="theater-browser__meta">
+        <div>
+          <dt>{THEATER.browserStatus}</dt>
+          <dd>{latest.status ?? "--"}</dd>
+        </div>
+        <div>
+          <dt>{THEATER.browserApproval}</dt>
+          <dd>{latest.approvalRequestId ?? THEATER.browserNoApproval}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 function AgentLane({ lane, workspaceId }: { lane: TheaterLane; workspaceId: string }): React.JSX.Element {
   const feedRef = useRef<HTMLOListElement>(null);
   const [trace, setTrace] = useState<AgentTraceDto | null>(null);
@@ -188,6 +228,7 @@ function AgentLane({ lane, workspaceId }: { lane: TheaterLane; workspaceId: stri
           <PhaseRow key={event.id} event={event} />
         ))}
       </ol>
+      <BrowserScreen events={lane.events} />
       <TracePanel trace={trace} loading={traceLoading} error={traceError} />
     </section>
   );

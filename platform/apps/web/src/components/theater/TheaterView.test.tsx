@@ -109,6 +109,68 @@ describe("TheaterView (#624)", () => {
     expect(screen.getByText(/Working/)).toBeInTheDocument();
   });
 
+  it("shows a live browser screen when an agent performs browser actions", async () => {
+    const { store } = renderWithStore(<TheaterView />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+    const src = FakeEventSource.instances[0]!;
+
+    act(() => src.emit("run", RUN));
+    act(() =>
+      src.emit("event", {
+        id: "b1",
+        runId: "run-1",
+        seq: 1,
+        turn: 0,
+        type: "tool_result",
+        phase: "artifact",
+        label: "navigate",
+        summary: "navigate on https://ipop.ai",
+        browser: {
+          tool: "navigate",
+          url: "https://ipop.ai",
+          decision: "allow",
+          approvalRequestId: null,
+          screenshotPath: "browser://shot-1",
+          status: 200,
+          summary: "navigate on https://ipop.ai",
+        },
+        occurredAt: "2026-06-22T00:00:01.000Z",
+      }),
+    );
+    act(() =>
+      src.emit("event", {
+        id: "b2",
+        runId: "run-1",
+        seq: 2,
+        turn: 0,
+        type: "tool_result",
+        phase: "artifact",
+        label: "click",
+        summary: "click is waiting for approval",
+        browser: {
+          tool: "click",
+          url: "https://ipop.ai/pricing",
+          decision: "needs_approval",
+          approvalRequestId: "appr-1",
+          screenshotPath: null,
+          status: null,
+          summary: "click is waiting for approval",
+        },
+        occurredAt: "2026-06-22T00:00:02.000Z",
+      }),
+    );
+
+    expect(await screen.findByRole("region", { name: "Live browser screen" })).toBeInTheDocument();
+    expect(screen.getByText("Agent screen")).toBeInTheDocument();
+    expect(screen.getByText("https://ipop.ai/pricing")).toBeInTheDocument();
+    expect(screen.getByText("click")).toBeInTheDocument();
+    expect(screen.getAllByText("needs your yes")[0]).toBeInTheDocument();
+    expect(screen.getByText("appr-1")).toBeInTheDocument();
+  });
+
   it("flips a lane to Done when the run closes", async () => {
     const { store } = renderWithStore(<TheaterView />);
     await act(async () => {

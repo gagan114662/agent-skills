@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   SUMMARY_MAX,
+  browserActionForEvent,
   phaseForType,
   selectNewEvents,
   sseComment,
@@ -93,6 +94,59 @@ describe("toTheaterEvent", () => {
       summary: "open ipop.ai",
       occurredAt: "2026-06-22T00:00:00.000Z",
     });
+  });
+
+  it("projects browser receipts as watchable screen metadata", () => {
+    const out = toTheaterEvent(
+      ev({
+        type: "tool_result",
+        seq: 4,
+        label: "navigate",
+        payload: {
+          ok: true,
+          tool: "navigate",
+          decision: "allow",
+          url: "https://ipop.ai",
+          status: 200,
+          screenshotPath: "browser://shot-1",
+        },
+      }),
+    );
+    expect(out.browser).toEqual({
+      tool: "navigate",
+      url: "https://ipop.ai",
+      decision: "allow",
+      approvalRequestId: null,
+      screenshotPath: "browser://shot-1",
+      status: 200,
+      summary: "navigate on https://ipop.ai",
+    });
+  });
+});
+
+describe("browserActionForEvent", () => {
+  it("detects a side-effectful browser action waiting on approval", () => {
+    expect(
+      browserActionForEvent("tool_result", "click", {
+        result: {
+          ok: false,
+          tool: "click",
+          decision: "needs_approval",
+          url: "https://example.com/pricing",
+          approvalRequestId: "appr-1",
+          screenshotPath: null,
+        },
+      }),
+    ).toMatchObject({
+      tool: "click",
+      decision: "needs_approval",
+      approvalRequestId: "appr-1",
+      summary: "click is waiting for approval",
+    });
+  });
+
+  it("ignores ordinary non-browser tools", () => {
+    expect(browserActionForEvent("tool_result", "shell", { output: "ok" })).toBeNull();
   });
 });
 
