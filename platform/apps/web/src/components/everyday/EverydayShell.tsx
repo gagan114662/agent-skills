@@ -799,43 +799,59 @@ export function EverydayShell({
   const thread = [...data.thread, ...localThread];
 
   function startRoom(goal: string): void {
-    setRoom(defaultAgentRoom(goal));
-    setLocalThread((entries) => [
-      ...entries,
-      {
-        id: "local-" + Date.now(),
-        kind: "agent-line",
-        agent: data.memberName,
-        at: EVERYDAY.room.chatLabel,
-        text: goal,
-      },
-      {
-        id: "room-" + Date.now(),
-        kind: "agent-line",
-        agent: "Scout",
-        at: "just now",
-        text: EVERYDAY.thread.working("Scout"),
-      },
-      {
-        id: "codex-" + Date.now(),
-        kind: "agent-line",
-        agent: "Operator",
-        at: "ready",
-        text: "I can take product/code handoffs once the team agrees what should ship.",
-      },
-    ]);
-    Promise.resolve(onStartRoom?.(goal)).catch((err) => {
+    const userEntry: ThreadEntry = {
+      id: "local-" + Date.now(),
+      kind: "agent-line",
+      agent: data.memberName,
+      at: EVERYDAY.room.chatLabel,
+      text: goal,
+    };
+    setLocalThread((entries) => [...entries, userEntry]);
+
+    const showAcceptedRoom = (): void => {
+      setRoom(defaultAgentRoom(goal));
       setLocalThread((entries) => [
         ...entries,
         {
-          id: "codex-error-" + Date.now(),
+          id: "room-" + Date.now(),
+          kind: "agent-line",
+          agent: "Scout",
+          at: "just now",
+          text: EVERYDAY.thread.working("Scout"),
+        },
+        {
+          id: "codex-" + Date.now(),
+          kind: "agent-line",
+          agent: "Operator",
+          at: "ready",
+          text: "I can take product/code handoffs once the team agrees what should ship.",
+        },
+      ]);
+    };
+
+    if (!onStartRoom) {
+      showAcceptedRoom();
+      return;
+    }
+
+    const showBlockedRoom = (err: unknown): void => {
+      setLocalThread((entries) => [
+        ...entries,
+        {
+          id: "room-error-" + Date.now(),
           kind: "agent-line",
           agent: "Operator",
           at: "blocked",
           text: err instanceof Error ? err.message : "I could not start the team room run.",
         },
       ]);
-    });
+    };
+
+    try {
+      Promise.resolve(onStartRoom(goal)).then(showAcceptedRoom).catch(showBlockedRoom);
+    } catch (err) {
+      showBlockedRoom(err);
+    }
   }
 
   async function decide(card: ApprovalCard, kind: "ship" | "redo", note?: string): Promise<void> {

@@ -357,6 +357,11 @@ export interface TeamRunResponse {
   }>;
 }
 
+export interface CodexSubscriptionStatus {
+  connected: boolean;
+  reason: string;
+}
+
 /**
  * The members-rail footer (#371): humans · agents · decisions captured, from `GET /me/department`.
  * `summary` is the server-rendered line; the counts are exposed for the client to re-render if needed.

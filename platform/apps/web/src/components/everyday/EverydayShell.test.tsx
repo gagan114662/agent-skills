@@ -119,6 +119,26 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
   });
 
+  it("does not show accepted room activity until the live team run is accepted", async () => {
+    const onStartRoom = vi.fn(async () => {
+      throw new Error("The team engine is not connected to your signed-in subscription yet.");
+    });
+    render(<EverydayShell data={emptyData()} onStartRoom={onStartRoom} />);
+    fireEvent.change(screen.getByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "ipop.ai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai"));
+    expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText("The team engine is not connected to your signed-in subscription yet."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(EVERYDAY.thread.working("Scout"))).not.toBeInTheDocument();
+    expect(screen.queryByText("I can take product/code handoffs once the team agrees what should ship.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
+  });
+
   it("shows a CMO-style dashboard brief with pipeline, channels, blockers, and receipts", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });

@@ -89,6 +89,7 @@ import type {
   SiteDocMeta,
   TeamRunResponse,
   TeamRunSubtaskInput,
+  CodexSubscriptionStatus,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -672,6 +673,9 @@ export const api = {
   },
   launchTeamRun(channelId: string, subtasks: TeamRunSubtaskInput[]): Promise<TeamRunResponse> {
     return post(`/channels/${channelId}/team-runs`, { subtasks }) as Promise<TeamRunResponse>;
+  },
+  getCodexStatus(): Promise<CodexSubscriptionStatus> {
+    return request<CodexSubscriptionStatus>("/me/codex/status");
   },
 
   // --- members & agents ---

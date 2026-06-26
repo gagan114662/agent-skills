@@ -237,7 +237,7 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       ],
       blockers: [
         {
-          title: "Codex/operator auth not proven",
+          title: "Team-engine auth not proven",
           owner: "Operator",
           proof: "agent room cannot claim real work without runtime proof",
         },
@@ -663,7 +663,7 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         },
       ],
       blockers: [
-        { title: "Signed-in Codex runtime proof", owner: "Operator", proof: "GitHub #1282" },
+        { title: "Signed-in team-engine runtime proof", owner: "Operator", proof: "GitHub #1282" },
         { title: "iMessage is not a real group room yet", owner: "Echo", proof: "GitHub #1283" },
         { title: "Connectors can look green without provider proof", owner: "Scout", proof: "GitHub #1284" },
       ],
