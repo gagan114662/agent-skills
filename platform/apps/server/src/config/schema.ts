@@ -1398,10 +1398,10 @@ export const outreachSchema = z.object({
 
 /**
  * Reach — autonomous outbound demand-gen department policy (#280, ADR-0280). Default OFF: with nothing set
- * the engine still composes + dedupes, but its sender is `dryrun` (recorded-only, no network) and its only
- * data source is the free `mock` provider, so it spends nothing and sends nothing. `prospectSource` picks
- * the data provider (a PAID one — clay/lusha/vibe — turns prospect search into a money-gated `data.credit_spend`
- * action; `mock` is free + autonomous). `perDomainDailyCap` is the per-sending-domain rate ceiling that makes
+ * the engine still composes + dedupes, but its sender is `dryrun` (recorded-only, no network) and its
+ * default data source is `imported` (owner-supplied contacts), so it spends nothing and sends nothing.
+ * `prospectSource` picks the data provider (a PAID one — clay/lusha/vibe — turns prospect search into a
+ * money-gated `data.credit_spend` action; `mock` is explicit demo data). `perDomainDailyCap` is the per-sending-domain rate ceiling that makes
  * the autonomous email send safe (premortem #200 §4 deliverability bound). `batchSize` caps prospects per run.
  * Sending a marketing message is NOT a money action, so email auto-send is autonomous under the cap +
  * suppression + the CAN-SPAM/GDPR footer fields. `ownerWorkspaceId` scopes the owner-first rollout.
@@ -1425,11 +1425,15 @@ export const reachSchema = z.object({
    * Optional pool of verified sender addresses. Secrets stay in the ESP vault; these are non-secret From
    * identities and per-domain caps used to distribute volume and fail over damaged domains.
    */
-  sendingDomains: z.array(z.object({
-    from: z.string(),
-    dailyCap: z.number().int().positive().optional(),
-    enabled: z.boolean().optional(),
-  })).optional(),
+  sendingDomains: z
+    .array(
+      z.object({
+        from: z.string(),
+        dailyCap: z.number().int().positive().optional(),
+        enabled: z.boolean().optional(),
+      }),
+    )
+    .optional(),
   /** Pause email sends when recent bounces / sent exceeds this ratio. */
   maxBounceRate: z.number().min(0).optional(),
   /** Pause email sends when recent complaints / sent exceeds this ratio. */

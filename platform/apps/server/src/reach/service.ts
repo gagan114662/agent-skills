@@ -113,6 +113,29 @@ function chooseDomain(states: DomainState[]): DomainState | null {
   );
 }
 
+function reachMode(caps: ReachCaps): ReachMode {
+  const emailLive = caps.sendProvider !== "dryrun" && caps.liveSendEnabled;
+  const linkedinLive = caps.linkedinSendProvider !== "none" && caps.linkedinLiveSendEnabled;
+  const reasons: string[] = [];
+  if (caps.prospectSource === "mock") reasons.push("mock prospects");
+  if (!emailLive && !linkedinLive) reasons.push("dry-run or queue-only send channels");
+  if (emailLive && (!caps.brandName || !caps.postalAddress || !caps.unsubscribeUrl)) {
+    reasons.push("missing email compliance footer config");
+  }
+  const live = reasons.length === 0;
+  return {
+    live,
+    label: live ? "live" : "demo",
+    detail: live
+      ? "Reach is configured for live prospects and a permitted send channel."
+      : `Reach is not live: ${reasons.join(", ")}.`,
+    prospectSource: caps.prospectSource,
+    email: { provider: caps.sendProvider, live: emailLive },
+    linkedin: { provider: caps.linkedinSendProvider, live: linkedinLive },
+    reasons,
+  };
+}
+
 // ---- seams ---------------------------------------------------------------------------------------
 
 /** The ICP seed reader — pulls the workspace domain + founder-console hints. */
@@ -331,6 +354,18 @@ export interface ReachSummary {
   messagesSent: number;
   replies: number;
   booked: number;
+  mode: ReachMode;
+}
+
+export interface ReachMode {
+  /** True only when prospects are not mock and at least one permitted send channel is live. */
+  live: boolean;
+  label: "live" | "demo";
+  detail: string;
+  prospectSource: ProspectSourceKind;
+  email: { provider: string; live: boolean };
+  linkedin: { provider: string; live: boolean };
+  reasons: string[];
 }
 
 export interface ReachReplyThread {
@@ -876,11 +911,13 @@ export class ReachService {
   /** The headline numbers for the founder-console Reach proof tile. */
   async summary(workspaceId: string, windowMs: number = TUNING_WINDOW_MS): Promise<ReachSummary> {
     const m = await this.metrics(workspaceId, windowMs);
+    const caps = this.deps.caps(workspaceId);
     return {
       prospectsFound: m.contacted,
       messagesSent: m.sent,
       replies: m.replies,
       booked: m.booked,
+      mode: reachMode(caps),
     };
   }
 }
