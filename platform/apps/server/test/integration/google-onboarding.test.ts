@@ -81,6 +81,20 @@ async function callback(code: string, state: string) {
 }
 
 describe("Google onboarding (#260, real Postgres)", () => {
+  it("publishes a secret-free auth status for deploy smoke tests (#1288)", async () => {
+    const res = await app.inject({ method: "GET", url: "/auth/google/status" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      configured: true,
+      status: "ready",
+      missing: [],
+      issue: null,
+      startPath: "/auth/google/start",
+    });
+    expect(JSON.stringify(res.json())).not.toContain(CONFIG.clientSecret);
+    expect(JSON.stringify(res.json())).not.toContain(CONFIG.redirectUri);
+  });
+
   it("GET /auth/google/start redirects to Google's consent with identity + GSC + GA scopes", async () => {
     const res = await app.inject({ method: "GET", url: "/auth/google/start?domain=https://www.Acme.com/" });
     expect(res.statusCode).toBe(302);
@@ -262,6 +276,19 @@ describe("Google onboarding (#260, real Postgres)", () => {
     const off = buildApp({ googleAuth: { config: null } });
     await off.ready();
     try {
+      const status = await off.inject({ method: "GET", url: "/auth/google/status" });
+      expect(status.json()).toMatchObject({
+        configured: false,
+        status: "maintenance",
+        missing: [
+          "GOOGLE_OAUTH_CLIENT_ID",
+          "GOOGLE_OAUTH_CLIENT_SECRET",
+          "GOOGLE_OAUTH_REDIRECT_URI",
+        ],
+        issue: "google_oauth_missing_config",
+        startPath: "/auth/google/start",
+      });
+      expect(JSON.stringify(status.json())).not.toContain("secret");
       const res = await off.inject({ method: "GET", url: "/auth/google/start?domain=acme.com" });
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe("/start?error=google_unavailable");

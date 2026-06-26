@@ -148,6 +148,36 @@ A dependency-free root hook, gated on `RELOAD_WEB_ORIGIN` (comma-separated allow
 allow-listed `Origin` with `Access-Control-Allow-Credentials: true` + `Vary: Origin`, and answers
 preflight `OPTIONS` with `204`. No-op when unset (local/same-origin unchanged).
 
+### Google OAuth sign-in runbook (#1288)
+
+Production sign-in must be either ready or deliberately in maintenance. The release preflight fails
+`prod` by default when any of these are missing, and the public smoke endpoint shows only missing key
+names, never values:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REDIRECT_URI=https://api.ipop.ai/auth/google/callback
+```
+
+Set or rotate them in Google Cloud Console -> APIs & Services -> Credentials -> OAuth 2.0 Client IDs.
+The authorized redirect URI in Google must match `GOOGLE_OAUTH_REDIRECT_URI` byte-for-byte, including
+scheme, host, path, and trailing slash behavior. After changing credentials:
+
+```bash
+fly secrets set GOOGLE_OAUTH_CLIENT_ID="..." --app reload-api
+fly secrets set GOOGLE_OAUTH_CLIENT_SECRET="..." --app reload-api
+fly secrets set GOOGLE_OAUTH_REDIRECT_URI="https://api.ipop.ai/auth/google/callback" --app reload-api
+fly deploy --ha=false --app reload-api
+curl -s https://api.ipop.ai/auth/google/status
+curl -I "https://api.ipop.ai/auth/google/start?domain=example.com"
+```
+
+Expected smoke result: `/auth/google/status` returns `configured:true`, and `/auth/google/start`
+returns a `302` to `https://accounts.google.com/o/oauth2/v2/auth`. If status returns
+`configured:false`, fix the listed env var names and rerun the preflight before marking the
+deployment healthy. Never paste the client secret into logs, GitHub issues, or browser screenshots.
+
 ### Enabling billing / Stripe checkout (#125 — owner action)
 
 The pricing page (`/pricing`) and the #98 revenue rails run **dark on the no-network `none` provider**

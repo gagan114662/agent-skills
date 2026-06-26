@@ -15,6 +15,8 @@ import { normalizeDomain } from "../auth/onboarding-domain.js";
 import { signState, verifyState, newStateNonce, loadStateSecret, loadStateKeyId } from "../auth/oauth-state.js";
 import {
   loadGoogleOAuthConfig,
+  googleOAuthConfigStatus,
+  GOOGLE_OAUTH_ENV_KEYS,
   buildGoogleAuthorizeUrl,
   googleConnectionSecrets,
   resolveOnboardingScopes,
@@ -127,6 +129,11 @@ export async function googleAuthRoutes(
   function resolveConfig(): GoogleOAuthConfig | null {
     return opts.config !== undefined ? opts.config : loadGoogleOAuthConfig();
   }
+  function resolveConfigStatus(): { configured: boolean; missing: string[] } {
+    if (opts.config === null) return { configured: false, missing: [...GOOGLE_OAUTH_ENV_KEYS] };
+    if (opts.config) return { configured: true, missing: [] };
+    return googleOAuthConfigStatus();
+  }
   function resolveClient(config: GoogleOAuthConfig): GoogleOAuthClient {
     return opts.client ?? createGoogleOAuthClient(config);
   }
@@ -188,6 +195,25 @@ export async function googleAuthRoutes(
     }
     return createWorkspace({ slug: `${base}-${randomBytes(8).toString("hex")}`, name });
   }
+
+  // Secret-free readiness probe for the public UI + deploy smoke tests. It exposes only missing config item
+  // names, never OAuth values, so the landing page can show maintenance deliberately before redirecting.
+  app.get("/auth/google/status", async () => {
+    const { configured, missing } = resolveConfigStatus();
+    return {
+      configured,
+      status: configured ? "ready" : "maintenance",
+      missing,
+      issue: configured ? null : "google_oauth_missing_config",
+      startPath: "/auth/google/start",
+      message: configured
+        ? "Google sign-in is ready."
+        : `Google sign-in is not configured for this deployment. Missing: ${missing.join(", ")}.`,
+      remedy: configured
+        ? null
+        : "Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and GOOGLE_OAUTH_REDIRECT_URI, then rerun the production preflight.",
+    };
+  });
 
   // Step 1 — begin the single Google consent for the typed domain.
   app.get("/auth/google/start", async (req, reply) => {

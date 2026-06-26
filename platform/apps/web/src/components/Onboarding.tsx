@@ -87,12 +87,23 @@ export function Onboarding(): React.JSX.Element {
 
   // The parallel config path: full-page navigation to the API's OAuth entry. Available on the entry screen
   // AND alongside the streaming deliverable — it is never the gate to seeing the outcome.
-  function signInWithGoogle(): void {
+  async function signInWithGoogle(): Promise<void> {
     const trimmed = validatedDomain();
     if (!trimmed) return;
     trackAcquisitionEvent("activation-start", { url: trimmed, source: "start-google" });
     setBusy(true);
-    window.location.assign(googleStartUrl(trimmed));
+    try {
+      const status = await api.getGoogleAuthStatus();
+      if (!status.configured) {
+        setError(status.message);
+        setBusy(false);
+        return;
+      }
+      window.location.assign(googleStartUrl(trimmed));
+    } catch {
+      setError(ONBOARDING.errors.google_unavailable);
+      setBusy(false);
+    }
   }
 
   // #633: once a website is submitted, the live deliverable IS the screen — config sits beside it.

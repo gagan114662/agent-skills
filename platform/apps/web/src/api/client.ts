@@ -77,6 +77,7 @@ import type {
   MarketingTargetInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  GoogleAuthStatus,
   FirstRunReceiptInput,
   FirstRunReceiptResponse,
   GardenResponse,
@@ -352,6 +353,9 @@ export const api = {
   // the deployment hasn't turned the flag on (default), so the web hides the entry honestly.
   getSampleConsole(): Promise<SampleConsoleResponse> {
     return request<SampleConsoleResponse>("/sample/console");
+  },
+  getGoogleAuthStatus(): Promise<GoogleAuthStatus> {
+    return request<GoogleAuthStatus>("/auth/google/status");
   },
 
   // --- Connect Claude credentials (#68) ---
