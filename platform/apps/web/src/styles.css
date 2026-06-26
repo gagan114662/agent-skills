@@ -9643,9 +9643,9 @@ select:focus-visible {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(10, minmax(70px, 1fr));
+  grid-template-columns: repeat(10, minmax(58px, 1fr));
   align-items: end;
-  gap: clamp(12px, 1.8vw, 30px);
+  gap: clamp(8px, 1.55vw, 24px);
 }
 .onboard-marketing__item {
   min-width: 0;
@@ -9668,18 +9668,19 @@ select:focus-visible {
 .onboard-marketing__mark {
   display: grid;
   place-items: center;
-  width: clamp(56px, 5.4vw, 94px);
-  height: clamp(56px, 5.4vw, 94px);
-  border-radius: 20px;
+  width: clamp(58px, 5.6vw, 104px);
+  height: clamp(58px, 5.6vw, 104px);
+  border-radius: 18px;
   color: transparent;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   font-size: 28px;
   font-weight: 950;
   line-height: 1;
   background: #fff879;
   box-shadow:
-    0 18px 36px rgba(35, 47, 57, 0.12),
+    0 18px 34px rgba(35, 47, 57, 0.14),
+    0 2px 0 rgba(255, 255, 255, 0.5) inset,
     inset 0 0 0 1px rgba(0, 0, 0, 0.08);
   transition:
     transform 0.2s var(--o-ease),
@@ -9697,10 +9698,23 @@ select:focus-visible {
     0 24px 42px rgba(35, 47, 57, 0.18),
     inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
+.onboard-marketing__detail {
+  position: absolute;
+  z-index: 3;
+  max-width: 88%;
+  color: rgba(17, 17, 17, 0.78);
+  font-size: clamp(7px, 0.72vw, 10px);
+  font-weight: 850;
+  line-height: 1;
+  text-align: center;
+  letter-spacing: 0;
+  text-transform: none;
+  pointer-events: none;
+}
 .onboard-marketing__label {
   max-width: 10ch;
-  color: #050505;
-  font-size: 12px;
+  color: rgba(5, 5, 5, 0.72);
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.05;
   text-align: center;
@@ -9708,6 +9722,9 @@ select:focus-visible {
 .onboard-marketing__item[data-kind="brief"] .onboard-marketing__mark {
   border-radius: 999px;
   background: #62b7ff;
+}
+.onboard-marketing__item[data-kind="brief"] .onboard-marketing__detail {
+  color: transparent;
 }
 .onboard-marketing__item[data-kind="brief"] .onboard-marketing__mark::before,
 .onboard-marketing__item[data-kind="brief"] .onboard-marketing__mark::after {
@@ -9722,10 +9739,18 @@ select:focus-visible {
 .onboard-marketing__item[data-kind="icp"] .onboard-marketing__mark {
   height: clamp(78px, 7vw, 124px);
   background: #7de142;
-  transform: skewY(-9deg);
+  transform: skewY(-8deg) rotate(-2deg);
+  border-radius: 8px 28px 12px 8px;
+}
+.onboard-marketing__item[data-kind="icp"] .onboard-marketing__detail {
+  top: 9%;
+  left: 16%;
+  color: #111;
+  font-size: clamp(7px, 0.68vw, 9px);
+  transform: skewY(8deg) rotate(-2deg);
 }
 .onboard-marketing__item[data-kind="icp"] .onboard-marketing__mark::before {
-  inset: 14% 18%;
+  inset: 24% 18% 14%;
   border-radius: 5px;
   background:
     radial-gradient(circle at 50% 24%, #111 0 8%, transparent 9%),
@@ -9738,6 +9763,16 @@ select:focus-visible {
 .onboard-marketing__item[data-kind="site"] .onboard-marketing__mark,
 .onboard-marketing__item[data-kind="email"] .onboard-marketing__mark {
   background: #f4f4ef;
+}
+.onboard-marketing__item[data-kind="site"] .onboard-marketing__detail {
+  bottom: 13%;
+  right: -9%;
+  width: 62%;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: #62b7ff;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(36, 91, 145, 0.2);
 }
 .onboard-marketing__item[data-kind="site"] .onboard-marketing__mark::before {
   inset: 16% 12%;
@@ -9753,7 +9788,20 @@ select:focus-visible {
 }
 .onboard-marketing__item[data-kind="insight"] .onboard-marketing__mark {
   border-radius: 999px;
-  background: #ff8fa8;
+  background:
+    radial-gradient(circle at 64% 24%, rgba(255,255,255,0.72) 0 9%, transparent 10%),
+    #ff8fa8;
+}
+.onboard-marketing__item[data-kind="insight"] .onboard-marketing__detail {
+  bottom: -8%;
+  left: 46%;
+  width: 72%;
+  padding: 5px 7px;
+  border-radius: 10px;
+  background: #fff879;
+  color: #111;
+  transform: rotate(-3deg);
+  box-shadow: 0 10px 18px rgba(75, 61, 5, 0.18);
 }
 .onboard-marketing__item[data-kind="insight"] .onboard-marketing__mark::before {
   width: 34%;
@@ -9772,7 +9820,15 @@ select:focus-visible {
 }
 .onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark {
   height: clamp(82px, 7.4vw, 128px);
-  background: #59a9ff;
+  background:
+    linear-gradient(180deg, #ff8a3d 0 17%, transparent 17%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.2) 0 8px, transparent 8px 16px),
+    #59a9ff;
+  border-radius: 12px;
+}
+.onboard-marketing__item[data-kind="creative"] .onboard-marketing__detail {
+  bottom: 14%;
+  color: rgba(255, 255, 255, 0.92);
 }
 .onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark::before {
   inset: 18% 24%;
@@ -9790,8 +9846,14 @@ select:focus-visible {
   background: #ff7c3b;
 }
 .onboard-marketing__item[data-kind="seo"] .onboard-marketing__mark {
-  background: #f7f063;
+  background:
+    linear-gradient(180deg, #fff879 0 70%, #f2e65c 70% 100%);
   transform: rotate(-2deg);
+  border-radius: 4px;
+}
+.onboard-marketing__item[data-kind="seo"] .onboard-marketing__detail {
+  top: 12%;
+  color: rgba(17, 17, 17, 0.7);
 }
 .onboard-marketing__item[data-kind="seo"] .onboard-marketing__mark::before {
   width: 46%;
@@ -9810,6 +9872,16 @@ select:focus-visible {
 }
 .onboard-marketing__item[data-kind="social"] .onboard-marketing__mark {
   background: repeating-linear-gradient(0deg, #ff74a2 0 10px, #ff9ebc 10px 20px);
+  border-radius: 14px;
+}
+.onboard-marketing__item[data-kind="social"] .onboard-marketing__detail {
+  bottom: -6%;
+  right: -16%;
+  width: 72%;
+  padding: 5px 6px;
+  border-radius: 999px;
+  background: #d9ff8a;
+  color: #111;
 }
 .onboard-marketing__item[data-kind="social"] .onboard-marketing__mark::before {
   inset: 15%;
@@ -9825,6 +9897,13 @@ select:focus-visible {
 .onboard-marketing__item[data-kind="paid"] .onboard-marketing__mark {
   border-radius: 999px;
   background: conic-gradient(from 180deg, #5da8ff 0 35%, #ff9a3c 35% 70%, #5da8ff 70% 100%);
+}
+.onboard-marketing__item[data-kind="paid"] .onboard-marketing__detail {
+  bottom: -4%;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
 }
 .onboard-marketing__item[data-kind="paid"] .onboard-marketing__mark::before {
   width: 42%;
@@ -9843,6 +9922,10 @@ select:focus-visible {
   background: #d7f6ff;
   border-radius: 32px 32px 20px 20px;
 }
+.onboard-marketing__item[data-kind="approval"] .onboard-marketing__detail {
+  top: 13%;
+  color: #111;
+}
 .onboard-marketing__item[data-kind="approval"] .onboard-marketing__mark::before {
   width: 54%;
   height: 32%;
@@ -9860,6 +9943,13 @@ select:focus-visible {
   box-shadow:
     0 18px 36px rgba(35, 47, 57, 0.12),
     inset 0 -12px 0 rgba(0, 0, 0, 0.06);
+}
+.onboard-marketing__item[data-kind="receipt"] .onboard-marketing__detail {
+  bottom: -9%;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: #fff879;
+  color: #111;
 }
 .onboard-marketing__item[data-kind="receipt"] .onboard-marketing__mark::before {
   inset: 12% 18%;
