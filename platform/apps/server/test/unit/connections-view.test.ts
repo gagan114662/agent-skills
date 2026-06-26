@@ -9,7 +9,9 @@ import {
   CONNECTION_DESCRIPTORS,
   EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
+  SOCIAL_AGGREGATOR_ID,
   SITE_PUBLISH_GITHUB_ID,
+  WEBSITE_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
 /**
@@ -104,15 +106,20 @@ describe("decideInternalConnect (#258)", () => {
 });
 
 describe("decideOneClickConnect (#529/#507)", () => {
-  it("connects an available one-click customer connector (outbound email) with no secret", () => {
-    const d = decideOneClickConnect({ descriptor: getConnectionDescriptor(EMAIL_CONNECTION_ID) });
-    expect(d.ok).toBe(true);
-    if (!d.ok) return;
-    expect(d.serviceKey).toBe(EMAIL_CONNECTION_ID);
-    expect(d.serviceKind).toBe("esp");
-    expect(d.scopes).toContain("send_email");
-    // No `secrets` field at all — the consent IS the connection.
-    expect("secrets" in d).toBe(false);
+  it("connects available one-click customer connectors with no secret (#1070)", () => {
+    for (const [id, kind, scope] of [
+      [EMAIL_CONNECTION_ID, "esp", "send_email"],
+      [SOCIAL_AGGREGATOR_ID, "ad_account", "post_social"],
+      [WEBSITE_CONNECTION_ID, "hosting", "site_publish"],
+    ] as const) {
+      const d = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
+      expect(d.ok, id).toBe(true);
+      if (!d.ok) continue;
+      expect(d.serviceKey).toBe(id);
+      expect(d.serviceKind).toBe(kind);
+      expect(d.scopes).toContain(scope);
+      expect("secrets" in d).toBe(false);
+    }
   });
 
   it("refuses an OAuth connector (it isn't a one-click connect)", () => {
@@ -139,6 +146,8 @@ describe("decideWaitlist (#507)", () => {
 
   it("refuses an already-available connector (connect it, don't waitlist it)", () => {
     expect(decideWaitlist({ descriptor: getConnectionDescriptor(EMAIL_CONNECTION_ID) })).toMatchObject({ ok: false });
+    expect(decideWaitlist({ descriptor: getConnectionDescriptor(SOCIAL_AGGREGATOR_ID) })).toMatchObject({ ok: false });
+    expect(decideWaitlist({ descriptor: getConnectionDescriptor(WEBSITE_CONNECTION_ID) })).toMatchObject({ ok: false });
   });
 
   it("refuses an internal connector (never customer-facing)", () => {

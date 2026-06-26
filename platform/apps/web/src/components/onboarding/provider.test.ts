@@ -91,6 +91,58 @@ describe("createDefaultProvider (#784)", () => {
     });
   });
 
+  it("one-click connects social and site with immediate visible payoffs (#1070)", async () => {
+    const connectedIds = new Set<string>();
+    const make = (id: string): ConnectionView => {
+      if (id === "social_aggregator") {
+        return connection({
+          id,
+          label: "Connect your social accounts",
+          provider: "social_aggregator",
+          kind: "ad_account",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["post_social"],
+          connected: connectedIds.has(id),
+        });
+      }
+      return connection({
+        id,
+        label: "Connect your website",
+        provider: "website",
+        kind: "hosting",
+        auth: "one_click",
+        status: "available",
+        capabilities: ["site_publish"],
+        connected: connectedIds.has(id),
+      });
+    };
+    const client: OnboardingConnectionsClient = {
+      getConnections: () => Promise.resolve(response([make("social_aggregator"), make("website")])),
+      enableConnection: (id) => {
+        connectedIds.add(id);
+        return Promise.resolve(response([make("social_aggregator"), make("website")]));
+      },
+    };
+    const provider = createDefaultProvider({ fetchImpl: okFetch(), connections: client });
+
+    await expect(provider.connect("social", "acme.com")).resolves.toMatchObject({
+      tool: "social",
+      threads: [
+        expect.objectContaining({
+          source: "connected social",
+          title: "Acme category question",
+          draft: expect.stringMatching(/answer the question first/i),
+        }),
+      ],
+    });
+    await expect(provider.connect("site", "acme.com")).resolves.toMatchObject({
+      tool: "site",
+      before: "Acme helps teams grow.",
+      after: expect.stringMatching(/ready for approval/i),
+    });
+  });
+
   it("connect refuses to fake OAuth-backed payoffs that are still coming soon", async () => {
     const client: OnboardingConnectionsClient = {
       getConnections: () =>
