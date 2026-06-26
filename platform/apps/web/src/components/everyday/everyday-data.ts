@@ -95,6 +95,37 @@ export interface ExternalAction {
   readonly undoLabel?: string;
 }
 
+export interface MarketingMetric {
+  readonly label: string;
+  readonly value: string;
+  readonly detail: string;
+  readonly tone: "good" | "warn" | "bad" | "neutral";
+}
+
+export interface MarketingChannel {
+  readonly source: string;
+  readonly status: string;
+  readonly pipeline: string;
+  readonly conversion: string;
+  readonly spend: string;
+  readonly next: string;
+}
+
+export interface MarketingAction {
+  readonly title: string;
+  readonly owner: string;
+  readonly proof: string;
+}
+
+export interface MarketingBrief {
+  readonly mode: "live" | "sample";
+  readonly headline: string;
+  readonly metrics: readonly MarketingMetric[];
+  readonly channels: readonly MarketingChannel[];
+  readonly blockers: readonly MarketingAction[];
+  readonly nextActions: readonly MarketingAction[];
+}
+
 /** Everything the everyday shell renders. */
 export interface EverydayData {
   readonly memberName: string;
@@ -106,6 +137,7 @@ export interface EverydayData {
   readonly transparency: readonly ExternalAction[];
   /** The kill-switch is always on; this is just whether the fleet is currently running or paused. */
   readonly fleetPaused: boolean;
+  readonly marketingBrief?: MarketingBrief;
 }
 
 /** Time-of-day bucket for the greeting. Pure: takes the local hour (0–23) so it is trivially testable. */
@@ -149,6 +181,53 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
     approvals: [],
     transparency: [],
     fleetPaused: false,
+    marketingBrief: {
+      mode: "live",
+      headline:
+        "No marketing signal yet. Start the room and the team should fill this with pipeline, channel, spend, and blocker data.",
+      metrics: [
+        { label: "leads found", value: "0", detail: "no prospect source connected", tone: "bad" },
+        { label: "qualified", value: "0", detail: "no ICP scoring run yet", tone: "neutral" },
+        { label: "replies", value: "0", detail: "no outbound channel proven", tone: "bad" },
+        { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral" },
+        { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral" },
+        { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral" },
+      ],
+      channels: [
+        {
+          source: "owned site",
+          status: "needs conversion proof",
+          pipeline: "0 qualified leads",
+          conversion: "—",
+          spend: "$0",
+          next: "start with one live site read and one measurable CTA",
+        },
+      ],
+      blockers: [
+        {
+          title: "Codex/operator auth not proven",
+          owner: "Operator",
+          proof: "agent room cannot claim real work without runtime proof",
+        },
+        {
+          title: "External channels not connected",
+          owner: "Echo",
+          proof: "no outbound send path has an end-to-end receipt",
+        },
+      ],
+      nextActions: [
+        {
+          title: "Connect one real acquisition channel",
+          owner: "Echo",
+          proof: "move one lead from found to contacted with a receipt",
+        },
+        {
+          title: "Replace demo dashboard data with live workspace metrics",
+          owner: "Lens",
+          proof: "CMO brief must come from source rows, not copy",
+        },
+      ],
+    },
   };
 }
 
@@ -492,6 +571,55 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         receiptLabel: "open dashboard",
       },
     ],
+    marketingBrief: {
+      mode: "sample",
+      headline:
+        "Public sample: ipop has shipped product work, but customer acquisition is still blocked until auth, connectors, and live outbound proof are real.",
+      metrics: [
+        { label: "leads found", value: "0", detail: "no live prospect source connected", tone: "bad" },
+        { label: "qualified", value: "0", detail: "no ICP scoring receipt", tone: "bad" },
+        { label: "contacted", value: "0", detail: "outbound path still gated", tone: "bad" },
+        { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad" },
+        { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad" },
+        { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral" },
+      ],
+      channels: [
+        {
+          source: "homepage",
+          status: "live but not yet converting",
+          pipeline: "0 customers",
+          conversion: "unproven",
+          spend: "$0",
+          next: "instrument starts, signups, and activation",
+        },
+        {
+          source: "iMessage room",
+          status: "preview only",
+          pipeline: "0 usable conversations",
+          conversion: "blocked",
+          spend: "$0",
+          next: "ship real inbound/outbound relay",
+        },
+        {
+          source: "outbound",
+          status: "mock/dry-run risk",
+          pipeline: "0 contacted leads",
+          conversion: "blocked",
+          spend: "$0",
+          next: "connect one real channel and prove one sent receipt",
+        },
+      ],
+      blockers: [
+        { title: "Signed-in Codex runtime proof", owner: "Operator", proof: "GitHub #1282" },
+        { title: "iMessage is not a real group room yet", owner: "Echo", proof: "GitHub #1283" },
+        { title: "Connectors can look green without provider proof", owner: "Scout", proof: "GitHub #1284" },
+      ],
+      nextActions: [
+        { title: "Make dashboard live-data backed", owner: "Lens", proof: "GitHub #1287" },
+        { title: "Enable one real OAuth/provider path", owner: "Scout", proof: "GitHub #1285" },
+        { title: "Replace mock reach with one real prospect flow", owner: "Echo", proof: "GitHub #1286" },
+      ],
+    },
   };
 }
 

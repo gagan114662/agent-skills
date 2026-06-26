@@ -42,7 +42,7 @@ function approvalActions(): EverydayApprovalActions & {
 describe("EverydayShell — north star (#630)", () => {
   it("defaults to an honest empty live state, not the demo seed (#1181)", () => {
     render(<EverydayShell />);
-    expect(screen.getByText("$0")).toBeInTheDocument();
+    expect(screen.getAllByText("$0").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Dana/i)).not.toBeInTheDocument();
   });
@@ -65,8 +65,8 @@ describe("EverydayShell — north star (#630)", () => {
     render(<EverydayShell data={seedEveryday()} />);
     expect(screen.getByText(EVERYDAY.northStar.customersLabel)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.northStar.revenueLabel)).toBeInTheDocument();
-    expect(screen.getByText("$2,480")).toBeInTheDocument();
-    expect(screen.getByText("14")).toBeInTheDocument();
+    expect(screen.getAllByText("$2,480").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("14").length).toBeGreaterThan(0);
   });
 
   it("reads the zero-customer state in voice, not as a failure", () => {
@@ -119,17 +119,17 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
   });
 
-  it("shows the dashboard summary of agent work and receipts", () => {
+  it("shows a CMO-style dashboard brief with pipeline, channels, blockers, and receipts", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
     expect(dashboard).toHaveAttribute("id", "dashboard");
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.activeAgents)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.deliverables)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.approvals)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.receipts)).toBeInTheDocument();
-    expect(within(dashboard).getByText("first campaign platform")).toBeInTheDocument();
-    expect(within(dashboard).getAllByText("2").length).toBeGreaterThanOrEqual(2);
-    expect(within(dashboard).getByText("5")).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.blockers)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
+    expect(within(dashboard).getByText("customers")).toBeInTheDocument();
+    expect(within(dashboard).getByText("qualified")).toBeInTheDocument();
+    expect(within(dashboard).getByText("workspace")).toBeInTheDocument();
+    expect(within(dashboard).getByText(/needs CMO metrics feed/i)).toBeInTheDocument();
   });
 
   it("shows iMessage as the only messaging setup lane", () => {
