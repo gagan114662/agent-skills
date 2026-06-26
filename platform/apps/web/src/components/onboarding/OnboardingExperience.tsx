@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listPostMeta, type BlogPostMeta } from "../../blog/posts.js";
 import { BRAND, LANDING, SUPPORT_CONTACT } from "../../brand.js";
+import { googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
@@ -173,6 +174,11 @@ export interface OnboardingExperienceProps {
   name?: string | null;
   /** Where "take me in" goes (defaults to the app root). Injectable for tests. */
   onEnterApp?: () => void;
+  /**
+   * Starts the real signup OAuth handoff from the public cowork flow. Tests/demos that inject a provider keep
+   * using that provider for Gmail payoffs; the production default navigates to Google before claiming access.
+   */
+  startGoogleAuth?: (input: string) => void;
 }
 
 /** Render one connect payoff — discriminated by tool, so each reads as the real thing it is. */
@@ -301,6 +307,13 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const provider = props.provider ?? createDefaultProvider();
   const hour = props.hour ?? new Date().getHours();
   const onEnterApp = props.onEnterApp ?? (() => navigate("/"));
+  const startGoogleAuth =
+    props.startGoogleAuth ??
+    (props.provider
+      ? null
+      : (value: string): void => {
+          window.location.assign(googleStartUrl(value));
+        });
 
   const [phase, setPhase] = useState<Phase>("door");
   const [input, setInput] = useState("");
@@ -352,6 +365,10 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   };
 
   const allow = async (tool: ConnectTool): Promise<void> => {
+    if (tool === "gmail" && startGoogleAuth) {
+      startGoogleAuth(input);
+      return;
+    }
     setConnecting(true);
     setConnectError(null);
     try {
