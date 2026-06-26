@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { IMessageRelayService } from "../../src/imessage/service.js";
+import { IMessageRelayService, imessageRoomReceipt } from "../../src/imessage/service.js";
 
 const base = {
   enabled: true,
@@ -9,6 +9,28 @@ const base = {
 };
 
 describe("IMessageRelayService", () => {
+  it("formats room receipts with channel/message correlation", () => {
+    expect(
+      imessageRoomReceipt({
+        workspaceId: "ws1",
+        channelId: "ch1",
+        messageId: "msg1",
+        author: "Gagan",
+        text: "launch the room",
+      }),
+    ).toBe(
+      [
+        "ipop iMessage room",
+        "author: Gagan",
+        "channel: ch1",
+        "message: msg1",
+        "receipt: imessage:ch1:msg1",
+        "",
+        "launch the room",
+      ].join("\n"),
+    );
+  });
+
   it("is disabled by default unless the relay is explicitly enabled", async () => {
     const send = vi.fn();
     const service = new IMessageRelayService({ ...base, enabled: false }, { send });

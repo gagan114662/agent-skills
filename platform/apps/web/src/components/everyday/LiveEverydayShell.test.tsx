@@ -115,6 +115,37 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
 
+  it("blocks room launch when iMessage relay has not produced a receipt (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({ connected: true, reason: "" });
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "not_configured",
+      dryRun: false,
+      receipt: "imessage:c1:m1",
+      message: makeMessage({ id: "m1", channelId: "c1", body: "build ipop.ai" }),
+      error: "iMessage relay is not configured for this workspace yet.",
+    });
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun");
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "build ipop.ai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    expect(
+      await screen.findByText("iMessage relay is not configured for this workspace yet."),
+    ).toBeInTheDocument();
+    expect(launchTeamRun).not.toHaveBeenCalled();
+  });
+
   it("surfaces the persisted first-run receipt as live CMO dashboard proof (#1289)", async () => {
     vi.mocked(api.getFirstRunReceipt).mockResolvedValue({
       firstRun: {

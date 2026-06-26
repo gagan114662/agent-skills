@@ -152,7 +152,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     kind: "sms",
     audience: "customer",
     auth: "one_click",
-    status: "available",
+    status: "coming_soon",
     capabilities: ["work_visibility", "mobile_messaging", "imessage_room"],
     oauthScopes: [],
     envKeys: [],
