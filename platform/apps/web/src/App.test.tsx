@@ -27,7 +27,7 @@ describe("App root routing", () => {
     );
 
     expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /the room/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
   });
 
   it("sends signed-in visitors at / straight to the everyday agent room", async () => {
@@ -40,7 +40,7 @@ describe("App root routing", () => {
       </StoreProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: /the room/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
   });
 
   it("keeps /welcome auth-aware too", async () => {
@@ -54,6 +54,6 @@ describe("App root routing", () => {
       </StoreProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: /the room/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
   });
 });
