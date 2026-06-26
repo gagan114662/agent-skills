@@ -255,6 +255,8 @@ export const CONNECTIONS = {
   waitlisted: "You're on the list — we'll let you know when it's ready.",
   connect: "Connect",
   connectedBadge: "Connected",
+  proofPendingBadge: "Setup pending",
+  proofPendingDetail: "Consent recorded. We'll show connected after the provider check passes.",
   disconnect: "Disconnect",
   internalTitle: "Site publishing (admin)",
   internalHint: "Internal publishing connection — admin only. Not shown to customers.",

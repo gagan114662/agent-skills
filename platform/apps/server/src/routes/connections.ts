@@ -38,9 +38,24 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return loadConfig(workspaceId).marketing.ownerWorkspaceId === workspaceId;
   }
 
-  async function connectedIds(workspaceId: string): Promise<Set<string>> {
+  async function connectionProofs(workspaceId: string): Promise<Map<string, {
+    connected: boolean;
+    envKeys: string[];
+    fingerprint: string;
+    connectedAtMs: number;
+  }>> {
     const rows = await listServiceStatuses(workspaceId);
-    return new Set(rows.filter((r) => r.connected).map((r) => r.serviceKey));
+    return new Map(
+      rows.map((r) => [
+        r.serviceKey,
+        {
+          connected: r.status === "connected",
+          envKeys: r.envKeys,
+          fingerprint: r.fingerprint,
+          connectedAtMs: r.connectedAtMs,
+        },
+      ]),
+    );
   }
 
   // What this workspace can connect (+ which are already connected). Read-only, never a secret.
@@ -51,7 +66,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const isOwner = isOwnerWorkspace(wid);
     const connections = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: await connectedIds(wid),
+      proofs: await connectionProofs(wid),
       isOwner,
     });
     return { connections, canManageInternal: isOwner };
@@ -82,16 +97,15 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     // Re-read so the caller sees the freshly-connected state — never the secret.
     const connections = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: await connectedIds(wid),
+      proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
     return { connected: true, id: decision.serviceKey, connections };
   });
 
-  // One-click customer consent (#529, #507) — turn on a channel the fleet already owns end-to-end (today:
-  // outbound email). No redirect, no pasted secret: the consent itself is the connection, so it's a non-money
-  // CONSENT and carries no #13 gate (same as the OAuth connects). It seals an empty-secret connected row, so
-  // the "connect an account" onboarding step becomes completable and dependent sends stay owner-approved.
+  // One-click customer consent (#529, #507) — record consent for a channel without a redirect or pasted
+  // secret. Consent alone is NOT provider proof (#1284): the returned connection stays providerStatus
+  // "unproven" / connected false until a provider-specific health check writes proof material.
   app.post("/me/connections/:id/enable", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
@@ -108,10 +122,17 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     });
     const connections = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: await connectedIds(wid),
+      proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
-    return { connected: true, id: decision.serviceKey, connections };
+    const view = connections.find((connection) => connection.id === decision.serviceKey);
+    return {
+      connected: view?.connected ?? false,
+      id: decision.serviceKey,
+      consentStatus: view?.consentStatus ?? "recorded",
+      providerStatus: view?.providerStatus ?? "unproven",
+      connections,
+    };
   });
 
   // Waitlist (#507) — a connector whose live flow isn't wired yet offers "notify me" instead of a dead stop.

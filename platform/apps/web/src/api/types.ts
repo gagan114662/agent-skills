@@ -111,6 +111,12 @@ export interface ConnectionView {
   status: "available" | "coming_soon";
   capabilities: string[];
   oauthScopes: string[];
+  consentStatus: "none" | "recorded";
+  providerStatus: "unproven" | "healthy";
+  lastProofAt: number | null;
+  lastProofReceipt: string | null;
+  failureReason: string | null;
+  /** True only when provider proof has passed; consent alone is not connected (#1284). */
   connected: boolean;
 }
 

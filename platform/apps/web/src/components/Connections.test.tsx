@@ -20,6 +20,11 @@ function view(over: Partial<ConnectionView>): ConnectionView {
     status: "coming_soon",
     capabilities: ["search_console"],
     oauthScopes: ["webmasters"],
+    consentStatus: "none",
+    providerStatus: "unproven",
+    lastProofAt: null,
+    lastProofReceipt: null,
+    failureReason: null,
     connected: false,
     ...over,
   };
@@ -151,5 +156,30 @@ describe("Connections (#258)", () => {
     render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(onDisconnect).toHaveBeenCalledWith("google");
+  });
+
+  it("shows setup pending instead of connected for consent without provider proof (#1284)", () => {
+    const onDisconnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "email",
+          label: "Connect email",
+          auth: "one_click",
+          status: "available",
+          consentStatus: "recorded",
+          providerStatus: "unproven",
+          failureReason: "Consent is recorded, but no provider health check has passed yet.",
+          connected: false,
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
+    expect(screen.getByText(/setup pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/provider health check/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Connected$/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
+    expect(onDisconnect).toHaveBeenCalledWith("email");
   });
 });

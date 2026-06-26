@@ -14,6 +14,20 @@ import {
   WEBSITE_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
+function proofs(entries: Array<[string, { envKeys?: string[]; connectedAtMs?: number; fingerprint?: string }]> = []) {
+  return new Map(
+    entries.map(([id, value]) => [
+      id,
+      {
+        connected: true,
+        envKeys: value.envKeys ?? [],
+        connectedAtMs: value.connectedAtMs ?? 123,
+        fingerprint: value.fingerprint ?? "abcdef1234567890",
+      },
+    ]),
+  );
+}
+
 /**
  * #258 — what Settings shows and what an internal paste is allowed to do. Customers see only OAuth-shaped
  * connectors; the GitHub paste is owner/admin only and refuses a non-owner or a customer (OAuth) connector.
@@ -22,7 +36,7 @@ describe("decideConnectionView (#258)", () => {
   it("hides internal connectors from non-owner workspaces", () => {
     const view = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: new Set(),
+      proofs: proofs(),
       isOwner: false,
     });
     expect(view.every((v) => v.audience === "customer")).toBe(true);
@@ -32,20 +46,37 @@ describe("decideConnectionView (#258)", () => {
   it("shows the internal GitHub connector to the owner workspace", () => {
     const view = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: new Set(),
+      proofs: proofs(),
       isOwner: true,
     });
     expect(view.find((v) => v.id === SITE_PUBLISH_GITHUB_ID)).toBeDefined();
   });
 
-  it("marks connected connectors from the connected-id set", () => {
+  it("marks connected only when provider proof exists (#1284)", () => {
     const view = decideConnectionView({
       descriptors: CONNECTION_DESCRIPTORS,
-      connectedIds: new Set(["google"]),
+      proofs: proofs([["google", { envKeys: ["GOOGLE_REFRESH_TOKEN"] }]]),
       isOwner: false,
     });
     expect(view.find((v) => v.id === "google")?.connected).toBe(true);
+    expect(view.find((v) => v.id === "google")?.providerStatus).toBe("healthy");
+    expect(view.find((v) => v.id === "google")?.lastProofReceipt).toMatch(/^vault:/);
     expect(view.find((v) => v.id === "x")?.connected).toBe(false);
+  });
+
+  it("keeps empty-secret one-click consent separate from provider connected (#1284)", () => {
+    const view = decideConnectionView({
+      descriptors: CONNECTION_DESCRIPTORS,
+      proofs: proofs([[EMAIL_CONNECTION_ID, { envKeys: [] }]]),
+      isOwner: false,
+    });
+    const email = view.find((v) => v.id === EMAIL_CONNECTION_ID);
+    expect(email).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
+    expect(email?.failureReason).toMatch(/health check/i);
   });
 });
 
