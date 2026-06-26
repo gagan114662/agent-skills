@@ -29,7 +29,7 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     const text =
       typeof body.text === "string" && body.text.trim()
         ? body.text.trim()
-        : "ipop test: your Codex-backed marketing room can reach iMessage.";
+        : "ipop test: your marketing team engine can reach iMessage.";
     const result = await opts.service.send({ text });
     return reply.code(statusCode(result.status)).send(result);
   });

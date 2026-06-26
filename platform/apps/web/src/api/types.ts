@@ -418,6 +418,12 @@ export interface TeamRunResponse {
 export interface CodexSubscriptionStatus {
   connected: boolean;
   reason: string;
+  selectedHarness: "codex";
+  userAuthenticated: boolean;
+  workspaceAuthenticated: boolean;
+  runtimeAuth: "signed_in_subscription" | "missing";
+  fallback: "none";
+  apiKeySatisfies: false;
 }
 
 /**

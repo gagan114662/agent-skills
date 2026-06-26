@@ -213,7 +213,28 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
       cookies: { rid: w.cookie },
     });
     expect(status.statusCode).toBe(200);
-    expect(status.json()).toMatchObject({ connected: false });
+    expect(status.json()).toMatchObject({
+      connected: false,
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+
+    const preflight = await app.inject({
+      method: "GET",
+      url: "/me/codex/preflight",
+      cookies: { rid: w.cookie },
+    });
+    expect(preflight.statusCode).toBe(200);
+    expect(preflight.json()).toMatchObject({
+      connected: false,
+      selectedHarness: "codex",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
 
     const launch = await app.inject({
       method: "POST",
@@ -234,6 +255,12 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
     expect(launch.statusCode).toBe(409);
     expect(launch.json()).toMatchObject({
       code: "codex_subscription_not_connected",
+      status: {
+        selectedHarness: "codex",
+        runtimeAuth: "missing",
+        fallback: "none",
+        apiKeySatisfies: false,
+      },
     });
 
     const sessions = await app.inject({
