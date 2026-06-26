@@ -96,6 +96,18 @@ export async function listCandidatesByStatus(
   return rows as CandidateRecord[];
 }
 
+/** Count candidates in a given status for watch-only console roll-ups. */
+export async function countCandidatesByStatus(
+  workspaceId: string,
+  status: CandidateStatus,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(factoryCandidates)
+    .where(and(eq(factoryCandidates.workspaceId, workspaceId), eq(factoryCandidates.status, status)));
+  return row?.count ?? 0;
+}
+
 export async function setCandidate(
   workspaceId: string,
   id: string,

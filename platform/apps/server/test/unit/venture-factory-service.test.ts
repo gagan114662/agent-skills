@@ -159,7 +159,10 @@ interface Harness {
 
 function harness(
   over: Partial<VentureFactoryCaps> = {},
-  opts: { budgetAllow?: (input: { cents: number; reason: string }) => boolean } = {},
+  opts: {
+    budgetAllow?: (input: { cents: number; reason: string }) => boolean;
+    killSwitch?: boolean;
+  } = {},
 ): Harness {
   const store = new FakeStore();
   const submitted: Array<{ actionKind: string; summary: string; payload: Record<string, unknown> }> = [];
@@ -184,7 +187,7 @@ function harness(
         return "pending";
       },
     },
-    killSwitch: { async isTripped() { return false; } },
+    killSwitch: { async isTripped() { return opts.killSwitch ?? false; } },
     budget: {
       async charge(_workspaceId, cents, reason) {
         budgetCharges.push({ cents, reason });
@@ -493,8 +496,48 @@ describe("VentureFactoryService", () => {
 
   it("advanceWorkspace validates each scanned candidate (the scanner tick)", async () => {
     await h.service.scan("w1", [scanInput(), scanInput({ proposedName: "Beta Co" })]);
-    await h.service.advanceWorkspace("w1", { requesterMemberId: "agent" });
+    const result = await h.service.advanceWorkspace("w1", { requesterMemberId: "agent" });
     const validating = await h.store.listCandidatesByStatus("w1", "validating");
     expect(validating).toHaveLength(2);
+    expect(result).toMatchObject({
+      workspaceId: "w1",
+      enabled: true,
+      halted: false,
+      scanned: 2,
+      validationStarted: 2,
+      killed: 0,
+      errors: [],
+    });
+  });
+
+  it("advanceWorkspace halts immediately when the kill switch is engaged (#1056)", async () => {
+    const stopped = harness({}, { killSwitch: true });
+    const input = scanInput();
+    const candidate = await stopped.store.insertCandidate({
+      workspaceId: "w1",
+      source: input.source,
+      thesis: input.thesis,
+      proposedName: input.proposedName,
+      painIntensity: input.evidence.painIntensity,
+      competitionAbsence: input.evidence.competitionAbsence,
+      observedAt: input.evidence.observedAt,
+      citations: input.evidence.citations,
+      score: 100,
+      edgeClaims: input.edgeClaims,
+      createdByMemberId: input.createdByMemberId,
+    });
+
+    const result = await stopped.service.advanceWorkspace("w1", { requesterMemberId: "agent" });
+
+    expect(result).toMatchObject({
+      workspaceId: "w1",
+      enabled: true,
+      halted: true,
+      scanned: 0,
+      validationStarted: 0,
+      killed: 0,
+      errors: [],
+    });
+    expect((await stopped.store.getCandidate("w1", candidate.id))!.status).toBe("scanned");
   });
 });

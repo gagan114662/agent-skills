@@ -238,6 +238,16 @@ export interface OpportunityDeliveryResult {
   actionKind: typeof AGENT_DELIVERABLE_ACTION;
 }
 
+export interface VentureFactoryAdvanceResult {
+  workspaceId: string;
+  enabled: boolean;
+  halted: boolean;
+  scanned: number;
+  validationStarted: number;
+  killed: number;
+  errors: Array<{ candidateId: string; reason: string }>;
+}
+
 export class VentureFactoryService {
   private readonly deps: VentureFactoryDeps;
   private readonly now: () => Date;
@@ -725,20 +735,46 @@ export class VentureFactoryService {
   /**
    * One autopilot pass over a workspace's `scanned` candidates (the continuous-scanner tick, #187 AC1):
    * each candidate above the score floor is run through `validate` (which edge-gates it). A no-op when
-   * the factory is disabled. Errors per-candidate are isolated so one bad candidate never stalls the
-   * pass. Validation *conclusion* is receipt-driven (external), not part of this tick.
+   * the factory is disabled or halted by the #17 kill switch. Errors per-candidate are isolated so one
+   * bad candidate never stalls the pass. Validation *conclusion* is receipt-driven (external), not part of
+   * this tick. The returned summary feeds the watch-only #1056 observability surface.
    */
-  async advanceWorkspace(workspaceId: string, opts: { requesterMemberId: string }): Promise<void> {
+  async advanceWorkspace(
+    workspaceId: string,
+    opts: { requesterMemberId: string },
+  ): Promise<VentureFactoryAdvanceResult> {
     const caps = this.deps.caps(workspaceId);
-    if (!caps.enabled) return;
+    const result: VentureFactoryAdvanceResult = {
+      workspaceId,
+      enabled: caps.enabled,
+      halted: false,
+      scanned: 0,
+      validationStarted: 0,
+      killed: 0,
+      errors: [],
+    };
+    if (!caps.enabled) return result;
+    if (await this.deps.killSwitch.isTripped(workspaceId)) {
+      return { ...result, halted: true };
+    }
     const scanned = await this.deps.store.listCandidatesByStatus(workspaceId, "scanned", 25);
+    result.scanned = scanned.length;
     for (const candidate of scanned) {
       try {
-        await this.validate(workspaceId, candidate.id, { requesterMemberId: opts.requesterMemberId });
-      } catch {
+        const validation = await this.validate(workspaceId, candidate.id, {
+          requesterMemberId: opts.requesterMemberId,
+        });
+        if (validation.edgeQualified) result.validationStarted += 1;
+        else result.killed += 1;
+      } catch (err) {
         // isolated: a single candidate's failure (e.g. a transient gate error) never stalls the pass.
+        result.errors.push({
+          candidateId: candidate.id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
       }
     }
+    return result;
   }
 
   private async requireCandidate(workspaceId: string, candidateId: string): Promise<CandidateRecord> {

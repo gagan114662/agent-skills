@@ -64,6 +64,63 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     });
   });
 
+  it("surfaces the watch-only venture loop panel without adding attention (#1056)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        revenue: { currency: "usd", totalCents: 12_000, paymentCount: 2, evidenceCount: 2 },
+        ventureLoop: {
+          enabled: true,
+          halted: false,
+          scanned: 3,
+          validating: 4,
+          validated: 1,
+          bootstrapPending: 2,
+          launched: 5,
+          killed: 1,
+          activeVentures: 4,
+        },
+      }),
+    );
+
+    expect(out.ventureLoop).toEqual({
+      enabled: true,
+      halted: false,
+      status: "running",
+      start: 3,
+      learn: 5,
+      loop: 2,
+      launched: 5,
+      earningReceipts: 2,
+      killed: 1,
+      activeVentures: 4,
+      watchOnly: true,
+    });
+    expect(out.attention).toEqual({ required: false, reasons: [] });
+  });
+
+  it("shows the venture loop as halted when the global kill switch is engaged (#1056)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        switches: { killSwitch: true, maintenance: { enabled: false } },
+        ventureLoop: {
+          enabled: true,
+          halted: false,
+          scanned: 1,
+          validating: 0,
+          validated: 0,
+          bootstrapPending: 0,
+          launched: 0,
+          killed: 0,
+          activeVentures: 0,
+        },
+      }),
+    );
+
+    expect(out.ventureLoop.status).toBe("halted");
+    expect(out.ventureLoop.halted).toBe(true);
+    expect(out.attention.reasons).toContain("kill switch engaged");
+  });
+
   it("counts a terminal-FUND venture WITHOUT a passing scorecard as a zero-budget scaffold, not funded (#228)", () => {
     const out = aggregateFounderConsole(
       input({
