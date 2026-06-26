@@ -247,7 +247,10 @@ import { planningRoutes } from "./routes/planning.js";
 import { createDefaultPlanningService } from "./planning/default.js";
 import type { PlanningService } from "./planning/service.js";
 import { createDefaultVentureMemoryService } from "./venture-memory/default.js";
-import { createDefaultVentureFactoryEngine } from "./venture-factory/default.js";
+import {
+  createDefaultVentureFactoryEngine,
+  createDefaultVentureFactoryService,
+} from "./venture-factory/default.js";
 import { createDefaultCadenceEngine } from "./cadence/default.js";
 import { createDefaultSkillOptEngine } from "./skillopt/default.js";
 import type { VentureFactoryEngine } from "./venture-factory/engine.js";
@@ -255,6 +258,7 @@ import type { CadenceEngine } from "./cadence/engine.js";
 import type { SkillOptEngine } from "./skillopt/engine.js";
 import type { VentureMemoryService } from "./venture-memory/service.js";
 import { ventureMemoryRoutes } from "./routes/venture-memory.js";
+import { ventureFactoryRoutes } from "./routes/venture-factory.js";
 import { buildLoopRoutes } from "./routes/build-loop.js";
 import { createDefaultBuildLoopEngine } from "./build-loop/default.js";
 import {
@@ -1510,9 +1514,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // opts in. The real #138 fleet seed / #98 profitability / #107 archiver injections are a follow-up.
   // #195 inject the deploy-target provisioner so the factory's reversible `repo_deploy_target` bootstrap
   // step provisions a per-venture Fly/Vercel target (idempotent, budget-capped). Default-OFF via config.
-  const ventureFactoryEngine = createDefaultVentureFactoryEngine(app.log, {
+  const ventureFactoryDeps = {
     deploy: createDefaultVentureDeployProvisioner(),
-  });
+  };
+  const ventureFactoryService = createDefaultVentureFactoryService(ventureFactoryDeps);
+  app.register(ventureFactoryRoutes, { service: ventureFactoryService });
+  const ventureFactoryEngine = createDefaultVentureFactoryEngine(app.log, ventureFactoryDeps);
   app.addHook("onClose", async () => {
     ventureFactoryEngine.stop();
   });
