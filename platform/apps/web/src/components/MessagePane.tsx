@@ -6,6 +6,7 @@ import { authorLabel, type AppState, type DirectoryEntry } from "../store/store.
 import { Avatar, KindBadge } from "./Primitives.js";
 import { EmptyState } from "./EmptyState.js";
 import { Composer } from "./Composer.js";
+import { ArtifactCanvas, latestArtifactDraft } from "./ArtifactCanvas.js";
 import { decideOnNewMessages, isNearBottom, scrollTopForPreservedAnchor, type ScrollMetrics } from "./message-scroll.js";
 import { useLiveChannelMessages } from "./console/useLiveChannelMessages.js";
 import { useTheaterStream } from "./theater/useTheaterStream.js";
@@ -61,6 +62,7 @@ export function MessagePane({ dmPeer, stepEventSourceFactory }: MessagePaneProps
   );
   const hiddenMessageCount = Math.max(0, messages.length - MESSAGE_RENDER_WINDOW);
   const visibleMessages = hiddenMessageCount > 0 ? messages.slice(hiddenMessageCount) : messages;
+  const artifactDraft = latestArtifactDraft(visibleMessages, state);
 
   // #419: keep the open channel fresh as a fallback to the realtime stream, so a dropped / never-delivered
   // socket event self-heals without a manual refresh (the realtime append in the store stays the primary path).
@@ -159,6 +161,8 @@ export function MessagePane({ dmPeer, stepEventSourceFactory }: MessagePaneProps
         </h2>
         <span className="pane__sub">{messages.length} messages</span>
       </header>
+
+      {artifactDraft && <ArtifactCanvas draft={artifactDraft} />}
 
       <div className="messagelist" ref={listRef} onScroll={handleScroll}>
         {messages.length === 0 ? (

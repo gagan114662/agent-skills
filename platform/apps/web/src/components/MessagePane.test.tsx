@@ -124,6 +124,44 @@ describe("MessagePane", () => {
     expect(screen.queryByText("wrong channel step")).toBeNull();
   });
 
+  it("renders an agent draft as an editable artifact canvas instead of only a text blob", async () => {
+    const draft = [
+      "# Launch post",
+      "",
+      "## Hook",
+      "Meet the marketing team that keeps working after you close the laptop.",
+      "",
+      "## Body",
+      "Scout finds the gap, Quill drafts the page, and the owner sees the artifact live.",
+      "",
+      "## CTA",
+      "Start the fleet.",
+    ].join("\n");
+    const { store } = renderWithStore(<MessagePane />, {
+      members: [
+        { id: "me1", kind: "human", displayName: "Ada" },
+        { id: "ag1", kind: "agent", displayName: "Quill" },
+      ],
+      messages: [makeMessage({ id: "draft-1", authorMemberId: "ag1", body: draft })],
+    });
+    await store.bootstrap();
+
+    const canvas = await screen.findByRole("region", { name: "Live artifact canvas" });
+    expect(within(canvas).getByText("Quill artifact")).toBeInTheDocument();
+    expect(within(canvas).getByRole("heading", { name: "Launch post" })).toBeInTheDocument();
+    expect(within(canvas).getByRole("heading", { name: "Hook" })).toBeInTheDocument();
+    expect(within(canvas).getByText("Meet the marketing team that keeps working after you close the laptop.")).toBeInTheDocument();
+    expect(within(canvas).getByText("v1 · editable preview")).toBeInTheDocument();
+
+    await userEvent.clear(within(canvas).getByRole("textbox", { name: "Source" }));
+    await userEvent.type(
+      within(canvas).getByRole("textbox", { name: "Source" }),
+      "# Revised post\n\n## Hook\nA calmer, sharper launch.",
+    );
+    expect(within(canvas).getByRole("heading", { name: "Revised post" })).toBeInTheDocument();
+    expect(within(canvas).getByText("A calmer, sharper launch.")).toBeInTheDocument();
+  });
+
   it("keeps only a bounded tail of streamed agent steps in the channel feed", async () => {
     const { store } = renderWithStore(<MessagePane stepEventSourceFactory={stepFactory} />);
     await store.bootstrap();
