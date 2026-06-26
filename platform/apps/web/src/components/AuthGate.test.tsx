@@ -37,6 +37,29 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
+  it("uses the public entry at / for logged-out visitors without hiding the signed-in app", async () => {
+    act(() => navigate("/"));
+    const { unmount } = renderWithStore(
+      <AuthGate publicEntry={<div>PUBLIC FIRST-RUN DOOR</div>}>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByText("PUBLIC FIRST-RUN DOOR")).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+
+    unmount();
+    renderWithStore(
+      <AuthGate publicEntry={<div>PUBLIC FIRST-RUN DOOR</div>}>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+    );
+
+    expect(await screen.findByText("WORKSPACE CONTENT")).toBeInTheDocument();
+    expect(screen.queryByText("PUBLIC FIRST-RUN DOOR")).not.toBeInTheDocument();
+  });
+
   it("shows the sign-in form at /login, then renders the app after a successful login", async () => {
     act(() => navigate("/login"));
     let calls = 0;

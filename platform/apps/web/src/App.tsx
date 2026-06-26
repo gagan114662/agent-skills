@@ -69,10 +69,14 @@ export function App(): React.JSX.Element {
   const dogfood = DOGFOOD_PATH.exec(path);
   if (dogfood) return <PublicDogfood slug={decodeURIComponent(dogfood[1] ?? "ipop")} />;
 
-  // #784: the onboarding experience is the default public landing at root `/` and `/welcome`. It renders
-  // before the auth boundary (no session needed); "take me in" carries the visitor into the everyday shell.
+  // #784: root `/` and `/welcome` are auth-aware. Logged-out visitors get the warm onboarding door, while
+  // signed-in members land directly in the everyday shell instead of seeing the public/legacy front door.
   if (WELCOME_PATH.test(path) && shouldShowOnboardingV2({ flagOn: ONBOARDING_V2_ENABLED })) {
-    return <OnboardingExperience onEnterApp={() => navigate("/everyday")} />;
+    return (
+      <AuthGate publicEntry={<OnboardingExperience onEnterApp={() => navigate("/everyday")} />}>
+        <AuthedHome />
+      </AuthGate>
+    );
   }
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.
