@@ -19,6 +19,25 @@ export interface NorthStar {
   readonly trend: "up" | "flat" | "zero";
 }
 
+/** A visible room lane: Tomo-simple start, reload.chat-style multi-agent coworking once it begins. */
+export interface AgentLane {
+  readonly id: string;
+  readonly agent: string;
+  readonly role: string;
+  readonly status: "idle" | "working" | "blocked" | "done" | "codex";
+  readonly task: string;
+}
+
+/** A first-run account connector, grouped like Tomo's direct connect page but backed by ipop's Connections surface. */
+export interface EverydayConnector {
+  readonly id: string;
+  readonly group: "productivity" | "marketing" | "publishing";
+  readonly name: string;
+  readonly status: "connected" | "available" | "coming_soon";
+  readonly detail: string;
+  readonly href: string;
+}
+
 /** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
 export interface Deliverable {
   readonly title: string;
@@ -80,6 +99,8 @@ export interface ExternalAction {
 export interface EverydayData {
   readonly memberName: string;
   readonly northStar: NorthStar;
+  readonly room: readonly AgentLane[];
+  readonly connectors: readonly EverydayConnector[];
   readonly thread: readonly ThreadEntry[];
   readonly approvals: readonly ApprovalCard[];
   readonly transparency: readonly ExternalAction[];
@@ -122,6 +143,8 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       revenueDelta: "—",
       trend: "zero",
     },
+    room: defaultAgentRoom("your next customer"),
+    connectors: defaultConnectors(),
     thread: [],
     approvals: [],
     transparency: [],
@@ -146,6 +169,85 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       trend: "up",
     },
     fleetPaused: false,
+    room: [
+      {
+        id: "scout",
+        agent: "Scout",
+        role: "ICP + SEO",
+        status: "working",
+        task: "Crawling the site and sketching the first customer hypothesis.",
+      },
+      {
+        id: "quill",
+        agent: "Quill",
+        role: "Copy",
+        status: "done",
+        task: "Drafted the homepage hero rewrite and launch-thread angle.",
+      },
+      {
+        id: "echo",
+        agent: "Echo",
+        role: "Outreach",
+        status: "blocked",
+        task: "Found warm threads; waiting for send approval before anything leaves.",
+      },
+      {
+        id: "lens",
+        agent: "Lens",
+        role: "Brand",
+        status: "working",
+        task: "Checking the tone against receipts-over-adjectives.",
+      },
+      {
+        id: "codex",
+        agent: "Codex",
+        role: "Operator",
+        status: "codex",
+        task: "Ready for product/code work when the room needs this subscription.",
+      },
+    ],
+    connectors: [
+      {
+        id: "gmail",
+        group: "productivity",
+        name: "Gmail",
+        status: "connected",
+        detail: "gagan@getfoolish.com",
+        href: "/settings?section=connections&connector=gmail",
+      },
+      {
+        id: "calendar",
+        group: "productivity",
+        name: "Google Calendar",
+        status: "available",
+        detail: "let the room see launch dates and follow-ups.",
+        href: "/settings?section=connections&connector=google-calendar",
+      },
+      {
+        id: "drive",
+        group: "productivity",
+        name: "Google Drive",
+        status: "available",
+        detail: "brand docs, case studies, and proof in one place.",
+        href: "/settings?section=connections&connector=google-drive",
+      },
+      {
+        id: "linkedin",
+        group: "marketing",
+        name: "LinkedIn",
+        status: "available",
+        detail: "company research and human-approved outbound.",
+        href: "/settings?section=connections&connector=linkedin",
+      },
+      {
+        id: "site-publishing",
+        group: "publishing",
+        name: "Site publishing",
+        status: "available",
+        detail: "publish approved pages instead of stopping at previews.",
+        href: "/settings?section=connections&connector=site-publishing",
+      },
+    ],
     thread: [
       {
         id: "t1",
@@ -254,4 +356,90 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       },
     ],
   };
+}
+
+export function defaultAgentRoom(goal: string): readonly AgentLane[] {
+  const target = goal.trim() || "your next customer";
+  return [
+    {
+      id: "scout",
+      agent: "Scout",
+      role: "ICP + SEO",
+      status: "working",
+      task: "Researching " + target + " and the people most likely to care.",
+    },
+    {
+      id: "quill",
+      agent: "Quill",
+      role: "Content",
+      status: "idle",
+      task: "Waiting for Scout's first notes, then drafting the angle.",
+    },
+    {
+      id: "echo",
+      agent: "Echo",
+      role: "Outbound",
+      status: "idle",
+      task: "Standing by for target accounts and a human-approved send path.",
+    },
+    {
+      id: "lens",
+      agent: "Lens",
+      role: "Brand",
+      status: "idle",
+      task: "Keeping the whole thing warm, plain, and not weird.",
+    },
+    {
+      id: "codex",
+      agent: "Codex",
+      role: "Operator",
+      status: "codex",
+      task: "Available for product/code handoffs through this Codex subscription.",
+    },
+  ];
+}
+
+export function defaultConnectors(): readonly EverydayConnector[] {
+  return [
+    {
+      id: "gmail",
+      group: "productivity",
+      name: "Gmail",
+      status: "available",
+      detail: "email, replies, and follow-up receipts.",
+      href: "/settings?section=connections&connector=gmail",
+    },
+    {
+      id: "calendar",
+      group: "productivity",
+      name: "Google Calendar",
+      status: "available",
+      detail: "meetings, launch dates, and reminders.",
+      href: "/settings?section=connections&connector=google-calendar",
+    },
+    {
+      id: "drive",
+      group: "productivity",
+      name: "Google Drive",
+      status: "available",
+      detail: "docs, screenshots, and brand proof.",
+      href: "/settings?section=connections&connector=google-drive",
+    },
+    {
+      id: "linkedin",
+      group: "marketing",
+      name: "LinkedIn",
+      status: "available",
+      detail: "prospects and company research, with send approval.",
+      href: "/settings?section=connections&connector=linkedin",
+    },
+    {
+      id: "site-publishing",
+      group: "publishing",
+      name: "Site publishing",
+      status: "available",
+      detail: "approved pages can go live, not just to preview.",
+      href: "/settings?section=connections&connector=site-publishing",
+    },
+  ];
 }

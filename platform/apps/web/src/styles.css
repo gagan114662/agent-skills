@@ -8104,6 +8104,162 @@ select:focus-visible {
   border: 1px solid var(--ed-border);
 }
 
+/* ---- The room: visible multi-agent coworking ----------------------------- */
+.everyday-room__intro {
+  margin-bottom: 16px;
+}
+.everyday-room__heading {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: var(--ed-text);
+}
+.everyday-room__subhead {
+  margin: 0;
+  color: var(--ed-text-dim);
+}
+.everyday-room__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.everyday-lane {
+  min-height: 132px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-surface);
+  padding: 16px;
+}
+.everyday-lane[data-status="working"] {
+  border-color: color-mix(in srgb, var(--ed-pop) 42%, var(--ed-border));
+}
+.everyday-lane[data-status="codex"] {
+  background: color-mix(in srgb, var(--ed-pop) 8%, var(--ed-surface));
+}
+.everyday-lane__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.everyday-lane__agent {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.everyday-lane__role {
+  margin: 0;
+  color: var(--ed-text-dim);
+  font-size: 12px;
+}
+.everyday-lane__status {
+  align-self: start;
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.everyday-lane[data-status="working"] .everyday-lane__status,
+.everyday-lane[data-status="codex"] .everyday-lane__status {
+  color: var(--ed-text);
+  border-color: color-mix(in srgb, var(--ed-pop) 44%, var(--ed-border));
+}
+.everyday-lane__task {
+  margin: 14px 0 0;
+  color: var(--ed-text);
+  font-size: 14px;
+}
+
+/* ---- First-run connectors: Tomo-simple account setup --------------------- */
+.everyday-connectors {
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 18px;
+  background: color-mix(in srgb, var(--ed-surface) 74%, transparent);
+}
+.everyday-connectors__intro {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.everyday-connectors__heading {
+  margin: 0;
+  font-size: 24px;
+  color: var(--ed-text);
+}
+.everyday-connectors__subhead {
+  max-width: 460px;
+  margin: 0;
+  color: var(--ed-text-dim);
+  text-align: right;
+}
+.everyday-connectors__groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.everyday-connector-group {
+  min-width: 0;
+}
+.everyday-connector-group__heading {
+  margin: 0 0 10px;
+  color: var(--ed-text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.everyday-connector-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.everyday-connector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 72px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 12px;
+  background: var(--ed-bg);
+}
+.everyday-connector[data-status="connected"] {
+  border-color: color-mix(in srgb, var(--ed-pop) 36%, var(--ed-border));
+}
+.everyday-connector__name {
+  margin: 0;
+  color: var(--ed-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.everyday-connector__detail {
+  margin: 4px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 12px;
+}
+.everyday-connector__badge,
+.everyday-connector__link {
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--ed-text);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.everyday-connector__link {
+  background: var(--ed-pop);
+  border-color: var(--ed-pop);
+  color: var(--ed-bg);
+}
+
 /* ---- North star: the only scoreboard that matters ------------------------ */
 .everyday-northstar__metrics {
   display: flex;
@@ -8404,6 +8560,28 @@ select:focus-visible {
   .everyday-celebrate {
     transition: none;
     animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .everyday-room__grid {
+    grid-template-columns: 1fr;
+  }
+  .everyday-composer {
+    flex-direction: column;
+  }
+  .everyday-connectors__intro {
+    display: block;
+  }
+  .everyday-connectors__subhead {
+    margin-top: 8px;
+    text-align: left;
+  }
+  .everyday-connectors__groups {
+    grid-template-columns: 1fr;
+  }
+  .everyday-btn {
+    width: 100%;
   }
 }
 

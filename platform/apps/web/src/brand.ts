@@ -1573,6 +1573,34 @@ export const EVERYDAY = {
   composerPlaceholder: "give us a product, a url, or just a vibe…",
   composerSend: "off you pop",
 
+  /** The visible cowork room: multiple agents working together, with Codex as an operator lane. */
+  room: {
+    heading: "the room",
+    subhead: "your little marketing department, clocking in together.",
+    empty: "type a domain or goal and we'll wake the room up.",
+    chatLabel: "chat with the room",
+    statuses: {
+      idle: "waiting",
+      working: "working",
+      blocked: "blocked",
+      done: "done",
+      codex: "codex handoff",
+    },
+  },
+
+  /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */
+  connectors: {
+    heading: "connect your accounts",
+    subhead: "one tidy place for the tools the room needs. no pretend green ticks.",
+    connect: "connect",
+    connected: "connected",
+    groups: {
+      productivity: "productivity",
+      marketing: "marketing",
+      publishing: "publishing",
+    },
+  },
+
   /** North star (customers + revenue front and centre, #630). Labels only — numbers come from data. */
   northStar: {
     eyebrow: "the only scoreboard that matters",
