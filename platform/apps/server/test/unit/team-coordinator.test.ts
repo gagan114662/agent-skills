@@ -163,6 +163,34 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched.every((l) => l.parentSpanId === "span_parent")).toBe(true);
   });
 
+  it("passes Codex operator subtasks through the real codex harness", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 2,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "codex_operator",
+          agentMemberId: "mem_codex",
+          task: "Build the approved iMessage-first homepage and verify it.",
+          branch: "feat/codex-operator",
+          preferredHarness: "codex",
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.harness).toBe("codex");
+    expect(launcher.launched[0]?.task).toContain("iMessage-first");
+  });
+
   it("readEvents returns the channel's parsed team events", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();

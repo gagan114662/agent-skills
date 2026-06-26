@@ -1575,10 +1575,12 @@ export const EVERYDAY = {
 
   /** The visible cowork room: multiple agents working together, with Codex as an operator lane. */
   room: {
-    heading: "the room",
-    subhead: "your little marketing department, clocking in together.",
+    heading: "iMessage room",
+    subhead: "your Codex-backed marketing team, texting the work as it happens.",
     empty: "type a domain or goal and we'll wake the room up.",
-    chatLabel: "chat with the room",
+    chatLabel: "text your ipop team",
+    codexBadge: "Codex subscription active",
+    imessageNote: "iMessage relay is the intended home. Until the native relay is live, this preview shows the exact room, approvals, and receipts inside ipop.",
     statuses: {
       idle: "waiting",
       working: "working",
@@ -1590,8 +1592,8 @@ export const EVERYDAY = {
 
   /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */
   connectors: {
-    heading: "connect your accounts",
-    subhead: "one tidy place for the tools the room needs. no pretend green ticks.",
+    heading: "iMessage setup",
+    subhead: "one messaging home for agent work. no WhatsApp, no Telegram, no fake green ticks.",
     connect: "connect",
     connected: "connected",
     groups: {

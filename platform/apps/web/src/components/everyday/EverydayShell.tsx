@@ -122,21 +122,21 @@ function chatPreviewFrom({
       kind: "agent-line",
       agent: memberName,
       at: EVERYDAY.room.chatLabel,
-      text: "find my next customers",
+      text: "build ipop like Tomo, but for serious marketing work",
     },
     {
       id: "welcome-scout",
       kind: "agent-line",
       agent: working?.agent ?? "Scout",
       at: "now",
-      text: working?.task ?? EVERYDAY.thread.working("Scout"),
+      text: working?.task ?? "Mining category, product, user, time, space, and experience tensions before we write.",
     },
     {
       id: "welcome-codex",
       kind: "agent-line",
       agent: "Codex",
       at: "ready",
-      text: "I can take product/code handoffs through this Codex subscription.",
+      text: "Codex subscription active. I can turn the team's approved marketing/product decisions into code.",
     },
   ];
 }
@@ -162,11 +162,12 @@ function GroupChatHero({
         <h1 className="everyday-serif everyday-door__greeting">{greeting}</h1>
         <Composer onSubmit={onSubmit} />
       </div>
-      <section className="everyday-chat" aria-label={EVERYDAY.room.heading}>
+      <section className="everyday-chat everyday-imessage" aria-label={EVERYDAY.room.heading}>
         <div className="everyday-chat__topbar">
           <div>
             <h2 className="everyday-serif everyday-chat__title">{EVERYDAY.room.heading}</h2>
             <p className="everyday-chat__subhead">{EVERYDAY.room.subhead}</p>
+            <p className="everyday-imessage__note">{EVERYDAY.room.imessageNote}</p>
           </div>
           <div className="everyday-chat__avatars" aria-label="agents in the room">
             {lanes.slice(0, 5).map((lane) => (
@@ -176,6 +177,7 @@ function GroupChatHero({
             ))}
           </div>
         </div>
+        <p className="everyday-imessage__badge">{EVERYDAY.room.codexBadge}</p>
         <ol className="everyday-chat__messages">
           {preview.map((entry) => (
             <li
@@ -220,7 +222,13 @@ function ConnectorSetup({
 }): React.JSX.Element {
   const c = EVERYDAY.connectors;
   const groups = (["visibility", "productivity", "marketing", "publishing"] as const)
-    .map((group) => ({ group, items: connectors.filter((item) => item.group === group) }))
+    .map((group) => ({
+      group,
+      items:
+        group === "visibility"
+          ? connectors.filter((item) => item.id === "imessage")
+          : connectors.filter((item) => item.group === group),
+    }))
     .filter(({ items }) => items.length > 0);
 
   return (
@@ -549,11 +557,13 @@ export function EverydayShell({
   hour = 14,
   approvalActions = defaultEverydayApprovalActions,
   onConnectorConnect = () => undefined,
+  onStartRoom,
 }: {
   data?: EverydayData;
   hour?: number;
   approvalActions?: EverydayApprovalActions;
   onConnectorConnect?: (id: string) => void;
+  onStartRoom?: (goal: string) => Promise<void> | void;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -590,6 +600,18 @@ export function EverydayShell({
         text: "I can take product/code handoffs through this Codex subscription.",
       },
     ]);
+    Promise.resolve(onStartRoom?.(goal)).catch((err) => {
+      setLocalThread((entries) => [
+        ...entries,
+        {
+          id: "codex-error-" + Date.now(),
+          kind: "agent-line",
+          agent: "Codex",
+          at: "blocked",
+          text: err instanceof Error ? err.message : "I could not start the Codex-backed room run.",
+        },
+      ]);
+    });
   }
 
   async function decide(card: ApprovalCard, kind: "ship" | "redo", note?: string): Promise<void> {

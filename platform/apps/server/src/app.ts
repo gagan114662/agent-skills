@@ -177,6 +177,7 @@ import { workspaceCapabilityRoutes } from "./routes/workspace-capabilities.js";
 import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
+import { imessageRoutes } from "./routes/imessage.js";
 import { gardenRoutes } from "./routes/garden.js";
 import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
@@ -221,6 +222,7 @@ import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
 import { marketingTargetRoutes } from "./routes/marketing-target.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
+import { createIMessageRelayService } from "./imessage/default.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
 import { createDefaultAdsService } from "./ads/default.js";
@@ -1154,6 +1156,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
   app.register(connectionsRoutes);
+  app.register(imessageRoutes, { service: createIMessageRelayService(env.imessage) });
   // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.

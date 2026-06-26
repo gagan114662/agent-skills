@@ -6,6 +6,7 @@ import { addChannelMember } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { newId } from "../db/id.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
+import { isHarnessKind } from "../runtime/harness.js";
 
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
@@ -15,6 +16,7 @@ interface SubtaskBody {
   agentMemberId?: string;
   task?: string;
   branch?: string;
+  harness?: string;
 }
 
 /**
@@ -49,6 +51,9 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       if (!s.agentMemberId) return reply.code(400).send({ error: "subtask.agentMemberId required" });
       if (!s.task) return reply.code(400).send({ error: "subtask.task required" });
       if (!s.branch) return reply.code(400).send({ error: "subtask.branch required" });
+      if (s.harness !== undefined && !isHarnessKind(s.harness)) {
+        return reply.code(400).send({ error: "unknown subtask.harness" });
+      }
       const target = await getWorkspaceMember(s.agentMemberId, id.workspaceId);
       if (!target) return reply.code(404).send({ error: "agent not found in this workspace" });
       if (target.kind !== "agent") {
@@ -59,6 +64,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         agentMemberId: target.id,
         task: s.task,
         branch: s.branch,
+        preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
       });
     }
 
@@ -98,6 +104,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         subtaskId: s.subtaskId,
         agentMemberId: s.agentMemberId,
         branch: s.branch,
+        harness: s.preferredHarness ?? null,
       })),
     });
   });

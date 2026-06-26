@@ -62,19 +62,13 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     expect(body.connections.every((c: { auth: string }) => c.auth !== "paste_internal")).toBe(true);
     expect(body.connections.find((c: { id: string }) => c.id === "google")).toBeDefined();
     expect(body.connections.map((c: { id: string }) => c.id)).toEqual(
-      expect.arrayContaining(["web_chat", "whatsapp", "telegram", "imessage"]),
+      expect.arrayContaining(["imessage"]),
     );
-    expect(body.connections.find((c: { id: string }) => c.id === "web_chat")).toMatchObject({
+    expect(body.connections.find((c: { id: string }) => c.id === "imessage")).toMatchObject({
       auth: "one_click",
       status: "available",
-      capabilities: expect.arrayContaining(["work_visibility"]),
+      capabilities: expect.arrayContaining(["work_visibility", "imessage_room"]),
     });
-    for (const id of ["whatsapp", "telegram", "imessage"]) {
-      expect(body.connections.find((c: { id: string }) => c.id === id)).toMatchObject({
-        status: "coming_soon",
-        capabilities: expect.arrayContaining(["work_visibility"]),
-      });
-    }
 
     // Pasting the internal connection is refused for a non-owner.
     const connect = await app.inject({

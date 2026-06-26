@@ -1,4 +1,5 @@
 import type { TeamEvent, TeamEventKind } from "@reload/shared";
+import type { HarnessKind } from "../runtime/harness.js";
 import type { LaunchInput, SessionLogger } from "../runtime/manager.js";
 import {
   noopTracer,
@@ -28,6 +29,8 @@ export interface Subtask {
   task: string;
   /** The branch the agent works on — recorded on the subtask's team events. */
   branch: string;
+  /** Optional per-subtask harness override. Codex operator lanes use this to make Codex the actual brain. */
+  preferredHarness?: HarnessKind;
 }
 
 export interface TeamRunInput {
@@ -154,6 +157,7 @@ export class TeamCoordinator {
         agentMemberId: subtask.agentMemberId,
         createdByMemberId: input.createdByMemberId,
         task: subtask.task,
+        harness: subtask.preferredHarness,
         teamRunId: input.teamRunId,
         parentSpanId,
       });

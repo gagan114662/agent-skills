@@ -7,10 +7,6 @@ import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
-import {
-  ONBOARDING_V2_ENABLED,
-  shouldShowOnboardingV2,
-} from "./components/onboarding/onboarding-flag.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import {
   EVERYDAY_SHELL_ENABLED,
@@ -71,7 +67,7 @@ export function App(): React.JSX.Element {
 
   // #784: root `/` and `/welcome` are auth-aware. Logged-out visitors get the warm onboarding door, while
   // signed-in members land directly in the everyday shell instead of seeing the public/legacy front door.
-  if (WELCOME_PATH.test(path) && shouldShowOnboardingV2({ flagOn: ONBOARDING_V2_ENABLED })) {
+  if (WELCOME_PATH.test(path)) {
     return (
       <AuthGate publicEntry={<OnboardingExperience onEnterApp={() => navigate("/everyday")} />}>
         <AuthedHome />

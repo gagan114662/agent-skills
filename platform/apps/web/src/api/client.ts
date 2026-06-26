@@ -87,6 +87,8 @@ import type {
   TaskTemplateDto,
   SiteDocDetail,
   SiteDocMeta,
+  TeamRunResponse,
+  TeamRunSubtaskInput,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -667,6 +669,9 @@ export const api = {
       body,
       alsoSendToChannel,
     }) as Promise<Message>;
+  },
+  launchTeamRun(channelId: string, subtasks: TeamRunSubtaskInput[]): Promise<TeamRunResponse> {
+    return post(`/channels/${channelId}/team-runs`, { subtasks }) as Promise<TeamRunResponse>;
   },
 
   // --- members & agents ---

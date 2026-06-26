@@ -71,6 +71,8 @@ export interface Env {
   slack: SlackEnv;
   /** Notifications (#8). */
   notify: NotifyEnv;
+  /** Apple Messages relay for iMessage-visible agent work. */
+  imessage: IMessageEnv;
   /** Approval gates (#13). */
   approval: ApprovalEnv;
   /** Team Mode: parallel multi-agent runs. */
@@ -353,6 +355,21 @@ export interface NotifyEnv {
   webhookUrl?: string;
 }
 
+export interface IMessageEnv {
+  /** Master switch. Default off so production never texts without explicit operator intent. */
+  enabled: boolean;
+  /** The owner/test recipient that receives agent-work messages through Apple Messages. */
+  recipient?: string;
+  /** Optional Messages service name; blank uses the first iMessage service. */
+  serviceName?: string;
+  /** Path/name for osascript. */
+  osascriptBin: string;
+  /** When true, validate + record intent without sending through Messages. */
+  dryRun: boolean;
+  /** Message length guardrail before handing text to Messages. */
+  maxChars: number;
+}
+
 export interface ApprovalEnv {
   /** Default TTL (seconds) after which an undecided request expires. Override per request. */
   defaultTtlSeconds: number;
@@ -581,6 +598,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     notify: {
       webhookUrl: source.NOTIFY_WEBHOOK_URL || undefined,
+    },
+    imessage: {
+      enabled: source.IMESSAGE_RELAY_ENABLED === "true" || source.IMESSAGE_RELAY_ENABLED === "1",
+      recipient: source.IMESSAGE_RELAY_RECIPIENT || undefined,
+      serviceName: source.IMESSAGE_RELAY_SERVICE || undefined,
+      osascriptBin: source.IMESSAGE_OSASCRIPT_BIN || "osascript",
+      dryRun: source.IMESSAGE_RELAY_DRY_RUN === "true" || source.IMESSAGE_RELAY_DRY_RUN === "1",
+      maxChars: num(source.IMESSAGE_RELAY_MAX_CHARS, 1800),
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
