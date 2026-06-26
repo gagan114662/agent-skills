@@ -136,6 +136,23 @@ export interface GoogleAuthStatus {
   remedy: string | null;
 }
 
+export type IMessageSendStatus =
+  | "sent"
+  | "dry_run"
+  | "disabled"
+  | "not_configured"
+  | "too_long"
+  | "failed";
+
+export interface IMessageRoomResponse {
+  status: IMessageSendStatus;
+  recipient?: string;
+  dryRun: boolean;
+  error?: string;
+  receipt: string;
+  message: Message;
+}
+
 export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
 
 export interface FirstRunReceiptDto {

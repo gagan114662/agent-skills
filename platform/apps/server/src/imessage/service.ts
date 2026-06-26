@@ -1,5 +1,25 @@
 import type { IMessageAdapter, IMessageRelayConfig, IMessageSendInput, IMessageSendResult, IMessageStatus } from "./types.js";
 
+export interface IMessageRoomReceiptInput {
+  workspaceId: string;
+  channelId: string;
+  messageId: string;
+  author: string;
+  text: string;
+}
+
+export function imessageRoomReceipt(input: IMessageRoomReceiptInput): string {
+  return [
+    "ipop iMessage room",
+    "author: " + input.author,
+    "channel: " + input.channelId,
+    "message: " + input.messageId,
+    "receipt: imessage:" + input.channelId + ":" + input.messageId,
+    "",
+    input.text,
+  ].join("\n");
+}
+
 export class IMessageRelayService {
   constructor(
     private readonly config: IMessageRelayConfig,

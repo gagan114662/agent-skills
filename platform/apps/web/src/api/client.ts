@@ -78,6 +78,7 @@ import type {
   ExternalAccountConnectInput,
   ConnectionsResponse,
   GoogleAuthStatus,
+  IMessageRoomResponse,
   FirstRunReceiptInput,
   FirstRunReceiptResponse,
   GardenResponse,
@@ -471,6 +472,12 @@ export const api = {
   // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
   startConnectionOAuth(id: string): Promise<unknown> {
     return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+  startIMessageRoom(channelId: string, text: string): Promise<IMessageRoomResponse> {
+    return request<IMessageRoomResponse>(`/channels/${encodeURIComponent(channelId)}/imessage/room`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
   },
 
   getFirstRunReceipt(): Promise<FirstRunReceiptResponse> {

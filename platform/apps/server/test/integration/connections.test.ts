@@ -66,7 +66,7 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     );
     expect(body.connections.find((c: { id: string }) => c.id === "imessage")).toMatchObject({
       auth: "one_click",
-      status: "available",
+      status: "coming_soon",
       capabilities: expect.arrayContaining(["work_visibility", "imessage_room"]),
     });
 

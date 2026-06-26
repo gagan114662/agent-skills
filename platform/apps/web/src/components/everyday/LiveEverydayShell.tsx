@@ -306,7 +306,13 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
       "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
     );
   }
-  await api.postMessage(channelId, goal).catch(() => undefined);
+  const relay = await api.startIMessageRoom(channelId, goal);
+  if (relay.status !== "sent" && relay.status !== "dry_run") {
+    throw new Error(
+      relay.error ??
+        "iMessage relay is not ready for this workspace yet. Set up Messages before starting the agent room.",
+    );
+  }
 
   const subtasks: TeamRunSubtaskInput[] = [];
   for (const spec of ROOM_AGENT_TASKS) {
