@@ -15,8 +15,7 @@
  * surface is gated default-OFF (#784 `onboarding-flag`); this component renders nothing in production until then.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listPostMeta, type BlogPostMeta } from "../../blog/posts.js";
-import { BRAND, LANDING, SUPPORT_CONTACT } from "../../brand.js";
+import { BRAND, SUPPORT_CONTACT } from "../../brand.js";
 import { googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { navigate } from "../../routing.js";
@@ -49,18 +48,11 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
   { tool: "site", copy: ONBOARD_COPY.connect.site },
 ];
 
-const TRUST_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/demo", label: LANDING.hero.ctaDemo },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/company", label: "Company" },
-  { href: "/security", label: "Security & trust" },
+const FOOTER_TRUST_LINKS = [
   { href: "/terms", label: "Terms" },
   { href: "/privacy", label: "Privacy" },
   { href: SUPPORT_CONTACT.href, label: "Contact" },
 ] as const;
-
-const PROOF_DELIVERABLES: readonly BlogPostMeta[] = listPostMeta().slice(0, 3);
 
 function roomReceipt(
   phase: Phase,
@@ -136,8 +128,6 @@ function CoworkStage({
         <span>{ONBOARD_COPY.room.receiptTitle}</span>
         <strong>{signal}</strong>
       </div>
-
-      <ProofDeliverables />
 
       {mission && (
         <div className="onboard-room__mission" aria-label="team mission receipt">
@@ -260,46 +250,15 @@ function InstantDeliverable({
   );
 }
 
-function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React.JSX.Element {
+function PublicTrustLinks(): React.JSX.Element {
   return (
-    <nav
-      className={"onboard-trust onboard-trust--" + placement}
-      aria-label={placement + " public links"}
-    >
-      {TRUST_LINKS.map((link) => (
-        <a key={placement + "-" + link.href} className="onboard-trust__link" href={link.href}>
+    <nav className="onboard-trust onboard-trust--footer" aria-label="footer public links">
+      {FOOTER_TRUST_LINKS.map((link) => (
+        <a key={link.href} className="onboard-trust__link" href={link.href}>
           {link.label}
         </a>
       ))}
     </nav>
-  );
-}
-
-function ProofDeliverables(): React.JSX.Element | null {
-  if (PROOF_DELIVERABLES.length === 0) return null;
-
-  return (
-    <section className="onboard-proof" aria-label="finished work proof">
-      <div className="onboard-proof__head">
-        <p className="onboard-room__label">already shipped</p>
-        <strong>real deliverables from the fleet, not a brochure in a nice coat</strong>
-      </div>
-      <ol className="onboard-proof__trail" aria-label="approve to ship trail">
-        <li>draft</li>
-        <li>approve</li>
-        <li>live</li>
-      </ol>
-      <ul className="onboard-proof__list">
-        {PROOF_DELIVERABLES.map((post) => (
-          <li key={post.slug}>
-            <a href={`/blog/${post.slug}`}>{post.title}</a>
-            <span>
-              {post.author} shipped it · {post.readingTime}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -475,7 +434,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         <a href="/" className="onboard__brand" aria-label={BRAND.name}>
           {BRAND.name}
         </a>
-        {phase === "door" ? <DoorActions /> : <PublicTrustLinks placement="nav" />}
+        <DoorActions />
       </header>
       <div className="onboard__inner">
         <main className="onboard__primary">
@@ -714,7 +673,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
       </div>
       {phase !== "door" && (
         <footer className="onboard__footer">
-          <PublicTrustLinks placement="footer" />
+          <PublicTrustLinks />
           <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
             {SUPPORT_CONTACT.email}
           </a>
