@@ -38,17 +38,37 @@ export interface GoogleOAuthConfig {
   redirectUri: string;
 }
 
+export const GOOGLE_OAUTH_ENV_KEYS = [
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "GOOGLE_OAUTH_REDIRECT_URI",
+] as const;
+
+export type GoogleOAuthEnvKey = (typeof GOOGLE_OAUTH_ENV_KEYS)[number];
+
+export interface GoogleOAuthConfigStatus {
+  configured: boolean;
+  missing: GoogleOAuthEnvKey[];
+}
+
+export function googleOAuthConfigStatus(
+  env: NodeJS.ProcessEnv = process.env,
+): GoogleOAuthConfigStatus {
+  const missing = GOOGLE_OAUTH_ENV_KEYS.filter((key) => !env[key]?.trim());
+  return { configured: missing.length === 0, missing };
+}
+
 /**
  * Load the deployment-wide Google OAuth app config from env, or null when not configured (so the feature
  * is off and the routes degrade honestly). Secrets stay in env at read-time, never in layered config —
  * mirroring how `BILLING_PROVIDER` / the GitHub token are read. Read live each call.
  */
 export function loadGoogleOAuthConfig(env: NodeJS.ProcessEnv = process.env): GoogleOAuthConfig | null {
+  if (!googleOAuthConfigStatus(env).configured) return null;
   const clientId = env.GOOGLE_OAUTH_CLIENT_ID?.trim();
   const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
   const redirectUri = env.GOOGLE_OAUTH_REDIRECT_URI?.trim();
-  if (!clientId || !clientSecret || !redirectUri) return null;
-  return { clientId, clientSecret, redirectUri };
+  return { clientId: clientId!, clientSecret: clientSecret!, redirectUri: redirectUri! };
 }
 
 /**

@@ -126,6 +126,16 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+export interface GoogleAuthStatus {
+  configured: boolean;
+  status: "ready" | "maintenance";
+  missing: string[];
+  issue: "google_oauth_missing_config" | null;
+  startPath: string;
+  message: string;
+  remedy: string | null;
+}
+
 export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
 
 export interface FirstRunReceiptDto {

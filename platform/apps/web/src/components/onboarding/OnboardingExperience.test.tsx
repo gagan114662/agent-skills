@@ -357,6 +357,36 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
   });
 
+  it("shows Google auth maintenance instead of marking Gmail connected when the handoff is unavailable", async () => {
+    const connect = vi.fn((tool: ConnectTool) => Promise.resolve(payoff(tool)));
+    const startGoogleAuth = vi.fn(() =>
+      Promise.reject(
+        new Error(
+          "Google sign-in is not configured for this deployment. Missing: GOOGLE_OAUTH_CLIENT_ID.",
+        ),
+      ),
+    );
+    render(
+      <OnboardingExperience
+        provider={fakeProvider({ connect })}
+        hour={14}
+        startGoogleAuth={startGoogleAuth}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("GOOGLE_OAUTH_CLIENT_ID");
+    expect(connect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/drafted you a reply to a warm lead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
+  });
+
   it("lets users continue to a site-read deliverable without Google auth", async () => {
     const connect = vi.fn((tool: ConnectTool) => Promise.resolve(payoff(tool)));
     const startGoogleAuth = vi.fn();

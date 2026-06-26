@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BRAND, SUPPORT_CONTACT } from "../../brand.js";
-import { googleStartUrl } from "../../api/client.js";
+import { api, googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
@@ -175,7 +175,7 @@ export interface OnboardingExperienceProps {
    * Starts the real signup OAuth handoff from the public cowork flow. Tests/demos that inject a provider keep
    * using that provider for Gmail payoffs; the production default navigates to Google before claiming access.
    */
-  startGoogleAuth?: (input: string) => void;
+  startGoogleAuth?: (input: string) => void | Promise<void>;
   /**
    * The public product experience is iMessage/workspace-first. Tests and connector-specific demos can still
    * force the older guided connector walk-through so those real-connection seams stay covered.
@@ -343,7 +343,9 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
     props.startGoogleAuth ??
     (props.provider
       ? null
-      : (value: string): void => {
+      : async (value: string): Promise<void> => {
+          const status = await api.getGoogleAuthStatus();
+          if (!status.configured) throw new Error(status.message);
           window.location.assign(googleStartUrl(value));
         });
 
@@ -400,7 +402,14 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   const allow = async (tool: ConnectTool): Promise<void> => {
     if (tool === "gmail" && startGoogleAuth) {
-      startGoogleAuth(input);
+      setConnecting(true);
+      setConnectError(null);
+      try {
+        await startGoogleAuth(input);
+      } catch (err) {
+        setConnectError(err instanceof Error ? err.message : ONBOARD_COPY.connect.unavailable);
+        setConnecting(false);
+      }
       return;
     }
     setConnecting(true);
