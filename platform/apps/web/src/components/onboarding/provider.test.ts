@@ -5,7 +5,9 @@ import {
   OnboardingConnectUnavailableError,
   OnboardingReadError,
 } from "./provider.js";
+import type { OnboardingConnectionsClient } from "./provider.js";
 import type { DemoDeliverableDto, FetchLike } from "../../api/demo.js";
+import type { ConnectionView, ConnectionsResponse } from "../../api/types.js";
 
 /**
  * #784 provider seam. `parseTarget` is the pure personalization core; the default provider's `readSite` is the
@@ -25,6 +27,27 @@ const plan: DemoDeliverableDto = {
 
 function okFetch(): FetchLike {
   return () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(plan) });
+}
+
+function connection(over: Partial<ConnectionView>): ConnectionView {
+  return {
+    id: "email",
+    label: "Connect email",
+    summary: "Let your fleet send email on your behalf.",
+    provider: "email",
+    kind: "esp",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    capabilities: ["send_email"],
+    oauthScopes: [],
+    connected: false,
+    ...over,
+  };
+}
+
+function response(connections: ConnectionView[]): ConnectionsResponse {
+  return { connections, canManageInternal: false };
 }
 
 describe("parseTarget", () => {
@@ -53,15 +76,58 @@ describe("createDefaultProvider (#784)", () => {
     await expect(provider.readSite("acme.com")).rejects.toBeInstanceOf(OnboardingReadError);
   });
 
-  it("connect refuses to fake OAuth-backed payoffs", async () => {
-    const provider = createDefaultProvider({ fetchImpl: okFetch() });
-    await expect(provider.connect("gmail", "acme.com")).rejects.toBeInstanceOf(OnboardingConnectUnavailableError);
+  it("one-click connects email and immediately returns a visible draft payoff (#1070)", async () => {
+    const client: OnboardingConnectionsClient = {
+      getConnections: () => Promise.resolve(response([connection({ connected: false })])),
+      enableConnection: (id) =>
+        Promise.resolve(response([connection({ id, connected: true })])),
+    };
+    const provider = createDefaultProvider({ fetchImpl: okFetch(), connections: client });
+
+    await expect(provider.connect("gmail", "acme.com")).resolves.toMatchObject({
+      tool: "gmail",
+      lead: { subject: "re: Acme" },
+      draft: expect.stringMatching(/nothing sends until you approve/i),
+    });
+  });
+
+  it("connect refuses to fake OAuth-backed payoffs that are still coming soon", async () => {
+    const client: OnboardingConnectionsClient = {
+      getConnections: () =>
+        Promise.resolve(
+          response([
+            connection({
+              id: "social_aggregator",
+              label: "Connect your social accounts",
+              provider: "social_aggregator",
+              kind: "ad_account",
+              auth: "oauth",
+              status: "coming_soon",
+              capabilities: ["post_social"],
+            }),
+            connection({
+              id: "website",
+              label: "Connect your website",
+              provider: "website",
+              kind: "hosting",
+              auth: "oauth",
+              status: "coming_soon",
+              capabilities: ["site_publish"],
+            }),
+          ]),
+        ),
+      enableConnection: () => Promise.resolve(response([])),
+    };
+    const provider = createDefaultProvider({ fetchImpl: okFetch(), connections: client });
     await expect(provider.connect("social", "acme.com")).rejects.toMatchObject({
-      message: expect.stringMatching(/reddit\/x needs the real connections panel/i),
+      message: expect.stringMatching(/still coming soon/i),
     });
     await expect(provider.connect("site", "acme.com")).rejects.toMatchObject({
-      message: expect.stringMatching(/your site needs the real connections panel/i),
+      message: expect.stringMatching(/still coming soon/i),
     });
+    await expect(provider.connect("social", "acme.com")).rejects.toBeInstanceOf(
+      OnboardingConnectUnavailableError,
+    );
   });
 
   it("ship records the ship and the deliverable never silently spends money", async () => {
