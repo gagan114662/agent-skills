@@ -16,6 +16,12 @@ export interface TeamRoutesOptions {
 export interface CodexSubscriptionStatus {
   connected: boolean;
   reason: string;
+  selectedHarness: "codex";
+  userAuthenticated: boolean;
+  workspaceAuthenticated: boolean;
+  runtimeAuth: "signed_in_subscription" | "missing";
+  fallback: "none";
+  apiKeySatisfies: false;
 }
 
 export interface CodexSubscriptionStatusProvider {
@@ -43,6 +49,12 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
   const codexSubscription = opts.codexSubscription ?? disconnectedCodexSubscription;
 
   app.get("/me/codex/status", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return codexSubscription.status(id.workspaceId, id.memberId);
+  });
+
+  app.get("/me/codex/preflight", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
     return codexSubscription.status(id.workspaceId, id.memberId);
@@ -88,9 +100,22 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
     if (subtasks.some((s) => s.preferredHarness === "codex")) {
       const status = await codexSubscription.status(id.workspaceId, id.memberId);
       if (!status.connected) {
+        req.log.warn(
+          {
+            event: "codex_subscription_preflight_blocked",
+            workspaceId: id.workspaceId,
+            memberId: id.memberId,
+            selectedHarness: status.selectedHarness,
+            fallback: status.fallback,
+            apiKeySatisfies: status.apiKeySatisfies,
+            runtimeAuth: status.runtimeAuth,
+          },
+          "codex subscription preflight blocked team run",
+        );
         return reply.code(409).send({
           error: status.reason,
           code: "codex_subscription_not_connected",
+          status,
         });
       }
     }
@@ -154,8 +179,14 @@ const disconnectedCodexSubscription: CodexSubscriptionStatusProvider = {
     return {
       connected: false,
       reason:
-        "Codex-backed team runs are not connected to this workspace's signed-in subscription yet. " +
-        "Connect Codex subscription auth before starting the agent room.",
+        "The team engine is not connected to this workspace's signed-in subscription yet. " +
+        "Connect subscription auth before starting the agent room.",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
     };
   },
 };

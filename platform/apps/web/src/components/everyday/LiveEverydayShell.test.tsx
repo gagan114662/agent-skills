@@ -90,7 +90,13 @@ describe("LiveEverydayShell (#1181)", () => {
     });
     vi.spyOn(api, "getCodexStatus").mockResolvedValue({
       connected: false,
-      reason: "Codex-backed team runs are not connected for this session.",
+      reason: "The team engine is not connected for this session.",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
     });
     const postMessage = vi.spyOn(api, "postMessage");
     const launchTeamRun = vi.spyOn(api, "launchTeamRun");
@@ -120,7 +126,16 @@ describe("LiveEverydayShell (#1181)", () => {
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({ connected: true, reason: "" });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+      connected: true,
+      reason: "",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
     vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
       status: "not_configured",
       dryRun: false,
