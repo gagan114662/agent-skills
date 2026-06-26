@@ -46,6 +46,12 @@ import {
   type OutreachReplyThread,
   type ValuePropVariant,
 } from "./types.js";
+import {
+  buildSurfacePlaybook,
+  isOutreachSurface,
+  type OutreachSurface,
+  type SurfacePlaybook,
+} from "./surface-playbooks.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -245,6 +251,22 @@ export interface OutreachSummary {
     occurredAt: Date;
   }>;
 }
+
+export interface SurfacePostDraftInput {
+  surface: OutreachSurface;
+  sessionId: string;
+  title?: string;
+  body: string;
+  community?: string;
+  productName?: string;
+  sourceUrl?: string;
+}
+
+export type SurfacePostStageResult = {
+  status: "pending_approval";
+  approvalRequestId: string;
+  playbook: SurfacePlaybook;
+};
 
 function briefToBuyer(brief: BuyerBriefRecord): ComposeBuyer {
   return {
@@ -508,6 +530,53 @@ export class OutreachService {
       messageId: stored.id,
       channel,
     };
+  }
+
+  /**
+   * Build a per-surface browser-session playbook (#1058) as inert DATA. It drafts the post and the exact
+   * logged-in-browser steps for Reddit/HN/LinkedIn/Product Hunt, but it does not click submit.
+   */
+  draftSurfacePost(input: SurfacePostDraftInput): SurfacePlaybook {
+    if (!isOutreachSurface(input.surface)) {
+      throw new OutreachValidationError("surface must be one of reddit, hacker_news, linkedin, product_hunt");
+    }
+    if (!input.sessionId.trim()) throw new OutreachValidationError("sessionId required");
+    try {
+      return buildSurfacePlaybook(input);
+    } catch (err) {
+      if (err instanceof Error) throw new OutreachValidationError(err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Stage the submit step through the existing browser.action approval gate. The approval records the
+   * exact click the agent is allowed to retry in-session; until the owner approves, no external post is
+   * submitted.
+   */
+  async stageSurfacePost(
+    workspaceId: string,
+    input: SurfacePostDraftInput & { requesterMemberId: string },
+  ): Promise<SurfacePostStageResult> {
+    const playbook = this.draftSurfacePost(input);
+    const approval = await this.deps.approvals.submit({
+      workspaceId,
+      requesterMemberId: input.requesterMemberId,
+      actionType: "browser.action",
+      summary: playbook.submit.summary,
+      payload: {
+        source: "outreach.surface_playbook",
+        surface: playbook.surface,
+        sessionId: input.sessionId,
+        tool: playbook.submit.tool,
+        target: playbook.submit.target,
+        summary: playbook.submit.summary,
+        draft: playbook.draft,
+        steps: playbook.steps,
+        humanGate: true,
+      },
+    });
+    return { status: "pending_approval", approvalRequestId: approval.id, playbook };
   }
 
   /**

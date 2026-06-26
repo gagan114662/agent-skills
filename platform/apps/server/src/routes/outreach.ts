@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
 import { OutreachService, OutreachValidationError } from "../outreach/service.js";
 import { clampOutreachMessagesLimit } from "../db/repositories/outreach.js";
+import { isOutreachSurface } from "../outreach/surface-playbooks.js";
 
 /**
  * Outreach engine routes (#225, ADR-0225) under `/workspaces/:wid/outreach`. Thin adapters over
@@ -17,6 +18,27 @@ export interface OutreachRoutesOptions {
 
 export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesOptions): Promise<void> {
   const { service } = opts;
+
+  function readSurfacePostBody(req: { body?: unknown }): {
+    surface?: string;
+    sessionId?: string;
+    title?: string;
+    body?: string;
+    community?: string;
+    productName?: string;
+    sourceUrl?: string;
+  } {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    return {
+      surface: typeof b.surface === "string" ? b.surface : undefined,
+      sessionId: typeof b.sessionId === "string" ? b.sessionId : undefined,
+      title: typeof b.title === "string" ? b.title : undefined,
+      body: typeof b.body === "string" ? b.body : undefined,
+      community: typeof b.community === "string" ? b.community : undefined,
+      productName: typeof b.productName === "string" ? b.productName : undefined,
+      sourceUrl: typeof b.sourceUrl === "string" ? b.sourceUrl : undefined,
+    };
+  }
 
   /** Preview a composed (problem-led) message for a (prospect, brief) pair — DATA only, nothing queued. */
   app.get("/workspaces/:wid/outreach/draft", async (req, reply) => {
@@ -68,6 +90,69 @@ export async function outreachRoutes(app: FastifyInstance, opts: OutreachRoutesO
         requesterMemberId: id.memberId,
       });
       return reply.code(result.status === "pending_approval" ? 202 : 200).send(result);
+    } catch (err) {
+      if (err instanceof OutreachValidationError) return reply.code(422).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  /** Draft a Reddit/HN/LinkedIn/Product Hunt browser-session playbook. DATA only; no submit. */
+  app.post("/workspaces/:wid/outreach/surface-posts/draft", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = readSurfacePostBody(req);
+    if (!b.surface || !b.sessionId || !b.body) {
+      return reply.code(400).send({ error: "surface, sessionId, and body are required" });
+    }
+    if (!isOutreachSurface(b.surface)) {
+      return reply.code(422).send({ error: "surface must be one of reddit, hacker_news, linkedin, product_hunt" });
+    }
+    try {
+      return service.draftSurfacePost({
+        surface: b.surface,
+        sessionId: b.sessionId,
+        title: b.title,
+        body: b.body,
+        community: b.community,
+        productName: b.productName,
+        sourceUrl: b.sourceUrl,
+      });
+    } catch (err) {
+      if (err instanceof OutreachValidationError) return reply.code(422).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  /**
+   * Stage a per-surface post submit as a pending browser.action approval. The agent may fill the form in
+   * a logged-in browser session, but the final external submit is human-gated here.
+   */
+  app.post("/workspaces/:wid/outreach/surface-posts/stage", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = readSurfacePostBody(req);
+    if (!b.surface || !b.sessionId || !b.body) {
+      return reply.code(400).send({ error: "surface, sessionId, and body are required" });
+    }
+    if (!isOutreachSurface(b.surface)) {
+      return reply.code(422).send({ error: "surface must be one of reddit, hacker_news, linkedin, product_hunt" });
+    }
+    try {
+      const result = await service.stageSurfacePost(wid, {
+        surface: b.surface,
+        sessionId: b.sessionId,
+        title: b.title,
+        body: b.body,
+        community: b.community,
+        productName: b.productName,
+        sourceUrl: b.sourceUrl,
+        requesterMemberId: id.memberId,
+      });
+      return reply.code(202).send(result);
     } catch (err) {
       if (err instanceof OutreachValidationError) return reply.code(422).send({ error: err.message });
       throw err;
