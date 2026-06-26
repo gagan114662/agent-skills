@@ -206,6 +206,29 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
+  it("hands the live first-result flow to the iMessage workspace instead of Gmail connectors", async () => {
+    const onOpenWorkspace = vi.fn();
+    render(
+      <OnboardingExperience
+        provider={fakeProvider()}
+        connectMode="workspace"
+        onOpenWorkspace={onOpenWorkspace}
+        hour={14}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /text the team in imessage/i }));
+
+    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
+  });
+
   it("lets a new user approve the first result without opening settings or connectors (#525)", async () => {
     const ship = vi.fn(() => Promise.resolve({ shipped: true as const }));
     render(<OnboardingExperience provider={fakeProvider({ ship })} hour={14} />);

@@ -169,6 +169,13 @@ export interface OnboardingExperienceProps {
    * using that provider for Gmail payoffs; the production default navigates to Google before claiming access.
    */
   startGoogleAuth?: (input: string) => void;
+  /**
+   * The public product experience is iMessage/workspace-first. Tests and connector-specific demos can still
+   * force the older guided connector walk-through so those real-connection seams stay covered.
+   */
+  connectMode?: "workspace" | "guided";
+  /** Opens the workspace/iMessage room after the first site-read result. */
+  onOpenWorkspace?: () => void;
 }
 
 /** Render one connect payoff — discriminated by tool, so each reads as the real thing it is. */
@@ -316,6 +323,8 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const provider = props.provider ?? createDefaultProvider();
   const hour = props.hour ?? new Date().getHours();
   const onEnterApp = props.onEnterApp ?? (() => navigate("/"));
+  const onOpenWorkspace = props.onOpenWorkspace ?? (() => navigate("/everyday"));
+  const connectMode = props.connectMode ?? (props.provider ? "guided" : "workspace");
   const startGoogleAuth =
     props.startGoogleAuth ??
     (props.provider
@@ -519,9 +528,15 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   <button
                     className="onboard-cta onboard-cta--ghost"
                     type="button"
-                    onClick={() => setPhase("connect")}
+                    onClick={() => {
+                      if (connectMode === "guided") {
+                        setPhase("connect");
+                        return;
+                      }
+                      onOpenWorkspace();
+                    }}
                   >
-                    {ONBOARD_COPY.reading.next}
+                    {connectMode === "guided" ? ONBOARD_COPY.reading.next : ONBOARD_COPY.reading.openRoom}
                   </button>
                 </>
               )}
