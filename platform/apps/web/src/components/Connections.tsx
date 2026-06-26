@@ -96,6 +96,19 @@ function CustomerAction(props: {
       </span>
     );
   }
+  if (c.consentStatus === "recorded" && c.providerStatus !== "healthy") {
+    return (
+      <span className="connections__connected">
+        <span className="connections__badge">{CONNECTIONS.proofPendingBadge}</span>
+        <span className="connections__soon" role="status">
+          {c.failureReason ?? CONNECTIONS.proofPendingDetail}
+        </span>
+        <button type="button" disabled={busy} onClick={() => onDisconnect(c.id)}>
+          {CONNECTIONS.disconnect}
+        </button>
+      </span>
+    );
+  }
   // Not live yet: a clear next step (join the waitlist) instead of a dead, disabled "Coming soon" button.
   if (c.status === "coming_soon") {
     if (waitlisted) {

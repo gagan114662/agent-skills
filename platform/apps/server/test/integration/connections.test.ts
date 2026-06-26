@@ -88,7 +88,7 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     expect(del.statusCode).toBe(403);
   });
 
-  it("a customer can finish onboarding: one-click connecting email flips the account to connected (#529/#507)", async () => {
+  it("a customer can record one-click consent without pretending provider proof passed (#529/#507/#1284)", async () => {
     const { cookie, workspaceId } = await seed();
 
     // Before: outbound email is offered as an AVAILABLE one-click connector, not yet connected.
@@ -105,17 +105,23 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       cookies: { rid: cookie },
     });
     expect(enable.statusCode).toBe(200);
-    expect(enable.json().connected).toBe(true);
+    expect(enable.json()).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
 
-    // After: the account reads connected, so the "connect an account" onboarding step is now completable.
+    // After: consent is recorded, but the provider is not shown as connected until a health check proves it.
     const after = (
       await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
     ).json();
-    expect(
-      after.connections.some(
-        (c: { id: string; connected: boolean }) => c.id === "email" && c.connected,
-      ),
-    ).toBe(true);
+    const emailAfter = after.connections.find((c: { id: string }) => c.id === "email");
+    expect(emailAfter).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
+    expect(emailAfter.failureReason).toMatch(/health check/i);
 
     // Disconnect → goes back to not-connected, gracefully.
     const del = await app.inject({
@@ -127,11 +133,11 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     const gone = (
       await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
     ).json();
-    expect(
-      gone.connections.some(
-        (c: { id: string; connected: boolean }) => c.id === "email" && c.connected,
-      ),
-    ).toBe(false);
+    expect(gone.connections.find((c: { id: string }) => c.id === "email")).toMatchObject({
+      connected: false,
+      consentStatus: "none",
+      providerStatus: "unproven",
+    });
 
     // #928: connect + revoke are now first-class audit events with actor/timestamp/service metadata.
     const audit = (

@@ -16,6 +16,7 @@ import { seal, open, tokenFingerprint, loadEncKey } from "../../crypto/secretbox
 /** What the Settings/console UI is allowed to know about a service — never the secret values. */
 export interface ServiceCredentialRow {
   serviceKey: string;
+  /** True only when the row has live provider proof material; consent-only rows are not connected. */
   connected: boolean;
   status: "connected" | "revoked";
   fingerprint: string;
@@ -105,9 +106,10 @@ export async function setServiceCredentials(input: {
     scopes,
     createdAt: now,
   });
+  const connected = envKeys.length > 0;
   return {
     serviceKey: input.serviceKey,
-    connected: true,
+    connected,
     status: "connected",
     fingerprint,
     envKeys,
@@ -338,12 +340,13 @@ function mapStatusRow(row: {
   connectedAt: Date;
   revokedAt: Date | null;
 }): ServiceCredentialRow {
+  const envKeys = (row.envKeys as string[]) ?? [];
   return {
     serviceKey: row.serviceKey,
-    connected: row.status === "connected",
+    connected: row.status === "connected" && envKeys.length > 0,
     status: row.status as "connected" | "revoked",
     fingerprint: row.fingerprint,
-    envKeys: (row.envKeys as string[]) ?? [],
+    envKeys,
     scopes: (row.scopes as string[]) ?? [],
     rotationReminderDays: row.rotationReminderDays,
     connectedAtMs: row.connectedAt.getTime(),
