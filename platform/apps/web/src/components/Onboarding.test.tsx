@@ -89,6 +89,21 @@ describe("Onboarding screen (#260)", () => {
     render(<Onboarding />);
     expect(screen.getByRole("alert")).toHaveTextContent(ONBOARDING.errors.invalid_domain);
   });
+
+  it("offers email signup when Google is unavailable in this deployment", () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?error=google_unavailable", assign: assignSpy },
+      writable: true,
+    });
+    render(<Onboarding />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(ONBOARDING.errors.google_unavailable);
+    expect(screen.getByText(ONBOARDING.fallbackSignup.lead)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: ONBOARDING.fallbackSignup.cta })).toHaveAttribute(
+      "href",
+      "/signup",
+    );
+  });
 });
 
 describe("Onboarding outcome-first (#633)", () => {
