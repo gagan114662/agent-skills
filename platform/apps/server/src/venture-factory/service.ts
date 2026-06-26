@@ -1,9 +1,6 @@
 import type { ApprovalStatus } from "../approvals/policy.js";
 import {
-  VENTURE_AD_SPEND_ACTION,
   VENTURE_BOOTSTRAP_ACTION,
-  VENTURE_DOMAIN_PURCHASE_ACTION,
-  VENTURE_PAYMENT_METHOD_ACTION,
 } from "../approvals/policy.js";
 import type { VentureFactoryCaps } from "./caps.js";
 import { decideEdgeGate, decideFactoryAdmission } from "./edge-gate.js";
@@ -39,8 +36,8 @@ import type {
  *   - **FM#1 edge gate**: `validate` runs `decideEdgeGate` FIRST — an un-edged candidate is killed, never
  *     validated. `bootstrap` runs `decideFactoryAdmission` — no new venture while one is unprofitable.
  *   - **FM#2 external receipts**: the validation scorecard is built only from ingested external receipts.
- *   - **FM#4 reversibility**: every MONEY/irreversible bootstrap step queues as its own owner #13
- *     decision; only reversible steps run autonomously.
+ *   - **FM#4/#1055 spend safety**: MONEY bootstrap steps reserve spend against the hard cap before they
+ *     run; only cap raises queue for the owner.
  */
 
 const MAX_SCORE = 100;
@@ -230,9 +227,9 @@ export interface ExternalPaidOpportunityInput {
 
 export interface BootstrapResult {
   venture: FactoryVenture;
-  /** The reversible steps that ran autonomously. */
+  /** The steps that ran autonomously, including MONEY steps whose spend fit inside the hard cap. */
   ranSteps: BootstrapStepKind[];
-  /** The MONEY steps queued as owner #13 decisions (each with its approval id). */
+  /** MONEY steps blocked on a human-approved cap raise (each with its approval id). */
   moneyDecisions: Array<{ kind: BootstrapStepKind; approvalRequestId: string }>;
 }
 
@@ -321,20 +318,6 @@ export class VentureFactoryService {
       ],
       createdByMemberId: input.createdByMemberId,
     });
-  }
-
-  /** The action-kind → MONEY #13 gate mapping for the bootstrap steps. */
-  private static moneyActionKind(kind: BootstrapStepKind): string {
-    switch (kind) {
-      case "domain_purchase":
-        return VENTURE_DOMAIN_PURCHASE_ACTION;
-      case "ad_spend_start":
-        return VENTURE_AD_SPEND_ACTION;
-      case "payment_method":
-        return VENTURE_PAYMENT_METHOD_ACTION;
-      default:
-        return VENTURE_BOOTSTRAP_ACTION;
-    }
   }
 
   /** Assert the factory may run an autonomous step in this workspace (enabled + owner-scope). */
@@ -567,9 +550,10 @@ export class VentureFactoryService {
   /**
    * Bootstrap an approved candidate into a live venture (#187 AC3 + AC4). Runs the factory scaling gate
    * FIRST (premortem FM#1: no new venture while one is unprofitable). Then plans the idempotent steps and
-   * routes them by money class: the reversible steps run autonomously (the fleet seed is the #138 seam);
-   * each MONEY/irreversible step (domain/ad-spend/payment-method) queues as its own owner #13 decision —
-   * nothing money-touching runs without a human. Idempotent: a re-run returns the same factory venture.
+   * routes them by money class: reversible steps run autonomously (the fleet seed is the #138 seam), and
+   * MONEY steps reserve their estimated spend against the hard cap before running. Only a cap raise parks
+   * for the owner, so in-cap spend no longer needs per-action approval (#1055). Idempotent: a re-run
+   * returns the same factory venture.
    */
   async bootstrap(
     workspaceId: string,
@@ -611,6 +595,7 @@ export class VentureFactoryService {
       ventureName: candidate.proposedName,
       software: opts.software ?? false,
       includeAdSpend: opts.includeAdSpend ?? false,
+      adSpendBudgetCents: caps.validationBudgetCapCents,
     });
 
     // Reversible, autonomous steps run now. The fleet seed and (#195) the deploy-target provision are the
@@ -633,15 +618,32 @@ export class VentureFactoryService {
       ranSteps.push(step.kind);
     }
 
-    // MONEY/irreversible steps each queue as their own owner #13 decision (never auto-run).
+    // MONEY/irreversible steps run only after their estimated spend fits inside the hard budget cap.
+    // If the cap would be exceeded, park a cap-raise request instead of approving the action itself.
     const moneyDecisions: Array<{ kind: BootstrapStepKind; approvalRequestId: string }> = [];
     for (const step of moneySteps(plan)) {
+      const cents = Math.max(0, Math.round(step.estimatedCostCents));
+      const withinCap =
+        cents === 0 ||
+        (await this.deps.budget.charge(workspaceId, cents, `venture bootstrap ${step.kind}`));
+      if (withinCap) {
+        ranSteps.push(step.kind);
+        continue;
+      }
+
       const req = await this.deps.gate.submit({
         workspaceId,
         requesterMemberId: opts.requesterMemberId,
-        actionKind: VentureFactoryService.moneyActionKind(step.kind),
-        summary: step.summary,
-        payload: { candidateId, ventureId: venture.id, step: step.kind },
+        actionKind: VENTURE_BOOTSTRAP_ACTION,
+        amountCents: cents,
+        summary: `Raise venture budget cap before ${step.summary}`,
+        payload: {
+          candidateId,
+          ventureId: venture.id,
+          step: step.kind,
+          estimatedCostCents: cents,
+          capRaiseRequired: true,
+        },
       });
       moneyDecisions.push({ kind: step.kind, approvalRequestId: req.id });
     }

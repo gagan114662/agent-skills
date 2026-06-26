@@ -149,6 +149,7 @@ interface Harness {
   service: VentureFactoryService;
   store: FakeStore;
   submitted: Array<{ actionKind: string; summary: string; payload: Record<string, unknown> }>;
+  budgetCharges: Array<{ cents: number; reason: string }>;
   fleetSeeds: number;
   smokePublishes: number;
   archives: number;
@@ -156,9 +157,13 @@ interface Harness {
   setProfitable: (n: number) => void;
 }
 
-function harness(over: Partial<VentureFactoryCaps> = {}): Harness {
+function harness(
+  over: Partial<VentureFactoryCaps> = {},
+  opts: { budgetAllow?: (input: { cents: number; reason: string }) => boolean } = {},
+): Harness {
   const store = new FakeStore();
   const submitted: Array<{ actionKind: string; summary: string; payload: Record<string, unknown> }> = [];
+  const budgetCharges: Array<{ cents: number; reason: string }> = [];
   let profitable = 0;
   let fleetSeeds = 0;
   let smokePublishes = 0;
@@ -180,7 +185,12 @@ function harness(over: Partial<VentureFactoryCaps> = {}): Harness {
       },
     },
     killSwitch: { async isTripped() { return false; } },
-    budget: { async charge() { return true; } },
+    budget: {
+      async charge(_workspaceId, cents, reason) {
+        budgetCharges.push({ cents, reason });
+        return opts.budgetAllow?.({ cents, reason }) ?? true;
+      },
+    },
     fleet: { async seed() { fleetSeeds += 1; } },
     smokeTest: {
       async publish() {
@@ -198,6 +208,7 @@ function harness(over: Partial<VentureFactoryCaps> = {}): Harness {
     service: new VentureFactoryService(deps),
     store,
     submitted,
+    budgetCharges,
     get fleetSeeds() { return fleetSeeds; },
     get smokePublishes() { return smokePublishes; },
     get archives() { return archives; },
@@ -343,17 +354,60 @@ describe("VentureFactoryService", () => {
     expect((await h.store.getCandidate("w1", c!.id))!.status).toBe("killed");
   });
 
-  it("bootstrap runs reversible steps autonomously and queues every MONEY step (AC3/AC4)", async () => {
+  it("bootstrap runs reversible and in-cap MONEY steps autonomously (#1055)", async () => {
     const [c] = await h.service.scan("w1", [scanInput()]);
     const res = await h.service.bootstrap("w1", c!.id, { requesterMemberId: "agent", software: true, includeAdSpend: true });
     expect(h.fleetSeeds).toBe(1); // the #138 seed ran autonomously
     expect(res.ranSteps).toContain("seed_fleet");
-    expect(res.moneyDecisions.map((m) => m.kind).sort()).toEqual(["ad_spend_start", "domain_purchase", "payment_method"]);
-    const kinds = h.submitted.map((s) => s.actionKind);
-    expect(kinds).toContain("venture.domain_purchase");
-    expect(kinds).toContain("venture.ad_spend");
-    expect(kinds).toContain("venture.payment_method");
+    expect(res.ranSteps).toEqual([
+      "provision_workspace",
+      "brand_kit",
+      "landing_page",
+      "repo_deploy_target",
+      "budget_caps",
+      "seed_fleet",
+      "domain_purchase",
+      "payment_method",
+      "ad_spend_start",
+    ]);
+    expect(res.moneyDecisions).toEqual([]);
+    expect(h.submitted).toEqual([]);
+    expect(h.budgetCharges).toEqual(
+      expect.arrayContaining([
+        { cents: h.caps.scanCostCents, reason: "venture-factory scan" },
+        { cents: 1_500, reason: "venture bootstrap domain_purchase" },
+        { cents: h.caps.validationBudgetCapCents, reason: "venture bootstrap ad_spend_start" },
+      ]),
+    );
     expect((await h.store.getCandidate("w1", c!.id))!.status).toBe("launched");
+  });
+
+  it("bootstrap queues a cap raise instead of running over-cap MONEY steps (#1055)", async () => {
+    const overCap = harness({}, { budgetAllow: ({ reason }) => !reason.includes("ad_spend_start") });
+    const [c] = await overCap.service.scan("w1", [scanInput()]);
+
+    const res = await overCap.service.bootstrap("w1", c!.id, {
+      requesterMemberId: "agent",
+      includeAdSpend: true,
+    });
+
+    expect(res.ranSteps).toContain("domain_purchase");
+    expect(res.ranSteps).toContain("payment_method");
+    expect(res.ranSteps).not.toContain("ad_spend_start");
+    expect(res.moneyDecisions).toEqual([{ kind: "ad_spend_start", approvalRequestId: "req-1" }]);
+    expect(overCap.submitted).toEqual([
+      {
+        actionKind: "venture.bootstrap",
+        summary: "Raise venture budget cap before start paid acquisition for Acme Co",
+        payload: {
+          candidateId: c!.id,
+          ventureId: res.venture.id,
+          step: "ad_spend_start",
+          estimatedCostCents: overCap.caps.validationBudgetCapCents,
+          capRaiseRequired: true,
+        },
+      },
+    ]);
   });
 
   it("bootstrap is idempotent — re-running returns the same venture", async () => {
