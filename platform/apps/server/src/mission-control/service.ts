@@ -5,6 +5,7 @@ import {
   type RecentFailureView,
   type RecentSessionInput,
 } from "./diagnose.js";
+import type { FailureStats } from "../runtime/failure-stats.js";
 
 /**
  * Mission-control read service (#147, ADR-0147 §6). Reads the workspace's live sessions + the tenant's
@@ -44,6 +45,12 @@ export interface MissionControlDeps {
 export interface MissionControlView extends MissionControl {
   diagnostic: MissionDiagnostic;
   recentFailures: RecentFailureView[];
+  /**
+   * #394 reliability instrumentation: terminal-session failure rate + per-class histogram for the recent
+   * window. This is the production-visible counter that tells us whether watchdog reaps are spawn/auth/
+   * timeout/model/etc., instead of leaving the owner with one opaque dominant failure line.
+   */
+  failureBreakdown: FailureStats;
 }
 
 export class MissionControlService {
@@ -63,7 +70,7 @@ export class MissionControlService {
       this.deps.hasOpenWork?.(workspaceId) ?? Promise.resolve(false),
     ]);
     const mc = buildMissionControl({ sessions, rateCentsPerMinute: this.deps.rate(workspaceId), now });
-    const { diagnostic, recentFailures } = diagnose({
+    const { diagnostic, recentFailures, failureBreakdown } = diagnose({
       liveCount: mc.count,
       recent,
       hasVenture,
@@ -73,6 +80,6 @@ export class MissionControlService {
     if (diagnostic.state === "sessions_failing" || diagnostic.state === "no_work") {
       await this.deps.activationHealthAlert?.({ workspaceId, diagnostic, recentFailures, now });
     }
-    return { ...mc, diagnostic, recentFailures };
+    return { ...mc, diagnostic, recentFailures, failureBreakdown };
   }
 }
