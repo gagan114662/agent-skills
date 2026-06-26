@@ -63,6 +63,9 @@ export const SOCIAL_AGGREGATOR_ID = "social_aggregator";
 /** The outbound-email connection id (#529 — the first real end-to-end outbound channel; one-click consent). */
 export const EMAIL_CONNECTION_ID = "email";
 
+/** The onboarding website consent id (#1070 — lets Quill produce an immediate hero rewrite). */
+export const WEBSITE_CONNECTION_ID = "website";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -124,15 +127,15 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     envKeys: [],
   },
   {
-    id: "website",
+    id: WEBSITE_CONNECTION_ID,
     label: "Connect your website",
     summary:
-      "Connect Webflow, WordPress, or your CMS — Quill publishes pages to your own domain, no setup.",
+      "Let Quill draft against your site right now — publishing still waits for the owner approval.",
     provider: "website",
     kind: "hosting",
     audience: "customer",
-    auth: "oauth",
-    status: "coming_soon",
+    auth: "one_click",
+    status: "available",
     capabilities: ["site_publish"],
     oauthScopes: [],
     envKeys: [],
@@ -170,14 +173,14 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     id: SOCIAL_AGGREGATOR_ID,
     label: "Connect your social accounts",
     summary:
-      "One consent lets Echo post to X, LinkedIn, Instagram & TikTok — no developer portal, every post owner-approved.",
+      "One consent lets Echo find Reddit/X threads and draft replies — every post still owner-approved.",
     provider: "social_aggregator",
     kind: "ad_account",
     audience: "customer",
-    auth: "oauth",
-    status: "coming_soon",
+    auth: "one_click",
+    status: "available",
     capabilities: ["post_social"],
-    oauthScopes: ["social.post"],
+    oauthScopes: [],
     envKeys: [],
   },
   {

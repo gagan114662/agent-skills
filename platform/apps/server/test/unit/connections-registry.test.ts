@@ -4,7 +4,9 @@ import {
   EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
   listConnectionDescriptors,
+  SOCIAL_AGGREGATOR_ID,
   SITE_PUBLISH_GITHUB_ID,
+  WEBSITE_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
 /**
@@ -41,15 +43,20 @@ describe("connection registry (#258)", () => {
     }
   });
 
-  it("surfaces outbound email as an AVAILABLE one-click customer connector (#529/#507)", () => {
-    // The dead-end fix: a fresh workspace can finish the "connect an account" step because email is live.
-    const email = getConnectionDescriptor(EMAIL_CONNECTION_ID);
-    expect(email?.audience).toBe("customer");
-    expect(email?.auth).toBe("one_click");
-    expect(email?.status).toBe("available");
-    expect(email?.capabilities).toContain("send_email");
-    expect(email?.oauthScopes).toEqual([]);
-    expect(email?.envKeys).toEqual([]);
+  it("surfaces onboarding's three payoff connectors as AVAILABLE one-click customer consents (#1070)", () => {
+    for (const [id, capability] of [
+      [EMAIL_CONNECTION_ID, "send_email"],
+      [SOCIAL_AGGREGATOR_ID, "post_social"],
+      [WEBSITE_CONNECTION_ID, "site_publish"],
+    ] as const) {
+      const descriptor = getConnectionDescriptor(id);
+      expect(descriptor?.audience, id).toBe("customer");
+      expect(descriptor?.auth, id).toBe("one_click");
+      expect(descriptor?.status, id).toBe("available");
+      expect(descriptor?.capabilities, id).toContain(capability);
+      expect(descriptor?.oauthScopes, id).toEqual([]);
+      expect(descriptor?.envKeys, id).toEqual([]);
+    }
   });
 
   it("at least one customer connector is actually available (no all-coming-soon dead-end)", () => {
@@ -66,8 +73,10 @@ describe("connection registry (#258)", () => {
   });
 
   it("offers customer publishing as 'Connect your website' (no repo, no GitHub)", () => {
-    const website = getConnectionDescriptor("website");
+    const website = getConnectionDescriptor(WEBSITE_CONNECTION_ID);
     expect(website?.audience).toBe("customer");
+    expect(website?.auth).toBe("one_click");
+    expect(website?.status).toBe("available");
     expect(website?.capabilities).toContain("site_publish");
     // a customer must never be shown the GitHub repo/token path
     expect(website?.envKeys).not.toContain("REALWORLD_GITHUB_TOKEN");
@@ -82,10 +91,11 @@ describe("connection registry (#258)", () => {
     }
   });
 
-  it("models the #269 connect-once social AGGREGATOR as one customer OAuth consent (multi-network fan-out)", () => {
-    const d = getConnectionDescriptor("social_aggregator");
+  it("models the #269/#1070 connect-once social AGGREGATOR as one customer consent", () => {
+    const d = getConnectionDescriptor(SOCIAL_AGGREGATOR_ID);
     expect(d?.audience).toBe("customer");
-    expect(d?.auth).toBe("oauth");
+    expect(d?.auth).toBe("one_click");
+    expect(d?.status).toBe("available");
     expect(d?.capabilities).toContain("post_social");
     // a customer never sees a per-platform developer-portal token
     expect(d?.envKeys).toEqual([]);
