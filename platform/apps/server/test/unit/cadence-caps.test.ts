@@ -54,4 +54,26 @@ describe("cadence caps (#416)", () => {
     expect(caps.intervalMs).toBe(3_600_000);
     expect(caps.maxLaunchesPerDay).toBe(4);
   });
+
+  it("carries workspace goals/OKRs for the proactive cadence backlog (#522)", () => {
+    const caps = resolveCadenceCaps({
+      goals: [
+        {
+          objective: "Book three qualified founder calls",
+          keyResult: "3 ICP conversations this week",
+          lead: "scout",
+          outcomeKey: "calls",
+        },
+      ],
+    });
+
+    expect(caps.goals).toEqual([
+      {
+        objective: "Book three qualified founder calls",
+        keyResult: "3 ICP conversations this week",
+        lead: "scout",
+        outcomeKey: "calls",
+      },
+    ]);
+  });
 });

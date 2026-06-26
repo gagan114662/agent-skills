@@ -1,7 +1,8 @@
 import type { SessionLogger } from "../runtime/manager.js";
-import type { CadenceCaps } from "./caps.js";
+import type { CadenceCaps, WorkspaceCadenceGoal } from "./caps.js";
 import { isCadenceEnabledForWorkspace } from "./caps.js";
 import {
+  CADENCE_PLAYBOOK,
   CADENCE_PLAYBOOK_LENGTH,
   nextTaskIndex,
   selectTaskIndexFromOutcomes,
@@ -66,6 +67,8 @@ export interface WorkspaceMemoryContext {
 
 const MAX_MEMORY_CONTEXT_ITEMS = 5;
 const MAX_MEMORY_CONTEXT_CHARS = 240;
+const DEFAULT_GOAL_LEAD = "scout";
+const DEFAULT_GOAL_OUTCOME_KEY = "workspace_goal";
 
 function sanitizeMemoryContext(text: string): string {
   return (
@@ -100,6 +103,32 @@ export function enrichCadenceTaskWithMemory(
       "\n\nTask: " +
       task.goal,
   };
+}
+
+function cleanGoalField(value: string | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function taskFromWorkspaceGoal(goal: WorkspaceCadenceGoal): CadenceTask | undefined {
+  const objective = cleanGoalField(goal.objective);
+  if (!objective) return undefined;
+  const keyResult = cleanGoalField(goal.keyResult);
+  const lead = cleanGoalField(goal.lead).replace(/^@/, "") || DEFAULT_GOAL_LEAD;
+  const outcomeKey = cleanGoalField(goal.outcomeKey) || DEFAULT_GOAL_OUTCOME_KEY;
+  return {
+    lead,
+    outcomeKey,
+    goal: keyResult
+      ? `Workspace goal: ${objective}\nKey result: ${keyResult}\n\nPropose and start the next safe marketing task toward this goal. Surface wins and blockers in-channel before anything spends money or leaves the building.`
+      : `Workspace goal: ${objective}\n\nPropose and start the next safe marketing task toward this goal. Surface wins and blockers in-channel before anything spends money or leaves the building.`,
+  };
+}
+
+export function tasksForCadenceCaps(caps: CadenceCaps): readonly CadenceTask[] {
+  const goalTasks = caps.goals
+    .map((goal) => taskFromWorkspaceGoal(goal))
+    .filter((task): task is CadenceTask => task !== undefined);
+  return goalTasks.length > 0 ? goalTasks : CADENCE_PLAYBOOK;
 }
 
 /** In-memory per-workspace cadence state: the round-robin cursor + today's launch tally. */
@@ -168,8 +197,9 @@ export class CadenceEngine {
           if (st.count >= caps.maxLaunchesPerDay) return;
 
           const outcomes = this.deps.outcomes ? await this.deps.outcomes(workspaceId) : [];
-          const selected = selectTaskIndexFromOutcomes(st.cursor, outcomes);
-          let task = taskAt(selected);
+          const tasks = tasksForCadenceCaps(caps);
+          const selected = selectTaskIndexFromOutcomes(st.cursor, outcomes, tasks);
+          let task = taskAt(selected, tasks);
           if (!task) return;
           if (this.deps.memoryContext) {
             const memories = await this.deps.memoryContext(workspaceId, task);
@@ -179,7 +209,7 @@ export class CadenceEngine {
           await this.deps.launch(workspaceId, task);
 
           st.count += 1;
-          st.cursor = nextTaskIndex(selected, CADENCE_PLAYBOOK_LENGTH);
+          st.cursor = nextTaskIndex(selected, tasks.length || CADENCE_PLAYBOOK_LENGTH);
         } catch (err) {
           this.deps.logger.error(
             { err, workspaceId },

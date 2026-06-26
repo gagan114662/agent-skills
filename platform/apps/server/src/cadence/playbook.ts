@@ -94,11 +94,14 @@ export function nextTaskIndex(cursor: number, len: number): number {
  * Pure: the task at `index` in the cyclic playbook (wrapping). Returns undefined only when the playbook is
  * empty — every finite index otherwise resolves to a task.
  */
-export function taskAt(index: number): CadenceTask | undefined {
-  const len = CADENCE_PLAYBOOK.length;
+export function taskAt(
+  index: number,
+  tasks: readonly CadenceTask[] = CADENCE_PLAYBOOK,
+): CadenceTask | undefined {
+  const len = tasks.length;
   if (len <= 0) return undefined;
   const normalized = ((Math.trunc(index) % len) + len) % len;
-  return CADENCE_PLAYBOOK[normalized];
+  return tasks[normalized];
 }
 
 /**
