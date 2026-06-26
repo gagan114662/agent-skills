@@ -173,6 +173,8 @@ describe("ConsoleView", () => {
     expect(within(center).getByText("1 live")).toBeInTheDocument();
     expect(within(center).getByText("Atlas")).toBeInTheDocument();
     expect(within(center).getByText("thinking")).toBeInTheDocument();
+    const presence = within(center).getByRole("region", { name: CONSOLE.commandCenter.presenceRegion });
+    expect(within(presence).getByLabelText("Atlas thinking")).toBeInTheDocument();
     expect(within(center).getByText("12m 0s")).toBeInTheDocument();
     expect(within(center).getAllByText("$0.84").length).toBeGreaterThan(0);
     expect(within(center).getByText("Throughput")).toBeInTheDocument();
@@ -180,6 +182,8 @@ describe("ConsoleView", () => {
     expect(within(center).getByText("Decisions")).toBeInTheDocument();
     expect(within(center).getByText("Outcomes")).toBeInTheDocument();
     expect(within(center).getByText("10% failure rate · timeout")).toBeInTheDocument();
+    const runningLane = screen.getByRole("listitem", { name: CONSOLE.columns.running });
+    expect(within(runningLane).getByLabelText("Atlas")).toBeInTheDocument();
   });
 
   it("turns the fleet-health signal red WITH the reason when self-healing escalates (#193 AC3)", async () => {

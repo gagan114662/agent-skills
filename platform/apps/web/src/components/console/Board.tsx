@@ -49,6 +49,10 @@ function RunningCard({
   return (
     <article className="card" style={hueStyle(item)} onClick={() => onPeek(item)}>
       <div className="card__ttl">
+        <span className="card__agentbadge" aria-label={item.agentLabel}>
+          <i aria-hidden="true" />
+          <b aria-hidden="true">{item.agentLabel.slice(0, 1).toUpperCase()}</b>
+        </span>
         <BrailleSpinner /> {item.title}
       </div>
       <div className="card__meta">{item.meta}</div>

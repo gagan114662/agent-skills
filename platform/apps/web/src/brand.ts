@@ -1195,6 +1195,7 @@ export const CONSOLE = {
     reliabilityTitle: "Reliability",
     reliabilityClear: "No recent failures",
     reliability: (rate: string, dominant: string): string => `${rate} failure rate · ${dominant}`,
+    presenceRegion: "Agent presence field",
     agentsRegion: "Live agent statuses",
     reliabilityRegion: "Fleet reliability",
     metrics: {
