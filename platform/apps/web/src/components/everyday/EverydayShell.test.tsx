@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { EverydayShell, type EverydayApprovalActions } from "./EverydayShell.js";
-import { seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
+import { ipopDogfoodEveryday, seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
 import { EVERYDAY } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
@@ -148,6 +148,17 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(buttons.length).toBeGreaterThan(0);
     fireEvent.click(buttons[0]!);
     expect(onConnectorConnect).toHaveBeenCalled();
+  });
+
+  it("routes public dashboard connector actions to the workspace instead of rendering no-op buttons", () => {
+    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
+    const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
+
+    const links = within(setup).getAllByRole("link", { name: EVERYDAY.connectors.publicAction });
+    expect(links.length).toBeGreaterThan(0);
+    expect(links.every((link) => link.getAttribute("href") === "/everyday")).toBe(true);
+    expect(within(setup).getAllByText(EVERYDAY.connectors.publicHint).length).toBeGreaterThan(0);
+    expect(within(setup).queryByRole("button", { name: /connect|set up iMessage|notify me/i })).not.toBeInTheDocument();
   });
 });
 

@@ -218,7 +218,7 @@ function ConnectorSetup({
   onConnect,
 }: {
   connectors: readonly EverydayConnector[];
-  onConnect: (id: string) => void;
+  onConnect?: (id: string) => void;
 }): React.JSX.Element {
   const c = EVERYDAY.connectors;
   const groups = (["visibility", "productivity", "marketing", "publishing"] as const)
@@ -250,10 +250,17 @@ function ConnectorSetup({
                   </div>
                   {item.status === "connected" ? (
                     <span className="everyday-connector__badge">{c.connected}</span>
-                  ) : (
+                  ) : onConnect ? (
                     <button type="button" className="everyday-connector__link" onClick={() => onConnect(item.id)}>
                       {item.actionLabel}
                     </button>
+                  ) : (
+                    <div className="everyday-connector__public">
+                      <a className="everyday-connector__link" href="/everyday">
+                        {c.publicAction}
+                      </a>
+                      <span>{c.publicHint}</span>
+                    </div>
                   )}
                 </li>
               ))}
@@ -614,7 +621,7 @@ export function EverydayShell({
   data = emptyEverydayData(),
   hour = 14,
   approvalActions = defaultEverydayApprovalActions,
-  onConnectorConnect = () => undefined,
+  onConnectorConnect,
   onStartRoom,
   dashboardFirst = false,
 }: {
