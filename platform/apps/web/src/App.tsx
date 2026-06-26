@@ -8,7 +8,7 @@ import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
-import { seedEveryday } from "./components/everyday/everyday-data.js";
+import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
 import { navigate, useRoute } from "./routing.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
@@ -60,7 +60,7 @@ export function App(): React.JSX.Element {
 
   // The homepage Dashboard icon should not dump visitors into the auth wall. It opens a concise work
   // summary immediately; signed-in work still uses live data at /everyday.
-  if (DASHBOARD_PATH.test(path)) return <EverydayShell data={seedEveryday()} dashboardFirst />;
+  if (DASHBOARD_PATH.test(path)) return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
 
   // The theater needs a session (workspace-scoped stream), so it lives inside the auth boundary.
   if (THEATER_PATH.test(path)) {

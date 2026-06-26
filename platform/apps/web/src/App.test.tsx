@@ -88,7 +88,8 @@ describe("App root routing", () => {
     );
 
     expect(await screen.findByRole("region", { name: "work summary" })).toHaveAttribute("id", "dashboard");
-    expect(screen.getByText("first campaign platform")).toBeInTheDocument();
+    expect(screen.getByText("work summary dashboard")).toBeInTheDocument();
+    expect(screen.getByText("PR #1276")).toBeInTheDocument();
     expect(screen.queryByText(/Sign in with Google/i)).not.toBeInTheDocument();
   });
 });
