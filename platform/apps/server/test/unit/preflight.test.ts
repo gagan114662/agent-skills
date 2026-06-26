@@ -198,6 +198,77 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.checks.find((c) => c.name === "workspace-writable")).toBeUndefined();
   });
 
+  it("Google OAuth preflight is skipped when not required and completely absent, keeping local/dev green (#1262)", () => {
+    const report = preflight(
+      input({ profile: "dev", runtime: "local", harness: "demo", env: {} }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    expect(report.checks.find((c) => c.name === "google-oauth")).toBeUndefined();
+    expect(report.ok).toBe(true);
+  });
+
+  it("Google OAuth preflight fails the release gate when admission requires it but config is absent (#1262)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {},
+        googleOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "google-oauth");
+    expect(check?.status).toBe("fail");
+    expect(check?.message).toContain("GOOGLE_OAUTH_CLIENT_ID");
+    expect(check?.message).toContain("GOOGLE_OAUTH_CLIENT_SECRET");
+    expect(check?.message).toContain("GOOGLE_OAUTH_REDIRECT_URI");
+    expect(check?.remedy).toContain("GOOGLE_OAUTH_CLIENT_ID");
+    expect(report.ok).toBe(false);
+  });
+
+  it("Google OAuth preflight warns on partial config even when the release gate is not required (#1262)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_ID",
+          GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+        },
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "google-oauth");
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("GOOGLE_OAUTH_CLIENT_SECRET");
+    expect(report.ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_ID");
+    expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai/auth/google/callback");
+  });
+
+  it("Google OAuth preflight passes when the full deployment trio is present (#1262)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: "client",
+          GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+          GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+        },
+        googleOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    expect(report.checks.find((c) => c.name === "google-oauth")?.status).toBe("pass");
+    expect(report.ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("client");
+    expect(JSON.stringify(report)).not.toContain("secret");
+  });
+
   it("never returns a secret VALUE — only variable names + statuses", () => {
     const report = preflight(
       input({

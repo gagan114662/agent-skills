@@ -181,6 +181,9 @@ export function defaultPreflight(): PreflightReport {
     env: process.env,
     browserEnabled,
     workspaceRoot,
+    googleOAuthRequired:
+      process.env.RELOAD_REQUIRE_GOOGLE_OAUTH === "1" ||
+      process.env.RELOAD_REQUIRE_GOOGLE_OAUTH === "true",
   });
 }
 
