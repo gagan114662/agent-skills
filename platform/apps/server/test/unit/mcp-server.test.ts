@@ -7,6 +7,10 @@ import { createReloadMcpServer, MENTIONS_URI } from "../../src/mcp/server.js";
 import type { RealtimeSubscriptions } from "../../src/mcp/realtime-subscriptions.js";
 import type { OutboundEmailSubmitter } from "../../src/email/agent-outbound.js";
 import type { Identity } from "../../src/auth/identity.js";
+import type { BrowserSessionOpener } from "../../src/runtime/browser/agent-bridge.js";
+import type { BrowserCaps } from "../../src/runtime/browser/caps.js";
+import type { BrowserStepResult } from "../../src/runtime/browser/session.js";
+import type { BrowserToolName } from "../../src/runtime/browser/tools.js";
 
 /**
  * Unit coverage for the #10 MCP server *shape* — hermetic (no Postgres, no Redis). It connects an
@@ -57,9 +61,10 @@ function fakeRealtime(): { realtime: RealtimeSubscriptions; fireMention: () => v
 async function connectPair(
   realtime: RealtimeSubscriptions,
   outboundEmail?: OutboundEmailSubmitter,
+  browser?: Parameters<typeof createReloadMcpServer>[1]["browser"],
 ): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = createReloadMcpServer(identity, { logger: silentLogger, realtime, outboundEmail });
+  const server = createReloadMcpServer(identity, { logger: silentLogger, realtime, outboundEmail, browser });
   const client = new Client({ name: "test", version: "1.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return client;
@@ -85,6 +90,59 @@ const TOOL_NAMES = [
   "send_through_channel",
 ];
 
+const ENABLED_BROWSER_CAPS: BrowserCaps = {
+  enabled: true,
+  maxPages: 0,
+  maxWallClockSeconds: 0,
+  maxBandwidthBytes: 0,
+  allowlist: [],
+  denylist: [],
+};
+
+const DISABLED_BROWSER_CAPS: BrowserCaps = { ...ENABLED_BROWSER_CAPS, enabled: false };
+
+function browserResult(tool: BrowserToolName, url: string | null = "https://example.com"): BrowserStepResult {
+  return {
+    ok: true,
+    tool,
+    decision: "allow",
+    reason: "allowed",
+    url,
+    approvalRequestId: null,
+    screenshotPath: "memory://shot.png",
+  };
+}
+
+function fakeBrowserManager(): {
+  manager: BrowserSessionOpener;
+  open: ReturnType<typeof vi.fn>;
+  click: ReturnType<typeof vi.fn>;
+} {
+  const click = vi.fn().mockResolvedValue({
+    ok: false,
+    tool: "click",
+    decision: "needs_approval",
+    reason: "awaiting human approval (#13)",
+    url: "https://example.com",
+    approvalRequestId: "pending-1",
+    screenshotPath: null,
+  } satisfies BrowserStepResult);
+  const session = {
+    navigate: vi.fn().mockImplementation((url: string) => Promise.resolve(browserResult("navigate", url))),
+    readPage: vi.fn().mockResolvedValue({
+      ...browserResult("read_page"),
+      page: { url: "https://example.com", title: "Example", text: "hello" },
+    } satisfies BrowserStepResult),
+    takeScreenshot: vi.fn().mockResolvedValue({ ...browserResult("screenshot"), screenshot: "base64" }),
+    scroll: vi.fn().mockResolvedValue(browserResult("scroll")),
+    wait: vi.fn().mockResolvedValue(browserResult("wait")),
+    click,
+    type: vi.fn().mockResolvedValue(browserResult("type")),
+  };
+  const open = vi.fn().mockResolvedValue(session);
+  return { manager: { open }, open, click };
+}
+
 describe("#10 MCP server (hermetic, in-memory transport)", () => {
   it("advertises the join-and-act tool catalog with input schemas", async () => {
     const client = await connectPair(fakeRealtime().realtime);
@@ -93,6 +151,49 @@ describe("#10 MCP server (hermetic, in-memory transport)", () => {
     expect(names).toEqual([...TOOL_NAMES].sort());
     // every tool publishes an input schema (an object schema, even if empty)
     for (const t of tools) expect(t.inputSchema?.type).toBe("object");
+    await client.close();
+  });
+
+  it("keeps browser tools out of the MCP catalog when the #388 bridge is absent or disabled", async () => {
+    const absent = await connectPair(fakeRealtime().realtime);
+    expect((await absent.listTools()).tools.map((t) => t.name)).not.toContain("navigate");
+    await absent.close();
+
+    const { manager } = fakeBrowserManager();
+    const disabled = await connectPair(fakeRealtime().realtime, undefined, {
+      manager,
+      caps: DISABLED_BROWSER_CAPS,
+      sessionId: "browser-disabled",
+    });
+    expect((await disabled.listTools()).tools.map((t) => t.name)).not.toContain("navigate");
+    await disabled.close();
+  });
+
+  it("registers the #388 browser bridge into live MCP and routes side effects through approval", async () => {
+    const fake = fakeBrowserManager();
+    const client = await connectPair(fakeRealtime().realtime, undefined, {
+      manager: fake.manager,
+      caps: ENABLED_BROWSER_CAPS,
+      sessionId: "browser-live",
+      target: "https://example.com",
+    });
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["navigate", "read_page", "screenshot", "scroll", "wait", "click", "type"]));
+
+    const nav = await client.callTool({ name: "navigate", arguments: { url: "https://example.com" } });
+    expect(nav.isError).toBeFalsy();
+    expect(fake.open).toHaveBeenCalledWith({
+      workspaceId: identity.workspaceId,
+      sessionId: "browser-live",
+      target: "https://example.com",
+    });
+
+    const click = await client.callTool({ name: "click", arguments: { selector: "button[type=submit]" } });
+    expect(click.isError).toBeFalsy();
+    const payload = JSON.parse((click.content as { text: string }[])[0]!.text);
+    expect(payload.decision).toBe("needs_approval");
+    expect(payload.approvalRequestId).toBe("pending-1");
+    expect(fake.click).toHaveBeenCalledWith("button[type=submit]");
     await client.close();
   });
 

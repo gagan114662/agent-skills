@@ -7,6 +7,8 @@ import type { Identity } from "../auth/identity.js";
 import { newId } from "../db/id.js";
 import { createReloadMcpServer } from "./server.js";
 import type { RealtimeSubscriptions } from "./realtime-subscriptions.js";
+import type { BrowserSessionOpener } from "../runtime/browser/agent-bridge.js";
+import type { BrowserCaps } from "../runtime/browser/caps.js";
 
 /**
  * The MCP transport endpoint (#10, ADR-0010 decisions 3–4): a **stateful Streamable HTTP** server at
@@ -20,6 +22,15 @@ import type { RealtimeSubscriptions } from "./realtime-subscriptions.js";
 export interface McpRoutesOptions {
   /** Realtime source for resource-update pushes; injected in tests. Defaults to the Redis bus. */
   realtime?: RealtimeSubscriptions;
+  /**
+   * Optional #388 browser bridge. Default absent/disabled, so production does not expose computer-use
+   * tools unless the deploy explicitly wires a manager + enabled caps.
+   */
+  browser?: {
+    manager: BrowserSessionOpener;
+    caps: BrowserCaps;
+    target?: string;
+  };
 }
 
 /** A live session: its transport plus the member it was opened for (session-binding guard). */
@@ -83,6 +94,12 @@ export async function mcpRoutes(app: FastifyInstance, opts: McpRoutesOptions = {
         const server = createReloadMcpServer(identity, {
           logger: app.log,
           realtime: opts.realtime,
+          browser: opts.browser
+            ? {
+                ...opts.browser,
+                sessionId: `mcp-browser-${transport.sessionId ?? newId()}`,
+              }
+            : undefined,
         });
         await server.connect(transport);
         await transport.handleRequest(req.raw, reply.raw, req.body);
