@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
 import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
+import { APP_ROUTES } from "../../routing.js";
 import type {
   ConnectResult,
   ConnectTool,
@@ -90,8 +91,8 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 }
 
 function expectPublicLinks(): void {
-  expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", "/terms");
-  expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", "/privacy");
+  expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", APP_ROUTES.terms);
+  expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", APP_ROUTES.privacy);
   expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute(
     "href",
     SUPPORT_CONTACT.href,
@@ -135,7 +136,7 @@ describe("OnboardingExperience (#784)", () => {
 
     expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", APP_ROUTES.dashboard);
   });
 
   it("keeps the post-start experience in the simple icon shell instead of the old brochure nav", async () => {
@@ -149,7 +150,7 @@ describe("OnboardingExperience (#784)", () => {
     expect(await screen.findByRole("article", { name: /instant personalized deliverable/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", APP_ROUTES.dashboard);
     expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Pricing" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Company" })).not.toBeInTheDocument();
@@ -221,12 +222,27 @@ describe("OnboardingExperience (#784)", () => {
       target: { value: "acme.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /start/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /text the team in imessage/i }));
+    fireEvent.click(await screen.findByRole("link", { name: /text the team in imessage/i }));
 
     expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
+  });
+
+  it("uses a native iMessage URL for the live first-result handoff", async () => {
+    render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+
+    expect(await screen.findByRole("link", { name: /text the team in imessage/i })).toHaveAttribute(
+      "href",
+      "imessage://",
+    );
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
   it("lets a new user approve the first result without opening settings or connectors (#525)", async () => {

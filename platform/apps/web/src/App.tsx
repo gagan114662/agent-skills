@@ -9,7 +9,7 @@ import { OnboardingExperience } from "./components/onboarding/OnboardingExperien
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
-import { navigate, useRoute } from "./routing.js";
+import { APP_ROUTES, navigate, useRoute } from "./routing.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
  * needs no session (path-based, keeping the no-router shell). Everything else is the authed app. */
@@ -52,7 +52,7 @@ export function App(): React.JSX.Element {
   // #784: root `/` and `/welcome` are the product front door for everyone. Signed-in members still need to
   // see the marketing-icon homepage; the CTA takes them into the everyday room.
   if (WELCOME_PATH.test(path)) {
-    return <OnboardingExperience onEnterApp={() => navigate("/everyday")} />;
+    return <OnboardingExperience onEnterApp={() => navigate(APP_ROUTES.everyday)} />;
   }
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.

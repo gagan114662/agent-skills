@@ -12,6 +12,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { EverydayShell, type EverydayApprovalActions } from "./EverydayShell.js";
 import { ipopDogfoodEveryday, seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
 import { EVERYDAY } from "../../brand.js";
+import { APP_ROUTES } from "../../routing.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
 function emptyData(over: Partial<EverydayData> = {}): EverydayData {
@@ -156,7 +157,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     const links = within(setup).getAllByRole("link", { name: EVERYDAY.connectors.publicAction });
     expect(links.length).toBeGreaterThan(0);
-    expect(links.every((link) => link.getAttribute("href") === "/everyday")).toBe(true);
+    expect(links.every((link) => link.getAttribute("href") === APP_ROUTES.everyday)).toBe(true);
     expect(within(setup).getAllByText(EVERYDAY.connectors.publicHint).length).toBeGreaterThan(0);
     expect(within(setup).queryByRole("button", { name: /connect|set up iMessage|notify me/i })).not.toBeInTheDocument();
   });

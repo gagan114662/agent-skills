@@ -18,6 +18,7 @@ import { useState } from "react";
 import { api } from "../../api/client.js";
 import { EVERYDAY } from "../../brand.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
+import { APP_ROUTES } from "../../routing.js";
 import {
   type ApprovalCard,
   type Deliverable,
@@ -256,7 +257,7 @@ function ConnectorSetup({
                     </button>
                   ) : (
                     <div className="everyday-connector__public">
-                      <a className="everyday-connector__link" href="/everyday">
+                      <a className="everyday-connector__link" href={APP_ROUTES.everyday}>
                         {c.publicAction}
                       </a>
                       <span>{c.publicHint}</span>
