@@ -1180,6 +1180,30 @@ export const CONSOLE = {
   legend: { caption: "edge colour = department" },
   /** Fleet-health dot copy (header). */
   health: { healthy: "fleet healthy", attention: "needs a human" },
+  /** #521 workspace-home command center: one glance over live agents, spend, decisions, outcomes. */
+  commandCenter: {
+    region: "Mission-control command center",
+    eyebrow: "Mission control",
+    title: "The fleet, live",
+    loading: "Loading fleet",
+    idle: "Fleet idle",
+    degraded: "Fleet warming up",
+    live: (count: number): string => `${count} live`,
+    none: "none",
+    clear: "No fleet incidents asking for you.",
+    noAgents: "No agents are running right now.",
+    reliabilityTitle: "Reliability",
+    reliabilityClear: "No recent failures",
+    reliability: (rate: string, dominant: string): string => `${rate} failure rate · ${dominant}`,
+    agentsRegion: "Live agent statuses",
+    reliabilityRegion: "Fleet reliability",
+    metrics: {
+      throughput: "Throughput",
+      burn: "Burn",
+      decisions: "Decisions",
+      outcomes: "Outcomes",
+    },
+  },
   /**
    * Connection-health chip (#365) — the at-a-glance "is the fleet actually able to run?" signal in the
    * header. Shown only for the named owner workspace (default-OFF, owner-first via `connect-health-flag`).

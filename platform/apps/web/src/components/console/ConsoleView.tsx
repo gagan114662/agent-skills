@@ -78,6 +78,7 @@ import {
 import { VentureBriefPanel } from "./VentureBriefPanel.js";
 import { InboundLeadsPanel } from "./InboundLeadsPanel.js";
 import { ShortFormBlitzSurface } from "./ShortFormBlitzSurface.js";
+import { MissionCommandCenter } from "./MissionCommandCenter.js";
 import {
   SHORT_FORM_BLITZ_ENABLED,
   SHORT_FORM_BLITZ_OWNER_WORKSPACE_ID,
@@ -996,6 +997,13 @@ export function ConsoleView({
           <>
             {/* #235: the owner's always-present brief composer — point a lead at a goal and the board fills.
                 Replaces the passive "between tasks — @mention a lead" board with a real working control. */}
+            <MissionCommandCenter
+              mission={mc}
+              founder={fc}
+              pendingCount={pendingCount}
+              shippedCount={shipped.length}
+              agentLabel={(memberId) => authorLabel(directory, memberId)}
+            />
             <BriefComposer leads={CONSOLE.brief.leads} onBrief={briefLead} />
             {/* #387: brief ANY company idea into the #96 venture loop. Gated default-OFF owner-first — when
                 off (prod / non-owner) this never renders, so the board is byte-for-byte unchanged. */}
