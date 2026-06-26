@@ -998,6 +998,16 @@ export interface RecentFailureDto {
   endedAtMs: number | null;
 }
 
+/** Recent terminal-session reliability counters from mission-control (#394). */
+export interface MissionFailureBreakdownDto {
+  total: number;
+  succeeded: number;
+  failed: number;
+  failureRate: number;
+  byClass: Partial<Record<string, number>>;
+  dominantClass: string | null;
+}
+
 /** One persisted event in an agent run's append-only trace (#664). */
 export interface AgentTraceEventDto {
   id: string;
@@ -1047,6 +1057,8 @@ export interface MissionControlDto {
   diagnostic?: MissionDiagnosticDto;
   /** #230 recently-failed sessions with exit reasons — so a spawn-and-die fleet is visible, not silent. */
   recentFailures?: RecentFailureDto[];
+  /** #394 per-class failure rate for the recent terminal-session window. */
+  failureBreakdown?: MissionFailureBreakdownDto;
 }
 
 // --- marketing site (CMS-lite, #153) ---
