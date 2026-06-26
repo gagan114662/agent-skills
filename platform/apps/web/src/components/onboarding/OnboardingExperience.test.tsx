@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
-import { listPostMeta } from "../../blog/posts.js";
 import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 import type {
@@ -91,12 +90,6 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 }
 
 function expectPublicLinks(): void {
-  expect(screen.getAllByRole("link", { name: "Pricing" })[0]).toHaveAttribute("href", "/pricing");
-  expect(screen.getAllByRole("link", { name: "Company" })[0]).toHaveAttribute("href", "/company");
-  expect(screen.getAllByRole("link", { name: "Security & trust" })[0]).toHaveAttribute(
-    "href",
-    "/security",
-  );
   expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", "/terms");
   expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", "/privacy");
   expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute(
@@ -138,14 +131,31 @@ describe("OnboardingExperience (#784)", () => {
   });
 
   it("keeps finished-work proof behind the dashboard so the homepage stays clean (#571)", () => {
-    const [latestPost] = listPostMeta();
-    if (!latestPost) throw new Error("expected at least one published blog post for onboarding proof");
     render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
 
     expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
-    expect(latestPost).toBeDefined();
+  });
+
+  it("keeps the post-start experience in the simple icon shell instead of the old brochure nav", async () => {
+    render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+
+    expect(await screen.findByRole("article", { name: /instant personalized deliverable/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pricing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Company" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Watch live demo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
   });
 
   it("nudges (does not advance) on an empty submit", () => {

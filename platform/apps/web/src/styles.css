@@ -9247,75 +9247,6 @@ select:focus-visible {
   font-size: 13px;
   line-height: 1.4;
 }
-.onboard-proof {
-  grid-column: 1 / -1;
-  border: 1px solid color-mix(in srgb, var(--o-pop) 26%, var(--o-border));
-  border-radius: 18px;
-  padding: 16px;
-  background: #f5f0d8;
-  color: #161312;
-  display: grid;
-  grid-template-columns: 0.8fr 1fr;
-  gap: 12px;
-}
-.onboard-proof__head {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.onboard-proof__head strong {
-  color: #161312;
-  font-size: 14px;
-  line-height: 1.35;
-  font-weight: 500;
-}
-.onboard-proof__trail {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-.onboard-proof__trail li {
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 999px;
-  padding: 6px 8px;
-  color: #161312;
-  font-size: 11px;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.onboard-proof__list {
-  grid-column: 1 / -1;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.onboard-proof__list li {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.onboard-proof__list a {
-  color: #161312;
-  font-size: 13px;
-  line-height: 1.3;
-  text-decoration: none;
-}
-.onboard-proof__list a:hover {
-  color: var(--o-pop);
-}
-.onboard-proof__list span {
-  color: #5c554d;
-  font-size: 12px;
-}
-
 /* ---- the door: greeting + ONE input, nothing else ------------------------------------------ */
 .onboard-door {
   display: grid;
@@ -9990,9 +9921,6 @@ select:focus-visible {
     height: 62px;
     border-radius: 16px;
     font-size: 24px;
-  }
-  .onboard-proof {
-    grid-template-columns: 1fr;
   }
   .onboard-door__field,
   .onboard-card__actions,
