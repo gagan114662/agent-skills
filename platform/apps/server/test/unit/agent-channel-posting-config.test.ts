@@ -4,6 +4,7 @@ import {
   resolveAgentChannelPostingCaps,
   isAgentChannelPostingEnabledForWorkspace,
 } from "../../src/agent-channel-bridge/caps.js";
+import { isSyntheticSelfQaWorkspaceForAgentPosting } from "../../src/runtime/default.js";
 
 /**
  * #370 — the agent→channel posting flag flows through the layered config (#58) and resolves DEFAULT OFF,
@@ -84,5 +85,56 @@ describe("agent→channel posting config flag (#370)", () => {
     expect(
       isAgentChannelPostingEnabledForWorkspace({ ...caps, enabled: false }, "any-ws"),
     ).toBe(false);
+  });
+
+  it("allows the reserved synthetic self-QA workspace to observe agent replies (#1261)", async () => {
+    await expect(
+      isSyntheticSelfQaWorkspaceForAgentPosting("ws-selfqa", {
+        loadConfigForWorkspace: () =>
+          loadConfig("ws-selfqa", {
+            env: {},
+            readFile: (p) =>
+              p.endsWith("settings.toml")
+                ? ["[selfqa]", "enabled = true", 'workspaceSlug = "selfqa-system"', ""].join("\n")
+                : undefined,
+            repoPath: "/x/.reload/settings.toml",
+          }),
+        getWorkspaceBySlug: async (slug) =>
+          slug === "selfqa-system"
+            ? {
+                id: "ws-selfqa",
+                slug,
+                name: "Self QA",
+                timezone: "UTC",
+                billingEmail: null,
+                stripeCustomerId: null,
+              }
+            : undefined,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("does not extend the self-QA reply exception to ordinary tenants (#1261)", async () => {
+    await expect(
+      isSyntheticSelfQaWorkspaceForAgentPosting("real-tenant", {
+        loadConfigForWorkspace: () =>
+          loadConfig("real-tenant", {
+            env: {},
+            readFile: (p) =>
+              p.endsWith("settings.toml")
+                ? ["[selfqa]", "enabled = true", 'workspaceSlug = "selfqa-system"', ""].join("\n")
+                : undefined,
+            repoPath: "/x/.reload/settings.toml",
+          }),
+        getWorkspaceBySlug: async () => ({
+          id: "ws-selfqa",
+          slug: "selfqa-system",
+          name: "Self QA",
+          timezone: "UTC",
+          billingEmail: null,
+          stripeCustomerId: null,
+        }),
+      }),
+    ).resolves.toBe(false);
   });
 });

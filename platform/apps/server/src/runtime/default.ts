@@ -28,6 +28,7 @@ import {
 } from "./secrets-resolver.js";
 import { resolveCredentialMatrix } from "./credential-scope.js";
 import { getPersonaByAgentMember } from "../db/repositories/personas.js";
+import { getWorkspaceBySlug } from "../db/repositories/workspaces.js";
 import { getWorkspaceClaudeModel } from "../db/repositories/agent-credentials.js";
 import { resolveOnboardingCaps } from "../onboarding/caps.js";
 import { resolveAllServiceSecrets } from "../db/repositories/external-credentials.js";
@@ -43,6 +44,7 @@ import {
   isAgentChannelPostingEnabledForWorkspace,
   resolveAgentChannelPostingCaps,
 } from "../agent-channel-bridge/caps.js";
+import { resolveSelfqaCaps } from "../selfqa/caps.js";
 import { AutoModelResolver } from "./auto-model.js";
 import { HttpGatewayRoutingClient } from "./gateway-client.js";
 import { usageStore } from "../db/repositories/tenant-usage.js";
@@ -191,6 +193,21 @@ export function defaultPreflight(): PreflightReport {
 let _deliveryDispatcher: ReturnType<typeof buildDeliveryDispatcher> | undefined;
 function deliveryDispatcher(logger: SessionLogger): ReturnType<typeof buildDeliveryDispatcher> {
   return (_deliveryDispatcher ??= buildDeliveryDispatcher(createDefaultVerificationEngine(logger)));
+}
+
+export async function isSyntheticSelfQaWorkspaceForAgentPosting(
+  workspaceId: string,
+  deps: {
+    loadConfigForWorkspace?: typeof loadConfig;
+    getWorkspaceBySlug?: typeof getWorkspaceBySlug;
+  } = {},
+): Promise<boolean> {
+  const load = deps.loadConfigForWorkspace ?? loadConfig;
+  const lookup = deps.getWorkspaceBySlug ?? getWorkspaceBySlug;
+  const selfqa = resolveSelfqaCaps(load(workspaceId).selfqa);
+  if (!selfqa.enabled) return false;
+  const workspace = await lookup(selfqa.workspaceSlug);
+  return workspace?.id === workspaceId;
 }
 
 export function createDefaultSessionManager(
@@ -549,7 +566,12 @@ export function createDefaultSessionManager(
     postDeliverableMessage: async (e) => {
       if (!e.channelId) return;
       const caps = resolveAgentChannelPostingCaps(loadConfig(e.workspaceId).agentChannelPosting);
-      if (!isAgentChannelPostingEnabledForWorkspace(caps, e.workspaceId)) return;
+      if (
+        !isAgentChannelPostingEnabledForWorkspace(caps, e.workspaceId) &&
+        !(await isSyntheticSelfQaWorkspaceForAgentPosting(e.workspaceId))
+      ) {
+        return;
+      }
       const body = formatDeliverableMessage(e.task, e.result);
       if (!body) return;
       await channelPoster.post({
