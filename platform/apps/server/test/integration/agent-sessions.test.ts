@@ -14,7 +14,8 @@ import { newId } from "../../src/db/id.js";
 import { LocalRuntime } from "../../src/runtime/local.js";
 import { SessionManager, type SessionLogger } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
-import { dbStore, channelPoster } from "../../src/runtime/default.js";
+import { dbStore, channelPoster, isSyntheticSelfQaWorkspaceForAgentPosting } from "../../src/runtime/default.js";
+import { formatDeliverableMessage } from "../../src/runtime/outcome.js";
 import { harnessLineDecoder, type LineDecoder } from "../../src/runtime/stream-json.js";
 import { listOpen as listOpenRemediations, selfHealingStore } from "../../src/db/repositories/self-healing.js";
 import {
@@ -97,6 +98,8 @@ async function startApp(
   surface = false,
   /** #436: enable bounded inline retry of a transient pre-progress death (with a near-instant backoff). */
   retryMaxAttempts?: number,
+  /** #1261: wire the real deliverable-message posting path for the reserved synthetic QA workspace. */
+  syntheticSelfQaReplies = false,
 ): Promise<{
   app: FastifyInstance;
   http: string;
@@ -175,6 +178,27 @@ async function startApp(
           },
         }
       : {}),
+    ...(syntheticSelfQaReplies
+      ? {
+          postDeliverableMessage: async (e) => {
+            if (!e.channelId) return;
+            const allowed = await isSyntheticSelfQaWorkspaceForAgentPosting(e.workspaceId, {
+              loadConfigForWorkspace: () => ({
+                selfqa: { enabled: true, workspaceSlug: "selfqa-system" },
+              }) as ReturnType<import("../../src/config/loader.js").loadConfig>,
+            });
+            if (!allowed) return;
+            const body = formatDeliverableMessage(e.task, e.result);
+            if (!body) return;
+            await channelPoster.post({
+              workspaceId: e.workspaceId,
+              channelId: e.channelId,
+              agentMemberId: e.agentMemberId,
+              body,
+            });
+          },
+        }
+      : {}),
   });
   const app = buildApp({ sessionManager: manager });
   apps.push(app);
@@ -191,8 +215,8 @@ interface World {
 }
 
 /** Sign up a human in a fresh workspace, make a channel, register an agent. */
-async function seed(app: FastifyInstance): Promise<World> {
-  const slug = `as-${newId()}`;
+async function seed(app: FastifyInstance, workspaceSlug?: string): Promise<World> {
+  const slug = workspaceSlug ?? `as-${newId()}`;
   slugs.push(slug);
   const signup = await app.inject({
     method: "POST",
@@ -321,6 +345,42 @@ describe("cloud agent execution (real Postgres + Redis, LocalRuntime, no cloud)"
     const all = bodies.join("\n") + String(session.result);
     expect(all).not.toContain(SECRET);
     expect(bodies.some((b) => b.includes("agent: secret=‹redacted›"))).toBe(true);
+  });
+
+  it("posts the completed deliverable into the reserved self-QA channel so sessions-produce-replies can observe it (#1261)", async () => {
+    const { app } = await startApp(
+      COMPLETING_HARNESS,
+      { wallClockMs: 20_000, idleMs: 8_000 },
+      process.execPath,
+      false,
+      undefined,
+      false,
+      undefined,
+      true,
+    );
+    const w = await seed(app, "selfqa-system");
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+      payload: { agentMemberId: w.agentMemberId, task: "prove the agent replies" },
+    });
+    expect(launch.statusCode).toBe(202);
+
+    const session = await pollStatus(app, w, launch.json().id, (s) => s === "completed" || s === "failed");
+    expect(session.status).toBe("completed");
+
+    const messages = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/messages`,
+        cookies: { rid: w.cookie },
+      })
+    ).json() as { body: string }[];
+    const bodies = messages.map((m) => m.body);
+    expect(bodies.some((b) => b.includes("agent: task=prove the agent replies"))).toBe(true);
+    expect(bodies.some((b) => b.includes("kept working after the client left"))).toBe(true);
   });
 
   it("renders a failure mark (not a green check) when the harness binary can't be spawned (#166)", async () => {
