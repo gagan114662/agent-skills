@@ -8505,6 +8505,19 @@ select:focus-visible {
   cursor: pointer;
   font: inherit;
 }
+.everyday-connector__public {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  max-width: 150px;
+}
+.everyday-connector__public span {
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: right;
+}
 
 /* ---- North star: the only scoreboard that matters ------------------------ */
 .everyday-northstar__metrics {

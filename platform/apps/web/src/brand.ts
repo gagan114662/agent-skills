@@ -1596,6 +1596,8 @@ export const EVERYDAY = {
     subhead: "one messaging home for agent work. no WhatsApp, no Telegram, no fake green ticks.",
     connect: "connect",
     connected: "connected",
+    publicAction: "open workspace",
+    publicHint: "connectors need your workspace before they can run.",
     groups: {
       productivity: "productivity",
       visibility: "visibility",
