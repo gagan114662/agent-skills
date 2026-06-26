@@ -154,6 +154,34 @@ describe("ConsoleView", () => {
     expect(screen.getByRole("button", { name: /1 waiting on you/ })).toBeInTheDocument();
   });
 
+  it("opens the workspace home with a mission-control command center (#521)", async () => {
+    await mount({
+      mc: mcDto({
+        failureBreakdown: {
+          total: 10,
+          succeeded: 9,
+          failed: 1,
+          failureRate: 0.1,
+          byClass: { timeout: 1 },
+          dominantClass: "timeout",
+        },
+      }),
+    });
+
+    const center = await screen.findByRole("region", { name: CONSOLE.commandCenter.region });
+    expect(within(center).getByRole("heading", { name: CONSOLE.commandCenter.title })).toBeInTheDocument();
+    expect(within(center).getByText("1 live")).toBeInTheDocument();
+    expect(within(center).getByText("Atlas")).toBeInTheDocument();
+    expect(within(center).getByText("thinking")).toBeInTheDocument();
+    expect(within(center).getByText("12m 0s")).toBeInTheDocument();
+    expect(within(center).getAllByText("$0.84").length).toBeGreaterThan(0);
+    expect(within(center).getByText("Throughput")).toBeInTheDocument();
+    expect(within(center).getByText("3")).toBeInTheDocument();
+    expect(within(center).getByText("Decisions")).toBeInTheDocument();
+    expect(within(center).getByText("Outcomes")).toBeInTheDocument();
+    expect(within(center).getByText("10% failure rate · timeout")).toBeInTheDocument();
+  });
+
   it("turns the fleet-health signal red WITH the reason when self-healing escalates (#193 AC3)", async () => {
     await mount({
       fc: fcDto({
@@ -164,9 +192,7 @@ describe("ConsoleView", () => {
       }),
     });
     expect(await screen.findByText(CONSOLE.health.attention)).toBeInTheDocument();
-    expect(
-      screen.getByText(/self-healing incidents escalated/, { exact: false }),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/self-healing incidents escalated/, { exact: false }).length).toBeGreaterThan(0);
   });
 
   it("shows the approvals-clear moment when nothing is waiting", async () => {
