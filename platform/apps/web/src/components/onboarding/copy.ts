@@ -109,6 +109,8 @@ export const ONBOARD_COPY = {
     sectionTitle: "let's borrow your tools. one at a time, no funny business.",
     allow: "allow",
     allowing: "plugging in…",
+    skip: "skip for now",
+    skipNote: "carry on with the site read. accounts can come later.",
     unavailable: "not hooked up yet. we'd rather tell you than do a little theatre.",
     realConnections: "open real connections",
     /** Shown the instant a connection lands, above its real result. */
@@ -138,6 +140,8 @@ export const ONBOARD_COPY = {
     eyebrow: "your first real one",
     /** While we put it together. */
     building: "stitching it together from your actual accounts…",
+    buildingSiteOnly: "stitching it together from the site read…",
+    siteOnly: "site-read draft. connect real accounts before ipop drafts replies or queues anything to publish.",
     /** The "what happens if you say yes" line — honest, reassuring. */
     consequence: "say yes and this publishes. nothing's sent and nothing's charged.",
     /** The approve / reject pair. */
