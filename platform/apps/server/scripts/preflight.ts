@@ -9,7 +9,7 @@
  * cloud call and prints only variable names + statuses — never a secret value.
  */
 import { loadEnv } from "../src/env.js";
-import { preflight, type CheckResult } from "../src/runtime/preflight.js";
+import { googleOAuthRequiredForRelease, preflight, type CheckResult } from "../src/runtime/preflight.js";
 
 const ICON: Record<CheckResult["status"], string> = { pass: "✓", warn: "⚠", fail: "✗" };
 
@@ -20,6 +20,7 @@ function main(): void {
     runtime: env.runtime,
     harness: env.harness,
     env: process.env,
+    googleOAuthRequired: googleOAuthRequiredForRelease(env.profile, process.env),
   });
 
   process.stdout.write(

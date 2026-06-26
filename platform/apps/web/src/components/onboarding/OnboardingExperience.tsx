@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BRAND, SUPPORT_CONTACT } from "../../brand.js";
 import { googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
-import { navigate } from "../../routing.js";
+import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
 import {
@@ -48,9 +48,11 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
   { tool: "site", copy: ONBOARD_COPY.connect.site },
 ];
 
+const NATIVE_IMESSAGE_URL = "imessage://";
+
 const FOOTER_TRUST_LINKS = [
-  { href: "/terms", label: "Terms" },
-  { href: "/privacy", label: "Privacy" },
+  { href: APP_ROUTES.terms, label: "Terms" },
+  { href: APP_ROUTES.privacy, label: "Privacy" },
   { href: SUPPORT_CONTACT.href, label: "Contact" },
 ] as const;
 
@@ -169,6 +171,13 @@ export interface OnboardingExperienceProps {
    * using that provider for Gmail payoffs; the production default navigates to Google before claiming access.
    */
   startGoogleAuth?: (input: string) => void;
+  /**
+   * The public product experience is iMessage/workspace-first. Tests and connector-specific demos can still
+   * force the older guided connector walk-through so those real-connection seams stay covered.
+   */
+  connectMode?: "workspace" | "guided";
+  /** Opens the workspace/iMessage room after the first site-read result. */
+  onOpenWorkspace?: (target: string) => void;
 }
 
 /** Render one connect payoff — discriminated by tool, so each reads as the real thing it is. */
@@ -276,9 +285,9 @@ const MARKETING_ICON_ROW = [
 ] as const;
 
 const DOOR_ACTIONS = [
-  { key: "login", mark: "◎", label: "Login", href: "/everyday" },
+  { key: "login", mark: "◎", label: "Login", href: APP_ROUTES.everyday },
   { key: "love", mark: "♡", label: "Love", href: "#onboard-target" },
-  { key: "dashboard", mark: "▦", label: "Dashboard", href: "/dashboard" },
+  { key: "dashboard", mark: "▦", label: "Dashboard", href: APP_ROUTES.dashboard },
   { key: "start", mark: "●", label: "Start", href: "#onboard-target" },
 ] as const;
 
@@ -315,7 +324,9 @@ function DoorActions(): React.JSX.Element {
 export function OnboardingExperience(props: OnboardingExperienceProps): React.JSX.Element {
   const provider = props.provider ?? createDefaultProvider();
   const hour = props.hour ?? new Date().getHours();
-  const onEnterApp = props.onEnterApp ?? (() => navigate("/"));
+  const onEnterApp = props.onEnterApp ?? (() => navigate(APP_ROUTES.home));
+  const onOpenWorkspace = props.onOpenWorkspace;
+  const connectMode = props.connectMode ?? (props.provider ? "guided" : "workspace");
   const startGoogleAuth =
     props.startGoogleAuth ??
     (props.provider
@@ -431,7 +442,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   return (
     <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
       <header className="onboard__nav">
-        <a href="/" className="onboard__brand" aria-label={BRAND.name}>
+        <a href={APP_ROUTES.home} className="onboard__brand" aria-label={BRAND.name}>
           {BRAND.name}
         </a>
         <DoorActions />
@@ -516,13 +527,27 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                     approving={shipping}
                     onApprove={() => void approve()}
                   />
-                  <button
-                    className="onboard-cta onboard-cta--ghost"
-                    type="button"
-                    onClick={() => setPhase("connect")}
-                  >
-                    {ONBOARD_COPY.reading.next}
-                  </button>
+                  {connectMode === "guided" ? (
+                    <button
+                      className="onboard-cta onboard-cta--ghost"
+                      type="button"
+                      onClick={() => setPhase("connect")}
+                    >
+                      {ONBOARD_COPY.reading.next}
+                    </button>
+                  ) : (
+                    <a
+                      className="onboard-cta onboard-cta--ghost"
+                      href={NATIVE_IMESSAGE_URL}
+                      onClick={(event) => {
+                        if (!onOpenWorkspace) return;
+                        event.preventDefault();
+                        onOpenWorkspace(input);
+                      }}
+                    >
+                      {ONBOARD_COPY.reading.openRoom}
+                    </a>
+                  )}
                 </>
               )}
             </section>

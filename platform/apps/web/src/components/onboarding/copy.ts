@@ -99,6 +99,8 @@ export const ONBOARD_COPY = {
     error: "couldn't get into your site just now. give it another go, or try a different url.",
     /** Move on to the magic. */
     next: "nice. now let's plug in your actual stuff →",
+    /** Live default: move the user into the iMessage-first workspace room instead of a connector theater. */
+    openRoom: "text the team in iMessage →",
   },
 
   /**

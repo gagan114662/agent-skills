@@ -12,8 +12,8 @@
  *     streaming output back through the runtime. Requires the `claude` binary + auth in the
  *     execution environment (the host for LocalRuntime, the image for SandboxRuntime).
  *   - `codex`: the real OpenAI Codex CLI in its non-interactive `exec --json` mode against the task,
- *     streaming JSON events back through the runtime. Requires the `codex` binary + `OPENAI_API_KEY`
- *     (resolved through the #25 SecretsResolver and injected as runtime env — never in argv).
+ *     streaming JSON events back through the runtime. Public room launches must pass the signed-in
+ *     subscription gate first; the product must never substitute a raw API key for owner subscription auth.
  *
  * The spec returned here plugs straight into the existing `{ command, args }` contract consumed by
  * `SessionManager`/`AgentRuntime`, so selecting a harness changes no other code path. A session may
@@ -180,11 +180,10 @@ function claudeFastSpec(opts: HarnessOptions): HarnessSpec {
  * - `--full-auto` lets the agent actually edit files in the session workspace without approval
  *   prompts (the runtime — SandboxRuntime — is the isolation boundary for untrusted code).
  *
- * Auth is `OPENAI_API_KEY`, resolved per tenant through the #25 SecretsResolver and injected as
- * runtime env (read by codex natively). It NEVER appears in argv, so it cannot be logged from the
- * command line. Model selection rides the same env seam as the task — an env-gated `--model` flag
- * that references `$CODEX_MODEL` (double-quoted, like `$AGENT_TASK`); when unset the flag vanishes
- * and codex falls back to its own default.
+ * Auth is intentionally NOT modeled here as `OPENAI_API_KEY`: public room launches are gated before this
+ * spec is selected unless the workspace has connected signed-in Codex subscription auth. Model selection
+ * rides the same env seam as the task — an env-gated `--model` flag that references `$CODEX_MODEL`
+ * (double-quoted, like `$AGENT_TASK`); when unset the flag vanishes and codex falls back to its own default.
  */
 function codexSpec(opts: HarnessOptions): HarnessSpec {
   const bin = opts.codexBin ?? "codex";

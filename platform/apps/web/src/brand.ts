@@ -1618,14 +1618,25 @@ export const EVERYDAY = {
 
   /** One-icon dashboard from the homepage: concise summary of agent work done. */
   dashboard: {
-    heading: "work summary",
-    subhead: "what the team has done, what's waiting on you, and where the receipts live.",
-    activeAgents: "agents active",
-    deliverables: "drafts made",
-    approvals: "need your yes",
-    receipts: "receipts",
-    latest: "latest work",
-    empty: "nothing done yet. text the team and this fills itself in.",
+    heading: "CMO brief",
+    subhead: "pipeline, channel truth, spend, blockers, and the next moves. busywork can sit outside.",
+    sample: "sample readout",
+    live: "live workspace",
+    goalTarget: "target",
+    pace: "pace",
+    funnel: "growth funnel",
+    channels: "channel performance",
+    blockers: "blocked",
+    decisions: "needs your call",
+    next: "next best actions",
+    latest: "proof + receipts",
+    empty: "nothing measurable yet. text the team and this fills itself in.",
+    source: "source",
+    status: "status",
+    pipeline: "pipeline",
+    conversion: "conversion",
+    spend: "spend",
+    move: "next move",
   },
 
   /** Calm thread where work lands inline. */

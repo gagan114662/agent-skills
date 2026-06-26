@@ -12,6 +12,14 @@ import { useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 
 const listeners = new Set<() => void>();
 
+export const APP_ROUTES = {
+  home: "/",
+  everyday: "/everyday",
+  dashboard: "/dashboard",
+  terms: "/terms",
+  privacy: "/privacy",
+} as const;
+
 function path(): string {
   return window.location.pathname;
 }

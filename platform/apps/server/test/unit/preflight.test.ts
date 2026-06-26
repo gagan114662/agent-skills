@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  googleOAuthRequiredForRelease,
   preflight,
   PreflightError,
   type PreflightDeps,
@@ -227,6 +228,13 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.ok).toBe(false);
   });
 
+  it("requires Google OAuth by default for prod release gates (#1288)", () => {
+    expect(googleOAuthRequiredForRelease("prod", {})).toBe(true);
+    expect(googleOAuthRequiredForRelease("dev", {})).toBe(false);
+    expect(googleOAuthRequiredForRelease("dev", { RELOAD_REQUIRE_GOOGLE_OAUTH: "true" })).toBe(true);
+    expect(googleOAuthRequiredForRelease("dev", { RELOAD_REQUIRE_GOOGLE_OAUTH: "1" })).toBe(true);
+  });
+
   it("Google OAuth preflight warns on partial config even when the release gate is not required (#1262)", () => {
     const report = preflight(
       input({
@@ -237,6 +245,7 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
           GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_ID",
           GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
         },
+        googleOAuthRequired: false,
       }),
       { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
     );

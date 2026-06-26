@@ -12,6 +12,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { EverydayShell, type EverydayApprovalActions } from "./EverydayShell.js";
 import { ipopDogfoodEveryday, seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
 import { EVERYDAY } from "../../brand.js";
+import { APP_ROUTES } from "../../routing.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
 function emptyData(over: Partial<EverydayData> = {}): EverydayData {
@@ -41,7 +42,7 @@ function approvalActions(): EverydayApprovalActions & {
 describe("EverydayShell — north star (#630)", () => {
   it("defaults to an honest empty live state, not the demo seed (#1181)", () => {
     render(<EverydayShell />);
-    expect(screen.getByText("$0")).toBeInTheDocument();
+    expect(screen.getAllByText("$0").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Dana/i)).not.toBeInTheDocument();
   });
@@ -64,8 +65,8 @@ describe("EverydayShell — north star (#630)", () => {
     render(<EverydayShell data={seedEveryday()} />);
     expect(screen.getByText(EVERYDAY.northStar.customersLabel)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.northStar.revenueLabel)).toBeInTheDocument();
-    expect(screen.getByText("$2,480")).toBeInTheDocument();
-    expect(screen.getByText("14")).toBeInTheDocument();
+    expect(screen.getAllByText("$2,480").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("14").length).toBeGreaterThan(0);
   });
 
   it("reads the zero-customer state in voice, not as a failure", () => {
@@ -118,17 +119,21 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
   });
 
-  it("shows the dashboard summary of agent work and receipts", () => {
+  it("shows a CMO-style dashboard brief with pipeline, channels, blockers, and receipts", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
     expect(dashboard).toHaveAttribute("id", "dashboard");
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.activeAgents)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.deliverables)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.approvals)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.receipts)).toBeInTheDocument();
-    expect(within(dashboard).getByText("first campaign platform")).toBeInTheDocument();
-    expect(within(dashboard).getAllByText("2").length).toBeGreaterThanOrEqual(2);
-    expect(within(dashboard).getByText("5")).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.funnel)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.blockers)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
+    expect(within(dashboard).getByText("customers")).toBeInTheDocument();
+    expect(within(dashboard).getByText("qualified")).toBeInTheDocument();
+    expect(within(dashboard).getByText("customer goal")).toBeInTheDocument();
+    expect(within(dashboard).getByText("briefed")).toBeInTheDocument();
+    expect(within(dashboard).getByText("workspace")).toBeInTheDocument();
+    expect(within(dashboard).getByText(/needs CMO metrics feed/i)).toBeInTheDocument();
   });
 
   it("shows iMessage as the only messaging setup lane", () => {
@@ -156,7 +161,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     const links = within(setup).getAllByRole("link", { name: EVERYDAY.connectors.publicAction });
     expect(links.length).toBeGreaterThan(0);
-    expect(links.every((link) => link.getAttribute("href") === "/everyday")).toBe(true);
+    expect(links.every((link) => link.getAttribute("href") === APP_ROUTES.everyday)).toBe(true);
     expect(within(setup).getAllByText(EVERYDAY.connectors.publicHint).length).toBeGreaterThan(0);
     expect(within(setup).queryByRole("button", { name: /connect|set up iMessage|notify me/i })).not.toBeInTheDocument();
   });

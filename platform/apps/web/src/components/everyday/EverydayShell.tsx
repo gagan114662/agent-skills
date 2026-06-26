@@ -18,6 +18,7 @@ import { useState } from "react";
 import { api } from "../../api/client.js";
 import { EVERYDAY } from "../../brand.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
+import { APP_ROUTES } from "../../routing.js";
 import {
   type ApprovalCard,
   type Deliverable,
@@ -25,6 +26,7 @@ import {
   type EverydayConnector,
   type ExternalAction,
   type AgentLane,
+  type MarketingBrief,
   type NorthStar,
   type ThreadEntry,
   compactCount,
@@ -256,7 +258,7 @@ function ConnectorSetup({
                     </button>
                   ) : (
                     <div className="everyday-connector__public">
-                      <a className="everyday-connector__link" href="/everyday">
+                      <a className="everyday-connector__link" href={APP_ROUTES.everyday}>
                         {c.publicAction}
                       </a>
                       <span>{c.publicHint}</span>
@@ -426,42 +428,83 @@ function ApprovalQueue({
   );
 }
 
-function WorkSummary({
-  room,
-  thread,
-  approvals,
-  receipts,
-}: {
-  room: readonly AgentLane[];
-  thread: readonly ThreadEntry[];
-  approvals: readonly ApprovalCard[];
-  receipts: readonly ExternalAction[];
-}): React.JSX.Element {
+function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
   const d = EVERYDAY.dashboard;
-  const activeAgents = room.filter((lane) => lane.status === "working" || lane.status === "codex").length;
-  const deliverables = thread.filter((entry) => entry.kind === "deliverable").length;
-  const latest = thread.slice(-3).reverse();
-  const metrics = [
-    { label: d.activeAgents, value: activeAgents },
-    { label: d.deliverables, value: deliverables },
-    { label: d.approvals, value: approvals.length },
-    { label: d.receipts, value: receipts.length },
-  ];
+  const brief = data.marketingBrief ?? fallbackMarketingBrief(data);
+  const latest = data.transparency.slice(-3).reverse();
   return (
     <section id="dashboard" className="everyday-dashboard" aria-label={d.heading}>
       <div className="everyday-dashboard__head">
         <div>
+          <p className="everyday-dashboard__mode">{brief.mode === "sample" ? d.sample : d.live}</p>
           <h2 className="everyday-serif everyday-dashboard__heading">{d.heading}</h2>
           <p className="everyday-dashboard__subhead">{d.subhead}</p>
+          <p className="everyday-dashboard__headline">{brief.headline}</p>
+          <div className="everyday-dashboard__goal" data-confidence={brief.goal.confidence}>
+            <span>{brief.goal.label}</span>
+            <strong>{brief.goal.current}</strong>
+            <em>{d.goalTarget}: {brief.goal.target}</em>
+            <em>{d.pace}: {brief.goal.pace}</em>
+          </div>
         </div>
         <ol className="everyday-dashboard__metrics" aria-label={d.heading + " metrics"}>
-          {metrics.map((metric) => (
+          {brief.metrics.map((metric) => (
             <li key={metric.label} className="everyday-dashboard__metric">
               <strong>{metric.value}</strong>
               <span>{metric.label}</span>
+              <em data-tone={metric.tone}>{metric.detail}</em>
             </li>
           ))}
         </ol>
+      </div>
+      <div className="everyday-dashboard__funnel">
+        <p className="everyday-eyebrow">{d.funnel}</p>
+        <ol className="everyday-dashboard__funnel-list">
+          {brief.funnel.map((stage) => (
+            <li key={stage.label} data-tone={stage.tone}>
+              <strong>{stage.count}</strong>
+              <span>{stage.label}</span>
+              <em>{stage.detail}</em>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="everyday-dashboard__channels">
+        <p className="everyday-eyebrow">{d.channels}</p>
+        <div className="everyday-dashboard__table" role="table" aria-label={d.channels}>
+          <div className="everyday-dashboard__row everyday-dashboard__row--head" role="row">
+            <span role="columnheader">{d.source}</span>
+            <span role="columnheader">{d.status}</span>
+            <span role="columnheader">{d.pipeline}</span>
+            <span role="columnheader">{d.conversion}</span>
+            <span role="columnheader">{d.spend}</span>
+            <span role="columnheader">{d.move}</span>
+          </div>
+          {brief.channels.map((channel) => (
+            <div key={channel.source} className="everyday-dashboard__row" role="row">
+              <strong role="cell">{channel.source}</strong>
+              <span role="cell">{channel.status}</span>
+              <span role="cell">{channel.pipeline}</span>
+              <span role="cell">{channel.conversion}</span>
+              <span role="cell">{channel.spend}</span>
+              <span role="cell">{channel.next}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="everyday-dashboard__brief-lists">
+        <div>
+          <p className="everyday-eyebrow">{d.blockers}</p>
+          <BriefActionList actions={brief.blockers} empty={d.empty} />
+        </div>
+        <div>
+          <p className="everyday-eyebrow">{d.decisions}</p>
+          <BriefActionList actions={brief.decisions} empty={d.empty} />
+        </div>
+        <div>
+          <p className="everyday-eyebrow">{d.next}</p>
+          <BriefActionList actions={brief.nextActions} empty={d.empty} />
+        </div>
       </div>
       <div className="everyday-dashboard__latest">
         <p className="everyday-eyebrow">{d.latest}</p>
@@ -469,18 +512,132 @@ function WorkSummary({
           <p className="everyday-empty__line">{d.empty}</p>
         ) : (
           <ul className="everyday-dashboard__list">
-            {latest.map((entry) => (
-              <li key={entry.id}>
-                <span>{entry.agent}</span>
-                <strong>
-                  {entry.kind === "deliverable" ? entry.deliverable.title : entry.text}
-                </strong>
+            {latest.map((receipt) => (
+              <li key={receipt.id}>
+                <span>{receipt.at}</span>
+                <strong>{receipt.action}</strong>
+                <a href={receipt.href}>{receipt.receiptLabel ?? receipt.href}</a>
               </li>
             ))}
           </ul>
         )}
       </div>
     </section>
+  );
+}
+
+function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
+  const deliverables = data.thread.filter((entry) => entry.kind === "deliverable").length;
+  return {
+    mode: "live",
+    headline: "Live workspace data is present, but the marketing brief has not been wired to pipeline rows yet.",
+    goal: {
+      label: "customer goal",
+      target: data.northStar.customers > 0 ? String(data.northStar.customers) : "not set",
+      current: `${compactCount(data.northStar.customers)} customers`,
+      pace: data.northStar.trend === "up" ? "moving" : "no acquisition pace yet",
+      confidence: data.northStar.customers > 0 ? "medium" : "low",
+    },
+    metrics: [
+      {
+        label: "customers",
+        value: compactCount(data.northStar.customers),
+        detail: data.northStar.revenue,
+        tone: data.northStar.customers > 0 ? "good" : "bad",
+      },
+      { label: "qualified", value: "0", detail: "no lead qualification feed", tone: "bad" },
+      { label: "replies", value: "0", detail: "no reply feed connected", tone: "bad" },
+      {
+        label: "approvals",
+        value: String(data.approvals.length),
+        detail: "waiting on owner decisions",
+        tone: data.approvals.length > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "assets shipped",
+        value: String(deliverables),
+        detail: "thread deliverables only",
+        tone: deliverables > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "receipts",
+        value: String(data.transparency.length),
+        detail: "external action log",
+        tone: data.transparency.length > 0 ? "good" : "neutral",
+      },
+    ],
+    funnel: [
+      {
+        label: "briefed",
+        count: data.thread.length > 0 ? "1" : "0",
+        detail: data.thread.length > 0 ? "workspace thread has activity" : "no brief received",
+        tone: data.thread.length > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "assets",
+        count: String(deliverables),
+        detail: "thread deliverables",
+        tone: deliverables > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "approved",
+        count: String(data.approvals.length),
+        detail: "owner decisions waiting",
+        tone: data.approvals.length > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "sent",
+        count: String(data.transparency.length),
+        detail: "external receipts",
+        tone: data.transparency.length > 0 ? "good" : "bad",
+      },
+      {
+        label: "won",
+        count: compactCount(data.northStar.customers),
+        detail: data.northStar.revenue,
+        tone: data.northStar.customers > 0 ? "good" : "bad",
+      },
+    ],
+    channels: [
+      {
+        source: "workspace",
+        status: "needs CMO metrics feed",
+        pipeline: "not wired",
+        conversion: "—",
+        spend: data.northStar.revenue,
+        next: "connect acquisition, revenue, and approval data into this brief",
+      },
+    ],
+    blockers: [{ title: "CMO dashboard feed missing", owner: "Lens", proof: "using fallback metrics" }],
+    decisions: [{ title: "Set the customer goal this dashboard should pace against", owner: "You", proof: "no goal row found" }],
+    nextActions: [
+      {
+        title: "Wire lead, channel, spend, and conversion sources",
+        owner: "Operator",
+        proof: "replace fallbackMarketingBrief",
+      },
+    ],
+  };
+}
+
+function BriefActionList({
+  actions,
+  empty,
+}: {
+  actions: MarketingBrief["blockers"];
+  empty: string;
+}): React.JSX.Element {
+  if (actions.length === 0) return <p className="everyday-empty__line">{empty}</p>;
+  return (
+    <ul className="everyday-dashboard__actions">
+      {actions.map((action) => (
+        <li key={action.title}>
+          <strong>{action.title}</strong>
+          <span>{action.owner}</span>
+          <em>{action.proof}</em>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -702,12 +859,7 @@ export function EverydayShell({
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
       <main className="everyday-shell__main">
         {dashboardFirst && (
-          <WorkSummary
-            room={room}
-            thread={thread}
-            approvals={pending}
-            receipts={data.transparency}
-          />
+          <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
         )}
         <GroupChatHero
           greeting={greeting}
@@ -717,12 +869,7 @@ export function EverydayShell({
           onSubmit={startRoom}
         />
         {!dashboardFirst && (
-          <WorkSummary
-            room={room}
-            thread={thread}
-            approvals={pending}
-            receipts={data.transparency}
-          />
+          <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
         )}
         <ConnectorSetup connectors={data.connectors} onConnect={onConnectorConnect} />
         <NorthStarBar data={data.northStar} />

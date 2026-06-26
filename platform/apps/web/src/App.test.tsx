@@ -76,7 +76,7 @@ describe("App root routing", () => {
     expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
   });
 
-  it("opens the homepage dashboard as a public work-summary surface", async () => {
+  it("opens the homepage dashboard as a public CMO brief surface", async () => {
     navigate("/dashboard");
     const { deps } = makeFakeDeps({ me: unauthorized });
     const store = createStore({ api: deps.api, realtime: fakeRealtime() });
@@ -87,9 +87,11 @@ describe("App root routing", () => {
       </StoreProvider>,
     );
 
-    expect(await screen.findByRole("region", { name: "work summary" })).toHaveAttribute("id", "dashboard");
-    expect(screen.getByText("work summary dashboard")).toBeInTheDocument();
-    expect(screen.getByText("PR #1276")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "CMO brief" })).toHaveAttribute("id", "dashboard");
+    expect(screen.getByText("sample readout")).toBeInTheDocument();
+    expect(screen.getByText("leads found")).toBeInTheDocument();
+    expect(screen.getByText("channel performance")).toBeInTheDocument();
+    expect(screen.getAllByText("PR #1276").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Sign in with Google/i)).not.toBeInTheDocument();
   });
 });

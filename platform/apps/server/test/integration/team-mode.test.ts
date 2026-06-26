@@ -202,4 +202,45 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it("fails closed when the room requests Codex without a connected subscription (#1282)", async () => {
+    const { app } = await startApp(2);
+    const w = await seed(app, 1);
+
+    const status = await app.inject({
+      method: "GET",
+      url: "/me/codex/status",
+      cookies: { rid: w.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({ connected: false });
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: {
+        subtasks: [
+          {
+            agentMemberId: w.agentMemberIds[0],
+            task: "mine insights for ipop.ai",
+            branch: "ipop-scout",
+            harness: "codex",
+          },
+        ],
+      },
+    });
+
+    expect(launch.statusCode).toBe(409);
+    expect(launch.json()).toMatchObject({
+      code: "codex_subscription_not_connected",
+    });
+
+    const sessions = await app.inject({
+      method: "GET",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+    });
+    expect(sessions.json()).toEqual([]);
+  });
 });
