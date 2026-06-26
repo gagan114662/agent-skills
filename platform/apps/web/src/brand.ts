@@ -149,6 +149,16 @@ export const THEATER = {
   browserStatus: "HTTP",
   browserApproval: "Approval",
   browserNoApproval: "none",
+  /** #516: cinematic current-step stage above the lanes. */
+  heroRegion: "Live work theater",
+  heroEyebrow: "Now on the floor",
+  heroVerb: "is working on",
+  heroEmpty: "Waiting for the first move.",
+  currentStepRegion: "Current agent step",
+  currentStep: "Current step",
+  handoffLabel: "Handoff",
+  heroStatus: "Stream",
+  heroSteps: "Steps",
   /** Complete per-run trace affordance (#664). */
   openTrace: "Open trace",
   refreshTrace: "Refresh trace",

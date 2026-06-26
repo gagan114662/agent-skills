@@ -100,13 +100,48 @@ describe("TheaterView (#624)", () => {
     );
 
     // The lane appears with the agent name and the live work, rendered as plain text (content-as-data).
-    await waitFor(() => expect(screen.getByText("Mark")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Mark activity" })).toBeInTheDocument());
     expect(screen.getByText("I'll draft the launch post")).toBeInTheDocument();
     expect(screen.getByText("publish blog post")).toBeInTheDocument();
-    expect(screen.getByText("https://ipop.ai/blog/launch")).toBeInTheDocument();
+    expect(screen.getAllByText("https://ipop.ai/blog/launch").length).toBeGreaterThan(0);
+    expect(screen.getByRole("region", { name: "Live work theater" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Current agent step" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Mark is working on artifact/i })).toBeInTheDocument();
+    expect(screen.getByText("Current step")).toBeInTheDocument();
     // Live status + the working chip.
-    expect(screen.getByText(/Live/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Live");
     expect(screen.getByText(/Working/)).toBeInTheDocument();
+  });
+
+  it("promotes agent-to-agent handoffs into the live theater hero", async () => {
+    const { store } = renderWithStore(<TheaterView />);
+    await act(async () => {
+      await store.bootstrap();
+    });
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+    const src = FakeEventSource.instances[0]!;
+
+    act(() => src.onopen?.(null));
+    act(() => src.emit("run", { ...RUN, label: "Scout" }));
+    act(() =>
+      src.emit("event", {
+        id: "h1",
+        runId: "run-1",
+        seq: 1,
+        turn: 0,
+        type: "tool_call",
+        phase: "action",
+        label: "handoff_task",
+        summary: "handoff to Quill: turn this audience research into a launch post",
+        occurredAt: "2026-06-22T00:00:01.000Z",
+      }),
+    );
+
+    expect(await screen.findByRole("region", { name: "Live work theater" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Scout is working on action/i })).toBeInTheDocument();
+    expect(screen.getByText("Handoff")).toBeInTheDocument();
+    expect(screen.getByText("Scout to Quill")).toBeInTheDocument();
+    expect(screen.getAllByText(/handoff to Quill/i).length).toBeGreaterThan(0);
   });
 
   it("shows a live browser screen when an agent performs browser actions", async () => {
@@ -260,7 +295,7 @@ describe("TheaterView (#624)", () => {
     const src = FakeEventSource.instances[0]!;
 
     act(() => src.emit("run", RUN));
-    await waitFor(() => expect(screen.getByText("Mark")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Mark activity" })).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole("button", { name: "Open trace" }));
 
