@@ -181,15 +181,16 @@ class FakeReceiptStore implements ReceiptStore {
 }
 
 class FakeApprovalGate implements OutreachApprovalGate {
-  submitted: { summary: string; payload: Record<string, unknown> }[] = [];
+  submitted: { summary: string; payload: Record<string, unknown>; actionType?: string }[] = [];
   private seq = 0;
   async submit(input: {
     workspaceId: string;
     requesterMemberId: string;
     summary: string;
     payload: Record<string, unknown>;
+    actionType?: string;
   }): Promise<{ id: string }> {
-    this.submitted.push({ summary: input.summary, payload: input.payload });
+    this.submitted.push({ summary: input.summary, payload: input.payload, actionType: input.actionType });
     return { id: `appr-${++this.seq}` };
   }
 }
@@ -457,6 +458,68 @@ describe("OutreachService — trackable pay link in outreach (GAP 3/#899)", () =
     if (res.status !== "pending_approval") throw new Error("unreachable");
     const stored = messages.rows.find((m) => m.id === res.messageId)!;
     expect(stored.body).not.toContain("Start here:");
+  });
+});
+
+describe("OutreachService — per-surface browser playbooks (#1058)", () => {
+  it("drafts distinct Reddit/HN/LinkedIn/Product Hunt playbooks without submitting externally", () => {
+    const { service } = build();
+    const common = {
+      sessionId: "browser-session-1",
+      title: "How tiny teams keep launches moving",
+      body: "We wrote up the playbook after seeing a few founders get stuck between idea and launch.",
+      sourceUrl: "https://ipop.ai/playbooks/launch",
+    };
+
+    const reddit = service.draftSurfacePost({ ...common, surface: "reddit", community: "SaaS" });
+    const hn = service.draftSurfacePost({ ...common, surface: "hacker_news" });
+    const linkedin = service.draftSurfacePost({ ...common, surface: "linkedin" });
+    const productHunt = service.draftSurfacePost({ ...common, surface: "product_hunt" });
+
+    expect(reddit.targetUrl).toBe("https://www.reddit.com/r/SaaS/submit");
+    expect(hn.targetUrl).toBe("https://news.ycombinator.com/submit");
+    expect(linkedin.targetUrl).toBe("https://www.linkedin.com/feed/");
+    expect(productHunt.targetUrl).toBe("https://www.producthunt.com/posts/new");
+    for (const playbook of [reddit, hn, linkedin, productHunt]) {
+      expect(playbook.steps.map((s) => s.kind)).toEqual(["read", "write", "submit"]);
+      expect(playbook.submit.tool).toBe("click");
+      expect(playbook.steps.at(-1)?.instruction).toMatch(/approval/i);
+    }
+  });
+
+  it("stages the final submit as a pending browser.action approval with the exact click payload", async () => {
+    const { service, approvals, messages } = build();
+
+    const result = await service.stageSurfacePost("ws-1", {
+      surface: "product_hunt",
+      sessionId: "browser-session-99",
+      title: "ipop",
+      body: "An autonomous marketing engine that keeps working until the first customer conversation.",
+      sourceUrl: "https://ipop.ai",
+      requesterMemberId: "mem-1",
+    });
+
+    expect(result.status).toBe("pending_approval");
+    expect(result.approvalRequestId).toBe("appr-1");
+    expect(approvals.submitted).toHaveLength(1);
+    expect(approvals.submitted[0]).toMatchObject({
+      actionType: "browser.action",
+      summary: "Submit Product Hunt launch: ipop",
+    });
+    expect(approvals.submitted[0].payload).toMatchObject({
+      source: "outreach.surface_playbook",
+      surface: "product_hunt",
+      sessionId: "browser-session-99",
+      tool: "click",
+      target: "https://www.producthunt.com/posts/new",
+      humanGate: true,
+    });
+    expect(approvals.submitted[0].payload.draft).toMatchObject({
+      title: "ipop",
+      sourceUrl: "https://ipop.ai/",
+    });
+    // Staging a browser-session post never creates/sends an outreach message row; it only parks approval.
+    expect(messages.rows).toHaveLength(0);
   });
 });
 
