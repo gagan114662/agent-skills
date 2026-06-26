@@ -419,6 +419,64 @@ function ApprovalQueue({
   );
 }
 
+function WorkSummary({
+  room,
+  thread,
+  approvals,
+  receipts,
+}: {
+  room: readonly AgentLane[];
+  thread: readonly ThreadEntry[];
+  approvals: readonly ApprovalCard[];
+  receipts: readonly ExternalAction[];
+}): React.JSX.Element {
+  const d = EVERYDAY.dashboard;
+  const activeAgents = room.filter((lane) => lane.status === "working" || lane.status === "codex").length;
+  const deliverables = thread.filter((entry) => entry.kind === "deliverable").length;
+  const latest = thread.slice(-3).reverse();
+  const metrics = [
+    { label: d.activeAgents, value: activeAgents },
+    { label: d.deliverables, value: deliverables },
+    { label: d.approvals, value: approvals.length },
+    { label: d.receipts, value: receipts.length },
+  ];
+  return (
+    <section id="dashboard" className="everyday-dashboard" aria-label={d.heading}>
+      <div className="everyday-dashboard__head">
+        <div>
+          <h2 className="everyday-serif everyday-dashboard__heading">{d.heading}</h2>
+          <p className="everyday-dashboard__subhead">{d.subhead}</p>
+        </div>
+        <ol className="everyday-dashboard__metrics" aria-label={d.heading + " metrics"}>
+          {metrics.map((metric) => (
+            <li key={metric.label} className="everyday-dashboard__metric">
+              <strong>{metric.value}</strong>
+              <span>{metric.label}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="everyday-dashboard__latest">
+        <p className="everyday-eyebrow">{d.latest}</p>
+        {latest.length === 0 ? (
+          <p className="everyday-empty__line">{d.empty}</p>
+        ) : (
+          <ul className="everyday-dashboard__list">
+            {latest.map((entry) => (
+              <li key={entry.id}>
+                <span>{entry.agent}</span>
+                <strong>
+                  {entry.kind === "deliverable" ? entry.deliverable.title : entry.text}
+                </strong>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** The quiet transparency log — every external action, timestamped + linked. Reassurance, not noise. */
 function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): React.JSX.Element {
   const x = EVERYDAY.transparency;
@@ -558,12 +616,14 @@ export function EverydayShell({
   approvalActions = defaultEverydayApprovalActions,
   onConnectorConnect = () => undefined,
   onStartRoom,
+  dashboardFirst = false,
 }: {
   data?: EverydayData;
   hour?: number;
   approvalActions?: EverydayApprovalActions;
   onConnectorConnect?: (id: string) => void;
   onStartRoom?: (goal: string) => Promise<void> | void;
+  dashboardFirst?: boolean;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -634,6 +694,14 @@ export function EverydayShell({
   return (
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
       <main className="everyday-shell__main">
+        {dashboardFirst && (
+          <WorkSummary
+            room={room}
+            thread={thread}
+            approvals={pending}
+            receipts={data.transparency}
+          />
+        )}
         <GroupChatHero
           greeting={greeting}
           lanes={room}
@@ -641,6 +709,14 @@ export function EverydayShell({
           memberName={data.memberName}
           onSubmit={startRoom}
         />
+        {!dashboardFirst && (
+          <WorkSummary
+            room={room}
+            thread={thread}
+            approvals={pending}
+            receipts={data.transparency}
+          />
+        )}
         <ConnectorSetup connectors={data.connectors} onConnect={onConnectorConnect} />
         <NorthStarBar data={data.northStar} />
         <ApprovalQueue

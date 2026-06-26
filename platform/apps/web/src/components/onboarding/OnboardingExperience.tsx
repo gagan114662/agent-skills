@@ -319,7 +319,7 @@ const MARKETING_ICON_ROW = [
 const DOOR_ACTIONS = [
   { key: "login", mark: "◎", label: "Login", href: "/everyday" },
   { key: "love", mark: "♡", label: "Love", href: "#onboard-target" },
-  { key: "dashboard", mark: "▦", label: "Dashboard", href: "/everyday" },
+  { key: "dashboard", mark: "▦", label: "Dashboard", href: "/dashboard" },
   { key: "start", mark: "●", label: "Start", href: "#onboard-target" },
 ] as const;
 
