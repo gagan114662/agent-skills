@@ -19,6 +19,8 @@ const WEB_RELEVANT_FILES = new Set([
   "platform/tsconfig.json",
   "vercel.json",
   "platform/vercel.json",
+  "scripts/vercel-ignore-build.mjs",
+  "platform/scripts/vercel-ignore-build.mjs",
 ]);
 
 export function shouldBuild({ env = process.env, changedFiles }) {
