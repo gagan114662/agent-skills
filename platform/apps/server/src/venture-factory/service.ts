@@ -44,6 +44,7 @@ import type {
  */
 
 const MAX_SCORE = 100;
+const AGENT_DELIVERABLE_ACTION = "agent.deliverable";
 
 export interface FactoryApprovalGate {
   /** Whether `actionKind` needs a human for this workspace (the #13 policy). */
@@ -223,6 +224,11 @@ export interface BootstrapResult {
   ranSteps: BootstrapStepKind[];
   /** The MONEY steps queued as owner #13 decisions (each with its approval id). */
   moneyDecisions: Array<{ kind: BootstrapStepKind; approvalRequestId: string }>;
+}
+
+export interface OpportunityDeliveryResult {
+  approvalRequestId: string;
+  actionKind: typeof AGENT_DELIVERABLE_ACTION;
 }
 
 export class VentureFactoryService {
@@ -560,6 +566,62 @@ export class VentureFactoryService {
     await this.deps.store.setVenture(workspaceId, venture.id, { status: "launched" });
     await this.deps.store.setCandidate(workspaceId, candidateId, { status: "launched" });
     return { venture: { ...venture, status: "launched" }, ranSteps, moneyDecisions };
+  }
+
+  /**
+   * Queue an externally sourced opportunity's deliverable through the existing approve-to-publish path
+   * (#1061). This intentionally does NOT ship here. It parks an agent.deliverable request whose payload
+   * already has the structural fields the #295 dispatcher needs after approval: a real channel id, task,
+   * draft, and optional recipients. Once the owner approves the request, executeApprovedRequest runs the
+   * existing agent.deliverable executor, which delegates to the delivery dispatcher and real connectors.
+   */
+  async queueOpportunityDelivery(
+    workspaceId: string,
+    candidateId: string,
+    opts: {
+      requesterMemberId: string;
+      channelId: string;
+      draft: string;
+      recipients?: string[];
+      sessionId?: string;
+    },
+  ): Promise<OpportunityDeliveryResult> {
+    const caps = this.deps.caps(workspaceId);
+    await this.assertAutonomyAllowed(workspaceId, caps);
+    const candidate = await this.requireCandidate(workspaceId, candidateId);
+    if (candidate.status === "killed") {
+      throw new VentureFactoryDisabledError("cannot deliver a killed opportunity");
+    }
+    if (opts.draft.trim().length === 0) {
+      throw new VentureFactoryDisabledError("opportunity deliverable draft is empty");
+    }
+    if (opts.channelId.trim().length === 0) {
+      throw new VentureFactoryDisabledError("opportunity deliverable channel id is empty");
+    }
+
+    const task = "External opportunity: " + candidate.thesis;
+    const req = await this.deps.gate.submit({
+      workspaceId,
+      requesterMemberId: opts.requesterMemberId,
+      actionKind: AGENT_DELIVERABLE_ACTION,
+      summary: 'Deliver opportunity "' + candidate.proposedName + '" via approve-to-publish',
+      payload: {
+        sessionId: opts.sessionId ?? "venture-factory:" + candidate.id,
+        channelId: opts.channelId.trim(),
+        task,
+        draft: opts.draft,
+        recipients: opts.recipients ?? [],
+        opportunity: {
+          candidateId: candidate.id,
+          source: candidate.source,
+          thesis: candidate.thesis,
+          score: candidate.score,
+          edgeStatus: candidate.edgeStatus,
+          status: candidate.status,
+        },
+      },
+    });
+    return { approvalRequestId: req.id, actionKind: AGENT_DELIVERABLE_ACTION };
   }
 
   /**

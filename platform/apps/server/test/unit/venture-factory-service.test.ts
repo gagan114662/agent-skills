@@ -148,7 +148,7 @@ class FakeStore implements FactoryStore {
 interface Harness {
   service: VentureFactoryService;
   store: FakeStore;
-  submitted: Array<{ actionKind: string; summary: string }>;
+  submitted: Array<{ actionKind: string; summary: string; payload: Record<string, unknown> }>;
   fleetSeeds: number;
   smokePublishes: number;
   archives: number;
@@ -158,7 +158,7 @@ interface Harness {
 
 function harness(over: Partial<VentureFactoryCaps> = {}): Harness {
   const store = new FakeStore();
-  const submitted: Array<{ actionKind: string; summary: string }> = [];
+  const submitted: Array<{ actionKind: string; summary: string; payload: Record<string, unknown> }> = [];
   let profitable = 0;
   let fleetSeeds = 0;
   let smokePublishes = 0;
@@ -172,7 +172,7 @@ function harness(over: Partial<VentureFactoryCaps> = {}): Harness {
         return true;
       },
       async submit(input) {
-        submitted.push({ actionKind: input.actionKind, summary: input.summary });
+        submitted.push({ actionKind: input.actionKind, summary: input.summary, payload: input.payload });
         return { id: `req-${submitted.length}` };
       },
       async status() {
@@ -318,6 +318,59 @@ describe("VentureFactoryService", () => {
     const a = await h.service.bootstrap("w1", c!.id, { requesterMemberId: "agent" });
     const b = await h.service.bootstrap("w1", c!.id, { requesterMemberId: "agent" });
     expect(a.venture.id).toBe(b.venture.id);
+  });
+
+  it("queues an external opportunity deliverable through the approve-to-publish dispatcher path (#1061)", async () => {
+    const [c] = await h.service.scan("w1", [scanInput()]);
+
+    const queued = await h.service.queueOpportunityDelivery("w1", c!.id, {
+      requesterMemberId: "agent",
+      channelId: "content-channel",
+      draft: "# Launch packet\n\nPublish this validated opportunity.",
+      sessionId: "session-1",
+    });
+
+    expect(queued).toEqual({ approvalRequestId: "req-1", actionKind: "agent.deliverable" });
+    expect(h.submitted).toHaveLength(1);
+    expect(h.submitted[0]).toMatchObject({
+      actionKind: "agent.deliverable",
+      summary: 'Deliver opportunity "Acme Co" via approve-to-publish',
+      payload: {
+        sessionId: "session-1",
+        channelId: "content-channel",
+        task: "External opportunity: a thing",
+        draft: "# Launch packet\n\nPublish this validated opportunity.",
+        recipients: [],
+        opportunity: {
+          candidateId: c!.id,
+          source: "owner",
+          thesis: "a thing",
+          score: 100,
+          edgeStatus: "unevaluated",
+          status: "scanned",
+        },
+      },
+    });
+  });
+
+  it("refuses to queue an empty or killed opportunity deliverable", async () => {
+    const [c] = await h.service.scan("w1", [scanInput()]);
+    await expect(
+      h.service.queueOpportunityDelivery("w1", c!.id, {
+        requesterMemberId: "agent",
+        channelId: "content-channel",
+        draft: "  ",
+      }),
+    ).rejects.toThrow(/draft is empty/);
+
+    await h.store.setCandidate("w1", c!.id, { status: "killed" });
+    await expect(
+      h.service.queueOpportunityDelivery("w1", c!.id, {
+        requesterMemberId: "agent",
+        channelId: "content-channel",
+        draft: "ready",
+      }),
+    ).rejects.toThrow(/killed opportunity/);
   });
 
   it("bootstrap is BARRED while a venture is active and none is externally profitable (FM#1)", async () => {
