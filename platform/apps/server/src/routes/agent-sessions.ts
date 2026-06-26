@@ -35,6 +35,15 @@ export interface SessionFailure {
   detail: string;
 }
 
+function quotaResetHint(result: string | null | undefined): string | null {
+  if (!result) return null;
+  const match = /\bresets?\s+([^\n\r.;]+)/i.exec(result);
+  const raw = match?.[1]?.trim();
+  if (!raw) return null;
+  const safe = raw.replace(/[^A-Za-z0-9 ,:()/-]/g, "").trim().slice(0, 80);
+  return safe.length > 0 ? safe : null;
+}
+
 /**
  * Derive the failure cause for a run from its terminal signals (#634). Returns null for a live
  * (`provisioning`/`running`) or cleanly-`completed` run — only a terminal NON-completed status is a
@@ -53,7 +62,9 @@ export function sessionFailure(
     outputTail: session.result ?? undefined,
   });
   const copy = failureCopy(failureClass);
-  return { failureClass, headline: copy.headline, detail: copy.detail };
+  const resetHint = failureClass === "quota" ? quotaResetHint(session.result) : null;
+  const detail = resetHint ? `${copy.detail} Reset: ${resetHint}.` : copy.detail;
+  return { failureClass, headline: copy.headline, detail };
 }
 
 /** A session row plus its derived (never-silent) failure cause — the shape the run-status UI reads. */

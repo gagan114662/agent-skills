@@ -86,6 +86,21 @@ describe("sessionFailure (#634 — never-silent failure derivation)", () => {
     expect(f?.detail.toLowerCase()).toContain("retry");
   });
 
+  it("classifies exhausted subscription quota separately from workspace budget or overload (#1270)", () => {
+    const f = sessionFailure({
+      status: "failed",
+      exitCode: 1,
+      result:
+        "You've hit your weekly limit · resets Jun 27, 3pm (UTC) rateLimitType: seven_day overageStatus: rejected",
+    });
+    expect(f?.failureClass).toBe("quota");
+    expect(f?.headline.toLowerCase()).toContain("subscription limit");
+    expect(f?.detail.toLowerCase()).toContain("reset");
+    expect(f?.detail).toContain("Jun 27, 3pm (UTC)");
+    expect(f?.detail.toLowerCase()).toContain("fallback");
+    expect(JSON.stringify(f)).not.toContain("seven_day");
+  });
+
   it("never echoes the raw result tail (no secret leakage)", () => {
     const secret = "sk-ant-oat-SECRETTOKEN";
     const f = sessionFailure({ status: "failed", exitCode: 1, result: `auth error token=${secret}` });
@@ -107,6 +122,22 @@ describe("agent-session routes (#634, hermetic app.inject + fakes)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().failure).toMatchObject({ failureClass: "overloaded" });
     expect(res.json().failure.headline).toBeTruthy();
+    await app.close();
+  });
+
+  it("GET one surfaces provider subscription quota with actionable copy (#1270)", async () => {
+    getAgentSession.mockResolvedValue({
+      ...FAILED_SESSION,
+      result:
+        "You've hit your weekly limit · resets Jun 27, 3pm (UTC) rateLimitType: seven_day overageStatus: rejected",
+    });
+    const app = await buildApp();
+    const res = await app.inject({ method: "GET", url: "/channels/c1/agent-sessions/s1" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().failure).toMatchObject({ failureClass: "quota" });
+    expect(res.json().failure.headline).toContain("subscription limit");
+    expect(res.json().failure.detail).toContain("Jun 27, 3pm (UTC)");
+    expect(JSON.stringify(res.json().failure)).not.toContain("seven_day");
     await app.close();
   });
 

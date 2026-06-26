@@ -20,6 +20,7 @@ export type FailureReasonClass =
   | "auth"
   | "timeout"
   | "budget"
+  | "quota"
   | "canceled"
   | "model"
   | "overloaded"
@@ -49,6 +50,25 @@ const AUTH_MARKERS = [
 ];
 
 const BUDGET_MARKERS = ["budget", "spending limit", "quota exceeded", "402"];
+
+/**
+ * Markers of a connected subscription/provider lane being temporarily exhausted (#1270). This is
+ * distinct from the workspace budget cap: the user's auth can be valid and their plan can be paid, while
+ * Claude Code still refuses a run because the weekly subscription allowance is spent (seven_day,
+ * overageStatus: rejected, reset time copy). Treat it as an honest capacity state, not a generic crash.
+ */
+const QUOTA_MARKERS = [
+  "weekly limit",
+  "weekly usage limit",
+  "usage limit",
+  "subscription quota",
+  "seven_day",
+  "overagestatus",
+  "overage status",
+  "resets ",
+  "you've hit your",
+  "you have hit your",
+];
 
 /**
  * Markers of a **model misconfiguration** (#242): the deployment (or a per-session #52 selection) pinned
@@ -143,9 +163,11 @@ export function looksLikeStartupFailure(artifact: string | undefined): boolean {
  *  - a run whose OUTPUT is the agent self-reporting that it couldn't start up (#319) is a "spawn"
  *    failure even on a clean (exit 0) process, so the message reads "couldn't start up — missing a tool"
  *    rather than a generic error. Checked before auth/budget/model so the boot failure wins its own copy.
+ *  - a connected subscription/provider lane whose output says the weekly allowance is spent is "quota"
+ *    (#1270), distinct from workspace budget and from transient 429/529 overload.
  *  - a non-zero exit whose output is a transient API overload (429/529 — #634) is "overloaded", a
- *    retry-forward class. Checked AFTER the fixable config classes (auth/budget/model) so a config error
- *    that merely mentions a rate limit still routes to its fixable bucket, but before the generic bucket.
+ *    retry-forward class. Checked AFTER the fixable config/capacity classes (auth/budget/model/quota) so a
+ *    provider-limit message that also mentions rate limiting still routes to the honest quota bucket.
  *  - everything else is a generic harness "error".
  */
 export function classifyFailure(o: SessionOutcome): FailureReasonClass {
@@ -156,8 +178,9 @@ export function classifyFailure(o: SessionOutcome): FailureReasonClass {
   if (matches(o.outputTail, AUTH_MARKERS)) return "auth";
   if (matches(o.outputTail, BUDGET_MARKERS)) return "budget";
   if (matches(o.outputTail, MODEL_MARKERS)) return "model";
-  // Checked AFTER the owner-actionable config classes (auth/budget/model) so a config error that also
-  // mentions a rate limit still routes to its fixable bucket; otherwise a 429/529 is a transient overload.
+  if (matches(o.outputTail, QUOTA_MARKERS)) return "quota";
+  // Checked AFTER the owner-actionable config/capacity classes (auth/budget/model/quota) so a config error
+  // or spent subscription lane that also mentions a rate limit still routes to the right bucket.
   if (matches(o.outputTail, OVERLOADED_MARKERS)) return "overloaded";
   return "error";
 }
@@ -247,6 +270,11 @@ const FAILURE_COPY: Record<FailureReasonClass, { headline: string; detail: strin
   budget: {
     headline: "We've hit this workspace's budget ceiling",
     detail: "Top up or adjust the plan and I'll get back to work.",
+  },
+  quota: {
+    headline: "The AI team is at its subscription limit for now",
+    detail:
+      "No work was lost. Wait for the reset shown in the thread, or switch on an approved fallback model lane before starting more agent work.",
   },
   canceled: {
     headline: "This run was stopped before I finished",
