@@ -22,10 +22,13 @@ import {
   type ApprovalCard,
   type Deliverable,
   type EverydayData,
+  type EverydayConnector,
   type ExternalAction,
+  type AgentLane,
   type NorthStar,
   type ThreadEntry,
   compactCount,
+  defaultAgentRoom,
   emptyEverydayData,
   partOfDay,
   signedDelta,
@@ -133,6 +136,73 @@ function Thread({ entries }: { entries: readonly ThreadEntry[] }): React.JSX.Ele
           ))}
         </ol>
       )}
+    </section>
+  );
+}
+
+function AgentRoom({ lanes }: { lanes: readonly AgentLane[] }): React.JSX.Element {
+  const r = EVERYDAY.room;
+  return (
+    <section className="everyday-room" aria-label={r.heading}>
+      <div className="everyday-room__intro">
+        <h2 className="everyday-serif everyday-room__heading">{r.heading}</h2>
+        <p className="everyday-room__subhead">{lanes.length === 0 ? r.empty : r.subhead}</p>
+      </div>
+      <div className="everyday-room__grid">
+        {lanes.map((lane) => (
+          <article key={lane.id} className="everyday-lane" data-status={lane.status}>
+            <header className="everyday-lane__head">
+              <AgentChip name={lane.agent} />
+              <div>
+                <h3 className="everyday-lane__agent">{lane.agent}</h3>
+                <p className="everyday-lane__role">{lane.role}</p>
+              </div>
+              <span className="everyday-lane__status">{r.statuses[lane.status]}</span>
+            </header>
+            <p className="everyday-lane__task">{lane.task}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConnectorSetup({ connectors }: { connectors: readonly EverydayConnector[] }): React.JSX.Element {
+  const c = EVERYDAY.connectors;
+  const groups = (["productivity", "marketing", "publishing"] as const)
+    .map((group) => ({ group, items: connectors.filter((item) => item.group === group) }))
+    .filter(({ items }) => items.length > 0);
+
+  return (
+    <section className="everyday-connectors" aria-label={c.heading}>
+      <div className="everyday-connectors__intro">
+        <h2 className="everyday-serif everyday-connectors__heading">{c.heading}</h2>
+        <p className="everyday-connectors__subhead">{c.subhead}</p>
+      </div>
+      <div className="everyday-connectors__groups">
+        {groups.map(({ group, items }) => (
+          <section key={group} className="everyday-connector-group" aria-label={c.groups[group]}>
+            <h3 className="everyday-connector-group__heading">{c.groups[group]}</h3>
+            <ul className="everyday-connector-list">
+              {items.map((item) => (
+                <li key={item.id} className="everyday-connector" data-status={item.status}>
+                  <div>
+                    <p className="everyday-connector__name">{item.name}</p>
+                    <p className="everyday-connector__detail">{item.detail}</p>
+                  </div>
+                  {item.status === "connected" ? (
+                    <span className="everyday-connector__badge">{c.connected}</span>
+                  ) : (
+                    <a className="everyday-connector__link" href={item.href}>
+                      {c.connect}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </section>
   );
 }
@@ -389,16 +459,25 @@ function SafetyFooter({ paused }: { paused: boolean }): React.JSX.Element {
 }
 
 /** The composer — the one ever-present input that starts everything, under the greeting. */
-function Composer(): React.JSX.Element {
+function Composer({ onSubmit }: { onSubmit: (value: string) => void }): React.JSX.Element {
+  const [value, setValue] = useState("");
   return (
     <form
       className="everyday-composer"
-      onSubmit={(ev) => ev.preventDefault()}
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        const next = value.trim();
+        if (!next) return;
+        onSubmit(next);
+        setValue("");
+      }}
       aria-label={EVERYDAY.prompt}
     >
       <input
         className="everyday-composer__input"
         type="text"
+        value={value}
+        onChange={(event) => setValue(event.currentTarget.value)}
         placeholder={EVERYDAY.composerPlaceholder}
         aria-label={EVERYDAY.prompt}
       />
@@ -427,8 +506,32 @@ export function EverydayShell({
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [room, setRoom] = useState<readonly AgentLane[]>(data.room);
+  const [localThread, setLocalThread] = useState<readonly ThreadEntry[]>([]);
   const pending = data.approvals.filter((c) => !shipped.includes(c.id));
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
+  const thread = [...data.thread, ...localThread];
+
+  function startRoom(goal: string): void {
+    setRoom(defaultAgentRoom(goal));
+    setLocalThread((entries) => [
+      ...entries,
+      {
+        id: "local-" + Date.now(),
+        kind: "agent-line",
+        agent: data.memberName,
+        at: EVERYDAY.room.chatLabel,
+        text: goal,
+      },
+      {
+        id: "room-" + Date.now(),
+        kind: "agent-line",
+        agent: "Scout",
+        at: "just now",
+        text: EVERYDAY.thread.working("Scout"),
+      },
+    ]);
+  }
 
   async function decide(card: ApprovalCard, kind: "ship" | "redo", note?: string): Promise<void> {
     setStatuses((prev) => ({ ...prev, [card.id]: "pending" }));
@@ -452,11 +555,13 @@ export function EverydayShell({
       <main className="everyday-shell__main">
         <header className="everyday-door">
           <h1 className="everyday-serif everyday-door__greeting">{greeting}</h1>
-          <Composer />
+          <Composer onSubmit={startRoom} />
         </header>
 
+        <AgentRoom lanes={room} />
+        <ConnectorSetup connectors={data.connectors} />
         <NorthStarBar data={data.northStar} />
-        <Thread entries={data.thread} />
+        <Thread entries={thread} />
         <ApprovalQueue
           cards={pending}
           justShipped={shipped.length > 0}

@@ -4,7 +4,7 @@
  * timestamp on every external action — the surface contract the shell renders).
  */
 import { describe, expect, it } from "vitest";
-import { compactCount, partOfDay, seedEveryday, signedDelta } from "./everyday-data.js";
+import { compactCount, defaultAgentRoom, defaultConnectors, partOfDay, seedEveryday, signedDelta } from "./everyday-data.js";
 
 describe("partOfDay (#784)", () => {
   it("buckets the local hour into morning / afternoon / evening", () => {
@@ -89,5 +89,26 @@ describe("seedEveryday (#784) — the surface contract", () => {
     expect(actions.some((act) => act.receiptLabel === "open live page")).toBe(true);
     expect(actions.some((act) => act.receiptLabel === "open sent email")).toBe(true);
     expect(actions.some((act) => act.receiptLabel === "open signup")).toBe(true);
+  });
+});
+
+describe("defaultAgentRoom (#1265)", () => {
+  it("starts a multi-agent room with Codex as an operator lane", () => {
+    const room = defaultAgentRoom("ipop.ai");
+    expect(room.map((lane) => lane.agent)).toEqual(["Scout", "Quill", "Echo", "Lens", "Codex"]);
+    expect(room.find((lane) => lane.agent === "Codex")?.status).toBe("codex");
+    expect(room[0]?.task).toContain("ipop.ai");
+  });
+});
+
+describe("defaultConnectors (#1265)", () => {
+  it("models the direct connect setup without pretending anything is connected", () => {
+    const connectors = defaultConnectors();
+    expect(connectors.map((connector) => connector.name)).toContain("Gmail");
+    expect(new Set(connectors.map((connector) => connector.group))).toEqual(
+      new Set(["productivity", "marketing", "publishing"]),
+    );
+    expect(connectors.every((connector) => connector.status !== "connected")).toBe(true);
+    expect(connectors.every((connector) => connector.href.startsWith("/settings?section=connections"))).toBe(true);
   });
 });
