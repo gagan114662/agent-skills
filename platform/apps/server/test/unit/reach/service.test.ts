@@ -755,3 +755,42 @@ describe("ReachService.recordReceipt (#280)", () => {
     expect(noRef.recorded).toBe(false); // external proof required
   });
 });
+
+describe("ReachService.summary mode badge (#1286)", () => {
+  it("labels imported + dry-run outreach as demo, not live customer acquisition", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ prospectSource: "imported", sendProvider: "dryrun" }),
+      resolveSource: mockSource,
+    });
+
+    const summary = await svc.summary("ws1");
+
+    expect(summary.mode.label).toBe("demo");
+    expect(summary.mode.live).toBe(false);
+    expect(summary.mode.reasons).toContain("dry-run or queue-only send channels");
+    expect(summary.mode.email).toEqual({ provider: "dryrun", live: false });
+  });
+
+  it("labels Reach as live only when the source and a permitted send channel are live", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () =>
+        caps({
+          prospectSource: "imported",
+          sendProvider: "postmark",
+          liveSendEnabled: true,
+        }),
+      resolveSource: mockSource,
+    });
+
+    const summary = await svc.summary("ws1");
+
+    expect(summary.mode.label).toBe("live");
+    expect(summary.mode.live).toBe(true);
+    expect(summary.mode.email).toEqual({ provider: "postmark", live: true });
+    expect(summary.mode.reasons).toEqual([]);
+  });
+});

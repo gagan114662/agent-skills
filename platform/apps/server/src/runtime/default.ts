@@ -184,6 +184,11 @@ export function defaultPreflight(): PreflightReport {
     browserEnabled,
     workspaceRoot,
     googleOAuthRequired: googleOAuthRequiredForRelease(env.profile, process.env),
+    reach: loadConfig().reach,
+    reachLiveProofRequired:
+      env.profile === "prod" ||
+      process.env.RELOAD_REACH_REQUIRE_LIVE_PROOF === "1" ||
+      process.env.RELOAD_REACH_REQUIRE_LIVE_PROOF === "true",
   });
 }
 

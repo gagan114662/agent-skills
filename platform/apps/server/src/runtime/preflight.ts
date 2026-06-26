@@ -1,6 +1,8 @@
 import { accessSync, constants as fsConstants, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
+import type { ReachConfig } from "../config/schema.js";
 import type { RuntimeKind } from "../db/repositories/agent-sessions.js";
+import { resolveReachCaps } from "../reach/caps.js";
 import type { HarnessKind } from "./harness.js";
 import type { ProfileName } from "./posture.js";
 
@@ -79,6 +81,10 @@ export interface PreflightInput {
    * partial config still warns because it would route users into a broken auth start.
    */
   googleOAuthRequired?: boolean;
+  /** Reach outbound policy for the deployment-level live-proof gate (#1286). */
+  reach?: ReachConfig;
+  /** Whether enabled Reach must prove it is not mock/dry-run before a release can pass (#1286). */
+  reachLiveProofRequired?: boolean;
 }
 
 /** Thrown by the launch gate when preflight fails. Carries the report; the message is content-free. */
@@ -98,7 +104,10 @@ export class PreflightError extends Error {
   }
 }
 
-export function googleOAuthRequiredForRelease(profile: ProfileName, env: NodeJS.ProcessEnv): boolean {
+export function googleOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
   return (
     profile === "prod" ||
     env.RELOAD_REQUIRE_GOOGLE_OAUTH === "1" ||
@@ -123,7 +132,8 @@ function checkVercelAuth(env: NodeJS.ProcessEnv): CheckResult {
     return {
       name,
       status: "pass",
-      message: "Vercel access-token auth present (VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID)",
+      message:
+        "Vercel access-token auth present (VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID)",
     };
   }
   const missing = Object.entries(trio)
@@ -133,7 +143,12 @@ function checkVercelAuth(env: NodeJS.ProcessEnv): CheckResult {
     "Authenticate with VERCEL_OIDC_TOKEN (run `vercel link && vercel env pull`), " +
     "or set all of VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID.";
   if (present === 0) {
-    return { name, status: "fail", message: "no Vercel auth — set VERCEL_OIDC_TOKEN, or the access-token trio", remedy };
+    return {
+      name,
+      status: "fail",
+      message: "no Vercel auth — set VERCEL_OIDC_TOKEN, or the access-token trio",
+      remedy,
+    };
   }
   return {
     name,
@@ -172,7 +187,8 @@ function checkBashBinary(deps: PreflightDeps): CheckResult {
   return {
     name,
     status: "fail",
-    message: "bash not found — every local-runtime session spawns 'bash' and dies at exec without it",
+    message:
+      "bash not found — every local-runtime session spawns 'bash' and dies at exec without it",
     remedy: "Install bash in the image (Alpine ships only 'ash'): apk add --no-cache bash.",
   };
 }
@@ -186,12 +202,17 @@ function checkBashBinary(deps: PreflightDeps): CheckResult {
 function checkGitBinary(deps: PreflightDeps): CheckResult {
   const name = "git-binary";
   if (deps.binaryAvailable("git")) {
-    return { name, status: "pass", message: "git found (the coding harness + worktree provisioner shell out to it)" };
+    return {
+      name,
+      status: "pass",
+      message: "git found (the coding harness + worktree provisioner shell out to it)",
+    };
   }
   return {
     name,
     status: "fail",
-    message: "git not found — the claude-code/codex harness and the #51 worktree provisioner require it",
+    message:
+      "git not found — the claude-code/codex harness and the #51 worktree provisioner require it",
     remedy: "Install git in the image (debian-slim ships none): apt-get install -y git.",
   };
 }
@@ -208,7 +229,11 @@ function checkWorkspaceWritable(workspaceRoot: string, deps: PreflightDeps): Che
   const name = "workspace-writable";
   const probe = deps.dirWritable ?? defaultDeps.dirWritable;
   if (probe?.(workspaceRoot)) {
-    return { name, status: "pass", message: `per-session workspace root is writable (${workspaceRoot})` };
+    return {
+      name,
+      status: "pass",
+      message: `per-session workspace root is writable (${workspaceRoot})`,
+    };
   }
   return {
     name,
@@ -257,7 +282,8 @@ function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
     message:
       "no deployment-wide Claude token — agents authenticate with each workspace's connected subscription " +
       "(Settings → Connect Claude); a workspace that hasn't connected gets a reconnect prompt, never an API key",
-    remedy: "Each workspace owner connects their own `claude setup-token` in Settings → Connect Claude.",
+    remedy:
+      "Each workspace owner connects their own `claude setup-token` in Settings → Connect Claude.",
   };
 }
 
@@ -281,9 +307,7 @@ function checkGoogleOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResul
   }
   if (!required && present === 0) return undefined;
 
-  const missing = entries
-    .filter(([, v]) => !v)
-    .map(([k]) => k);
+  const missing = entries.filter(([, v]) => !v).map(([k]) => k);
   return {
     name,
     status: required ? "fail" : "warn",
@@ -291,6 +315,59 @@ function checkGoogleOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResul
     remedy:
       "Create a Google OAuth web client for the deployed origin and set the full trio: " +
       "GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET + GOOGLE_OAUTH_REDIRECT_URI.",
+  };
+}
+
+/**
+ * Reach can be demo-safe with imported/mock prospects + recorded-only senders, but production must not
+ * present that as autonomous customer acquisition. This check is intentionally secret-free: it reads only
+ * resolved config names/booleans, never vault contents or provider tokens.
+ */
+function checkReachLiveProof(
+  cfg: ReachConfig | undefined,
+  required: boolean,
+): CheckResult | undefined {
+  const caps = resolveReachCaps(cfg);
+  if (!caps.enabled) return undefined;
+
+  const problems: string[] = [];
+  if (caps.prospectSource === "mock") {
+    problems.push("prospectSource=mock");
+  }
+
+  const emailLive = caps.sendProvider !== "dryrun" && caps.liveSendEnabled;
+  const linkedinLive = caps.linkedinSendProvider !== "none" && caps.linkedinLiveSendEnabled;
+  if (!emailLive && !linkedinLive) {
+    problems.push("no live send channel configured");
+  }
+  if (caps.sendProvider === "dryrun" && caps.liveSendEnabled) {
+    problems.push("liveSendEnabled=true but sendProvider=dryrun");
+  }
+  if (caps.sendProvider !== "dryrun" && !caps.liveSendEnabled) {
+    problems.push(`${caps.sendProvider} configured but liveSendEnabled=false`);
+  }
+  if (emailLive && (!caps.brandName || !caps.postalAddress || !caps.unsubscribeUrl)) {
+    problems.push("missing CAN-SPAM footer config");
+  }
+
+  if (problems.length === 0) {
+    return {
+      name: "reach-live-proof",
+      status: "pass",
+      message:
+        `Reach live-proof config present (source=${caps.prospectSource}; ` +
+        `email=${emailLive ? caps.sendProvider : "not-live"}; ` +
+        `linkedin=${linkedinLive ? caps.linkedinSendProvider : "not-live"})`,
+    };
+  }
+
+  return {
+    name: "reach-live-proof",
+    status: required ? "fail" : "warn",
+    message: `Reach is enabled but still demo/recorded-only: ${problems.join(", ")}`,
+    remedy:
+      "Use imported or paid live prospects, configure a real permitted send channel, set CAN-SPAM footer fields, " +
+      "and keep the UI labelled demo/dry-run until this check passes.",
   };
 }
 
@@ -308,7 +385,8 @@ function checkPlaywrightModule(deps: PreflightDeps): CheckResult {
     name,
     status: "fail",
     message: "the agent browser is enabled but 'playwright' is not installed",
-    remedy: "Install it in the runtime image: pnpm --filter @reload/server add playwright && npx playwright install --with-deps chromium",
+    remedy:
+      "Install it in the runtime image: pnpm --filter @reload/server add playwright && npx playwright install --with-deps chromium",
   };
 }
 
@@ -328,7 +406,8 @@ function checkBrowserBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckR
     name,
     status: "warn",
     message: `no '${bin}' on PATH — Playwright manages its own Chromium (verified by the smoke)`,
-    remedy: "Run `npx playwright install --with-deps chromium`, or set BROWSER_BIN to an absolute path.",
+    remedy:
+      "Run `npx playwright install --with-deps chromium`, or set BROWSER_BIN to an absolute path.",
   };
 }
 
@@ -337,14 +416,21 @@ function checkBrowserBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckR
  * check *fails* (a `warn` is informational). The default `local`/`demo` posture has no external
  * checks and is trivially `ok`.
  */
-export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDeps): PreflightReport {
+export function preflight(
+  input: PreflightInput,
+  deps: PreflightDeps = defaultDeps,
+): PreflightReport {
   const checks: CheckResult[] = [];
 
   if (input.runtime === "sandbox") {
     checks.push(checkVercelAuth(input.env));
     checks.push(checkVercelSdk(deps));
   } else {
-    checks.push({ name: "runtime", status: "pass", message: "runtime 'local' needs no cloud credentials" });
+    checks.push({
+      name: "runtime",
+      status: "pass",
+      message: "runtime 'local' needs no cloud credentials",
+    });
     // The local runtime spawns every harness via `bash` (the demo script / `bash -lc …`), so a host
     // without it fails EVERY session at exec → "exit n/a" (#166). Gate on it for the local runtime.
     checks.push(checkBashBinary(deps));
@@ -358,11 +444,16 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
     checks.push(checkClaudeBinary(input.env, deps));
     checks.push(checkClaudeAuth(input.env));
   } else {
-    checks.push({ name: "harness", status: "pass", message: "harness 'demo' needs no model credentials" });
+    checks.push({
+      name: "harness",
+      status: "pass",
+      message: "harness 'demo' needs no model credentials",
+    });
   }
 
   // #238: the real coding harnesses (claude-code/codex) shell out to `git`; the demo harness does not.
-  if (input.harness === "claude-code" || input.harness === "codex") checks.push(checkGitBinary(deps));
+  if (input.harness === "claude-code" || input.harness === "codex")
+    checks.push(checkGitBinary(deps));
 
   // #174 agent browser runtime: only checked when enabled (default OFF → no checks, posture unchanged).
   if (input.browserEnabled) {
@@ -372,6 +463,9 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
 
   const googleOAuth = checkGoogleOAuth(input.env, Boolean(input.googleOAuthRequired));
   if (googleOAuth) checks.push(googleOAuth);
+
+  const reachLiveProof = checkReachLiveProof(input.reach, Boolean(input.reachLiveProofRequired));
+  if (reachLiveProof) checks.push(reachLiveProof);
 
   const ok = checks.every((c) => c.status !== "fail");
   return { profile: input.profile, runtime: input.runtime, harness: input.harness, ok, checks };
