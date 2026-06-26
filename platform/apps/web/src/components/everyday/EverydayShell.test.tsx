@@ -81,10 +81,10 @@ describe("EverydayShell — greeting + voice (#784)", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/making pop today/i);
   });
 
-  it("shows the cheeky empty-thread state + nudge when there is no work", () => {
+  it("shows a useful starter chat when there is no work yet", () => {
     render(<EverydayShell data={emptyData()} />);
-    expect(screen.getByText(EVERYDAY.thread.empty)).toBeInTheDocument();
-    expect(screen.getByText(EVERYDAY.thread.nudge)).toBeInTheDocument();
+    expect(screen.getByText(/build ipop like Tomo/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mining category, product, user, time, space/i)).toBeInTheDocument();
   });
 });
 
@@ -93,41 +93,46 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const room = screen.getByRole("region", { name: EVERYDAY.room.heading });
     expect(within(room).getByRole("heading", { name: EVERYDAY.room.heading })).toBeInTheDocument();
-    expect(within(room).getByText("Scout")).toBeInTheDocument();
-    expect(within(room).getByText("Quill")).toBeInTheDocument();
-    expect(within(room).getByText("Echo")).toBeInTheDocument();
-    expect(within(room).getByText("Lens")).toBeInTheDocument();
-    expect(within(room).getByText("Codex")).toBeInTheDocument();
+    expect(within(room).getAllByText("Scout").length).toBeGreaterThan(0);
+    expect(within(room).getAllByText("Quill").length).toBeGreaterThan(0);
+    expect(within(room).getAllByText("Echo").length).toBeGreaterThan(0);
+    expect(within(room).getAllByText("Lens").length).toBeGreaterThan(0);
+    expect(within(room).getAllByText("Codex").length).toBeGreaterThan(0);
     expect(within(room).getByText(EVERYDAY.room.statuses.codex)).toBeInTheDocument();
   });
 
-  it("starts the room from one input and lets the user chat into the room", () => {
-    render(<EverydayShell data={emptyData()} />);
+  it("starts the room from one input and lets the user chat into the room", async () => {
+    const onStartRoom = vi.fn(async () => undefined);
+    render(<EverydayShell data={emptyData()} onStartRoom={onStartRoom} />);
     fireEvent.change(screen.getByRole("textbox", { name: EVERYDAY.prompt }), {
       target: { value: "ipop.ai" },
     });
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
 
-    expect(screen.getByText("ipop.ai")).toBeInTheDocument();
+    await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai"));
+    expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
     expect(screen.getByText(EVERYDAY.thread.working("Scout"))).toBeInTheDocument();
-    expect(screen.getByText(/Researching ipop.ai/i)).toBeInTheDocument();
-    expect(screen.getByText(/Codex subscription/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Scout/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Codex subscription/i).length).toBeGreaterThan(0);
   });
 
-  it("shows Tomo-style account connections as grouped, honest setup work", () => {
-    render(<EverydayShell data={seedEveryday()} />);
+  it("shows iMessage as the only messaging setup lane", () => {
+    const onConnectorConnect = vi.fn();
+    render(<EverydayShell data={seedEveryday()} onConnectorConnect={onConnectorConnect} />);
     const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
     expect(within(setup).getByRole("heading", { name: EVERYDAY.connectors.heading })).toBeInTheDocument();
+    expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.visibility })).toBeInTheDocument();
     expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.productivity })).toBeInTheDocument();
+    expect(within(setup).getByText("iMessage")).toBeInTheDocument();
+    expect(within(setup).queryByText("WhatsApp")).not.toBeInTheDocument();
+    expect(within(setup).queryByText("Telegram")).not.toBeInTheDocument();
     expect(within(setup).getByText("Gmail")).toBeInTheDocument();
     expect(within(setup).getByText("gagan@getfoolish.com")).toBeInTheDocument();
     expect(within(setup).getByText(EVERYDAY.connectors.connected)).toBeInTheDocument();
-    const links = within(setup).getAllByRole("link", { name: EVERYDAY.connectors.connect });
-    expect(links.length).toBeGreaterThan(0);
-    expect(links[0]).toHaveAttribute(
-      "href",
-      expect.stringContaining("/settings?section=connections"),
-    );
+    const buttons = within(setup).getAllByRole("button", { name: /connect|set up iMessage/i });
+    expect(buttons.length).toBeGreaterThan(0);
+    fireEvent.click(buttons[0]!);
+    expect(onConnectorConnect).toHaveBeenCalled();
   });
 });
 

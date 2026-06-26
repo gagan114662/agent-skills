@@ -3,15 +3,24 @@ import { execFileSync } from "node:child_process";
 
 const WEB_RELEVANT_PREFIXES = [
   "apps/web/",
+  "platform/apps/web/",
   "packages/shared/",
+  "platform/packages/shared/",
 ];
 
 const WEB_RELEVANT_FILES = new Set([
   "package.json",
+  "platform/package.json",
   "pnpm-lock.yaml",
+  "platform/pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  "platform/pnpm-workspace.yaml",
   "tsconfig.json",
+  "platform/tsconfig.json",
   "vercel.json",
+  "platform/vercel.json",
+  "scripts/vercel-ignore-build.mjs",
+  "platform/scripts/vercel-ignore-build.mjs",
 ]);
 
 export function shouldBuild({ env = process.env, changedFiles }) {

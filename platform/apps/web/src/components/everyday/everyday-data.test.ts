@@ -104,11 +104,15 @@ describe("defaultAgentRoom (#1265)", () => {
 describe("defaultConnectors (#1265)", () => {
   it("models the direct connect setup without pretending anything is connected", () => {
     const connectors = defaultConnectors();
-    expect(connectors.map((connector) => connector.name)).toContain("Gmail");
+    expect(connectors.map((connector) => connector.name)).toContain("Email");
+    expect(connectors.map((connector) => connector.name)).toContain("iMessage");
+    expect(connectors.map((connector) => connector.name)).not.toEqual(
+      expect.arrayContaining(["Web chat", "WhatsApp", "Telegram"]),
+    );
     expect(new Set(connectors.map((connector) => connector.group))).toEqual(
-      new Set(["productivity", "marketing", "publishing"]),
+      new Set(["visibility", "productivity", "marketing", "publishing"]),
     );
     expect(connectors.every((connector) => connector.status !== "connected")).toBe(true);
-    expect(connectors.every((connector) => connector.href.startsWith("/settings?section=connections"))).toBe(true);
+    expect(connectors.every((connector) => connector.actionLabel.length > 0)).toBe(true);
   });
 });

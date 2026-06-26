@@ -5,11 +5,10 @@
  *
  * #784 GO-LIVE: the redesign is now the production default for the signed-in workspace:
  *   · DEFAULT-ON   — env unset ⇒ flag on. Only "false"/"0" turns it off (restoring today's console).
- *   · FULL ROLLOUT — with no owner workspace pinned, the shell shows for ANY signed-in workspace. Pinning an
- *                    owner id narrows it back to owner-only. The only fail-closed branches are an
+ *   · FULL ROLLOUT — the shell shows for ANY signed-in workspace. The only fail-closed branches are an
  *                    explicitly-off flag and a missing current workspace (the shell is a logged-in surface).
  *
- * Reversible: set VITE_EVERYDAY_SHELL=false (or pin an owner id) and the default console renders unchanged.
+ * Reversible: set VITE_EVERYDAY_SHELL=false and the default console renders unchanged.
  */
 
 const env = import.meta.env;
@@ -25,7 +24,7 @@ export const EVERYDAY_SHELL_ENABLED: boolean = (() => {
   return raw !== "false" && raw !== "0";
 })();
 
-/** The owner's own workspace id (the owner-first rollout marker) — `VITE_EVERYDAY_SHELL_OWNER_WORKSPACE_ID`. */
+/** Deprecated owner-first rollout marker. Kept readable so stale deploy env cannot crash the bundle. */
 export const EVERYDAY_SHELL_OWNER_WORKSPACE_ID: string | undefined = readEnv(
   env.VITE_EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
 );
@@ -33,7 +32,7 @@ export const EVERYDAY_SHELL_OWNER_WORKSPACE_ID: string | undefined = readEnv(
 export interface EverydayShellGateInput {
   /** The master flag (default ON). */
   readonly flagOn: boolean;
-  /** Optional owner workspace id; when pinned, narrows the rollout to owner-only. Unpinned ⇒ full rollout. */
+  /** Deprecated; the #784 go-live is no longer narrowed by owner workspace. */
   readonly ownerWorkspaceId?: string | null | undefined;
   /** The current workspace id (the shell is a logged-in surface). */
   readonly workspaceId?: string | null | undefined;
@@ -43,8 +42,7 @@ export interface EverydayShellGateInput {
  * Decide whether the everyday shell shows. PURE so every branch is unit-tested without a DOM. #784 go-live
  * rule — full rollout, fail-closed only where it must be:
  *
- *   off flag ⇒ no · no current workspace ⇒ no · owner pinned ⇒ show ONLY for that owner workspace ·
- *   no owner pinned ⇒ show for ANY signed-in workspace (the production default).
+ *   off flag ⇒ no · no current workspace ⇒ no · otherwise show for ANY signed-in workspace.
  *
  * The only paths that hide the shell are an explicitly-off flag and a missing current workspace.
  */
@@ -52,8 +50,5 @@ export function shouldShowEverydayShell(input: EverydayShellGateInput): boolean 
   if (!input.flagOn) return false;
   const ws = input.workspaceId?.trim();
   if (!ws) return false;
-  const owner = input.ownerWorkspaceId?.trim();
-  if (owner) return ws === owner;
-  // Unpinned owner ⇒ full rollout for the current signed-in workspace.
   return true;
 }

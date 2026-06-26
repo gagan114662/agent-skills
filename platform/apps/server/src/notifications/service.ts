@@ -15,8 +15,11 @@ import { publishNotification } from "../realtime/bus.js";
 import type { NotificationEvent } from "../realtime/protocol.js";
 import { loadEnv } from "../env.js";
 import { loadConfig } from "../config/loader.js";
+import { createIMessageRelayService } from "../imessage/default.js";
+import { IMessageNotificationTransport } from "../imessage/notification-transport.js";
 import { shouldNotify, type NotificationType } from "./types.js";
 import {
+  FanoutTransport,
   selectTransport,
   type NotificationRecord,
   type NotificationTransport,
@@ -38,10 +41,15 @@ let transport: NotificationTransport | undefined;
 /** The deployment's external transport, chosen once from env (webhook when configured, else no-op). */
 function getNotificationTransport(): NotificationTransport {
   // #58: data-privacy mode (server-level managed config) forces the no-op transport regardless of URL.
-  if (!transport)
-    transport = selectTransport(loadEnv().notify.webhookUrl, {
+  if (!transport) {
+    const env = loadEnv();
+    const base = selectTransport(env.notify.webhookUrl, {
       dataPrivacyMode: loadConfig().dataPrivacyMode,
     });
+    transport = env.imessage.enabled
+      ? new FanoutTransport([base, new IMessageNotificationTransport(createIMessageRelayService(env.imessage))])
+      : base;
+  }
   return transport;
 }
 

@@ -303,6 +303,37 @@ function ProofDeliverables(): React.JSX.Element | null {
   );
 }
 
+const MARKETING_ICON_ROW = [
+  { key: "brief", mark: "+", label: "brief" },
+  { key: "icp", mark: "ICP", label: "customer map" },
+  { key: "site", mark: "URL", label: "site read" },
+  { key: "insight", mark: "!", label: "insight" },
+  { key: "creative", mark: "AD", label: "creative" },
+  { key: "email", mark: "@", label: "email" },
+  { key: "seo", mark: "SEO", label: "search" },
+  { key: "social", mark: "#", label: "social" },
+  { key: "ads", mark: "$", label: "paid" },
+  { key: "approve", mark: "OK", label: "approval" },
+  { key: "analytics", mark: "%", label: "analytics" },
+  { key: "receipt", mark: "PDF", label: "receipt" },
+] as const;
+
+function MarketingIconRow(): React.JSX.Element {
+  return (
+    <section className="onboard-marketing" aria-label="marketing work preview">
+      <p className="onboard-marketing__proof">500,000+ agent tasks · one room</p>
+      <ol className="onboard-marketing__row">
+        {MARKETING_ICON_ROW.map((item) => (
+          <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
+            <span className="onboard-marketing__mark">{item.mark}</span>
+            <span className="onboard-marketing__label">{item.label}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export function OnboardingExperience(props: OnboardingExperienceProps): React.JSX.Element {
   const provider = props.provider ?? createDefaultProvider();
   const hour = props.hour ?? new Date().getHours();
@@ -433,6 +464,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           {phase === "door" && (
             <form className="onboard-door" onSubmit={onDoorSubmit} noValidate>
               <PopMark className="onboard__mark" />
+              <MarketingIconRow />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
               <label className="onboard-door__label" htmlFor="onboard-target">
                 {ONBOARD_COPY.door.inputLabel}
@@ -447,7 +479,6 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   onChange={(e) => setInput(e.target.value)}
                   aria-invalid={doorError ? true : undefined}
                   aria-describedby={doorError ? "onboard-door-error" : undefined}
-                  autoFocus
                 />
                 <button className="onboard-cta" type="submit">
                   {ONBOARD_COPY.door.submit}

@@ -66,6 +66,9 @@ export const EMAIL_CONNECTION_ID = "email";
 /** The onboarding website consent id (#1070 — lets Quill produce an immediate hero rewrite). */
 export const WEBSITE_CONNECTION_ID = "website";
 
+/** The iMessage work-visibility connector — the intended primary messaging home for the ipop room. */
+export const IMESSAGE_CONNECTION_ID = "imessage";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -137,6 +140,20 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     auth: "one_click",
     status: "available",
     capabilities: ["site_publish"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: IMESSAGE_CONNECTION_ID,
+    label: "Connect iMessage",
+    summary:
+      "Follow Scout, Lens, Quill, Echo, and Codex from Messages once the Apple relay is production-ready.",
+    provider: "apple",
+    kind: "sms",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    capabilities: ["work_visibility", "mobile_messaging", "imessage_room"],
     oauthScopes: [],
     envKeys: [],
   },

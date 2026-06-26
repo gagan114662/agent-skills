@@ -337,6 +337,26 @@ export interface AgentProfile {
   createdAt: string;
 }
 
+export type TeamRunHarness = "demo" | "claude-code" | "codex";
+
+export interface TeamRunSubtaskInput {
+  agentMemberId: string;
+  task: string;
+  branch: string;
+  harness?: TeamRunHarness;
+}
+
+export interface TeamRunResponse {
+  teamRunId: string;
+  subtaskCount: number;
+  subtasks: Array<{
+    subtaskId: string;
+    agentMemberId: string;
+    branch: string;
+    harness: TeamRunHarness | null;
+  }>;
+}
+
 /**
  * The members-rail footer (#371): humans · agents · decisions captured, from `GET /me/department`.
  * `summary` is the server-rendered line; the counts are exposed for the client to re-render if needed.

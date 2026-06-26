@@ -31,11 +31,11 @@ export interface AgentLane {
 /** A first-run account connector, grouped like Tomo's direct connect page but backed by ipop's Connections surface. */
 export interface EverydayConnector {
   readonly id: string;
-  readonly group: "productivity" | "marketing" | "publishing";
+  readonly group: "productivity" | "marketing" | "publishing" | "visibility";
   readonly name: string;
   readonly status: "connected" | "available" | "coming_soon";
   readonly detail: string;
-  readonly href: string;
+  readonly actionLabel: string;
 }
 
 /** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
@@ -173,47 +173,55 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       {
         id: "scout",
         agent: "Scout",
-        role: "ICP + SEO",
+        role: "Insight",
         status: "working",
-        task: "Crawling the site and sketching the first customer hypothesis.",
+        task: "Mining the brand, category, product, and customer tensions before anyone writes a line.",
       },
       {
         id: "quill",
         agent: "Quill",
-        role: "Copy",
+        role: "Creative",
         status: "done",
-        task: "Drafted the homepage hero rewrite and launch-thread angle.",
+        task: "Turning the strongest validated insight into a campaign platform and first asset.",
       },
       {
         id: "echo",
         agent: "Echo",
-        role: "Outreach",
+        role: "Distribution",
         status: "blocked",
-        task: "Found warm threads; waiting for send approval before anything leaves.",
+        task: "Found warm channels; waiting for send approval before anything leaves Messages.",
       },
       {
         id: "lens",
         agent: "Lens",
         role: "Brand",
         status: "working",
-        task: "Checking the tone against receipts-over-adjectives.",
+        task: "Checking the work against award-winning references, not generic AI slop.",
       },
       {
         id: "codex",
         agent: "Codex",
         role: "Operator",
         status: "codex",
-        task: "Ready for product/code work when the room needs this subscription.",
+        task: "Using this Codex subscription for product/code execution once the team agrees what should ship.",
       },
     ],
     connectors: [
+      {
+        id: "imessage",
+        group: "visibility",
+        name: "iMessage",
+        status: "coming_soon",
+        detail: "the primary home for agent work visibility once the Apple Messages relay is production-ready.",
+        actionLabel: "set up iMessage",
+      },
       {
         id: "gmail",
         group: "productivity",
         name: "Gmail",
         status: "connected",
         detail: "gagan@getfoolish.com",
-        href: "/settings?section=connections&connector=gmail",
+        actionLabel: "connect",
       },
       {
         id: "calendar",
@@ -221,7 +229,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Google Calendar",
         status: "available",
         detail: "let the room see launch dates and follow-ups.",
-        href: "/settings?section=connections&connector=google-calendar",
+        actionLabel: "connect",
       },
       {
         id: "drive",
@@ -229,7 +237,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Google Drive",
         status: "available",
         detail: "brand docs, case studies, and proof in one place.",
-        href: "/settings?section=connections&connector=google-drive",
+        actionLabel: "connect",
       },
       {
         id: "linkedin",
@@ -237,7 +245,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "LinkedIn",
         status: "available",
         detail: "company research and human-approved outbound.",
-        href: "/settings?section=connections&connector=linkedin",
+        actionLabel: "connect",
       },
       {
         id: "site-publishing",
@@ -245,7 +253,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Site publishing",
         status: "available",
         detail: "publish approved pages instead of stopping at previews.",
-        href: "/settings?section=connections&connector=site-publishing",
+        actionLabel: "connect",
       },
     ],
     thread: [
@@ -254,37 +262,37 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         kind: "agent-line",
         agent: "Scout",
         at: "9:02 am",
-        text: "had a poke around your site overnight. your pricing page buries the one thing people actually want — the free trial. i've got thoughts.",
+        text: "insight pass: your buyer is not asking for another marketing dashboard. they're asking to stop being the marketing department at 11:43 pm.",
       },
       {
         id: "t2",
         kind: "deliverable",
-        agent: "Quill",
+        agent: "Lens",
         at: "9:14 am",
         deliverable: {
-          title: "rewritten homepage hero",
+          title: "category reference",
           kind: "diff",
-          before: "The all-in-one platform for modern teams.",
-          preview: "Ship faster. Your whole marketing department, minus the meetings.",
+          before: "show a dashboard with many agent cards.",
+          preview: "borrow the Tomo move: one familiar texting behavior, then reveal the team doing serious work inside it.",
         },
       },
       {
         id: "t3",
         kind: "agent-line",
-        agent: "Echo",
+        agent: "Codex",
         at: "11:30 am",
-        text: "found 3 reddit threads where people are basically begging for what you sell. drafted replies that help first and mention you second. ready when you are.",
+        text: "I can turn the approved iMessage-first experience into product code through this Codex subscription. No API-key billing path needed for this operator lane.",
       },
       {
         id: "t4",
         kind: "deliverable",
-        agent: "Echo",
+        agent: "Quill",
         at: "11:31 am",
         deliverable: {
-          title: "draft reply to r/marketing",
+          title: "first campaign platform",
           kind: "draft",
           preview:
-            "honestly the thing that worked for us was treating outreach as research, not pitching. we used ipop to draft the first pass and a human approved every send — kept it human, scaled the boring bit.",
+            "Text your marketing team. Watch Scout mine the insight, Lens protect the taste, Quill write the asset, Echo find distribution, and Codex ship the product work.",
         },
       },
     ],
@@ -394,7 +402,7 @@ export function defaultAgentRoom(goal: string): readonly AgentLane[] {
       agent: "Codex",
       role: "Operator",
       status: "codex",
-      task: "Available for product/code handoffs through this Codex subscription.",
+      task: "Using this Codex subscription for product/code execution after the team agrees what should ship.",
     },
   ];
 }
@@ -402,44 +410,52 @@ export function defaultAgentRoom(goal: string): readonly AgentLane[] {
 export function defaultConnectors(): readonly EverydayConnector[] {
   return [
     {
-      id: "gmail",
+      id: "email",
       group: "productivity",
-      name: "Gmail",
+      name: "Email",
       status: "available",
       detail: "email, replies, and follow-up receipts.",
-      href: "/settings?section=connections&connector=gmail",
+      actionLabel: "connect",
     },
     {
-      id: "calendar",
-      group: "productivity",
-      name: "Google Calendar",
-      status: "available",
-      detail: "meetings, launch dates, and reminders.",
-      href: "/settings?section=connections&connector=google-calendar",
+      id: "imessage",
+      group: "visibility",
+      name: "iMessage",
+      status: "coming_soon",
+      detail: "the primary home for agent work visibility once the Apple Messages relay is production-ready.",
+      actionLabel: "set up iMessage",
     },
     {
-      id: "drive",
+      id: "google",
       group: "productivity",
-      name: "Google Drive",
+      status: "coming_soon",
+      name: "Google",
+      detail: "Search Console + Analytics when Google OAuth is live.",
+      actionLabel: "notify me",
+    },
+    {
+      id: "website",
+      group: "publishing",
+      name: "Website",
       status: "available",
-      detail: "docs, screenshots, and brand proof.",
-      href: "/settings?section=connections&connector=google-drive",
+      detail: "approved pages can go live, not just to preview.",
+      actionLabel: "connect",
+    },
+    {
+      id: "social_aggregator",
+      group: "marketing",
+      name: "Social accounts",
+      status: "available",
+      detail: "research public threads and draft owner-approved replies.",
+      actionLabel: "connect",
     },
     {
       id: "linkedin",
       group: "marketing",
       name: "LinkedIn",
-      status: "available",
-      detail: "prospects and company research, with send approval.",
-      href: "/settings?section=connections&connector=linkedin",
-    },
-    {
-      id: "site-publishing",
-      group: "publishing",
-      name: "Site publishing",
-      status: "available",
-      detail: "approved pages can go live, not just to preview.",
-      href: "/settings?section=connections&connector=site-publishing",
+      status: "coming_soon",
+      detail: "native LinkedIn posting is not live yet.",
+      actionLabel: "notify me",
     },
   ];
 }

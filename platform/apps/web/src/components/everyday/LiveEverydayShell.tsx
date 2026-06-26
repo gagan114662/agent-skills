@@ -1,10 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
+import { api } from "../../api/client.js";
+import type { ConnectionView, TeamRunSubtaskInput } from "../../api/types.js";
 import type { AppState } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { EverydayShell } from "./EverydayShell.js";
-import { emptyEverydayData, type ApprovalCard, type EverydayData, type ThreadEntry } from "./everyday-data.js";
+import {
+  emptyEverydayData,
+  type ApprovalCard,
+  type EverydayConnector,
+  type EverydayData,
+  type ThreadEntry,
+} from "./everyday-data.js";
 
 function asText(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
@@ -64,14 +72,137 @@ export function liveEverydayDataFromState(state: AppState): EverydayData {
   };
 }
 
+function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
+  if (connection.capabilities.includes("work_visibility")) return "visibility";
+  if (connection.capabilities.includes("site_publish")) return "publishing";
+  if (connection.capabilities.includes("post_social") || connection.capabilities.includes("ads")) return "marketing";
+  return "productivity";
+}
+
+function connectorFromConnection(connection: ConnectionView): EverydayConnector {
+  return {
+    id: connection.id,
+    group: groupForConnection(connection),
+    name: connection.label.replace(/^connect\s+/i, "").replace(/^sign in with\s+/i, ""),
+    status: connection.connected ? "connected" : connection.status,
+    detail: connection.summary,
+    actionLabel: connection.id === "imessage" ? "set up iMessage" : connection.status === "coming_soon" ? "notify me" : "connect",
+  };
+}
+
+const ROOM_AGENT_TASKS: Array<{ role: string; task: (goal: string) => string }> = [
+  {
+    role: "Scout",
+    task: (goal) =>
+      "Mine customer/category/product/user/time/space insights for: " +
+      goal +
+      ". Start from public evidence and rank the strongest tensions before recommending work.",
+  },
+  {
+    role: "Quill",
+    task: (goal) =>
+      "Turn the strongest insight into a distinctive marketing platform for: " +
+      goal +
+      ". Reference award-winning work from another category and adapt the mechanism, not the surface.",
+  },
+  {
+    role: "Echo",
+    task: (goal) =>
+      "Plan the first outreach/content distribution moves for: " +
+      goal +
+      ". Do not send externally; prepare approval-ready drafts and connector blockers.",
+  },
+  {
+    role: "Lens",
+    task: (goal) =>
+      "Review the work for brand taste, originality, proof, and anti-slop quality for: " +
+      goal +
+      ". Challenge weak insights before anything ships.",
+  },
+  {
+    role: "Codex",
+    task: (goal) =>
+      "Act as the Codex operator for the marketing room. Convert approved product/website/workflow decisions into implementation tasks, PRs, or verified fixes for: " +
+      goal +
+      ". Report links and verification back into the room.",
+  },
+];
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "room";
+}
+
+async function resolveAgentMemberId(state: AppState, role: string): Promise<string | null> {
+  const cached = Object.values(state.directory).find(
+    (entry) => entry.kind === "agent" && entry.displayName.toLowerCase().includes(role.toLowerCase()),
+  );
+  if (cached) return cached.id;
+  const workspaceId = state.identity?.workspaceId;
+  if (!workspaceId) return null;
+  const hits = await api.searchMembers(workspaceId, role).catch(() => []);
+  return hits.find((hit) => hit.kind === "agent")?.id ?? null;
+}
+
+async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> {
+  const channelId = state.activeChannelId;
+  if (!channelId) throw new Error("Open a workspace channel before starting the iMessage room.");
+  await api.postMessage(channelId, goal).catch(() => undefined);
+
+  const subtasks: TeamRunSubtaskInput[] = [];
+  for (const spec of ROOM_AGENT_TASKS) {
+    const agentMemberId = await resolveAgentMemberId(state, spec.role);
+    if (!agentMemberId) continue;
+    subtasks.push({
+      agentMemberId,
+      task: spec.task(goal),
+      branch: "ipop-" + slug(spec.role) + "-" + slug(goal),
+      harness: "codex",
+    });
+  }
+  if (subtasks.length === 0) {
+    throw new Error("No Scout/Quill/Echo/Lens/Codex agents were found in this workspace roster yet.");
+  }
+  await api.launchTeamRun(channelId, subtasks);
+}
+
 export function LiveEverydayShell(): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
+  const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
+
+  async function refreshConnections(): Promise<void> {
+    const response = await api.getConnections();
+    setConnections(response.connections.filter((connection) => connection.audience === "customer"));
+  }
 
   useEffect(() => {
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
+    void refreshConnections().catch(() => setConnections(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
-  return <EverydayShell data={liveEverydayDataFromState(state)} />;
+  async function connect(id: string): Promise<void> {
+    const connection = connections?.find((item) => item.id === id);
+    if (!connection) return;
+    if (connection.connected) return;
+    if (connection.status === "coming_soon") {
+      await api.joinConnectionWaitlist(id).catch(() => undefined);
+      return;
+    }
+    if (connection.auth === "one_click") await api.enableConnection(id);
+    else await api.startConnectionOAuth(id);
+    await refreshConnections();
+  }
+
+  const data = liveEverydayDataFromState(state);
+  return (
+    <EverydayShell
+      data={{
+        ...data,
+        connectors: connections ? connections.map(connectorFromConnection) : data.connectors,
+      }}
+      onConnectorConnect={(id) => void connect(id)}
+      onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
+    />
+  );
 }
