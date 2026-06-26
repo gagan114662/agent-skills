@@ -21,12 +21,17 @@ afterEach(() => {
 
 describe("api.approvals", () => {
   it("listApprovals hits the workspace queue with an optional status filter", async () => {
-    const fetchMock = stubFetch(200, []);
-    await api.approvals.list("w1");
+    const fetchMock = stubFetch(200, { items: [{ id: "r1" }], hasMore: false });
+    await expect(api.approvals.list("w1")).resolves.toEqual([{ id: "r1" }]);
     expect(lastCall(fetchMock)[0]).toBe("/workspaces/w1/approvals");
 
     await api.approvals.list("w1", "pending");
     expect(lastCall(fetchMock)[0]).toBe("/workspaces/w1/approvals?status=pending");
+  });
+
+  it("keeps backward compatibility with legacy array approval queues", async () => {
+    stubFetch(200, [{ id: "legacy-r1" }]);
+    await expect(api.approvals.list("w1")).resolves.toEqual([{ id: "legacy-r1" }]);
   });
 
   it("get and events resolve a single request by id", async () => {

@@ -22,10 +22,15 @@ import { PopMark } from "./PopMark.js";
 import { DeliverablePreview } from "./DeliverablePreview.js";
 import { AcquisitionPipelinePreview } from "./acquisition/AcquisitionPipelinePreview.js";
 
-/** Read the `?error=<code>` the OAuth routes redirect with, mapped to a friendly line (or null). */
-function errorFromUrl(): string | null {
+/** Read the `?error=<code>` the OAuth routes redirect with. */
+function errorCodeFromUrl(): string | null {
   if (typeof window === "undefined") return null;
-  const code = new URLSearchParams(window.location.search).get("error");
+  return new URLSearchParams(window.location.search).get("error");
+}
+
+/** Map a redirected-back OAuth error code to a friendly line (or null). */
+function errorFromUrl(): string | null {
+  const code = errorCodeFromUrl();
   if (!code) return null;
   const errors = ONBOARDING.errors as Record<string, string | undefined>;
   return errors[code] ?? ONBOARDING.errors.generic;
@@ -34,6 +39,7 @@ function errorFromUrl(): string | null {
 export function Onboarding(): React.JSX.Element {
   const [domain, setDomain] = useState("");
   const [icp, setIcp] = useState("");
+  const [errorCode] = useState(errorCodeFromUrl);
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
   // #633: once a visitor submits a website we switch to the live deliverable view (config runs alongside,
@@ -162,6 +168,15 @@ export function Onboarding(): React.JSX.Element {
             {ONBOARDING.sampleDivider}{" "}
             <Link href="/sample" className="linklike">
               {ONBOARDING.sampleCta}
+            </Link>
+          </p>
+        )}
+
+        {errorCode === "google_unavailable" && (
+          <p className="auth__alt">
+            {ONBOARDING.fallbackSignup.lead}{" "}
+            <Link href="/signup" className="linklike">
+              {ONBOARDING.fallbackSignup.cta}
             </Link>
           </p>
         )}

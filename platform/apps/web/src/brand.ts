@@ -532,6 +532,10 @@ export const ONBOARDING = {
     google_unavailable: "Google sign-in isn't switched on for this deployment yet.",
     generic: "That didn't pop. Give it another go.",
   },
+  fallbackSignup: {
+    lead: "Google's having a little lie-down.",
+    cta: "Create an account with email instead",
+  },
   /** #300 low-commitment entry: the divider + link to the read-only sample workspace (no account needed). */
   sampleDivider: "Just want to look around?",
   sampleCta: "Explore a sample workspace",
