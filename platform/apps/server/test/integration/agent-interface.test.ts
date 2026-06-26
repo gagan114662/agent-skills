@@ -45,13 +45,14 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
 async function newAgent(
   owner: { cookie: string; workspaceId: string },
   name: string,
+  framework?: string,
 ): Promise<{ memberId: string; agentId: string; token: string }> {
   const reg = (
     await app.inject({
       method: "POST",
       url: `/workspaces/${owner.workspaceId}/agents`,
       cookies: { rid: owner.cookie },
-      payload: { name },
+      payload: { name, framework },
     })
   ).json();
   return { memberId: reg.memberId, agentId: reg.agentId, token: reg.token };
@@ -88,6 +89,53 @@ async function grant(
 }
 
 describe("#11 agent REST interface (real Postgres)", () => {
+  it("registers a bring-your-own MCP agent and lets it participate in a channel (#514)", async () => {
+    const owner = await newOwner();
+    const handle = `mcpguest${newId().replace(/-/g, "")}`;
+    const agent = await newAgent(owner, handle, "mcp");
+    const general = await createChannel(owner, "general");
+    await grant(owner, general, agent.memberId, "write");
+
+    const registry = await app.inject({
+      method: "GET",
+      url: `/workspaces/${owner.workspaceId}/agents`,
+      cookies: { rid: owner.cookie },
+    });
+    expect(registry.statusCode).toBe(200);
+    expect(registry.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: agent.agentId, name: handle, framework: "mcp" }),
+      ]),
+    );
+
+    const me = await app.inject({ method: "GET", url: "/me", headers: bearer(agent.token) });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({
+      kind: "agent",
+      workspaceId: owner.workspaceId,
+      memberId: agent.memberId,
+      displayName: handle,
+    });
+
+    const post = await app.inject({
+      method: "POST",
+      url: `/channels/${general}/messages`,
+      headers: bearer(agent.token),
+      payload: { body: "external MCP agent online" },
+    });
+    expect(post.statusCode).toBe(201);
+
+    const messages = await app.inject({
+      method: "GET",
+      url: `/channels/${general}/messages`,
+      headers: bearer(agent.token),
+    });
+    expect(messages.statusCode).toBe(200);
+    expect((messages.json() as { body: string }[]).map((m) => m.body)).toContain(
+      "external MCP agent online",
+    );
+  });
+
   it("an agent with only a Bearer token completes whoami → channels → post → mentions", async () => {
     const owner = await newOwner();
     const handle = `watcher${newId().replace(/-/g, "")}`;
