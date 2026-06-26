@@ -171,7 +171,7 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
   await api.launchTeamRun(channelId, subtasks);
 }
 
-export function LiveEverydayShell(): React.JSX.Element {
+export function LiveEverydayShell({ dashboardFirst = false }: { dashboardFirst?: boolean } = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
@@ -209,6 +209,7 @@ export function LiveEverydayShell(): React.JSX.Element {
       }}
       onConnectorConnect={(id) => void connect(id)}
       onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
+      dashboardFirst={dashboardFirst}
     />
   );
 }

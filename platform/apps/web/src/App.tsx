@@ -1,5 +1,6 @@
 /** App root: the auth boundary wrapping the workspace shell. */
-import { AuthGate } from "./components/AuthGate.js";
+import { useEffect } from "react";
+import { AuthGate, Splash } from "./components/AuthGate.js";
 import { StatusPage } from "./components/StatusPage.js";
 import { SupportTicketStatus } from "./components/SupportTicketStatus.js";
 import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
@@ -10,6 +11,7 @@ import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
 import { APP_ROUTES, navigate, useRoute } from "./routing.js";
+import { useAppState, useStore } from "./store/StoreContext.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
  * needs no session (path-based, keeping the no-router shell). Everything else is the authed app. */
@@ -40,6 +42,19 @@ function AuthedHome(): React.JSX.Element {
   return <LiveEverydayShell />;
 }
 
+function DashboardRoute(): React.JSX.Element {
+  const store = useStore();
+  const { phase } = useAppState();
+
+  useEffect(() => {
+    void store.bootstrap();
+  }, [store]);
+
+  if (phase === "ready") return <LiveEverydayShell dashboardFirst />;
+  if (phase === "loading") return <Splash />;
+  return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
+}
+
 export function App(): React.JSX.Element {
   // useRoute keeps these top-level branches in sync with client navigation (and browser back/forward).
   const path = useRoute();
@@ -58,9 +73,9 @@ export function App(): React.JSX.Element {
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.
   if (DEMO_PATH.test(path)) return <DemoSandbox />;
 
-  // The homepage Dashboard icon should not dump visitors into the auth wall. It opens a concise work
-  // summary immediately; signed-in work still uses live data at /everyday.
-  if (DASHBOARD_PATH.test(path)) return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
+  // The homepage Dashboard icon should not dump visitors into the auth wall. Anonymous visitors get a
+  // clearly-labelled sample; signed-in workspaces get the live workspace dashboard, not hard-coded dogfood.
+  if (DASHBOARD_PATH.test(path)) return <DashboardRoute />;
 
   // The theater needs a session (workspace-scoped stream), so it lives inside the auth boundary.
   if (THEATER_PATH.test(path)) {
