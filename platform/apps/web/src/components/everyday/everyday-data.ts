@@ -35,7 +35,7 @@ export interface EverydayConnector {
   readonly name: string;
   readonly status: "connected" | "available" | "coming_soon";
   readonly detail: string;
-  readonly href: string;
+  readonly actionLabel: string;
 }
 
 /** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
@@ -213,7 +213,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Gmail",
         status: "connected",
         detail: "gagan@getfoolish.com",
-        href: "/settings?section=connections&connector=gmail",
+        actionLabel: "connect",
       },
       {
         id: "calendar",
@@ -221,7 +221,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Google Calendar",
         status: "available",
         detail: "let the room see launch dates and follow-ups.",
-        href: "/settings?section=connections&connector=google-calendar",
+        actionLabel: "connect",
       },
       {
         id: "drive",
@@ -229,7 +229,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Google Drive",
         status: "available",
         detail: "brand docs, case studies, and proof in one place.",
-        href: "/settings?section=connections&connector=google-drive",
+        actionLabel: "connect",
       },
       {
         id: "linkedin",
@@ -237,7 +237,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "LinkedIn",
         status: "available",
         detail: "company research and human-approved outbound.",
-        href: "/settings?section=connections&connector=linkedin",
+        actionLabel: "connect",
       },
       {
         id: "site-publishing",
@@ -245,7 +245,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "Site publishing",
         status: "available",
         detail: "publish approved pages instead of stopping at previews.",
-        href: "/settings?section=connections&connector=site-publishing",
+        actionLabel: "connect",
       },
     ],
     thread: [
@@ -402,44 +402,44 @@ export function defaultAgentRoom(goal: string): readonly AgentLane[] {
 export function defaultConnectors(): readonly EverydayConnector[] {
   return [
     {
-      id: "gmail",
+      id: "email",
       group: "productivity",
-      name: "Gmail",
+      name: "Email",
       status: "available",
       detail: "email, replies, and follow-up receipts.",
-      href: "/settings?section=connections&connector=gmail",
+      actionLabel: "connect",
     },
     {
-      id: "calendar",
+      id: "google",
       group: "productivity",
-      name: "Google Calendar",
-      status: "available",
-      detail: "meetings, launch dates, and reminders.",
-      href: "/settings?section=connections&connector=google-calendar",
+      status: "coming_soon",
+      name: "Google",
+      detail: "Search Console + Analytics when Google OAuth is live.",
+      actionLabel: "notify me",
     },
     {
-      id: "drive",
-      group: "productivity",
-      name: "Google Drive",
+      id: "website",
+      group: "publishing",
+      name: "Website",
       status: "available",
-      detail: "docs, screenshots, and brand proof.",
-      href: "/settings?section=connections&connector=google-drive",
+      detail: "approved pages can go live, not just to preview.",
+      actionLabel: "connect",
+    },
+    {
+      id: "social_aggregator",
+      group: "marketing",
+      name: "Social accounts",
+      status: "available",
+      detail: "research public threads and draft owner-approved replies.",
+      actionLabel: "connect",
     },
     {
       id: "linkedin",
       group: "marketing",
       name: "LinkedIn",
-      status: "available",
-      detail: "prospects and company research, with send approval.",
-      href: "/settings?section=connections&connector=linkedin",
-    },
-    {
-      id: "site-publishing",
-      group: "publishing",
-      name: "Site publishing",
-      status: "available",
-      detail: "approved pages can go live, not just to preview.",
-      href: "/settings?section=connections&connector=site-publishing",
+      status: "coming_soon",
+      detail: "native LinkedIn posting is not live yet.",
+      actionLabel: "notify me",
     },
   ];
 }

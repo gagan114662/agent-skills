@@ -56,7 +56,8 @@ describe("LiveEverydayShell (#1181)", () => {
       await store.bootstrap();
     });
 
-    expect(await screen.findByText(EVERYDAY.thread.empty)).toBeInTheDocument();
+    expect(await screen.findByText("find my next customers")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: EVERYDAY.room.heading })).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.approvals.empty)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.transparency.empty)).toBeInTheDocument();
     expect(screen.getByText("$0")).toBeInTheDocument();

@@ -105,69 +105,119 @@ function DeliverableBody({ deliverable }: { deliverable: Deliverable }): React.J
   );
 }
 
-/** The calm thread. Agent narration + inline deliverables, generous whitespace, no spinners-for-show. */
-function Thread({ entries }: { entries: readonly ThreadEntry[] }): React.JSX.Element {
-  const t = EVERYDAY.thread;
+function chatPreviewFrom({
+  entries,
+  lanes,
+  memberName,
+}: {
+  entries: readonly ThreadEntry[];
+  lanes: readonly AgentLane[];
+  memberName: string;
+}): readonly ThreadEntry[] {
+  if (entries.length > 0) return entries.slice(-5);
+  const working = lanes.find((lane) => lane.status === "working") ?? lanes[0];
+  return [
+    {
+      id: "welcome-user",
+      kind: "agent-line",
+      agent: memberName,
+      at: EVERYDAY.room.chatLabel,
+      text: "find my next customers",
+    },
+    {
+      id: "welcome-scout",
+      kind: "agent-line",
+      agent: working?.agent ?? "Scout",
+      at: "now",
+      text: working?.task ?? EVERYDAY.thread.working("Scout"),
+    },
+    {
+      id: "welcome-codex",
+      kind: "agent-line",
+      agent: "Codex",
+      at: "ready",
+      text: "I can take product/code handoffs through this Codex subscription.",
+    },
+  ];
+}
+
+function GroupChatHero({
+  greeting,
+  lanes,
+  thread,
+  memberName,
+  onSubmit,
+}: {
+  greeting: string;
+  lanes: readonly AgentLane[];
+  thread: readonly ThreadEntry[];
+  memberName: string;
+  onSubmit: (goal: string) => void;
+}): React.JSX.Element {
+  const preview = chatPreviewFrom({ entries: thread, lanes, memberName });
   return (
-    <section className="everyday-thread" aria-label={t.heading}>
-      <h2 className="everyday-serif everyday-thread__heading">{t.heading}</h2>
-      {entries.length === 0 ? (
-        <div className="everyday-empty">
-          <p className="everyday-empty__line">{t.empty}</p>
-          <p className="everyday-empty__nudge">{t.nudge}</p>
+    <header className="everyday-hero">
+      <div className="everyday-hero__brief">
+        <p className="everyday-eyebrow">{EVERYDAY.room.chatLabel}</p>
+        <h1 className="everyday-serif everyday-door__greeting">{greeting}</h1>
+        <Composer onSubmit={onSubmit} />
+      </div>
+      <section className="everyday-chat" aria-label={EVERYDAY.room.heading}>
+        <div className="everyday-chat__topbar">
+          <div>
+            <h2 className="everyday-serif everyday-chat__title">{EVERYDAY.room.heading}</h2>
+            <p className="everyday-chat__subhead">{EVERYDAY.room.subhead}</p>
+          </div>
+          <div className="everyday-chat__avatars" aria-label="agents in the room">
+            {lanes.slice(0, 5).map((lane) => (
+              <span key={lane.id} className="everyday-chat__avatar" data-status={lane.status} title={lane.agent}>
+                {lane.agent.trim()[0]?.toUpperCase() ?? "?"}
+              </span>
+            ))}
+          </div>
         </div>
-      ) : (
-        <ol className="everyday-thread__list">
-          {entries.map((e) => (
-            <li key={e.id} className="everyday-msg">
-              <AgentChip name={e.agent} />
-              <div className="everyday-msg__body">
+        <ol className="everyday-chat__messages">
+          {preview.map((entry) => (
+            <li
+              key={entry.id}
+              className="everyday-chat__message"
+              data-author={entry.agent === memberName ? "user" : "agent"}
+            >
+              <AgentChip name={entry.agent} />
+              <div className="everyday-chat__bubble">
                 <p className="everyday-msg__meta">
-                  <span className="everyday-msg__agent">{e.agent}</span>
-                  <span className="everyday-msg__at">{e.at}</span>
+                  <span className="everyday-msg__agent">{entry.agent}</span>
+                  <span className="everyday-msg__at">{entry.at}</span>
                 </p>
-                {e.kind === "agent-line" ? (
-                  <p className="everyday-msg__text">{e.text}</p>
+                {entry.kind === "agent-line" ? (
+                  <p className="everyday-msg__text">{entry.text}</p>
                 ) : (
-                  <DeliverableBody deliverable={e.deliverable} />
+                  <DeliverableBody deliverable={entry.deliverable} />
                 )}
               </div>
             </li>
           ))}
         </ol>
-      )}
-    </section>
+        <div className="everyday-chat__lanes">
+          {lanes.slice(0, 5).map((lane) => (
+            <article key={lane.id} className="everyday-chat__lane" data-status={lane.status}>
+              <span>{lane.agent}</span>
+              <strong>{EVERYDAY.room.statuses[lane.status]}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+    </header>
   );
 }
 
-function AgentRoom({ lanes }: { lanes: readonly AgentLane[] }): React.JSX.Element {
-  const r = EVERYDAY.room;
-  return (
-    <section className="everyday-room" aria-label={r.heading}>
-      <div className="everyday-room__intro">
-        <h2 className="everyday-serif everyday-room__heading">{r.heading}</h2>
-        <p className="everyday-room__subhead">{lanes.length === 0 ? r.empty : r.subhead}</p>
-      </div>
-      <div className="everyday-room__grid">
-        {lanes.map((lane) => (
-          <article key={lane.id} className="everyday-lane" data-status={lane.status}>
-            <header className="everyday-lane__head">
-              <AgentChip name={lane.agent} />
-              <div>
-                <h3 className="everyday-lane__agent">{lane.agent}</h3>
-                <p className="everyday-lane__role">{lane.role}</p>
-              </div>
-              <span className="everyday-lane__status">{r.statuses[lane.status]}</span>
-            </header>
-            <p className="everyday-lane__task">{lane.task}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ConnectorSetup({ connectors }: { connectors: readonly EverydayConnector[] }): React.JSX.Element {
+function ConnectorSetup({
+  connectors,
+  onConnect,
+}: {
+  connectors: readonly EverydayConnector[];
+  onConnect: (id: string) => void;
+}): React.JSX.Element {
   const c = EVERYDAY.connectors;
   const groups = (["productivity", "marketing", "publishing"] as const)
     .map((group) => ({ group, items: connectors.filter((item) => item.group === group) }))
@@ -193,9 +243,9 @@ function ConnectorSetup({ connectors }: { connectors: readonly EverydayConnector
                   {item.status === "connected" ? (
                     <span className="everyday-connector__badge">{c.connected}</span>
                   ) : (
-                    <a className="everyday-connector__link" href={item.href}>
-                      {c.connect}
-                    </a>
+                    <button type="button" className="everyday-connector__link" onClick={() => onConnect(item.id)}>
+                      {item.actionLabel}
+                    </button>
                   )}
                 </li>
               ))}
@@ -498,10 +548,12 @@ export function EverydayShell({
   data = emptyEverydayData(),
   hour = 14,
   approvalActions = defaultEverydayApprovalActions,
+  onConnectorConnect = () => undefined,
 }: {
   data?: EverydayData;
   hour?: number;
   approvalActions?: EverydayApprovalActions;
+  onConnectorConnect?: (id: string) => void;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -530,6 +582,13 @@ export function EverydayShell({
         at: "just now",
         text: EVERYDAY.thread.working("Scout"),
       },
+      {
+        id: "codex-" + Date.now(),
+        kind: "agent-line",
+        agent: "Codex",
+        at: "ready",
+        text: "I can take product/code handoffs through this Codex subscription.",
+      },
     ]);
   }
 
@@ -553,15 +612,15 @@ export function EverydayShell({
   return (
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
       <main className="everyday-shell__main">
-        <header className="everyday-door">
-          <h1 className="everyday-serif everyday-door__greeting">{greeting}</h1>
-          <Composer onSubmit={startRoom} />
-        </header>
-
-        <AgentRoom lanes={room} />
-        <ConnectorSetup connectors={data.connectors} />
+        <GroupChatHero
+          greeting={greeting}
+          lanes={room}
+          thread={thread}
+          memberName={data.memberName}
+          onSubmit={startRoom}
+        />
+        <ConnectorSetup connectors={data.connectors} onConnect={onConnectorConnect} />
         <NorthStarBar data={data.northStar} />
-        <Thread entries={thread} />
         <ApprovalQueue
           cards={pending}
           justShipped={shipped.length > 0}

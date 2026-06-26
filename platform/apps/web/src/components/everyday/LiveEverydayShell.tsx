@@ -1,10 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
+import { api } from "../../api/client.js";
+import type { ConnectionView } from "../../api/types.js";
 import type { AppState } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { EverydayShell } from "./EverydayShell.js";
-import { emptyEverydayData, type ApprovalCard, type EverydayData, type ThreadEntry } from "./everyday-data.js";
+import {
+  emptyEverydayData,
+  type ApprovalCard,
+  type EverydayConnector,
+  type EverydayData,
+  type ThreadEntry,
+} from "./everyday-data.js";
 
 function asText(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
@@ -64,14 +72,60 @@ export function liveEverydayDataFromState(state: AppState): EverydayData {
   };
 }
 
+function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
+  if (connection.capabilities.includes("site_publish")) return "publishing";
+  if (connection.capabilities.includes("post_social") || connection.capabilities.includes("ads")) return "marketing";
+  return "productivity";
+}
+
+function connectorFromConnection(connection: ConnectionView): EverydayConnector {
+  return {
+    id: connection.id,
+    group: groupForConnection(connection),
+    name: connection.label.replace(/^connect\s+/i, "").replace(/^sign in with\s+/i, ""),
+    status: connection.connected ? "connected" : connection.status,
+    detail: connection.summary,
+    actionLabel: connection.status === "coming_soon" ? "notify me" : "connect",
+  };
+}
+
 export function LiveEverydayShell(): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
+  const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
+
+  async function refreshConnections(): Promise<void> {
+    const response = await api.getConnections();
+    setConnections(response.connections.filter((connection) => connection.audience === "customer"));
+  }
 
   useEffect(() => {
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
+    void refreshConnections().catch(() => setConnections(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
-  return <EverydayShell data={liveEverydayDataFromState(state)} />;
+  async function connect(id: string): Promise<void> {
+    const connection = connections?.find((item) => item.id === id);
+    if (!connection) return;
+    if (connection.connected) return;
+    if (connection.status === "coming_soon") {
+      await api.joinConnectionWaitlist(id).catch(() => undefined);
+      return;
+    }
+    if (connection.auth === "one_click") await api.enableConnection(id);
+    else await api.startConnectionOAuth(id);
+    await refreshConnections();
+  }
+
+  const data = liveEverydayDataFromState(state);
+  return (
+    <EverydayShell
+      data={{
+        ...data,
+        connectors: connections ? connections.map(connectorFromConnection) : data.connectors,
+      }}
+      onConnectorConnect={(id) => void connect(id)}
+    />
+  );
 }
