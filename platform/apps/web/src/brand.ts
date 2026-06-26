@@ -139,6 +139,16 @@ export const THEATER = {
   phaseAction: "Action",
   phaseArtifact: "Artifact",
   phaseApproval: "Approval",
+  /** Browser/computer-use live screen (#520). */
+  browserRegion: "Live browser screen",
+  browserTitle: "Agent screen",
+  browserObserved: "observed",
+  browserHeld: "needs your yes",
+  browserNoUrl: "No page loaded yet",
+  browserScreenshot: "Screenshot receipt captured",
+  browserStatus: "HTTP",
+  browserApproval: "Approval",
+  browserNoApproval: "none",
   /** Complete per-run trace affordance (#664). */
   openTrace: "Open trace",
   refreshTrace: "Refresh trace",

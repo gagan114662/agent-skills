@@ -12,6 +12,16 @@ import { apiUrl } from "./config.js";
 /** The watchable phase of a streamed event — mirrors the server's `TheaterPhase`. */
 export type TheaterPhase = "context" | "reasoning" | "action" | "artifact" | "approval";
 
+export interface TheaterBrowserActionDto {
+  tool: string;
+  url: string | null;
+  decision: string | null;
+  approvalRequestId: string | null;
+  screenshotPath: string | null;
+  status: number | null;
+  summary: string;
+}
+
 /** One streamed trace event, projected for the theater. Mirrors the server `TheaterEvent`. */
 export interface TheaterEventDto {
   id: string;
@@ -22,6 +32,7 @@ export interface TheaterEventDto {
   phase: TheaterPhase;
   label: string | null;
   summary: string;
+  browser?: TheaterBrowserActionDto | null;
   occurredAt: string;
 }
 

@@ -14,6 +14,16 @@ import type { TraceEvent, TraceEventType } from "./types.js";
 /** The five watchable phases of a run, derived 1:1 from the underlying trace event type. */
 export type TheaterPhase = "context" | "reasoning" | "action" | "artifact" | "approval";
 
+export interface TheaterBrowserAction {
+  tool: string;
+  url: string | null;
+  decision: string | null;
+  approvalRequestId: string | null;
+  screenshotPath: string | null;
+  status: number | null;
+  summary: string;
+}
+
 /** A trace event projected for the live theater: a phase, a short label, and a one-line summary. */
 export interface TheaterEvent {
   id: string;
@@ -25,6 +35,8 @@ export interface TheaterEvent {
   label: string | null;
   /** A short, already-redacted human summary of what happened (≤ {@link SUMMARY_MAX} chars). */
   summary: string;
+  /** Browser/computer-use receipt metadata (#520), extracted from already-redacted trace payloads. */
+  browser: TheaterBrowserAction | null;
   /** ISO-8601 timestamp the event occurred. */
   occurredAt: string;
 }
@@ -51,6 +63,49 @@ export function phaseForType(type: TraceEventType): TheaterPhase {
 function clamp(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > SUMMARY_MAX ? `${flat.slice(0, SUMMARY_MAX - 1)}…` : flat;
+}
+
+const BROWSER_TOOL_NAMES = new Set(["navigate", "read_page", "screenshot", "scroll", "wait", "click", "type"]);
+
+function firstPayloadObject(payload: Record<string, unknown>): Record<string, unknown> {
+  for (const key of ["result", "output", "data", "receipt"]) {
+    const value = payload[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  }
+  return payload;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function browserActionForEvent(
+  type: TraceEventType,
+  label: string | null,
+  payload: Record<string, unknown>,
+): TheaterBrowserAction | null {
+  const candidate = firstPayloadObject(payload);
+  const tool = stringOrNull(candidate.tool) ?? (label && BROWSER_TOOL_NAMES.has(label) ? label : null);
+  if (!tool || !BROWSER_TOOL_NAMES.has(tool)) return null;
+  const url = stringOrNull(candidate.url) ?? stringOrNull(payload.url);
+  const decision = stringOrNull(candidate.decision);
+  const approvalRequestId = stringOrNull(candidate.approvalRequestId);
+  const screenshotPath = stringOrNull(candidate.screenshotPath);
+  const status = numberOrNull(candidate.status);
+  const detail = summarizeTracePayload(type, label, payload);
+  const summary =
+    decision === "needs_approval"
+      ? `${tool} is waiting for approval`
+      : url
+        ? `${tool} on ${url}`
+        : detail;
+  return { tool, url, decision, approvalRequestId, screenshotPath, status, summary: clamp(summary) };
 }
 
 /** First non-empty string found at any of the candidate keys of a payload object. */
@@ -120,6 +175,7 @@ export function toTheaterEvent(event: TraceEvent): TheaterEvent {
     phase: phaseForType(event.type),
     label: event.label,
     summary: summarizeTracePayload(event.type, event.label, event.payload),
+    browser: browserActionForEvent(event.type, event.label, event.payload),
     occurredAt:
       event.occurredAt instanceof Date ? event.occurredAt.toISOString() : String(event.occurredAt),
   };
