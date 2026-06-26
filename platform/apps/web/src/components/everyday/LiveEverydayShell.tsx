@@ -73,6 +73,7 @@ export function liveEverydayDataFromState(state: AppState): EverydayData {
 }
 
 function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
+  if (connection.capabilities.includes("work_visibility")) return "visibility";
   if (connection.capabilities.includes("site_publish")) return "publishing";
   if (connection.capabilities.includes("post_social") || connection.capabilities.includes("ads")) return "marketing";
   return "productivity";

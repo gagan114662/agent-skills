@@ -219,7 +219,7 @@ function ConnectorSetup({
   onConnect: (id: string) => void;
 }): React.JSX.Element {
   const c = EVERYDAY.connectors;
-  const groups = (["productivity", "marketing", "publishing"] as const)
+  const groups = (["visibility", "productivity", "marketing", "publishing"] as const)
     .map((group) => ({ group, items: connectors.filter((item) => item.group === group) }))
     .filter(({ items }) => items.length > 0);
 

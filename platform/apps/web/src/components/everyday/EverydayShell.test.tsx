@@ -119,7 +119,11 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     render(<EverydayShell data={seedEveryday()} onConnectorConnect={onConnectorConnect} />);
     const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
     expect(within(setup).getByRole("heading", { name: EVERYDAY.connectors.heading })).toBeInTheDocument();
+    expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.visibility })).toBeInTheDocument();
     expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.productivity })).toBeInTheDocument();
+    expect(within(setup).getByText("WhatsApp")).toBeInTheDocument();
+    expect(within(setup).getByText("Telegram")).toBeInTheDocument();
+    expect(within(setup).getByText("iMessage")).toBeInTheDocument();
     expect(within(setup).getByText("Gmail")).toBeInTheDocument();
     expect(within(setup).getByText("gagan@getfoolish.com")).toBeInTheDocument();
     expect(within(setup).getByText(EVERYDAY.connectors.connected)).toBeInTheDocument();

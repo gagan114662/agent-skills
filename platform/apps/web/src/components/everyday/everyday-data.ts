@@ -31,7 +31,7 @@ export interface AgentLane {
 /** A first-run account connector, grouped like Tomo's direct connect page but backed by ipop's Connections surface. */
 export interface EverydayConnector {
   readonly id: string;
-  readonly group: "productivity" | "marketing" | "publishing";
+  readonly group: "productivity" | "marketing" | "publishing" | "visibility";
   readonly name: string;
   readonly status: "connected" | "available" | "coming_soon";
   readonly detail: string;
@@ -207,6 +207,38 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       },
     ],
     connectors: [
+      {
+        id: "web_chat",
+        group: "visibility",
+        name: "Web chat",
+        status: "available",
+        detail: "watch the room work here before native messaging is wired.",
+        actionLabel: "connect",
+      },
+      {
+        id: "whatsapp",
+        group: "visibility",
+        name: "WhatsApp",
+        status: "coming_soon",
+        detail: "agent updates and approvals in WhatsApp once the transport is live.",
+        actionLabel: "notify me",
+      },
+      {
+        id: "telegram",
+        group: "visibility",
+        name: "Telegram",
+        status: "coming_soon",
+        detail: "agent updates and approvals in Telegram once the transport is live.",
+        actionLabel: "notify me",
+      },
+      {
+        id: "imessage",
+        group: "visibility",
+        name: "iMessage",
+        status: "coming_soon",
+        detail: "agent visibility in Messages once the native relay is ready.",
+        actionLabel: "notify me",
+      },
       {
         id: "gmail",
         group: "productivity",
@@ -408,6 +440,38 @@ export function defaultConnectors(): readonly EverydayConnector[] {
       status: "available",
       detail: "email, replies, and follow-up receipts.",
       actionLabel: "connect",
+    },
+    {
+      id: "web_chat",
+      group: "visibility",
+      name: "Web chat",
+      status: "available",
+      detail: "watch the room work in ipop before native messaging is wired.",
+      actionLabel: "connect",
+    },
+    {
+      id: "whatsapp",
+      group: "visibility",
+      name: "WhatsApp",
+      status: "coming_soon",
+      detail: "agent updates and approvals in WhatsApp once the transport is live.",
+      actionLabel: "notify me",
+    },
+    {
+      id: "telegram",
+      group: "visibility",
+      name: "Telegram",
+      status: "coming_soon",
+      detail: "agent updates and approvals in Telegram once the transport is live.",
+      actionLabel: "notify me",
+    },
+    {
+      id: "imessage",
+      group: "visibility",
+      name: "iMessage",
+      status: "coming_soon",
+      detail: "agent visibility in Messages once the native relay is ready.",
+      actionLabel: "notify me",
     },
     {
       id: "google",

@@ -120,10 +120,11 @@ describe("OnboardingExperience (#784)", () => {
     });
   });
 
-  it("opens on the warm door — a personalized greeting and ONE input, nothing else", () => {
+  it("opens on the warm door — one simple promise, one input, nothing else", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
-    expect(screen.getByText(/afternoon, gagan/i)).toBeInTheDocument();
-    expect(screen.getByText(/what are we making pop today/i)).toBeInTheDocument();
+    expect(screen.getByText(/make marketing pop/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
+    expect(screen.getByText(/customer map/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: /ipop cowork room/i })).toBeInTheDocument();
     expect(screen.getByText(/your marketing team, already at the table/i)).toBeInTheDocument();

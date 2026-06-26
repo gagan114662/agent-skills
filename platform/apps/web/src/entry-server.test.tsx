@@ -106,7 +106,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
   });
 
   it.each([
-    ["/start", "Start", "your website"],
+    ["/start", "Start", "Your website"],
     ["/welcome", "Welcome", "what are we marketing today?"],
     ["/demo", "Live demo", "Build my free deliverable"],
     ["/sandbox", "Sandbox", "Build my free deliverable"],

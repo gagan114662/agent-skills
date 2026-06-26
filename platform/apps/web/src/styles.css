@@ -382,16 +382,16 @@ select:focus-visible {
     radial-gradient(700px 380px at 50% 0%, rgba(255, 69, 36, 0.07), transparent 60%);
 }
 .auth__card {
-  width: 360px;
+  width: 460px;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
   background: var(--bg-1);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 28px;
+  border-radius: 18px;
+  padding: 32px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .auth__brand,
 .sidebar__brand,
@@ -405,10 +405,20 @@ select:focus-visible {
 .auth__mark {
   color: var(--accent);
 }
+.auth__headline {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-family: var(--o-serif, Georgia, "Times New Roman", serif);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1.04;
+  letter-spacing: 0;
+}
 .auth__tag {
-  margin: -6px 0 6px;
+  margin: -4px 0 6px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.45;
 }
 /* #214: the free-trial reassurance shown on the signup card (frames the plan chosen on /pricing). */
 .auth__trial {
@@ -8828,6 +8838,59 @@ select:focus-visible {
   align-items: center;
   gap: clamp(24px, 5vw, 60px);
 }
+.onboard[data-phase="door"] {
+  min-height: 100vh;
+  background:
+    radial-gradient(460px 220px at 24% 34%, rgba(255, 255, 255, 0.9), transparent 72%),
+    radial-gradient(520px 260px at 72% 34%, rgba(255, 255, 255, 0.72), transparent 74%),
+    radial-gradient(620px 260px at 54% 112%, rgba(82, 182, 74, 0.58), transparent 70%),
+    linear-gradient(180deg, #a9cce1 0%, #c7d8df 58%, #d8ddd5 100%);
+  color: #111;
+}
+.onboard[data-phase="door"] .onboard__nav {
+  color: #171312;
+}
+.onboard[data-phase="door"] .onboard__brand,
+.onboard[data-phase="door"] .onboard-trust__link,
+.onboard[data-phase="door"] .onboard-trust__support {
+  color: #171312;
+}
+.onboard[data-phase="door"] .onboard__nav .onboard-trust {
+  display: none;
+}
+.onboard[data-phase="door"] .onboard__inner {
+  width: min(100%, 1480px);
+  grid-template-columns: 1fr;
+  align-items: end;
+  padding: clamp(18px, 4vh, 34px) clamp(18px, 3vw, 42px) clamp(74px, 8vh, 104px);
+}
+.onboard[data-phase="door"] .onboard__primary {
+  min-height: min(560px, calc(100vh - 150px));
+  justify-content: center;
+}
+.onboard[data-phase="door"] .onboard-room {
+  display: none;
+}
+.onboard[data-phase="door"] .onboard__footer {
+  position: fixed;
+  right: 28px;
+  bottom: 22px;
+  z-index: 2;
+  width: auto;
+  margin: 0;
+}
+.onboard[data-phase="door"] .onboard__footer .onboard-trust {
+  display: flex;
+  gap: 22px;
+}
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(1),
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(2),
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(3),
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(5),
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(8),
+.onboard[data-phase="door"] .onboard__footer .onboard-trust__support {
+  display: none;
+}
 .onboard__primary {
   min-width: 0;
   display: flex;
@@ -9115,50 +9178,205 @@ select:focus-visible {
 
 /* ---- the door: greeting + ONE input, nothing else ------------------------------------------ */
 .onboard-door {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: clamp(14px, 2vh, 22px);
+  min-height: inherit;
+  align-content: space-between;
 }
 .onboard-door__greeting {
-  font-family: var(--o-serif);
-  font-weight: 400;
-  font-size: clamp(44px, 7vw, 84px);
-  line-height: 1.08;
+  max-width: 12ch;
+  font-family: var(--o-sans);
+  font-weight: 900;
+  font-size: clamp(58px, 8vw, 108px);
+  line-height: 0.92;
   letter-spacing: 0;
-  margin: 6px 0 4px;
-  color: var(--o-text);
+  margin: 0;
+  color: #050505;
 }
 .onboard-door__label {
-  font-size: 13px;
-  color: var(--o-text-dim);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .onboard-door__field {
+  position: relative;
   display: flex;
-  gap: 10px;
-  align-items: stretch;
+  width: min(590px, 100%);
+  min-height: 78px;
+  overflow: hidden;
+  align-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.13);
+  border-radius: 18px;
+  background: #fff879;
+  box-shadow: 0 18px 46px rgba(60, 49, 8, 0.16);
 }
 .onboard-input {
   flex: 1 1 auto;
-  background: var(--o-surface);
-  border: 1px solid var(--o-border);
-  border-radius: 12px;
-  color: var(--o-text);
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #050505;
   font: inherit;
-  font-size: 16px;
-  padding: 14px 16px;
+  font-size: clamp(22px, 2vw, 34px);
+  font-weight: 700;
+  padding: 22px 24px;
   transition: border-color 0.16s var(--o-ease);
 }
 .onboard-input::placeholder {
-  color: var(--o-text-dim);
+  color: rgba(5, 5, 5, 0.58);
 }
 .onboard-input:focus-visible {
   outline: none;
-  border-color: var(--o-pop);
+}
+.onboard-door__field:focus-within {
+  outline: 3px solid rgba(71, 207, 25, 0.35);
+  outline-offset: 4px;
 }
 .onboard-door__reassurance {
-  font-size: 12.5px;
-  color: var(--o-text-dim);
-  margin: 2px 0 0;
+  display: none;
+}
+.onboard-door__field::after {
+  content: "";
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  margin-right: 16px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 50%, #fff 0 34%, transparent 35%),
+    radial-gradient(circle at 60% 62%, #fff 0 9%, transparent 10%),
+    #47cf19;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.onboard[data-phase="door"] .onboard-cta {
+  align-self: stretch;
+  min-width: 180px;
+  height: 100%;
+  padding: 0 24px;
+  border: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0;
+  background: transparent;
+  color: #050505;
+  font-size: clamp(19px, 1.8vw, 28px);
+  font-weight: 850;
+}
+
+.onboard-marketing {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(18px, 3vw, 42px);
+  min-width: 0;
+  padding-top: 0;
+}
+.onboard-marketing__proof {
+  align-self: flex-start;
+  margin: 0;
+  padding: 11px 19px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #1b1b1b;
+  font-size: clamp(15px, 1.25vw, 22px);
+  font-weight: 700;
+  box-shadow: 0 14px 32px rgba(56, 74, 90, 0.13);
+}
+.onboard-marketing__row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(64px, 1fr));
+  align-items: end;
+  gap: clamp(10px, 1.4vw, 24px);
+}
+.onboard-marketing__item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.onboard-marketing__mark {
+  display: grid;
+  place-items: center;
+  width: clamp(56px, 5.4vw, 94px);
+  height: clamp(56px, 5.4vw, 94px);
+  border-radius: 20px;
+  color: #0d0d0d;
+  font-size: clamp(22px, 3vw, 48px);
+  font-weight: 950;
+  line-height: 1;
+  background: #fff879;
+  box-shadow:
+    0 18px 36px rgba(35, 47, 57, 0.12),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.onboard-marketing__label {
+  max-width: 10ch;
+  color: #050505;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: center;
+}
+.onboard-marketing__item[data-kind="brief"] .onboard-marketing__mark {
+  border-radius: 999px;
+  background: #62b7ff;
+  color: #fff;
+  font-size: clamp(50px, 6vw, 94px);
+}
+.onboard-marketing__item[data-kind="icp"] .onboard-marketing__mark {
+  height: clamp(78px, 7vw, 124px);
+  background: #7de142;
+  transform: skewY(-9deg);
+}
+.onboard-marketing__item[data-kind="site"] .onboard-marketing__mark,
+.onboard-marketing__item[data-kind="email"] .onboard-marketing__mark {
+  background: #f4f4ef;
+}
+.onboard-marketing__item[data-kind="insight"] .onboard-marketing__mark {
+  border-radius: 999px;
+  background: #ff8fa8;
+  color: #fff;
+}
+.onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark {
+  height: clamp(82px, 7.4vw, 128px);
+  background: #59a9ff;
+  color: #fff;
+}
+.onboard-marketing__item[data-kind="seo"] .onboard-marketing__mark {
+  background: #f7f063;
+  transform: rotate(-2deg);
+}
+.onboard-marketing__item[data-kind="social"] .onboard-marketing__mark {
+  background: repeating-linear-gradient(0deg, #ff74a2 0 10px, #ff9ebc 10px 20px);
+  color: #fff;
+}
+.onboard-marketing__item[data-kind="paid"] .onboard-marketing__mark {
+  border-radius: 999px;
+  background: conic-gradient(from 180deg, #5da8ff 0 35%, #ff9a3c 35% 70%, #5da8ff 70% 100%);
+  color: #111;
+}
+.onboard-marketing__item[data-kind="approval"] .onboard-marketing__mark {
+  background: #d7f6ff;
+  border-radius: 32px 32px 20px 20px;
+}
+.onboard-marketing__item[data-kind="analytics"] .onboard-marketing__mark {
+  background: radial-gradient(circle at 75% 25%, #111 0 16%, transparent 17%), #d7b28b;
+  color: #fff;
+}
+.onboard-marketing__item[data-kind="receipt"] .onboard-marketing__mark {
+  border-radius: 4px;
+  background: #fafafa;
+  box-shadow:
+    0 18px 36px rgba(35, 47, 57, 0.12),
+    inset 0 -12px 0 rgba(0, 0, 0, 0.06);
 }
 
 /* ---- the one coral pop: every primary action ----------------------------------------------- */
@@ -9549,6 +9767,18 @@ select:focus-visible {
   }
 }
 @media (max-width: 720px) {
+  .onboard[data-phase="door"] {
+    min-height: 100svh;
+    overflow: auto;
+  }
+  .onboard[data-phase="door"] .onboard__inner {
+    padding-top: 34px;
+  }
+  .onboard[data-phase="door"] .onboard__footer {
+    position: static;
+    justify-content: flex-start;
+    padding: 0 18px 24px;
+  }
   .onboard__nav,
   .onboard__footer {
     align-items: flex-start;
@@ -9570,6 +9800,31 @@ select:focus-visible {
   .onboard-room-agent {
     min-height: 104px;
   }
+  .onboard-door {
+    gap: 18px;
+  }
+  .onboard-door__greeting {
+    font-size: clamp(58px, 18vw, 86px);
+  }
+  .onboard-marketing {
+    gap: 14px;
+  }
+  .onboard-marketing__row {
+    display: flex;
+    overflow-x: auto;
+    padding: 0 2px 10px;
+    scroll-snap-type: x proximity;
+  }
+  .onboard-marketing__item {
+    flex: 0 0 72px;
+    scroll-snap-align: start;
+  }
+  .onboard-marketing__mark {
+    width: 62px;
+    height: 62px;
+    border-radius: 16px;
+    font-size: 24px;
+  }
   .onboard-proof {
     grid-template-columns: 1fr;
   }
@@ -9577,6 +9832,18 @@ select:focus-visible {
   .onboard-card__actions,
   .onboard-instant__actions {
     flex-direction: column;
+  }
+  .onboard-door__field {
+    min-height: 0;
+  }
+  .onboard-door__field::after {
+    display: none;
+  }
+  .onboard[data-phase="door"] .onboard-cta {
+    min-width: 0;
+    min-height: 62px;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+    border-left: 0;
   }
   .onboard-cta,
   .onboard-input {

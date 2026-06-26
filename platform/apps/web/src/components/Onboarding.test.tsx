@@ -23,10 +23,10 @@ afterEach(() => {
 });
 
 describe("Onboarding screen (#260)", () => {
-  it("is one screen: a domain field + Sign in with Google, and no password/workspace fields", () => {
+  it("is one screen: one domain field, value first, and no setup homework", () => {
     render(<Onboarding />);
     expect(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i"))).toBeInTheDocument();
-    expect(screen.getByLabelText(/ideal customer profile/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ideal customer profile/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") })).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^workspace$/i)).not.toBeInTheDocument();
@@ -126,15 +126,15 @@ describe("Onboarding outcome-first (#633)", () => {
   it("produces a deliverable immediately on submit — no setup, no redirect to config", async () => {
     render(<Onboarding />);
     await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
-    await userEvent.type(screen.getByLabelText(/ideal customer profile/i), "seed-stage SaaS founders");
     // The PRIMARY action is the outcome, not the Google sign-in.
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
     // We did NOT navigate away to config…
     expect(assignSpy).not.toHaveBeenCalled();
-    // …and the live deliverable view is now on screen, building immediately.
-    expect(screen.getByRole("status")).toHaveTextContent(ONBOARDING.deliverable.working);
+    // …and the live deliverable view is now on screen, building immediately, even if the stream falls
+    // back to the honest domain-only artifact.
+    expect(await screen.findByRole("heading", { level: 1, name: /acme\.com starter growth brief/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /gtm workspace preview/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/seed-stage SaaS founders/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Built from the domain only/i)).toBeInTheDocument();
     expect(screen.getByText(/No prospect rows yet/i)).toBeInTheDocument();
     expect(screen.getByText(/verification.blocked:no_external_sources/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(new RegExp(ONBOARDING.domainLabel, "i"))).not.toBeInTheDocument();

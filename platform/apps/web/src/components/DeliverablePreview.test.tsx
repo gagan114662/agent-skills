@@ -8,7 +8,7 @@ import type { DemoDeliverableDto, FetchLike } from "../api/demo.js";
 /**
  * #633/#1221: the live deliverable view fetches one robust JSON artifact and reveals it section by section
  * while the parallel sign-in sits beside it. Fake fetches keep this deterministic under jsdom and prove a
- * failed build degrades honestly instead of faking output.
+ * failed build degrades honestly into a domain-only starter artifact instead of a broken first run.
  */
 
 const PLAN: DemoDeliverableDto = {
@@ -113,10 +113,12 @@ describe("DeliverablePreview (#633/#1221)", () => {
     expect(onRestart).toHaveBeenCalledOnce();
   });
 
-  it("degrades honestly when the preview fetch fails before any section (no faked artifact)", async () => {
+  it("degrades honestly when the preview fetch fails before any section", async () => {
     renderPreview({ fetchImpl: failingFetch() });
-    expect(await screen.findByRole("alert")).toHaveTextContent(ONBOARDING.deliverable.error);
-    expect(screen.queryByText("Snapshot")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: /acme\.com starter growth brief/i })).toBeInTheDocument();
+    expect(await screen.findByText("What we can use immediately")).toBeInTheDocument();
+    expect(await screen.findByText(/limited to the submitted domain/i)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") })).toBeInTheDocument();
   });
 

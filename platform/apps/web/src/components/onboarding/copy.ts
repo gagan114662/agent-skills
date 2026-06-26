@@ -16,13 +16,12 @@ export function greetingWord(hour: number): "morning" | "afternoon" | "evening" 
 }
 
 /**
- * The warm door greeting — "afternoon, gagan. right then — what are we making pop today?". The name is
- * optional (a brand-new visitor may have none yet); without it we keep the same beat, just less personal.
+ * The warm door headline. The homepage has to work like Tomo: plain promise first, personality in the edges.
  */
 export function greeting(hour: number, name?: string | null): string {
-  const word = greetingWord(hour);
-  const who = name && name.trim() !== "" ? `${word}, ${name.trim()}.` : `${word}.`;
-  return `${who} right then — what are we making pop today?`;
+  void hour;
+  void name;
+  return "Make marketing pop.";
 }
 
 export const ONBOARD_COPY = {

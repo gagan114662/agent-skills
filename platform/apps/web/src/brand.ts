@@ -514,12 +514,12 @@ interface FooterSocialLink {
  * house-voice line — every failure lands the user back on this screen, never a dead end.
  */
 export const ONBOARDING = {
-  title: "Point us at your website",
-  sub: "Enter your domain and sign in with Google. That's the whole setup — we take it from there.",
+  title: "Type your domain. We'll get the room started.",
+  sub: "Scout reads your site, the room drafts the first bit of work, and setup waits until you want to ship.",
   domainLabel: "Your website",
   domainPlaceholder: "acme.com",
-  googleCta: "Sign in with Google",
-  reassurance: "One sign-in covers Search Console and Analytics. No passwords, no DNS, no copy-pasting keys.",
+  googleCta: "Connect Google to ship",
+  reassurance: "No account needed for the first preview. Connect Google when you want receipts, Analytics, and Search Console.",
   needDomain: "Pop your website in first — something like acme.com.",
   errors: {
     invalid_domain: "That doesn't look like a domain. Try something like acme.com.",
@@ -1596,6 +1596,7 @@ export const EVERYDAY = {
     connected: "connected",
     groups: {
       productivity: "productivity",
+      visibility: "visibility",
       marketing: "marketing",
       publishing: "publishing",
     },

@@ -66,6 +66,9 @@ export const EMAIL_CONNECTION_ID = "email";
 /** The onboarding website consent id (#1070 — lets Quill produce an immediate hero rewrite). */
 export const WEBSITE_CONNECTION_ID = "website";
 
+/** The embedded web chat/work-visibility connector — available before native messaging transports. */
+export const WEB_CHAT_CONNECTION_ID = "web_chat";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -137,6 +140,62 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     auth: "one_click",
     status: "available",
     capabilities: ["site_publish"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: WEB_CHAT_CONNECTION_ID,
+    label: "Open web chat",
+    summary:
+      "See the agents working together in ipop's web room — messages, approvals, and receipts stay visible here.",
+    provider: "web",
+    kind: "other",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    capabilities: ["work_visibility", "web_chat"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: "whatsapp",
+    label: "Connect WhatsApp",
+    summary:
+      "Watch agent handoffs and approve customer-facing replies from WhatsApp once the native transport is wired.",
+    provider: "whatsapp",
+    kind: "sms",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["work_visibility", "mobile_messaging"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: "telegram",
+    label: "Connect Telegram",
+    summary:
+      "See the team room and approve outbound work from Telegram once the native transport is wired.",
+    provider: "telegram",
+    kind: "sms",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["work_visibility", "mobile_messaging"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: "imessage",
+    label: "Connect iMessage",
+    summary:
+      "Follow the agents from Messages on Apple devices once the native relay is production-ready.",
+    provider: "apple",
+    kind: "sms",
+    audience: "customer",
+    auth: "oauth",
+    status: "coming_soon",
+    capabilities: ["work_visibility", "mobile_messaging"],
     oauthScopes: [],
     envKeys: [],
   },
