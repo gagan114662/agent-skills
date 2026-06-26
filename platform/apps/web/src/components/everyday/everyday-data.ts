@@ -366,6 +366,135 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
   };
 }
 
+/** Public dogfood summary for /dashboard: actual ipop work receipts, not the Northwind/demo seed. */
+export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData {
+  return {
+    memberName,
+    northStar: {
+      customers: 0,
+      customersDelta: 0,
+      revenue: "$0",
+      revenueDelta: "—",
+      trend: "zero",
+    },
+    fleetPaused: false,
+    room: [
+      {
+        id: "scout",
+        agent: "Scout",
+        role: "Product truth",
+        status: "done",
+        task: "Dogfooded ipop.ai against the Tomo-simple brief and found the old product path still felt like a demo.",
+      },
+      {
+        id: "lens",
+        agent: "Lens",
+        role: "Taste",
+        status: "done",
+        task: "Kept the front door to one input, four icons, and marketing use-case tiles instead of another dense SaaS page.",
+      },
+      {
+        id: "quill",
+        agent: "Quill",
+        role: "Experience",
+        status: "done",
+        task: "Turned the first-run path into site read -> visible agent work -> optional connectors -> site-read deliverable.",
+      },
+      {
+        id: "echo",
+        agent: "Echo",
+        role: "Receipts",
+        status: "working",
+        task: "Keeping the dashboard tied to shipped work and PR receipts, not pretend customer proof.",
+      },
+      {
+        id: "operator",
+        agent: "Operator",
+        role: "Ship",
+        status: "working",
+        task: "Merged the homepage, work-summary dashboard, and no-auth continuation fixes into production.",
+      },
+    ],
+    connectors: defaultConnectors(),
+    thread: [
+      {
+        id: "dogfood-home",
+        kind: "deliverable",
+        agent: "Lens",
+        at: "merged",
+        deliverable: {
+          title: "Tomo-simple homepage",
+          kind: "diff",
+          before: "signed-in users saw the old workspace and prospects saw too much product explanation.",
+          preview: "everyone lands on one clean message-first front door: Login, Love, Dashboard, Start, and marketing icons.",
+        },
+      },
+      {
+        id: "dogfood-dashboard",
+        kind: "deliverable",
+        agent: "Echo",
+        at: "merged",
+        deliverable: {
+          title: "work summary dashboard",
+          kind: "draft",
+          preview:
+            "the Dashboard icon opens a visible work summary instead of an auth wall, with receipts for what the team changed.",
+        },
+      },
+      {
+        id: "dogfood-skip",
+        kind: "deliverable",
+        agent: "Quill",
+        at: "merged",
+        deliverable: {
+          title: "no-auth first deliverable path",
+          kind: "draft",
+          preview:
+            "after the site read, users can skip connectors and still get a site-read draft; account-only work stays clearly gated.",
+        },
+      },
+      {
+        id: "dogfood-next",
+        kind: "agent-line",
+        agent: "Scout",
+        at: "next",
+        text: "next blocker: replace every remaining demo proof point with live workspace/customer evidence as connectors come online.",
+      },
+    ],
+    approvals: [],
+    transparency: [
+      {
+        id: "pr-1275",
+        at: "merged",
+        action: "simplified the ipop homepage to a message-first icon door",
+        href: "https://github.com/gagan114662/agent-skills/pull/1275",
+        receiptLabel: "PR #1275",
+      },
+      {
+        id: "pr-1276",
+        at: "merged",
+        action: "added the public work-summary dashboard behind the Dashboard icon",
+        href: "https://github.com/gagan114662/agent-skills/pull/1276",
+        receiptLabel: "PR #1276",
+      },
+      {
+        id: "pr-1277",
+        at: "merged",
+        action: "let onboarding continue to a site-read deliverable without Google/Gmail auth",
+        href: "https://github.com/gagan114662/agent-skills/pull/1277",
+        receiptLabel: "PR #1277",
+      },
+      {
+        id: "live-dashboard",
+        at: "live",
+        action: "verified the production dashboard starts with work summary and no sign-in wall",
+        href: "https://ipop.ai/dashboard",
+        receiptLabel: "open dashboard",
+      },
+    ],
+  };
+}
+
 export function defaultAgentRoom(goal: string): readonly AgentLane[] {
   const target = goal.trim() || "your next customer";
   return [
