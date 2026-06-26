@@ -12,6 +12,12 @@ import {
   planToFrames,
   type DeliverableBusiness,
 } from "../onboarding/deliverable.js";
+import {
+  getWorkspaceOnboarding,
+  recordWorkspaceFirstRunReceipt,
+  type FirstRunReceiptInput,
+  type FirstRunStage,
+} from "../db/repositories/workspace-onboarding.js";
 
 /**
  * External account onboarding routes (#192, ADR-0192). All `/me/*`-scoped to the caller's workspace (#3).
@@ -77,6 +83,28 @@ export async function onboardingRoutes(
     return buildDeliverable(business);
   });
 
+  // #1289 first-run receipt: signed-in dashboard proof that public start produced durable agent work.
+  app.get("/me/onboarding/first-run", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const onboarding = await getWorkspaceOnboarding(identity.workspaceId);
+    return { firstRun: onboarding?.firstRunReceipt ?? null };
+  });
+
+  app.post("/me/onboarding/first-run", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const input = parseFirstRunReceipt(req.body);
+    if (!input) {
+      return reply.code(400).send({
+        error:
+          "target, finding, artifactTitle, artifactSummary, and receipt are required short strings",
+      });
+    }
+    const firstRun = await recordWorkspaceFirstRunReceipt(identity.workspaceId, input);
+    return { firstRun };
+  });
+
   // The guided setup checklist (requests + connection state + rotation reminders). Read-only.
   app.get("/me/external-services", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
@@ -131,7 +159,9 @@ export async function onboardingRoutes(
       workspaceId: identity.workspaceId,
       serviceKey,
       secrets,
-      scopes: Array.isArray(body.scopes) ? body.scopes.filter((s): s is string => typeof s === "string") : undefined,
+      scopes: Array.isArray(body.scopes)
+        ? body.scopes.filter((s): s is string => typeof s === "string")
+        : undefined,
       rotationReminderDays:
         typeof body.rotationReminderDays === "number" ? body.rotationReminderDays : undefined,
       connectedByMemberId: identity.memberId,
@@ -411,6 +441,35 @@ function parseDmarcPolicy(value: unknown): "none" | "quarantine" | "reject" | un
   return value === "none" || value === "quarantine" || value === "reject" ? value : undefined;
 }
 
+function parseFirstRunStage(value: unknown): FirstRunStage {
+  return value === "source_read" || value === "dashboard_receipt" ? value : "agent_result";
+}
+
+function boundedText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed !== "" ? trimmed.slice(0, max) : null;
+}
+
+function parseFirstRunReceipt(value: unknown): FirstRunReceiptInput | null {
+  if (!value || typeof value !== "object") return null;
+  const body = value as Record<string, unknown>;
+  const target = boundedText(body.target, 160);
+  const finding = boundedText(body.finding, 800);
+  const artifactTitle = boundedText(body.artifactTitle, 160);
+  const artifactSummary = boundedText(body.artifactSummary, 800);
+  const receipt = boundedText(body.receipt, 240);
+  if (!target || !finding || !artifactTitle || !artifactSummary || !receipt) return null;
+  return {
+    stage: parseFirstRunStage(body.stage),
+    target,
+    finding,
+    artifactTitle,
+    artifactSummary,
+    receipt,
+  };
+}
+
 /** Parse the `required[]` setup payload, dropping malformed entries. Returns null when none are valid. */
 function parseRequired(value: unknown): RequiredService[] | null {
   if (!Array.isArray(value)) return null;
@@ -426,9 +485,13 @@ function parseRequired(value: unknown): RequiredService[] | null {
       displayName: r.displayName,
       reason: r.reason,
       plan: typeof r.plan === "string" ? r.plan : null,
-      scopes: Array.isArray(r.scopes) ? r.scopes.filter((s): s is string => typeof s === "string") : [],
+      scopes: Array.isArray(r.scopes)
+        ? r.scopes.filter((s): s is string => typeof s === "string")
+        : [],
       projectedCostCents: typeof r.projectedCostCents === "number" ? r.projectedCostCents : 0,
-      envKeys: Array.isArray(r.envKeys) ? r.envKeys.filter((s): s is string => typeof s === "string") : [],
+      envKeys: Array.isArray(r.envKeys)
+        ? r.envKeys.filter((s): s is string => typeof s === "string")
+        : [],
     });
   }
   return out.length > 0 ? out : null;

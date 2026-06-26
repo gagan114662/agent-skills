@@ -126,6 +126,31 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
+
+export interface FirstRunReceiptDto {
+  stage: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+  recordedAtMs: number;
+}
+
+export interface FirstRunReceiptInput {
+  stage?: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+}
+
+export interface FirstRunReceiptResponse {
+  firstRun: FirstRunReceiptDto | null;
+}
+
 /**
  * One department agent as the Agent Garden shows it (#284, `GET /me/garden`) — the sanitized contract
  * projection + this workspace's enable state + the production-grounded `active` flag. Never a secret; every
@@ -789,7 +814,13 @@ export interface StatusPageDto {
   generatedAt: string;
 }
 
-export type PublicDogfoodPhase = "thinking" | "tool" | "artifact" | "approval" | "outcome" | "blocked";
+export type PublicDogfoodPhase =
+  | "thinking"
+  | "tool"
+  | "artifact"
+  | "approval"
+  | "outcome"
+  | "blocked";
 
 export interface PublicDogfoodReceiptDto {
   id: string;

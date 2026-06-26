@@ -77,6 +77,8 @@ import type {
   MarketingTargetInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  FirstRunReceiptInput,
+  FirstRunReceiptResponse,
   GardenResponse,
   SkillOptProposalsResponse,
   SkillOptProposalStatus,
@@ -465,6 +467,13 @@ export const api = {
   // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
   startConnectionOAuth(id: string): Promise<unknown> {
     return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+
+  getFirstRunReceipt(): Promise<FirstRunReceiptResponse> {
+    return request<FirstRunReceiptResponse>("/me/onboarding/first-run");
+  },
+  recordFirstRunReceipt(input: FirstRunReceiptInput): Promise<FirstRunReceiptResponse> {
+    return post("/me/onboarding/first-run", input) as Promise<FirstRunReceiptResponse>;
   },
 
   // --- Agent Garden (#284): browse the department fleet + enable/disable each agent per workspace ---
