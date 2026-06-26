@@ -1,6 +1,5 @@
 /** App root: the auth boundary wrapping the workspace shell. */
 import { AuthGate } from "./components/AuthGate.js";
-import { Workspace } from "./components/Workspace.js";
 import { StatusPage } from "./components/StatusPage.js";
 import { SupportTicketStatus } from "./components/SupportTicketStatus.js";
 import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
@@ -8,12 +7,6 @@ import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
-import {
-  EVERYDAY_SHELL_ENABLED,
-  EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
-  shouldShowEverydayShell,
-} from "./components/everyday/everyday-shell-flag.js";
-import { useAppState } from "./store/StoreContext.js";
 import { navigate, useRoute } from "./routing.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
@@ -37,23 +30,11 @@ const WELCOME_PATH = /^\/(?:welcome\/?)?$/;
 const EVERYDAY_PATH = /^\/everyday\/?$/;
 
 /**
- * The signed-in home. #784: the everyday shell is the live default for the current workspace — the everyday
- * flag is ON by default and, with no owner workspace pinned, it is a full rollout, so a signed-in member
- * lands on the redesigned shell. Setting VITE_EVERYDAY_SHELL=false (or pinning an owner workspace) restores
- * today's console for everyone else. Reads only the current workspace id; touches no backend/money/approval.
+ * The signed-in home. The iMessage/Codex room is the product now; do not let stale deployment flags
+ * send signed-in users back to the legacy console.
  */
 function AuthedHome(): React.JSX.Element {
-  const { identity } = useAppState();
-  if (
-    shouldShowEverydayShell({
-      flagOn: EVERYDAY_SHELL_ENABLED,
-      ownerWorkspaceId: EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
-      workspaceId: identity?.workspaceId,
-    })
-  ) {
-    return <LiveEverydayShell />;
-  }
-  return <Workspace />;
+  return <LiveEverydayShell />;
 }
 
 export function App(): React.JSX.Element {
@@ -87,8 +68,8 @@ export function App(): React.JSX.Element {
     );
   }
 
-  // The everyday-shell redesign (#784) also has its own explicit `/everyday` route; default-ON via the flag.
-  if (EVERYDAY_SHELL_ENABLED && EVERYDAY_PATH.test(path)) {
+  // The everyday-shell redesign (#784) also has its own explicit `/everyday` route.
+  if (EVERYDAY_PATH.test(path)) {
     return (
       <AuthGate>
         <LiveEverydayShell />
