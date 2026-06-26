@@ -7,6 +7,8 @@ import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
+import { EverydayShell } from "./components/everyday/EverydayShell.js";
+import { seedEveryday } from "./components/everyday/everyday-data.js";
 import { navigate, useRoute } from "./routing.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
@@ -27,6 +29,8 @@ const WELCOME_PATH = /^\/(?:welcome\/?)?$/;
 /** The everyday workspace shell (#784) — the linzumi-calm chat-first redesign, also reachable at its own
  * `/everyday` path. It is the live default for a signed-in workspace (see {@link AuthedHome}). */
 const EVERYDAY_PATH = /^\/everyday\/?$/;
+/** The one-icon dashboard from the homepage: a public summary of what the agent team has done. */
+const DASHBOARD_PATH = /^\/dashboard\/?$/;
 
 /**
  * The signed-in home. The iMessage/Codex room is the product now; do not let stale deployment flags
@@ -53,6 +57,10 @@ export function App(): React.JSX.Element {
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.
   if (DEMO_PATH.test(path)) return <DemoSandbox />;
+
+  // The homepage Dashboard icon should not dump visitors into the auth wall. It opens a concise work
+  // summary immediately; signed-in work still uses live data at /everyday.
+  if (DASHBOARD_PATH.test(path)) return <EverydayShell data={seedEveryday()} dashboardFirst />;
 
   // The theater needs a session (workspace-scoped stream), so it lives inside the auth boundary.
   if (THEATER_PATH.test(path)) {

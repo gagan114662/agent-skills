@@ -144,7 +144,7 @@ describe("OnboardingExperience (#784)", () => {
 
     expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/everyday");
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
     expect(latestPost).toBeDefined();
   });
 

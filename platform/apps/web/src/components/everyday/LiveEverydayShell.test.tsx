@@ -40,7 +40,7 @@ describe("LiveEverydayShell (#1181)", () => {
       await store.bootstrap();
     });
 
-    expect(await screen.findByText("Scout found a real Search Console issue.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Scout found a real Search Console issue.")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Send follow-up to Morgan")).toBeInTheDocument();
     expect(screen.getByText("Hi Morgan — here's the real follow-up draft.")).toBeInTheDocument();
     expect(screen.queryByText(/northwind/i)).not.toBeInTheDocument();

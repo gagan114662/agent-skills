@@ -1614,6 +1614,18 @@ export const EVERYDAY = {
     zero: "no customers yet. that's not a problem, that's the whole point of us.",
   },
 
+  /** One-icon dashboard from the homepage: concise summary of agent work done. */
+  dashboard: {
+    heading: "work summary",
+    subhead: "what the team has done, what's waiting on you, and where the receipts live.",
+    activeAgents: "agents active",
+    deliverables: "drafts made",
+    approvals: "need your yes",
+    receipts: "receipts",
+    latest: "latest work",
+    empty: "nothing done yet. text the team and this fills itself in.",
+  },
+
   /** Calm thread where work lands inline. */
   thread: {
     heading: "today",

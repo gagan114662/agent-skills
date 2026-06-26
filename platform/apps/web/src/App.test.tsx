@@ -75,4 +75,20 @@ describe("App root routing", () => {
 
     expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
   });
+
+  it("opens the homepage dashboard as a public work-summary surface", async () => {
+    navigate("/dashboard");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByRole("region", { name: "work summary" })).toHaveAttribute("id", "dashboard");
+    expect(screen.getByText("first campaign platform")).toBeInTheDocument();
+    expect(screen.queryByText(/Sign in with Google/i)).not.toBeInTheDocument();
+  });
 });

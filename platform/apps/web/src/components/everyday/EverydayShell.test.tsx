@@ -112,10 +112,23 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai"));
     expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
-    expect(screen.getByText(EVERYDAY.thread.working("Scout"))).toBeInTheDocument();
+    expect(screen.getAllByText(EVERYDAY.thread.working("Scout")).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Scout/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Team engine active/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the dashboard summary of agent work and receipts", () => {
+    render(<EverydayShell data={seedEveryday()} />);
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+    expect(dashboard).toHaveAttribute("id", "dashboard");
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.activeAgents)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.deliverables)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.approvals)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.receipts)).toBeInTheDocument();
+    expect(within(dashboard).getByText("first campaign platform")).toBeInTheDocument();
+    expect(within(dashboard).getAllByText("2").length).toBeGreaterThanOrEqual(2);
+    expect(within(dashboard).getByText("5")).toBeInTheDocument();
   });
 
   it("shows iMessage as the only messaging setup lane", () => {
