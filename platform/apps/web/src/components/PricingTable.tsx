@@ -33,9 +33,10 @@ export function PricingTable({
   return (
     <div className="pricing">
       <header className="pricing__intro">
-        <h1 className="pricing__title">Pick your pop.</h1>
+        <h1 className="pricing__title">Keep the agents working.</h1>
         <p className="pricing__lede">
-          Three ways to hire a team of agents that actually ships. Start small, grow when you feel like it.
+          Start free, see useful work every day, then upgrade when you want more campaigns, more agents,
+          or more live work moving at once.
         </p>
       </header>
 
@@ -65,6 +66,18 @@ export function PricingTable({
                 <span className="pricing-card__period">/mo</span>
               </p>
               <p className="pricing-card__tagline">{plan.tagline}</p>
+              <div className="pricing-card__value" aria-label={`Everyday value for ${plan.name}`}>
+                <p className="pricing-card__value-label">Every day</p>
+                <p className="pricing-card__value-copy">{plan.dailyValue}</p>
+              </div>
+              <div className="pricing-card__limit">
+                <p>
+                  <span>Limit:</span> {plan.dailyLimit}
+                </p>
+                <p>
+                  <span>Upgrade:</span> {plan.upgradeTrigger}
+                </p>
+              </div>
               <ul className="pricing-card__highlights">
                 {plan.highlights.map((h) => (
                   <li key={h} className="pricing-card__highlight">
@@ -83,7 +96,7 @@ export function PricingTable({
                   onChoose(plan.key);
                 }}
               >
-                {isCurrent ? "Your plan" : isPending ? "Opening checkout…" : "Choose"}
+                {isCurrent ? "Your plan" : isPending ? "Opening checkout…" : "Keep them working"}
               </button>
             </li>
           );
@@ -91,7 +104,9 @@ export function PricingTable({
       </ul>
 
       {/* The one wink per surface (#122 voice). */}
-      <p className="pricing__footnote">cancel anytime. the agents will be sad, but professional.</p>
+      <p className="pricing__footnote">
+        everyday work is capped before spend gets silly. the agents are enthusiastic; billing is not.
+      </p>
     </div>
   );
 }
