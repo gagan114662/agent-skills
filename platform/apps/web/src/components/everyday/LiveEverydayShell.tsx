@@ -146,6 +146,12 @@ async function resolveAgentMemberId(state: AppState, role: string): Promise<stri
 async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> {
   const channelId = state.activeChannelId;
   if (!channelId) throw new Error("Open a workspace channel before starting the iMessage room.");
+  const codex = await api.getCodexStatus();
+  if (!codex.connected) {
+    throw new Error(
+      "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
+    );
+  }
   await api.postMessage(channelId, goal).catch(() => undefined);
 
   const subtasks: TeamRunSubtaskInput[] = [];

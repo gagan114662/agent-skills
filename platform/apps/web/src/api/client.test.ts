@@ -59,6 +59,16 @@ describe("api client", () => {
     expect(msg.id).toBe("msg1");
   });
 
+  it("getCodexStatus reads the signed-in subscription bridge status", async () => {
+    const fetchMock = stubFetch(200, { connected: false, reason: "not connected" });
+    const status = await api.getCodexStatus();
+
+    const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(url).toBe("/me/codex/status");
+    expect(init.credentials).toBe("include");
+    expect(status).toEqual({ connected: false, reason: "not connected" });
+  });
+
   it("searchMembers unwraps the search envelope into results", async () => {
     stubFetch(200, {
       query: "a",
