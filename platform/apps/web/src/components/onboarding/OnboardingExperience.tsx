@@ -594,6 +594,15 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   >
                     {connecting ? ONBOARD_COPY.connect.allowing : ONBOARD_COPY.connect.allow}
                   </button>
+                  <button
+                    className="onboard-cta onboard-cta--ghost"
+                    type="button"
+                    disabled={connecting}
+                    onClick={() => setPhase("deliverable")}
+                  >
+                    {ONBOARD_COPY.connect.skip}
+                  </button>
+                  <p className="onboard-allow__note">{ONBOARD_COPY.connect.skipNote}</p>
                   {connectError && (
                     <>
                       <p className="onboard-error" role="alert">
@@ -636,13 +645,18 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
               {building && (
                 <p className="onboard-working" role="status">
                   <span className="onboard-spinner" aria-hidden="true" />
-                  {ONBOARD_COPY.deliverable.building}
+                  {results.length > 0
+                    ? ONBOARD_COPY.deliverable.building
+                    : ONBOARD_COPY.deliverable.buildingSiteOnly}
                 </p>
               )}
 
               {deliverable && (
                 <div className="onboard-card">
                   <h2 className="onboard-card__title">{deliverable.title}</h2>
+                  {results.length === 0 && (
+                    <p className="onboard-card__site-only">{ONBOARD_COPY.deliverable.siteOnly}</p>
+                  )}
                   <p className="onboard-card__body">{deliverable.body}</p>
                   {deliverable.spendsMoney && (
                     <p className="onboard-card__money">{ONBOARD_COPY.deliverable.moneyGate}</p>

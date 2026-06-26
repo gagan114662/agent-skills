@@ -9719,6 +9719,11 @@ select:focus-visible {
   font-size: 16px;
   color: var(--o-text);
 }
+.onboard-allow__note {
+  margin: -6px 0 0;
+  color: var(--o-text-faint);
+  font-size: 13px;
+}
 .onboard-connected {
   background: var(--o-raised);
   border: 1px solid var(--o-border);
@@ -9842,6 +9847,15 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.55;
   color: var(--o-text);
+}
+.onboard-card__site-only {
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  color: var(--o-text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+  padding: 10px 12px;
 }
 .onboard-card__money {
   margin: 0;
