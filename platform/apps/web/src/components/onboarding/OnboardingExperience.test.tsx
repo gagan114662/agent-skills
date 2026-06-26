@@ -139,6 +139,25 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", APP_ROUTES.dashboard);
   });
 
+  it("uses bespoke marketing artefact icons instead of raw placeholder glyphs (#1298)", () => {
+    const { container } = render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+    const preview = screen.getByRole("region", { name: /marketing work preview/i });
+
+    expect(within(preview).getByText("ICP folder")).toBeInTheDocument();
+    expect(within(preview).getByText("sharp truth")).toBeInTheDocument();
+    expect(within(preview).getByText("platform draft")).toBeInTheDocument();
+    expect(within(preview).getByText("spend dial")).toBeInTheDocument();
+    expect(within(preview).getByText("proof saved")).toBeInTheDocument();
+    expect(container.querySelector('[data-kind="brief"] .onboard-marketing__mark')).toHaveTextContent(
+      "one-line target",
+    );
+    expect(within(preview).queryByText(/^ICP$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^URL$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^AD$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^SEO$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^PDF$/)).not.toBeInTheDocument();
+  });
+
   it("keeps the post-start experience in the simple icon shell instead of the old brochure nav", async () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
 

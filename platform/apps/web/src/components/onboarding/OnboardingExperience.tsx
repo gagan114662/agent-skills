@@ -272,16 +272,16 @@ function PublicTrustLinks(): React.JSX.Element {
 }
 
 const MARKETING_ICON_ROW = [
-  { key: "brief", mark: "+", label: "brief" },
-  { key: "icp", mark: "ICP", label: "customer" },
-  { key: "site", mark: "URL", label: "website" },
-  { key: "insight", mark: "!", label: "insight" },
-  { key: "creative", mark: "AD", label: "creative" },
-  { key: "seo", mark: "SEO", label: "search" },
-  { key: "social", mark: "#", label: "social" },
-  { key: "paid", mark: "$", label: "paid" },
-  { key: "approval", mark: "OK", label: "approve" },
-  { key: "receipt", mark: "PDF", label: "receipt" },
+  { key: "brief", label: "brief", detail: "one-line target" },
+  { key: "icp", label: "customer", detail: "ICP folder" },
+  { key: "site", label: "website", detail: "site read" },
+  { key: "insight", label: "insight", detail: "sharp truth" },
+  { key: "creative", label: "creative", detail: "platform draft" },
+  { key: "seo", label: "search", detail: "intent map" },
+  { key: "social", label: "social", detail: "channel test" },
+  { key: "paid", label: "paid", detail: "spend dial" },
+  { key: "approval", label: "approve", detail: "owner yes" },
+  { key: "receipt", label: "receipt", detail: "proof saved" },
 ] as const;
 
 const DOOR_ACTIONS = [
@@ -297,7 +297,9 @@ function MarketingIconRow(): React.JSX.Element {
       <ol className="onboard-marketing__row">
         {MARKETING_ICON_ROW.map((item) => (
           <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
-            <span className="onboard-marketing__mark">{item.mark}</span>
+            <span className="onboard-marketing__mark" aria-hidden="true">
+              <span className="onboard-marketing__detail">{item.detail}</span>
+            </span>
             <span className="onboard-marketing__label">{item.label}</span>
           </li>
         ))}
