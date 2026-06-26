@@ -62,6 +62,99 @@ function PhaseRow({ event }: { event: TheaterEventDto }): React.JSX.Element {
   );
 }
 
+interface FeaturedEvent {
+  lane: TheaterLane;
+  event: TheaterEventDto;
+  handoffTo: string | null;
+}
+
+function latestFeaturedEvent(lanes: TheaterLane[]): FeaturedEvent | null {
+  let latest: FeaturedEvent | null = null;
+  for (const lane of lanes) {
+    const event = lane.events[lane.events.length - 1];
+    if (!event) continue;
+    const featured = { lane, event, handoffTo: handoffTarget(event) };
+    if (!latest || Date.parse(event.occurredAt) >= Date.parse(latest.event.occurredAt)) {
+      latest = featured;
+    }
+  }
+  return latest;
+}
+
+function handoffTarget(event: TheaterEventDto): string | null {
+  const text = [event.label, event.summary].filter(Boolean).join(" ");
+  if (!/\b(hand ?off|delegate|pass(?:ing)?|route|assign)\b/i.test(text)) return null;
+  const target = /\b(?:to|for|@)\s+([A-Z][A-Za-z0-9_-]{1,24})\b/.exec(text);
+  return target?.[1] ?? null;
+}
+
+function TheaterHero({
+  lanes,
+  status,
+  eventCount,
+}: {
+  lanes: TheaterLane[];
+  status: TheaterStatus;
+  eventCount: number;
+}): React.JSX.Element {
+  const featured = latestFeaturedEvent(lanes);
+  if (!featured) {
+    return (
+      <section className="theater-hero theater-hero--idle" aria-label={THEATER.heroRegion}>
+        <span className="theater-hero__eyebrow">{THEATER.heroEyebrow}</span>
+        <p className="theater-hero__empty">{THEATER.heroEmpty}</p>
+      </section>
+    );
+  }
+  const { lane, event, handoffTo } = featured;
+  const phase = PHASE_META[event.phase];
+  return (
+    <section className="theater-hero" aria-label={THEATER.heroRegion}>
+      <div className="theater-hero__copy">
+        <span className="theater-hero__eyebrow">{THEATER.heroEyebrow}</span>
+        <h2 className="theater-hero__title">
+          <span>{laneName(lane.run)}</span>
+          <span className="theater-hero__verb">{THEATER.heroVerb}</span>
+          <span>{phase.label.toLowerCase()}</span>
+        </h2>
+        <p className="theater-hero__summary">{event.summary}</p>
+      </div>
+      <aside className="theater-hero__panel" aria-label={THEATER.currentStepRegion}>
+        <div className="theater-hero__phase">
+          <span className="theater-hero__glyph" aria-hidden="true">
+            {phase.glyph}
+          </span>
+          <span>
+            <strong>{THEATER.currentStep}</strong>
+            <small>
+              {phase.label}
+              {event.label ? " · " + event.label : ""}
+            </small>
+          </span>
+        </div>
+        {handoffTo ? (
+          <div className="theater-hero__handoff">
+            <span>{THEATER.handoffLabel}</span>
+            <strong>
+              {laneName(lane.run)} to {handoffTo}
+            </strong>
+          </div>
+        ) : null}
+        <dl className="theater-hero__stats">
+          <div>
+            <dt>{THEATER.heroStatus}</dt>
+            <dd>{STATUS_LABEL[status]}</dd>
+          </div>
+          <div>
+            <dt>{THEATER.heroSteps}</dt>
+            <dd>{eventCount}</dd>
+          </div>
+        </dl>
+      </aside>
+    </section>
+  );
+}
+
 function prettyPayload(payload: Record<string, unknown>): string {
   return JSON.stringify(payload, null, 2);
 }
@@ -268,11 +361,14 @@ export function TheaterView(): React.JSX.Element {
       {lanes.length === 0 ? (
         <EmptyState className="theater__empty">{THEATER.empty}</EmptyState>
       ) : (
-        <div className="theater__stage">
-          {lanes.map((lane) => (
-            <AgentLane key={lane.run.id} lane={lane} workspaceId={workspaceId!} />
-          ))}
-        </div>
+        <>
+          <TheaterHero lanes={lanes} status={status} eventCount={eventCount} />
+          <div className="theater__stage">
+            {lanes.map((lane) => (
+              <AgentLane key={lane.run.id} lane={lane} workspaceId={workspaceId!} />
+            ))}
+          </div>
+        </>
       )}
     </main>
   );
