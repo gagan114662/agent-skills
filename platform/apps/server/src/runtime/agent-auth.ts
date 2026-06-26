@@ -49,12 +49,14 @@ export function decideAgentAuth(input: AgentAuthInput): AgentAuth {
 }
 
 /**
- * Whether a harness needs model auth to do real work. The `demo` harness echoes the task (no model
- * spend) and needs nothing; the real coding harnesses require a credential — so the @mention path
- * posts a friendly "connect your Claude account" prompt instead of launching a session that can't run.
+ * Whether a harness needs per-workspace Claude auth to do real work. The `demo` harness echoes the task
+ * (no model spend) and needs nothing. `claude-code` requires the workspace owner's Claude token, so the
+ * @mention path posts a friendly "connect your Claude account" prompt instead of launching a session
+ * that can't run. `codex` is authenticated by the deployment-level Codex subscription bridge
+ * (`CODEX_AUTH_JSON`) and is guarded by preflight instead of this per-tenant Claude gate.
  */
 export function harnessRequiresAuth(kind: HarnessKind): boolean {
-  return kind !== "demo";
+  return kind === "claude-code";
 }
 
 export interface AgentAuthResolverDeps {

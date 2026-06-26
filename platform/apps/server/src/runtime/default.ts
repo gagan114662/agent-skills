@@ -276,7 +276,7 @@ export function createDefaultSessionManager(
     poster: channelPoster,
     // #68 subscription-first: inject the workspace's OWN Claude subscription token
     // (`CLAUDE_CODE_OAUTH_TOKEN`) per tenant, falling back to the operator platform key only when the
-    // workspace has none. Other secrets (e.g. `OPENAI_API_KEY` for codex) still flow via the inner
+    // workspace has none. Other secrets (e.g. `CODEX_AUTH_JSON` for codex) still flow via the inner
     // env resolver. The auth layer owns the credential keys so a platform key never ships alongside a
     // subscription token.
     // #151: per-agent scoping decorator wraps the #68 subscription resolver. With the credential matrix

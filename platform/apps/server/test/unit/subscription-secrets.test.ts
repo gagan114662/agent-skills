@@ -43,22 +43,22 @@ describe("SubscriptionSecretsResolver (#68/#246 — injects the chosen auth as r
 
   it("#246: an inner-resolver API key is STRIPPED even when the workspace has no subscription token", async () => {
     // A leaked ANTHROPIC_API_KEY must never reach the agent runtime, with or without a subscription.
-    const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", OPENAI_API_KEY: "sk-oai" });
+    const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", CODEX_AUTH_JSON: "json" });
     const r = new SubscriptionSecretsResolver(authResolver({}), extra);
     const secrets = await r.resolve("wsB");
     expect(secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
     expect(secrets).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
-    expect(secrets.OPENAI_API_KEY).toBe("sk-oai");
+    expect(secrets.CODEX_AUTH_JSON).toBe("json");
   });
 
   it("subscription token wins — a leaked API key never ships alongside it from extra secrets", async () => {
     // The inner resolver leaks a platform key; the auth layer OWNS the credential keys, so it is stripped.
-    const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", OPENAI_API_KEY: "sk-oai" });
+    const extra = new StaticSecretsResolver({ ANTHROPIC_API_KEY: "sk-leak", CODEX_AUTH_JSON: "json" });
     const r = new SubscriptionSecretsResolver(authResolver({ wsA: "tok-A" }), extra);
     const secrets = await r.resolve("wsA");
     expect(secrets.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-A");
     expect(secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
     // Non-auth extra secrets still pass through.
-    expect(secrets.OPENAI_API_KEY).toBe("sk-oai");
+    expect(secrets.CODEX_AUTH_JSON).toBe("json");
   });
 });

@@ -173,11 +173,12 @@ describe("codex harness (#50)", () => {
     expect(spec.args[0]).toBe("-lc");
     const cmd = spec.args[1];
     // codex's headless subcommand, the task delivered via the $AGENT_TASK env reference (quoted),
-    // JSON event stream so the runtime can render readable channel output, and full-auto so the
-    // agent can actually edit files in the session workspace.
+    // JSON event stream so the runtime can render readable channel output, and the supported
+    // non-interactive approval/sandbox flags so the agent can actually edit files in the session workspace.
     expect(cmd).toContain("'codex' exec \"$AGENT_TASK\"");
     expect(cmd).toContain("--json");
-    expect(cmd).toContain("--full-auto");
+    expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
+    expect(cmd).toContain("--skip-git-repo-check");
   });
 
   it("redirects the CLI's stdin from /dev/null so the empty-pipe stdin warning never fires", () => {
@@ -205,11 +206,13 @@ describe("codex harness (#50)", () => {
     expect(cmd).toMatch(/exec "\$AGENT_TASK"/);
   });
 
-  it("never names the OPENAI_API_KEY secret in argv — auth flows via the secrets env path", () => {
-    // Auth is OPENAI_API_KEY, injected at provision through the #25 SecretsResolver as runtime env
-    // and read by codex natively. It must NEVER appear in the command line (where it could be logged).
+  it("materializes subscription auth without putting token values in argv", () => {
+    // Auth is CODEX_AUTH_JSON, injected through the #25 SecretsResolver as runtime env and written to
+    // $CODEX_HOME/auth.json inside the shell. The env var name may appear; its value never does.
     const cmd = harnessSpec("codex").args[1];
     expect(cmd).not.toContain("OPENAI_API_KEY");
+    expect(cmd).toContain("CODEX_AUTH_JSON");
+    expect(cmd).toContain("auth.json");
   });
 
   it("appends extra raw flags when provided", () => {

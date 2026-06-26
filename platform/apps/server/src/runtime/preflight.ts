@@ -253,6 +253,40 @@ function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
   };
 }
 
+/** The `codex` binary (or `CODEX_BIN`) must be runnable for the Codex subscription harness. */
+function checkCodexBinary(env: NodeJS.ProcessEnv, deps: PreflightDeps): CheckResult {
+  const name = "codex-binary";
+  const bin = env.CODEX_BIN || "codex";
+  if (deps.binaryAvailable(bin)) {
+    return { name, status: "pass", message: `Codex CLI binary found (${bin})` };
+  }
+  return {
+    name,
+    status: "fail",
+    message: `Codex CLI binary not found (looked for '${bin}')`,
+    remedy: "Install Codex CLI in the image, or set CODEX_BIN to its absolute path.",
+  };
+}
+
+/**
+ * Codex production auth is subscription-backed, not API-key-backed. The deployment injects the
+ * owner's `~/.codex/auth.json` as `CODEX_AUTH_JSON`; the harness writes it to `$CODEX_HOME/auth.json`
+ * just before spawning `codex exec`. Secret-free: this check observes presence only.
+ */
+function checkCodexAuth(env: NodeJS.ProcessEnv): CheckResult {
+  const name = "codex-auth";
+  if (env.CODEX_AUTH_JSON) {
+    return { name, status: "pass", message: "Codex subscription auth present (CODEX_AUTH_JSON)" };
+  }
+  return {
+    name,
+    status: "fail",
+    message: "Codex subscription auth missing (CODEX_AUTH_JSON)",
+    remedy:
+      "Export the owner's Codex subscription login as CODEX_AUTH_JSON from ~/.codex/auth.json; do not use an OpenAI API key for ipop agents.",
+  };
+}
+
 /** Google OAuth powers the public Get Started gate (#1262). Names only, never values. */
 function checkGoogleOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
   const name = "google-oauth";
@@ -349,6 +383,9 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
   if (input.harness === "claude-code") {
     checks.push(checkClaudeBinary(input.env, deps));
     checks.push(checkClaudeAuth(input.env));
+  } else if (input.harness === "codex") {
+    checks.push(checkCodexBinary(input.env, deps));
+    checks.push(checkCodexAuth(input.env));
   } else {
     checks.push({ name: "harness", status: "pass", message: "harness 'demo' needs no model credentials" });
   }
