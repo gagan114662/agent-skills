@@ -89,7 +89,7 @@ describe("EverydayShell — greeting + voice (#784)", () => {
 });
 
 describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
-  it("shows multiple agents working together, including Codex as the operator lane", () => {
+  it("shows multiple agents working together, including an operator lane", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const room = screen.getByRole("region", { name: EVERYDAY.room.heading });
     expect(within(room).getByRole("heading", { name: EVERYDAY.room.heading })).toBeInTheDocument();
@@ -97,8 +97,9 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).getAllByText("Quill").length).toBeGreaterThan(0);
     expect(within(room).getAllByText("Echo").length).toBeGreaterThan(0);
     expect(within(room).getAllByText("Lens").length).toBeGreaterThan(0);
-    expect(within(room).getAllByText("Codex").length).toBeGreaterThan(0);
+    expect(within(room).getAllByText("Operator").length).toBeGreaterThan(0);
     expect(within(room).getByText(EVERYDAY.room.statuses.codex)).toBeInTheDocument();
+    expect(within(room).queryByText(/Codex/i)).not.toBeInTheDocument();
   });
 
   it("starts the room from one input and lets the user chat into the room", async () => {
@@ -113,7 +114,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
     expect(screen.getByText(EVERYDAY.thread.working("Scout"))).toBeInTheDocument();
     expect(screen.getAllByText(/Scout/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Codex subscription/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Team engine active/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
   });
 
   it("shows iMessage as the only messaging setup lane", () => {

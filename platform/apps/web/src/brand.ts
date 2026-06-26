@@ -1573,20 +1573,20 @@ export const EVERYDAY = {
   composerPlaceholder: "give us a product, a url, or just a vibe…",
   composerSend: "off you pop",
 
-  /** The visible cowork room: multiple agents working together, with Codex as an operator lane. */
+  /** The visible cowork room: multiple agents working together, with an operator lane. */
   room: {
     heading: "iMessage room",
-    subhead: "your Codex-backed marketing team, texting the work as it happens.",
+    subhead: "your marketing team, texting the work as it happens.",
     empty: "type a domain or goal and we'll wake the room up.",
     chatLabel: "text your ipop team",
-    codexBadge: "Codex subscription active",
+    codexBadge: "team engine active",
     imessageNote: "iMessage relay is the intended home. Until the native relay is live, this preview shows the exact room, approvals, and receipts inside ipop.",
     statuses: {
       idle: "waiting",
       working: "working",
       blocked: "blocked",
       done: "done",
-      codex: "codex handoff",
+      codex: "operator handoff",
     },
   },
 

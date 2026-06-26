@@ -134,9 +134,9 @@ function chatPreviewFrom({
     {
       id: "welcome-codex",
       kind: "agent-line",
-      agent: "Codex",
+      agent: "Operator",
       at: "ready",
-      text: "Codex subscription active. I can turn the team's approved marketing/product decisions into code.",
+      text: "Team engine active. I can turn the team's approved marketing/product decisions into implementation work.",
     },
   ];
 }
@@ -595,9 +595,9 @@ export function EverydayShell({
       {
         id: "codex-" + Date.now(),
         kind: "agent-line",
-        agent: "Codex",
+        agent: "Operator",
         at: "ready",
-        text: "I can take product/code handoffs through this Codex subscription.",
+        text: "I can take product/code handoffs once the team agrees what should ship.",
       },
     ]);
     Promise.resolve(onStartRoom?.(goal)).catch((err) => {
@@ -606,9 +606,9 @@ export function EverydayShell({
         {
           id: "codex-error-" + Date.now(),
           kind: "agent-line",
-          agent: "Codex",
+          agent: "Operator",
           at: "blocked",
-          text: err instanceof Error ? err.message : "I could not start the Codex-backed room run.",
+          text: err instanceof Error ? err.message : "I could not start the team room run.",
         },
       ]);
     });

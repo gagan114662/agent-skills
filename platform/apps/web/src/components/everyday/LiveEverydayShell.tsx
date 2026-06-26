@@ -122,7 +122,7 @@ const ROOM_AGENT_TASKS: Array<{ role: string; task: (goal: string) => string }> 
   {
     role: "Codex",
     task: (goal) =>
-      "Act as the Codex operator for the marketing room. Convert approved product/website/workflow decisions into implementation tasks, PRs, or verified fixes for: " +
+      "Act as the implementation operator for the marketing room. Convert approved product/website/workflow decisions into implementation tasks, PRs, or verified fixes for: " +
       goal +
       ". Report links and verification back into the room.",
   },
@@ -160,7 +160,7 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
     });
   }
   if (subtasks.length === 0) {
-    throw new Error("No Scout/Quill/Echo/Lens/Codex agents were found in this workspace roster yet.");
+    throw new Error("No Scout/Quill/Echo/Lens/operator agents were found in this workspace roster yet.");
   }
   await api.launchTeamRun(channelId, subtasks);
 }

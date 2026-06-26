@@ -200,10 +200,10 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       },
       {
         id: "codex",
-        agent: "Codex",
+        agent: "Operator",
         role: "Operator",
         status: "codex",
-        task: "Using this Codex subscription for product/code execution once the team agrees what should ship.",
+        task: "Turning approved decisions into implementation work once the team agrees what should ship.",
       },
     ],
     connectors: [
@@ -279,9 +279,9 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
       {
         id: "t3",
         kind: "agent-line",
-        agent: "Codex",
+        agent: "Operator",
         at: "11:30 am",
-        text: "I can turn the approved iMessage-first experience into product code through this Codex subscription. No API-key billing path needed for this operator lane.",
+        text: "I can turn the approved iMessage-first experience into product work. No separate API-key billing path needed for this lane.",
       },
       {
         id: "t4",
@@ -292,7 +292,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
           title: "first campaign platform",
           kind: "draft",
           preview:
-            "Text your marketing team. Watch Scout mine the insight, Lens protect the taste, Quill write the asset, Echo find distribution, and Codex ship the product work.",
+            "Text your marketing team. Watch Scout mine the insight, Lens protect the taste, Quill write the asset, Echo find distribution, and the operator ship the product work.",
         },
       },
     ],
@@ -399,10 +399,10 @@ export function defaultAgentRoom(goal: string): readonly AgentLane[] {
     },
     {
       id: "codex",
-      agent: "Codex",
+      agent: "Operator",
       role: "Operator",
       status: "codex",
-      task: "Using this Codex subscription for product/code execution after the team agrees what should ship.",
+      task: "Turning approved decisions into product/code execution after the team agrees what should ship.",
     },
   ];
 }

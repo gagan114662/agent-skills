@@ -21,9 +21,8 @@ const DOGFOOD_PATH = /^\/dogfood(?:\/([^/]+))?\/?$/;
 const DEMO_PATH = /^\/(?:demo|sandbox)\/?$/;
 /** The live agent-theater (#624) — an authed surface at `/theater`; watch the fleet work in real time. */
 const THEATER_PATH = /^\/theater\/?$/;
-/** The #784 first-run onboarding experience — now the DEFAULT public landing. Root `/` and `/welcome` both
- * open the warm door (the onboarding flag is ON by default; set VITE_RELOAD_ONBOARDING_V2=false to restore
- * the marketing landing). Rendered before the auth boundary: a brand-new visitor lands here with no session. */
+/** The #784 first-run onboarding experience — now the DEFAULT landing. Root `/` and `/welcome` both
+ * open the Tomo-simple marketing door for everyone; the CTA carries signed-in members into `/everyday`. */
 const WELCOME_PATH = /^\/(?:welcome\/?)?$/;
 /** The everyday workspace shell (#784) — the linzumi-calm chat-first redesign, also reachable at its own
  * `/everyday` path. It is the live default for a signed-in workspace (see {@link AuthedHome}). */
@@ -46,14 +45,10 @@ export function App(): React.JSX.Element {
   const dogfood = DOGFOOD_PATH.exec(path);
   if (dogfood) return <PublicDogfood slug={decodeURIComponent(dogfood[1] ?? "ipop")} />;
 
-  // #784: root `/` and `/welcome` are auth-aware. Logged-out visitors get the warm onboarding door, while
-  // signed-in members land directly in the everyday shell instead of seeing the public/legacy front door.
+  // #784: root `/` and `/welcome` are the product front door for everyone. Signed-in members still need to
+  // see the marketing-icon homepage; the CTA takes them into the everyday room.
   if (WELCOME_PATH.test(path)) {
-    return (
-      <AuthGate publicEntry={<OnboardingExperience onEnterApp={() => navigate("/everyday")} />}>
-        <AuthedHome />
-      </AuthGate>
-    );
+    return <OnboardingExperience onEnterApp={() => navigate("/everyday")} />;
   }
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.

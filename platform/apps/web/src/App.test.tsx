@@ -30,7 +30,7 @@ describe("App root routing", () => {
     expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
   });
 
-  it("sends signed-in visitors at / straight to the everyday agent room", async () => {
+  it("shows the marketing-icon front door at / for signed-in visitors too", async () => {
     const { deps } = makeFakeDeps();
     const store = createStore({ api: deps.api, realtime: fakeRealtime() });
 
@@ -40,11 +40,30 @@ describe("App root routing", () => {
       </StoreProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
+    expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expect(screen.getByText("brief")).toBeInTheDocument();
+    expect(screen.getByText("ICP")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
   });
 
-  it("keeps /welcome auth-aware too", async () => {
+  it("keeps /welcome on the same marketing-icon front door", async () => {
     navigate("/welcome");
+    const { deps } = makeFakeDeps();
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expect(screen.getByText("customer")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+  });
+
+  it("keeps /everyday as the direct signed-in iMessage agent room", async () => {
+    navigate("/everyday");
     const { deps } = makeFakeDeps();
     const store = createStore({ api: deps.api, realtime: fakeRealtime() });
 

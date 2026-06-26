@@ -8828,6 +8828,41 @@ select:focus-visible {
 .onboard-trust__support:hover {
   color: var(--o-text);
 }
+.onboard-door-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: clamp(18px, 3vw, 34px);
+}
+.onboard-door-action {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: #050505;
+  font-size: 14px;
+  font-weight: 850;
+  text-decoration: none;
+}
+.onboard-door-action__mark {
+  display: grid;
+  place-items: center;
+  width: clamp(50px, 5vw, 72px);
+  height: clamp(50px, 5vw, 72px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 12px 30px rgba(32, 49, 61, 0.16),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font-size: clamp(24px, 3vw, 42px);
+  line-height: 1;
+}
+.onboard-door-action[data-kind="love"] .onboard-door-action__mark {
+  color: #ff6a9d;
+}
+.onboard-door-action[data-kind="start"] .onboard-door-action__mark {
+  background: #fff879;
+  color: #47cf19;
+}
 .onboard__inner {
   flex: 1;
   width: min(1240px, 100%);
@@ -8862,11 +8897,11 @@ select:focus-visible {
   width: min(100%, 1480px);
   grid-template-columns: 1fr;
   align-items: end;
-  padding: clamp(18px, 4vh, 34px) clamp(18px, 3vw, 42px) clamp(74px, 8vh, 104px);
+  padding: clamp(10px, 2vh, 22px) clamp(18px, 3vw, 42px) clamp(22px, 4vh, 48px);
 }
 .onboard[data-phase="door"] .onboard__primary {
-  min-height: min(560px, calc(100vh - 150px));
-  justify-content: center;
+  min-height: min(560px, calc(100vh - 118px));
+  justify-content: space-between;
 }
 .onboard[data-phase="door"] .onboard-room {
   display: none;
@@ -9179,8 +9214,8 @@ select:focus-visible {
 /* ---- the door: greeting + ONE input, nothing else ------------------------------------------ */
 .onboard-door {
   display: grid;
-  grid-template-rows: auto auto auto auto;
-  gap: clamp(14px, 2vh, 22px);
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(12px, 2.4vh, 28px);
   min-height: inherit;
   align-content: space-between;
 }
@@ -9188,7 +9223,7 @@ select:focus-visible {
   max-width: 12ch;
   font-family: var(--o-sans);
   font-weight: 900;
-  font-size: clamp(58px, 8vw, 108px);
+  font-size: clamp(54px, 7.1vw, 92px);
   line-height: 0.92;
   letter-spacing: 0;
   margin: 0;
@@ -9205,8 +9240,8 @@ select:focus-visible {
 .onboard-door__field {
   position: relative;
   display: flex;
-  width: min(590px, 100%);
-  min-height: 78px;
+  width: min(640px, 100%);
+  min-height: 70px;
   overflow: hidden;
   align-items: center;
   border: 1px solid rgba(0, 0, 0, 0.13);
@@ -9222,9 +9257,9 @@ select:focus-visible {
   border-radius: 0;
   color: #050505;
   font: inherit;
-  font-size: clamp(22px, 2vw, 34px);
+  font-size: clamp(20px, 1.8vw, 30px);
   font-weight: 700;
-  padding: 22px 24px;
+  padding: 19px 24px;
   transition: border-color 0.16s var(--o-ease);
 }
 .onboard-input::placeholder {
@@ -9242,10 +9277,10 @@ select:focus-visible {
 }
 .onboard-door__field::after {
   content: "";
-  flex: 0 0 58px;
-  width: 58px;
-  height: 58px;
-  margin-right: 16px;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  margin-right: 12px;
   border-radius: 18px;
   background:
     radial-gradient(circle at 50% 50%, #fff 0 34%, transparent 35%),
@@ -9255,23 +9290,24 @@ select:focus-visible {
 }
 .onboard[data-phase="door"] .onboard-cta {
   align-self: stretch;
-  min-width: 180px;
+  flex: 0 0 128px;
+  min-width: 128px;
   height: 100%;
-  padding: 0 24px;
+  padding: 0 18px;
   border: 0;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 0;
   background: transparent;
   color: #050505;
-  font-size: clamp(19px, 1.8vw, 28px);
+  font-size: clamp(20px, 1.8vw, 28px);
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .onboard-marketing {
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: clamp(18px, 3vw, 42px);
   min-width: 0;
   padding-top: 0;
 }
@@ -9291,9 +9327,9 @@ select:focus-visible {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(12, minmax(64px, 1fr));
+  grid-template-columns: repeat(10, minmax(70px, 1fr));
   align-items: end;
-  gap: clamp(10px, 1.4vw, 24px);
+  gap: clamp(12px, 1.8vw, 30px);
 }
 .onboard-marketing__item {
   min-width: 0;
@@ -9781,8 +9817,19 @@ select:focus-visible {
   }
   .onboard__nav,
   .onboard__footer {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+  }
+  .onboard-door-actions {
+    gap: 14px;
+  }
+  .onboard-door-action__mark {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+  .onboard-door-action__label {
+    font-size: 12px;
   }
   .onboard-trust {
     justify-content: flex-start;
