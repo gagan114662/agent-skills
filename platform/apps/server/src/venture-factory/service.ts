@@ -218,6 +218,16 @@ export interface ScanInput {
   createdByMemberId: string | null;
 }
 
+export interface ExternalPaidOpportunityInput {
+  title: string;
+  sourceUrl: string;
+  buyer?: string;
+  compensation?: string;
+  description?: string;
+  observedAt?: Date;
+  createdByMemberId: string | null;
+}
+
 export interface BootstrapResult {
   venture: FactoryVenture;
   /** The reversible steps that ran autonomously. */
@@ -238,6 +248,79 @@ export class VentureFactoryService {
   constructor(deps: VentureFactoryDeps) {
     this.deps = deps;
     this.now = deps.now ?? (() => new Date());
+  }
+
+  /**
+   * Ingest one real external paid opportunity as sandboxed DATA (#1060). This is user/authenticated intake,
+   * not autonomous spend or sending, so it does not require the scanner loop to be enabled. Every string is
+   * bounded and control-character stripped before persistence; the source URL is stored only as citation /
+   * evidence, never executed. The resulting factory candidate is the structured in-product record later
+   * validation/delivery steps consume.
+   */
+  async ingestExternalPaidOpportunity(
+    workspaceId: string,
+    input: ExternalPaidOpportunityInput,
+  ): Promise<CandidateRecord> {
+    const title = cleanOpportunityText(input.title, 160);
+    const sourceUrl = cleanOpportunityText(input.sourceUrl, 500);
+    if (!title) throw new VentureFactoryDisabledError("paid opportunity title is required");
+    if (!isHttpUrl(sourceUrl)) {
+      throw new VentureFactoryDisabledError("paid opportunity sourceUrl must be an http(s) URL");
+    }
+
+    const buyer = cleanOpportunityText(input.buyer ?? "external buyer", 120);
+    const compensation = cleanOpportunityText(input.compensation ?? "paid opportunity", 120);
+    const description = cleanOpportunityText(input.description ?? "", 500);
+    const thesis = cleanOpportunityText(
+      [title, buyer ? "buyer: " + buyer : "", compensation ? "compensation: " + compensation : ""]
+        .filter(Boolean)
+        .join(" | "),
+      300,
+    );
+
+    return this.deps.store.insertCandidate({
+      workspaceId,
+      source: "scout",
+      thesis,
+      proposedName: title,
+      painIntensity: 8,
+      competitionAbsence: 6,
+      observedAt: input.observedAt ?? this.now(),
+      citations: [sourceUrl],
+      score: scoreCandidate(
+        {
+          source: "scout",
+          evidence: {
+            painIntensity: 8,
+            competitionAbsence: 6,
+            observedAt: input.observedAt ?? this.now(),
+            citations: [sourceUrl],
+          },
+        },
+        this.now(),
+        this.deps.caps(workspaceId).freshnessHalfLifeDays,
+      ),
+      edgeClaims: [
+        {
+          kind: "relationship",
+          statement: "A real external buyer posted a paid opportunity for this work.",
+          falsifiableTest:
+            "Reject if the source URL no longer shows paid work or the buyer cannot confirm budget.",
+          evidence: [
+            {
+              source: sourceUrl,
+              external: true,
+              ownerAttested: false,
+              detail: cleanOpportunityText(
+                description || title + " from " + buyer + " with " + compensation,
+                300,
+              ),
+            },
+          ],
+        },
+      ],
+      createdByMemberId: input.createdByMemberId,
+    });
   }
 
   /** The action-kind → MONEY #13 gate mapping for the bootstrap steps. */
@@ -660,5 +743,23 @@ export class VentureFactoryService {
     const candidate = await this.deps.store.getCandidate(workspaceId, candidateId);
     if (!candidate) throw new CandidateNotFoundError(candidateId);
     return candidate;
+  }
+}
+
+function cleanOpportunityText(raw: string, maxLength: number): string {
+  let out = "";
+  for (const ch of raw) {
+    const code = ch.codePointAt(0) ?? 0;
+    out += code < 0x20 || (code >= 0x7f && code <= 0x9f) ? " " : ch;
+  }
+  return out.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
