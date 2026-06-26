@@ -6,10 +6,9 @@
  *     truth; the loop improves each agent's `<handle>/runbook` procedure).
  *   - `stage` — parks a PENDING `skillopt.adopt_skill_edit` #13 request (behavior-altering, owner-only;
  *     recorded-only on approval). There is no autonomous-adopt path.
- *   - `harvest` / `replay` — the production defaults are CONSERVATIVE no-ops (`[]`): harvesting real
- *     transcripts and replaying them against external receipts (real spawns, real receipts — premortem #200
- *     §3) is the deliberate next slice of this epic, so until it lands the loop stages NOTHING even when
- *     enabled. This is the safest honest default: no self-reported signal can ever move a skill doc.
+ *   - `harvest` / `replay` — harvest reads real audited briefs from `marketing_tasks`; replay consumes
+ *     passed production verifier receipts explicitly keyed to a mined SkillOpt cluster. Without those
+ *     receipts the loop stages NOTHING: no self-reported signal can ever move a skill doc.
  *   - `loadSkillDoc` — reads the versioned #155 skill doc from `agents/skills/manifest.json`, so staged
  *     proposals pin the exact repo doc that approval later appends to.
 */
@@ -18,6 +17,7 @@ import { listEvalRuns } from "../db/repositories/evals.js";
 import { listRecentMarketingTasksByDepartment } from "../db/repositories/marketing-tasks.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
 import { alreadyProposed, recordSkillOptRun } from "../db/repositories/skillopt-runs.js";
+import { listVerifierResults } from "../db/repositories/verifier-results.js";
 import { loadConfig } from "../config/loader.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import { SkillOptEngine } from "./engine.js";
@@ -33,6 +33,7 @@ import { resolveSkillOptCaps } from "./caps.js";
 import { SkillOptService, type SkillOptAgentTarget, type SkillOptDeps } from "./service.js";
 import type { EvalRegressionReweight } from "./cycle.js";
 import { loadVersionedSkillDoc } from "./adopt.js";
+import { buildReplayCandidatesFromVerifierReceipts } from "./replay.js";
 
 /** The fleet agents the loop improves: each registry agent's runbook (its #155 procedure doc). */
 export function skillOptAgentTargets(): SkillOptAgentTarget[] {
@@ -96,10 +97,13 @@ export function createDefaultSkillOptService(): SkillOptService {
       const rows = await listRecentMarketingTasksByDepartment(workspaceId, department);
       return reduceMarketingTasksToSamples(rows, agentHandle, department);
     },
-    // The replay-against-receipts engine is still the deliberate next slice (real spawns → external
-    // receipts → `ValidationReading`). Until it lands the loop sources no candidates, so even with real
-    // harvested data it stages NOTHING — the safest honest default (#200 §2/§3).
-    replay: () => Promise.resolve([]),
+    // #1063: production replay is now grounded in passed outcome-verifier receipts. A receipt must be
+    // explicitly keyed as skillopt:<agentHandle>:<clusterKey> so unrelated verifier wins never teach the
+    // loop by accident. No receipt ⇒ no candidate ⇒ no staged edit.
+    replay: async ({ workspaceId, agentHandle, skillId, clusters }) => {
+      const receipts = await listVerifierResults(workspaceId, { status: "passed", limit: 100 });
+      return buildReplayCandidatesFromVerifierReceipts({ agentHandle, skillId, clusters, receipts });
+    },
     loadSkillDoc: (skillId) => loadVersionedSkillDoc(skillId),
     // #390 (ADR-0390): build the live revenue reward from the #386 projection so the cycle learns toward
     // what earns. Gated default-OFF, owner-first inside the helper; null/empty ⇒ frequency-only, unchanged.
