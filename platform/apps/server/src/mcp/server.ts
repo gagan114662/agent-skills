@@ -76,6 +76,13 @@ import {
   type RealtimeSubscriptions,
   type Unsubscribe,
 } from "./realtime-subscriptions.js";
+import { newId } from "../db/id.js";
+import {
+  createBrowserAgentBridge,
+  type BrowserSessionOpener,
+  type BrowserToolArgs,
+} from "../runtime/browser/agent-bridge.js";
+import type { BrowserCaps } from "../runtime/browser/caps.js";
 
 /**
  * The Reload MCP server (#10, ADR-0010). `createReloadMcpServer(identity, deps)` returns an
@@ -103,6 +110,19 @@ export interface McpServerDeps {
    * hermetic unit test runs DB-free; defaults to the repository-backed submitter bound to this identity.
    */
   outboundEmail?: OutboundEmailSubmitter;
+  /**
+   * #388 agent browser bridge. Omit this entirely (the production default) or pass disabled caps and no
+   * browser tools are advertised. When enabled, the seven browser tools are registered into the live MCP
+   * catalog and every invocation delegates to BrowserSessionManager, preserving the #13 approval gate.
+   */
+  browser?: {
+    manager: BrowserSessionOpener;
+    caps: BrowserCaps;
+    /** Stable per-MCP-session browser id. Tests may inject one; production gets a generated id. */
+    sessionId?: string;
+    /** Optional target used by session-injection to load a stored logged-in session. */
+    target?: string;
+  };
 }
 
 type ToolResult = {
@@ -126,6 +146,7 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
   const realtime = deps.realtime ?? redisRealtimeSubscriptions;
   const submitOutboundEmail = deps.outboundEmail ?? createOutboundEmailSubmitter(identity, log);
   const wid = identity.workspaceId;
+  const browserSessionId = deps.browser?.sessionId ?? `mcp-browser-${newId()}`;
 
   const mcp = new McpServer(
     { name: "reload", version: "1.0.0" },
@@ -761,6 +782,48 @@ export function createReloadMcpServer(identity: Identity, deps: McpServerDeps): 
       });
     },
   );
+
+  const browserBridge = deps.browser
+    ? createBrowserAgentBridge({
+        manager: deps.browser.manager,
+        workspaceId: wid,
+        sessionId: browserSessionId,
+        caps: deps.browser.caps,
+        target: deps.browser.target,
+      })
+    : { tools: [] };
+  for (const tool of browserBridge.tools) {
+    mcp.registerTool(
+      tool.name,
+      {
+        title: `Browser: ${tool.name.replaceAll("_", " ")}`,
+        description:
+          tool.description +
+          (tool.sideEffectful
+            ? " The action is always routed through the human approval gate before the browser is touched."
+            : " Read-only; still records an audited browser receipt."),
+        inputSchema: {
+          url: z.string().optional().describe("navigate: URL to load."),
+          selector: z.string().optional().describe("click/type: CSS selector for the target element."),
+          text: z.string().optional().describe("type: text to enter. Do not pass secrets or credentials."),
+          credentialEntry: z
+            .boolean()
+            .optional()
+            .describe("type: true for credential/password fields; hard-forbidden, never approved."),
+          to: z.enum(["top", "bottom"]).optional().describe("scroll: named edge to scroll to."),
+          deltaY: z.number().optional().describe("scroll: pixel delta."),
+          ms: z.number().int().nonnegative().optional().describe("wait: milliseconds to wait."),
+        },
+      },
+      async (args: BrowserToolArgs) => {
+        try {
+          return ok(await tool.invoke(args));
+        } catch (err) {
+          return fail(err instanceof Error ? err.message : String(err));
+        }
+      },
+    );
+  }
 
   // --- resources (read + subscribe) -------------------------------------
 

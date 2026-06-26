@@ -71,7 +71,7 @@ import type { TurnController } from "./turns/controller.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
 import { teamRoutes } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
-import { mcpRoutes } from "./mcp/http.js";
+import { mcpRoutes, type McpRoutesOptions } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import type { SessionManager } from "./runtime/manager.js";
@@ -550,6 +550,8 @@ export interface BuildAppOptions {
    * be exercised without a config file. Default reads the layered config (sample workspace OFF).
    */
   sample?: SampleRoutesOptions;
+  /** #388 computer-use bridge: tests/production bootstrap may opt MCP into browser tools. Default OFF. */
+  browser?: McpRoutesOptions["browser"];
 }
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
@@ -716,7 +718,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // #10 MCP integration: a stateful Streamable-HTTP MCP server at /mcp. Each tool/resource is a
   // thin adapter over the existing repos + access helpers (no new authority); auth is the existing
   // agent Bearer token (#3) checked per request, and resource subscriptions bridge onto the #5 bus.
-  app.register(mcpRoutes);
+  app.register(mcpRoutes, { browser: opts.browser });
   // #25 cloud agent execution: the SessionManager owns the agent run server-side (close the
   // laptop, agents keep working). Default backend is `local`; tests may inject a fake-runtime
   // manager. It is cancelled+drained on server close so no run leaks past shutdown.
