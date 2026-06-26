@@ -1372,6 +1372,93 @@ select:focus-visible {
   font-size: var(--fs-label);
   font-weight: 600;
 }
+.artifact-canvas {
+  flex: 0 0 auto;
+  margin: 14px 22px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.artifact-canvas__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.artifact-canvas__head h3 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.artifact-canvas__eyebrow,
+.artifact-canvas__version {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.artifact-canvas__version {
+  color: var(--accent);
+  white-space: nowrap;
+}
+.artifact-canvas__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+  min-height: 220px;
+}
+.artifact-canvas__preview {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.artifact-canvas__block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 12px;
+}
+.artifact-canvas__block h4 {
+  margin: 0 0 7px;
+  font-size: 13px;
+}
+.artifact-canvas__block p {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.artifact-canvas__source {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+.artifact-canvas__source span {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.artifact-canvas__source textarea {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px;
+  font: 12px/1.45 var(--console-mono);
+  box-sizing: border-box;
+}
 .messagelist {
   flex: 1;
   overflow-y: auto;
@@ -1382,6 +1469,15 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+@media (max-width: 820px) {
+  .artifact-canvas__grid {
+    grid-template-columns: 1fr;
+  }
+  .artifact-canvas__source {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
 }
 .messagelist__empty {
   color: var(--text-faint);
