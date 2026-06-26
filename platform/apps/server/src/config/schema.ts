@@ -603,6 +603,24 @@ export const cadenceSchema = z.object({
   intervalMs: z.number().int().nonnegative().optional(),
   /** HARD per-workspace per-day launch cap — default 12 (conservative). */
   maxLaunchesPerDay: z.number().int().positive().optional(),
+  /**
+   * Workspace goals/OKRs that the cadence turns into proactive fleet work (#522). Each goal is still
+   * launched through the same audited brief path; outbound/spend remains governed by the existing gates.
+   */
+  goals: z
+    .array(
+      z.object({
+        /** The concrete objective the fleet should drive toward. */
+        objective: z.string().min(1),
+        /** Optional measurable result; folded into the agent brief as context. */
+        keyResult: z.string().min(1).optional(),
+        /** Optional department lead handle. Defaults to Scout for research/planning. */
+        lead: z.string().min(1).optional(),
+        /** Optional learning bucket used by outcome-aware selection. */
+        outcomeKey: z.string().min(1).optional(),
+      }),
+    )
+    .optional(),
 });
 
 /**

@@ -1,5 +1,12 @@
 import type { CadenceConfig } from "../config/schema.js";
 
+export interface WorkspaceCadenceGoal {
+  objective: string;
+  keyResult?: string;
+  lead?: string;
+  outcomeKey?: string;
+}
+
 /**
  * Autonomous work-cadence caps (#416, ADR-0416) — pure policy for whether the recurring tick that keeps the
  * fleet working on ipop.ai's own growth runs, and how conservatively. Mirrors `venture-factory/caps.ts` /
@@ -32,6 +39,8 @@ export interface CadenceCaps {
    * then skips — a runaway timer can never outspend this. Default 12 (conservative).
    */
   maxLaunchesPerDay: number;
+  /** Workspace goals/OKRs that override the generic dogfood playbook when present (#522). */
+  goals: readonly WorkspaceCadenceGoal[];
 }
 
 export const CADENCE_DEFAULTS: CadenceCaps = {
@@ -40,6 +49,7 @@ export const CADENCE_DEFAULTS: CadenceCaps = {
   ownerWorkspaceId: undefined,
   intervalMs: 0,
   maxLaunchesPerDay: 12,
+  goals: [],
 };
 
 /** Resolve the cadence caps from the layered config, applying hard defaults. */
@@ -50,6 +60,7 @@ export function resolveCadenceCaps(cfg: CadenceConfig | undefined): CadenceCaps 
     ownerWorkspaceId: cfg?.ownerWorkspaceId ?? CADENCE_DEFAULTS.ownerWorkspaceId,
     intervalMs: cfg?.intervalMs ?? CADENCE_DEFAULTS.intervalMs,
     maxLaunchesPerDay: cfg?.maxLaunchesPerDay ?? CADENCE_DEFAULTS.maxLaunchesPerDay,
+    goals: cfg?.goals ?? CADENCE_DEFAULTS.goals,
   };
 }
 

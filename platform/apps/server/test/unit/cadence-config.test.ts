@@ -40,6 +40,35 @@ describe("cadence config flag (#416)", () => {
     expect(isCadenceEnabledForWorkspace(caps, "someone-else")).toBe(false);
   });
 
+  it("parses workspace cadence goals/OKRs from file-backed config (#522)", () => {
+    const toml = [
+      "[cadence]",
+      "enabled = true",
+      'ownerWorkspaceId = "owner-ws"',
+      "",
+      "[[cadence.goals]]",
+      'objective = "Start three qualified customer conversations"',
+      'keyResult = "3 replies from ICP founders"',
+      'lead = "scout"',
+      'outcomeKey = "conversations"',
+      "",
+    ].join("\n");
+    const cfg = loadConfig("owner-ws", {
+      env: {},
+      readFile: (p) => (p.endsWith("settings.toml") ? toml : undefined),
+      repoPath: "/x/.reload/settings.toml",
+    });
+
+    expect(cfg.cadence.goals).toEqual([
+      {
+        objective: "Start three qualified customer conversations",
+        keyResult: "3 replies from ICP founders",
+        lead: "scout",
+        outcomeKey: "conversations",
+      },
+    ]);
+  });
+
   it("turns the cadence on from deployment env (RELOAD_CADENCE_*) — ON for owner, OFF for others", () => {
     const env = {
       RELOAD_CADENCE_ENABLED: "true",

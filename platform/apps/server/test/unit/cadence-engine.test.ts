@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import {
   CadenceEngine,
   enrichCadenceTaskWithMemory,
+  taskFromWorkspaceGoal,
+  tasksForCadenceCaps,
   type CadenceEngineDeps,
 } from "../../src/cadence/engine.js";
 import { resolveCadenceCaps, type CadenceCaps } from "../../src/cadence/caps.js";
@@ -78,6 +80,51 @@ describe("CadenceEngine.tickAll (#416)", () => {
     await engine.tickAll();
     expect(launches).toHaveLength(1);
     expect(launches[0]!.task.lead).toBe("echo");
+  });
+
+  it("uses configured workspace goals/OKRs as the proactive backlog before the generic playbook (#522)", async () => {
+    const { engine, launches } = makeEngine({
+      caps: () =>
+        enabledCaps({
+          goals: [
+            {
+              objective: "Start three qualified customer conversations",
+              keyResult: "3 replies from ICP founders this week",
+              lead: "echo",
+              outcomeKey: "conversations",
+            },
+          ],
+        }),
+    });
+
+    await engine.tickAll();
+
+    expect(launches).toHaveLength(1);
+    expect(launches[0]!.task.lead).toBe("echo");
+    expect(launches[0]!.task.outcomeKey).toBe("conversations");
+    expect(launches[0]!.task.goal).toContain("Workspace goal: Start three qualified customer conversations");
+    expect(launches[0]!.task.goal).toContain("Key result: 3 replies from ICP founders this week");
+  });
+
+  it("falls back to the dogfood playbook when no workspace goals are configured", () => {
+    expect(tasksForCadenceCaps(enabledCaps())).toBe(CADENCE_PLAYBOOK);
+  });
+
+  it("normalizes a workspace goal into a safe cadence task", () => {
+    const task = taskFromWorkspaceGoal({
+      objective: "  Grow qualified pipeline  ",
+      keyResult: "  5 demos booked  ",
+      lead: "@scout",
+    });
+
+    expect(task).toEqual({
+      lead: "scout",
+      outcomeKey: "workspace_goal",
+      goal:
+        "Workspace goal: Grow qualified pipeline\n" +
+        "Key result: 5 demos booked\n\n" +
+        "Propose and start the next safe marketing task toward this goal. Surface wins and blockers in-channel before anything spends money or leaves the building.",
+    });
   });
 
   it("injects workspace memory vault context into the launched task brief", async () => {
