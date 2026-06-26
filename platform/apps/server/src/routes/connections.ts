@@ -1,14 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
-import { CONNECTION_DESCRIPTORS, getConnectionDescriptor } from "../connections/registry.js";
+import {
+  CONNECTION_DESCRIPTORS,
+  getConnectionDescriptor,
+  type ConnectionDescriptor,
+} from "../connections/registry.js";
 import {
   decideConnectionView,
   decideInternalConnect,
   decideOneClickConnect,
   decideWaitlist,
 } from "../connections/view.js";
-import { createDefaultConnectOnceService } from "../connections/default.js";
+import { createDefaultConnectOnceService, defaultConnectProvider } from "../connections/default.js";
 import {
   listServiceStatuses,
   setServiceCredentials,
@@ -38,12 +42,17 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return loadConfig(workspaceId).marketing.ownerWorkspaceId === workspaceId;
   }
 
-  async function connectionProofs(workspaceId: string): Promise<Map<string, {
-    connected: boolean;
-    envKeys: string[];
-    fingerprint: string;
-    connectedAtMs: number;
-  }>> {
+  async function connectionProofs(workspaceId: string): Promise<
+    Map<
+      string,
+      {
+        connected: boolean;
+        envKeys: string[];
+        fingerprint: string;
+        connectedAtMs: number;
+      }
+    >
+  > {
     const rows = await listServiceStatuses(workspaceId);
     return new Map(
       rows.map((r) => [
@@ -58,6 +67,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     );
   }
 
+  function runtimeDescriptors(): ConnectionDescriptor[] {
+    return CONNECTION_DESCRIPTORS.map((descriptor) => {
+      if (descriptor.auth !== "oauth") return descriptor;
+      const provider = defaultConnectProvider(descriptor.id);
+      return provider.live ? { ...descriptor, status: "available" } : descriptor;
+    });
+  }
+
   // What this workspace can connect (+ which are already connected). Read-only, never a secret.
   app.get("/me/connections", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
@@ -65,7 +82,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const wid = identity.workspaceId;
     const isOwner = isOwnerWorkspace(wid);
     const connections = decideConnectionView({
-      descriptors: CONNECTION_DESCRIPTORS,
+      descriptors: runtimeDescriptors(),
       proofs: await connectionProofs(wid),
       isOwner,
     });
@@ -96,7 +113,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     });
     // Re-read so the caller sees the freshly-connected state — never the secret.
     const connections = decideConnectionView({
-      descriptors: CONNECTION_DESCRIPTORS,
+      descriptors: runtimeDescriptors(),
       proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
@@ -121,7 +138,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       connectedByMemberId: identity.memberId,
     });
     const connections = decideConnectionView({
-      descriptors: CONNECTION_DESCRIPTORS,
+      descriptors: runtimeDescriptors(),
       proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
