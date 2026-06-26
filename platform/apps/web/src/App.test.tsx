@@ -94,4 +94,22 @@ describe("App root routing", () => {
     expect(screen.getAllByText("PR #1276").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Sign in with Google/i)).not.toBeInTheDocument();
   });
+
+  it("opens /dashboard with live workspace data for signed-in users instead of dogfood copy", async () => {
+    navigate("/dashboard");
+    const { deps } = makeFakeDeps();
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    const dashboard = await screen.findByRole("region", { name: "CMO brief" });
+    expect(dashboard).toHaveAttribute("id", "dashboard");
+    expect(screen.getByText("live workspace")).toBeInTheDocument();
+    expect(screen.getByText(/no prospect source connected/i)).toBeInTheDocument();
+    expect(screen.queryByText("PR #1276")).not.toBeInTheDocument();
+  });
 });
