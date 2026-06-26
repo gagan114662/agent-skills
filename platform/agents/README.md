@@ -58,6 +58,11 @@ id, audit reference, health/recovery status, and the unaudited-tool-call count. 
 scheduled work should not be an ad hoc local loop, and externally meaningful work should have a replayable
 audit trail.
 
+The production topology, onboarding matrix, failure drill, and receipt template live in
+[docs/runbooks/trinity-production-runtime.md](../docs/runbooks/trinity-production-runtime.md). Until a
+production endpoint and credentials are evidenced there, agents must treat Trinity as the preferred
+production target with a named infrastructure blocker, not as an already-live runtime.
+
 ## How they're maintained (eval gate + colocation)
 
 - **Eval gate** — `scripts/run-evals.ts` (CI `evals` job) runs every suite through the SAME semantic-layer
