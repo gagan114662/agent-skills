@@ -73,6 +73,12 @@ export interface PreflightInput {
    * the check is skipped (default posture / unit tests that don't exercise provisioning).
    */
   workspaceRoot?: string;
+  /**
+   * Whether public admission requires Google OAuth to be configured for this deployment (#1262).
+   * When false, a completely absent Google config is skipped so local/demo posture stays green, but a
+   * partial config still warns because it would route users into a broken auth start.
+   */
+  googleOAuthRequired?: boolean;
 }
 
 /** Thrown by the launch gate when preflight fails. Carries the report; the message is content-free. */
@@ -247,6 +253,39 @@ function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
   };
 }
 
+/** Google OAuth powers the public Get Started gate (#1262). Names only, never values. */
+function checkGoogleOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
+  const name = "google-oauth";
+  const vars = {
+    GOOGLE_OAUTH_CLIENT_ID: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
+    GOOGLE_OAUTH_CLIENT_SECRET: Boolean(env.GOOGLE_OAUTH_CLIENT_SECRET),
+    GOOGLE_OAUTH_REDIRECT_URI: Boolean(env.GOOGLE_OAUTH_REDIRECT_URI),
+  } as const;
+  const entries = Object.entries(vars);
+  const present = entries.filter(([, v]) => v).length;
+  if (present === entries.length) {
+    return {
+      name,
+      status: "pass",
+      message:
+        "Google OAuth config present (GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET + GOOGLE_OAUTH_REDIRECT_URI)",
+    };
+  }
+  if (!required && present === 0) return undefined;
+
+  const missing = entries
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  return {
+    name,
+    status: required ? "fail" : "warn",
+    message: `Google OAuth config incomplete — missing: ${missing.join(", ")}`,
+    remedy:
+      "Create a Google OAuth web client for the deployed origin and set the full trio: " +
+      "GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET + GOOGLE_OAUTH_REDIRECT_URI.",
+  };
+}
+
 /**
  * The agent browser runtime (#174) needs the `playwright` package installed in the runtime image. A
  * missing package is a hard FAIL when the browser is enabled — we never ship an image whose browser
@@ -322,6 +361,9 @@ export function preflight(input: PreflightInput, deps: PreflightDeps = defaultDe
     checks.push(checkPlaywrightModule(deps));
     checks.push(checkBrowserBinary(input.env, deps));
   }
+
+  const googleOAuth = checkGoogleOAuth(input.env, Boolean(input.googleOAuthRequired));
+  if (googleOAuth) checks.push(googleOAuth);
 
   const ok = checks.every((c) => c.status !== "fail");
   return { profile: input.profile, runtime: input.runtime, harness: input.harness, ok, checks };
