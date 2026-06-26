@@ -366,6 +366,19 @@ export interface LifecycleSnapshot {
   cancellationOffers: number;
 }
 
+/** Venture Factory loop roll-up (#1056): read-only, watchable state for start → earn → learn → loop. */
+export interface VentureLoopSnapshot {
+  enabled: boolean;
+  halted: boolean;
+  scanned: number;
+  validating: number;
+  validated: number;
+  bootstrapPending: number;
+  launched: number;
+  killed: number;
+  activeVentures: number;
+}
+
 export interface SwitchSnapshot {
   /** The per-workspace autonomy kill switch (#17). */
   killSwitch: boolean;
@@ -428,6 +441,8 @@ export interface FounderConsoleInput {
   supportSla?: SupportSlaSnapshot;
   /** Customer lifecycle workflow roll-up (#914). Optional ⇒ zeroed (loop off / unwired). */
   lifecycle?: LifecycleSnapshot;
+  /** Venture Factory loop watch pane (#1056). Optional ⇒ zeroed (loop off / unwired). */
+  ventureLoop?: VentureLoopSnapshot;
   /** Portfolio reviews (#107), newest-first across all ventures. Optional ⇒ zeroed portfolio view. */
   portfolio?: PortfolioReviewSnapshot[];
   /** Whether the portfolio loop is enabled (#107 `portfolio.enabled`), gating its attention. Default false. */
@@ -736,6 +751,27 @@ export interface PortfolioView {
   ventures: PortfolioVentureView[];
 }
 
+/** Watch-only venture-loop panel (#1056). It never gates work; kill switch + approvals remain elsewhere. */
+export interface VentureLoopView {
+  enabled: boolean;
+  halted: boolean;
+  /** Human-readable state for the panel. */
+  status: "off" | "running" | "halted";
+  /** Candidates found but not yet validated. */
+  start: number;
+  /** Validation experiments currently running. */
+  learn: number;
+  /** Candidates ready for bootstrap / launch review. */
+  loop: number;
+  /** Launched factory ventures. */
+  launched: number;
+  /** External willingness-to-pay receipts from the revenue reader. */
+  earningReceipts: number;
+  killed: number;
+  activeVentures: number;
+  watchOnly: true;
+}
+
 /** The external account onboarding roll-up (#192): the setup checklist + credential-hygiene pulse. */
 export interface SetupView {
   pendingSetup: number;
@@ -797,6 +833,8 @@ export interface FounderConsole {
   supportSla: SupportSlaView;
   /** The portfolio lifecycle roll-up (#107). Zero-valued when the portfolio loop is unwired. */
   portfolio: PortfolioView;
+  /** The Venture Factory loop watch pane (#1056). Zero-valued when unwired. */
+  ventureLoop: VentureLoopView;
   /** The external account onboarding roll-up (#192). Zero-valued when onboarding is off / unwired. */
   setup: SetupView;
   /**
@@ -1082,6 +1120,27 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     })),
   };
 
+  // #1056 venture loop watch pane: expose start → learn → loop → launched plus external earning receipts.
+  // This is deliberately watch-only: it creates no approval, and the owner halt remains the #17 kill switch.
+  const ventureLoopInput = input.ventureLoop;
+  const ventureLoop: VentureLoopView = {
+    enabled: ventureLoopInput?.enabled ?? false,
+    halted: switches.killSwitch || (ventureLoopInput?.halted ?? false),
+    status: switches.killSwitch || (ventureLoopInput?.halted ?? false)
+      ? "halted"
+      : ventureLoopInput?.enabled
+        ? "running"
+        : "off",
+    start: ventureLoopInput?.scanned ?? 0,
+    learn: (ventureLoopInput?.validating ?? 0) + (ventureLoopInput?.validated ?? 0),
+    loop: ventureLoopInput?.bootstrapPending ?? 0,
+    launched: ventureLoopInput?.launched ?? 0,
+    earningReceipts: revenue.evidenceCount,
+    killed: ventureLoopInput?.killed ?? 0,
+    activeVentures: ventureLoopInput?.activeVentures ?? 0,
+    watchOnly: true,
+  };
+
   // #192 external account onboarding: surface how many services still need the owner + the hygiene pulse
   // (rotation due, capabilities offline). Zeroed when onboarding is off/unwired so the console renders
   // before the feature is configured. Blocked setup also shows in `pendingApprovals` (it parks a #13
@@ -1212,6 +1271,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     voice,
     supportSla,
     portfolio,
+    ventureLoop,
     setup,
     proofScorecard,
     attention: { required: reasons.length > 0, reasons },

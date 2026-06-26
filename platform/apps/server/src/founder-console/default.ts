@@ -8,12 +8,17 @@ import type { SupportDeskService } from "../support/service.js";
 import { resolveMoatCaps } from "../moat/caps.js";
 import type { PortfolioService } from "../portfolio/service.js";
 import { resolvePortfolioCaps } from "../portfolio/caps.js";
+import { resolveVentureFactoryCaps } from "../venture-factory/caps.js";
 import type { DiscoveryService } from "../discovery/service.js";
 import type { OutreachService } from "../outreach/service.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveScaleCaps } from "../scale/caps.js";
 import { windowKey, nextWindowKey, recentWindowKeys } from "../scale/usage.js";
 import { listEvaluations, passingScorecardIdeaIds } from "../db/repositories/venture.js";
+import {
+  countActiveVentures,
+  countCandidatesByStatus,
+} from "../db/repositories/venture-factory.js";
 import { listWorkspaceLiveSessions } from "../db/repositories/agent-sessions.js";
 import { getUsage, getUsageTrend } from "../db/repositories/tenant-usage.js";
 import { listRequests } from "../db/repositories/approvals.js";
@@ -452,6 +457,42 @@ export function createDefaultFounderConsoleService(deps: {
           enabled: (workspaceId) => resolvePortfolioCaps(loadConfig(workspaceId).portfolio).enabled,
         }
       : undefined,
+    // #1056 venture loop watch pane: read-only counts across the Venture Factory lifecycle. The halt
+    // state mirrors the #17 kill switch, so the owner can stop the loop instantly without this pane
+    // becoming a second gate.
+    ventureLoop: {
+      snapshot: async (workspaceId) => {
+        const controls = await getControls(workspaceId);
+        const [
+          scanned,
+          validating,
+          validated,
+          bootstrapPending,
+          launched,
+          killed,
+          activeVentures,
+        ] = await Promise.all([
+          countCandidatesByStatus(workspaceId, "scanned"),
+          countCandidatesByStatus(workspaceId, "validating"),
+          countCandidatesByStatus(workspaceId, "validated"),
+          countCandidatesByStatus(workspaceId, "bootstrap_pending"),
+          countCandidatesByStatus(workspaceId, "launched"),
+          countCandidatesByStatus(workspaceId, "killed"),
+          countActiveVentures(workspaceId),
+        ]);
+        return {
+          enabled: resolveVentureFactoryCaps(loadConfig(workspaceId).ventureFactory).enabled,
+          halted: controls.killSwitch,
+          scanned,
+          validating,
+          validated,
+          bootstrapPending,
+          launched,
+          killed,
+          activeVentures,
+        };
+      },
+    },
     // #192 external account onboarding: how many services still need the owner + the credential-hygiene
     // pulse (connected count, rotations due). Read-only over the onboarding repos; blocked setup also
     // shows in the pending-approval queue (it parks a #13 approval). offlineCapabilities stays 0 until a

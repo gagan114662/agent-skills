@@ -17,6 +17,7 @@ import {
   type OutreachSnapshot,
   type AttributionSnapshot,
   type PortfolioReviewSnapshot,
+  type VentureLoopSnapshot,
   type VentureEvalSnapshot,
   type ConstitutionSnapshot,
   type VoiceSnapshot,
@@ -173,6 +174,11 @@ export interface PortfolioReader {
   enabled(workspaceId: string): boolean;
 }
 
+/** Venture Factory loop watch pane (#1056). Optional — absent ⇒ a zeroed watch-only panel. */
+export interface VentureLoopReader {
+  snapshot(workspaceId: string): Promise<VentureLoopSnapshot>;
+}
+
 /** The external account onboarding roll-up (#192). Optional — absent ⇒ a zeroed setup pane. */
 export interface SetupReader {
   snapshot(workspaceId: string): Promise<SetupSnapshot>;
@@ -228,6 +234,8 @@ export interface FounderConsoleDeps {
   supportSla?: SupportSlaReader;
   /** Portfolio lifecycle reviews (#107) — optional, read-only. */
   portfolio?: PortfolioReader;
+  /** Venture Factory loop state (#1056) — optional, read-only. */
+  ventureLoop?: VentureLoopReader;
   /** External account onboarding roll-up (#192) — optional, read-only. */
   setup?: SetupReader;
   /** Per-department proof readings (#253) — optional, read-only. Absent ⇒ all tiles "not connected". */
@@ -273,6 +281,7 @@ export class FounderConsoleService {
       voice,
       supportSla,
       portfolioReviews,
+      ventureLoop,
       setup,
       selfHealingOps,
       proofReadings,
@@ -301,6 +310,7 @@ export class FounderConsoleService {
         this.deps.voice?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.supportSla?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.portfolio?.reviews(workspaceId) ?? Promise.resolve([]),
+        this.deps.ventureLoop?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.setup?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.selfHealingOps?.snapshot(workspaceId) ?? Promise.resolve(undefined),
         this.deps.proofScorecard?.readings(workspaceId, now) ?? Promise.resolve(undefined),
@@ -346,6 +356,7 @@ export class FounderConsoleService {
       constitution,
       voice,
       supportSla,
+      ventureLoop,
       portfolio: portfolioReviews,
       portfolioEnabled: this.deps.portfolio?.enabled(workspaceId) ?? false,
       setup,

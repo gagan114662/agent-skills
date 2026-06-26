@@ -1,5 +1,5 @@
 import type { SessionLogger } from "../runtime/manager.js";
-import type { VentureFactoryService } from "./service.js";
+import type { VentureFactoryAdvanceResult, VentureFactoryService } from "./service.js";
 
 /**
  * The Venture Factory scheduled tick (#187 AC1 — the continuous opportunity scanner). Modelled on the
@@ -38,16 +38,18 @@ export class VentureFactoryEngine {
   }
 
   /** One autopilot pass over every workspace that currently has a `scanned` candidate. */
-  async tickAll(): Promise<void> {
+  async tickAll(): Promise<VentureFactoryAdvanceResult[]> {
     const workspaceIds = await this.deps.listFactoryWorkspaces();
+    const results: VentureFactoryAdvanceResult[] = [];
     for (const workspaceId of workspaceIds) {
       try {
         const requesterMemberId = await this.deps.requesterMemberId(workspaceId);
         if (!requesterMemberId) continue; // no AGENT member to own the request → skip (no human-owned ws)
-        await this.deps.factory.advanceWorkspace(workspaceId, { requesterMemberId });
+        results.push(await this.deps.factory.advanceWorkspace(workspaceId, { requesterMemberId }));
       } catch (err) {
         this.deps.logger.error({ err, workspaceId }, "venture-factory tickAll: workspace advance failed");
       }
     }
+    return results;
   }
 }
