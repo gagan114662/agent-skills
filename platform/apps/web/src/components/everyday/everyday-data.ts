@@ -117,12 +117,30 @@ export interface MarketingAction {
   readonly proof: string;
 }
 
+export interface MarketingGoal {
+  readonly label: string;
+  readonly target: string;
+  readonly current: string;
+  readonly pace: string;
+  readonly confidence: "high" | "medium" | "low";
+}
+
+export interface MarketingFunnelStage {
+  readonly label: string;
+  readonly count: string;
+  readonly detail: string;
+  readonly tone: "good" | "warn" | "bad" | "neutral";
+}
+
 export interface MarketingBrief {
   readonly mode: "live" | "sample";
   readonly headline: string;
+  readonly goal: MarketingGoal;
   readonly metrics: readonly MarketingMetric[];
+  readonly funnel: readonly MarketingFunnelStage[];
   readonly channels: readonly MarketingChannel[];
   readonly blockers: readonly MarketingAction[];
+  readonly decisions: readonly MarketingAction[];
   readonly nextActions: readonly MarketingAction[];
 }
 
@@ -185,6 +203,13 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       mode: "live",
       headline:
         "No marketing signal yet. Start the room and the team should fill this with pipeline, channel, spend, and blocker data.",
+      goal: {
+        label: "customer goal",
+        target: "set by owner",
+        current: "0 customers",
+        pace: "no target or source connected",
+        confidence: "low",
+      },
       metrics: [
         { label: "leads found", value: "0", detail: "no prospect source connected", tone: "bad" },
         { label: "qualified", value: "0", detail: "no ICP scoring run yet", tone: "neutral" },
@@ -192,6 +217,13 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
         { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral" },
         { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral" },
         { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral" },
+      ],
+      funnel: [
+        { label: "audience read", count: "0", detail: "no site/source crawl receipt", tone: "bad" },
+        { label: "ICP ranked", count: "0", detail: "no scored segment list", tone: "bad" },
+        { label: "messages drafted", count: "0", detail: "waiting on a brief", tone: "neutral" },
+        { label: "sent", count: "0", detail: "approval-gated until a real channel exists", tone: "bad" },
+        { label: "won", count: "0", detail: "no customer proof", tone: "bad" },
       ],
       channels: [
         {
@@ -213,6 +245,13 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
           title: "External channels not connected",
           owner: "Echo",
           proof: "no outbound send path has an end-to-end receipt",
+        },
+      ],
+      decisions: [
+        {
+          title: "Choose one first growth target",
+          owner: "You",
+          proof: "customer segment, channel, and success number",
         },
       ],
       nextActions: [
@@ -575,6 +614,13 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
       mode: "sample",
       headline:
         "Public sample: ipop has shipped product work, but customer acquisition is still blocked until auth, connectors, and live outbound proof are real.",
+      goal: {
+        label: "30-day customer goal",
+        target: "10 activated trial teams",
+        current: "0 converted",
+        pace: "behind until sign-in and one real channel work",
+        confidence: "low",
+      },
       metrics: [
         { label: "leads found", value: "0", detail: "no live prospect source connected", tone: "bad" },
         { label: "qualified", value: "0", detail: "no ICP scoring receipt", tone: "bad" },
@@ -582,6 +628,13 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad" },
         { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad" },
         { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral" },
+      ],
+      funnel: [
+        { label: "market read", count: "1", detail: "Tomo/reload.chat dogfood brief converted into product work", tone: "warn" },
+        { label: "ICP ranked", count: "0", detail: "no live prospect scoring receipt yet", tone: "bad" },
+        { label: "messages drafted", count: "0", detail: "agents need source data before writing", tone: "bad" },
+        { label: "sent", count: "0", detail: "outbound still dry-run/approval gated", tone: "bad" },
+        { label: "won", count: "0", detail: "no external customer proof", tone: "bad" },
       ],
       channels: [
         {
@@ -613,6 +666,10 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { title: "Signed-in Codex runtime proof", owner: "Operator", proof: "GitHub #1282" },
         { title: "iMessage is not a real group room yet", owner: "Echo", proof: "GitHub #1283" },
         { title: "Connectors can look green without provider proof", owner: "Scout", proof: "GitHub #1284" },
+      ],
+      decisions: [
+        { title: "Pick the first real acquisition channel to prove", owner: "You", proof: "iMessage, Gmail, or one outreach provider" },
+        { title: "Approve one measurable success bar", owner: "You", proof: "e.g. 10 activated trial teams in 30 days" },
       ],
       nextActions: [
         { title: "Make dashboard live-data backed", owner: "Lens", proof: "GitHub #1287" },

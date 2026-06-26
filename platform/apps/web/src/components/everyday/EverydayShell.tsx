@@ -440,6 +440,12 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
           <h2 className="everyday-serif everyday-dashboard__heading">{d.heading}</h2>
           <p className="everyday-dashboard__subhead">{d.subhead}</p>
           <p className="everyday-dashboard__headline">{brief.headline}</p>
+          <div className="everyday-dashboard__goal" data-confidence={brief.goal.confidence}>
+            <span>{brief.goal.label}</span>
+            <strong>{brief.goal.current}</strong>
+            <em>{d.goalTarget}: {brief.goal.target}</em>
+            <em>{d.pace}: {brief.goal.pace}</em>
+          </div>
         </div>
         <ol className="everyday-dashboard__metrics" aria-label={d.heading + " metrics"}>
           {brief.metrics.map((metric) => (
@@ -447,6 +453,18 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
               <strong>{metric.value}</strong>
               <span>{metric.label}</span>
               <em data-tone={metric.tone}>{metric.detail}</em>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="everyday-dashboard__funnel">
+        <p className="everyday-eyebrow">{d.funnel}</p>
+        <ol className="everyday-dashboard__funnel-list">
+          {brief.funnel.map((stage) => (
+            <li key={stage.label} data-tone={stage.tone}>
+              <strong>{stage.count}</strong>
+              <span>{stage.label}</span>
+              <em>{stage.detail}</em>
             </li>
           ))}
         </ol>
@@ -480,6 +498,10 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
           <BriefActionList actions={brief.blockers} empty={d.empty} />
         </div>
         <div>
+          <p className="everyday-eyebrow">{d.decisions}</p>
+          <BriefActionList actions={brief.decisions} empty={d.empty} />
+        </div>
+        <div>
           <p className="everyday-eyebrow">{d.next}</p>
           <BriefActionList actions={brief.nextActions} empty={d.empty} />
         </div>
@@ -509,6 +531,13 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
   return {
     mode: "live",
     headline: "Live workspace data is present, but the marketing brief has not been wired to pipeline rows yet.",
+    goal: {
+      label: "customer goal",
+      target: data.northStar.customers > 0 ? String(data.northStar.customers) : "not set",
+      current: `${compactCount(data.northStar.customers)} customers`,
+      pace: data.northStar.trend === "up" ? "moving" : "no acquisition pace yet",
+      confidence: data.northStar.customers > 0 ? "medium" : "low",
+    },
     metrics: [
       {
         label: "customers",
@@ -537,6 +566,38 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         tone: data.transparency.length > 0 ? "good" : "neutral",
       },
     ],
+    funnel: [
+      {
+        label: "briefed",
+        count: data.thread.length > 0 ? "1" : "0",
+        detail: data.thread.length > 0 ? "workspace thread has activity" : "no brief received",
+        tone: data.thread.length > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "assets",
+        count: String(deliverables),
+        detail: "thread deliverables",
+        tone: deliverables > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "approved",
+        count: String(data.approvals.length),
+        detail: "owner decisions waiting",
+        tone: data.approvals.length > 0 ? "warn" : "neutral",
+      },
+      {
+        label: "sent",
+        count: String(data.transparency.length),
+        detail: "external receipts",
+        tone: data.transparency.length > 0 ? "good" : "bad",
+      },
+      {
+        label: "won",
+        count: compactCount(data.northStar.customers),
+        detail: data.northStar.revenue,
+        tone: data.northStar.customers > 0 ? "good" : "bad",
+      },
+    ],
     channels: [
       {
         source: "workspace",
@@ -548,6 +609,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       },
     ],
     blockers: [{ title: "CMO dashboard feed missing", owner: "Lens", proof: "using fallback metrics" }],
+    decisions: [{ title: "Set the customer goal this dashboard should pace against", owner: "You", proof: "no goal row found" }],
     nextActions: [
       {
         title: "Wire lead, channel, spend, and conversion sources",

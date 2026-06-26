@@ -8376,6 +8376,44 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.55;
 }
+.everyday-dashboard__goal {
+  margin-top: 16px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-bg);
+  padding: 14px;
+  display: grid;
+  gap: 7px;
+}
+.everyday-dashboard__goal span {
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.everyday-dashboard__goal strong {
+  color: var(--ed-text);
+  font-family: var(--ed-serif);
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 400;
+}
+.everyday-dashboard__goal em {
+  color: var(--ed-text-dim);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+.everyday-dashboard__goal[data-confidence="low"] {
+  border-color: color-mix(in srgb, #ff8a9b 44%, var(--ed-border));
+}
+.everyday-dashboard__goal[data-confidence="medium"] {
+  border-color: color-mix(in srgb, #ffe082 44%, var(--ed-border));
+}
+.everyday-dashboard__goal[data-confidence="high"] {
+  border-color: color-mix(in srgb, #bdf58b 44%, var(--ed-border));
+}
 .everyday-dashboard__metrics {
   list-style: none;
   margin: 0;
@@ -8414,6 +8452,55 @@ select:focus-visible {
 .everyday-dashboard__metric em[data-tone="bad"] { color: #ff8a9b; }
 .everyday-dashboard__metric em[data-tone="warn"] { color: #ffe082; }
 .everyday-dashboard__metric em[data-tone="good"] { color: #bdf58b; }
+.everyday-dashboard__funnel {
+  border-top: 1px solid var(--ed-border);
+  padding-top: 16px;
+}
+.everyday-dashboard__funnel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.everyday-dashboard__funnel-list li {
+  min-height: 132px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-bg);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.everyday-dashboard__funnel-list li[data-tone="bad"] {
+  border-color: color-mix(in srgb, #ff8a9b 38%, var(--ed-border));
+}
+.everyday-dashboard__funnel-list li[data-tone="warn"] {
+  border-color: color-mix(in srgb, #ffe082 38%, var(--ed-border));
+}
+.everyday-dashboard__funnel-list li[data-tone="good"] {
+  border-color: color-mix(in srgb, #bdf58b 38%, var(--ed-border));
+}
+.everyday-dashboard__funnel-list strong {
+  color: var(--ed-text);
+  font-family: var(--ed-serif);
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 400;
+}
+.everyday-dashboard__funnel-list span {
+  color: var(--ed-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.everyday-dashboard__funnel-list em {
+  color: var(--ed-text-dim);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
 .everyday-dashboard__channels,
 .everyday-dashboard__brief-lists {
   border-top: 1px solid var(--ed-border);
@@ -8450,7 +8537,7 @@ select:focus-visible {
 }
 .everyday-dashboard__brief-lists {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 .everyday-dashboard__actions {
@@ -8951,6 +9038,7 @@ select:focus-visible {
   }
   .everyday-dashboard__head,
   .everyday-dashboard__metrics,
+  .everyday-dashboard__funnel-list,
   .everyday-dashboard__brief-lists {
     grid-template-columns: 1fr;
   }

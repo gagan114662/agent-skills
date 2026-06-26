@@ -123,11 +123,15 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
     expect(dashboard).toHaveAttribute("id", "dashboard");
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.funnel)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.blockers)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
     expect(within(dashboard).getByText("customers")).toBeInTheDocument();
     expect(within(dashboard).getByText("qualified")).toBeInTheDocument();
+    expect(within(dashboard).getByText("customer goal")).toBeInTheDocument();
+    expect(within(dashboard).getByText("briefed")).toBeInTheDocument();
     expect(within(dashboard).getByText("workspace")).toBeInTheDocument();
     expect(within(dashboard).getByText(/needs CMO metrics feed/i)).toBeInTheDocument();
   });
