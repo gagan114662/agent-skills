@@ -10,6 +10,16 @@ import { isHarnessKind } from "../runtime/harness.js";
 
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
+  codexSubscription?: CodexSubscriptionStatusProvider;
+}
+
+export interface CodexSubscriptionStatus {
+  connected: boolean;
+  reason: string;
+}
+
+export interface CodexSubscriptionStatusProvider {
+  status(workspaceId: string, memberId: string): Promise<CodexSubscriptionStatus>;
 }
 
 interface SubtaskBody {
@@ -30,6 +40,13 @@ interface SubtaskBody {
  */
 export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions): Promise<void> {
   const { coordinator } = opts;
+  const codexSubscription = opts.codexSubscription ?? disconnectedCodexSubscription;
+
+  app.get("/me/codex/status", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return codexSubscription.status(id.workspaceId, id.memberId);
+  });
 
   // Launch a team run: write capability; every subtask targets an agent member in-workspace.
   app.post("/channels/:cid/team-runs", async (req, reply) => {
@@ -66,6 +83,16 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         branch: s.branch,
         preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
       });
+    }
+
+    if (subtasks.some((s) => s.preferredHarness === "codex")) {
+      const status = await codexSubscription.status(id.workspaceId, id.memberId);
+      if (!status.connected) {
+        return reply.code(409).send({
+          error: status.reason,
+          code: "codex_subscription_not_connected",
+        });
+      }
     }
 
     // Make each agent a legitimate writer in the channel (output + team events land here).
@@ -121,3 +148,14 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
     return coordinator.readEvents(cid, opts);
   });
 }
+
+const disconnectedCodexSubscription: CodexSubscriptionStatusProvider = {
+  async status() {
+    return {
+      connected: false,
+      reason:
+        "Codex-backed team runs are not connected to this workspace's signed-in subscription yet. " +
+        "Connect Codex subscription auth before starting the agent room.",
+    };
+  },
+};

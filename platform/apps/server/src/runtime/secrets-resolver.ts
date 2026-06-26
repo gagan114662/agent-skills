@@ -110,7 +110,8 @@ export class StaticSecretsResolver implements SecretsResolver {
  * posts a reconnect prompt instead of launching). The auth layer OWNS the model-auth keys
  * ({@link AGENT_AUTH_KEYS}, incl. `ANTHROPIC_API_KEY`): any value an inner resolver supplies for them is
  * STRIPPED, so an API key can never reach the agent runtime even if it leaks into `AGENT_SECRET_KEYS`.
- * Other secrets from the inner resolver (e.g. `OPENAI_API_KEY` for the codex harness) pass through.
+ * Other non-model secrets from the inner resolver pass through; Codex subscription auth is deliberately
+ * not treated as an API-key passthrough.
  */
 export class SubscriptionSecretsResolver implements SecretsResolver {
   constructor(
