@@ -73,11 +73,11 @@ export const FINANCE_DISBURSEMENT_ACTION = "finance.disbursement" as const;
 
 /**
  * The Venture Factory MONEY/launch boundary action kinds (#187, ADR-0187). Like `autonomy.complete` they
- * are never submitted through the #13 action route; the factory evaluates them against the same workspace
- * `approval_policies`. `venture.bootstrap` is the single owner go/no-go that spins up a whole venture
- * (AC3). The other three are the MONEY boundary (AC4): registering a domain, starting paid acquisition,
- * and attaching a payment method are irreversible (premortem FM#4) and ALWAYS queue for the owner — they
- * are never agent-initiated. Everything else in the bootstrap (reversible) proceeds without a human.
+ * are never submitted through the #13 action route; the factory evaluates them against the workspace
+ * budget cap before consulting the gate. `venture.bootstrap` is the single owner go/no-go that spins up a
+ * whole venture (AC3). The other three are the MONEY boundary (AC4): if submitted directly they remain
+ * conservative money actions, but the #1055 bootstrap path only parks a human request when the required
+ * spend would raise the hard cap. Everything else in the bootstrap proceeds without a human.
  */
 export const VENTURE_BOOTSTRAP_ACTION = "venture.bootstrap" as const;
 export const VENTURE_DOMAIN_PURCHASE_ACTION = "venture.domain_purchase" as const;
@@ -360,8 +360,8 @@ export const MONEY_ACTIONS: readonly string[] = [
   // #194 a finance disbursement (a budget-envelope release / outbound spend) — money out the door,
   // human-gated and recorded-only. ADR-0194.
   FINANCE_DISBURSEMENT_ACTION,
-  // #187 the venture MONEY boundary — registering a domain, paid acquisition spend, attaching a LIVE
-  // payment method: real spend, irreversible (premortem FM#4), always the owner's call. ADR-0187.
+  // #187/#1055 venture MONEY boundary — conservative if submitted directly. The bootstrap service first
+  // reserves spend inside the hard cap and only submits a human request for a cap raise. ADR-0187.
   VENTURE_DOMAIN_PURCHASE_ACTION,
   VENTURE_AD_SPEND_ACTION,
   VENTURE_PAYMENT_METHOD_ACTION,

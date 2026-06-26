@@ -151,16 +151,18 @@ export type BootstrapStepKind =
   | "ad_spend_start" // MONEY: start paid acquisition (#13/#170)
   | "payment_method"; // MONEY: attach a payment method (#13/#170)
 
-/** Whether a bootstrap step spends money / touches an irreversible boundary → owner #13 decision. */
+/** Whether a bootstrap step spends money / touches an irreversible boundary. */
 export type MoneyClass = "autonomous" | "money";
 
 export interface BootstrapStep {
   kind: BootstrapStepKind;
   /** Stable key making the step a no-op if already done (idempotency, like #138 seeding). */
   idempotencyKey: string;
-  /** `money` steps queue as MONEY decisions for the owner; `autonomous` steps just run. */
+  /** `money` steps must fit inside the hard budget cap; `autonomous` steps just run. */
   money: MoneyClass;
-  /** Reversibility class (premortem FM#4) — `irreversible` is always human-gated. */
+  /** Estimated spend the factory must reserve before running the step; 0 means no spend is debited. */
+  estimatedCostCents: number;
+  /** Reversibility class (premortem FM#4); irreversible spend must be cap-reserved before it runs. */
   reversibility: ReversibilityClass;
   summary: string;
 }
