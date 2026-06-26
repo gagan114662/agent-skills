@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  bootstrapFirstRunReceipt,
   bootstrapAfterGoogleSignin,
   scoutVerifyGoal,
   type OnboardingBootstrapDeps,
@@ -11,6 +12,7 @@ function recordingDeps(overrides: Partial<OnboardingBootstrapDeps> = {}) {
     setDomain: vi.fn(async () => void calls.push("setDomain")),
     seedFleet: vi.fn(async () => void calls.push("seedFleet")),
     briefScout: vi.fn(async () => void calls.push("briefScout")),
+    recordFirstRunReceipt: vi.fn(async () => void calls.push("recordFirstRunReceipt")),
     markBootstrapped: vi.fn(async () => void calls.push("markBootstrapped")),
     log: { error: vi.fn() },
     ...overrides,
@@ -26,10 +28,16 @@ const INPUT = {
 };
 
 describe("bootstrapAfterGoogleSignin (#260)", () => {
-  it("persists the domain, seeds the fleet, then briefs Scout, then marks bootstrapped — in order", async () => {
+  it("persists the domain, seeds the fleet, briefs Scout, records first-run proof, then marks bootstrapped — in order", async () => {
     const { deps, calls } = recordingDeps();
     await bootstrapAfterGoogleSignin(deps, INPUT);
-    expect(calls).toEqual(["setDomain", "seedFleet", "briefScout", "markBootstrapped"]);
+    expect(calls).toEqual([
+      "setDomain",
+      "seedFleet",
+      "briefScout",
+      "recordFirstRunReceipt",
+      "markBootstrapped",
+    ]);
     expect(deps.setDomain).toHaveBeenCalledWith("ws1", "acme.com");
     expect(deps.seedFleet).toHaveBeenCalledWith({ workspaceId: "ws1", memberId: "m1" });
   });
@@ -49,6 +57,16 @@ describe("bootstrapAfterGoogleSignin (#260)", () => {
     expect(brief.goal).toContain("https://acme.com");
   });
 
+  it("records a first-run dashboard receipt for the queued Scout brief (#1289)", async () => {
+    const { deps } = recordingDeps();
+    await bootstrapAfterGoogleSignin(deps, INPUT);
+    expect(deps.recordFirstRunReceipt).toHaveBeenCalledWith(bootstrapFirstRunReceipt(INPUT));
+    expect(bootstrapFirstRunReceipt(INPUT).artifactSummary).toBe(
+      scoutVerifyGoal("https://acme.com"),
+    );
+    expect(bootstrapFirstRunReceipt(INPUT).receipt).toContain("acme.com");
+  });
+
   it("is best-effort: a seed failure still lets the brief + mark run (the user must reach the board)", async () => {
     const { deps, calls } = recordingDeps({
       seedFleet: vi.fn(async () => {
@@ -56,7 +74,7 @@ describe("bootstrapAfterGoogleSignin (#260)", () => {
       }),
     });
     await expect(bootstrapAfterGoogleSignin(deps, INPUT)).resolves.toBeUndefined();
-    expect(calls).toEqual(["setDomain", "briefScout", "markBootstrapped"]); // seedFleet threw, others ran
+    expect(calls).toEqual(["setDomain", "briefScout", "recordFirstRunReceipt", "markBootstrapped"]); // seedFleet threw, others ran
     expect(deps.log!.error).toHaveBeenCalled();
   });
 });

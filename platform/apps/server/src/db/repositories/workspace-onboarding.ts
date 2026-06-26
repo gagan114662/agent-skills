@@ -19,8 +19,31 @@ export interface WorkspaceOnboarding {
   targetAudience: string | null;
   /** The target's competitors (#502); null until set. */
   targetCompetitors: string | null;
+  /** The first useful result recorded during public start / Google bootstrap (#1289). */
+  firstRunReceipt: FirstRunReceipt | null;
   bootstrapped: boolean;
   bootstrappedAtMs: number | null;
+}
+
+export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
+
+export interface FirstRunReceipt {
+  stage: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+  recordedAtMs: number;
+}
+
+export interface FirstRunReceiptInput {
+  stage: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
 }
 
 /** The owner-typed marketing-target fields written by the #502 "What are we marketing?" flow. */
@@ -102,6 +125,31 @@ export async function markWorkspaceBootstrapped(workspaceId: string): Promise<vo
     });
 }
 
+/** Persist the first real onboarding result so the signed-in dashboard can prove first-run progress. */
+export async function recordWorkspaceFirstRunReceipt(
+  workspaceId: string,
+  input: FirstRunReceiptInput,
+): Promise<FirstRunReceipt> {
+  const now = new Date();
+  const fields = {
+    firstRunStage: input.stage,
+    firstRunTarget: input.target,
+    firstRunFinding: input.finding,
+    firstRunArtifactTitle: input.artifactTitle,
+    firstRunArtifactSummary: input.artifactSummary,
+    firstRunReceipt: input.receipt,
+    firstRunRecordedAt: now,
+  };
+  await db
+    .insert(workspaceOnboarding)
+    .values({ workspaceId, ...fields, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: workspaceOnboarding.workspaceId,
+      set: { ...fields, updatedAt: now },
+    });
+  return { ...input, recordedAtMs: now.getTime() };
+}
+
 /** The onboarding state for a workspace, or null when the workspace was never onboarded via #260. */
 export async function getWorkspaceOnboarding(
   workspaceId: string,
@@ -114,6 +162,13 @@ export async function getWorkspaceOnboarding(
       targetPositioning: workspaceOnboarding.targetPositioning,
       targetAudience: workspaceOnboarding.targetAudience,
       targetCompetitors: workspaceOnboarding.targetCompetitors,
+      firstRunStage: workspaceOnboarding.firstRunStage,
+      firstRunTarget: workspaceOnboarding.firstRunTarget,
+      firstRunFinding: workspaceOnboarding.firstRunFinding,
+      firstRunArtifactTitle: workspaceOnboarding.firstRunArtifactTitle,
+      firstRunArtifactSummary: workspaceOnboarding.firstRunArtifactSummary,
+      firstRunReceipt: workspaceOnboarding.firstRunReceipt,
+      firstRunRecordedAt: workspaceOnboarding.firstRunRecordedAt,
       bootstrappedAt: workspaceOnboarding.bootstrappedAt,
     })
     .from(workspaceOnboarding)
@@ -127,6 +182,24 @@ export async function getWorkspaceOnboarding(
     targetPositioning: row.targetPositioning,
     targetAudience: row.targetAudience,
     targetCompetitors: row.targetCompetitors,
+    firstRunReceipt:
+      row.firstRunStage &&
+      row.firstRunTarget &&
+      row.firstRunFinding &&
+      row.firstRunArtifactTitle &&
+      row.firstRunArtifactSummary &&
+      row.firstRunReceipt &&
+      row.firstRunRecordedAt
+        ? {
+            stage: row.firstRunStage as FirstRunStage,
+            target: row.firstRunTarget,
+            finding: row.firstRunFinding,
+            artifactTitle: row.firstRunArtifactTitle,
+            artifactSummary: row.firstRunArtifactSummary,
+            receipt: row.firstRunReceipt,
+            recordedAtMs: row.firstRunRecordedAt.getTime(),
+          }
+        : null,
     bootstrapped: row.bootstrappedAt !== null,
     bootstrappedAtMs: row.bootstrappedAt ? row.bootstrappedAt.getTime() : null,
   };

@@ -21,6 +21,7 @@ import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
+import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
 import {
   createDefaultProvider,
   OnboardingReadError,
@@ -106,7 +107,11 @@ function CoworkStage({
 
       <ul className="onboard-room__agents" aria-label="agent team">
         {(mission?.agents ?? ONBOARD_COPY.room.agents).map((agent) => (
-          <li key={agent.who} className="onboard-room-agent" data-status={"status" in agent ? agent.status : "idle"}>
+          <li
+            key={agent.who}
+            className="onboard-room-agent"
+            data-status={"status" in agent ? agent.status : "idle"}
+          >
             <span className="onboard-room-agent__dot" aria-hidden="true" />
             <span className="onboard-room-agent__who">{agent.who}</span>
             <span className="onboard-room-agent__job">
@@ -312,7 +317,12 @@ function DoorActions(): React.JSX.Element {
   return (
     <nav className="onboard-door-actions" aria-label="homepage actions">
       {DOOR_ACTIONS.map((action) => (
-        <a key={action.key} className="onboard-door-action" data-kind={action.key} href={action.href}>
+        <a
+          key={action.key}
+          className="onboard-door-action"
+          data-kind={action.key}
+          href={action.href}
+        >
           <span className="onboard-door-action__mark" aria-hidden="true">
             {action.mark}
           </span>
@@ -365,8 +375,10 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
       setMission(null);
       try {
         const f = await provider.readSite(value);
+        const team = await provider.startTeam(value, f);
         setFinding(f);
-        setMission(await provider.startTeam(value, f));
+        setMission(team);
+        savePendingFirstRunReceipt(value, f, team);
       } catch (err) {
         setReadError(err instanceof OnboardingReadError ? err.message : ONBOARD_COPY.reading.error);
       }

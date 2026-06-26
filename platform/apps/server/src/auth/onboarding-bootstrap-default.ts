@@ -4,6 +4,7 @@ import { seedDepartmentForWorkspace, createMarketingBriefService } from "../mark
 import {
   setWorkspaceDomain,
   markWorkspaceBootstrapped,
+  recordWorkspaceFirstRunReceipt,
 } from "../db/repositories/workspace-onboarding.js";
 import {
   bootstrapAfterGoogleSignin,
@@ -40,6 +41,16 @@ export function makeDefaultOnboardingBootstrap(
           "onboarding Scout brief was not launched",
         );
       }
+    },
+    recordFirstRunReceipt: async (input) => {
+      await recordWorkspaceFirstRunReceipt(input.workspaceId, {
+        stage: "agent_result",
+        target: input.target,
+        finding: input.finding,
+        artifactTitle: input.artifactTitle,
+        artifactSummary: input.artifactSummary,
+        receipt: input.receipt,
+      });
     },
     log,
   };

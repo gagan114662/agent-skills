@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { LiveEverydayShell } from "./LiveEverydayShell.js";
 import { EVERYDAY } from "../../brand.js";
 import { api } from "../../api/client.js";
 import { makeMessage, renderWithStore } from "../../test/utils.js";
+import { FIRST_RUN_RECEIPT_KEY } from "../onboarding/first-run-receipt.js";
 
 function approval(over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto {
   return {
@@ -29,14 +30,25 @@ function approval(over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto {
 }
 
 describe("LiveEverydayShell (#1181)", () => {
+  beforeEach(() => {
+    vi.spyOn(api, "getFirstRunReceipt").mockResolvedValue({ firstRun: null });
+    vi.spyOn(api, "recordFirstRunReceipt").mockResolvedValue({ firstRun: null });
+    window.sessionStorage.clear();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    window.sessionStorage.clear();
   });
 
   it("renders signed-in workspace state instead of the Northwind/Dana seed", async () => {
     const { store } = renderWithStore(<LiveEverydayShell />, {
       messages: [
-        makeMessage({ id: "m-live", authorMemberId: "ag1", body: "Scout found a real Search Console issue." }),
+        makeMessage({
+          id: "m-live",
+          authorMemberId: "ag1",
+          body: "Scout found a real Search Console issue.",
+        }),
       ],
       approvals: [approval()],
     });
@@ -45,7 +57,9 @@ describe("LiveEverydayShell (#1181)", () => {
       await store.bootstrap();
     });
 
-    expect((await screen.findAllByText("Scout found a real Search Console issue.")).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText("Scout found a real Search Console issue.")).length,
+    ).toBeGreaterThan(0);
     expect(await screen.findByText("Send follow-up to Morgan")).toBeInTheDocument();
     expect(screen.getByText("Hi Morgan — here's the real follow-up draft.")).toBeInTheDocument();
     expect(screen.queryByText(/northwind/i)).not.toBeInTheDocument();
@@ -70,7 +84,10 @@ describe("LiveEverydayShell (#1181)", () => {
   });
 
   it("blocks iMessage room launch before posting when the signed-in team engine is not connected", async () => {
-    vi.spyOn(api, "getConnections").mockResolvedValue({ connections: [], canManageInternal: false });
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
     vi.spyOn(api, "getCodexStatus").mockResolvedValue({
       connected: false,
       reason: "Codex-backed team runs are not connected for this session.",
@@ -96,5 +113,80 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
     expect(postMessage).not.toHaveBeenCalled();
     expect(launchTeamRun).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the persisted first-run receipt as live CMO dashboard proof (#1289)", async () => {
+    vi.mocked(api.getFirstRunReceipt).mockResolvedValue({
+      firstRun: {
+        stage: "agent_result",
+        target: "acme.com",
+        finding: "your hero buries the offer below the fold.",
+        artifactTitle: "site-read receipt",
+        artifactSummary: "hero rewrite + launch-week post plan",
+        receipt: "send/spend gates active",
+        recordedAtMs: Date.UTC(2026, 5, 26, 12, 30),
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell dashboardFirst />, {
+      messages: [],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(
+      (await screen.findAllByText("your hero buries the offer below the fold.")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("recorded first result for acme.com").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("site-read receipt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("send/spend gates active").length).toBeGreaterThan(0);
+  });
+
+  it("flushes the public first-run handoff once signed in, then clears browser state (#1289)", async () => {
+    window.sessionStorage.setItem(
+      FIRST_RUN_RECEIPT_KEY,
+      JSON.stringify({
+        stage: "agent_result",
+        target: "acme.com",
+        finding: "your hero buries the offer below the fold.",
+        artifactTitle: "site-read receipt",
+        artifactSummary: "hero rewrite + launch-week post plan",
+        receipt: "team mission recorded",
+      }),
+    );
+    const record = vi.mocked(api.recordFirstRunReceipt).mockResolvedValue({
+      firstRun: {
+        stage: "agent_result",
+        target: "acme.com",
+        finding: "your hero buries the offer below the fold.",
+        artifactTitle: "site-read receipt",
+        artifactSummary: "hero rewrite + launch-week post plan",
+        receipt: "team mission recorded",
+        recordedAtMs: Date.UTC(2026, 5, 26, 12, 45),
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell dashboardFirst />, {
+      messages: [],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    await waitFor(() =>
+      expect(record).toHaveBeenCalledWith({
+        stage: "agent_result",
+        target: "acme.com",
+        finding: "your hero buries the offer below the fold.",
+        artifactTitle: "site-read receipt",
+        artifactSummary: "hero rewrite + launch-week post plan",
+        receipt: "team mission recorded",
+      }),
+    );
+    expect(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY)).toBeNull();
+    expect((await screen.findAllByText("team mission recorded")).length).toBeGreaterThan(0);
   });
 });

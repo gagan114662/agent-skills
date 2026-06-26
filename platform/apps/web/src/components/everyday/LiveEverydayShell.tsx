@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { api } from "../../api/client.js";
-import type { ConnectionView, TeamRunSubtaskInput } from "../../api/types.js";
+import type { ConnectionView, FirstRunReceiptDto, TeamRunSubtaskInput } from "../../api/types.js";
 import type { AppState } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
+import {
+  clearPendingFirstRunReceipt,
+  readPendingFirstRunReceipt,
+} from "../onboarding/first-run-receipt.js";
 import { EverydayShell } from "./EverydayShell.js";
 import {
   emptyEverydayData,
@@ -49,7 +53,7 @@ function approvalCard(request: ApprovalRequestDto, state: AppState): ApprovalCar
 
 function threadEntries(state: AppState): ThreadEntry[] {
   const channelId = state.activeChannelId;
-  const messages = channelId ? state.messagesByChannel[channelId] ?? [] : [];
+  const messages = channelId ? (state.messagesByChannel[channelId] ?? []) : [];
   const visible = messages.slice(-8);
   return visible.map((message, index) => ({
     id: message.id,
@@ -60,22 +64,160 @@ function threadEntries(state: AppState): ThreadEntry[] {
   }));
 }
 
-export function liveEverydayDataFromState(state: AppState): EverydayData {
-  const data = emptyEverydayData(state.identity?.displayName ?? "there");
+function firstRunTime(firstRun: FirstRunReceiptDto): string {
+  return new Date(firstRun.recordedAtMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function stageLabel(stage: FirstRunReceiptDto["stage"]): string {
+  if (stage === "source_read") return "source read";
+  if (stage === "dashboard_receipt") return "dashboard receipt";
+  return "agent result";
+}
+
+function withFirstRunReceipt(
+  data: EverydayData,
+  firstRun: FirstRunReceiptDto | null,
+): EverydayData {
+  if (!firstRun) return data;
+  const receiptAction = {
+    id: "first-run-" + firstRun.recordedAtMs,
+    at: firstRunTime(firstRun),
+    action: "recorded first result for " + firstRun.target,
+    href: "#dashboard",
+    receiptLabel: firstRun.receipt,
+  };
   return {
     ...data,
-    thread: threadEntries(state),
-    approvals: state.approvals.requests
-      .filter((request) => request.status === "pending")
-      .map((request) => approvalCard(request, state)),
-    fleetPaused: state.liveSessions.length === 0,
+    thread:
+      data.thread.length > 0
+        ? data.thread
+        : [
+            {
+              id: "first-run-scout",
+              kind: "agent-line",
+              agent: "Scout",
+              at: "first run",
+              text: firstRun.finding,
+            },
+            {
+              id: "first-run-quill",
+              kind: "deliverable",
+              agent: "Quill",
+              at: "queued",
+              deliverable: {
+                title: firstRun.artifactTitle,
+                kind: "draft",
+                preview: firstRun.artifactSummary,
+              },
+            },
+          ],
+    transparency: data.transparency.some((entry) => entry.id === receiptAction.id)
+      ? data.transparency
+      : [...data.transparency, receiptAction],
+    marketingBrief: {
+      mode: "live",
+      headline: firstRun.finding,
+      goal: {
+        label: "first-run stage",
+        target: "first useful marketing result",
+        current: stageLabel(firstRun.stage),
+        pace: "receipt captured",
+        confidence: "medium",
+      },
+      metrics: [
+        { label: "site reads", value: "1", detail: firstRun.target, tone: "good" },
+        { label: "agent artifacts", value: "1", detail: firstRun.artifactTitle, tone: "good" },
+        {
+          label: "receipts",
+          value: String(data.transparency.length + 1),
+          detail: firstRun.receipt,
+          tone: "good",
+        },
+        {
+          label: "blocked sends",
+          value: "0",
+          detail: "nothing external sent without approval",
+          tone: "neutral",
+        },
+      ],
+      funnel: [
+        { label: "source", count: "1", detail: firstRun.target, tone: "good" },
+        { label: "insight", count: "1", detail: "site finding recorded", tone: "good" },
+        { label: "asset", count: "1", detail: firstRun.artifactTitle, tone: "good" },
+        {
+          label: "approved",
+          count: String(data.approvals.length),
+          detail: "owner queue",
+          tone: data.approvals.length ? "warn" : "neutral",
+        },
+        {
+          label: "sent",
+          count: "0",
+          detail: "waiting for real connector approval",
+          tone: "neutral",
+        },
+      ],
+      channels: [
+        {
+          source: "website",
+          status: "read",
+          pipeline: firstRun.artifactTitle,
+          conversion: "not measured yet",
+          spend: "$0",
+          next: "turn the finding into approved copy and connector-backed distribution",
+        },
+      ],
+      blockers: [
+        {
+          title: "real connector proof",
+          owner: "owner",
+          proof: "connect Gmail, social, or site publishing before external sends",
+        },
+      ],
+      decisions: [
+        {
+          title: "approve the first angle",
+          owner: "owner",
+          proof: firstRun.receipt,
+        },
+      ],
+      nextActions: [
+        {
+          title: "build launch-week plan from the finding",
+          owner: "Quill",
+          proof: firstRun.artifactSummary,
+        },
+      ],
+    },
   };
+}
+
+export function liveEverydayDataFromState(
+  state: AppState,
+  firstRun: FirstRunReceiptDto | null = null,
+): EverydayData {
+  const data = emptyEverydayData(state.identity?.displayName ?? "there");
+  return withFirstRunReceipt(
+    {
+      ...data,
+      thread: threadEntries(state),
+      approvals: state.approvals.requests
+        .filter((request) => request.status === "pending")
+        .map((request) => approvalCard(request, state)),
+      fleetPaused: state.liveSessions.length === 0,
+    },
+    firstRun,
+  );
 }
 
 function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
   if (connection.capabilities.includes("work_visibility")) return "visibility";
   if (connection.capabilities.includes("site_publish")) return "publishing";
-  if (connection.capabilities.includes("post_social") || connection.capabilities.includes("ads")) return "marketing";
+  if (connection.capabilities.includes("post_social") || connection.capabilities.includes("ads"))
+    return "marketing";
   return "productivity";
 }
 
@@ -86,7 +228,12 @@ function connectorFromConnection(connection: ConnectionView): EverydayConnector 
     name: connection.label.replace(/^connect\s+/i, "").replace(/^sign in with\s+/i, ""),
     status: connection.connected ? "connected" : connection.status,
     detail: connection.summary,
-    actionLabel: connection.id === "imessage" ? "set up iMessage" : connection.status === "coming_soon" ? "notify me" : "connect",
+    actionLabel:
+      connection.id === "imessage"
+        ? "set up iMessage"
+        : connection.status === "coming_soon"
+          ? "notify me"
+          : "connect",
   };
 }
 
@@ -129,12 +276,19 @@ const ROOM_AGENT_TASKS: Array<{ role: string; task: (goal: string) => string }> 
 ];
 
 function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "room";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "room"
+  );
 }
 
 async function resolveAgentMemberId(state: AppState, role: string): Promise<string | null> {
   const cached = Object.values(state.directory).find(
-    (entry) => entry.kind === "agent" && entry.displayName.toLowerCase().includes(role.toLowerCase()),
+    (entry) =>
+      entry.kind === "agent" && entry.displayName.toLowerCase().includes(role.toLowerCase()),
   );
   if (cached) return cached.id;
   const workspaceId = state.identity?.workspaceId;
@@ -166,25 +320,43 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
     });
   }
   if (subtasks.length === 0) {
-    throw new Error("No Scout/Quill/Echo/Lens/operator agents were found in this workspace roster yet.");
+    throw new Error(
+      "No Scout/Quill/Echo/Lens/operator agents were found in this workspace roster yet.",
+    );
   }
   await api.launchTeamRun(channelId, subtasks);
 }
 
-export function LiveEverydayShell({ dashboardFirst = false }: { dashboardFirst?: boolean } = {}): React.JSX.Element {
+export function LiveEverydayShell({
+  dashboardFirst = false,
+}: { dashboardFirst?: boolean } = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
+  const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();
     setConnections(response.connections.filter((connection) => connection.audience === "customer"));
   }
 
+  async function refreshFirstRun(): Promise<void> {
+    const pending = readPendingFirstRunReceipt();
+    if (pending) {
+      const response = await api.recordFirstRunReceipt(pending);
+      clearPendingFirstRunReceipt();
+      setFirstRun(response.firstRun);
+      return;
+    }
+    const response = await api.getFirstRunReceipt();
+    setFirstRun(response.firstRun);
+  }
+
   useEffect(() => {
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
     void refreshConnections().catch(() => setConnections(null));
+    void refreshFirstRun().catch(() => setFirstRun(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
   async function connect(id: string): Promise<void> {
@@ -200,7 +372,7 @@ export function LiveEverydayShell({ dashboardFirst = false }: { dashboardFirst?:
     await refreshConnections();
   }
 
-  const data = liveEverydayDataFromState(state);
+  const data = liveEverydayDataFromState(state, firstRun);
   return (
     <EverydayShell
       data={{
