@@ -217,6 +217,30 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.queryByText(/open real connections/i)).not.toBeInTheDocument();
   });
 
+  it("starts the real Google auth handoff from the public Gmail allow step", async () => {
+    const connect = vi.fn((tool: ConnectTool) => Promise.resolve(payoff(tool)));
+    const startGoogleAuth = vi.fn();
+    render(
+      <OnboardingExperience
+        provider={fakeProvider({ connect })}
+        hour={14}
+        startGoogleAuth={startGoogleAuth}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
+
+    expect(startGoogleAuth).toHaveBeenCalledWith("acme.com");
+    expect(connect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/drafted you a reply to a warm lead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
+  });
+
   it("walks the whole flow: read → finding → guided connects each with a real payoff → ship", async () => {
     const onEnterApp = vi.fn();
     render(<OnboardingExperience provider={fakeProvider()} hour={14} onEnterApp={onEnterApp} />);
