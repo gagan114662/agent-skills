@@ -1601,6 +1601,26 @@ export const EVERYDAY = {
     },
   },
 
+  /** External room visibility (#1267): the same agent room, mirrored into user-chosen chat surfaces. */
+  visibility: {
+    heading: "see the room anywhere",
+    subhead: "web is the source of truth. chat apps are windows into the same work, not separate little messes.",
+    connect: "connect",
+    connected: "connected",
+    investigate: "investigate",
+    statuses: {
+      connected: "connected",
+      available: "available",
+      investigate: "needs a proper look",
+      coming_soon: "coming soon",
+    },
+    capabilities: {
+      receive: "room updates",
+      reply: "reply to agents",
+      approve: "approve work",
+    },
+  },
+
   /** North star (customers + revenue front and centre, #630). Labels only — numbers come from data. */
   northStar: {
     eyebrow: "the only scoreboard that matters",

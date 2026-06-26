@@ -20,6 +20,7 @@ function emptyData(over: Partial<EverydayData> = {}): EverydayData {
     northStar: { customers: 0, customersDelta: 0, revenue: "$0", revenueDelta: "—", trend: "zero" },
     room: [],
     connectors: [],
+    visibilityChannels: [],
     thread: [],
     approvals: [],
     transparency: [],
@@ -128,6 +129,19 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
       "href",
       expect.stringContaining("/settings?section=connections"),
     );
+  });
+
+  it("shows external chat visibility channels without making them the source of truth", () => {
+    render(<EverydayShell data={seedEveryday()} />);
+    const visibility = screen.getByRole("region", { name: EVERYDAY.visibility.heading });
+    expect(within(visibility).getByRole("heading", { name: EVERYDAY.visibility.heading })).toBeInTheDocument();
+    expect(within(visibility).getByText("Web room")).toBeInTheDocument();
+    expect(within(visibility).getByText("WhatsApp")).toBeInTheDocument();
+    expect(within(visibility).getByText("iMessage")).toBeInTheDocument();
+    expect(within(visibility).getByText("Telegram")).toBeInTheDocument();
+    expect(within(visibility).getAllByText(EVERYDAY.visibility.connected).length).toBeGreaterThan(0);
+    expect(within(visibility).getByText(EVERYDAY.visibility.investigate)).toBeInTheDocument();
+    expect(within(visibility).getAllByText(EVERYDAY.visibility.capabilities.approve).length).toBeGreaterThan(0);
   });
 });
 

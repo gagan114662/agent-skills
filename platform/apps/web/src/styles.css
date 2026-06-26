@@ -8260,6 +8260,108 @@ select:focus-visible {
   color: var(--ed-bg);
 }
 
+/* ---- Visibility channels: web plus chat apps ----------------------------- */
+.everyday-visibility {
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 18px;
+  background: var(--ed-surface);
+}
+.everyday-visibility__intro {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.everyday-visibility__heading {
+  margin: 0;
+  font-size: 24px;
+  color: var(--ed-text);
+}
+.everyday-visibility__subhead {
+  max-width: 520px;
+  margin: 0;
+  color: var(--ed-text-dim);
+  text-align: right;
+}
+.everyday-visibility__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.everyday-channel {
+  min-width: 0;
+  min-height: 188px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 14px;
+  background: var(--ed-bg);
+}
+.everyday-channel[data-status="connected"] {
+  border-color: color-mix(in srgb, var(--ed-pop) 38%, var(--ed-border));
+}
+.everyday-channel[data-status="investigate"] {
+  background: color-mix(in srgb, var(--ed-border) 12%, var(--ed-bg));
+}
+.everyday-channel__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+.everyday-channel__name {
+  margin: 0;
+  color: var(--ed-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+.everyday-channel__status {
+  margin: 4px 0 0;
+  color: var(--ed-text-dim);
+  font-size: 12px;
+}
+.everyday-channel__badge,
+.everyday-channel__link {
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--ed-text);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.everyday-channel__link {
+  background: var(--ed-pop);
+  border-color: var(--ed-pop);
+  color: var(--ed-bg);
+}
+.everyday-channel[data-status="investigate"] .everyday-channel__link {
+  background: transparent;
+  border-color: var(--ed-border);
+  color: var(--ed-text);
+}
+.everyday-channel__detail {
+  margin: 16px 0 0;
+  color: var(--ed-text);
+  font-size: 13px;
+}
+.everyday-channel__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.everyday-channel__caps li {
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--ed-text-dim);
+  font-size: 11px;
+}
+
 /* ---- North star: the only scoreboard that matters ------------------------ */
 .everyday-northstar__metrics {
   display: flex;
@@ -8563,6 +8665,12 @@ select:focus-visible {
   }
 }
 
+@media (max-width: 1080px) {
+  .everyday-visibility__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .everyday-room__grid {
     grid-template-columns: 1fr;
@@ -8578,6 +8686,16 @@ select:focus-visible {
     text-align: left;
   }
   .everyday-connectors__groups {
+    grid-template-columns: 1fr;
+  }
+  .everyday-visibility__intro {
+    display: block;
+  }
+  .everyday-visibility__subhead {
+    margin-top: 8px;
+    text-align: left;
+  }
+  .everyday-visibility__grid {
     grid-template-columns: 1fr;
   }
   .everyday-btn {

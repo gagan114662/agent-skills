@@ -38,6 +38,35 @@ export interface EverydayConnector {
   readonly href: string;
 }
 
+export type VisibilityChannelId = "web" | "whatsapp" | "imessage" | "telegram";
+export type VisibilityChannelStatus = "connected" | "available" | "investigate" | "coming_soon";
+export type VisibilityCapability = "receive" | "reply" | "approve";
+
+/** Where the agent room is visible to the user (#1267). Web is canonical; chat apps mirror it. */
+export interface VisibilityChannel {
+  readonly id: VisibilityChannelId;
+  readonly name: string;
+  readonly status: VisibilityChannelStatus;
+  readonly detail: string;
+  readonly href: string;
+  readonly capabilities: readonly VisibilityCapability[];
+}
+
+/** A canonical room event that can be fanned out to connected visibility channels. */
+export interface RoomVisibilityEvent {
+  readonly id: string;
+  readonly kind: "agent_line" | "user_reply" | "approval_request" | "approval_decision" | "preview" | "receipt" | "blocked";
+  readonly summary: string;
+  readonly requiresApproval?: boolean;
+}
+
+export type VisibilityCommand =
+  | { readonly kind: "approve"; readonly target: string }
+  | { readonly kind: "pause"; readonly target: string }
+  | { readonly kind: "resume"; readonly target: string }
+  | { readonly kind: "show"; readonly target: string }
+  | { readonly kind: "unknown"; readonly text: string };
+
 /** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
 export interface Deliverable {
   readonly title: string;
@@ -101,6 +130,7 @@ export interface EverydayData {
   readonly northStar: NorthStar;
   readonly room: readonly AgentLane[];
   readonly connectors: readonly EverydayConnector[];
+  readonly visibilityChannels: readonly VisibilityChannel[];
   readonly thread: readonly ThreadEntry[];
   readonly approvals: readonly ApprovalCard[];
   readonly transparency: readonly ExternalAction[];
@@ -145,6 +175,7 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
     },
     room: defaultAgentRoom("your next customer"),
     connectors: defaultConnectors(),
+    visibilityChannels: defaultVisibilityChannels(),
     thread: [],
     approvals: [],
     transparency: [],
@@ -246,6 +277,40 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         status: "available",
         detail: "publish approved pages instead of stopping at previews.",
         href: "/settings?section=connections&connector=site-publishing",
+      },
+    ],
+    visibilityChannels: [
+      {
+        id: "web",
+        name: "Web room",
+        status: "connected",
+        detail: "full setup, previews, receipts, and policy live here.",
+        href: "/everyday",
+        capabilities: ["receive", "reply", "approve"],
+      },
+      {
+        id: "whatsapp",
+        name: "WhatsApp",
+        status: "available",
+        detail: "agent updates and explicit approvals via Business API.",
+        href: "/settings?section=visibility&channel=whatsapp",
+        capabilities: ["receive", "reply", "approve"],
+      },
+      {
+        id: "imessage",
+        name: "iMessage",
+        status: "investigate",
+        detail: "native access is restricted; evaluate Apple Business Messages or SMS fallback.",
+        href: "/settings?section=visibility&channel=imessage",
+        capabilities: ["receive", "reply"],
+      },
+      {
+        id: "telegram",
+        name: "Telegram",
+        status: "available",
+        detail: "fastest early bot channel for live room visibility.",
+        href: "/settings?section=visibility&channel=telegram",
+        capabilities: ["receive", "reply", "approve"],
       },
     ],
     thread: [
@@ -442,4 +507,71 @@ export function defaultConnectors(): readonly EverydayConnector[] {
       href: "/settings?section=connections&connector=site-publishing",
     },
   ];
+}
+
+export function defaultVisibilityChannels(): readonly VisibilityChannel[] {
+  return [
+    {
+      id: "web",
+      name: "Web room",
+      status: "connected",
+      detail: "the full control room: setup, previews, receipts, approvals, and policy.",
+      href: "/everyday",
+      capabilities: ["receive", "reply", "approve"],
+    },
+    {
+      id: "whatsapp",
+      name: "WhatsApp",
+      status: "available",
+      detail: "mirror agent updates, replies, and explicit approvals into WhatsApp.",
+      href: "/settings?section=visibility&channel=whatsapp",
+      capabilities: ["receive", "reply", "approve"],
+    },
+    {
+      id: "imessage",
+      name: "iMessage",
+      status: "investigate",
+      detail: "requires feasibility work; fall back to SMS or Apple Business Messages if needed.",
+      href: "/settings?section=visibility&channel=imessage",
+      capabilities: ["receive", "reply"],
+    },
+    {
+      id: "telegram",
+      name: "Telegram",
+      status: "available",
+      detail: "a practical first bot channel for the live agent room.",
+      href: "/settings?section=visibility&channel=telegram",
+      capabilities: ["receive", "reply", "approve"],
+    },
+  ];
+}
+
+export function fanOutVisibilityEvent(
+  event: RoomVisibilityEvent,
+  channels: readonly VisibilityChannel[],
+): readonly VisibilityChannelId[] {
+  const capability: VisibilityCapability = event.requiresApproval ? "approve" : "receive";
+  return channels
+    .filter((channel) => channel.status === "connected" && channel.capabilities.includes(capability))
+    .map((channel) => channel.id);
+}
+
+export function parseVisibilityCommand(text: string): VisibilityCommand {
+  const trimmed = text.trim();
+  const normalized = trimmed.toLowerCase().replace(/\s+/g, " ");
+  if (normalized.length === 0) return { kind: "unknown", text };
+
+  const approve = normalized.match(/^(yes|y|approve|ship|send)\b\s*(.*)$/);
+  if (approve) return { kind: "approve", target: approve[2]?.trim() || "latest approval" };
+
+  const pause = normalized.match(/^pause\b\s*(.*)$/);
+  if (pause) return { kind: "pause", target: pause[1]?.trim() || "all work" };
+
+  const resume = normalized.match(/^(resume|unpause)\b\s*(.*)$/);
+  if (resume) return { kind: "resume", target: resume[2]?.trim() || "all work" };
+
+  const show = normalized.match(/^(show|preview|open)\b\s*(.*)$/);
+  if (show) return { kind: "show", target: show[2]?.trim() || "latest work" };
+
+  return { kind: "unknown", text: trimmed };
 }

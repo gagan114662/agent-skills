@@ -4,7 +4,17 @@
  * timestamp on every external action — the surface contract the shell renders).
  */
 import { describe, expect, it } from "vitest";
-import { compactCount, defaultAgentRoom, defaultConnectors, partOfDay, seedEveryday, signedDelta } from "./everyday-data.js";
+import {
+  compactCount,
+  defaultAgentRoom,
+  defaultConnectors,
+  defaultVisibilityChannels,
+  fanOutVisibilityEvent,
+  parseVisibilityCommand,
+  partOfDay,
+  seedEveryday,
+  signedDelta,
+} from "./everyday-data.js";
 
 describe("partOfDay (#784)", () => {
   it("buckets the local hour into morning / afternoon / evening", () => {
@@ -110,5 +120,40 @@ describe("defaultConnectors (#1265)", () => {
     );
     expect(connectors.every((connector) => connector.status !== "connected")).toBe(true);
     expect(connectors.every((connector) => connector.href.startsWith("/settings?section=connections"))).toBe(true);
+  });
+});
+
+describe("visibility channels (#1267)", () => {
+  it("keeps web connected as the source of truth and exposes chat channels honestly", () => {
+    const channels = defaultVisibilityChannels();
+    expect(channels.map((channel) => channel.name)).toEqual(["Web room", "WhatsApp", "iMessage", "Telegram"]);
+    expect(channels.find((channel) => channel.id === "web")?.status).toBe("connected");
+    expect(channels.find((channel) => channel.id === "imessage")?.status).toBe("investigate");
+    expect(channels.filter((channel) => channel.id !== "web").every((channel) => channel.status !== "connected")).toBe(true);
+  });
+
+  it("fans out only to connected channels with the required capability", () => {
+    const channels = defaultVisibilityChannels().map((channel) =>
+      channel.id === "telegram" ? { ...channel, status: "connected" as const } : channel,
+    );
+    expect(
+      fanOutVisibilityEvent(
+        { id: "evt_1", kind: "agent_line", summary: "Scout found 3 segments." },
+        channels,
+      ),
+    ).toEqual(["web", "telegram"]);
+    expect(
+      fanOutVisibilityEvent(
+        { id: "evt_2", kind: "approval_request", summary: "Ship the page?", requiresApproval: true },
+        channels,
+      ),
+    ).toEqual(["web", "telegram"]);
+  });
+
+  it("parses explicit messaging commands for approval and control", () => {
+    expect(parseVisibilityCommand("YES ship homepage")).toEqual({ kind: "approve", target: "ship homepage" });
+    expect(parseVisibilityCommand("pause outbound")).toEqual({ kind: "pause", target: "outbound" });
+    expect(parseVisibilityCommand("show latest draft")).toEqual({ kind: "show", target: "latest draft" });
+    expect(parseVisibilityCommand("what is happening?")).toEqual({ kind: "unknown", text: "what is happening?" });
   });
 });

@@ -27,6 +27,7 @@ import {
   type AgentLane,
   type NorthStar,
   type ThreadEntry,
+  type VisibilityChannel,
   compactCount,
   defaultAgentRoom,
   emptyEverydayData,
@@ -201,6 +202,43 @@ function ConnectorSetup({ connectors }: { connectors: readonly EverydayConnector
               ))}
             </ul>
           </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function VisibilityChannels({ channels }: { channels: readonly VisibilityChannel[] }): React.JSX.Element {
+  const v = EVERYDAY.visibility;
+  return (
+    <section className="everyday-visibility" aria-label={v.heading}>
+      <div className="everyday-visibility__intro">
+        <h2 className="everyday-serif everyday-visibility__heading">{v.heading}</h2>
+        <p className="everyday-visibility__subhead">{v.subhead}</p>
+      </div>
+      <div className="everyday-visibility__grid">
+        {channels.map((channel) => (
+          <article key={channel.id} className="everyday-channel" data-status={channel.status}>
+            <header className="everyday-channel__head">
+              <div>
+                <h3 className="everyday-channel__name">{channel.name}</h3>
+                <p className="everyday-channel__status">{v.statuses[channel.status]}</p>
+              </div>
+              {channel.status === "connected" ? (
+                <span className="everyday-channel__badge">{v.connected}</span>
+              ) : (
+                <a className="everyday-channel__link" href={channel.href}>
+                  {channel.status === "investigate" ? v.investigate : v.connect}
+                </a>
+              )}
+            </header>
+            <p className="everyday-channel__detail">{channel.detail}</p>
+            <ul className="everyday-channel__caps" aria-label={`${channel.name} capabilities`}>
+              {channel.capabilities.map((capability) => (
+                <li key={capability}>{v.capabilities[capability]}</li>
+              ))}
+            </ul>
+          </article>
         ))}
       </div>
     </section>
@@ -560,6 +598,7 @@ export function EverydayShell({
 
         <AgentRoom lanes={room} />
         <ConnectorSetup connectors={data.connectors} />
+        <VisibilityChannels channels={data.visibilityChannels} />
         <NorthStarBar data={data.northStar} />
         <Thread entries={thread} />
         <ApprovalQueue
