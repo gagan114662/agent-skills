@@ -147,7 +147,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     id: IMESSAGE_CONNECTION_ID,
     label: "Connect iMessage",
     summary:
-      "Follow Scout, Lens, Quill, Echo, and Codex from Messages once the Apple relay is production-ready.",
+      "Follow Scout, Lens, Quill, Echo, and the operator from Messages once the Apple relay is production-ready.",
     provider: "apple",
     kind: "sms",
     audience: "customer",

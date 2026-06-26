@@ -305,23 +305,27 @@ function ProofDeliverables(): React.JSX.Element | null {
 
 const MARKETING_ICON_ROW = [
   { key: "brief", mark: "+", label: "brief" },
-  { key: "icp", mark: "ICP", label: "customer map" },
-  { key: "site", mark: "URL", label: "site read" },
+  { key: "icp", mark: "ICP", label: "customer" },
+  { key: "site", mark: "URL", label: "website" },
   { key: "insight", mark: "!", label: "insight" },
   { key: "creative", mark: "AD", label: "creative" },
-  { key: "email", mark: "@", label: "email" },
   { key: "seo", mark: "SEO", label: "search" },
   { key: "social", mark: "#", label: "social" },
-  { key: "ads", mark: "$", label: "paid" },
-  { key: "approve", mark: "OK", label: "approval" },
-  { key: "analytics", mark: "%", label: "analytics" },
+  { key: "paid", mark: "$", label: "paid" },
+  { key: "approval", mark: "OK", label: "approve" },
   { key: "receipt", mark: "PDF", label: "receipt" },
+] as const;
+
+const DOOR_ACTIONS = [
+  { key: "login", mark: "◎", label: "Login", href: "/everyday" },
+  { key: "love", mark: "♡", label: "Love", href: "#onboard-target" },
+  { key: "dashboard", mark: "▦", label: "Dashboard", href: "/everyday" },
+  { key: "start", mark: "●", label: "Start", href: "#onboard-target" },
 ] as const;
 
 function MarketingIconRow(): React.JSX.Element {
   return (
     <section className="onboard-marketing" aria-label="marketing work preview">
-      <p className="onboard-marketing__proof">500,000+ agent tasks · one room</p>
       <ol className="onboard-marketing__row">
         {MARKETING_ICON_ROW.map((item) => (
           <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
@@ -331,6 +335,21 @@ function MarketingIconRow(): React.JSX.Element {
         ))}
       </ol>
     </section>
+  );
+}
+
+function DoorActions(): React.JSX.Element {
+  return (
+    <nav className="onboard-door-actions" aria-label="homepage actions">
+      {DOOR_ACTIONS.map((action) => (
+        <a key={action.key} className="onboard-door-action" data-kind={action.key} href={action.href}>
+          <span className="onboard-door-action__mark" aria-hidden="true">
+            {action.mark}
+          </span>
+          <span className="onboard-door-action__label">{action.label}</span>
+        </a>
+      ))}
+    </nav>
   );
 }
 
@@ -456,7 +475,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         <a href="/" className="onboard__brand" aria-label={BRAND.name}>
           {BRAND.name}
         </a>
-        <PublicTrustLinks placement="nav" />
+        {phase === "door" ? <DoorActions /> : <PublicTrustLinks placement="nav" />}
       </header>
       <div className="onboard__inner">
         <main className="onboard__primary">
@@ -489,7 +508,6 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   {doorError}
                 </p>
               )}
-              <p className="onboard-door__reassurance">{ONBOARD_COPY.door.reassurance}</p>
             </form>
           )}
 
@@ -667,23 +685,27 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
             </section>
           )}
         </main>
-        <CoworkStage
-          phase={phase}
-          input={input}
-          finding={finding}
-          mission={mission}
-          results={results}
-          deliverable={deliverable}
-          readError={readError}
-          connectError={connectError}
-        />
+        {phase !== "door" && (
+          <CoworkStage
+            phase={phase}
+            input={input}
+            finding={finding}
+            mission={mission}
+            results={results}
+            deliverable={deliverable}
+            readError={readError}
+            connectError={connectError}
+          />
+        )}
       </div>
-      <footer className="onboard__footer">
-        <PublicTrustLinks placement="footer" />
-        <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
-          {SUPPORT_CONTACT.email}
-        </a>
-      </footer>
+      {phase !== "door" && (
+        <footer className="onboard__footer">
+          <PublicTrustLinks placement="footer" />
+          <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
+            {SUPPORT_CONTACT.email}
+          </a>
+        </footer>
+      )}
     </div>
   );
 }

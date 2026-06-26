@@ -93,10 +93,10 @@ describe("seedEveryday (#784) — the surface contract", () => {
 });
 
 describe("defaultAgentRoom (#1265)", () => {
-  it("starts a multi-agent room with Codex as an operator lane", () => {
+  it("starts a multi-agent room with an operator lane", () => {
     const room = defaultAgentRoom("ipop.ai");
-    expect(room.map((lane) => lane.agent)).toEqual(["Scout", "Quill", "Echo", "Lens", "Codex"]);
-    expect(room.find((lane) => lane.agent === "Codex")?.status).toBe("codex");
+    expect(room.map((lane) => lane.agent)).toEqual(["Scout", "Quill", "Echo", "Lens", "Operator"]);
+    expect(room.find((lane) => lane.agent === "Operator")?.status).toBe("codex");
     expect(room[0]?.task).toContain("ipop.ai");
   });
 });

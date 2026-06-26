@@ -124,37 +124,33 @@ describe("OnboardingExperience (#784)", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
     expect(screen.getByText(/make marketing pop/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
-    expect(screen.getByText(/customer map/i)).toBeInTheDocument();
+    expect(screen.getByText(/customer/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: /ipop cowork room/i })).toBeInTheDocument();
-    expect(screen.getByText(/your marketing team, already at the table/i)).toBeInTheDocument();
-    expect(screen.getByText(/send\/spend policy locked/i)).toBeInTheDocument();
-    expectPublicLinks();
+    expect(screen.queryByRole("complementary", { name: /ipop cowork room/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/your marketing team, already at the table/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/send\/spend policy locked/i)).not.toBeInTheDocument();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
-  it("shows finished real deliverables and the approve-to-ship loop inside onboarding (#571)", () => {
+  it("keeps finished-work proof behind the dashboard so the homepage stays clean (#571)", () => {
     const [latestPost] = listPostMeta();
     if (!latestPost) throw new Error("expected at least one published blog post for onboarding proof");
     render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
 
-    const proof = screen.getByRole("region", { name: /finished work proof/i });
-    expect(within(proof).getByText(/already shipped/i)).toBeInTheDocument();
-    expect(within(proof).getByText(/real deliverables from the fleet/i)).toBeInTheDocument();
-    expect(within(proof).getByRole("list", { name: /approve to ship trail/i })).toHaveTextContent(
-      /draftapprovelive/i,
-    );
+    expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/everyday");
     expect(latestPost).toBeDefined();
-    expect(within(proof).getByRole("link", { name: latestPost.title })).toHaveAttribute(
-      "href",
-      `/blog/${latestPost.slug}`,
-    );
   });
 
   it("nudges (does not advance) on an empty submit", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={9} />);
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/give us a product or a url/i);
   });
 
@@ -165,7 +161,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
     expect(await screen.findByText(/send\/spend gates active/i)).toBeInTheDocument();
     expect(startTeam).toHaveBeenCalledWith("acme.com", FINDING);
@@ -185,7 +181,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
     const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
     expect(within(instant).getByText(/streaming now/i)).toBeInTheDocument();
@@ -207,7 +203,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
     const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
     fireEvent.click(within(instant).getByRole("button", { name: /approve this first result/i }));
@@ -232,7 +228,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
 
@@ -250,7 +246,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect((await screen.findAllByText(/buries the offer below the fold/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/right, i read the whole thing/i)).toBeInTheDocument();
 
@@ -295,7 +291,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
 
@@ -319,7 +315,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -345,7 +341,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -371,13 +367,13 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read your site/i);
     expectPublicLinks();
     // No faked finding while it's errored.
     expect(screen.queryByText(/buries the offer/i)).not.toBeInTheDocument();
     // Retry recovers.
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect((await screen.findAllByText(/buries the offer/i)).length).toBeGreaterThan(0);
   });
 });
