@@ -98,6 +98,14 @@ export class PreflightError extends Error {
   }
 }
 
+export function googleOAuthRequiredForRelease(profile: ProfileName, env: NodeJS.ProcessEnv): boolean {
+  return (
+    profile === "prod" ||
+    env.RELOAD_REQUIRE_GOOGLE_OAUTH === "1" ||
+    env.RELOAD_REQUIRE_GOOGLE_OAUTH === "true"
+  );
+}
+
 /** Vercel auth: either an OIDC token, or the full access-token trio. Names only, never values. */
 function checkVercelAuth(env: NodeJS.ProcessEnv): CheckResult {
   const name = "vercel-auth";
