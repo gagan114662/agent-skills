@@ -688,9 +688,12 @@ export const api = {
   // --- approval gates (#13) ---
   approvals: {
     /** The review queue, optionally filtered by status. */
-    list(workspaceId: string, status?: string): Promise<ApprovalRequestDto[]> {
+    async list(workspaceId: string, status?: string): Promise<ApprovalRequestDto[]> {
       const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-      return request<ApprovalRequestDto[]>(`/workspaces/${workspaceId}/approvals${qs}`);
+      const payload = await request<ApprovalRequestDto[] | { items?: ApprovalRequestDto[] }>(
+        `/workspaces/${workspaceId}/approvals${qs}`,
+      );
+      return Array.isArray(payload) ? payload : Array.isArray(payload.items) ? payload.items : [];
     },
     get(requestId: string): Promise<ApprovalRequestDto> {
       return request<ApprovalRequestDto>(`/approvals/${requestId}`);
