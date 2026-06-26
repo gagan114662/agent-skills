@@ -6169,12 +6169,23 @@ select:focus-visible {
 .console__history { padding: 24px; }
 
 .missioncc {
-  margin: 14px 16px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-1);
-  overflow: hidden; flex: none;
+  position: relative; isolation: isolate; margin: 14px 16px 0; border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 8px; background:
+    radial-gradient(900px 220px at 18% -30%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 68%),
+    linear-gradient(135deg, color-mix(in srgb, #fff 48%, var(--bg-1)), var(--bg-1) 58%, color-mix(in srgb, var(--agent) 8%, var(--bg-1)));
+  overflow: hidden; flex: none; box-shadow: var(--shadow-md);
+}
+.missioncc::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: -1;
+  background:
+    linear-gradient(115deg, transparent 0 34%, color-mix(in srgb, #fff 32%, transparent) 44%, transparent 54%),
+    repeating-linear-gradient(90deg, transparent 0 54px, color-mix(in srgb, var(--accent) 7%, transparent) 55px 56px);
+  opacity: 0.55; transform: translateX(-12%);
 }
 .missioncc__head {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2);
+  padding: 14px 16px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line));
+  background: color-mix(in srgb, var(--bg-2) 78%, #fff);
 }
 .missioncc__eyebrow {
   margin: 0 0 4px; color: var(--accent); font-family: var(--console-mono); font-size: 10px;
@@ -6192,7 +6203,12 @@ select:focus-visible {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0;
   border-bottom: 1px solid var(--line);
 }
-.missioncc__metrics div { padding: 12px 14px; min-width: 0; }
+.missioncc__metrics div { position: relative; padding: 12px 14px; min-width: 0; }
+.missioncc__metrics div::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--agent) 70%, var(--accent)));
+  transform: scaleX(0.22); transform-origin: left; opacity: 0.42;
+}
 .missioncc__metrics div + div { border-left: 1px solid var(--line); }
 .missioncc__metrics dt {
   margin: 0 0 5px; color: var(--text-faint); font-family: var(--console-mono); font-size: 10px;
@@ -6201,6 +6217,34 @@ select:focus-visible {
 .missioncc__metrics dd {
   margin: 0; color: var(--ink); font-family: var(--console-mono); font-size: 18px; font-weight: 800;
 }
+.missioncc__presence {
+  position: relative; min-height: 74px; display: flex; align-items: center; justify-content: center; gap: 16px;
+  padding: 16px; border-bottom: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 45%),
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--bg) 70%, transparent), transparent);
+}
+.missioncc__presence::before {
+  content: ""; position: absolute; left: 28px; right: 28px; top: 50%; height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 46%, transparent), transparent);
+}
+.missioncc__presence-agent {
+  --hue: var(--agent); position: relative; width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--ink); background:
+    radial-gradient(circle at 34% 28%, #fff 0 19%, transparent 20%),
+    color-mix(in srgb, var(--hue) 22%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--hue) 52%, var(--line)); box-shadow:
+    0 0 0 8px color-mix(in srgb, var(--hue) 9%, transparent),
+    0 10px 26px color-mix(in srgb, var(--hue) 18%, transparent);
+  animation: presence-rise 0.56s var(--pop-ease) both, presence-float 3.6s ease-in-out infinite;
+  animation-delay: var(--presence-delay, 0ms), calc(var(--presence-delay, 0ms) + 560ms);
+}
+.missioncc__presence-agent i {
+  position: absolute; inset: -8px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--hue) 32%, transparent);
+  border-top-color: color-mix(in srgb, var(--hue) 78%, var(--accent));
+  animation: presence-orbit 5s linear infinite;
+}
+.missioncc__presence-agent b { font-family: var(--console-mono); font-size: 15px; line-height: 1; }
 .missioncc__body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr); }
 .missioncc__agents { min-width: 0; }
 .missioncc__agents ul {
@@ -6547,6 +6591,19 @@ select:focus-visible {
 .card--need::before { width: 3.5px; background: var(--accent); }
 .card--need:hover { transform: none; box-shadow: var(--shadow-sm); border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); }
 .card__ttl { font-size: var(--fs-body); font-weight: 700; line-height: 1.35; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+.card__agentbadge {
+  --badge-hue: var(--hue, var(--agent)); position: relative; flex: 0 0 24px; width: 24px; height: 24px; display: grid;
+  place-items: center; border-radius: 50%; color: var(--ink); background:
+    radial-gradient(circle at 34% 27%, #fff 0 20%, transparent 21%),
+    color-mix(in srgb, var(--badge-hue) 24%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--badge-hue) 56%, var(--line));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--badge-hue) 10%, transparent);
+}
+.card__agentbadge i {
+  position: absolute; inset: -4px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--badge-hue) 28%, transparent);
+  border-top-color: color-mix(in srgb, var(--badge-hue) 72%, var(--accent)); animation: presence-orbit 4.2s linear infinite;
+}
+.card__agentbadge b { font-family: var(--console-mono); font-size: 10px; line-height: 1; }
 .card__meta { color: var(--text-dim); margin-top: 2px; }
 .card__amount { color: var(--text-dim); }
 .card__foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-family: var(--console-mono); font-size: 10.5px; color: var(--text-faint); }
@@ -6768,13 +6825,24 @@ select:focus-visible {
 .sheet__gatesub { font-size: 11px; color: var(--text-dim); }
 .sheet__foot { display: flex; gap: 8px; align-items: center; padding: 12px 20px 16px; border-top: 1px solid var(--line); }
 
+@keyframes presence-rise {
+  0% { opacity: 0; transform: translateY(9px) scale(0.82); }
+  68% { opacity: 1; transform: translateY(-2px) scale(1.06); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes presence-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes presence-orbit { to { transform: rotate(360deg); } }
 @keyframes console-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* All console motion is a delight, never a tax — off entirely under reduced motion (criterion: one gate). */
 @media (prefers-reduced-motion: reduce) {
   .sess, .card, .glyph-dot--wait, .glyph-dot--done, .peek__msg, .wyo, .board__clear { animation: none; }
   .proj__chev, .proj__sessions, .gauge__fill, .peek, .peek-veil, .sheet__panel, .card__why { transition: none; }
-  .fleet-health--err i, .board__pulse, .missioncc__status--live i { animation: none; }
+  .fleet-health--err i, .board__pulse, .missioncc__status--live i,
+  .missioncc__presence-agent, .missioncc__presence-agent i, .card__agentbadge i { animation: none; }
 }
 
 /* ============================================================================================

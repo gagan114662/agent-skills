@@ -1,5 +1,5 @@
 import type { FounderConsoleDto, MissionControlDto } from "../../api/types.js";
-import { CONSOLE } from "../../brand.js";
+import { CONSOLE, agentColor } from "../../brand.js";
 import { fmtCents, fmtElapsed } from "./model.js";
 
 export interface MissionCommandCenterProps {
@@ -33,6 +33,13 @@ function reliabilityLine(mission: MissionControlDto | null): string {
     percent(breakdown.failureRate),
     breakdown.dominantClass ?? CONSOLE.commandCenter.none,
   );
+}
+
+function presenceStyle(label: string, index: number): React.CSSProperties {
+  return {
+    ["--hue" as string]: agentColor(label),
+    ["--presence-delay" as string]: `${index * 120}ms`,
+  } as React.CSSProperties;
 }
 
 export function MissionCommandCenter({
@@ -74,6 +81,25 @@ export function MissionCommandCenter({
           <dd>{shippedCount}</dd>
         </div>
       </dl>
+
+      {sessions.length > 0 && (
+        <div className="missioncc__presence" role="region" aria-label={CONSOLE.commandCenter.presenceRegion}>
+          {sessions.map((session, index) => {
+            const label = agentLabel(session.agentMemberId);
+            return (
+              <span
+                key={session.id}
+                className="missioncc__presence-agent"
+                style={presenceStyle(label, index)}
+                aria-label={`${label} ${session.agentStatus}`}
+              >
+                <i aria-hidden="true" />
+                <b aria-hidden="true">{label.slice(0, 1).toUpperCase()}</b>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       <div className="missioncc__body">
         <section className="missioncc__agents" aria-label={CONSOLE.commandCenter.agentsRegion}>
