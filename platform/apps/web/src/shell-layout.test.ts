@@ -75,12 +75,40 @@ describe("shell layout overflow guards (#169)", () => {
 
   it("auth and onboarding cards fit narrow phones instead of forcing a 360px viewport", () => {
     const card = ruleBody(".auth__card");
-    expect(decl(card, "width")).toBe("360px");
+    expect(decl(card, "width")).toBe("460px");
     expect(decl(card, "max-width")).toBe("calc(100vw - 32px)");
     expect(decl(card, "box-sizing")).toBe("border-box");
   });
 
   it("the Deploy two-column grid can shrink its tracks below their content width", () => {
     expect(decl(ruleBody(".deploy__sidebar,\n.deploy__main"), "min-width")).toBe("0");
+  });
+});
+
+describe("Tomo-simple onboarding door viewport guards", () => {
+  it("keeps the public door locked to one viewport with no page scroll", () => {
+    const door = ruleBody('.onboard[data-phase="door"]');
+
+    expect(decl(door, "height")).toBe("100dvh");
+    expect(decl(door, "max-height")).toBe("100dvh");
+    expect(decl(door, "overflow")).toBe("hidden");
+  });
+
+  it("uses an animated sun layer instead of cloud art as the homepage background", () => {
+    const sun = ruleBody('.onboard[data-phase="door"]::before');
+
+    expect(decl(sun, "background")).toContain("repeating-conic-gradient");
+    expect(decl(sun, "background")).toContain("radial-gradient");
+    expect(decl(sun, "animation")).toContain("onboard-sun-turn");
+    expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
+  });
+
+  it("keeps the marketing artefact strip small enough for a clean first viewport", () => {
+    const row = ruleBody(".onboard-marketing__row");
+    const mark = ruleBody(".onboard-marketing__mark");
+
+    expect(decl(row, "grid-template-columns")).toBe("repeat(12, minmax(42px, 1fr))");
+    expect(decl(mark, "width")).toBe("clamp(46px, 4.35vw, 78px)");
+    expect(decl(mark, "height")).toBe("clamp(46px, 4.35vw, 78px)");
   });
 });

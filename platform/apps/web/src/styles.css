@@ -9361,12 +9361,12 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 190, 0.82) 0 12%, transparent 28%),
-    radial-gradient(920px 460px at 50% 8%, rgba(255, 226, 72, 0.54), transparent 70%),
-    radial-gradient(760px 320px at 18% 74%, rgba(255, 185, 69, 0.18), transparent 68%),
-    radial-gradient(820px 340px at 84% 74%, rgba(83, 181, 255, 0.16), transparent 68%),
-    linear-gradient(180deg, #fff879 0%, #ffe366 22%, #ffd27c 52%, #bde6ff 76%, #e8e292 100%);
-  background-size: 110% 110%, 120% 112%, 110% 100%, 110% 100%, 100% 100%;
+    radial-gradient(circle at 50% 14%, rgba(255, 252, 176, 0.86) 0 11%, transparent 22%),
+    radial-gradient(980px 520px at 50% 4%, rgba(255, 226, 57, 0.5), transparent 72%),
+    radial-gradient(820px 400px at 4% 94%, rgba(117, 205, 82, 0.22), transparent 66%),
+    radial-gradient(760px 360px at 96% 92%, rgba(44, 143, 235, 0.13), transparent 68%),
+    linear-gradient(180deg, #fff77d 0%, #ffe66b 15%, #ffc95a 38%, #97d8ff 72%, #dfe983 100%);
+  background-size: 108% 108%, 118% 112%, 112% 100%, 112% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9378,16 +9378,16 @@ select:focus-visible {
 }
 .onboard[data-phase="door"]::before {
   z-index: 0;
-  top: clamp(18px, 4.5vh, 54px);
+  top: clamp(46px, 8vh, 92px);
   left: 50%;
-  width: clamp(360px, 46vw, 720px);
+  width: clamp(430px, 52vw, 820px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 7deg, rgba(255, 241, 78, 0.5) 0 7deg, transparent 7deg 15deg),
-    radial-gradient(circle at 50% 50%, #fffdb1 0 21%, #fff45b 22% 34%, rgba(255, 196, 49, 0.72) 35% 50%, rgba(255, 174, 54, 0.22) 51% 65%, transparent 66%);
-  filter: saturate(1.08) drop-shadow(0 0 48px rgba(255, 239, 90, 0.52));
-  opacity: 0.98;
+    repeating-conic-gradient(from 7deg, rgba(255, 244, 93, 0.56) 0 6deg, transparent 6deg 16deg),
+    radial-gradient(circle at 50% 50%, #fffef2 0 12%, #fffba7 13% 24%, #fff052 25% 37%, rgba(255, 185, 51, 0.74) 38% 51%, rgba(255, 169, 45, 0.2) 52% 68%, transparent 69%);
+  filter: saturate(1.12) drop-shadow(0 0 62px rgba(255, 239, 90, 0.66));
+  opacity: 0.96;
   transform: translateX(-50%) rotate(0deg) scale(1);
   animation: onboard-sun-turn 40s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
 }
@@ -9423,10 +9423,10 @@ select:focus-visible {
   min-height: 0;
   grid-template-columns: 1fr;
   align-items: end;
-  padding: clamp(8px, 1.5vh, 16px) clamp(16px, 2.6vw, 38px) clamp(12px, 2.4vh, 30px);
+  padding: clamp(6px, 1.2vh, 14px) clamp(16px, 2.6vw, 38px) clamp(10px, 1.6vh, 22px);
 }
 .onboard[data-phase="door"] .onboard__primary {
-  height: min(600px, calc(100dvh - 160px));
+  height: min(560px, calc(100dvh - 146px));
   min-height: 0;
   justify-content: space-between;
 }
@@ -9790,9 +9790,9 @@ select:focus-visible {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(12, minmax(48px, 1fr));
+  grid-template-columns: repeat(12, minmax(42px, 1fr));
   align-items: end;
-  gap: clamp(6px, 1.15vw, 18px);
+  gap: clamp(5px, 1vw, 14px);
 }
 .onboard-marketing__item {
   min-width: 0;
@@ -9815,9 +9815,9 @@ select:focus-visible {
 .onboard-marketing__mark {
   display: grid;
   place-items: center;
-  width: clamp(54px, 5vw, 94px);
-  height: clamp(54px, 5vw, 94px);
-  border-radius: 18px;
+  width: clamp(46px, 4.35vw, 78px);
+  height: clamp(46px, 4.35vw, 78px);
+  border-radius: 15px;
   color: transparent;
   position: relative;
   overflow: visible;
@@ -9853,7 +9853,7 @@ select:focus-visible {
   z-index: 3;
   max-width: 88%;
   color: rgba(17, 17, 17, 0.78);
-  font-size: clamp(7px, 0.72vw, 10px);
+  font-size: clamp(7px, 0.62vw, 9px);
   font-weight: 850;
   line-height: 1;
   text-align: center;
@@ -9917,7 +9917,7 @@ select:focus-visible {
   transform: rotate(90deg);
 }
 .onboard-marketing__item[data-kind="icp"] .onboard-marketing__mark {
-  height: clamp(74px, 6.6vw, 118px);
+  height: clamp(62px, 5.7vw, 96px);
   background: #7de142;
   transform: skewY(-8deg) rotate(-2deg);
   border-radius: 8px 28px 12px 8px;
@@ -9967,8 +9967,8 @@ select:focus-visible {
   box-shadow: inset 0 0 0 2px #111;
 }
 .onboard-marketing__item[data-kind="email"] .onboard-marketing__mark {
-  width: clamp(68px, 6.2vw, 112px);
-  height: clamp(50px, 4.5vw, 82px);
+  width: clamp(58px, 5.4vw, 92px);
+  height: clamp(42px, 3.95vw, 68px);
   border-radius: 6px;
   transform: rotate(2deg);
 }
@@ -10034,7 +10034,7 @@ select:focus-visible {
   background: #111;
 }
 .onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark {
-  height: clamp(76px, 6.8vw, 120px);
+  height: clamp(64px, 5.9vw, 98px);
   background:
     linear-gradient(180deg, #ff8a3d 0 17%, transparent 17%),
     repeating-linear-gradient(90deg, rgba(255,255,255,0.2) 0 8px, transparent 8px 16px),
