@@ -14,6 +14,8 @@
 
 import { getPool } from "../db/index.js";
 import { newId } from "../db/id.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { getPlan } from "../billing/plans.js";
 import { LinkedInOutreachService } from "./service.js";
 import {
   type CreateTouchInput,
@@ -179,5 +181,12 @@ export class PgOutreachStore implements OutreachStore {
  * sandbox provider (the default — it never live-sends).
  */
 export function createDefaultLinkedInOutreachService(): LinkedInOutreachService {
-  return new LinkedInOutreachService({ store: new PgOutreachStore() });
+  return new LinkedInOutreachService({
+    store: new PgOutreachStore(),
+    planForWorkspace: async (workspaceId) => {
+      const active = await dbWorkspacePlanStore.getActive(workspaceId);
+      if (!active || active.status !== "active") return null;
+      return getPlan(active.planKey) ?? null;
+    },
+  });
 }
