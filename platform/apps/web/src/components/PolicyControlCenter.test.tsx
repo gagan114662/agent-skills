@@ -57,4 +57,36 @@ describe("PolicyControlCenter (#1291)", () => {
     await userEvent.click(screen.getByRole("button", { name: CONSOLE.policy.resume }));
     expect(onToggleKillSwitch).toHaveBeenCalledWith(false);
   });
+
+  it("submits an arbitrary action to the backend dry-run simulator", async () => {
+    const user = userEvent.setup();
+    const onSimulatePolicy = vi.fn(async () => ({
+      actionType: "external.send",
+      amount: 250,
+      outcome: "queues_for_approval" as const,
+      reason: "amount 250 exceeds auto-approve limit 100",
+      rollbackStatus: "Undo depends on the connected provider.",
+    }));
+
+    render(
+      <PolicyControlCenter
+        killSwitchOn={false}
+        maintenanceOn={false}
+        pendingExternalActions={0}
+        loggedDecisions={0}
+        onToggleKillSwitch={() => {}}
+        onSimulatePolicy={onSimulatePolicy}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("Action type to simulate"));
+    await user.type(screen.getByLabelText("Action type to simulate"), "external.send");
+    await user.type(screen.getByLabelText("Amount to simulate"), "250");
+    await user.click(screen.getByRole("button", { name: CONSOLE.policy.simulate }));
+
+    expect(onSimulatePolicy).toHaveBeenCalledWith({ actionType: "external.send", amount: 250 });
+    const result = (await screen.findByText("amount 250 exceeds auto-approve limit 100")).closest("article")!;
+    expect(within(result).getByText(CONSOLE.policy.outcomes.approval)).toBeInTheDocument();
+    expect(within(result).getByText("Undo depends on the connected provider.")).toBeInTheDocument();
+  });
 });

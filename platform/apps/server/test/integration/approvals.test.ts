@@ -73,6 +73,60 @@ async function channelWithAgent(owner: Owner, agentMemberId: string): Promise<st
 }
 
 describe("Approval gates: submit → pause → approve/reject/expire + audit (real Postgres)", () => {
+  it("dry-runs arbitrary policy actions and respects break-glass pause", async () => {
+    const owner = await newOwner();
+
+    const auto = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies/simulate`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "external.send" },
+    });
+    expect(auto.statusCode).toBe(200);
+    expect(auto.json()).toMatchObject({
+      actionType: "external.send",
+      amount: null,
+      outcome: "auto_runs",
+      rollbackStatus: expect.stringContaining("provider"),
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "external.send", requireApproval: false, maxAutoAmount: 100 },
+    });
+    const overCap = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies/simulate`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "external.send", amount: 250 },
+    });
+    expect(overCap.statusCode).toBe(200);
+    expect(overCap.json()).toMatchObject({
+      amount: 250,
+      outcome: "queues_for_approval",
+      reason: "amount 250 exceeds auto-approve limit 100",
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/autonomy/kill`,
+      cookies: { rid: owner.cookie },
+    });
+    const blocked = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/approval-policies/simulate`,
+      cookies: { rid: owner.cookie },
+      payload: { actionType: "external.send", amount: 20 },
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(blocked.json()).toMatchObject({
+      outcome: "blocked",
+      reason: expect.stringContaining("break-glass pause"),
+    });
+  });
+
   it("gated chat action pauses, then approval executes it (message appears) and audits the chain", async () => {
     const owner = await newOwner();
     const agent = await newAgent(owner, "Poster");

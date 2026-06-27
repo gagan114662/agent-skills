@@ -103,6 +103,22 @@ export type SubmitActionResponse =
   | { status: "pending"; reason: string; request: ApprovalRequestDto }
   | { status: "executed"; result: Record<string, unknown>; request: ApprovalRequestDto };
 
+/** Read-only dry run of the workspace approval policy, used by the policy control center (#1291). */
+export type PolicySimulationOutcome = "auto_runs" | "queues_for_approval" | "blocked";
+
+export interface PolicySimulationInput {
+  actionType: string;
+  amount?: number | null;
+}
+
+export interface PolicySimulationResult {
+  actionType: string;
+  amount: number | null;
+  outcome: PolicySimulationOutcome;
+  reason: string;
+  rollbackStatus: string;
+}
+
 // ---- team mode (#TeamMode) --------------------------------------------------
 
 /**

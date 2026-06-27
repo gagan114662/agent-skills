@@ -15,6 +15,8 @@ import type {
   ChecksStatus,
   DeploymentDto,
   DiffMode,
+  PolicySimulationInput,
+  PolicySimulationResult,
   PlansResponseDto,
   PreviewAnnotation,
   PullRequestDto,
@@ -778,6 +780,12 @@ export const api = {
     },
     deletePolicy(workspaceId: string, ruleId: string): Promise<{ ok: true }> {
       return del(`/workspaces/${workspaceId}/approval-policies/${ruleId}`) as Promise<{ ok: true }>;
+    },
+    simulatePolicy(workspaceId: string, input: PolicySimulationInput): Promise<PolicySimulationResult> {
+      return post(
+        `/workspaces/${workspaceId}/approval-policies/simulate`,
+        input,
+      ) as Promise<PolicySimulationResult>;
     },
     /** Submit an action through the gating seam — used by the demo to manufacture a gated request. */
     submitAction(workspaceId: string, input: SubmitActionInput): Promise<SubmitActionResponse> {

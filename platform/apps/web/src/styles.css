@@ -6852,6 +6852,37 @@ select:focus-visible {
   padding: 0;
   list-style: none;
 }
+.policy-simulator {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 180px) auto;
+  gap: 10px;
+  align-items: end;
+  margin: 14px 0;
+}
+.policy-simulator label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.policy-simulator input {
+  min-height: 38px;
+}
+.policy-simulator__result {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) auto minmax(180px, 1.4fr) minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-1);
+}
+.policy-simulator__error {
+  color: var(--danger);
+  margin: 8px 0;
+}
 .policy-row {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr) 130px minmax(180px, 0.7fr);
@@ -6899,6 +6930,8 @@ select:focus-visible {
 }
 @media (max-width: 820px) {
   .policy-center__summary,
+  .policy-simulator,
+  .policy-simulator__result,
   .policy-row {
     grid-template-columns: 1fr;
   }
