@@ -9,23 +9,25 @@ import type { UsageReport } from "../api/types.js";
 import { BillingSettings } from "./BillingSettings.js";
 import { BILLING } from "../brand.js";
 
+const PRO_PLAN: PlanDto = {
+  key: "pro",
+  name: "Pro",
+  tagline: "The whole department, on tap.",
+  priceCents: 19_900,
+  currency: "usd",
+  interval: "month",
+  agentSeats: 10,
+  monthlySessionBudgetCents: 100_000,
+  fleetSize: 3,
+  dailyValue: "SEO, content, outreach, and analytics agents working together.",
+  dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
+  upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
+  highlights: ["10 agent seats"],
+  featured: true,
+};
+
 const PLANS: PlanDto[] = [
-  {
-    key: "pro",
-    name: "Pro",
-    tagline: "The whole department, on tap.",
-    priceCents: 19_900,
-    currency: "usd",
-    interval: "month",
-    agentSeats: 10,
-    monthlySessionBudgetCents: 100_000,
-    fleetSize: 3,
-    dailyValue: "SEO, content, outreach, and analytics agents working together.",
-    dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
-    upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
-    highlights: ["10 agent seats"],
-    featured: true,
-  },
+  PRO_PLAN,
 ];
 
 const ACTIVE: ActivePlanDto = {
@@ -51,10 +53,36 @@ describe("BillingSettings (#215)", () => {
   it("shows the active plan name, seats, and usage vs cap", () => {
     render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} />);
     expect(screen.getByText("Pro")).toBeInTheDocument();
-    expect(screen.getByText(/10/)).toBeInTheDocument();
+    expect(screen.getByText(/10\s+seats/)).toBeInTheDocument();
     // estimatedCostCents 137 → $1.37, cap 500 → $5.00.
     expect(screen.getByText("$1.37")).toBeInTheDocument();
-    expect(screen.getByText(/\$5\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/\/\s+\$5\.00\s+cap/)).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: BILLING.panel.usageLabel })).toHaveAttribute("aria-valuenow", "137");
+    expect(screen.getByText(BILLING.panel.valueReadyTitle)).toBeInTheDocument();
+    expect(screen.getByText(/\$3\.63 of \$5\.00 remains/i)).toBeInTheDocument();
+  });
+
+  it("surfaces the plan's everyday value, hard limit, and upgrade trigger (#1290)", () => {
+    render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} />);
+    expect(screen.getByText(BILLING.panel.dailyValueLabel)).toBeInTheDocument();
+    expect(screen.getByText(PRO_PLAN.dailyValue)).toBeInTheDocument();
+    expect(screen.getByText(BILLING.panel.dailyLimitLabel)).toBeInTheDocument();
+    expect(screen.getByText(PRO_PLAN.dailyLimit)).toBeInTheDocument();
+    expect(screen.getByText(BILLING.panel.upgradeTriggerLabel)).toBeInTheDocument();
+    expect(screen.getByText(PRO_PLAN.upgradeTrigger)).toBeInTheDocument();
+  });
+
+  it("shows a cap-hit upgrade moment when the workspace is out of monthly room (#1290)", () => {
+    render(
+      <BillingSettings
+        current={ACTIVE}
+        plans={PLANS}
+        usage={{ ...USAGE, estimatedCostCents: 500, overBudget: true }}
+      />,
+    );
+    expect(screen.getByText(BILLING.panel.valuePausedTitle)).toBeInTheDocument();
+    expect(screen.getByText(/used its \$5\.00 agent-work cap/i)).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: BILLING.panel.usageLabel })).toHaveAttribute("aria-valuenow", "500");
   });
 
   it("falls back to the trial label when no plan is active", () => {
