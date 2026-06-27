@@ -370,6 +370,8 @@ export interface IMessageEnv {
   maxChars: number;
   /** Shared secret for the Apple Messages relay callback. */
   webhookSecret?: string;
+  /** Explicit proof that this server is the logged-in macOS relay host. Fly/Linux must not set this. */
+  macosHost: boolean;
 }
 
 export interface ApprovalEnv {
@@ -609,6 +611,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       dryRun: source.IMESSAGE_RELAY_DRY_RUN === "true" || source.IMESSAGE_RELAY_DRY_RUN === "1",
       maxChars: num(source.IMESSAGE_RELAY_MAX_CHARS, 1800),
       webhookSecret: source.IMESSAGE_RELAY_WEBHOOK_SECRET || undefined,
+      macosHost: source.IMESSAGE_RELAY_MACOS_HOST === "true" || source.IMESSAGE_RELAY_MACOS_HOST === "1",
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
