@@ -46,6 +46,17 @@ Until a permitted signed-in Codex subscription bridge exists, the preflight retu
 keys, Claude tokens, and the demo harness are deliberately not accepted as substitutes for this product
 promise.
 
+## iMessage Relay
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `IMESSAGE_RELAY_ENABLED` | `false` | Enables the Apple Messages relay. Leave off unless a real relay host is configured. |
+| `IMESSAGE_RELAY_DRY_RUN` | `false` | When true, room setup stays blocked from claiming a real Messages room. |
+| `IMESSAGE_RELAY_RECIPIENT` | — | Optional workspace-level fallback recipient; member-verified recipients are preferred. |
+| `IMESSAGE_RELAY_SERVICE` | — | Optional Messages service name for AppleScript sends. |
+| `IMESSAGE_RELAY_MAX_CHARS` | `1800` | Outbound relay length guardrail. |
+| `IMESSAGE_RELAY_WEBHOOK_SECRET` | — | Shared secret required by `POST /imessage/relay/inbound` before a Mac relay can post an inbound Messages reply into an ipop room. |
+
 ## Profiles
 
 | Var | Default | Purpose |

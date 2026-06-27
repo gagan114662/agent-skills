@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { imessageRecipients } from "../schema/index.js";
 
@@ -89,4 +89,22 @@ export async function deleteIMessageRecipient(workspaceId: string, memberId: str
     .where(and(eq(imessageRecipients.workspaceId, workspaceId), eq(imessageRecipients.memberId, memberId)))
     .returning({ id: imessageRecipients.id });
   return rows.length > 0;
+}
+
+export async function findVerifiedIMessageRecipientByRecipient(input: {
+  workspaceId: string;
+  recipient: string;
+}): Promise<IMessageRecipient | undefined> {
+  const [row] = await db
+    .select(COLUMNS)
+    .from(imessageRecipients)
+    .where(
+      and(
+        eq(imessageRecipients.workspaceId, input.workspaceId),
+        eq(imessageRecipients.recipient, input.recipient),
+        isNotNull(imessageRecipients.verifiedAt),
+      ),
+    )
+    .limit(1);
+  return row as IMessageRecipient | undefined;
 }

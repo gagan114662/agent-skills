@@ -3,6 +3,7 @@ import {
   IMessageRelayService,
   imessageRoomPreflight,
   imessageRoomReceipt,
+  parseIMessageRoomReceipt,
 } from "../../src/imessage/service.js";
 
 const base = {
@@ -26,6 +27,7 @@ describe("IMessageRelayService", () => {
       [
         "ipop iMessage room",
         "author: Gagan",
+        "workspace: ws1",
         "channel: ch1",
         "message: msg1",
         "receipt: imessage:ch1:msg1",
@@ -33,6 +35,12 @@ describe("IMessageRelayService", () => {
         "launch the room",
       ].join("\n"),
     );
+  });
+
+  it("parses room receipts for inbound relay correlation", () => {
+    expect(parseIMessageRoomReceipt("imessage:ch1:msg1")).toEqual({ channelId: "ch1", messageId: "msg1" });
+    expect(parseIMessageRoomReceipt(" nope ")).toBeNull();
+    expect(parseIMessageRoomReceipt(null)).toBeNull();
   });
 
   it("is disabled by default unless the relay is explicitly enabled", async () => {

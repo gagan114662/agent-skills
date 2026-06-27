@@ -368,6 +368,8 @@ export interface IMessageEnv {
   dryRun: boolean;
   /** Message length guardrail before handing text to Messages. */
   maxChars: number;
+  /** Shared secret for the Apple Messages relay callback. */
+  webhookSecret?: string;
 }
 
 export interface ApprovalEnv {
@@ -606,6 +608,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       osascriptBin: source.IMESSAGE_OSASCRIPT_BIN || "osascript",
       dryRun: source.IMESSAGE_RELAY_DRY_RUN === "true" || source.IMESSAGE_RELAY_DRY_RUN === "1",
       maxChars: num(source.IMESSAGE_RELAY_MAX_CHARS, 1800),
+      webhookSecret: source.IMESSAGE_RELAY_WEBHOOK_SECRET || undefined,
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
