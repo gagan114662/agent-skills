@@ -46,10 +46,17 @@ async function runOnce(input: {
   baseUrl: string;
   secret: string;
   relayId: string;
+  host: string;
+  version: string | null;
   limit: number;
   leaseMs: number;
   adapter: MacOsMessagesAdapter;
 }): Promise<number> {
+  await postJson(apiUrl(input.baseUrl, "/imessage/relay/heartbeat"), input.secret, {
+    relayId: input.relayId,
+    host: input.host,
+    version: input.version,
+  });
   const claim = await postJson<ClaimResponse>(apiUrl(input.baseUrl, "/imessage/relay/outbound/claim"), input.secret, {
     relayId: input.relayId,
     limit: input.limit,
@@ -87,7 +94,9 @@ async function main(): Promise<void> {
   }
   const baseUrl = process.env.IMESSAGE_RELAY_API_BASE?.trim() || "https://api.ipop.ai";
   const secret = required("IMESSAGE_RELAY_WEBHOOK_SECRET");
-  const relayId = process.env.IMESSAGE_RELAY_ID?.trim() || `mac-${hostname()}`;
+  const host = hostname();
+  const relayId = process.env.IMESSAGE_RELAY_ID?.trim() || `mac-${host}`;
+  const version = process.env.IMESSAGE_RELAY_VERSION?.trim() || null;
   const limit = Number(process.env.IMESSAGE_RELAY_CLAIM_LIMIT || "5");
   const leaseMs = Number(process.env.IMESSAGE_RELAY_LEASE_MS || "120000");
   const pollMs = Number(process.env.IMESSAGE_RELAY_POLL_MS || "5000");
@@ -96,7 +105,7 @@ async function main(): Promise<void> {
 
   let shouldContinue = true;
   while (shouldContinue) {
-    const count = await runOnce({ baseUrl, secret, relayId, limit, leaseMs, adapter });
+    const count = await runOnce({ baseUrl, secret, relayId, host, version, limit, leaseMs, adapter });
     if (once) {
       shouldContinue = false;
       continue;

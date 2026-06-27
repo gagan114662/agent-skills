@@ -337,6 +337,29 @@ describe("iMessage member recipient relay", () => {
         payload: { recipient: "gagan@example.com", serviceName: "E:test" },
       });
 
+      const unsignedHeartbeat = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/heartbeat",
+        payload: { relayId: "gagan-mac", host: "Gagans-MacBook-Pro" },
+      });
+      expect(unsignedHeartbeat.statusCode).toBe(401);
+
+      const heartbeat = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/heartbeat",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", host: "Gagans-MacBook-Pro", version: "dev-1341" },
+      });
+      expect(heartbeat.statusCode).toBe(200);
+      expect(heartbeat.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          version: "dev-1341",
+          active: true,
+        },
+      });
+
       const testSend = await queuedApp.inject({
         method: "POST",
         url: "/me/imessage/test",
@@ -359,6 +382,12 @@ describe("iMessage member recipient relay", () => {
       });
       expect(pendingStatus.statusCode).toBe(200);
       expect(pendingStatus.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          version: "dev-1341",
+          active: true,
+        },
         lastRelayJob: {
           id: testSend.json().jobId,
           purpose: "verification",

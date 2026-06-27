@@ -208,6 +208,14 @@ export interface IMessageRelayJobView {
   updatedAt: string;
 }
 
+export interface IMessageRelayHeartbeatView {
+  relayId: string;
+  host: string;
+  version: string | null;
+  checkedInAt: string;
+  active: boolean;
+}
+
 export interface IMessageStatusResponse {
   enabled: boolean;
   configured: boolean;
@@ -218,6 +226,7 @@ export interface IMessageStatusResponse {
   maxChars: number;
   memberRecipient: IMessageRecipientView | null;
   lastRelayJob?: IMessageRelayJobView | null;
+  relayHeartbeat?: IMessageRelayHeartbeatView | null;
 }
 
 export interface IMessageRecipientSaveResponse {
