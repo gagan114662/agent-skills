@@ -1,13 +1,17 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import { requireChannelCapability } from "../auth/access.js";
 import { postMessage } from "../db/repositories/messages.js";
 import {
   deleteIMessageRecipient,
+  claimIMessageRelayJobs,
+  completeIMessageRelayJob,
+  enqueueIMessageRelayJob,
   findVerifiedIMessageRecipientByRecipient,
   getIMessageRecipient,
   markIMessageRecipientVerified,
   upsertIMessageRecipient,
+  type IMessageRelayJob,
   type IMessageRecipient,
 } from "../db/repositories/imessage.js";
 import { getChannel } from "../db/repositories/channels.js";
@@ -28,7 +32,22 @@ export interface IMessageRoutesOptions {
 function statusCode(status: string): number {
   if (status === "disabled" || status === "not_configured") return 503;
   if (status === "too_long" || status === "failed") return 400;
+  if (status === "queued") return 202;
   return 200;
+}
+
+function requireRelaySecret(req: FastifyRequest, reply: FastifyReply, secret?: string): boolean {
+  if (!secret) {
+    reply.code(503).send({ error: "iMessage relay is not configured" });
+    return false;
+  }
+  const header = req.headers["x-ipop-imessage-relay-secret"];
+  const presented = Array.isArray(header) ? header[0] : header;
+  if (presented !== secret) {
+    reply.code(401).send({ error: "unauthorized" });
+    return false;
+  }
+  return true;
 }
 
 function normalizeRecipient(raw: unknown): string | null {
@@ -57,6 +76,54 @@ function recipientPayload(row: IMessageRecipient | undefined): Record<string, un
     verified: Boolean(row.verifiedAt),
     verifiedAt: row.verifiedAt?.toISOString() ?? null,
   };
+}
+
+function relayJobPayload(job: IMessageRelayJob): Record<string, unknown> {
+  return {
+    id: job.id,
+    workspaceId: job.workspaceId,
+    memberId: job.memberId,
+    channelId: job.channelId,
+    messageId: job.messageId,
+    purpose: job.purpose,
+    recipient: job.recipient,
+    serviceName: job.serviceName,
+    text: job.body,
+    receipt: job.receipt,
+    status: job.status,
+    lockedBy: job.lockedBy,
+    lockedUntil: job.lockedUntil?.toISOString() ?? null,
+    sentAt: job.sentAt?.toISOString() ?? null,
+    failedAt: job.failedAt?.toISOString() ?? null,
+    error: job.error,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
+async function enqueueRelaySend(input: {
+  workspaceId: string;
+  memberId?: string | null;
+  channelId?: string | null;
+  messageId?: string | null;
+  purpose: "verification" | "room" | "notification";
+  recipient: string;
+  serviceName?: string | null;
+  text: string;
+  receipt?: string | null;
+}): Promise<{ status: "queued"; dryRun: false; recipient: string; jobId: string; receipt?: string | null }> {
+  const job = await enqueueIMessageRelayJob({
+    workspaceId: input.workspaceId,
+    memberId: input.memberId ?? null,
+    channelId: input.channelId ?? null,
+    messageId: input.messageId ?? null,
+    purpose: input.purpose,
+    recipient: input.recipient,
+    serviceName: input.serviceName ?? null,
+    body: input.text,
+    receipt: input.receipt ?? null,
+  });
+  return { status: "queued", dryRun: false, recipient: input.recipient, jobId: job.id, receipt: input.receipt ?? null };
 }
 
 async function memberStatus(service: IMessageRelayService, workspaceId: string, memberId: string) {
@@ -124,6 +191,23 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
         ? body.text.trim()
         : "ipop test: your marketing team engine can reach iMessage.";
     const row = await getIMessageRecipient(identity.workspaceId, identity.memberId);
+    const rowStatus = row
+      ? opts.service.statusFor({ recipient: row.recipient, source: "member_pending", verified: false })
+      : null;
+    if (row && rowStatus && opts.webhookSecret && !rowStatus.enabled && !rowStatus.dryRun) {
+      if (text.length > rowStatus.maxChars) {
+        return reply.code(400).send({ status: "too_long", dryRun: false, recipient: row.recipient, error: "message too long" });
+      }
+      const queued = await enqueueRelaySend({
+        workspaceId: identity.workspaceId,
+        memberId: identity.memberId,
+        purpose: "verification",
+        recipient: row.recipient,
+        serviceName: row.serviceName,
+        text,
+      });
+      return reply.code(202).send({ ...queued, memberRecipient: recipientPayload(row) });
+    }
     const result = await opts.service.send({ text, recipient: row?.recipient, serviceName: row?.serviceName ?? undefined });
     if (row && result.status === "sent") {
       const verified = await markIMessageRecipientVerified({
@@ -151,7 +235,8 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
         : "start the iMessage room and show me what the team is doing.";
     const { status } = await memberStatus(opts.service, identity.workspaceId, identity.memberId);
     const preflight = imessageRoomPreflight(status);
-    if (preflight) return reply.code(statusCode(preflight.status)).send(preflight);
+    const canQueue = Boolean(preflight?.status === "disabled" && opts.webhookSecret && status.recipient && status.configured && !status.dryRun);
+    if (preflight && !canQueue) return reply.code(statusCode(preflight.status)).send(preflight);
 
     const message = await postMessage({
       workspaceId: identity.workspaceId,
@@ -169,23 +254,65 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       text,
     });
     const row = await getIMessageRecipient(identity.workspaceId, identity.memberId);
-    const result = await opts.service.send({
-      text: relayText,
-      recipient: status.recipient,
-      serviceName: row?.verifiedAt ? row.serviceName ?? undefined : undefined,
-    });
+    const receipt = "imessage:" + cid + ":" + message.id;
+    const result = canQueue
+      ? await enqueueRelaySend({
+          workspaceId: identity.workspaceId,
+          memberId: identity.memberId,
+          channelId: cid,
+          messageId: message.id,
+          purpose: "room",
+          recipient: status.recipient!,
+          serviceName: row?.verifiedAt ? row.serviceName ?? undefined : undefined,
+          text: relayText,
+          receipt,
+        })
+      : await opts.service.send({
+          text: relayText,
+          recipient: status.recipient,
+          serviceName: row?.verifiedAt ? row.serviceName ?? undefined : undefined,
+        });
     return reply.code(statusCode(result.status)).send({
       ...result,
-      receipt: "imessage:" + cid + ":" + message.id,
+      receipt,
       message,
     });
   });
 
+  app.post("/imessage/relay/outbound/claim", async (req, reply) => {
+    if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
+    const body = (req.body ?? {}) as { relayId?: unknown; limit?: unknown; leaseMs?: unknown };
+    const relayId = typeof body.relayId === "string" && body.relayId.trim() ? body.relayId.trim().slice(0, 120) : "mac-relay";
+    const limit = typeof body.limit === "number" ? body.limit : 5;
+    const leaseMs = typeof body.leaseMs === "number" ? body.leaseMs : 120_000;
+    const jobs = await claimIMessageRelayJobs({ relayId, limit, leaseMs });
+    return { jobs: jobs.map(relayJobPayload) };
+  });
+
+  app.post("/imessage/relay/outbound/:id/complete", async (req, reply) => {
+    if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { relayId?: unknown; status?: unknown; error?: unknown };
+    const relayId = typeof body.relayId === "string" && body.relayId.trim() ? body.relayId.trim().slice(0, 120) : "mac-relay";
+    const status = body.status === "sent" ? "sent" : body.status === "failed" ? "failed" : null;
+    if (!status) return reply.code(400).send({ error: "status must be sent or failed" });
+    const error = typeof body.error === "string" ? body.error.slice(0, 500) : null;
+    const job = await completeIMessageRelayJob({ id, relayId, status, error });
+    if (!job) return reply.code(409).send({ error: "iMessage relay job is not claimed by this relay" });
+    let memberRecipient: Record<string, unknown> | null = null;
+    if (job.purpose === "verification" && job.memberId && status === "sent") {
+      const verified = await markIMessageRecipientVerified({
+        workspaceId: job.workspaceId,
+        memberId: job.memberId,
+        recipient: job.recipient,
+      });
+      memberRecipient = recipientPayload(verified);
+    }
+    return { job: relayJobPayload(job), memberRecipient };
+  });
+
   app.post("/imessage/relay/inbound", async (req, reply) => {
-    if (!opts.webhookSecret) return reply.code(503).send({ error: "iMessage inbound relay is not configured" });
-    const header = req.headers["x-ipop-imessage-relay-secret"];
-    const presented = Array.isArray(header) ? header[0] : header;
-    if (presented !== opts.webhookSecret) return reply.code(401).send({ error: "unauthorized" });
+    if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
 
     const body = (req.body ?? {}) as {
       workspaceId?: unknown;

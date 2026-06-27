@@ -33,6 +33,7 @@
     "trace:smoke": "tsx scripts/braintrust-smoke.ts",
     "sandbox:smoke": "tsx scripts/vercel-sandbox-smoke.ts",
     "agent:browser-smoke": "tsx scripts/agent-browser-smoke.ts",
+    "imessage:relay": "tsx src/imessage/relay-worker-cli.ts",
     "soak": "tsx scripts/cloud-e2e-soak.ts",
     "perf": "tsx scripts/perf.ts"
   },

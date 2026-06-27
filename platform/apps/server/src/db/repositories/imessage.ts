@@ -1,6 +1,9 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
-import { db } from "../index.js";
-import { imessageRecipients } from "../schema/index.js";
+import { db, getPool } from "../index.js";
+import { imessageRecipients, imessageRelayJobs } from "../schema/index.js";
+
+export type IMessageRelayJobPurpose = "verification" | "room" | "notification";
+export type IMessageRelayJobStatus = "pending" | "claimed" | "sent" | "failed";
 
 export interface IMessageRecipient {
   id: string;
@@ -9,6 +12,27 @@ export interface IMessageRecipient {
   recipient: string;
   serviceName: string | null;
   verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IMessageRelayJob {
+  id: string;
+  workspaceId: string;
+  memberId: string | null;
+  channelId: string | null;
+  messageId: string | null;
+  purpose: IMessageRelayJobPurpose;
+  recipient: string;
+  serviceName: string | null;
+  body: string;
+  receipt: string | null;
+  status: IMessageRelayJobStatus;
+  lockedBy: string | null;
+  lockedUntil: Date | null;
+  sentAt: Date | null;
+  failedAt: Date | null;
+  error: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +46,27 @@ const COLUMNS = {
   verifiedAt: imessageRecipients.verifiedAt,
   createdAt: imessageRecipients.createdAt,
   updatedAt: imessageRecipients.updatedAt,
+} as const;
+
+const JOB_COLUMNS = {
+  id: imessageRelayJobs.id,
+  workspaceId: imessageRelayJobs.workspaceId,
+  memberId: imessageRelayJobs.memberId,
+  channelId: imessageRelayJobs.channelId,
+  messageId: imessageRelayJobs.messageId,
+  purpose: imessageRelayJobs.purpose,
+  recipient: imessageRelayJobs.recipient,
+  serviceName: imessageRelayJobs.serviceName,
+  body: imessageRelayJobs.body,
+  receipt: imessageRelayJobs.receipt,
+  status: imessageRelayJobs.status,
+  lockedBy: imessageRelayJobs.lockedBy,
+  lockedUntil: imessageRelayJobs.lockedUntil,
+  sentAt: imessageRelayJobs.sentAt,
+  failedAt: imessageRelayJobs.failedAt,
+  error: imessageRelayJobs.error,
+  createdAt: imessageRelayJobs.createdAt,
+  updatedAt: imessageRelayJobs.updatedAt,
 } as const;
 
 export async function getIMessageRecipient(
@@ -107,4 +152,117 @@ export async function findVerifiedIMessageRecipientByRecipient(input: {
     )
     .limit(1);
   return row as IMessageRecipient | undefined;
+}
+
+export async function enqueueIMessageRelayJob(input: {
+  workspaceId: string;
+  memberId?: string | null;
+  channelId?: string | null;
+  messageId?: string | null;
+  purpose: IMessageRelayJobPurpose;
+  recipient: string;
+  serviceName?: string | null;
+  body: string;
+  receipt?: string | null;
+}): Promise<IMessageRelayJob> {
+  const [row] = await db
+    .insert(imessageRelayJobs)
+    .values({
+      workspaceId: input.workspaceId,
+      memberId: input.memberId ?? null,
+      channelId: input.channelId ?? null,
+      messageId: input.messageId ?? null,
+      purpose: input.purpose,
+      recipient: input.recipient,
+      serviceName: input.serviceName ?? null,
+      body: input.body,
+      receipt: input.receipt ?? null,
+    })
+    .returning(JOB_COLUMNS);
+  return row as IMessageRelayJob;
+}
+
+export async function claimIMessageRelayJobs(input: {
+  relayId: string;
+  limit: number;
+  leaseMs: number;
+  nowMs?: number;
+}): Promise<IMessageRelayJob[]> {
+  const limit = Math.max(1, Math.min(25, Math.floor(input.limit)));
+  const now = new Date(input.nowMs ?? Date.now());
+  const lockedUntil = new Date(now.getTime() + Math.max(1_000, input.leaseMs));
+  const result = await getPool().query(
+    `
+      UPDATE imessage_relay_jobs
+         SET status = 'claimed',
+             locked_by = $1,
+             locked_until = $2,
+             updated_at = $3
+       WHERE id IN (
+         SELECT id
+           FROM imessage_relay_jobs
+          WHERE status = 'pending'
+             OR (status = 'claimed' AND (locked_until IS NULL OR locked_until <= $3))
+          ORDER BY created_at ASC
+          LIMIT $4
+          FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id, workspace_id, member_id, channel_id, message_id, purpose, recipient, service_name,
+                 body, receipt, status, locked_by, locked_until, sent_at, failed_at, error, created_at, updated_at
+    `,
+    [input.relayId, lockedUntil, now, limit],
+  );
+  return result.rows.map(rowToRelayJob);
+}
+
+export async function completeIMessageRelayJob(input: {
+  id: string;
+  relayId: string;
+  status: "sent" | "failed";
+  error?: string | null;
+  nowMs?: number;
+}): Promise<IMessageRelayJob | undefined> {
+  const now = new Date(input.nowMs ?? Date.now());
+  const [row] = await db
+    .update(imessageRelayJobs)
+    .set({
+      status: input.status,
+      sentAt: input.status === "sent" ? now : null,
+      failedAt: input.status === "failed" ? now : null,
+      error: input.status === "failed" ? input.error ?? "relay send failed" : null,
+      lockedBy: null,
+      lockedUntil: null,
+      updatedAt: now,
+    })
+    .where(and(eq(imessageRelayJobs.id, input.id), eq(imessageRelayJobs.lockedBy, input.relayId)))
+    .returning(JOB_COLUMNS);
+  return row as IMessageRelayJob | undefined;
+}
+
+export async function getIMessageRelayJob(id: string): Promise<IMessageRelayJob | undefined> {
+  const [row] = await db.select(JOB_COLUMNS).from(imessageRelayJobs).where(eq(imessageRelayJobs.id, id)).limit(1);
+  return row as IMessageRelayJob | undefined;
+}
+
+function rowToRelayJob(row: Record<string, unknown>): IMessageRelayJob {
+  return {
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    memberId: row.member_id ? String(row.member_id) : null,
+    channelId: row.channel_id ? String(row.channel_id) : null,
+    messageId: row.message_id ? String(row.message_id) : null,
+    purpose: row.purpose as IMessageRelayJobPurpose,
+    recipient: String(row.recipient),
+    serviceName: row.service_name ? String(row.service_name) : null,
+    body: String(row.body),
+    receipt: row.receipt ? String(row.receipt) : null,
+    status: row.status as IMessageRelayJobStatus,
+    lockedBy: row.locked_by ? String(row.locked_by) : null,
+    lockedUntil: row.locked_until instanceof Date ? row.locked_until : row.locked_until ? new Date(String(row.locked_until)) : null,
+    sentAt: row.sent_at instanceof Date ? row.sent_at : row.sent_at ? new Date(String(row.sent_at)) : null,
+    failedAt: row.failed_at instanceof Date ? row.failed_at : row.failed_at ? new Date(String(row.failed_at)) : null,
+    error: row.error ? String(row.error) : null,
+    createdAt: row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at)),
+    updatedAt: row.updated_at instanceof Date ? row.updated_at : new Date(String(row.updated_at)),
+  };
 }
