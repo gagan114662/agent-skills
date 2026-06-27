@@ -59,6 +59,7 @@ const base: AuditInput = {
       createdAt: new Date("2026-06-08T10:30:00.000Z"),
     },
   ],
+  codexReceipts: [],
   labelFor,
 };
 
@@ -93,6 +94,38 @@ describe("audit normalize (#147)", () => {
       summary: "email credentials connected scopes=email.send env=SENDGRID_API_KEY",
     });
     expect(JSON.stringify(credential)).not.toContain("fp_secretless");
+  });
+
+  it("surfaces Codex operator returned work as a labelled audit receipt (#1265)", () => {
+    const events = normalizeAuditEvents({
+      ...base,
+      approvals: [],
+      runs: [],
+      launches: [],
+      credentials: [],
+      codexReceipts: [
+        {
+          id: "codex1",
+          actorMemberId: "agent1",
+          body:
+            "codex_operator_lane receipt\n" +
+            "Returned through the signed-in team-engine lane; no API keys, cookies, passwords, or browser session secrets were requested.\n\n" +
+            "summary: opened PR #1353 and verified the route",
+          createdAt: new Date("2026-06-08T11:00:00.000Z"),
+        },
+      ],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      ref: "codex1",
+      source: "agent",
+      kind: "agent.codex_operator_lane.returned",
+      actorLabel: "Scout",
+      gatedBy: "none",
+      status: "returned",
+      summary: "Codex operator lane returned: summary: opened PR #1353 and verified the route",
+    });
+    expect(JSON.stringify(events[0])).not.toContain("API keys");
   });
 
   it("summarizes a launched run vs a skipped run distinctly", () => {

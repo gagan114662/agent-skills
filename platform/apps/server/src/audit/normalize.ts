@@ -1,7 +1,8 @@
 /**
  * The owner-visible audit trail (#147, ADR-0147 §5 / slice 3). A **pure** merge of three sources the
  * platform already records append-only and tenant-scoped — #13 approval requests, #147 automation
- * runs, and #123 marketing-task launches — into one time-sorted feed of *who/what/when/gated-by*.
+ * runs, #123 marketing-task launches, credential lifecycle rows, and #1265 Codex operator receipts —
+ * into one time-sorted feed of *who/what/when/gated-by*.
  * There is no generic event store and we add none: the audit trail is a read model, so it can never
  * drift from state and needs no migration of its own. No IO here (the service supplies the rows + a
  * label resolver); fully unit-testable.
@@ -52,6 +53,14 @@ export interface CredentialAuditRow {
   createdAt: Date;
 }
 
+/** A #1265 Codex operator return receipt, projected from the persisted room message. */
+export interface CodexReceiptAuditRow {
+  id: string;
+  actorMemberId: string;
+  body: string;
+  createdAt: Date;
+}
+
 /** One normalized audit event — the unit the pane renders. */
 export interface AuditEvent {
   at: string;
@@ -73,6 +82,7 @@ export interface AuditInput {
   runs: RunAuditRow[];
   launches: LaunchAuditRow[];
   credentials?: CredentialAuditRow[];
+  codexReceipts?: CodexReceiptAuditRow[];
   /** Resolve a member's display label (null/unknown → "system"). */
   labelFor: (memberId: string | null) => string;
   /** Max events returned (newest first). Default 200. */
@@ -84,7 +94,7 @@ function snippet(text: string, max = 80): string {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
-/** Merge + sort the three sources into one newest-first audit feed, capped at `limit`. */
+/** Merge + sort the source rows into one newest-first audit feed, capped at `limit`. */
 export function normalizeAuditEvents(input: AuditInput): AuditEvent[] {
   const events: AuditEvent[] = [];
 
@@ -130,6 +140,24 @@ export function normalizeAuditEvents(input: AuditInput): AuditEvent[] {
       gatedBy: "venture+budget",
       status: l.status,
       ref: l.id,
+    });
+  }
+
+  for (const c of input.codexReceipts ?? []) {
+    const returned = c.body
+      .replace(/^codex_operator_lane receipt\s*/i, "")
+      .replace(/^Returned through[^\n]*\n*/i, "")
+      .trim();
+    events.push({
+      at: c.createdAt.toISOString(),
+      kind: "agent.codex_operator_lane.returned",
+      source: "agent",
+      actorMemberId: c.actorMemberId,
+      actorLabel: input.labelFor(c.actorMemberId),
+      summary: `Codex operator lane returned${returned ? `: ${snippet(returned)}` : ""}`,
+      gatedBy: "none",
+      status: "returned",
+      ref: c.id,
     });
   }
 

@@ -3,11 +3,13 @@ import { listAutomationRuns } from "../db/repositories/automations.js";
 import { listCredentialAuditEvents } from "../db/repositories/external-credentials.js";
 import { listMarketingTasks } from "../db/repositories/marketing-tasks.js";
 import { listWorkspaceMembers } from "../db/repositories/members.js";
+import { listCodexOperatorReceiptMessages } from "../db/repositories/messages.js";
 import { AuditService } from "./service.js";
 
 /**
- * Production wiring for the audit trail (#147, ADR-0147). Read-only over three existing append-only,
- * tenant-scoped sources (#13 approvals, #147 automation runs, #123 marketing-task launches) + the
+ * Production wiring for the audit trail (#147, ADR-0147). Read-only over existing append-only,
+ * tenant-scoped sources (#13 approvals, #147 automation runs, #123 marketing-task launches,
+ * credential lifecycle rows, #1265 Codex receipts) + the
  * member roster — no migration, no config flag (gated only by the #19 tenant boundary in the route).
  */
 export function createDefaultAuditService(): AuditService {
@@ -52,6 +54,13 @@ export function createDefaultAuditService(): AuditService {
         envKeys: e.envKeys,
         scopes: e.scopes,
         createdAt: e.createdAt,
+      })),
+    listCodexReceipts: async (workspaceId) =>
+      (await listCodexOperatorReceiptMessages(workspaceId)).map((m) => ({
+        id: m.id,
+        actorMemberId: m.authorMemberId,
+        body: m.body,
+        createdAt: m.createdAt,
       })),
     listMembers: (workspaceId) => listWorkspaceMembers(workspaceId),
   });

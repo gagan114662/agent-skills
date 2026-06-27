@@ -12,6 +12,7 @@ const SOURCE_LABEL: Record<AuditEventDto["source"], string> = {
   approval: "Approval",
   automation: "Automation",
   agent: "Agent",
+  credential: "Credential",
 };
 
 export function AuditPanel(): React.JSX.Element {
@@ -51,8 +52,8 @@ export function AuditPanel(): React.JSX.Element {
           {events.length === 0 && (
             <tr>
               <td colSpan={5} className="muted">
-                Gated actions, automation runs, and agent launches will appear here; approve or run one to
-                write the first event.
+                Gated actions, automation runs, agent launches, and Codex returns will appear here; approve
+                or run one to write the first event.
               </td>
             </tr>
           )}
