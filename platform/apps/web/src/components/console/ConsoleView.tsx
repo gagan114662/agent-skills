@@ -32,6 +32,7 @@ import { BrandKitPanel } from "../BrandKitPanel.js";
 import { MarketingTargetPanel } from "../MarketingTargetPanel.js";
 import { BillingSettingsPanel } from "../BillingSettingsPanel.js";
 import { BudgetSettingsPanel } from "../BudgetSettingsPanel.js";
+import { PolicyControlCenter } from "../PolicyControlCenter.js";
 import { PricingPanel } from "../PricingPanel.js";
 import { ApprovalsPanel } from "../approvals/ApprovalsPanel.js";
 import { CommandDock } from "../CommandDock.js";
@@ -193,6 +194,7 @@ export function ConsoleView({
   // (the decision history) from the members-rail decisions counter.
   const [approvalsInitialStatus, setApprovalsInitialStatus] = useState<ApprovalStatus>("pending");
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [policyBusy, setPolicyBusy] = useState(false);
   // #479 first-run checklist: real setup signals (brand kit set / an account connected). Fetched once; the
   // run + approve signals come from already-loaded state below.
   const [targetSet, setTargetSet] = useState(false);
@@ -671,6 +673,17 @@ export function ConsoleView({
     void store.sendMessage(text);
   }
 
+  async function togglePolicyKillSwitch(next: boolean): Promise<void> {
+    if (!workspaceId || policyBusy) return;
+    setPolicyBusy(true);
+    try {
+      await api.setKillSwitch(workspaceId, next);
+      await refreshFounder();
+    } finally {
+      if (mounted.current) setPolicyBusy(false);
+    }
+  }
+
   /**
    * First-run activation: hire the founding team and light up the board. Runs the REAL #123/#138 seed
    * (seven department leads, each launching its first welcome session — `welcomeTasks`), then reloads the
@@ -1108,6 +1121,16 @@ export function ConsoleView({
           </div>
           <div {...{ [SETTINGS_SECTION_ATTR]: "billing" }}>
             <BillingSettingsPanel />
+          </div>
+          <div {...{ [SETTINGS_SECTION_ATTR]: "policy" }}>
+            <PolicyControlCenter
+              killSwitchOn={fc?.switches.killSwitch ?? false}
+              maintenanceOn={fc?.switches.maintenance.enabled ?? false}
+              pendingExternalActions={pending.length}
+              loggedDecisions={shipped.length}
+              busy={policyBusy}
+              onToggleKillSwitch={(next) => void togglePolicyKillSwitch(next)}
+            />
           </div>
           <div {...{ [SETTINGS_SECTION_ATTR]: "budget" }}>
             <BudgetSettingsPanel />
