@@ -13,6 +13,7 @@ import {
 import { InMemoryOutreachStore } from "../../src/linkedin-outreach/store.js";
 import { createRealProvider } from "../../src/linkedin-outreach/provider.js";
 import { LINKEDIN_OUTREACH_DEFAULTS, type LinkedInOutreachCaps } from "../../src/linkedin-outreach/caps.js";
+import { getPlan, type Plan } from "../../src/billing/plans.js";
 import type {
   OutreachContext,
   OutreachProvider,
@@ -58,6 +59,7 @@ function build(opts: {
   enabled?: boolean;
   caps?: Partial<LinkedInOutreachCaps>;
   provider?: OutreachProvider;
+  plan?: Plan | null;
   now?: () => Date;
 } = {}): Built {
   const store = new InMemoryOutreachStore();
@@ -71,6 +73,7 @@ function build(opts: {
     store,
     provider,
     caps,
+    planForWorkspace: opts.plan === undefined ? undefined : async () => opts.plan,
     now: opts.now ?? (() => T0),
   });
   return { service, store, provider };
@@ -172,6 +175,21 @@ describe("LinkedInOutreachService (#595)", () => {
     expect(built.provider.calls).toHaveLength(2);
   });
 
+  it("enforces the active plan's daily outreach quota before provider calls (#1290)", async () => {
+    const starter = getPlan("starter")!;
+    const built = build({ caps: { dailySendLimit: 999 }, plan: starter });
+    for (let i = 0; i < starter.productLimits.dailyOutreachSends; i++) {
+      const t = await draftOne(built, { prospect: { ...PROSPECT, ref: `plan-${i}` } });
+      await built.service.send(WID, t.id, { approvalRequestId: APPROVAL });
+    }
+    const over = await draftOne(built, { prospect: { ...PROSPECT, ref: "plan-over" } });
+    await expect(built.service.send(WID, over.id, { approvalRequestId: APPROVAL })).rejects.toThrow(
+      /daily outreach plan limit reached/,
+    );
+    expect((await built.service.get(WID, over.id))?.status).toBe("drafted");
+    expect(built.provider.calls).toHaveLength(starter.productLimits.dailyOutreachSends);
+  });
+
   it("the daily limit is per-workspace (one tenant's sends do not consume another's budget)", async () => {
     const built = build({ caps: { dailySendLimit: 1 } });
     const a = await draftOne(built);
@@ -193,6 +211,15 @@ describe("LinkedInOutreachService (#595)", () => {
     const t = await draftOne(built);
     await built.service.send(WID, t.id, { approvalRequestId: APPROVAL });
     expect(await built.service.remainingToday(WID)).toBe(2);
+  });
+
+  it("remainingToday uses the active plan quota when one exists (#1290)", async () => {
+    const pro = getPlan("pro")!;
+    const built = build({ caps: { dailySendLimit: 1 }, plan: pro });
+    expect(await built.service.remainingToday(WID)).toBe(pro.productLimits.dailyOutreachSends);
+    const t = await draftOne(built);
+    await built.service.send(WID, t.id, { approvalRequestId: APPROVAL });
+    expect(await built.service.remainingToday(WID)).toBe(pro.productLimits.dailyOutreachSends - 1);
   });
 
   it("a send yesterday does not count against today's limit", async () => {

@@ -24,6 +24,7 @@
  */
 
 import { composeOutreach } from "./compose.js";
+import { evaluatePlanLimit, type Plan } from "../billing/plans.js";
 import { resolveLinkedInOutreachCaps, type LinkedInOutreachCaps } from "./caps.js";
 import { createFakeProvider } from "./provider.js";
 import type { CreateTouchInput, OutreachStore } from "./store.js";
@@ -45,6 +46,8 @@ export interface LinkedInOutreachDeps {
   provider?: OutreachProvider;
   /** Resolved caps (master switch + daily limit + credential). Defaults to the env-resolved caps. */
   caps?: LinkedInOutreachCaps;
+  /** Active paid plan resolver. When present, the plan's daily outreach quota is enforced before sends. */
+  planForWorkspace?: (workspaceId: string) => Promise<Plan | null | undefined>;
   /** Clock seam. Defaults to `Date.now`. */
   now?: () => Date;
 }
@@ -73,12 +76,14 @@ export class LinkedInOutreachService {
   private readonly store: OutreachStore;
   private readonly provider: OutreachProvider;
   private readonly caps: LinkedInOutreachCaps;
+  private readonly planForWorkspace: ((workspaceId: string) => Promise<Plan | null | undefined>) | undefined;
   private readonly now: () => Date;
 
   constructor(deps: LinkedInOutreachDeps) {
     this.store = deps.store;
     this.provider = deps.provider ?? createFakeProvider();
     this.caps = deps.caps ?? resolveLinkedInOutreachCaps();
+    this.planForWorkspace = deps.planForWorkspace;
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -124,7 +129,7 @@ export class LinkedInOutreachService {
   /** How many sends remain for this workspace today (clamped at 0). Useful for a UI hint / pre-flight check. */
   async remainingToday(workspaceId: string): Promise<number> {
     const used = await this.store.countSentSince(workspaceId, this.startOfDay(this.now()));
-    return Math.max(0, this.caps.dailySendLimit - used);
+    return Math.max(0, (await this.dailySendLimit(workspaceId)) - used);
   }
 
   /**
@@ -154,10 +159,16 @@ export class LinkedInOutreachService {
 
     // (4) Daily limit ⇒ refuse before any provider call; the touch stays drafted for a later day.
     const used = await this.store.countSentSince(workspaceId, this.startOfDay(this.now()));
-    if (used >= this.caps.dailySendLimit) {
-      throw new LinkedInOutreachError(
-        `daily outreach limit reached (${used}/${this.caps.dailySendLimit})`,
-      );
+    const activePlan = await this.planForWorkspace?.(workspaceId);
+    if (activePlan) {
+      const decision = evaluatePlanLimit(activePlan, "dailyOutreachSends", used);
+      if (!decision.allowed) {
+        throw new LinkedInOutreachError(
+          `daily outreach plan limit reached (${used}/${decision.limit}). ${decision.upgradeTrigger}`,
+        );
+      }
+    } else if (used >= this.caps.dailySendLimit) {
+      throw new LinkedInOutreachError(`daily outreach limit reached (${used}/${this.caps.dailySendLimit})`);
     }
 
     // (5) Send now via the provider, forwarding the user-supplied credential.
@@ -191,6 +202,11 @@ export class LinkedInOutreachService {
   /** Start of the UTC day containing `at` — the daily-limit window boundary. */
   private startOfDay(at: Date): Date {
     return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+  }
+
+  private async dailySendLimit(workspaceId: string): Promise<number> {
+    const activePlan = await this.planForWorkspace?.(workspaceId);
+    return activePlan?.productLimits.dailyOutreachSends ?? this.caps.dailySendLimit;
   }
 
   /** Apply an outcome to a still-`drafted` touch, surfacing the lost-race case as a clear error. */
