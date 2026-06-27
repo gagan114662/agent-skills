@@ -111,6 +111,39 @@ export interface ReliabilityInsightsView {
   noisiestComponents: Array<{ service: string; count: number }>;
 }
 
+export type AgentObservabilityStatus = "healthy" | "degraded" | "stopped" | "unknown";
+export type AgentRecoveryState = "idle" | "retrying" | "needs_human" | "unknown";
+
+/** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+export interface AgentObservabilityView {
+  scheduler: {
+    status: AgentObservabilityStatus;
+    lastTickAgeSeconds: number | null;
+  };
+  queueDepth: number;
+  runningRuns: number;
+  stalledRuns: number;
+  failedRunsLast24h: number;
+  retryRate: number | null;
+  recovery: {
+    state: AgentRecoveryState;
+    retryableStuckRuns: number;
+    lastRecoveryAtMs: number | null;
+  };
+  audit: {
+    toolCalls: number;
+    auditedToolCalls: number;
+    unauditedToolCalls: number;
+    coverage: number | null;
+  };
+  connectorSilentFailures: Array<{
+    connector: string;
+    status: "silent" | "failing" | "unknown";
+    lastOkAgeSeconds: number | null;
+  }>;
+  alerts: string[];
+}
+
 /** The global maintenance flag (#99); `unavailable` when Redis could not be read (fail open). */
 export interface MaintenanceSnapshot {
   enabled: boolean;
@@ -401,6 +434,8 @@ export interface FounderConsoleInput {
   postmortems?: PostmortemLinkView[];
   /** Reliability insights (#148) off `sre_incidents`. Optional ⇒ a zeroed pane (loop off / unwired). */
   reliability?: ReliabilityInsightsView;
+  /** Production agent observability (#1292). Optional ⇒ unknown/unwired, never green by omission. */
+  agentObservability?: AgentObservabilityView;
   /** The #119 evidence-priced autonomy boundaries (owned classes + change history). */
   gateBoundaries: GateBoundariesSnapshot;
   /** Self-healing flywheel state (#117) — optional so the console works before the flywheel is wired. */
@@ -805,6 +840,8 @@ export interface FounderConsole {
   postmortems: PostmortemLinkView[];
   /** Reliability insights (#148): MTTR, frequency, open count, noisiest components. */
   reliability: ReliabilityInsightsView;
+  /** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+  agentObservability: AgentObservabilityView;
   /** The #119 evidence-priced autonomy boundaries: classes agents own + the change history. */
   autonomyBoundaries: AutonomyBoundariesView;
   /** The self-healing flywheel roll-up (#117). Zero-valued when the flywheel is unwired. */
@@ -933,6 +970,18 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     openCount: 0,
     total: 0,
     noisiestComponents: [],
+  };
+  const agentObservability: AgentObservabilityView = input.agentObservability ?? {
+    scheduler: { status: "unknown", lastTickAgeSeconds: null },
+    queueDepth: 0,
+    runningRuns: 0,
+    stalledRuns: 0,
+    failedRunsLast24h: 0,
+    retryRate: null,
+    recovery: { state: "unknown", retryableStuckRuns: 0, lastRecoveryAtMs: null },
+    audit: { toolCalls: 0, auditedToolCalls: 0, unauditedToolCalls: 0, coverage: null },
+    connectorSilentFailures: [],
+    alerts: ["Agent observability stream is not wired yet"],
   };
 
   const fingerprints = input.selfHealing?.fingerprints ?? [];
@@ -1169,6 +1218,17 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
   const reasons: string[] = [];
   if (switches.killSwitch) reasons.push("kill switch engaged");
   if (switches.maintenance.enabled) reasons.push("maintenance mode active");
+  if (agentObservability.scheduler.status === "stopped") reasons.push("agent scheduler stopped");
+  if (agentObservability.stalledRuns > 0) {
+    reasons.push(pluralize(agentObservability.stalledRuns, "agent run") + " stalled");
+  }
+  if (agentObservability.audit.unauditedToolCalls > 0) {
+    reasons.push(pluralize(agentObservability.audit.unauditedToolCalls, "tool call") + " missing audit events");
+  }
+  if (agentObservability.connectorSilentFailures.length > 0) {
+    reasons.push(pluralize(agentObservability.connectorSilentFailures.length, "connector") + " silently failing");
+  }
+  if (agentObservability.recovery.state === "needs_human") reasons.push("agent recovery needs a human");
   if (overBudget) reasons.push("over budget");
   if (infraBudget.exceeded) reasons.push("infra budget ceiling projected breach");
   if (pendingApprovals.length > 0) reasons.push(pluralize(pendingApprovals.length, "pending approval"));
@@ -1257,6 +1317,7 @@ export function aggregateFounderConsole(input: FounderConsoleInput): FounderCons
     switches,
     postmortems,
     reliability,
+    agentObservability,
     autonomyBoundaries: { owned: gateBoundaries.owned, history: gateBoundaries.history },
     selfHealing,
     selfHealingOps,

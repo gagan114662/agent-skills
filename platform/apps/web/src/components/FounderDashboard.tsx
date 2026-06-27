@@ -32,6 +32,11 @@ function mttr(ms: number | null): string {
   return `${min} min`;
 }
 
+function percent(value: number | null): string {
+  if (value === null) return "unknown";
+  return String(Math.round(value * 100)) + "%";
+}
+
 type EvidenceKind = "live" | "sample" | "dogfood" | "external";
 
 function evidenceLabel(kind: EvidenceKind): string {
@@ -92,6 +97,18 @@ export function FounderDashboard({
     noisiestComponents: [],
   };
   const proofScorecard = data.proofScorecard ?? { connectedCount: 0, total: 0, tiles: [] };
+  const agentObservability = data.agentObservability ?? {
+    scheduler: { status: "unknown" as const, lastTickAgeSeconds: null },
+    queueDepth: 0,
+    runningRuns: 0,
+    stalledRuns: 0,
+    failedRunsLast24h: 0,
+    retryRate: null,
+    recovery: { state: "unknown" as const, retryableStuckRuns: 0, lastRecoveryAtMs: null },
+    audit: { toolCalls: 0, auditedToolCalls: 0, unauditedToolCalls: 0, coverage: null },
+    connectorSilentFailures: [],
+    alerts: ["Agent observability stream is not wired yet"],
+  };
   const outreach = data.outreach ?? {
     experimentsRunning: 0,
     experimentsConcluded: 0,
@@ -106,6 +123,13 @@ export function FounderDashboard({
     outreach.replies > 0 ||
     outreach.meetings > 0 ||
     outreach.signups > 0;
+  const observabilityReady =
+    agentObservability.scheduler.status === "healthy" &&
+    agentObservability.stalledRuns === 0 &&
+    agentObservability.audit.coverage === 1 &&
+    agentObservability.audit.unauditedToolCalls === 0 &&
+    agentObservability.connectorSilentFailures.length === 0 &&
+    agentObservability.recovery.state !== "needs_human";
   const hasFirstRun = fleet.sessionsThisWindow > 0;
   const launchReadiness = [
     {
@@ -151,9 +175,12 @@ export function FounderDashboard({
     },
     {
       label: "Observability",
-      ready: true,
-      evidence: "live",
-      detail: `${reliability.openCount} open incidents, MTTR ${mttr(reliability.mttrMs)}`,
+      ready: observabilityReady,
+      evidence: observabilityReady ? "live" : "sample",
+      detail:
+        agentObservability.audit.coverage === null
+          ? "agent observability stream not wired"
+          : percent(agentObservability.audit.coverage) + " audited, " + agentObservability.stalledRuns + " stalled",
     },
     {
       label: "Legal/trust",
@@ -359,6 +386,75 @@ export function FounderDashboard({
               </dd>
             </div>
           </dl>
+        </article>
+
+        <article className="founder__card founder__card--wide">
+          <h3>
+            Agent observability <EvidenceBadge kind={observabilityReady ? "live" : "sample"} />
+          </h3>
+          {agentObservability.alerts.length > 0 && (
+            <ul className="founder__alerts" aria-label="Agent observability alerts">
+              {agentObservability.alerts.map((alert) => (
+                <li key={alert}>{alert}</li>
+              ))}
+            </ul>
+          )}
+          <dl className="founder__stats founder__stats--dense">
+            <div>
+              <dt>Scheduler</dt>
+              <dd>{agentObservability.scheduler.status}</dd>
+            </div>
+            <div>
+              <dt>Queue depth</dt>
+              <dd>{agentObservability.queueDepth}</dd>
+            </div>
+            <div>
+              <dt>Running</dt>
+              <dd>{agentObservability.runningRuns}</dd>
+            </div>
+            <div>
+              <dt>Stalled</dt>
+              <dd>{agentObservability.stalledRuns}</dd>
+            </div>
+            <div>
+              <dt>Failed 24h</dt>
+              <dd>{agentObservability.failedRunsLast24h}</dd>
+            </div>
+            <div>
+              <dt>Retry rate</dt>
+              <dd>{percent(agentObservability.retryRate)}</dd>
+            </div>
+            <div>
+              <dt>Audit coverage</dt>
+              <dd>{percent(agentObservability.audit.coverage)}</dd>
+            </div>
+            <div>
+              <dt>Unaudited calls</dt>
+              <dd>{agentObservability.audit.unauditedToolCalls}</dd>
+            </div>
+            <div>
+              <dt>Recovery</dt>
+              <dd>{agentObservability.recovery.state}</dd>
+            </div>
+            <div>
+              <dt>Retryable stuck</dt>
+              <dd>{agentObservability.recovery.retryableStuckRuns}</dd>
+            </div>
+          </dl>
+          {agentObservability.connectorSilentFailures.length > 0 && (
+            <ul className="founder__proof founder__proof--compact" aria-label="Silent connector failures">
+              {agentObservability.connectorSilentFailures.map((connector) => (
+                <li key={connector.connector} className="is-sample">
+                  <div>
+                    <strong>{connector.connector}</strong>
+                    <span>{connector.status}</span>
+                  </div>
+                  <b>{connector.lastOkAgeSeconds === null ? "never ok" : age(connector.lastOkAgeSeconds)}</b>
+                  <small>Connector has not emitted a healthy receipt recently.</small>
+                </li>
+              ))}
+            </ul>
+          )}
         </article>
 
         <article className="founder__card founder__card--wide">

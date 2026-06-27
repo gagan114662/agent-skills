@@ -3363,6 +3363,27 @@ select:focus-visible {
   font-weight: 600;
   color: var(--text);
 }
+.founder__stats--dense {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.founder__stats--dense dd {
+  font-size: 16px;
+}
+.founder__alerts {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.founder__alerts li {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: calc(var(--radius) - 2px);
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--danger);
+  font-size: 13px;
+}
 /* Safety switches (#169 bug 12): stacked rows, each with its state pill + an interactive toggle. */
 .founder__switches {
   grid-template-columns: 1fr;
@@ -3525,6 +3546,9 @@ select:focus-visible {
 }
 .founder__proof li.is-sample {
   border-style: dashed;
+}
+.founder__proof--compact {
+  margin-top: 12px;
 }
 
 @media (max-width: 720px) {

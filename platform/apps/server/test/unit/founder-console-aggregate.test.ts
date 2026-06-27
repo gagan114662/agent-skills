@@ -534,6 +534,46 @@ describe("aggregateFounderConsole (the pure founder-console roll-up)", () => {
     expect(content.delta).toBe(3);
   });
 
+  it("defaults agent observability to unknown instead of green when the stream is unwired (#1292)", () => {
+    const out = aggregateFounderConsole(input());
+
+    expect(out.agentObservability.scheduler.status).toBe("unknown");
+    expect(out.agentObservability.audit.coverage).toBeNull();
+    expect(out.agentObservability.alerts).toContain("Agent observability stream is not wired yet");
+    expect(out.attention.reasons).not.toContain("0 tool calls missing audit events");
+  });
+
+  it("raises founder attention for stalled runs, unaudited tools, silent connectors, and recovery handoff (#1292)", () => {
+    const out = aggregateFounderConsole(
+      input({
+        agentObservability: {
+          scheduler: { status: "stopped", lastTickAgeSeconds: 900 },
+          queueDepth: 12,
+          runningRuns: 3,
+          stalledRuns: 2,
+          failedRunsLast24h: 4,
+          retryRate: 0.25,
+          recovery: { state: "needs_human", retryableStuckRuns: 2, lastRecoveryAtMs: NOW - 60_000 },
+          audit: { toolCalls: 10, auditedToolCalls: 8, unauditedToolCalls: 2, coverage: 0.8 },
+          connectorSilentFailures: [{ connector: "Google Ads", status: "silent", lastOkAgeSeconds: 7200 }],
+          alerts: ["Google Ads has not emitted a success receipt in 2h"],
+        },
+      }),
+    );
+
+    expect(out.agentObservability.audit.coverage).toBe(0.8);
+    expect(out.attention.required).toBe(true);
+    expect(out.attention.reasons).toEqual(
+      expect.arrayContaining([
+        "agent scheduler stopped",
+        "2 agent runs stalled",
+        "2 tool calls missing audit events",
+        "1 connector silently failing",
+        "agent recovery needs a human",
+      ]),
+    );
+  });
+
   it("surfaces per-artifact attributed revenue sorted by receipted dollars (#868)", () => {
     const out = aggregateFounderConsole(
       input({
