@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * The connect-once PROVIDER adapter seam (#258 Stage 2, ADR-0258). This is the reusable surface the
  * per-department follow-ups build on: Google Search Console for Scout (#265), an ESP for Postmark (#268), a
@@ -135,6 +137,11 @@ export interface OAuthClientConfig {
   tokenUrl: string;
   redirectUri: string;
   scopes: readonly string[];
+  tokenAuth?: "client_secret_post" | "basic";
+  pkce?: {
+    secret: string;
+    method: "S256";
+  };
 }
 
 /**
@@ -159,6 +166,10 @@ export class OAuthConnectProvider implements ConnectProvider {
       scope: this.config.scopes.join(" "),
       state: input.state,
     });
+    if (this.config.pkce) {
+      params.set("code_challenge", pkceChallenge(pkceVerifier(input.state, this.config.pkce.secret)));
+      params.set("code_challenge_method", this.config.pkce.method);
+    }
     return `${this.config.authorizeUrl}?${params.toString()}`;
   }
 
@@ -166,14 +177,20 @@ export class OAuthConnectProvider implements ConnectProvider {
     const body = new URLSearchParams({
       code: input.code,
       client_id: this.config.clientId,
-      client_secret: this.config.clientSecret,
       redirect_uri: this.config.redirectUri,
       grant_type: "authorization_code",
     });
+    const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
+    if (this.config.pkce) body.set("code_verifier", pkceVerifier(input.state, this.config.pkce.secret));
+    if (this.config.tokenAuth === "basic") {
+      headers.authorization = `Basic ${Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`, "utf8").toString("base64")}`;
+    } else {
+      body.set("client_secret", this.config.clientSecret);
+    }
     try {
       const res = await fetch(this.config.tokenUrl, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        headers,
         body,
       });
       if (!res.ok) throw new ConnectProviderError(`token exchange returned ${res.status}`);
@@ -183,6 +200,14 @@ export class OAuthConnectProvider implements ConnectProvider {
       throw new ConnectProviderError(`token exchange failed: ${(err as Error).message}`);
     }
   }
+}
+
+function pkceVerifier(state: string, secret: string): string {
+  return createHash("sha256").update(`${state}.${secret}`).digest("base64url");
+}
+
+function pkceChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
 }
 
 /**

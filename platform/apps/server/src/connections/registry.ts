@@ -194,7 +194,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     status: "coming_soon",
     statusReason: "Live X OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["post_social"],
-    oauthScopes: ["tweet.read", "tweet.write", "users.read"],
+    oauthScopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     envKeys: [],
   },
   {

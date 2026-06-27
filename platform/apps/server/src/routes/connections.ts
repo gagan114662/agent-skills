@@ -23,6 +23,7 @@ import {
   createDefaultConnectOnceService,
   defaultConnectProvider,
   googleConnectionOAuthConfigStatus,
+  xConnectionOAuthConfigStatus,
 } from "../connections/default.js";
 import { getRequest, recordExecution } from "../db/repositories/approvals.js";
 import {
@@ -170,6 +171,20 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
                 missingEnv: status.missing,
                 remedy:
                   "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/google/oauth/callback URL and add that exact URI to the Google OAuth client.",
+            },
+        };
+      }
+      if (descriptor.id === "x") {
+        const status = xConnectionOAuthConfigStatus();
+        return {
+          ...descriptor,
+          configIssue: status.configured
+            ? undefined
+            : {
+                code: "x_connection_oauth_missing_config",
+                missingEnv: status.missing,
+                remedy:
+                  "Set X_OAUTH_CLIENT_ID, X_OAUTH_CLIENT_SECRET, and X_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/x/oauth/callback URL, then add that exact URI to the X app.",
               },
         };
       }
@@ -347,6 +362,8 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       const setup =
         id === "google" && !googleConnectionOAuthConfigStatus().configured
           ? googleConnectionOAuthConfigStatus()
+          : id === "x" && !xConnectionOAuthConfigStatus().configured
+            ? xConnectionOAuthConfigStatus()
           : null;
       return reply.code(501).send({
         status: "coming_soon",
@@ -354,7 +371,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         scopes: descriptor.oauthScopes,
         issue: setup
           ? {
-              code: "google_connection_oauth_missing_config",
+              code:
+                id === "x"
+                  ? "x_connection_oauth_missing_config"
+                  : "google_connection_oauth_missing_config",
               missingEnv: setup.missing,
               callbackPath: setup.callbackPath,
             }

@@ -18,6 +18,7 @@ import {
   googleConnectionOAuthConfigStatus,
   resolveGoogleConnectionRedirectUri,
 } from "./google-oauth-config.js";
+import { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 import { resolveConnectOnceCaps } from "./caps.js";
 import {
   createConnectProvider,
@@ -29,6 +30,7 @@ import {
 import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
 export { googleConnectionOAuthConfigStatus } from "./google-oauth-config.js";
+export { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 
 /**
  * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
@@ -43,6 +45,12 @@ export function defaultConnectProvider(
     return createConnectProvider({
       client: loadGoogleConnectionClient(env),
       mapTokens: mapGoogleConnectionTokens,
+    });
+  }
+  if (connectionId === "x") {
+    return createConnectProvider({
+      client: loadXConnectionClient(env),
+      mapTokens: mapXConnectionTokens,
     });
   }
   return createConnectProvider({ client: null, mapTokens: () => EMPTY_EXCHANGE });
@@ -90,6 +98,51 @@ function mapGoogleConnectionTokens(json: unknown): ConnectExchangeResult {
     ...(scopes.includes(GOOGLE_ANALYTICS_SCOPE) ? ["analytics"] : []),
   ];
   return { capabilities, secrets };
+}
+
+function loadXConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig | null {
+  if (!xConnectionOAuthConfigStatus(env).configured) return null;
+  const clientId = env.X_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.X_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = env.X_CONNECTION_OAUTH_REDIRECT_URI?.trim();
+  return {
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri: redirectUri!,
+    authorizeUrl: "https://x.com/i/oauth2/authorize",
+    tokenUrl: "https://api.x.com/2/oauth2/token",
+    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    tokenAuth: "basic",
+    pkce: { method: "S256", secret: clientSecret! },
+  };
+}
+
+function mapXConnectionTokens(json: unknown): ConnectExchangeResult {
+  const token = json as {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+    scope?: unknown;
+    token_type?: unknown;
+  };
+  if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
+  const scope = typeof token.scope === "string" ? token.scope : "tweet.read tweet.write users.read offline.access";
+  const secrets: Record<string, string> = {
+    X_OAUTH_ACCESS_TOKEN: token.access_token,
+    X_OAUTH_SCOPE: scope,
+    X_OAUTH_TOKEN_TYPE: typeof token.token_type === "string" ? token.token_type : "Bearer",
+  };
+  if (typeof token.refresh_token === "string" && token.refresh_token.trim()) {
+    secrets.X_OAUTH_REFRESH_TOKEN = token.refresh_token;
+  }
+  if (typeof token.expires_in === "number" && Number.isFinite(token.expires_in)) {
+    secrets.X_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
+  }
+  const scopes = scope.split(/\s+/).filter(Boolean);
+  return {
+    capabilities: scopes.includes("tweet.write") && scopes.includes("users.read") ? ["post_social"] : [],
+    secrets,
+  };
 }
 
 /** Build the production-wired connect-once service. */

@@ -11,6 +11,7 @@ const ORIGINAL_ENC_KEY = process.env.AGENT_CREDENTIALS_ENC_KEY;
 
 const defaultConnectProvider = vi.fn();
 const googleConnectionOAuthConfigStatus = vi.fn();
+const xConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
 const recordExecution = vi.fn();
 const setServiceCredentials = vi.fn();
@@ -26,6 +27,7 @@ vi.mock("../../src/config/loader.js", () => ({
 vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
   googleConnectionOAuthConfigStatus,
+  xConnectionOAuthConfigStatus,
   createDefaultConnectOnceService: vi.fn(() => ({
     startConnect: vi.fn(async () => ({ status: "coming_soon", reason: "not under test" })),
   })),
@@ -108,6 +110,140 @@ beforeEach(() => {
     configured: false,
     missing: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
     callbackPath: "/me/connections/google/oauth/callback",
+  });
+  xConnectionOAuthConfigStatus.mockReturnValue({
+    configured: false,
+    missing: ["X_CONNECTION_OAUTH_REDIRECT_URI"],
+    callbackPath: "/me/connections/x/oauth/callback",
+  });
+});
+
+describe("connectionsRoutes X OAuth callback (#1285)", () => {
+  it("exchanges an approved X callback, verifies /2/users/me, seals, and records non-secret proof", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: "x-user-1", username: "ipop_ai" } }),
+      })),
+    );
+    const exchange = vi.fn(async () => ({
+      capabilities: ["post_social"],
+      secrets: {
+        X_OAUTH_ACCESS_TOKEN: "x-access-token",
+        X_OAUTH_SCOPE: "tweet.read tweet.write users.read offline.access",
+      },
+    }));
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange,
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "x", provider: "x" },
+        summary: "Connect X",
+      }),
+    );
+    setServiceCredentials.mockResolvedValue({
+      serviceKey: "x",
+      connected: true,
+      status: "connected",
+      fingerprint: "fp_x",
+      envKeys: ["X_OAUTH_ACCESS_TOKEN", "X_OAUTH_SCOPE"],
+      scopes: ["post_social"],
+      rotationReminderDays: null,
+      connectedAtMs: Date.now(),
+      revokedAtMs: null,
+    });
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "x", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/x/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=x&status=connected");
+      expect(fetch).toHaveBeenCalledWith("https://api.x.com/2/users/me", {
+        method: "GET",
+        headers: { authorization: "Bearer x-access-token" },
+      });
+      expect(setServiceCredentials).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        serviceKey: "x",
+        secrets: {
+          X_OAUTH_ACCESS_TOKEN: "x-access-token",
+          X_OAUTH_SCOPE: "tweet.read tweet.write users.read offline.access",
+        },
+        scopes: ["post_social"],
+        connectedByMemberId: MEMBER,
+      });
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: true,
+        result: {
+          connectionId: "x",
+          provider: "x",
+          envKeys: ["X_OAUTH_ACCESS_TOKEN", "X_OAUTH_SCOPE"],
+          fingerprint: "fp_x",
+          scopes: ["post_social"],
+          health: {
+            provider: "x",
+            checkedAtMs: expect.any(Number),
+            scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+            subject: "x-user-1",
+            audience: "ipop_ai",
+          },
+        },
+      });
+      expect(String(res.headers.location)).not.toContain("x-access-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to seal X when the token lacks the posting scope", async () => {
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(async () => ({
+        capabilities: [],
+        secrets: {
+          X_OAUTH_ACCESS_TOKEN: "x-access-token",
+          X_OAUTH_SCOPE: "tweet.read users.read offline.access",
+        },
+      })),
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "x", provider: "x" },
+        summary: "Connect X",
+      }),
+    );
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "x", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/x/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=x&status=error");
+      expect(setServiceCredentials).not.toHaveBeenCalled();
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: false,
+        error: "X token is missing required scopes: tweet.write",
+      });
+    } finally {
+      await app.close();
+    }
   });
 });
 
