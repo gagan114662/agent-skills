@@ -77,6 +77,19 @@ async function buildRoute() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        scope:
+          "https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly",
+        sub: "google-sub-1",
+        aud: "google-client-id",
+      }),
+    })),
+  );
   process.env.AGENT_CREDENTIALS_ENC_KEY = STATE_SECRET;
   getRequest.mockResolvedValue(approval());
   recordExecution.mockResolvedValue({ outcome: "recorded", request: approval({ status: "executed" }) });
@@ -86,7 +99,7 @@ beforeEach(() => {
     status: "connected",
     fingerprint: "fp_google",
     envKeys: ["GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_SCOPE"],
-    scopes: ["search_console"],
+    scopes: ["search_console", "analytics"],
     rotationReminderDays: null,
     connectedAtMs: Date.now(),
     revokedAtMs: null,
@@ -99,6 +112,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (ORIGINAL_ENC_KEY === undefined) {
     delete process.env.AGENT_CREDENTIALS_ENC_KEY;
   } else {
@@ -157,12 +171,13 @@ describe("connectionsRoutes OAuth callback (#1285)", () => {
     }
   });
 
-  it("exchanges a valid callback, seals the credential, and records non-secret proof", async () => {
+  it("exchanges a valid callback, verifies provider health, seals the credential, and records non-secret proof", async () => {
     const exchange = vi.fn(async () => ({
-      capabilities: ["search_console"],
+      capabilities: ["search_console", "analytics"],
       secrets: {
         GOOGLE_OAUTH_ACCESS_TOKEN: "access-token",
-        GOOGLE_OAUTH_SCOPE: "https://www.googleapis.com/auth/webmasters.readonly",
+        GOOGLE_OAUTH_SCOPE:
+          "https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly",
       },
     }));
     defaultConnectProvider.mockReturnValue({
@@ -183,14 +198,21 @@ describe("connectionsRoutes OAuth callback (#1285)", () => {
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe("/everyday?connection=google&status=connected");
       expect(exchange).toHaveBeenCalledWith({ code: "auth-code-1", state });
+      expect(fetch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          href: expect.stringContaining("https://oauth2.googleapis.com/tokeninfo?"),
+        }),
+        { method: "GET" },
+      );
       expect(setServiceCredentials).toHaveBeenCalledWith({
         workspaceId: OWNER,
         serviceKey: "google",
         secrets: {
           GOOGLE_OAUTH_ACCESS_TOKEN: "access-token",
-          GOOGLE_OAUTH_SCOPE: "https://www.googleapis.com/auth/webmasters.readonly",
+          GOOGLE_OAUTH_SCOPE:
+            "https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly",
         },
-        scopes: ["search_console"],
+        scopes: ["search_console", "analytics"],
         connectedByMemberId: MEMBER,
       });
       expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
@@ -200,10 +222,64 @@ describe("connectionsRoutes OAuth callback (#1285)", () => {
           provider: "google",
           envKeys: ["GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_SCOPE"],
           fingerprint: "fp_google",
-          scopes: ["search_console"],
+          scopes: ["search_console", "analytics"],
+          health: {
+            provider: "google",
+            checkedAtMs: expect.any(Number),
+            scopes: [
+              "https://www.googleapis.com/auth/webmasters",
+              "https://www.googleapis.com/auth/analytics.readonly",
+            ],
+            subject: "google-sub-1",
+            audience: "google-client-id",
+          },
         },
       });
       expect(String(res.headers.location)).not.toContain("access-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to seal the credential when provider health proof fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ scope: "https://www.googleapis.com/auth/webmasters" }),
+      })),
+    );
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(async () => ({
+        capabilities: ["search_console", "analytics"],
+        secrets: {
+          GOOGLE_OAUTH_ACCESS_TOKEN: "access-token",
+          GOOGLE_OAUTH_SCOPE:
+            "https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly",
+        },
+      })),
+    });
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "google", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/google/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=google&status=error");
+      expect(setServiceCredentials).not.toHaveBeenCalled();
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: false,
+        error:
+          "Google token is missing required scopes: https://www.googleapis.com/auth/analytics.readonly",
+      });
     } finally {
       await app.close();
     }
