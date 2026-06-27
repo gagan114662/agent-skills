@@ -16,7 +16,7 @@ const originalEnv = {
   TELEGRAM_ROOM_CHAT_ID: process.env.TELEGRAM_ROOM_CHAT_ID,
   TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
 };
-const sendMessage = vi.fn(async () => ({ ok: true, messageId: "telegram-message-42" }));
+const sendMessage = vi.fn(async () => ({ ok: true, messageId: "42" }));
 
 beforeAll(async () => {
   process.env.TELEGRAM_BOT_TOKEN = "bot-token";
@@ -133,7 +133,7 @@ describe("Telegram room bridge (#1267)", () => {
     expect(started.json()).toMatchObject({
       status: "sent",
       chatId: "123456",
-      providerMessageId: "telegram-message-42",
+      providerMessageId: "42",
       receipt: `telegram:${channelId}:${started.json().message.id}`,
     });
     expect(sendMessage).toHaveBeenCalledWith({
@@ -151,7 +151,7 @@ describe("Telegram room bridge (#1267)", () => {
         message: {
           chat: { id: 123456 },
           text: "tell Scout to compare competitors",
-          reply_to_message: { text: `receipt: telegram:${channelId}:${started.json().message.id}` },
+          reply_to_message: { message_id: 42 },
         },
       },
     });
@@ -165,11 +165,11 @@ describe("Telegram room bridge (#1267)", () => {
         message: {
           chat: { id: 999999 },
           text: "try to spoof the room",
-          reply_to_message: { text: `receipt: telegram:${channelId}:${started.json().message.id}` },
+          reply_to_message: { message_id: 42 },
         },
       },
     });
-    expect(wrongChat.statusCode).toBe(403);
+    expect(wrongChat.statusCode).toBe(400);
 
     const inbound = await app.inject({
       method: "POST",
@@ -179,13 +179,14 @@ describe("Telegram room bridge (#1267)", () => {
         message: {
           chat: { id: 123456 },
           text: "YES ship homepage because the draft is approved",
-          reply_to_message: { text: `receipt: telegram:${channelId}:${started.json().message.id}` },
+          reply_to_message: { message_id: 42 },
         },
       },
     });
     expect(inbound.statusCode).toBe(201);
     expect(inbound.json()).toMatchObject({
       status: "ingested",
+      receipt: "telegram-provider:42",
       command: {
         kind: "approval_decision",
         decision: "approve",
@@ -222,7 +223,7 @@ describe("Telegram room bridge (#1267)", () => {
         message: {
           chat: { id: 123456 },
           text: `YES approval ${rid} because reviewed in the room`,
-          reply_to_message: { text: `receipt: telegram:${channelId}:${started.json().message.id}` },
+          reply_to_message: { message_id: 42 },
         },
       },
     });

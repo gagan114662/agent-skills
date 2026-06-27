@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS external_room_message_receipts_workspace_idx;
+DROP INDEX IF EXISTS external_room_message_receipts_message_idx;
+DROP TABLE IF EXISTS external_room_message_receipts;
