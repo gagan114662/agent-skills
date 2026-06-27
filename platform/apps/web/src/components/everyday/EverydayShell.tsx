@@ -336,6 +336,17 @@ function IMessageSetup({
   const pending = Boolean(status?.memberRecipient && !verified);
   const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
   const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
+  const relayJob = status?.lastRelayJob ?? null;
+  const relayProof =
+    relayJob?.status === "sent"
+      ? "last iMessage relay sent: " + (relayJob.receipt ?? relayJob.purpose)
+      : relayJob?.status === "failed"
+        ? "last iMessage relay failed: " + (relayJob.error ?? "relay send failed")
+        : relayJob?.status === "claimed"
+          ? "last iMessage relay claimed by " + (relayJob.lockedBy ?? "Mac relay")
+          : relayJob?.status === "pending"
+            ? "last iMessage relay queued: " + relayJob.purpose
+            : null;
 
   useEffect(() => {
     setRecipientInput(recipient);
@@ -416,6 +427,7 @@ function IMessageSetup({
         </div>
       </form>
       <p className="everyday-imessage-setup__detail">{detail}</p>
+      {relayProof && <p className="everyday-imessage-setup__detail">{relayProof}</p>}
       {notice && <p className="everyday-imessage-setup__notice" role="status">{notice}</p>}
       {error && <p className="everyday-imessage-setup__error" role="alert">{error}</p>}
     </section>

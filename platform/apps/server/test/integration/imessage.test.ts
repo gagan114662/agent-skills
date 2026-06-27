@@ -352,6 +352,22 @@ describe("iMessage member recipient relay", () => {
       expect(testSend.json().jobId).toEqual(expect.any(String));
       expect(send).not.toHaveBeenCalled();
 
+      const pendingStatus = await queuedApp.inject({
+        method: "GET",
+        url: "/me/imessage/status",
+        cookies: { rid: owner.cookie },
+      });
+      expect(pendingStatus.statusCode).toBe(200);
+      expect(pendingStatus.json()).toMatchObject({
+        lastRelayJob: {
+          id: testSend.json().jobId,
+          purpose: "verification",
+          recipient: "gagan@example.com",
+          status: "pending",
+          text: "verify me over the Mac relay",
+        },
+      });
+
       const claimVerification = await queuedApp.inject({
         method: "POST",
         url: "/imessage/relay/outbound/claim",
@@ -393,6 +409,22 @@ describe("iMessage member recipient relay", () => {
         receipt: `imessage:${channelId}:${started.json().message.id}`,
       });
       await expect(listChannelMessages(channelId)).resolves.toHaveLength(1);
+
+      const queuedRoomStatus = await queuedApp.inject({
+        method: "GET",
+        url: "/me/imessage/status",
+        cookies: { rid: owner.cookie },
+      });
+      expect(queuedRoomStatus.statusCode).toBe(200);
+      expect(queuedRoomStatus.json()).toMatchObject({
+        lastRelayJob: {
+          id: started.json().jobId,
+          purpose: "room",
+          recipient: "gagan@example.com",
+          status: "pending",
+          receipt: `imessage:${channelId}:${started.json().message.id}`,
+        },
+      });
 
       const claimRoom = await queuedApp.inject({
         method: "POST",

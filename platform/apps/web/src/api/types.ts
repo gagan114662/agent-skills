@@ -187,6 +187,27 @@ export interface IMessageRecipientView {
   verifiedAt: string | null;
 }
 
+export interface IMessageRelayJobView {
+  id: string;
+  workspaceId: string;
+  memberId: string | null;
+  channelId: string | null;
+  messageId: string | null;
+  purpose: "verification" | "room" | "notification";
+  recipient: string;
+  serviceName: string | null;
+  text: string;
+  receipt: string | null;
+  status: "pending" | "claimed" | "sent" | "failed";
+  lockedBy: string | null;
+  lockedUntil: string | null;
+  sentAt: string | null;
+  failedAt: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface IMessageStatusResponse {
   enabled: boolean;
   configured: boolean;
@@ -196,6 +217,7 @@ export interface IMessageStatusResponse {
   requiresVerification?: boolean;
   maxChars: number;
   memberRecipient: IMessageRecipientView | null;
+  lastRelayJob?: IMessageRelayJobView | null;
 }
 
 export interface IMessageRecipientSaveResponse {

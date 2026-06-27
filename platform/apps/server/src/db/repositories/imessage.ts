@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, getPool } from "../index.js";
 import { imessageRecipients, imessageRelayJobs } from "../schema/index.js";
 
@@ -241,6 +241,19 @@ export async function completeIMessageRelayJob(input: {
 
 export async function getIMessageRelayJob(id: string): Promise<IMessageRelayJob | undefined> {
   const [row] = await db.select(JOB_COLUMNS).from(imessageRelayJobs).where(eq(imessageRelayJobs.id, id)).limit(1);
+  return row as IMessageRelayJob | undefined;
+}
+
+export async function getLatestIMessageRelayJobForMember(input: {
+  workspaceId: string;
+  memberId: string;
+}): Promise<IMessageRelayJob | undefined> {
+  const [row] = await db
+    .select(JOB_COLUMNS)
+    .from(imessageRelayJobs)
+    .where(and(eq(imessageRelayJobs.workspaceId, input.workspaceId), eq(imessageRelayJobs.memberId, input.memberId)))
+    .orderBy(desc(imessageRelayJobs.createdAt))
+    .limit(1);
   return row as IMessageRelayJob | undefined;
 }
 
