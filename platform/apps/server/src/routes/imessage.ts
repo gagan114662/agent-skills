@@ -9,6 +9,7 @@ import {
   enqueueIMessageRelayJob,
   findVerifiedIMessageRecipientByRecipient,
   getIMessageRecipient,
+  getLatestIMessageRelayJobForMember,
   markIMessageRecipientVerified,
   upsertIMessageRecipient,
   type IMessageRelayJob,
@@ -145,8 +146,11 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
   app.get("/me/imessage/status", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    const { status, row } = await memberStatus(opts.service, identity.workspaceId, identity.memberId);
-    return { ...status, memberRecipient: recipientPayload(row) };
+    const [{ status, row }, lastRelayJob] = await Promise.all([
+      memberStatus(opts.service, identity.workspaceId, identity.memberId),
+      getLatestIMessageRelayJobForMember({ workspaceId: identity.workspaceId, memberId: identity.memberId }),
+    ]);
+    return { ...status, memberRecipient: recipientPayload(row), lastRelayJob: lastRelayJob ? relayJobPayload(lastRelayJob) : null };
   });
 
   app.put("/me/imessage/recipient", async (req, reply) => {

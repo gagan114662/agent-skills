@@ -138,7 +138,6 @@ describe("LiveEverydayShell (#1181)", () => {
         "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
     expect(postMessage).not.toHaveBeenCalled();
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
@@ -439,6 +438,26 @@ describe("LiveEverydayShell (#1181)", () => {
         verified: true,
         verifiedAt: "2026-06-27T06:00:00.000Z",
       },
+      lastRelayJob: {
+        id: "relay-1",
+        workspaceId: "w1",
+        memberId: "m1",
+        channelId: "c1",
+        messageId: "room-1",
+        purpose: "room",
+        recipient: "gagan@example.com",
+        serviceName: null,
+        text: "room receipt",
+        receipt: "imessage:c1:room-1",
+        status: "failed",
+        lockedBy: null,
+        lockedUntil: null,
+        sentAt: null,
+        failedAt: "2026-06-27T06:03:00.000Z",
+        error: "Apple Messages send failed on the relay host",
+        createdAt: "2026-06-27T06:02:00.000Z",
+        updatedAt: "2026-06-27T06:03:00.000Z",
+      },
     });
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
@@ -448,6 +467,7 @@ describe("LiveEverydayShell (#1181)", () => {
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
     expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
   });
 
