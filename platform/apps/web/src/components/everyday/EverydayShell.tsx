@@ -14,8 +14,9 @@
  * deliverable bodies (genuine work product) come through as data. Gated + owner-first via the everyday-shell
  * flag, so production renders today's console unchanged.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
+import type { IMessageStatusResponse } from "../../api/types.js";
 import { EVERYDAY } from "../../brand.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
@@ -218,9 +219,17 @@ function GroupChatHero({
 function ConnectorSetup({
   connectors,
   onConnect,
+  imessageStatus,
+  onSaveIMessageRecipient,
+  onTestIMessageRecipient,
+  onDeleteIMessageRecipient,
 }: {
   connectors: readonly EverydayConnector[];
   onConnect?: (id: string) => void;
+  imessageStatus?: IMessageStatusResponse | null;
+  onSaveIMessageRecipient?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
+  onTestIMessageRecipient?: () => Promise<void> | void;
+  onDeleteIMessageRecipient?: () => Promise<void> | void;
 }): React.JSX.Element {
   const c = EVERYDAY.connectors;
   const groups = (["visibility", "productivity", "marketing", "publishing"] as const)
@@ -239,6 +248,14 @@ function ConnectorSetup({
         <h2 className="everyday-serif everyday-connectors__heading">{c.heading}</h2>
         <p className="everyday-connectors__subhead">{c.subhead}</p>
       </div>
+      {(onSaveIMessageRecipient || imessageStatus) && (
+        <IMessageSetup
+          status={imessageStatus}
+          onSave={onSaveIMessageRecipient}
+          onTest={onTestIMessageRecipient}
+          onDelete={onDeleteIMessageRecipient}
+        />
+      )}
       <div className="everyday-connectors__groups">
         {groups.map(({ group, items }) => (
           <section key={group} className="everyday-connector-group" aria-label={c.groups[group]}>
@@ -270,6 +287,115 @@ function ConnectorSetup({
           </section>
         ))}
       </div>
+    </section>
+  );
+}
+
+function IMessageSetup({
+  status,
+  onSave,
+  onTest,
+  onDelete,
+}: {
+  status?: IMessageStatusResponse | null;
+  onSave?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
+  onTest?: () => Promise<void> | void;
+  onDelete?: () => Promise<void> | void;
+}): React.JSX.Element {
+  const copy = EVERYDAY.connectors.imessage;
+  const recipient = status?.memberRecipient?.recipient ?? "";
+  const serviceName = status?.memberRecipient?.serviceName ?? "";
+  const [recipientInput, setRecipientInput] = useState(recipient);
+  const [serviceInput, setServiceInput] = useState(serviceName);
+  const [busy, setBusy] = useState<"save" | "test" | "delete" | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const verified = Boolean(status?.memberRecipient?.verified);
+  const pending = Boolean(status?.memberRecipient && !verified);
+  const stateLabel = verified ? copy.verified : pending ? copy.pending : copy.notSet;
+  const detail = verified ? copy.readyDetail : pending ? copy.pendingDetail : copy.emptyDetail;
+
+  useEffect(() => {
+    setRecipientInput(recipient);
+    setServiceInput(serviceName);
+  }, [recipient, serviceName]);
+
+  async function run(kind: "save" | "test" | "delete", action?: () => Promise<void> | void): Promise<void> {
+    if (!action) return;
+    setBusy(kind);
+    setNotice(null);
+    setError(null);
+    try {
+      await action();
+      setNotice(kind === "save" ? copy.saved : kind === "test" ? copy.tested : copy.removed);
+    } catch {
+      setError(copy.error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={verified ? "verified" : pending ? "pending" : "empty"}>
+      <div className="everyday-imessage-setup__copy">
+        <div>
+          <h3>{copy.title}</h3>
+          <p>{copy.body}</p>
+        </div>
+        <span>{stateLabel}</span>
+      </div>
+      <form
+        className="everyday-imessage-setup__form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const nextRecipient = recipientInput.trim();
+          if (!nextRecipient) return;
+          void run("save", () => onSave?.({ recipient: nextRecipient, serviceName: serviceInput.trim() || undefined }));
+        }}
+      >
+        <label>
+          <span>{copy.label}</span>
+          <input
+            value={recipientInput}
+            onChange={(event) => setRecipientInput(event.currentTarget.value)}
+            placeholder={copy.placeholder}
+          />
+        </label>
+        <label>
+          <span>{copy.serviceLabel}</span>
+          <input
+            value={serviceInput}
+            onChange={(event) => setServiceInput(event.currentTarget.value)}
+            placeholder={copy.servicePlaceholder}
+          />
+        </label>
+        <div className="everyday-imessage-setup__actions">
+          <button type="submit" className="everyday-btn everyday-btn--ghost" disabled={busy !== null}>
+            {copy.save}
+          </button>
+          <button
+            type="button"
+            className="everyday-btn everyday-btn--pop"
+            disabled={busy !== null || !status?.memberRecipient}
+            onClick={() => void run("test", onTest)}
+          >
+            {copy.test}
+          </button>
+          {status?.memberRecipient && (
+            <button
+              type="button"
+              className="everyday-btn everyday-btn--ghost"
+              disabled={busy !== null}
+              onClick={() => void run("delete", onDelete)}
+            >
+              {copy.disconnect}
+            </button>
+          )}
+        </div>
+      </form>
+      <p className="everyday-imessage-setup__detail">{detail}</p>
+      {notice && <p className="everyday-imessage-setup__notice" role="status">{notice}</p>}
+      {error && <p className="everyday-imessage-setup__error" role="alert">{error}</p>}
     </section>
   );
 }
@@ -825,6 +951,10 @@ export function EverydayShell({
   hour = 14,
   approvalActions = defaultEverydayApprovalActions,
   onConnectorConnect,
+  imessageStatus,
+  onSaveIMessageRecipient,
+  onTestIMessageRecipient,
+  onDeleteIMessageRecipient,
   onStartRoom,
   dashboardFirst = false,
 }: {
@@ -832,6 +962,10 @@ export function EverydayShell({
   hour?: number;
   approvalActions?: EverydayApprovalActions;
   onConnectorConnect?: (id: string) => void;
+  imessageStatus?: IMessageStatusResponse | null;
+  onSaveIMessageRecipient?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
+  onTestIMessageRecipient?: () => Promise<void> | void;
+  onDeleteIMessageRecipient?: () => Promise<void> | void;
   onStartRoom?: (goal: string) => Promise<void> | void;
   dashboardFirst?: boolean;
 }): React.JSX.Element {
@@ -933,7 +1067,14 @@ export function EverydayShell({
         {!dashboardFirst && (
           <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
         )}
-        <ConnectorSetup connectors={data.connectors} onConnect={onConnectorConnect} />
+        <ConnectorSetup
+          connectors={data.connectors}
+          onConnect={onConnectorConnect}
+          imessageStatus={imessageStatus}
+          onSaveIMessageRecipient={onSaveIMessageRecipient}
+          onTestIMessageRecipient={onTestIMessageRecipient}
+          onDeleteIMessageRecipient={onDeleteIMessageRecipient}
+        />
         <NorthStarBar data={data.northStar} />
         <ApprovalQueue
           cards={pending}
