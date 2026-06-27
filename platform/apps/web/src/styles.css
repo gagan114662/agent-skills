@@ -9450,6 +9450,7 @@ select:focus-visible {
 .onboard {
   position: fixed;
   inset: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   background: var(--o-canvas);
   color: var(--o-text);
@@ -9698,12 +9699,11 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(820px 560px at 74% 15%, rgba(255, 247, 111, 0.72), rgba(255, 166, 57, 0.22) 48%, transparent 72%),
-    linear-gradient(105deg, transparent 0 12%, rgba(255, 252, 151, 0.34) 13% 18%, transparent 19% 44%, rgba(255, 202, 66, 0.2) 45% 51%, transparent 52%),
-    linear-gradient(74deg, transparent 0 30%, rgba(255, 240, 141, 0.26) 31% 36%, transparent 37% 68%, rgba(255, 148, 61, 0.16) 69% 74%, transparent 75%),
-    radial-gradient(980px 320px at 50% 112%, rgba(98, 210, 51, 0.26), rgba(255, 214, 94, 0.28) 50%, transparent 78%),
-    linear-gradient(180deg, #fff879 0%, #ffdf67 28%, #ffc45f 62%, #ffefab 100%);
-  background-size: 116% 100%, 122% 100%, 122% 100%, 100% 100%, 100% 100%;
+    radial-gradient(880px 620px at 72% 16%, rgba(255, 255, 244, 0.96), rgba(255, 245, 90, 0.62) 34%, rgba(255, 170, 47, 0.34) 56%, transparent 74%),
+    radial-gradient(980px 460px at 22% 88%, rgba(255, 243, 114, 0.42), transparent 70%),
+    radial-gradient(1120px 360px at 50% 112%, rgba(86, 199, 57, 0.22), rgba(255, 212, 83, 0.32) 50%, transparent 78%),
+    linear-gradient(180deg, #fff982 0%, #ffdf65 32%, #ffb85a 68%, #ffeaa7 100%);
+  background-size: 116% 100%, 122% 100%, 100% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9712,12 +9712,19 @@ select:focus-visible {
   position: absolute;
   pointer-events: none;
   z-index: 0;
-  inset: 0;
+  top: clamp(-170px, -12vw, -86px);
+  left: 72%;
+  width: clamp(520px, 54vw, 920px);
+  aspect-ratio: 1;
+  border-radius: 999px;
   background:
-    radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.18) 0 1px, transparent 2px) 0 0 / 34px 34px,
-    radial-gradient(circle at 86% 28%, rgba(255, 255, 255, 0.16) 0 1px, transparent 2px) 0 0 / 46px 46px,
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 36%);
-  opacity: 0.72;
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.92) 0 7%, transparent 8%),
+    repeating-conic-gradient(from -18deg, rgba(255, 255, 167, 0.82) 0 5deg, rgba(255, 197, 48, 0.36) 5deg 8deg, transparent 8deg 14deg),
+    radial-gradient(circle, rgba(255, 255, 242, 0.9) 0 21%, rgba(255, 246, 70, 0.72) 22% 43%, rgba(255, 162, 39, 0.36) 44% 64%, transparent 65%);
+  opacity: 0.78;
+  transform: translateX(-50%) rotate(0deg) scale(1);
+  filter: blur(0.2px) saturate(1.08);
+  animation: onboard-sun-turn 56s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::after {
   content: "";
@@ -9727,8 +9734,8 @@ select:focus-visible {
   inset: 0 -10% auto -10%;
   height: 100%;
   background:
-    linear-gradient(112deg, transparent 0 9%, rgba(255, 254, 180, 0.42) 10% 14%, transparent 15% 34%, rgba(255, 218, 74, 0.34) 35% 40%, transparent 41%),
-    linear-gradient(72deg, transparent 0 24%, rgba(255, 184, 59, 0.25) 25% 29%, transparent 30% 61%, rgba(255, 252, 169, 0.32) 62% 67%, transparent 68%),
+    linear-gradient(116deg, transparent 0 8%, rgba(255, 255, 210, 0.5) 9% 13%, transparent 14% 32%, rgba(255, 219, 73, 0.42) 33% 39%, transparent 40%),
+    repeating-linear-gradient(92deg, transparent 0 11%, rgba(255, 249, 137, 0.24) 12% 14%, transparent 15% 25%),
     radial-gradient(ellipse at 50% 108%, rgba(255, 214, 54, 0.46) 0 15%, rgba(255, 137, 54, 0.2) 16% 30%, transparent 48%);
   mix-blend-mode: screen;
   opacity: 0.92;
@@ -9748,9 +9755,9 @@ select:focus-visible {
 }
 .onboard-sunscape__sun {
   position: absolute;
-  top: clamp(-86px, -5vh, -20px);
-  left: min(75vw, 1120px);
-  width: clamp(330px, 34vw, 620px);
+  top: clamp(-62px, -4vh, -18px);
+  left: min(74vw, 1120px);
+  width: clamp(260px, 28vw, 520px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
@@ -9759,9 +9766,9 @@ select:focus-visible {
     repeating-conic-gradient(from 8deg, rgba(255, 251, 94, 0.96) 0 4deg, rgba(255, 196, 49, 0.55) 4deg 7deg, transparent 7deg 13deg),
     radial-gradient(circle at 50% 50%, #fffef0 0 16%, #fff879 17% 36%, rgba(255, 187, 31, 0.94) 37% 56%, rgba(255, 115, 42, 0.22) 57% 71%, transparent 72%);
   box-shadow:
-    0 0 72px rgba(255, 226, 61, 0.72),
-    0 0 180px rgba(255, 183, 51, 0.34);
-  opacity: 0.98;
+    0 0 82px rgba(255, 232, 65, 0.72),
+    0 0 210px rgba(255, 181, 46, 0.36);
+  opacity: 0.92;
   transform: translateX(-50%) rotate(0deg) scale(1);
   animation: onboard-sun-turn 44s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
 }
@@ -10090,6 +10097,7 @@ select:focus-visible {
   position: relative;
   display: flex;
   width: min(620px, 100%);
+  box-sizing: border-box;
   min-height: 66px;
   overflow: hidden;
   align-items: center;
@@ -11044,6 +11052,9 @@ select:focus-visible {
   .onboard[data-phase="door"] .onboard__nav {
     align-items: flex-start;
     flex-direction: column;
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
     gap: 10px;
   }
   .onboard[data-phase="door"] .onboard__brand {
@@ -11075,20 +11086,25 @@ select:focus-visible {
   .onboard-door-actions {
     position: static;
     width: 100%;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
+    justify-content: stretch;
+    justify-items: center;
+    gap: 2px;
   }
   .onboard-door-action {
-    gap: 3px;
+    gap: 2px;
+    min-width: 0;
   }
   .onboard-door-action__mark {
-    width: 34px;
-    height: 34px;
-    font-size: 20px;
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
   }
   .onboard-door-action__label {
-    font-size: 10px;
+    font-size: 9px;
   }
   .onboard-trust {
     justify-content: flex-start;
@@ -11108,36 +11124,42 @@ select:focus-visible {
   }
   .onboard-door {
     gap: 12px;
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
   }
   .onboard-door__greeting {
-    font-size: clamp(44px, 16vw, 76px);
+    max-width: min(11.5ch, 100%);
+    font-size: clamp(40px, 13.8vw, 56px);
   }
   .onboard-marketing {
     gap: 14px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
   }
   .onboard-marketing__row {
     display: grid;
-    grid-template-columns: repeat(6, minmax(40px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     overflow: visible;
     padding: 0 2px 10px;
-    gap: 8px;
+    gap: 4px;
   }
   .onboard-marketing__item {
     gap: 4px;
   }
   .onboard-marketing__mark {
-    width: clamp(40px, 12vw, 58px);
-    height: clamp(40px, 12vw, 58px);
-    border-radius: 16px;
-    font-size: 24px;
+    width: clamp(34px, 9vw, 46px);
+    height: clamp(34px, 9vw, 46px);
+    border-radius: 12px;
+    font-size: 20px;
   }
   .onboard-marketing__item[data-kind="icp"] .onboard-marketing__mark,
   .onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark {
-    height: clamp(48px, 14vw, 68px);
+    height: clamp(42px, 11vw, 54px);
   }
   .onboard-marketing__item[data-kind="email"] .onboard-marketing__mark {
-    width: clamp(48px, 14vw, 68px);
-    height: clamp(36px, 10vw, 52px);
+    width: clamp(42px, 11vw, 56px);
+    height: clamp(30px, 8vw, 42px);
   }
   .onboard-marketing__label {
     display: none;
@@ -11151,14 +11173,17 @@ select:focus-visible {
   }
   .onboard-door__field {
     flex-direction: row;
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
     min-height: 0;
   }
   .onboard-door__field::after {
     display: none;
   }
   .onboard[data-phase="door"] .onboard-cta {
-    flex: 0 0 86px;
-    min-width: 86px;
+    flex: 0 0 72px;
+    min-width: 72px;
     min-height: 0;
     border-top: 0;
     border-left: 1px solid rgba(0, 0, 0, 0.12);
@@ -11168,8 +11193,8 @@ select:focus-visible {
   }
   .onboard-input {
     width: auto;
-    font-size: clamp(16px, 4.4vw, 18px);
-    padding: 17px 14px;
+    font-size: clamp(15px, 4vw, 17px);
+    padding: 16px 12px;
   }
 }
 

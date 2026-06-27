@@ -140,6 +140,36 @@ async function pollTerminal(
   }
 }
 
+/** Poll the visible team channel receipts until every expected event has been persisted. */
+async function pollTeamEvents(
+  app: FastifyInstance,
+  w: World,
+  teamRunId: string,
+  expected: { started: number; done: number },
+  timeoutMs = 15_000,
+): Promise<TeamEvent[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const events = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/team-events`,
+        cookies: { rid: w.cookie },
+      })
+    ).json() as TeamEvent[];
+    const matching = events.filter((e) => e.teamRunId === teamRunId);
+    const started = matching.filter((e) => e.kind === "started");
+    const done = matching.filter((e) => e.kind === "done");
+    if (started.length >= expected.started && done.length >= expected.done) return matching;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `only ${started.length}/${expected.started} started and ${done.length}/${expected.done} done team events visible in time`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
   it("runs 3 agents in parallel on one feature and coordinates over the team channel", async () => {
     const { app } = await startApp(3);
@@ -167,13 +197,7 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
     expect(terminal.filter((s) => s.status === "completed")).toHaveLength(3);
 
     // The shared team channel carries a started + done event for each of the 3 subtasks.
-    const events = (
-      await app.inject({
-        method: "GET",
-        url: `/channels/${w.channelId}/team-events`,
-        cookies: { rid: w.cookie },
-      })
-    ).json() as TeamEvent[];
+    const events = await pollTeamEvents(app, w, body.teamRunId, { started: 3, done: 3 });
 
     expect(events.every((e) => e.teamRunId === body.teamRunId)).toBe(true);
     const started = events.filter((e) => e.kind === "started");
