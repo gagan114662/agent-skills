@@ -2054,8 +2054,8 @@ export const CONTACT = {
   trialLinkLabel: "Send me a trial link",
   trialCta: "Start a free trial",
   trialHref: "/start?source=landing_contact_cta",
-  bookingCta: "Book a 15-minute call",
-  bookingHref: "https://cal.com/ipop/intro",
+  bookingCta: "Start the first-customer sprint",
+  bookingHref: "/start?source=landing_booking_cta",
   nextStepIntro: "Want to keep moving now?",
   /** In-flight label while the lead is posting. */
   sendingLabel: "Sending…",

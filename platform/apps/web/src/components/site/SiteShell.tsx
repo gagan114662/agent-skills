@@ -62,6 +62,10 @@ export function SiteShell({ children }: { children: React.ReactNode }): React.JS
 
 function SiteFooter(): React.JSX.Element {
   const links = askAiLinks();
+  function askProvider(href: string): void {
+    void navigator.clipboard?.writeText(ASK_AI.prompt);
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
   return (
     <footer className="site__footer">
       <div className="site__ask-ai">
@@ -69,15 +73,14 @@ function SiteFooter(): React.JSX.Element {
         <p className="site__ask-ai-blurb">{ASK_AI.blurb}</p>
         <div className="site__ask-ai-links">
           {links.map((link) => (
-            <a
+            <button
               key={link.key}
+              type="button"
               className="btn site__ask-ai-link"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => askProvider(link.href)}
             >
               {link.label} ↗
-            </a>
+            </button>
           ))}
         </div>
       </div>
