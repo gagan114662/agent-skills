@@ -94,11 +94,15 @@ async function main(): Promise<void> {
   const once = process.argv.includes("--once");
   const adapter = new MacOsMessagesAdapter(process.env.IMESSAGE_OSASCRIPT_BIN || "osascript");
 
-  do {
+  let shouldContinue = true;
+  while (shouldContinue) {
     const count = await runOnce({ baseUrl, secret, relayId, limit, leaseMs, adapter });
-    if (once) return;
+    if (once) {
+      shouldContinue = false;
+      continue;
+    }
     if (count === 0) await sleep(pollMs);
-  } while (true);
+  }
 }
 
 main().catch((error) => {
