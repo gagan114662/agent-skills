@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   codexStatusFromDoctor,
   createCodexSubscriptionStatusProvider,
+  materializeCodexAuthJson,
 } from "../../src/runtime/codex-subscription.js";
 
 function doctor(overrides: Record<string, unknown> = {}): string {
@@ -110,5 +114,52 @@ describe("Codex subscription status (#1282)", () => {
       expect.objectContaining({ connected: true }),
     ]);
     expect(calls).toBe(1);
+  });
+
+  it("materializes CODEX_AUTH_JSON into the Codex auth file used by doctor and exec", async () => {
+    const codexHome = await mkdtemp(join(tmpdir(), "ipop-codex-home-"));
+    const authJson = JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: { access_token: "redacted", refresh_token: "redacted" },
+    });
+
+    await expect(materializeCodexAuthJson(authJson, codexHome)).resolves.toBe(true);
+
+    const authPath = join(codexHome, "auth.json");
+    await expect(readFile(authPath, "utf8")).resolves.toBe(authJson);
+    expect((await stat(authPath)).mode & 0o777).toBe(0o600);
+  });
+
+  it("skips auth-file writes when CODEX_AUTH_JSON is absent", async () => {
+    const codexHome = await mkdtemp(join(tmpdir(), "ipop-codex-home-"));
+    await expect(materializeCodexAuthJson(null, codexHome)).resolves.toBe(false);
+  });
+
+  it("materializes auth before the default doctor provider runs codex", async () => {
+    const codexHome = await mkdtemp(join(tmpdir(), "ipop-codex-home-"));
+    const bin = join(codexHome, "codex-fake.mjs");
+    const authJson = JSON.stringify({
+      auth_mode: "chatgpt",
+      tokens: { access_token: "redacted", refresh_token: "redacted" },
+    });
+    await writeFile(
+      bin,
+      [
+        "#!/usr/bin/env node",
+        "import { readFileSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        "const auth = JSON.parse(readFileSync(join(process.env.CODEX_HOME, 'auth.json'), 'utf8'));",
+        "if (auth.auth_mode !== 'chatgpt') process.exit(2);",
+        "process.stdout.write(" + JSON.stringify(JSON.stringify(JSON.parse(doctor()))) + ");",
+      ].join("\n"),
+    );
+    await chmod(bin, 0o700);
+
+    const provider = createCodexSubscriptionStatusProvider({ authJson, codexBin: bin, codexHome });
+
+    await expect(provider.status()).resolves.toMatchObject({
+      connected: true,
+      runtimeAuth: "signed_in_subscription",
+    });
   });
 });

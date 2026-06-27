@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
   CodexSubscriptionStatus,
@@ -18,6 +21,8 @@ interface CodexDoctorReport {
 
 export interface CodexDoctorStatusProviderOptions {
   codexBin?: string;
+  authJson?: string | null;
+  codexHome?: string;
   timeoutMs?: number;
   runDoctor?: () => Promise<string>;
 }
@@ -97,18 +102,31 @@ function stdoutFromThrownDoctorError(err: unknown): string | null {
   return typeof stdout === "string" && stdout.trim() ? stdout : null;
 }
 
+export async function materializeCodexAuthJson(
+  authJson: string | null | undefined,
+  codexHome = process.env.CODEX_HOME ?? join(homedir(), ".codex"),
+): Promise<boolean> {
+  if (!authJson) return false;
+  await mkdir(codexHome, { recursive: true, mode: 0o700 });
+  await writeFile(join(codexHome, "auth.json"), authJson, { mode: 0o600 });
+  return true;
+}
+
 export function createCodexSubscriptionStatusProvider(
   options: CodexDoctorStatusProviderOptions = {},
 ): CodexSubscriptionStatusProvider {
   const codexBin = options.codexBin ?? process.env.CODEX_BIN ?? "codex";
+  const codexHome = options.codexHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
+  const authJson = options.authJson ?? process.env.CODEX_AUTH_JSON ?? null;
   const timeoutMs = options.timeoutMs ?? 20_000;
   const runDoctor =
     options.runDoctor ??
     (async () => {
+      await materializeCodexAuthJson(authJson, codexHome);
       const { stdout } = await execFileAsync(codexBin, ["doctor", "--json"], {
         timeout: timeoutMs,
         maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, NO_COLOR: "1" },
+        env: { ...process.env, CODEX_HOME: codexHome, NO_COLOR: "1" },
       });
       return stdout;
     });
