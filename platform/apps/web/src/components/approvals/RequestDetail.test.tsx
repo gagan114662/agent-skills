@@ -43,6 +43,36 @@ describe("RequestDetail", () => {
     expect(screen.getAllByText("not authorized").length).toBeGreaterThan(0);
   });
 
+  it("shows rollback metadata and provider link for executed approvals", async () => {
+    const { store } = await renderApprovals(<RequestDetail />, {
+      detail: makeRequest({
+        id: "r1",
+        summary: "Publish landing page",
+        status: "executed",
+        result: {
+          published: true,
+          rollback: {
+            label: "Provider rollback",
+            status: "Reversible through the linked provider undo/rollback action.",
+            url: "https://provider.example/rollback/abc",
+          },
+        },
+      }),
+      events: EVENTS,
+    });
+    await act(async () => {
+      await store.openRequest("r1");
+    });
+
+    expect(await screen.findByText("Rollback")).toBeInTheDocument();
+    expect(screen.getByText("Provider rollback")).toBeInTheDocument();
+    expect(screen.getByText("Reversible through the linked provider undo/rollback action.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open rollback" })).toHaveAttribute(
+      "href",
+      "https://provider.example/rollback/abc",
+    );
+  });
+
   it("closes via the close control", async () => {
     const { store, container } = await renderApprovals(<RequestDetail />, {
       detail: makeRequest({ id: "r1" }),

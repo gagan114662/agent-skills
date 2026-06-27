@@ -7,6 +7,20 @@ import { popConfetti } from "../../lib/confetti.js";
 import { AuditTimeline } from "./AuditTimeline.js";
 import { approvalReview } from "./approval-review.js";
 
+function rollbackMetadata(result: Record<string, unknown> | null): {
+  label: string;
+  status: string;
+  url: string | null;
+} | null {
+  const raw = result?.rollback;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const rollback = raw as Record<string, unknown>;
+  const label = typeof rollback.label === "string" ? rollback.label : "Rollback";
+  const status = typeof rollback.status === "string" ? rollback.status : null;
+  const url = typeof rollback.url === "string" && rollback.url.length > 0 ? rollback.url : null;
+  return status ? { label, status, url } : null;
+}
+
 export function RequestDetail(): React.JSX.Element | null {
   const { approvals, directory, identity } = useAppState();
   const store = useStore();
@@ -18,6 +32,7 @@ export function RequestDetail(): React.JSX.Element | null {
   const request = req;
 
   const review = approvalReview(request);
+  const rollback = rollbackMetadata(request.result);
   const canDecide =
     identity?.kind === "human" &&
     identity.memberId !== request.requesterMemberId &&
@@ -86,6 +101,20 @@ export function RequestDetail(): React.JSX.Element | null {
           <>
             <dt>Error</dt>
             <dd className="request-detail__error">{request.error}</dd>
+          </>
+        )}
+        {rollback && (
+          <>
+            <dt>Rollback</dt>
+            <dd className="request-detail__rollback">
+              <strong>{rollback.label}</strong>
+              <span>{rollback.status}</span>
+              {rollback.url && (
+                <a href={rollback.url} target="_blank" rel="noreferrer">
+                  Open rollback
+                </a>
+              )}
+            </dd>
           </>
         )}
       </dl>

@@ -8,6 +8,7 @@ import {
   members,
 } from "../schema/index.js";
 import type { ApprovalStatus, PolicyRule } from "../../approvals/policy.js";
+import { attachApprovalRollbackMetadata } from "../../approvals/rollback.js";
 import { editDistance } from "../../gate-pricing/pricing.js";
 
 // ---- policy rules -----------------------------------------------------------------------------
@@ -408,11 +409,15 @@ export async function recordExecution(
       return { outcome: "conflict", request: current as ApprovalRequest | undefined } as const;
     }
 
+    const executionResult = outcome.ok
+      ? attachApprovalRollbackMetadata(String(current.actionType), outcome.result)
+      : null;
+
     const [row] = await tx
       .update(approvalRequests)
       .set(
         outcome.ok
-          ? { status: "executed", result: outcome.result, updatedAt: new Date() }
+          ? { status: "executed", result: executionResult, updatedAt: new Date() }
           : { status: "failed", error: outcome.error, updatedAt: new Date() },
       )
       .where(and(eq(approvalRequests.id, requestId), eq(approvalRequests.workspaceId, workspaceId)))
@@ -421,7 +426,7 @@ export async function recordExecution(
       workspaceId,
       requestId,
       type: outcome.ok ? "executed" : "failed",
-      detail: outcome.ok ? outcome.result : { error: outcome.error },
+      detail: outcome.ok ? executionResult ?? outcome.result : { error: outcome.error },
     });
     return { outcome: "recorded", request: row as ApprovalRequest } as const;
   });
