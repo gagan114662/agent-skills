@@ -125,7 +125,14 @@ function safeReturnPath(raw: string | null): string | null {
   return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
 }
 
-export function AuthGate({ children }: { children: ReactNode }): React.JSX.Element {
+export function AuthGate({
+  children,
+  publicEntry,
+}: {
+  children: ReactNode;
+  /** Optional public first-run door for / and /welcome. Signed-in users still receive children. */
+  publicEntry?: ReactNode;
+}): React.JSX.Element {
   const store = useStore();
   const { phase } = useAppState();
   const path = useRoute();
@@ -225,6 +232,7 @@ export function AuthGate({ children }: { children: ReactNode }): React.JSX.Eleme
   if (path === "/start") return <Onboarding />;
   if (path === "/login") return <AuthForm initialMode="login" />;
   if (path === "/signup") return <AuthForm initialMode="signup" />;
+  if ((path === "/" || path === "/welcome") && publicEntry) return <>{publicEntry}</>;
   // The marketing landing lives at `/` only. Every other path is a deep link into the authed app
   // (e.g. a bookmarked `/app/...`), so a logged-out hit must route to sign-in rather than silently
   // serving the marketing page (#304) — preserving the destination so we can land them there after.

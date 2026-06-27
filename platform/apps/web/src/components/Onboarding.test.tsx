@@ -16,6 +16,15 @@ beforeEach(() => {
   });
   // #300: default the front-door sample-offer probe to OFF so the legacy assertions see the #260 screen.
   vi.spyOn(api, "getSampleConsole").mockResolvedValue({ offered: false, console: null });
+  vi.spyOn(api, "getGoogleAuthStatus").mockResolvedValue({
+    configured: true,
+    status: "ready",
+    missing: [],
+    issue: null,
+    startPath: "/auth/google/start",
+    message: "Google sign-in is ready.",
+    remedy: null,
+  });
 });
 
 afterEach(() => {
@@ -23,10 +32,10 @@ afterEach(() => {
 });
 
 describe("Onboarding screen (#260)", () => {
-  it("is one screen: a domain field + Sign in with Google, and no password/workspace fields", () => {
+  it("is one screen: one domain field, value first, and no setup homework", () => {
     render(<Onboarding />);
     expect(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i"))).toBeInTheDocument();
-    expect(screen.getByLabelText(/ideal customer profile/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ideal customer profile/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") })).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^workspace$/i)).not.toBeInTheDocument();
@@ -36,7 +45,7 @@ describe("Onboarding screen (#260)", () => {
     render(<Onboarding />);
     await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
-    expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com");
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com"));
   });
 
   it("keeps acquisition query params on the Google OAuth start URL (#901)", async () => {
@@ -52,9 +61,32 @@ describe("Onboarding screen (#260)", () => {
     await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
 
-    expect(assignSpy).toHaveBeenCalledWith(
-      "/auth/google/start?domain=acme.com&utm_source=linkedin&utm_medium=paid&utm_campaign=founders&ref=gref_901",
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/auth/google/start?domain=acme.com&utm_source=linkedin&utm_medium=paid&utm_campaign=founders&ref=gref_901",
+      ),
     );
+  });
+
+  it("shows a deliberate maintenance state before redirecting when Google OAuth is not configured (#1288)", async () => {
+    vi.spyOn(api, "getGoogleAuthStatus").mockResolvedValue({
+      configured: false,
+      status: "maintenance",
+      missing: ["GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI"],
+      issue: "google_oauth_missing_config",
+      startPath: "/auth/google/start",
+      message:
+        "Google sign-in is not configured for this deployment. Missing: GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI.",
+      remedy:
+        "Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and GOOGLE_OAUTH_REDIRECT_URI, then rerun the production preflight.",
+    });
+    render(<Onboarding />);
+    await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("GOOGLE_OAUTH_CLIENT_SECRET");
+    expect(screen.getByRole("alert")).toHaveTextContent("GOOGLE_OAUTH_REDIRECT_URI");
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("nudges (and does not navigate) when the domain is empty", async () => {
@@ -126,15 +158,15 @@ describe("Onboarding outcome-first (#633)", () => {
   it("produces a deliverable immediately on submit — no setup, no redirect to config", async () => {
     render(<Onboarding />);
     await userEvent.type(screen.getByLabelText(new RegExp(ONBOARDING.domainLabel, "i")), "acme.com");
-    await userEvent.type(screen.getByLabelText(/ideal customer profile/i), "seed-stage SaaS founders");
     // The PRIMARY action is the outcome, not the Google sign-in.
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
     // We did NOT navigate away to config…
     expect(assignSpy).not.toHaveBeenCalled();
-    // …and the live deliverable view is now on screen, building immediately.
-    expect(screen.getByRole("status")).toHaveTextContent(ONBOARDING.deliverable.working);
+    // …and the live deliverable view is now on screen, building immediately, even if the stream falls
+    // back to the honest domain-only artifact.
+    expect(await screen.findByRole("heading", { level: 1, name: /acme\.com starter growth brief/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /gtm workspace preview/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/seed-stage SaaS founders/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Built from the domain only/i)).toBeInTheDocument();
     expect(screen.getByText(/No prospect rows yet/i)).toBeInTheDocument();
     expect(screen.getByText(/verification.blocked:no_external_sources/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(new RegExp(ONBOARDING.domainLabel, "i"))).not.toBeInTheDocument();
@@ -146,7 +178,7 @@ describe("Onboarding outcome-first (#633)", () => {
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.deliverable.cta, "i") }));
     // Config runs alongside: signing in from the preview still navigates to OAuth carrying the domain.
     await userEvent.click(screen.getByRole("button", { name: new RegExp(ONBOARDING.googleCta, "i") }));
-    expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com");
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/auth/google/start?domain=acme.com"));
   });
 
   it("nudges (and does not produce a deliverable) when the domain is empty", async () => {

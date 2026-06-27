@@ -52,6 +52,12 @@ export interface ConnectionDescriptor {
   oauthScopes: string[];
   /** Env var names the agents resolve once connected (paste connections seal these into the vault). */
   envKeys: string[];
+  /** Secret-free deployment setup issue when a live connector is unavailable for config reasons. */
+  configIssue?: {
+    code: string;
+    missingEnv: string[];
+    remedy: string;
+  };
 }
 
 /** The internal GitHub site-publish connection id (ipop.ai's own mechanism — admin only). */
@@ -65,6 +71,9 @@ export const EMAIL_CONNECTION_ID = "email";
 
 /** The onboarding website consent id (#1070 — lets Quill produce an immediate hero rewrite). */
 export const WEBSITE_CONNECTION_ID = "website";
+
+/** The iMessage work-visibility connector — the intended primary messaging home for the ipop room. */
+export const IMESSAGE_CONNECTION_ID = "imessage";
 
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
@@ -137,6 +146,20 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     auth: "one_click",
     status: "available",
     capabilities: ["site_publish"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: IMESSAGE_CONNECTION_ID,
+    label: "Connect iMessage",
+    summary:
+      "Follow Scout, Lens, Quill, Echo, and the operator from Messages once the Apple relay is production-ready.",
+    provider: "apple",
+    kind: "sms",
+    audience: "customer",
+    auth: "one_click",
+    status: "coming_soon",
+    capabilities: ["work_visibility", "mobile_messaging", "imessage_room"],
     oauthScopes: [],
     envKeys: [],
   },

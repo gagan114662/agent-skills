@@ -1,7 +1,6 @@
 /**
- * Pure everyday-shell-gate tests (#784). #784 go-live makes the shell the production default: with no owner
- * workspace pinned it shows for ANY signed-in workspace (full rollout); pinning an owner narrows it back to
- * owner-only. The only fail-closed branches are an explicitly-off flag and a missing current workspace.
+ * Pure everyday-shell-gate tests (#784). #784 go-live makes the shell the production default: it shows for
+ * ANY signed-in workspace. The only fail-closed branches are an explicitly-off flag and a missing workspace.
  */
 import { describe, expect, it } from "vitest";
 import { shouldShowEverydayShell, type EverydayShellGateInput } from "./everyday-shell-flag.js";
@@ -30,8 +29,8 @@ describe("shouldShowEverydayShell (#784)", () => {
     ).toBe(true);
   });
 
-  it("hides from a non-owner workspace when an owner IS pinned (owner-only narrowing)", () => {
-    expect(shouldShowEverydayShell({ ...on, workspaceId: "ws_someone_else" })).toBe(false);
+  it("ignores a stale owner pin and still shows for any signed-in workspace", () => {
+    expect(shouldShowEverydayShell({ ...on, workspaceId: "ws_someone_else" })).toBe(true);
   });
 
   it("hides when there is no current workspace (the shell is a logged-in surface), pinned or not", () => {
@@ -56,6 +55,6 @@ describe("shouldShowEverydayShell (#784)", () => {
     ).toBe(true);
     expect(
       shouldShowEverydayShell({ flagOn: true, ownerWorkspaceId: owner, workspaceId: `${owner}x` }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

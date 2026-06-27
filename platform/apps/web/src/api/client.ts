@@ -77,6 +77,14 @@ import type {
   MarketingTargetInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  ConnectionOAuthStartResponse,
+  GoogleAuthStatus,
+  IMessageRecipientSaveResponse,
+  IMessageStatusResponse,
+  IMessageTestResponse,
+  IMessageRoomResponse,
+  FirstRunReceiptInput,
+  FirstRunReceiptResponse,
   GardenResponse,
   SkillOptProposalsResponse,
   SkillOptProposalStatus,
@@ -87,6 +95,9 @@ import type {
   TaskTemplateDto,
   SiteDocDetail,
   SiteDocMeta,
+  TeamRunResponse,
+  TeamRunSubtaskInput,
+  CodexSubscriptionStatus,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -348,6 +359,9 @@ export const api = {
   getSampleConsole(): Promise<SampleConsoleResponse> {
     return request<SampleConsoleResponse>("/sample/console");
   },
+  getGoogleAuthStatus(): Promise<GoogleAuthStatus> {
+    return request<GoogleAuthStatus>("/auth/google/status");
+  },
 
   // --- Connect Claude credentials (#68) ---
   getAgentCredentials(): Promise<CredentialStatus> {
@@ -459,9 +473,43 @@ export const api = {
   async joinConnectionWaitlist(id: string): Promise<void> {
     await request(`/me/connections/${encodeURIComponent(id)}/waitlist`, { method: "POST" });
   },
-  // Begin a consumer-OAuth connect. The live redirect is a follow-up; the server replies 501 "coming soon".
-  startConnectionOAuth(id: string): Promise<unknown> {
-    return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  // Begin a consumer-OAuth connect. Unwired providers reply 501 "coming soon"; live providers park consent.
+  startConnectionOAuth(id: string): Promise<ConnectionOAuthStartResponse> {
+    return request<ConnectionOAuthStartResponse>(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+  getIMessageStatus(): Promise<IMessageStatusResponse> {
+    return request<IMessageStatusResponse>("/me/imessage/status");
+  },
+  saveIMessageRecipient(input: { recipient: string; serviceName?: string }): Promise<IMessageRecipientSaveResponse> {
+    return request<IMessageRecipientSaveResponse>("/me/imessage/recipient", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteIMessageRecipient(): Promise<void> {
+    await del("/me/imessage/recipient");
+  },
+  testIMessageRecipient(text?: string): Promise<IMessageTestResponse> {
+    return request<IMessageTestResponse>("/me/imessage/test", {
+      method: "POST",
+      body: JSON.stringify(text ? { text } : {}),
+    });
+  },
+  startIMessageRoom(channelId: string, text: string): Promise<IMessageRoomResponse> {
+    return request<IMessageRoomResponse>(
+      `/channels/${encodeURIComponent(channelId)}/imessage/room`,
+      {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      },
+    );
+  },
+
+  getFirstRunReceipt(): Promise<FirstRunReceiptResponse> {
+    return request<FirstRunReceiptResponse>("/me/onboarding/first-run");
+  },
+  recordFirstRunReceipt(input: FirstRunReceiptInput): Promise<FirstRunReceiptResponse> {
+    return post("/me/onboarding/first-run", input) as Promise<FirstRunReceiptResponse>;
   },
 
   // --- Agent Garden (#284): browse the department fleet + enable/disable each agent per workspace ---
@@ -667,6 +715,12 @@ export const api = {
       body,
       alsoSendToChannel,
     }) as Promise<Message>;
+  },
+  launchTeamRun(channelId: string, subtasks: TeamRunSubtaskInput[]): Promise<TeamRunResponse> {
+    return post(`/channels/${channelId}/team-runs`, { subtasks }) as Promise<TeamRunResponse>;
+  },
+  getCodexStatus(): Promise<CodexSubscriptionStatus> {
+    return request<CodexSubscriptionStatus>("/me/codex/status");
   },
 
   // --- members & agents ---

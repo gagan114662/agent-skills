@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   loadGoogleOAuthConfig,
+  googleOAuthConfigStatus,
   buildGoogleAuthorizeUrl,
   googleConnectionSecrets,
   resolveOnboardingScopes,
@@ -48,6 +49,24 @@ describe("loadGoogleOAuthConfig", () => {
         GOOGLE_OAUTH_REDIRECT_URI: "https://z/cb",
       } as NodeJS.ProcessEnv),
     ).toEqual({ clientId: "x", clientSecret: "y", redirectUri: "https://z/cb" });
+  });
+
+  it("reports the exact missing config keys without exposing values (#1288)", () => {
+    expect(googleOAuthConfigStatus({} as NodeJS.ProcessEnv)).toEqual({
+      configured: false,
+      missing: [
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "GOOGLE_OAUTH_REDIRECT_URI",
+      ],
+    });
+    expect(
+      googleOAuthConfigStatus({
+        GOOGLE_OAUTH_CLIENT_ID: "cid",
+        GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ configured: true, missing: [] });
   });
 });
 

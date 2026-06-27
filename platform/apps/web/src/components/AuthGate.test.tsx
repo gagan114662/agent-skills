@@ -37,6 +37,29 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
+  it("uses the public entry at / for logged-out visitors without hiding the signed-in app", async () => {
+    act(() => navigate("/"));
+    const { unmount } = renderWithStore(
+      <AuthGate publicEntry={<div>PUBLIC FIRST-RUN DOOR</div>}>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByText("PUBLIC FIRST-RUN DOOR")).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+
+    unmount();
+    renderWithStore(
+      <AuthGate publicEntry={<div>PUBLIC FIRST-RUN DOOR</div>}>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+    );
+
+    expect(await screen.findByText("WORKSPACE CONTENT")).toBeInTheDocument();
+    expect(screen.queryByText("PUBLIC FIRST-RUN DOOR")).not.toBeInTheDocument();
+  });
+
   it("shows the sign-in form at /login, then renders the app after a successful login", async () => {
     act(() => navigate("/login"));
     let calls = 0;
@@ -121,7 +144,7 @@ describe("AuthGate routing", () => {
       { me: unauthorized },
     );
 
-    expect(await screen.findByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /connect google to ship/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/your website/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
@@ -331,7 +354,7 @@ describe("AuthGate routing", () => {
     );
 
     // The marketing landing must NOT be served for a deep app link; the visitor lands on sign-in (/start).
-    await screen.findByRole("button", { name: /sign in with google/i });
+    await screen.findByRole("button", { name: /connect google to ship/i });
     expect(window.location.pathname).toBe("/start");
     // …and the page they wanted is preserved so we can return them there after they sign in.
     expect(new URLSearchParams(window.location.search).get("return")).toBe("/app/reports");
@@ -351,7 +374,7 @@ describe("AuthGate routing", () => {
       { me: unauthorized },
     );
 
-    await screen.findByRole("button", { name: /sign in with google/i });
+    await screen.findByRole("button", { name: /connect google to ship/i });
     expect(window.location.pathname).toBe("/start");
     // The redirect replaced the /app entry instead of pushing a new one, so Back can't return to the
     // dead route (which would just bounce forward again).

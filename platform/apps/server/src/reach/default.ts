@@ -128,6 +128,31 @@ export function resolveReachLinkedInSender(input: {
   return createLinkedInApiSender({ token, baseUrl });
 }
 
+async function resolveReachLiveChannelHealth(workspaceId: string): Promise<readonly string[]> {
+  const caps = resolveReachCaps(loadConfig(workspaceId).reach);
+  const reasons: string[] = [];
+  const emailClaimsLive = caps.sendProvider !== "dryrun" && caps.liveSendEnabled;
+  if (emailClaimsLive) {
+    const sender = await resolveReachEmailSender(workspaceId);
+    if (sender.kind === dryRunEspSender.kind) {
+      reasons.push("email sender is dry-run (missing live ESP credentials)");
+    }
+    const proof = await resolveReachDeliverabilityProof(workspaceId);
+    if (!proof) {
+      reasons.push("email deliverability not confirmed");
+    }
+  }
+  const linkedinClaimsLive =
+    caps.linkedinSendProvider !== "none" && caps.linkedinLiveSendEnabled;
+  if (linkedinClaimsLive) {
+    const sender = await resolveReachLinkedInSenderForWorkspace(workspaceId);
+    if (!sender) {
+      reasons.push("LinkedIn sender is queue-only (missing permitted API credentials)");
+    }
+  }
+  return reasons;
+}
+
 async function resolveReachLinkedInSenderForWorkspace(
   workspaceId: string,
 ): Promise<LinkedInSender | undefined> {
@@ -138,8 +163,8 @@ async function resolveReachLinkedInSenderForWorkspace(
 }
 
 /**
- * Wire the production {@link ReachService} (#280). Default-OFF + `mock` source + `dryrun` email sender, so
- * a deployment that sets nothing spends nothing and sends nothing. The email channel resolves a tenant-scoped
+ * Wire the production {@link ReachService} (#280). Default-OFF + `imported` source + `dryrun` email sender, so
+ * a deployment that sets nothing spends nothing, fabricates nothing, and sends nothing. The email channel resolves a tenant-scoped
  * Postmark sender only when Reach live send is explicitly enabled and the #192 vault has the token + From;
  * LinkedIn queues (no permitted send path wired). The paid sources resolve their key from the #192 vault
  * and never log it. LinkedIn stays queue-only unless a workspace explicitly opts into the permitted API
@@ -203,6 +228,7 @@ export function createDefaultReachService(log?: FastifyBaseLogger): ReachService
       loadSuppressed: (workspaceId) => dbSuppressionStore.loadSuppressed(workspaceId),
     },
     deliverability: { proof: resolveReachDeliverabilityProof },
+    liveChannelHealth: resolveReachLiveChannelHealth,
     approvals: {
       async dataCreditSpend(workspaceId, provider) {
         const requests = (

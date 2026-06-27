@@ -326,6 +326,26 @@ describe("formatDeliverableMessage (#393)", () => {
     expect(formatDeliverableMessage("task", withControls)).toBe("helloworld");
   });
 
+  it("labels returned Codex operator work as an audited room receipt (#1265)", () => {
+    const task = [
+      "codex_work_packet",
+      "audit_label: codex_operator_lane",
+      "1. Task context",
+      "Build the approved homepage fix.",
+    ].join("\n");
+
+    const out = formatDeliverableMessage(
+      task,
+      "summary: shipped the homepage sun treatment\nverification: pnpm --filter @reload/web typecheck",
+    );
+
+    expect(out).toContain("codex_operator_lane receipt");
+    expect(out).toContain("Returned through the signed-in team-engine lane");
+    expect(out).toContain("no API keys, cookies, passwords, or browser session secrets were requested");
+    expect(out).toContain("summary: shipped the homepage sun treatment");
+    expect(out).toContain("verification: pnpm --filter @reload/web typecheck");
+  });
+
   it("caps the body at MAX_REPLY_CHARS", () => {
     const long = "x".repeat(MAX_REPLY_CHARS + 500);
     const out = formatDeliverableMessage("task", long);

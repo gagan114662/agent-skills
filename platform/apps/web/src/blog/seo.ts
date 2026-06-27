@@ -33,10 +33,27 @@ export interface PrerenderPage {
   lang?: string;
 }
 
+const SHA_RE = /^[0-9a-f]{7,64}$/;
+
+function normalizeBuildSha(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const sha = raw.trim().toLowerCase();
+  return SHA_RE.test(sha) ? sha : null;
+}
+
 /** The production origin. Overridable for previews via SITE_ORIGIN; trailing slash stripped. */
 export function resolveOrigin(env: Record<string, string | undefined> = {}): string {
   const raw = env.SITE_ORIGIN || env.VITE_SITE_ORIGIN || "https://ipop.ai";
   return raw.replace(/\/+$/, "");
+}
+
+/**
+ * Resolve the build SHA that should be embedded into prerendered HTML. Vercel exposes
+ * VERCEL_GIT_COMMIT_SHA; GitHub Actions exposes GITHUB_SHA; local builds may pass
+ * VITE_RELOAD_BUILD_SHA. Missing/malformed values return null so unstamped local builds stay valid.
+ */
+export function resolveBuildSha(env: Record<string, string | undefined> = {}): string | null {
+  return normalizeBuildSha(env.VITE_RELOAD_BUILD_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? env.GITHUB_SHA);
 }
 
 /** Absolute canonical URL for a path. Home is the bare origin with a trailing slash; others have none. */
@@ -77,6 +94,21 @@ function setCanonical(html: string, href: string): string {
 
 function setHtmlLang(html: string, lang: string): string {
   return html.replace(/(<html\s+lang=")[^"]*(")/i, `$1${escapeHtml(lang)}$2`);
+}
+
+/**
+ * Stamp the static document with the git SHA that produced it. This is intentionally in the
+ * prerendered HTML head, not only in the hydrated app bundle, so external monitors can detect a stale
+ * production deploy without executing JavaScript.
+ */
+export function injectBuildStamp(html: string, buildSha: string | null | undefined): string {
+  const sha = normalizeBuildSha(buildSha);
+  if (!sha) return html;
+
+  const tag = `<meta name="reload-build-sha" content="${escapeHtml(sha)}" />`;
+  const existing = /<meta\s+name="reload-build-sha"\s+content="[^"]*"\s*\/?>/i;
+  if (existing.test(html)) return html.replace(existing, tag);
+  return html.replace(/<\/head>/i, `    ${tag}\n  </head>`);
 }
 
 /**

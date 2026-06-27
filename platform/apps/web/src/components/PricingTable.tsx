@@ -4,6 +4,7 @@
  * Kept free of fetch/store so it stays unit-testable; {@link PricingPanel} wires the data + checkout.
  */
 import type { ActivePlanDto, PlanDto } from "@reload/shared";
+import { PRICING } from "../brand.js";
 import { popConfetti } from "../lib/confetti.js";
 
 /** Render whole-dollar prices cleanly: 4900¢ → "$49", 19900¢ → "$199". */
@@ -33,10 +34,8 @@ export function PricingTable({
   return (
     <div className="pricing">
       <header className="pricing__intro">
-        <h1 className="pricing__title">Pick your pop.</h1>
-        <p className="pricing__lede">
-          Three ways to hire a team of agents that actually ships. Start small, grow when you feel like it.
-        </p>
+        <h1 className="pricing__title">{PRICING.tableTitle}</h1>
+        <p className="pricing__lede">{PRICING.tableLede}</p>
       </header>
 
       {error && (
@@ -58,13 +57,25 @@ export function PricingTable({
               // Staggered pop entrance — each card lands a beat after the last.
               style={{ animationDelay: `${i * 90}ms` }}
             >
-              {plan.featured && <span className="pricing-card__ribbon">Most popular</span>}
+              {plan.featured && <span className="pricing-card__ribbon">{PRICING.popularBadge}</span>}
               <h2 className="pricing-card__name">{plan.name}</h2>
               <p className="pricing-card__price">
                 <span className="pricing-card__amount">{formatPrice(plan.priceCents)}</span>
                 <span className="pricing-card__period">/mo</span>
               </p>
               <p className="pricing-card__tagline">{plan.tagline}</p>
+              <div className="pricing-card__value" aria-label={`Everyday value for ${plan.name}`}>
+                <p className="pricing-card__value-label">{PRICING.everyDayLabel}</p>
+                <p className="pricing-card__value-copy">{plan.dailyValue}</p>
+              </div>
+              <div className="pricing-card__limit">
+                <p>
+                  <span>{PRICING.limitLabel}</span> {plan.dailyLimit}
+                </p>
+                <p>
+                  <span>{PRICING.upgradeLabel}</span> {plan.upgradeTrigger}
+                </p>
+              </div>
               <ul className="pricing-card__highlights">
                 {plan.highlights.map((h) => (
                   <li key={h} className="pricing-card__highlight">
@@ -83,7 +94,7 @@ export function PricingTable({
                   onChoose(plan.key);
                 }}
               >
-                {isCurrent ? "Your plan" : isPending ? "Opening checkout…" : "Choose"}
+                {isCurrent ? PRICING.currentPlanCta : isPending ? PRICING.pendingCheckoutCta : PRICING.planCta}
               </button>
             </li>
           );
@@ -91,7 +102,7 @@ export function PricingTable({
       </ul>
 
       {/* The one wink per surface (#122 voice). */}
-      <p className="pricing__footnote">cancel anytime. the agents will be sad, but professional.</p>
+      <p className="pricing__footnote">{PRICING.tableFootnote}</p>
     </div>
   );
 }

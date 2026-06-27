@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
-import { listPostMeta } from "../../blog/posts.js";
 import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
+import { APP_ROUTES } from "../../routing.js";
+import { FIRST_RUN_RECEIPT_KEY } from "./first-run-receipt.js";
 import type {
   ConnectResult,
   ConnectTool,
@@ -31,8 +32,18 @@ const TEAM_MISSION: TeamMission = {
   target: "acme.com",
   objective: "turn Acme into a live customer-acquisition motion",
   agents: [
-    { who: "scout", role: "customer truth", status: "handoff", current: "read acme.com and found the offer gap" },
-    { who: "quill", role: "copy + content", status: "working", current: "drafting the sharper hero" },
+    {
+      who: "scout",
+      role: "customer truth",
+      status: "handoff",
+      current: "read acme.com and found the offer gap",
+    },
+    {
+      who: "quill",
+      role: "copy + content",
+      status: "working",
+      current: "drafting the sharper hero",
+    },
     { who: "echo", role: "distribution", status: "blocked", current: "waiting on Reddit/X access" },
     { who: "bid", role: "paid growth", status: "gated", current: "holding spend for approval" },
   ],
@@ -91,14 +102,14 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 }
 
 function expectPublicLinks(): void {
-  expect(screen.getAllByRole("link", { name: "Pricing" })[0]).toHaveAttribute("href", "/pricing");
-  expect(screen.getAllByRole("link", { name: "Company" })[0]).toHaveAttribute("href", "/company");
-  expect(screen.getAllByRole("link", { name: "Security & trust" })[0]).toHaveAttribute(
+  expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute(
     "href",
-    "/security",
+    APP_ROUTES.terms,
   );
-  expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute("href", "/terms");
-  expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute("href", "/privacy");
+  expect(screen.getAllByRole("link", { name: "Privacy" })[0]).toHaveAttribute(
+    "href",
+    APP_ROUTES.privacy,
+  );
   expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute(
     "href",
     SUPPORT_CONTACT.href,
@@ -106,6 +117,10 @@ function expectPublicLinks(): void {
 }
 
 describe("OnboardingExperience (#784)", () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+  });
+
   it("renders from the shared ipop experience token contract (#1068)", () => {
     const { container } = render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
     const root = container.querySelector<HTMLElement>(".onboard");
@@ -120,40 +135,92 @@ describe("OnboardingExperience (#784)", () => {
     });
   });
 
-  it("opens on the warm door — a personalized greeting and ONE input, nothing else", () => {
-    render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
-    expect(screen.getByText(/afternoon, gagan/i)).toBeInTheDocument();
-    expect(screen.getByText(/what are we making pop today/i)).toBeInTheDocument();
+  it("opens on the warm door — one simple promise, one input, nothing else", () => {
+    const { container } = render(
+      <OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />,
+    );
+    expect(screen.getByText(/make marketing pop/i)).toBeInTheDocument();
+    expect(screen.getByText(/marketing team in your messages/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
+    expect(screen.getByText(/customer/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: /ipop cowork room/i })).toBeInTheDocument();
-    expect(screen.getByText(/your marketing team, already at the table/i)).toBeInTheDocument();
-    expect(screen.getByText(/send\/spend policy locked/i)).toBeInTheDocument();
-    expectPublicLinks();
+    expect(container.querySelector(".onboard-sunscape__sun")).toBeInTheDocument();
+    expect(container.querySelectorAll(".onboard-sunscape__ray")).toHaveLength(3);
+    expect(
+      screen.queryByRole("complementary", { name: /ipop cowork room/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/your marketing team, already at the table/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/send\/spend policy locked/i)).not.toBeInTheDocument();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
-  it("shows finished real deliverables and the approve-to-ship loop inside onboarding (#571)", () => {
-    const [latestPost] = listPostMeta();
-    if (!latestPost) throw new Error("expected at least one published blog post for onboarding proof");
+  it("keeps finished-work proof behind the dashboard so the homepage stays clean (#571)", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
 
-    const proof = screen.getByRole("region", { name: /finished work proof/i });
-    expect(within(proof).getByText(/already shipped/i)).toBeInTheDocument();
-    expect(within(proof).getByText(/real deliverables from the fleet/i)).toBeInTheDocument();
-    expect(within(proof).getByRole("list", { name: /approve to ship trail/i })).toHaveTextContent(
-      /draftapprovelive/i,
-    );
-    expect(latestPost).toBeDefined();
-    expect(within(proof).getByRole("link", { name: latestPost.title })).toHaveAttribute(
+    expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute(
       "href",
-      `/blog/${latestPost.slug}`,
+      APP_ROUTES.dashboard,
     );
+  });
+
+  it("uses bespoke marketing artefact icons instead of raw placeholder glyphs (#1298)", () => {
+    const { container } = render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+    const preview = screen.getByRole("region", { name: /marketing work preview/i });
+
+    expect(within(preview).getByText("ICP folder")).toBeInTheDocument();
+    expect(within(preview).getByText("where to win")).toBeInTheDocument();
+    expect(within(preview).getByText("sharp truth")).toBeInTheDocument();
+    expect(within(preview).getByText("platform draft")).toBeInTheDocument();
+    expect(within(preview).getByText("reply ready")).toBeInTheDocument();
+    expect(within(preview).getByText("spend dial")).toBeInTheDocument();
+    expect(within(preview).getByText("proof saved")).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-kind="brief"] .onboard-marketing__mark'),
+    ).toHaveTextContent("one-line target");
+    expect(within(preview).queryByText(/^ICP$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^URL$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^AD$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^SEO$/)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(/^PDF$/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the post-start experience in the simple icon shell instead of the old brochure nav", async () => {
+    render(<OnboardingExperience provider={fakeProvider()} hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+
+    expect(
+      await screen.findByRole("article", { name: /instant personalized deliverable/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute(
+      "href",
+      APP_ROUTES.dashboard,
+    );
+    expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pricing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Company" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Watch live demo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();
   });
 
   it("nudges (does not advance) on an empty submit", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={9} />);
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/give us a product or a url/i);
   });
 
@@ -164,18 +231,30 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
     expect(await screen.findByText(/send\/spend gates active/i)).toBeInTheDocument();
     expect(startTeam).toHaveBeenCalledWith("acme.com", FINDING);
-    expect(screen.getByText(/turn Acme into a live customer-acquisition motion/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/turn Acme into a live customer-acquisition motion/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/read acme\.com and found the offer gap/i)).toBeInTheDocument();
     expect(screen.getByText(/drafting the sharper hero/i)).toBeInTheDocument();
     expect(screen.getByText(/waiting on Reddit\/X access/i)).toBeInTheDocument();
     expect(screen.getByText(/holding spend for approval/i)).toBeInTheDocument();
     expect(screen.getByText(/scout -> quill: positioning gap/i)).toBeInTheDocument();
     expect(screen.getByText(/site-read receipt/i)).toBeInTheDocument();
-    expect(screen.getByText(/blocked until real access: Gmail, Reddit\/X, site publishing/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/blocked until real access: Gmail, Reddit\/X, site publishing/i),
+    ).toBeInTheDocument();
+    expect(JSON.parse(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY) ?? "{}")).toMatchObject({
+      stage: "agent_result",
+      target: "acme.com",
+      finding: "your hero buries the offer below the fold.",
+      artifactTitle: "site-read receipt",
+      artifactSummary: "your hero buries the offer below the fold.",
+      receipt: "send/spend gates active",
+    });
   });
 
   it("streams a personalized first deliverable before asking for setup or connectors (#570)", async () => {
@@ -184,18 +263,60 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
-    const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
+    const instant = await screen.findByRole("article", {
+      name: /instant personalized deliverable/i,
+    });
     expect(within(instant).getByText(/streaming now/i)).toBeInTheDocument();
     expect(within(instant).getByText(/Acme's first useful thing/i)).toBeInTheDocument();
     expect(within(instant).getByRole("list", { name: /agent work stream/i })).toHaveTextContent(
       /scout read acme\.comquill drafted from the findingready for your approval/i,
     );
-    expect(within(instant).getByText(/your hero buries the offer below the fold/i)).toBeInTheDocument();
+    expect(
+      within(instant).getByText(/your hero buries the offer below the fold/i),
+    ).toBeInTheDocument();
     expect(
       within(instant).getByRole("button", { name: /approve this first result/i }),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+  });
+
+  it("hands the live first-result flow to the iMessage workspace instead of Gmail connectors", async () => {
+    const onOpenWorkspace = vi.fn();
+    render(
+      <OnboardingExperience
+        provider={fakeProvider()}
+        connectMode="workspace"
+        onOpenWorkspace={onOpenWorkspace}
+        hour={14}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    fireEvent.click(await screen.findByRole("link", { name: /text the team in imessage/i }));
+
+    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
+  });
+
+  it("uses a native iMessage URL for the live first-result handoff", async () => {
+    render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+
+    expect(await screen.findByRole("link", { name: /text the team in imessage/i })).toHaveAttribute(
+      "href",
+      "imessage://",
+    );
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
@@ -206,9 +327,11 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
 
-    const instant = await screen.findByRole("article", { name: /instant personalized deliverable/i });
+    const instant = await screen.findByRole("article", {
+      name: /instant personalized deliverable/i,
+    });
     fireEvent.click(within(instant).getByRole("button", { name: /approve this first result/i }));
 
     expect(await screen.findByText(/that's a real thing you just did/i)).toBeInTheDocument();
@@ -231,13 +354,70 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
 
     expect(startGoogleAuth).toHaveBeenCalledWith("acme.com");
     expect(connect).not.toHaveBeenCalled();
     expect(screen.queryByText(/drafted you a reply to a warm lead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
+  });
+
+  it("shows Google auth maintenance instead of marking Gmail connected when the handoff is unavailable", async () => {
+    const connect = vi.fn((tool: ConnectTool) => Promise.resolve(payoff(tool)));
+    const startGoogleAuth = vi.fn(() =>
+      Promise.reject(
+        new Error(
+          "Google sign-in is not configured for this deployment. Missing: GOOGLE_OAUTH_CLIENT_ID.",
+        ),
+      ),
+    );
+    render(
+      <OnboardingExperience
+        provider={fakeProvider({ connect })}
+        hour={14}
+        startGoogleAuth={startGoogleAuth}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("GOOGLE_OAUTH_CLIENT_ID");
+    expect(connect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/drafted you a reply to a warm lead/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
+  });
+
+  it("lets users continue to a site-read deliverable without Google auth", async () => {
+    const connect = vi.fn((tool: ConnectTool) => Promise.resolve(payoff(tool)));
+    const startGoogleAuth = vi.fn();
+    render(
+      <OnboardingExperience
+        provider={fakeProvider({ connect })}
+        hour={14}
+        startGoogleAuth={startGoogleAuth}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+      target: { value: "acme.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip for now/i }));
+
+    expect(await screen.findByText(/Acme's new hero/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/connect real accounts before ipop drafts replies/i),
+    ).toBeInTheDocument();
+    expect(startGoogleAuth).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
     expect(screen.queryByText(/^connected$/i)).not.toBeInTheDocument();
   });
 
@@ -249,8 +429,10 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
-    expect((await screen.findAllByText(/buries the offer below the fold/i)).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    expect((await screen.findAllByText(/buries the offer below the fold/i)).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByText(/right, i read the whole thing/i)).toBeInTheDocument();
 
     // → connect: gmail first. Allow → an IMMEDIATE real reply payoff.
@@ -294,7 +476,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
 
@@ -318,7 +500,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -344,7 +526,7 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     fireEvent.click(await screen.findByRole("button", { name: /plug in your actual stuff/i }));
     fireEvent.click(screen.getByRole("button", { name: /^allow$/i }));
     await screen.findByText(/drafted you a reply/i);
@@ -370,13 +552,13 @@ describe("OnboardingExperience (#784)", () => {
     fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
       target: { value: "acme.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read your site/i);
     expectPublicLinks();
     // No faked finding while it's errored.
     expect(screen.queryByText(/buries the offer/i)).not.toBeInTheDocument();
     // Retry recovers.
-    fireEvent.click(screen.getByRole("button", { name: /put the team on it/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
     expect((await screen.findAllByText(/buries the offer/i)).length).toBeGreaterThan(0);
   });
 });

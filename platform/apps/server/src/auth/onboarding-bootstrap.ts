@@ -15,6 +15,14 @@ export interface OnboardingBootstrapDeps {
   setDomain(workspaceId: string, domain: string): Promise<void>;
   seedFleet(input: { workspaceId: string; memberId: string }): Promise<void>;
   briefScout(input: { workspaceId: string; memberId: string; goal: string }): Promise<void>;
+  recordFirstRunReceipt(input: {
+    workspaceId: string;
+    target: string;
+    finding: string;
+    artifactTitle: string;
+    artifactSummary: string;
+    receipt: string;
+  }): Promise<void>;
   markBootstrapped(workspaceId: string): Promise<void>;
   log?: Pick<FastifyBaseLogger, "error">;
 }
@@ -33,6 +41,28 @@ export function scoutVerifyGoal(siteUrl: string): string {
     `submit its sitemap (${siteUrl}/sitemap.xml), request indexing for the homepage, ` +
     `then report coverage. The Google account is already connected — no further setup is needed.`
   );
+}
+
+export function bootstrapFirstRunReceipt(input: OnboardingBootstrapInput): {
+  workspaceId: string;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+} {
+  const goal = scoutVerifyGoal(input.siteUrl);
+  return {
+    workspaceId: input.workspaceId,
+    target: input.domain,
+    finding:
+      "Scout has the connected Google account brief for " +
+      input.siteUrl +
+      ": verify Search Console, submit the sitemap, request homepage indexing, and report coverage.",
+    artifactTitle: "first-run Scout brief queued",
+    artifactSummary: goal,
+    receipt: "Google sign-in bootstrap queued Scout for " + input.domain,
+  };
 }
 
 async function step(
@@ -66,6 +96,11 @@ export async function bootstrapAfterGoogleSignin(
         memberId: input.memberId,
         goal: scoutVerifyGoal(input.siteUrl),
       }),
+    deps.log,
+  );
+  await step(
+    "recordFirstRunReceipt",
+    () => deps.recordFirstRunReceipt(bootstrapFirstRunReceipt(input)),
     deps.log,
   );
   await step("markBootstrapped", () => deps.markBootstrapped(input.workspaceId), deps.log);

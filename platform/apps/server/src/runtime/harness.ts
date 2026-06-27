@@ -12,9 +12,10 @@
  *     streaming output back through the runtime. Requires the `claude` binary + auth in the
  *     execution environment (the host for LocalRuntime, the image for SandboxRuntime).
  *   - `codex`: the real OpenAI Codex CLI in its non-interactive `exec --json` mode against the task,
- *     streaming JSON events back through the runtime. Requires the `codex` binary + subscription auth
- *     materialized from `CODEX_AUTH_JSON` (resolved through the #25 SecretsResolver and injected as
- *     runtime env — never in argv).
+ *     streaming JSON events back through the runtime. Public room launches must pass the signed-in
+ *     subscription gate first; the product must never substitute a raw API key for owner subscription auth.
+ *     The signed-in auth can be materialized as `CODEX_AUTH_JSON` by the SecretsResolver and injected as
+ *     runtime env — never in argv.
  *
  * The spec returned here plugs straight into the existing `{ command, args }` contract consumed by
  * `SessionManager`/`AgentRuntime`, so selecting a harness changes no other code path. A session may
@@ -181,12 +182,14 @@ function claudeFastSpec(opts: HarnessOptions): HarnessSpec {
  * - `--dangerously-bypass-approvals-and-sandbox` lets the agent actually edit files in the session
  *   workspace without approval prompts (the runtime/workspace provisioner is the isolation boundary).
  *
- * Auth is the owner's Codex subscription login exported as `CODEX_AUTH_JSON`, resolved through the
- * #25 SecretsResolver and injected as runtime env. The command writes that JSON into `$CODEX_HOME/auth.json`
+ * Auth is intentionally NOT modeled here as `OPENAI_API_KEY`: public room launches are gated before this
+ * spec is selected unless the workspace has connected signed-in Codex subscription auth. When connected,
+ * the owner's subscription login is exported as `CODEX_AUTH_JSON`, resolved through the #25
+ * SecretsResolver and injected as runtime env. The command writes that JSON into `$CODEX_HOME/auth.json`
  * with 0600-ish permissions before launching Codex, so no API key is required and no token value appears
  * in argv. Model selection rides the same env seam as the task — an env-gated `--model` flag that
- * references `$CODEX_MODEL` (double-quoted, like `$AGENT_TASK`); when unset the flag vanishes and
- * codex falls back to its own default.
+ * references `$CODEX_MODEL` (double-quoted, like `$AGENT_TASK`); when unset the flag vanishes and codex
+ * falls back to its own default.
  */
 function codexSpec(opts: HarnessOptions): HarnessSpec {
   const bin = opts.codexBin ?? "codex";

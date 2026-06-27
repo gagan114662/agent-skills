@@ -1,4 +1,5 @@
 import type { TeamEvent, TeamEventKind } from "@reload/shared";
+import type { HarnessKind } from "../runtime/harness.js";
 import type { LaunchInput, SessionLogger } from "../runtime/manager.js";
 import {
   noopTracer,
@@ -28,6 +29,8 @@ export interface Subtask {
   task: string;
   /** The branch the agent works on — recorded on the subtask's team events. */
   branch: string;
+  /** Optional per-subtask harness override. Codex operator lanes use this to make Codex the actual brain. */
+  preferredHarness?: HarnessKind;
 }
 
 export interface TeamRunInput {
@@ -64,6 +67,21 @@ export interface TeamCoordinatorDeps {
   tracer?: AgentTracer;
   /** Injectable clock for deterministic event timestamps in tests. */
   now?: () => string;
+}
+
+function subtaskLaneSummary(task: string): string {
+  if (task.toLowerCase().includes("audit_label: codex_operator_lane")) {
+    return "Codex operator lane";
+  }
+  const contextLine = task
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("You are "));
+  const match = /^You are\s+(.+?)\s+in ipop's live marketing room\..*?Your lane is\s+(.+?)\.$/i.exec(
+    contextLine ?? "",
+  );
+  if (match) return match[1] + " " + match[2];
+  return task;
 }
 
 /**
@@ -145,7 +163,8 @@ export class TeamCoordinator {
     parentSpanId: string | undefined,
   ): Promise<SubtaskResult> {
     let visibilityDegraded = false;
-    let delivered = await this.announce(input, subtask, "started", `started: ${subtask.task}`);
+    const lane = subtaskLaneSummary(subtask.task);
+    let delivered = await this.announce(input, subtask, "started", `started: ${lane}`);
     visibilityDegraded = visibilityDegraded || !delivered;
     try {
       const { id } = await this.deps.launcher.launch({
@@ -154,11 +173,12 @@ export class TeamCoordinator {
         agentMemberId: subtask.agentMemberId,
         createdByMemberId: input.createdByMemberId,
         task: subtask.task,
+        harness: subtask.preferredHarness,
         teamRunId: input.teamRunId,
         parentSpanId,
       });
       await this.deps.launcher.join(id);
-      delivered = await this.announce(input, subtask, "done", `done: ${subtask.task}`);
+      delivered = await this.announce(input, subtask, "done", `done: ${lane}`);
       visibilityDegraded = visibilityDegraded || !delivered;
       return { subtaskId: subtask.subtaskId, sessionId: id, ok: true, visibilityDegraded };
     } catch (err) {

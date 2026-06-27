@@ -15,6 +15,7 @@ import { listChannelMessages } from "../../src/db/repositories/messages.js";
 import { publishTeamEvent } from "../../src/realtime/bus.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import { TeamCoordinator } from "../../src/team/coordinator.js";
+import type { CodexSubscriptionStatusProvider } from "../../src/routes/team.js";
 import type { TeamEvent } from "@reload/shared";
 
 const silentLogger: SessionLogger = {
@@ -41,13 +42,21 @@ afterAll(async () => {
 });
 
 /** Build + listen an app whose TeamCoordinator drives a LocalRuntime SessionManager. */
-async function startApp(maxConcurrency: number): Promise<{ app: FastifyInstance; http: string }> {
+async function startApp(
+  maxConcurrency: number,
+  codexSubscription?: CodexSubscriptionStatusProvider,
+): Promise<{ app: FastifyInstance; http: string }> {
   const manager = new SessionManager({
     runtime: new LocalRuntime(),
     store: dbStore,
     poster: channelPoster,
     secrets: new StaticSecretsResolver({}),
     harness: { command: process.execPath, args: COMPLETING_HARNESS },
+    harnessOverrides: () => ({
+      command: process.execPath,
+      args: COMPLETING_HARNESS,
+      decode: (line) => ({ display: [line], raw: null }),
+    }),
     caps: { wallClockMs: 20_000, idleMs: 8_000 },
     logger: silentLogger,
   });
@@ -62,7 +71,7 @@ async function startApp(maxConcurrency: number): Promise<{ app: FastifyInstance;
     maxConcurrency,
     logger: silentLogger,
   });
-  const app = buildApp({ sessionManager: manager, teamCoordinator: coordinator });
+  const app = buildApp({ sessionManager: manager, teamCoordinator: coordinator, codexSubscription });
   apps.push(app);
   await app.listen({ port: 0, host: "127.0.0.1" });
   const { port } = app.server.address() as AddressInfo;
@@ -131,6 +140,36 @@ async function pollTerminal(
   }
 }
 
+/** Poll the visible team channel receipts until every expected event has been persisted. */
+async function pollTeamEvents(
+  app: FastifyInstance,
+  w: World,
+  teamRunId: string,
+  expected: { started: number; done: number },
+  timeoutMs = 15_000,
+): Promise<TeamEvent[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const events = (
+      await app.inject({
+        method: "GET",
+        url: `/channels/${w.channelId}/team-events`,
+        cookies: { rid: w.cookie },
+      })
+    ).json() as TeamEvent[];
+    const matching = events.filter((e) => e.teamRunId === teamRunId);
+    const started = matching.filter((e) => e.kind === "started");
+    const done = matching.filter((e) => e.kind === "done");
+    if (started.length >= expected.started && done.length >= expected.done) return matching;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `only ${started.length}/${expected.started} started and ${done.length}/${expected.done} done team events visible in time`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
   it("runs 3 agents in parallel on one feature and coordinates over the team channel", async () => {
     const { app } = await startApp(3);
@@ -158,13 +197,7 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
     expect(terminal.filter((s) => s.status === "completed")).toHaveLength(3);
 
     // The shared team channel carries a started + done event for each of the 3 subtasks.
-    const events = (
-      await app.inject({
-        method: "GET",
-        url: `/channels/${w.channelId}/team-events`,
-        cookies: { rid: w.cookie },
-      })
-    ).json() as TeamEvent[];
+    const events = await pollTeamEvents(app, w, body.teamRunId, { started: 3, done: 3 });
 
     expect(events.every((e) => e.teamRunId === body.teamRunId)).toBe(true);
     const started = events.filter((e) => e.kind === "started");
@@ -201,5 +234,128 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
       payload: { subtasks: [] },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("fails closed when the room requests Codex without a connected subscription (#1282)", async () => {
+    const { app } = await startApp(2);
+    const w = await seed(app, 1);
+
+    const status = await app.inject({
+      method: "GET",
+      url: "/me/codex/status",
+      cookies: { rid: w.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      connected: false,
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+
+    const preflight = await app.inject({
+      method: "GET",
+      url: "/me/codex/preflight",
+      cookies: { rid: w.cookie },
+    });
+    expect(preflight.statusCode).toBe(200);
+    expect(preflight.json()).toMatchObject({
+      connected: false,
+      selectedHarness: "codex",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: {
+        subtasks: [
+          {
+            agentMemberId: w.agentMemberIds[0],
+            task: "mine insights for ipop.ai",
+            branch: "ipop-scout",
+            harness: "codex",
+          },
+        ],
+      },
+    });
+
+    expect(launch.statusCode).toBe(409);
+    expect(launch.json()).toMatchObject({
+      code: "codex_subscription_not_connected",
+      status: {
+        selectedHarness: "codex",
+        runtimeAuth: "missing",
+        fallback: "none",
+        apiKeySatisfies: false,
+      },
+    });
+
+    const sessions = await app.inject({
+      method: "GET",
+      url: `/channels/${w.channelId}/agent-sessions`,
+      cookies: { rid: w.cookie },
+    });
+    expect(sessions.json()).toEqual([]);
+  });
+
+  it("starts a Codex-selected team run when the signed-in subscription preflight is connected (#1282)", async () => {
+    const connectedCodex: CodexSubscriptionStatusProvider = {
+      async status() {
+        return {
+          connected: true,
+          reason: "OpenAI ChatGPT subscription auth is ready for Codex agent runs.",
+          selectedHarness: "codex",
+          userAuthenticated: true,
+          workspaceAuthenticated: true,
+          runtimeAuth: "signed_in_subscription",
+          fallback: "none",
+          apiKeySatisfies: false,
+        };
+      },
+    };
+    const { app } = await startApp(2, connectedCodex);
+    const w = await seed(app, 1);
+
+    const status = await app.inject({
+      method: "GET",
+      url: "/me/codex/status",
+      cookies: { rid: w.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      connected: true,
+      selectedHarness: "codex",
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+
+    const launch = await app.inject({
+      method: "POST",
+      url: "/channels/" + w.channelId + "/team-runs",
+      cookies: { rid: w.cookie },
+      payload: {
+        subtasks: [
+          {
+            agentMemberId: w.agentMemberIds[0],
+            task: "mine insights for ipop.ai",
+            branch: "ipop-scout",
+            harness: "codex",
+          },
+        ],
+      },
+    });
+
+    expect(launch.statusCode).toBe(202);
+    expect(launch.json()).toMatchObject({
+      subtaskCount: 1,
+      subtasks: [{ agentMemberId: w.agentMemberIds[0], branch: "ipop-scout", harness: "codex" }],
+    });
   });
 });

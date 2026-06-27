@@ -59,6 +59,26 @@ describe("api client", () => {
     expect(msg.id).toBe("msg1");
   });
 
+  it("getCodexStatus reads the signed-in subscription bridge status", async () => {
+    const payload = {
+      connected: false,
+      reason: "not connected",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    } as const;
+    const fetchMock = stubFetch(200, payload);
+    const status = await api.getCodexStatus();
+
+    const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(url).toBe("/me/codex/status");
+    expect(init.credentials).toBe("include");
+    expect(status).toEqual(payload);
+  });
+
   it("searchMembers unwraps the search envelope into results", async () => {
     stubFetch(200, {
       query: "a",

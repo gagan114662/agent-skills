@@ -163,6 +163,89 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched.every((l) => l.parentSpanId === "span_parent")).toBe(true);
   });
 
+  it("passes Codex operator subtasks through the real codex harness", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 2,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "codex_operator",
+          agentMemberId: "mem_codex",
+          task: "Build the approved iMessage-first homepage and verify it.",
+          branch: "feat/codex-operator",
+          preferredHarness: "codex",
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.harness).toBe("codex");
+    expect(launcher.launched[0]?.task).toContain("iMessage-first");
+  });
+
+  it("keeps structured room packets out of lifecycle event summaries (#1265)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 2,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+    const scoutPacket = [
+      "1. Task context",
+      "You are Scout in ipop's live marketing room. Work on the owner's current growth goal: grow ipop.ai. Your lane is insight mining.",
+      "2. Tone context",
+      "Warm, plain, sharp, and useful.",
+    ].join("\n");
+    const operatorPacket = [
+      "codex_work_packet",
+      "audit_label: codex_operator_lane",
+      "1. Task context",
+      "You are Codex in ipop's live marketing room. Work on the owner's current growth goal: grow ipop.ai. Your lane is codex_operator_lane.",
+      "9. Output formatting",
+      "- pr_or_issue_links",
+    ].join("\n");
+
+    await coordinator.runTeam({
+      ...runInput(2),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: scoutPacket,
+          branch: "ipop-scout-grow-ipop-ai",
+        },
+        {
+          subtaskId: "operator",
+          agentMemberId: "mem_operator",
+          task: operatorPacket,
+          branch: "ipop-codex-grow-ipop-ai",
+          preferredHarness: "codex",
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toBe(scoutPacket);
+    expect(launcher.launched[1]?.task).toBe(operatorPacket);
+    const summaries = events().map((event) => event.summary);
+    expect(summaries).toContain("started: Scout insight mining");
+    expect(summaries).toContain("done: Scout insight mining");
+    expect(summaries).toContain("started: Codex operator lane");
+    expect(summaries).toContain("done: Codex operator lane");
+    expect(summaries.join("\n")).not.toContain("2. Tone context");
+    expect(summaries.join("\n")).not.toContain("9. Output formatting");
+  });
+
   it("readEvents returns the channel's parsed team events", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();

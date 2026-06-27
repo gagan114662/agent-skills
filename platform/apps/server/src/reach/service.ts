@@ -113,6 +113,46 @@ function chooseDomain(states: DomainState[]): DomainState | null {
   );
 }
 
+function reachMode(caps: ReachCaps): ReachMode {
+  const emailLive = caps.sendProvider !== "dryrun" && caps.liveSendEnabled;
+  const linkedinLive = caps.linkedinSendProvider !== "none" && caps.linkedinLiveSendEnabled;
+  const reasons: string[] = [];
+  if (caps.prospectSource === "mock") reasons.push("mock prospects");
+  if (!emailLive && !linkedinLive) reasons.push("dry-run or queue-only send channels");
+  if (emailLive && (!caps.brandName || !caps.postalAddress || !caps.unsubscribeUrl)) {
+    reasons.push("missing email compliance footer config");
+  }
+  const live = reasons.length === 0;
+  return {
+    live,
+    label: live ? "live" : "demo",
+    detail: live
+      ? "Reach is configured for live prospects and a permitted send channel."
+      : `Reach is not live: ${reasons.join(", ")}.`,
+    prospectSource: caps.prospectSource,
+    email: { provider: caps.sendProvider, live: emailLive },
+    linkedin: { provider: caps.linkedinSendProvider, live: linkedinLive },
+    reasons,
+  };
+}
+
+function reachLivePreflight(caps: ReachCaps, healthReasons: readonly string[] = []): ReachLivePreflight {
+  const mode = reachMode(caps);
+  const reasons: string[] = [];
+  if (!caps.enabled) reasons.push("reach disabled for this workspace");
+  reasons.push(...mode.reasons);
+  reasons.push(...healthReasons);
+  const ok = caps.enabled && mode.live && healthReasons.length === 0;
+  return {
+    ok,
+    mode,
+    reasons,
+    detail: ok
+      ? "Reach can run as live autonomous outreach."
+      : "Reach cannot run as live autonomous outreach: " + reasons.join(", ") + ".",
+  };
+}
+
 // ---- seams ---------------------------------------------------------------------------------------
 
 /** The ICP seed reader — pulls the workspace domain + founder-console hints. */
@@ -297,6 +337,7 @@ export interface ReachDeps {
       workspaceId: string,
     ): Promise<{ auth: SenderAuthInput; authResultsHeader?: string | null } | null>;
   };
+  liveChannelHealth?: (workspaceId: string, caps: ReachCaps) => Promise<readonly string[]>;
   caps: (workspaceId: string) => ReachCaps;
   now?: () => Date;
   log?: FastifyBaseLogger;
@@ -331,6 +372,26 @@ export interface ReachSummary {
   messagesSent: number;
   replies: number;
   booked: number;
+  mode: ReachMode;
+}
+
+export interface ReachLivePreflight {
+  /** True only when the workspace may honestly claim live/autonomous outreach. */
+  ok: boolean;
+  mode: ReachMode;
+  reasons: string[];
+  detail: string;
+}
+
+export interface ReachMode {
+  /** True only when prospects are not mock and at least one permitted send channel is live. */
+  live: boolean;
+  label: "live" | "demo";
+  detail: string;
+  prospectSource: ProspectSourceKind;
+  email: { provider: string; live: boolean };
+  linkedin: { provider: string; live: boolean };
+  reasons: string[];
 }
 
 export interface ReachReplyThread {
@@ -347,6 +408,15 @@ export interface ReachReplyThread {
 
 export class ReachService {
   constructor(private readonly deps: ReachDeps) {}
+
+  /** Production truth gate: call before claiming or triggering live autonomous outreach. */
+  async livePreflight(workspaceId: string): Promise<ReachLivePreflight> {
+    const caps = this.deps.caps(workspaceId);
+    const healthReasons = this.deps.liveChannelHealth
+      ? await this.deps.liveChannelHealth(workspaceId, caps)
+      : [];
+    return reachLivePreflight(caps, healthReasons);
+  }
 
   async importProspects(
     workspaceId: string,
@@ -789,6 +859,40 @@ export class ReachService {
   }
 
   /**
+   * Run only when the workspace passes the live/autonomous outreach preflight. Demo/dry-run callers can keep
+   * using `runBatch`, but production surfaces that say "agents are reaching out" must use this fail-closed path.
+   */
+  async runLiveBatch(workspaceId: string): Promise<ReachRunResult> {
+    const preflight = await this.livePreflight(workspaceId);
+    if (!preflight.ok) {
+      await this.deps.runs.insert({
+        workspaceId,
+        sourceKind: preflight.mode.prospectSource,
+        status: "skipped",
+        prospectsFound: 0,
+        messagesSent: 0,
+        messagesQueued: 0,
+        suppressedCount: 0,
+        rateLimitedCount: 0,
+        tuningReport: null,
+      });
+      return {
+        status: "skipped",
+        reason: preflight.detail,
+        prospectsFound: 0,
+        messagesSent: 0,
+        messagesQueued: 0,
+        suppressed: 0,
+        rateLimited: 0,
+        skipped: 0,
+        outcomes: [],
+        tuning: null,
+      };
+    }
+    return this.runBatch(workspaceId);
+  }
+
+  /**
    * Record an external engagement receipt (open/reply/booked). Idempotent. A reply stops the prospect's
    * cadence (we don't keep poking someone who answered). Returns whether a new receipt was written.
    */
@@ -876,11 +980,13 @@ export class ReachService {
   /** The headline numbers for the founder-console Reach proof tile. */
   async summary(workspaceId: string, windowMs: number = TUNING_WINDOW_MS): Promise<ReachSummary> {
     const m = await this.metrics(workspaceId, windowMs);
+    const caps = this.deps.caps(workspaceId);
     return {
       prospectsFound: m.contacted,
       messagesSent: m.sent,
       replies: m.replies,
       booked: m.booked,
+      mode: reachMode(caps),
     };
   }
 }

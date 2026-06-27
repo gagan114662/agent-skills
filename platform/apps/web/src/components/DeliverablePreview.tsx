@@ -7,8 +7,9 @@
  * deliverable appear with zero setup, and signs in when (and if) they like what they see.
  *
  * The fetch is injectable (`fetchImpl`) so this renders under jsdom in tests with a fake source. If the
- * preview can't be built we degrade honestly to an error line + the sign-in path (#200 §3: no faked
- * artifact). Everything returned is server-sanitized text rendered as React children — never raw markup.
+ * preview can't be fetched we degrade honestly to a domain-only starter artifact: useful enough to keep
+ * momentum, but receipt-labeled so it never pretends external research happened. Everything returned is
+ * server-sanitized text rendered as React children — never raw markup.
  */
 import { useEffect, useRef, useState } from "react";
 import { ONBOARDING } from "../brand.js";
@@ -31,6 +32,59 @@ export interface DeliverablePreviewProps {
 
 type Status = "streaming" | "done" | "error";
 const DEFAULT_REVEAL_MS = 550;
+
+function hostFromUrl(value: string): string {
+  const raw = value.trim() || "your site";
+  try {
+    const parsed = new URL(raw.includes("://") ? raw : "https://" + raw);
+    return parsed.hostname.replace(/^www\./, "") || raw;
+  } catch {
+    return raw.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] || raw;
+  }
+}
+
+function domainOnlyFallback(url: string): {
+  readonly header: DeliverableStartDto;
+  readonly sections: readonly DeliverableSectionDto[];
+} {
+  const host = hostFromUrl(url);
+  const sections: DeliverableSectionDto[] = [
+    {
+      id: "domain-snapshot",
+      index: 0,
+      kind: "insight",
+      heading: "What we can use immediately",
+      body:
+        host +
+        " is enough to start a first-pass growth brief. This preview is limited to the submitted domain; ipop will not invent prospects, traffic, or customer proof without connected sources.",
+    },
+    {
+      id: "first-action",
+      index: 1,
+      kind: "action",
+      heading: "First useful job for the room",
+      body:
+        "Scout should read the site, turn the offer into one clear customer hypothesis, then ask for one connected source before naming companies or preparing outreach.",
+    },
+    {
+      id: "ship-path",
+      index: 2,
+      kind: "draft",
+      heading: "What unlocks the real work",
+      body:
+        "Connect Google or a prospect source and the room can replace this starter brief with receipts: source read, ranked opportunities, approval-gated drafts, and a visible action log.",
+    },
+  ];
+  return {
+    header: {
+      business: { url, host, name: host },
+      title: host + " starter growth brief",
+      subtitle: "Built from the domain only. Useful first, honest always.",
+      sectionCount: sections.length,
+    },
+    sections,
+  };
+}
 
 export function DeliverablePreview(props: DeliverablePreviewProps): React.JSX.Element {
   const { url, onSignIn, onRestart, fetchImpl, revealDelayMs = DEFAULT_REVEAL_MS } = props;
@@ -63,7 +117,10 @@ export function DeliverablePreview(props: DeliverablePreviewProps): React.JSX.El
         setSections(plan.sections.map((section, index) => ({ ...section, index })));
       })
       .catch(() => {
-        if (!controller.signal.aborted) setStatus("error");
+        if (controller.signal.aborted) return;
+        const fallback = domainOnlyFallback(url);
+        setHeader(fallback.header);
+        setSections([...fallback.sections]);
       });
 
     return () => controller.abort();

@@ -13,7 +13,10 @@ const plan = (over: Partial<PlanDto> = {}): PlanDto => ({
   agentSeats: 3,
   monthlySessionBudgetCents: 20_000,
   fleetSize: 1,
-  highlights: ["3 agent seats", "$200/mo session budget", "1 department fleet"],
+  dailyValue: "A daily marketing checkup.",
+  dailyLimit: "1 active campaign, 3 agents, and a $200 monthly agent-work cap.",
+  upgradeTrigger: "Upgrade when you want more lanes.",
+  highlights: ["Daily SEO/content/social check-ins", "3 agent seats", "$200/mo cap with receipts"],
   featured: false,
   ...over,
 });
@@ -40,15 +43,17 @@ describe("PricingTable (#125 — pure)", () => {
     expect(screen.getByText("$199")).toBeInTheDocument();
     expect(screen.getByText("$499")).toBeInTheDocument();
     expect(screen.getAllByText("3 agent seats").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("A daily marketing checkup.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Upgrade when you want more lanes/i).length).toBeGreaterThan(0);
   });
 
-  it("renders a selectable Choose CTA for every tier (#234: all three plans, not just Starter)", () => {
+  it("renders a selectable keep-working CTA for every tier (#234: all three plans, not just Starter)", () => {
     render(<PricingTable plans={PLANS} current={null} onChoose={() => {}} />);
     // The whole revenue ladder must be reachable — one enabled "Choose" per plan, not just the floor tier.
     for (const name of ["Starter", "Pro", "Agency"]) {
       const cta = screen.getByLabelText(`Choose the ${name} plan`);
       expect(cta).toBeEnabled();
-      expect(cta).toHaveTextContent("Choose");
+      expect(cta).toHaveTextContent("Keep them working");
     }
     expect(screen.getAllByRole("button", { name: /Choose the .* plan/ })).toHaveLength(3);
   });
@@ -59,10 +64,10 @@ describe("PricingTable (#125 — pure)", () => {
     expect(ribbons).toHaveLength(1);
   });
 
-  it("shows the one-wink footnote (ipop voice)", () => {
+  it("shows the value-cap footnote (ipop voice)", () => {
     render(<PricingTable plans={PLANS} current={null} onChoose={() => {}} />);
     expect(
-      screen.getByText("cancel anytime. the agents will be sad, but professional."),
+      screen.getByText("everyday work is capped before spend gets silly. the agents are enthusiastic; billing is not."),
     ).toBeInTheDocument();
   });
 

@@ -111,6 +111,17 @@ export interface ConnectionView {
   status: "available" | "coming_soon";
   capabilities: string[];
   oauthScopes: string[];
+  consentStatus: "none" | "recorded";
+  providerStatus: "unproven" | "healthy";
+  lastProofAt: number | null;
+  lastProofReceipt: string | null;
+  failureReason: string | null;
+  configIssue?: {
+    code: string;
+    missingEnv: string[];
+    remedy: string;
+  } | null;
+  /** True only when provider proof has passed; consent alone is not connected (#1284). */
   connected: boolean;
 }
 
@@ -118,6 +129,113 @@ export interface ConnectionView {
 export interface ConnectionsResponse {
   connections: ConnectionView[];
   canManageInternal: boolean;
+}
+
+export type ConnectionOAuthStartResponse =
+  | {
+      status: "pending_approval";
+      requestId: string;
+      authorizePath?: string;
+      provider: string;
+      scopes: string[];
+      message: string;
+    }
+  | {
+      status: "coming_soon";
+      provider: string;
+      scopes: string[];
+      message: string;
+      issue?: {
+        code: string;
+        missingEnv: string[];
+        callbackPath?: string;
+      } | null;
+    };
+
+export interface GoogleAuthStatus {
+  configured: boolean;
+  status: "ready" | "maintenance";
+  missing: string[];
+  issue: "google_oauth_missing_config" | null;
+  startPath: string;
+  message: string;
+  remedy: string | null;
+}
+
+export type IMessageSendStatus =
+  | "sent"
+  | "dry_run"
+  | "disabled"
+  | "not_configured"
+  | "too_long"
+  | "failed";
+
+export interface IMessageRoomResponse {
+  status: IMessageSendStatus;
+  recipient?: string;
+  dryRun: boolean;
+  error?: string;
+  receipt?: string;
+  message?: Message;
+}
+
+export interface IMessageRecipientView {
+  recipient: string;
+  serviceName: string | null;
+  verified: boolean;
+  verifiedAt: string | null;
+}
+
+export interface IMessageStatusResponse {
+  enabled: boolean;
+  configured: boolean;
+  dryRun: boolean;
+  recipient?: string;
+  recipientSource?: "member_verified" | "member_pending" | "workspace" | "none";
+  requiresVerification?: boolean;
+  maxChars: number;
+  memberRecipient: IMessageRecipientView | null;
+}
+
+export interface IMessageRecipientSaveResponse {
+  status: "pending_verification";
+  recipient: string;
+  serviceName: string | null;
+  verified: false;
+  message: string;
+}
+
+export interface IMessageTestResponse {
+  status: IMessageSendStatus;
+  recipient?: string;
+  dryRun: boolean;
+  error?: string;
+  memberRecipient: IMessageRecipientView | null;
+}
+
+export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
+
+export interface FirstRunReceiptDto {
+  stage: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+  recordedAtMs: number;
+}
+
+export interface FirstRunReceiptInput {
+  stage?: FirstRunStage;
+  target: string;
+  finding: string;
+  artifactTitle: string;
+  artifactSummary: string;
+  receipt: string;
+}
+
+export interface FirstRunReceiptResponse {
+  firstRun: FirstRunReceiptDto | null;
 }
 
 /**
@@ -337,6 +455,37 @@ export interface AgentProfile {
   createdAt: string;
 }
 
+export type TeamRunHarness = "demo" | "claude-code" | "codex";
+
+export interface TeamRunSubtaskInput {
+  agentMemberId: string;
+  task: string;
+  branch: string;
+  harness?: TeamRunHarness;
+}
+
+export interface TeamRunResponse {
+  teamRunId: string;
+  subtaskCount: number;
+  subtasks: Array<{
+    subtaskId: string;
+    agentMemberId: string;
+    branch: string;
+    harness: TeamRunHarness | null;
+  }>;
+}
+
+export interface CodexSubscriptionStatus {
+  connected: boolean;
+  reason: string;
+  selectedHarness: "codex";
+  userAuthenticated: boolean;
+  workspaceAuthenticated: boolean;
+  runtimeAuth: "signed_in_subscription" | "missing";
+  fallback: "none";
+  apiKeySatisfies: false;
+}
+
 /**
  * The members-rail footer (#371): humans · agents · decisions captured, from `GET /me/department`.
  * `summary` is the server-rendered line; the counts are exposed for the client to re-render if needed.
@@ -535,6 +684,35 @@ export interface FounderConsoleDto {
     openCount: number;
     total: number;
     noisiestComponents: { service: string; count: number }[];
+  };
+  /** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+  agentObservability?: {
+    scheduler: {
+      status: "healthy" | "degraded" | "stopped" | "unknown";
+      lastTickAgeSeconds: number | null;
+    };
+    queueDepth: number;
+    runningRuns: number;
+    stalledRuns: number;
+    failedRunsLast24h: number;
+    retryRate: number | null;
+    recovery: {
+      state: "idle" | "retrying" | "needs_human" | "unknown";
+      retryableStuckRuns: number;
+      lastRecoveryAtMs: number | null;
+    };
+    audit: {
+      toolCalls: number;
+      auditedToolCalls: number;
+      unauditedToolCalls: number;
+      coverage: number | null;
+    };
+    connectorSilentFailures: {
+      connector: string;
+      status: "silent" | "failing" | "unknown";
+      lastOkAgeSeconds: number | null;
+    }[];
+    alerts: string[];
   };
   /** The Growth Loop roll-up (#102/#222): event-driven funnel counts (no longer placeholders). */
   growth?: {
@@ -758,7 +936,13 @@ export interface StatusPageDto {
   generatedAt: string;
 }
 
-export type PublicDogfoodPhase = "thinking" | "tool" | "artifact" | "approval" | "outcome" | "blocked";
+export type PublicDogfoodPhase =
+  | "thinking"
+  | "tool"
+  | "artifact"
+  | "approval"
+  | "outcome"
+  | "blocked";
 
 export interface PublicDogfoodReceiptDto {
   id: string;

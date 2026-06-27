@@ -69,11 +69,12 @@ import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
 import type { TurnController } from "./turns/controller.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
-import { teamRoutes } from "./routes/team.js";
+import { teamRoutes, type CodexSubscriptionStatusProvider } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
 import { mcpRoutes, type McpRoutesOptions } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
+import { createCodexSubscriptionStatusProvider } from "./runtime/codex-subscription.js";
 import type { SessionManager } from "./runtime/manager.js";
 import { runRoutes } from "./routes/run.js";
 import { createDefaultRunProcessManager } from "./run/default.js";
@@ -177,6 +178,7 @@ import { workspaceCapabilityRoutes } from "./routes/workspace-capabilities.js";
 import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
+import { imessageRoutes } from "./routes/imessage.js";
 import { gardenRoutes } from "./routes/garden.js";
 import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
@@ -221,6 +223,8 @@ import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
 import { marketingTargetRoutes } from "./routes/marketing-target.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
+import { createIMessageRelayService } from "./imessage/default.js";
+import type { IMessageRelayService } from "./imessage/service.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
 import { createDefaultAdsService } from "./ads/default.js";
@@ -404,6 +408,8 @@ export interface BuildAppOptions {
   authSessionCleanupEngine?: AuthSessionCleanupEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
+  /** #1282 Codex subscription status gate: tests inject deterministic status; default probes Codex doctor. */
+  codexSubscription?: CodexSubscriptionStatusProvider;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
   cloudWorkspaceManager?: CloudWorkspaceManager;
   /**
@@ -545,6 +551,8 @@ export interface BuildAppOptions {
    * flow stays an honest `coming_soon` until wired.
    */
   claudeConnect?: ClaudeConnectRoutesOptions;
+  /** #1283 iMessage room: tests inject a fake relay service; default uses the macOS Messages adapter. */
+  imessage?: IMessageRelayService;
   /**
    * #300 low-commitment front door. Tests inject `signupEntry` caps so the read-only sample workspace can
    * be exercised without a config file. Default reads the layered config (sample workspace OFF).
@@ -1154,6 +1162,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
   app.register(connectionsRoutes);
+  app.register(imessageRoutes, { service: opts.imessage ?? createIMessageRelayService(env.imessage) });
   // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.
@@ -1300,7 +1309,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.
   const teamCoordinator =
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
-  app.register(teamRoutes, { coordinator: teamCoordinator });
+  app.register(teamRoutes, {
+    coordinator: teamCoordinator,
+    codexSubscription: opts.codexSubscription ?? createCodexSubscriptionStatusProvider(),
+  });
   // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in
   // (AUTONOMY_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and

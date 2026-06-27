@@ -38,6 +38,18 @@ export const workspaceOnboarding = pgTable("workspace_onboarding", {
   targetPositioning: text("target_positioning"),
   targetAudience: text("target_audience"),
   targetCompetitors: text("target_competitors"),
+  /**
+   * First-run receipt (#1289): the first site-read / team-mission artifact that a new customer saw before
+   * entering the app. This lets the signed-in dashboard prove the public start produced durable work instead
+   * of a disposable preview.
+   */
+  firstRunStage: text("first_run_stage"),
+  firstRunTarget: text("first_run_target"),
+  firstRunFinding: text("first_run_finding"),
+  firstRunArtifactTitle: text("first_run_artifact_title"),
+  firstRunArtifactSummary: text("first_run_artifact_summary"),
+  firstRunReceipt: text("first_run_receipt"),
+  firstRunRecordedAt: timestamp("first_run_recorded_at", { withTimezone: true }),
   /** Set once the post-signin bootstrap (seed + Scout brief) has run; null = not yet bootstrapped. */
   bootstrappedAt: timestamp("bootstrapped_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

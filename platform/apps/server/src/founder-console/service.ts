@@ -1,5 +1,6 @@
 import {
   aggregateFounderConsole,
+  type AgentObservabilityView,
   type FounderConsole,
   type GateBoundariesSnapshot,
   type MaintenanceSnapshot,
@@ -85,6 +86,11 @@ export interface PostmortemsReader {
 /** Reliability insights (#148) off `sre_incidents`. Optional — absent ⇒ the console renders a zeroed pane. */
 export interface ReliabilityReader {
   insights(workspaceId: string): Promise<ReliabilityInsightsView>;
+}
+
+/** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+export interface AgentObservabilityReader {
+  snapshot(workspaceId: string, now: Date): Promise<AgentObservabilityView>;
 }
 
 /** The #119 evidence-priced autonomy boundaries: owned classes + the change history. */
@@ -205,6 +211,8 @@ export interface FounderConsoleDeps {
   postmortems?: PostmortemsReader;
   /** Optional reliability insights reader (#148). Absent ⇒ a zeroed reliability pane. */
   reliability?: ReliabilityReader;
+  /** Optional agent-observability reader (#1292). Absent ⇒ unknown/unwired, never green by omission. */
+  agentObservability?: AgentObservabilityReader;
   gateBoundaries: GateBoundaryReader;
   /** Self-healing flywheel (#117) — optional, read-only. */
   flywheel?: FlywheelReader;
@@ -267,6 +275,7 @@ export class FounderConsoleService {
       maintenance,
       postmortems,
       reliability,
+      agentObservability,
       gateBoundaries,
       usageTrend,
       selfHealing,
@@ -295,6 +304,7 @@ export class FounderConsoleService {
         this.deps.switches.maintenance(),
         this.deps.postmortems?.recent(workspaceId) ?? Promise.resolve([]),
         this.deps.reliability?.insights(workspaceId) ?? Promise.resolve(undefined),
+        this.deps.agentObservability?.snapshot(workspaceId, now) ?? Promise.resolve(undefined),
         this.deps.gateBoundaries.boundaries(workspaceId),
         this.deps.forecast.trend(workspaceId, now),
         this.deps.flywheel?.state(workspaceId) ?? Promise.resolve(undefined),
@@ -337,6 +347,7 @@ export class FounderConsoleService {
       switches: { killSwitch, maintenance },
       postmortems,
       reliability,
+      agentObservability,
       gateBoundaries,
       selfHealing,
       selfHealingOps,

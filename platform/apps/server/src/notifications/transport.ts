@@ -33,6 +33,15 @@ export class NoopTransport implements NotificationTransport {
   }
 }
 
+/** Deliver to several transports. Each child transport keeps its own failure semantics. */
+export class FanoutTransport implements NotificationTransport {
+  constructor(private readonly transports: readonly NotificationTransport[]) {}
+
+  async deliver(notification: NotificationRecord): Promise<void> {
+    await Promise.all(this.transports.map((transport) => transport.deliver(notification)));
+  }
+}
+
 /** The stable JSON envelope POSTed by the webhook transport (and consumed by an external system). */
 export interface WebhookPayload {
   event: "notification";

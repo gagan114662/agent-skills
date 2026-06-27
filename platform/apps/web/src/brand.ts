@@ -255,6 +255,8 @@ export const CONNECTIONS = {
   waitlisted: "You're on the list — we'll let you know when it's ready.",
   connect: "Connect",
   connectedBadge: "Connected",
+  proofPendingBadge: "Setup pending",
+  proofPendingDetail: "Consent recorded. We'll show connected after the provider check passes.",
   disconnect: "Disconnect",
   internalTitle: "Site publishing (admin)",
   internalHint: "Internal publishing connection — admin only. Not shown to customers.",
@@ -497,6 +499,12 @@ export interface PlanTeaser {
   readonly name: string;
   readonly price: string;
   readonly tagline: string;
+  /** Outcome-first summary: what useful work this tier should produce every day. */
+  readonly dailyValue: string;
+  /** Plain-English limit that makes the upgrade ask predictable. */
+  readonly dailyLimit: string;
+  /** The buyer-facing reason to move up from this tier. */
+  readonly upgradeTrigger: string;
   readonly featured: boolean;
   /** What you get — feature bullets, mirroring the server catalog so pricing reads from one truth. */
   readonly highlights: readonly string[];
@@ -514,12 +522,12 @@ interface FooterSocialLink {
  * house-voice line — every failure lands the user back on this screen, never a dead end.
  */
 export const ONBOARDING = {
-  title: "Point us at your website",
-  sub: "Enter your domain and sign in with Google. That's the whole setup — we take it from there.",
+  title: "Type your domain. We'll get the room started.",
+  sub: "Scout reads your site, the room drafts the first bit of work, and setup waits until you want to ship.",
   domainLabel: "Your website",
   domainPlaceholder: "acme.com",
-  googleCta: "Sign in with Google",
-  reassurance: "One sign-in covers Search Console and Analytics. No passwords, no DNS, no copy-pasting keys.",
+  googleCta: "Connect Google to ship",
+  reassurance: "No account needed for the first preview. Connect Google when you want receipts, Analytics, and Search Console.",
   needDomain: "Pop your website in first — something like acme.com.",
   errors: {
     invalid_domain: "That doesn't look like a domain. Try something like acme.com.",
@@ -622,8 +630,8 @@ export const LANDING = {
     howSub: "Three steps. No onboarding call, no Gantt chart.",
     fleetTitle: "Meet the department",
     fleetSub: "Eight specialists, one channel each, all on the same team.",
-    pricingTitle: "Pick your pop",
-    pricingSub: "Start small, grow when you feel like it.",
+    pricingTitle: "See value first",
+    pricingSub: "A useful daily marketing room, capped before spend gets silly.",
     pricingCta: "See all plans",
     ctaTitle: "Your new marketing team is waiting.",
     ctaSub: "We don't drink coffee, we don't take weekends, and we've already had three ideas.",
@@ -636,25 +644,34 @@ export const LANDING = {
       key: "starter",
       name: "Starter",
       price: "$49",
-      tagline: "Your first three agents.",
+      tagline: "A daily checkup for one campaign.",
+      dailyValue: "Site read, quick-win plan, and one draft your team can use.",
+      dailyLimit: "1 active campaign, 3 agents, $200/mo work cap.",
+      upgradeTrigger: "Upgrade when you want the agents to keep going after that first lane fills.",
       featured: false,
-      highlights: ["3 agent seats", "$200/mo session budget", "1 department fleet", "Approvals + audit trail included"],
+      highlights: ["Daily SEO/content/social check-ins", "3 agent seats for one focused lane", "$200/mo agent-work cap with receipts", "Approvals + audit trail included"],
     },
     {
       key: "pro",
       name: "Pro",
       price: "$199",
-      tagline: "A team that never sleeps.",
+      tagline: "Your everyday growth room.",
+      dailyValue: "SEO, content, outreach, and analytics agents working together.",
+      dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
+      upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
       featured: true,
-      highlights: ["10 agent seats", "$1,000/mo session budget", "3 department fleets", "Priority autonomy + deploy-to-live"],
+      highlights: ["Daily multi-agent growth standup", "10 agent seats across 3 lanes", "$1,000/mo agent-work cap with receipts", "Priority autonomy + deploy-to-live"],
     },
     {
       key: "agency",
       name: "Agency",
       price: "$499",
-      tagline: "A whole building of agents.",
+      tagline: "A full agency floor.",
+      dailyValue: "Every day, multiple brands, launches, and client workstreams run in parallel.",
+      dailyLimit: "10 active campaign lanes, 30 agents, $5,000/mo work cap.",
+      upgradeTrigger: "Talk to us when you need custom controls, procurement, or a bigger cap.",
       featured: false,
-      highlights: ["30 agent seats", "$5,000/mo session budget", "10 department fleets", "Everything in Pro, at scale"],
+      highlights: ["Daily cross-client mission control", "30 agent seats across 10 lanes", "$5,000/mo agent-work cap with receipts", "Everything in Pro, at scale"],
     },
   ] as readonly PlanTeaser[],
   /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
@@ -703,8 +720,8 @@ export const LANDING = {
  */
 export const PRICING = {
   eyebrow: "Plans & pricing",
-  title: "Pick your pop.",
-  sub: "Choose monthly or annual, create the workspace, and checkout opens right away. No sales call. No interpretive dance.",
+  title: "See value first.",
+  sub: "Start free, watch the agents do useful daily work, then upgrade when you want more lanes running at once.",
   /** Accessible label for the plans grid region (distinct from the hero heading). */
   plansLabel: "Plans",
   perMonth: "/mo",
@@ -715,10 +732,20 @@ export const PRICING = {
   /** The one recommended-tier ribbon. */
   popularBadge: "Most popular",
   /** Per-plan CTA — creates the account and opens hosted checkout for that tier. */
-  planCta: "Start checkout",
+  planCta: "Keep them working",
+  tableTitle: "Keep the agents working.",
+  tableLede:
+    "Start free, see useful work every day, then upgrade when you want more campaigns, more agents, or more live work moving at once.",
+  everyDayLabel: "Every day",
+  limitLabel: "Limit:",
+  upgradeLabel: "Upgrade:",
+  currentPlanCta: "Your plan",
+  pendingCheckoutCta: "Opening checkout…",
+  tableFootnote:
+    "everyday work is capped before spend gets silly. the agents are enthusiastic; billing is not.",
   /** Reassurance under the grid (honest: self-serve checkout, no sales call, you set the ceiling). */
   footnote:
-    "Self-serve checkout takes card payment through Stripe after signup — no sales call, no mystery invoice. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
+    "Self-serve checkout takes card payment through Stripe after signup. Agent work is capped by plan, approvals stay visible, and we ask for the upgrade at the moment there is more useful work to do.",
   /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
   faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
@@ -727,8 +754,8 @@ export const PRICING = {
   /** Signup trial framing (#214). `plan` is the chosen plan's display name. */
   trial: {
     eyebrow: "Free trial",
-    onPlan: (plan: string): string => `You're starting the ${plan} checkout. Tiny form first, Stripe next.`,
-    generic: "Create the workspace, then checkout opens. No sales call. Blissfully few forms.",
+    onPlan: (plan: string): string => `You're choosing ${plan}. Tiny form first, useful agents next, checkout when you want more.`,
+    generic: "Create the workspace, see the first useful work, then checkout opens when you want more.",
   },
 } as const;
 
@@ -1573,29 +1600,59 @@ export const EVERYDAY = {
   composerPlaceholder: "give us a product, a url, or just a vibe…",
   composerSend: "off you pop",
 
-  /** The visible cowork room: multiple agents working together, with Codex as an operator lane. */
+  /** The visible cowork room: multiple agents working together, with an operator lane. */
   room: {
-    heading: "the room",
-    subhead: "your little marketing department, clocking in together.",
+    heading: "iMessage room",
+    subhead: "your marketing team, texting the work as it happens.",
     empty: "type a domain or goal and we'll wake the room up.",
-    chatLabel: "chat with the room",
+    chatLabel: "text your ipop team",
+    codexBadge: "team engine active",
+    imessageNote: "iMessage relay is the intended home. Until the native relay is live, this preview shows the exact room, approvals, and receipts inside ipop.",
     statuses: {
       idle: "waiting",
       working: "working",
       blocked: "blocked",
       done: "done",
-      codex: "codex handoff",
+      codex: "operator handoff",
     },
   },
 
   /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */
   connectors: {
-    heading: "connect your accounts",
-    subhead: "one tidy place for the tools the room needs. no pretend green ticks.",
+    heading: "iMessage setup",
+    subhead: "one messaging home for agent work. no WhatsApp, no Telegram, no fake green ticks.",
     connect: "connect",
     connected: "connected",
+    pending: "verify",
+    publicAction: "open workspace",
+    publicHint: "connectors need your workspace before they can run.",
+    imessage: {
+      title: "Text the team",
+      body:
+        "Add the iMessage address or phone number where the team should send receipts. We'll send one test first, then the room can start.",
+      label: "iMessage email or phone",
+      placeholder: "you@example.com or +15551234567",
+      serviceLabel: "Messages service",
+      servicePlaceholder: "iMessage",
+      save: "save",
+      test: "send test",
+      disconnect: "remove",
+      verified: "verified",
+      blocked: "relay not live",
+      pending: "test needed",
+      notSet: "not connected",
+      readyDetail: "agent-room relay can send receipts here.",
+      blockedDetail: "recipient is verified, but the Messages relay is not live yet.",
+      pendingDetail: "saved, but not used until a test send works.",
+      emptyDetail: "no personal iMessage destination yet.",
+      saved: "Saved. Send the test before starting the room.",
+      tested: "Test sent. The room can use this destination now.",
+      removed: "Removed.",
+      error: "That didn't pop. Check the address and try again.",
+    },
     groups: {
       productivity: "productivity",
+      visibility: "visibility",
       marketing: "marketing",
       publishing: "publishing",
     },
@@ -1609,6 +1666,29 @@ export const EVERYDAY = {
     deltaUp: "up and to the right, just how we like it.",
     deltaFlat: "holding steady. let's go nudge it.",
     zero: "no customers yet. that's not a problem, that's the whole point of us.",
+  },
+
+  /** One-icon dashboard from the homepage: concise summary of agent work done. */
+  dashboard: {
+    heading: "CMO brief",
+    subhead: "pipeline, channel truth, spend, blockers, and the next moves. busywork can sit outside.",
+    sample: "sample readout",
+    live: "live workspace",
+    goalTarget: "target",
+    pace: "pace",
+    funnel: "growth funnel",
+    channels: "channel performance",
+    blockers: "blocked",
+    decisions: "needs your call",
+    next: "next best actions",
+    latest: "proof + receipts",
+    empty: "nothing measurable yet. text the team and this fills itself in.",
+    source: "source",
+    status: "status",
+    pipeline: "pipeline",
+    conversion: "conversion",
+    spend: "spend",
+    move: "next move",
   },
 
   /** Calm thread where work lands inline. */
@@ -1714,27 +1794,42 @@ export const BILLING = {
   billingLabel: "Billing",
   navItems: ["General", "Members", "Billing", "Security"],
   heading: "Plan & billing",
-  subheading: "Pick your pop. Change or cancel any time — no calls, no contracts.",
+  subheading: "Start with everyday value. Upgrade when you want more lanes moving.",
   currentLabel: "Current plan",
   selectLabel: "Choose",
   perMonth: "/mo",
   /** Which plan renders as the currently-active subscription in the chrome. */
   currentPlan: "Pro",
   /** A couple of true-to-product line items under the plan cards. */
-  footnote: "Usage-based agent compute is billed against your cap. You set the ceiling; we never cross it.",
+  footnote: "Everyday agent work is billed against your cap. You set the ceiling; we never cross it.",
   /**
    * The real, in-app Settings → Billing panel (not the landing mockup): current plan, this-window usage vs
    * cap, and a clearly-marked test-mode note. Reused by {@link BillingSettings}.
    */
   panel: {
     eyebrow: "Plan & billing",
-    blurb: "See your plan and what you've used this window — upgrade any time, no calls, no contracts.",
+    blurb: "See today's value, this-window usage, and the upgrade path when you want more agents moving.",
     currentPlanLabel: "Current plan",
     trialPlan: "Free trial",
     usageLabel: "Usage this window",
     capSuffix: "cap",
     noCap: "no cap set",
     seatsSuffix: "seats",
+    valueTitle: "Work left this month",
+    valueReadyTitle: "Room to keep working",
+    valueReadyBody: (remaining: string, cap: string): string =>
+      `${remaining} of ${cap} remains before the agents pause for the month.`,
+    valueNearCapTitle: "Nearly at the line",
+    valueNearCapBody: (remaining: string, cap: string): string =>
+      `${remaining} remains from ${cap}. Time to upgrade before good work starts waiting.`,
+    valuePausedTitle: "Agents paused at the cap",
+    valuePausedBody: (cap: string): string =>
+      `This workspace has used its ${cap} agent-work cap. Upgrade to open more room.`,
+    valueNoCapTitle: "No monthly work cap set",
+    valueNoCapBody: "Set a plan cap before letting the agents run unattended.",
+    dailyValueLabel: "Everyday value",
+    dailyLimitLabel: "Plan limit",
+    upgradeTriggerLabel: "Upgrade moment",
     /** Clearly-marked safety note: live charges stay off until the owner connects Stripe. */
     testModeTitle: "Test mode — no live charges yet",
     testModeBody:
@@ -1785,7 +1880,7 @@ export const FAQ = {
     },
     {
       q: "What does it cost, and what's the difference between Starter and Pro?",
-      a: "Start free, no card. Starter is $49/month for proving the loop with one department fleet: three agent seats, a $200 monthly session budget, approvals, and the audit trail. Pro is $199/month for teams that want more of the business moving at once: ten seats, a $1,000 monthly budget, three department fleets, priority autonomy, and deploy-to-live. Upgrade when one lane is working and you want more departments moving without waiting in line.",
+      a: "Start free, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, three agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
     },
     {
       q: "What is the refund policy and support SLA?",
@@ -2257,7 +2352,7 @@ export const ASK_AI = {
   heading: "Ask an AI about us",
   blurb: "Curious but don't trust our marketing? Fair. Ask a neutral third party — we'll even pre-fill the question.",
   /** The prompt pre-filled into each assistant. */
-  prompt: "Explain ipop.ai to me — the marketing agency of AI agents. What is it, who is it for, and what's the catch?",
+  prompt: "Explain ipop.ai to me — the marketing team in your messages. What is it, who is it for, and what's the catch?",
   providers: [
     { key: "chatgpt", label: "ChatGPT", base: "https://chatgpt.com/?q=" },
     { key: "claude", label: "Claude", base: "https://claude.ai/new?q=" },
@@ -2597,12 +2692,12 @@ export const PAGE_SEO = {
 
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {
-  title: "tiny runway situation",
+  title: "that's today's free work used up",
   body:
-    "Your trial hit its cap. Nothing's lost; the agents are lined up at the door, politely not spending " +
-    "another penny until you give them more room.",
-  cta: "show me plans",
+    "You've seen the useful bit: the audit, the plan, and drafts. Upgrade when you want the agents to " +
+    "keep going across more campaigns.",
+  cta: "keep them working",
   dismiss: "not now",
   /** Shown as the small print under the nudge, naming the current plan. */
-  onPlan: (planName: string): string => `currently on ${planName}. modest, but respectable.`,
+  onPlan: (planName: string): string => `currently on ${planName}. capped on purpose.`,
 } as const;

@@ -38,7 +38,6 @@ function errorFromUrl(): string | null {
 
 export function Onboarding(): React.JSX.Element {
   const [domain, setDomain] = useState("");
-  const [icp, setIcp] = useState("");
   const [errorCode] = useState(errorCodeFromUrl);
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
@@ -88,12 +87,23 @@ export function Onboarding(): React.JSX.Element {
 
   // The parallel config path: full-page navigation to the API's OAuth entry. Available on the entry screen
   // AND alongside the streaming deliverable — it is never the gate to seeing the outcome.
-  function signInWithGoogle(): void {
+  async function signInWithGoogle(): Promise<void> {
     const trimmed = validatedDomain();
     if (!trimmed) return;
     trackAcquisitionEvent("activation-start", { url: trimmed, source: "start-google" });
     setBusy(true);
-    window.location.assign(googleStartUrl(trimmed));
+    try {
+      const status = await api.getGoogleAuthStatus();
+      if (!status.configured) {
+        setError(status.message);
+        setBusy(false);
+        return;
+      }
+      window.location.assign(googleStartUrl(trimmed));
+    } catch {
+      setError(ONBOARDING.errors.google_unavailable);
+      setBusy(false);
+    }
   }
 
   // #633: once a website is submitted, the live deliverable IS the screen — config sits beside it.
@@ -101,7 +111,7 @@ export function Onboarding(): React.JSX.Element {
     return (
       <div className="auth auth--pipeline">
         <div className="auth__pipeline">
-          <AcquisitionPipelinePreview domain={previewUrl} icp={icp} />
+          <AcquisitionPipelinePreview domain={previewUrl} icp="" />
           <DeliverablePreview
             url={previewUrl}
             onSignIn={signInWithGoogle}
@@ -122,7 +132,7 @@ export function Onboarding(): React.JSX.Element {
         <a href="/" className="auth__brand" aria-label={BRAND.name}>
           <Wordmark />
         </a>
-        <h1 className="auth__tag">{ONBOARDING.title}</h1>
+        <h1 className="auth__headline">{ONBOARDING.title}</h1>
         <p className="auth__tag">{ONBOARDING.sub}</p>
 
         <label className="field">
@@ -134,16 +144,6 @@ export function Onboarding(): React.JSX.Element {
             autoComplete="url"
             inputMode="url"
             autoFocus
-          />
-        </label>
-
-        <label className="field">
-          Ideal customer profile
-          <textarea
-            value={icp}
-            onChange={(e) => setIcp(e.target.value)}
-            placeholder="e.g. seed-stage B2B SaaS teams hiring their first marketer"
-            rows={3}
           />
         </label>
 

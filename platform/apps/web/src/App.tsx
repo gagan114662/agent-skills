@@ -1,24 +1,17 @@
 /** App root: the auth boundary wrapping the workspace shell. */
-import { AuthGate } from "./components/AuthGate.js";
-import { Workspace } from "./components/Workspace.js";
+import { useEffect } from "react";
+import { AuthGate, Splash } from "./components/AuthGate.js";
 import { StatusPage } from "./components/StatusPage.js";
 import { SupportTicketStatus } from "./components/SupportTicketStatus.js";
 import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
-import {
-  ONBOARDING_V2_ENABLED,
-  shouldShowOnboardingV2,
-} from "./components/onboarding/onboarding-flag.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
-import {
-  EVERYDAY_SHELL_ENABLED,
-  EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
-  shouldShowEverydayShell,
-} from "./components/everyday/everyday-shell-flag.js";
-import { useAppState } from "./store/StoreContext.js";
-import { navigate, useRoute } from "./routing.js";
+import { EverydayShell } from "./components/everyday/EverydayShell.js";
+import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
+import { APP_ROUTES, navigate, useRoute } from "./routing.js";
+import { useAppState, useStore } from "./store/StoreContext.js";
 
 /** The public status page (#148) lives at `/status/:slug` — rendered BEFORE the auth boundary so it
  * needs no session (path-based, keeping the no-router shell). Everything else is the authed app. */
@@ -32,32 +25,34 @@ const DOGFOOD_PATH = /^\/dogfood(?:\/([^/]+))?\/?$/;
 const DEMO_PATH = /^\/(?:demo|sandbox)\/?$/;
 /** The live agent-theater (#624) — an authed surface at `/theater`; watch the fleet work in real time. */
 const THEATER_PATH = /^\/theater\/?$/;
-/** The #784 first-run onboarding experience — now the DEFAULT public landing. Root `/` and `/welcome` both
- * open the warm door (the onboarding flag is ON by default; set VITE_RELOAD_ONBOARDING_V2=false to restore
- * the marketing landing). Rendered before the auth boundary: a brand-new visitor lands here with no session. */
+/** The #784 first-run onboarding experience — now the DEFAULT landing. Root `/` and `/welcome` both
+ * open the Tomo-simple marketing door for everyone; the CTA carries signed-in members into `/everyday`. */
 const WELCOME_PATH = /^\/(?:welcome\/?)?$/;
 /** The everyday workspace shell (#784) — the linzumi-calm chat-first redesign, also reachable at its own
  * `/everyday` path. It is the live default for a signed-in workspace (see {@link AuthedHome}). */
 const EVERYDAY_PATH = /^\/everyday\/?$/;
+/** The one-icon dashboard from the homepage: a public summary of what the agent team has done. */
+const DASHBOARD_PATH = /^\/dashboard\/?$/;
 
 /**
- * The signed-in home. #784: the everyday shell is the live default for the current workspace — the everyday
- * flag is ON by default and, with no owner workspace pinned, it is a full rollout, so a signed-in member
- * lands on the redesigned shell. Setting VITE_EVERYDAY_SHELL=false (or pinning an owner workspace) restores
- * today's console for everyone else. Reads only the current workspace id; touches no backend/money/approval.
+ * The signed-in home. The iMessage/Codex room is the product now; do not let stale deployment flags
+ * send signed-in users back to the legacy console.
  */
 function AuthedHome(): React.JSX.Element {
-  const { identity } = useAppState();
-  if (
-    shouldShowEverydayShell({
-      flagOn: EVERYDAY_SHELL_ENABLED,
-      ownerWorkspaceId: EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
-      workspaceId: identity?.workspaceId,
-    })
-  ) {
-    return <LiveEverydayShell />;
-  }
-  return <Workspace />;
+  return <LiveEverydayShell />;
+}
+
+function DashboardRoute(): React.JSX.Element {
+  const store = useStore();
+  const { phase } = useAppState();
+
+  useEffect(() => {
+    void store.bootstrap();
+  }, [store]);
+
+  if (phase === "ready") return <LiveEverydayShell dashboardFirst />;
+  if (phase === "loading") return <Splash />;
+  return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
 }
 
 export function App(): React.JSX.Element {
@@ -69,14 +64,18 @@ export function App(): React.JSX.Element {
   const dogfood = DOGFOOD_PATH.exec(path);
   if (dogfood) return <PublicDogfood slug={decodeURIComponent(dogfood[1] ?? "ipop")} />;
 
-  // #784: the onboarding experience is the default public landing at root `/` and `/welcome`. It renders
-  // before the auth boundary (no session needed); "take me in" carries the visitor into the everyday shell.
-  if (WELCOME_PATH.test(path) && shouldShowOnboardingV2({ flagOn: ONBOARDING_V2_ENABLED })) {
-    return <OnboardingExperience onEnterApp={() => navigate("/everyday")} />;
+  // #784: root `/` and `/welcome` are the product front door for everyone. Signed-in members still need to
+  // see the marketing-icon homepage; the CTA takes them into the everyday room.
+  if (WELCOME_PATH.test(path)) {
+    return <OnboardingExperience onEnterApp={() => navigate(APP_ROUTES.everyday)} />;
   }
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.
   if (DEMO_PATH.test(path)) return <DemoSandbox />;
+
+  // The homepage Dashboard icon should not dump visitors into the auth wall. Anonymous visitors get a
+  // clearly-labelled sample; signed-in workspaces get the live workspace dashboard, not hard-coded dogfood.
+  if (DASHBOARD_PATH.test(path)) return <DashboardRoute />;
 
   // The theater needs a session (workspace-scoped stream), so it lives inside the auth boundary.
   if (THEATER_PATH.test(path)) {
@@ -87,8 +86,8 @@ export function App(): React.JSX.Element {
     );
   }
 
-  // The everyday-shell redesign (#784) also has its own explicit `/everyday` route; default-ON via the flag.
-  if (EVERYDAY_SHELL_ENABLED && EVERYDAY_PATH.test(path)) {
+  // The everyday-shell redesign (#784) also has its own explicit `/everyday` route.
+  if (EVERYDAY_PATH.test(path)) {
     return (
       <AuthGate>
         <LiveEverydayShell />

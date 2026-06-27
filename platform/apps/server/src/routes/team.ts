@@ -6,15 +6,33 @@ import { addChannelMember } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { newId } from "../db/id.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
+import { isHarnessKind } from "../runtime/harness.js";
 
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
+  codexSubscription?: CodexSubscriptionStatusProvider;
+}
+
+export interface CodexSubscriptionStatus {
+  connected: boolean;
+  reason: string;
+  selectedHarness: "codex";
+  userAuthenticated: boolean;
+  workspaceAuthenticated: boolean;
+  runtimeAuth: "signed_in_subscription" | "missing";
+  fallback: "none";
+  apiKeySatisfies: false;
+}
+
+export interface CodexSubscriptionStatusProvider {
+  status(workspaceId: string, memberId: string): Promise<CodexSubscriptionStatus>;
 }
 
 interface SubtaskBody {
   agentMemberId?: string;
   task?: string;
   branch?: string;
+  harness?: string;
 }
 
 /**
@@ -28,6 +46,19 @@ interface SubtaskBody {
  */
 export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions): Promise<void> {
   const { coordinator } = opts;
+  const codexSubscription = opts.codexSubscription ?? disconnectedCodexSubscription;
+
+  app.get("/me/codex/status", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return codexSubscription.status(id.workspaceId, id.memberId);
+  });
+
+  app.get("/me/codex/preflight", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return codexSubscription.status(id.workspaceId, id.memberId);
+  });
 
   // Launch a team run: write capability; every subtask targets an agent member in-workspace.
   app.post("/channels/:cid/team-runs", async (req, reply) => {
@@ -49,6 +80,9 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       if (!s.agentMemberId) return reply.code(400).send({ error: "subtask.agentMemberId required" });
       if (!s.task) return reply.code(400).send({ error: "subtask.task required" });
       if (!s.branch) return reply.code(400).send({ error: "subtask.branch required" });
+      if (s.harness !== undefined && !isHarnessKind(s.harness)) {
+        return reply.code(400).send({ error: "unknown subtask.harness" });
+      }
       const target = await getWorkspaceMember(s.agentMemberId, id.workspaceId);
       if (!target) return reply.code(404).send({ error: "agent not found in this workspace" });
       if (target.kind !== "agent") {
@@ -59,7 +93,31 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         agentMemberId: target.id,
         task: s.task,
         branch: s.branch,
+        preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
       });
+    }
+
+    if (subtasks.some((s) => s.preferredHarness === "codex")) {
+      const status = await codexSubscription.status(id.workspaceId, id.memberId);
+      if (!status.connected) {
+        req.log.warn(
+          {
+            event: "codex_subscription_preflight_blocked",
+            workspaceId: id.workspaceId,
+            memberId: id.memberId,
+            selectedHarness: status.selectedHarness,
+            fallback: status.fallback,
+            apiKeySatisfies: status.apiKeySatisfies,
+            runtimeAuth: status.runtimeAuth,
+          },
+          "codex subscription preflight blocked team run",
+        );
+        return reply.code(409).send({
+          error: status.reason,
+          code: "codex_subscription_not_connected",
+          status,
+        });
+      }
     }
 
     // Make each agent a legitimate writer in the channel (output + team events land here).
@@ -98,6 +156,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         subtaskId: s.subtaskId,
         agentMemberId: s.agentMemberId,
         branch: s.branch,
+        harness: s.preferredHarness ?? null,
       })),
     });
   });
@@ -114,3 +173,20 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
     return coordinator.readEvents(cid, opts);
   });
 }
+
+const disconnectedCodexSubscription: CodexSubscriptionStatusProvider = {
+  async status() {
+    return {
+      connected: false,
+      reason:
+        "The team engine is not connected to this workspace's signed-in subscription yet. " +
+        "Connect subscription auth before starting the agent room.",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    };
+  },
+};

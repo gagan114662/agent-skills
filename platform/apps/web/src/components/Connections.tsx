@@ -96,8 +96,24 @@ function CustomerAction(props: {
       </span>
     );
   }
+  if (c.consentStatus === "recorded" && c.providerStatus !== "healthy") {
+    return (
+      <span className="connections__connected">
+        <span className="connections__badge">{CONNECTIONS.proofPendingBadge}</span>
+        <span className="connections__soon" role="status">
+          {c.failureReason ?? CONNECTIONS.proofPendingDetail}
+        </span>
+        <button type="button" disabled={busy} onClick={() => onDisconnect(c.id)}>
+          {CONNECTIONS.disconnect}
+        </button>
+      </span>
+    );
+  }
   // Not live yet: a clear next step (join the waitlist) instead of a dead, disabled "Coming soon" button.
   if (c.status === "coming_soon") {
+    const detail = c.configIssue
+      ? c.configIssue.remedy + " Missing: " + c.configIssue.missingEnv.join(", ") + "."
+      : null;
     if (waitlisted) {
       return (
         <span className="connections__soon" role="status">
@@ -108,7 +124,7 @@ function CustomerAction(props: {
     return (
       <span className="connections__action">
         <span className="connections__label">{c.label}</span>
-        <span className="connections__soon">{CONNECTIONS.comingSoon}</span>
+        <span className="connections__soon">{detail ?? CONNECTIONS.comingSoon}</span>
         <button
           type="button"
           className="connections__waitlist"

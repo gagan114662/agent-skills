@@ -93,10 +93,10 @@ describe("seedEveryday (#784) — the surface contract", () => {
 });
 
 describe("defaultAgentRoom (#1265)", () => {
-  it("starts a multi-agent room with Codex as an operator lane", () => {
+  it("starts a multi-agent room with an operator lane", () => {
     const room = defaultAgentRoom("ipop.ai");
-    expect(room.map((lane) => lane.agent)).toEqual(["Scout", "Quill", "Echo", "Lens", "Codex"]);
-    expect(room.find((lane) => lane.agent === "Codex")?.status).toBe("codex");
+    expect(room.map((lane) => lane.agent)).toEqual(["Scout", "Quill", "Echo", "Lens", "Operator"]);
+    expect(room.find((lane) => lane.agent === "Operator")?.status).toBe("codex");
     expect(room[0]?.task).toContain("ipop.ai");
   });
 });
@@ -104,11 +104,15 @@ describe("defaultAgentRoom (#1265)", () => {
 describe("defaultConnectors (#1265)", () => {
   it("models the direct connect setup without pretending anything is connected", () => {
     const connectors = defaultConnectors();
-    expect(connectors.map((connector) => connector.name)).toContain("Gmail");
+    expect(connectors.map((connector) => connector.name)).toContain("Email");
+    expect(connectors.map((connector) => connector.name)).toContain("iMessage");
+    expect(connectors.map((connector) => connector.name)).not.toEqual(
+      expect.arrayContaining(["Web chat", "WhatsApp", "Telegram"]),
+    );
     expect(new Set(connectors.map((connector) => connector.group))).toEqual(
-      new Set(["productivity", "marketing", "publishing"]),
+      new Set(["visibility", "productivity", "marketing", "publishing"]),
     );
     expect(connectors.every((connector) => connector.status !== "connected")).toBe(true);
-    expect(connectors.every((connector) => connector.href.startsWith("/settings?section=connections"))).toBe(true);
+    expect(connectors.every((connector) => connector.actionLabel.length > 0)).toBe(true);
   });
 });

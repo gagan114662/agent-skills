@@ -15,13 +15,14 @@
  * surface is gated default-OFF (#784 `onboarding-flag`); this component renders nothing in production until then.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listPostMeta, type BlogPostMeta } from "../../blog/posts.js";
-import { BRAND, LANDING, SUPPORT_CONTACT } from "../../brand.js";
-import { googleStartUrl } from "../../api/client.js";
+import { BRAND, SUPPORT_CONTACT } from "../../brand.js";
+import { api, googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
-import { navigate } from "../../routing.js";
+import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
+import { Wordmark } from "../Wordmark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
+import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
 import {
   createDefaultProvider,
   OnboardingReadError,
@@ -49,18 +50,13 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
   { tool: "site", copy: ONBOARD_COPY.connect.site },
 ];
 
-const TRUST_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/demo", label: LANDING.hero.ctaDemo },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/company", label: "Company" },
-  { href: "/security", label: "Security & trust" },
-  { href: "/terms", label: "Terms" },
-  { href: "/privacy", label: "Privacy" },
+const NATIVE_IMESSAGE_URL = "imessage://";
+
+const FOOTER_TRUST_LINKS = [
+  { href: APP_ROUTES.terms, label: "Terms" },
+  { href: APP_ROUTES.privacy, label: "Privacy" },
   { href: SUPPORT_CONTACT.href, label: "Contact" },
 ] as const;
-
-const PROOF_DELIVERABLES: readonly BlogPostMeta[] = listPostMeta().slice(0, 3);
 
 function roomReceipt(
   phase: Phase,
@@ -112,7 +108,11 @@ function CoworkStage({
 
       <ul className="onboard-room__agents" aria-label="agent team">
         {(mission?.agents ?? ONBOARD_COPY.room.agents).map((agent) => (
-          <li key={agent.who} className="onboard-room-agent" data-status={"status" in agent ? agent.status : "idle"}>
+          <li
+            key={agent.who}
+            className="onboard-room-agent"
+            data-status={"status" in agent ? agent.status : "idle"}
+          >
             <span className="onboard-room-agent__dot" aria-hidden="true" />
             <span className="onboard-room-agent__who">{agent.who}</span>
             <span className="onboard-room-agent__job">
@@ -136,8 +136,6 @@ function CoworkStage({
         <span>{ONBOARD_COPY.room.receiptTitle}</span>
         <strong>{signal}</strong>
       </div>
-
-      <ProofDeliverables />
 
       {mission && (
         <div className="onboard-room__mission" aria-label="team mission receipt">
@@ -178,7 +176,14 @@ export interface OnboardingExperienceProps {
    * Starts the real signup OAuth handoff from the public cowork flow. Tests/demos that inject a provider keep
    * using that provider for Gmail payoffs; the production default navigates to Google before claiming access.
    */
-  startGoogleAuth?: (input: string) => void;
+  startGoogleAuth?: (input: string) => void | Promise<void>;
+  /**
+   * The public product experience is iMessage/workspace-first. Tests and connector-specific demos can still
+   * force the older guided connector walk-through so those real-connection seams stay covered.
+   */
+  connectMode?: "workspace" | "guided";
+  /** Opens the workspace/iMessage room after the first site-read result. */
+  onOpenWorkspace?: (target: string) => void;
 }
 
 /** Render one connect payoff — discriminated by tool, so each reads as the real thing it is. */
@@ -260,14 +265,11 @@ function InstantDeliverable({
   );
 }
 
-function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React.JSX.Element {
+function PublicTrustLinks(): React.JSX.Element {
   return (
-    <nav
-      className={"onboard-trust onboard-trust--" + placement}
-      aria-label={placement + " public links"}
-    >
-      {TRUST_LINKS.map((link) => (
-        <a key={placement + "-" + link.href} className="onboard-trust__link" href={link.href}>
+    <nav className="onboard-trust onboard-trust--footer" aria-label="footer public links">
+      {FOOTER_TRUST_LINKS.map((link) => (
+        <a key={link.href} className="onboard-trust__link" href={link.href}>
           {link.label}
         </a>
       ))}
@@ -275,43 +277,76 @@ function PublicTrustLinks({ placement }: { placement: "nav" | "footer" }): React
   );
 }
 
-function ProofDeliverables(): React.JSX.Element | null {
-  if (PROOF_DELIVERABLES.length === 0) return null;
+const MARKETING_ICON_ROW = [
+  { key: "market", label: "market", detail: "where to win" },
+  { key: "brief", label: "brief", detail: "one-line target" },
+  { key: "icp", label: "customer", detail: "ICP folder" },
+  { key: "site", label: "website", detail: "site read" },
+  { key: "insight", label: "insight", detail: "sharp truth" },
+  { key: "creative", label: "creative", detail: "platform draft" },
+  { key: "email", label: "email", detail: "reply ready" },
+  { key: "seo", label: "search", detail: "intent map" },
+  { key: "social", label: "social", detail: "channel test" },
+  { key: "paid", label: "paid", detail: "spend dial" },
+  { key: "approval", label: "approve", detail: "owner yes" },
+  { key: "receipt", label: "receipt", detail: "proof saved" },
+] as const;
 
+const DOOR_ACTIONS = [
+  { key: "login", label: "Login", href: APP_ROUTES.everyday },
+  { key: "love", label: "Love", href: "#onboard-target" },
+  { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
+  { key: "start", label: "Start", href: "#onboard-target" },
+] as const;
+
+function MarketingIconRow(): React.JSX.Element {
   return (
-    <section className="onboard-proof" aria-label="finished work proof">
-      <div className="onboard-proof__head">
-        <p className="onboard-room__label">already shipped</p>
-        <strong>real deliverables from the fleet, not a brochure in a nice coat</strong>
-      </div>
-      <ol className="onboard-proof__trail" aria-label="approve to ship trail">
-        <li>draft</li>
-        <li>approve</li>
-        <li>live</li>
-      </ol>
-      <ul className="onboard-proof__list">
-        {PROOF_DELIVERABLES.map((post) => (
-          <li key={post.slug}>
-            <a href={`/blog/${post.slug}`}>{post.title}</a>
-            <span>
-              {post.author} shipped it · {post.readingTime}
+    <section className="onboard-marketing" aria-label="marketing work preview">
+      <ol className="onboard-marketing__row">
+        {MARKETING_ICON_ROW.map((item) => (
+          <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
+            <span className="onboard-marketing__mark" aria-hidden="true">
+              <span className="onboard-marketing__detail">{item.detail}</span>
             </span>
+            <span className="onboard-marketing__label">{item.label}</span>
           </li>
         ))}
-      </ul>
+      </ol>
     </section>
+  );
+}
+
+function DoorActions(): React.JSX.Element {
+  return (
+    <nav className="onboard-door-actions" aria-label="homepage actions">
+      {DOOR_ACTIONS.map((action) => (
+        <a
+          key={action.key}
+          className="onboard-door-action"
+          data-kind={action.key}
+          href={action.href}
+        >
+          <span className="onboard-door-action__mark" aria-hidden="true" />
+          <span className="onboard-door-action__label">{action.label}</span>
+        </a>
+      ))}
+    </nav>
   );
 }
 
 export function OnboardingExperience(props: OnboardingExperienceProps): React.JSX.Element {
   const provider = props.provider ?? createDefaultProvider();
   const hour = props.hour ?? new Date().getHours();
-  const onEnterApp = props.onEnterApp ?? (() => navigate("/"));
+  const onEnterApp = props.onEnterApp ?? (() => navigate(APP_ROUTES.home));
+  const onOpenWorkspace = props.onOpenWorkspace;
+  const connectMode = props.connectMode ?? (props.provider ? "guided" : "workspace");
   const startGoogleAuth =
     props.startGoogleAuth ??
     (props.provider
       ? null
-      : (value: string): void => {
+      : async (value: string): Promise<void> => {
+          const status = await api.getGoogleAuthStatus();
+          if (!status.configured) throw new Error(status.message);
           window.location.assign(googleStartUrl(value));
         });
 
@@ -343,8 +378,10 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
       setMission(null);
       try {
         const f = await provider.readSite(value);
+        const team = await provider.startTeam(value, f);
         setFinding(f);
-        setMission(await provider.startTeam(value, f));
+        setMission(team);
+        savePendingFirstRunReceipt(value, f, team);
       } catch (err) {
         setReadError(err instanceof OnboardingReadError ? err.message : ONBOARD_COPY.reading.error);
       }
@@ -366,7 +403,14 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   const allow = async (tool: ConnectTool): Promise<void> => {
     if (tool === "gmail" && startGoogleAuth) {
-      startGoogleAuth(input);
+      setConnecting(true);
+      setConnectError(null);
+      try {
+        await startGoogleAuth(input);
+      } catch (err) {
+        setConnectError(err instanceof Error ? err.message : ONBOARD_COPY.connect.unavailable);
+        setConnecting(false);
+      }
       return;
     }
     setConnecting(true);
@@ -421,11 +465,19 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   return (
     <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
+      <div className="onboard-sunscape" aria-hidden="true">
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--one" />
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--two" />
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--three" />
+        <span className="onboard-sunscape__sun" />
+      </div>
       <header className="onboard__nav">
-        <a href="/" className="onboard__brand" aria-label={BRAND.name}>
-          {BRAND.name}
+        <a href={APP_ROUTES.home} className="onboard__brand" aria-label={BRAND.name}>
+          <PopMark className="onboard__brand-mark" size={42} />
+          <Wordmark className="onboard__brand-word" />
+          <span className="onboard__brand-proof">marketing team in your messages</span>
         </a>
-        <PublicTrustLinks placement="nav" />
+        <DoorActions />
       </header>
       <div className="onboard__inner">
         <main className="onboard__primary">
@@ -433,6 +485,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           {phase === "door" && (
             <form className="onboard-door" onSubmit={onDoorSubmit} noValidate>
               <PopMark className="onboard__mark" />
+              <MarketingIconRow />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
               <label className="onboard-door__label" htmlFor="onboard-target">
                 {ONBOARD_COPY.door.inputLabel}
@@ -447,7 +500,6 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   onChange={(e) => setInput(e.target.value)}
                   aria-invalid={doorError ? true : undefined}
                   aria-describedby={doorError ? "onboard-door-error" : undefined}
-                  autoFocus
                 />
                 <button className="onboard-cta" type="submit">
                   {ONBOARD_COPY.door.submit}
@@ -458,7 +510,6 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   {doorError}
                 </p>
               )}
-              <p className="onboard-door__reassurance">{ONBOARD_COPY.door.reassurance}</p>
             </form>
           )}
 
@@ -508,13 +559,27 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                     approving={shipping}
                     onApprove={() => void approve()}
                   />
-                  <button
-                    className="onboard-cta onboard-cta--ghost"
-                    type="button"
-                    onClick={() => setPhase("connect")}
-                  >
-                    {ONBOARD_COPY.reading.next}
-                  </button>
+                  {connectMode === "guided" ? (
+                    <button
+                      className="onboard-cta onboard-cta--ghost"
+                      type="button"
+                      onClick={() => setPhase("connect")}
+                    >
+                      {ONBOARD_COPY.reading.next}
+                    </button>
+                  ) : (
+                    <a
+                      className="onboard-cta onboard-cta--ghost"
+                      href={NATIVE_IMESSAGE_URL}
+                      onClick={(event) => {
+                        if (!onOpenWorkspace) return;
+                        event.preventDefault();
+                        onOpenWorkspace(input);
+                      }}
+                    >
+                      {ONBOARD_COPY.reading.openRoom}
+                    </a>
+                  )}
                 </>
               )}
             </section>
@@ -545,6 +610,15 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   >
                     {connecting ? ONBOARD_COPY.connect.allowing : ONBOARD_COPY.connect.allow}
                   </button>
+                  <button
+                    className="onboard-cta onboard-cta--ghost"
+                    type="button"
+                    disabled={connecting}
+                    onClick={() => setPhase("deliverable")}
+                  >
+                    {ONBOARD_COPY.connect.skip}
+                  </button>
+                  <p className="onboard-allow__note">{ONBOARD_COPY.connect.skipNote}</p>
                   {connectError && (
                     <>
                       <p className="onboard-error" role="alert">
@@ -587,13 +661,18 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
               {building && (
                 <p className="onboard-working" role="status">
                   <span className="onboard-spinner" aria-hidden="true" />
-                  {ONBOARD_COPY.deliverable.building}
+                  {results.length > 0
+                    ? ONBOARD_COPY.deliverable.building
+                    : ONBOARD_COPY.deliverable.buildingSiteOnly}
                 </p>
               )}
 
               {deliverable && (
                 <div className="onboard-card">
                   <h2 className="onboard-card__title">{deliverable.title}</h2>
+                  {results.length === 0 && (
+                    <p className="onboard-card__site-only">{ONBOARD_COPY.deliverable.siteOnly}</p>
+                  )}
                   <p className="onboard-card__body">{deliverable.body}</p>
                   {deliverable.spendsMoney && (
                     <p className="onboard-card__money">{ONBOARD_COPY.deliverable.moneyGate}</p>
@@ -636,23 +715,27 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
             </section>
           )}
         </main>
-        <CoworkStage
-          phase={phase}
-          input={input}
-          finding={finding}
-          mission={mission}
-          results={results}
-          deliverable={deliverable}
-          readError={readError}
-          connectError={connectError}
-        />
+        {phase !== "door" && (
+          <CoworkStage
+            phase={phase}
+            input={input}
+            finding={finding}
+            mission={mission}
+            results={results}
+            deliverable={deliverable}
+            readError={readError}
+            connectError={connectError}
+          />
+        )}
       </div>
-      <footer className="onboard__footer">
-        <PublicTrustLinks placement="footer" />
-        <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
-          {SUPPORT_CONTACT.email}
-        </a>
-      </footer>
+      {phase !== "door" && (
+        <footer className="onboard__footer">
+          <PublicTrustLinks />
+          <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
+            {SUPPORT_CONTACT.email}
+          </a>
+        </footer>
+      )}
     </div>
   );
 }

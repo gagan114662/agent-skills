@@ -20,6 +20,11 @@ function view(over: Partial<ConnectionView>): ConnectionView {
     status: "coming_soon",
     capabilities: ["search_console"],
     oauthScopes: ["webmasters"],
+    consentStatus: "none",
+    providerStatus: "unproven",
+    lastProofAt: null,
+    lastProofReceipt: null,
+    failureReason: null,
     connected: false,
     ...over,
   };
@@ -96,6 +101,28 @@ describe("Connections (#258)", () => {
     expect(screen.getByText(/we'll let you know/i)).toBeInTheDocument();
   });
 
+  it("shows the exact Google connector setup issue when OAuth callback config is missing (#1285)", () => {
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "google",
+          label: "Sign in with Google",
+          status: "coming_soon",
+          configIssue: {
+            code: "google_connection_oauth_missing_config",
+            missingEnv: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+            remedy:
+              "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/google/oauth/callback URL and add that exact URI to the Google OAuth client.",
+          },
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    expect(screen.getByText(/GOOGLE_CONNECTION_OAUTH_REDIRECT_URI/)).toBeInTheDocument();
+    expect(screen.getByText(/connections\/google\/oauth\/callback/)).toBeInTheDocument();
+  });
+
   it("renders the admin paste form and submits repo + token when the owner manages internal", () => {
     const onInternalConnect = vi.fn();
     const data: ConnectionsResponse = {
@@ -151,5 +178,30 @@ describe("Connections (#258)", () => {
     render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(onDisconnect).toHaveBeenCalledWith("google");
+  });
+
+  it("shows setup pending instead of connected for consent without provider proof (#1284)", () => {
+    const onDisconnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "email",
+          label: "Connect email",
+          auth: "one_click",
+          status: "available",
+          consentStatus: "recorded",
+          providerStatus: "unproven",
+          failureReason: "Consent is recorded, but no provider health check has passed yet.",
+          connected: false,
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} onDisconnect={onDisconnect} />);
+    expect(screen.getByText(/setup pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/provider health check/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Connected$/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
+    expect(onDisconnect).toHaveBeenCalledWith("email");
   });
 });

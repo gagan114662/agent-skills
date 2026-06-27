@@ -16,13 +16,12 @@ export function greetingWord(hour: number): "morning" | "afternoon" | "evening" 
 }
 
 /**
- * The warm door greeting — "afternoon, gagan. right then — what are we making pop today?". The name is
- * optional (a brand-new visitor may have none yet); without it we keep the same beat, just less personal.
+ * The warm door headline. The homepage has to work like Tomo: plain promise first, personality in the edges.
  */
 export function greeting(hour: number, name?: string | null): string {
-  const word = greetingWord(hour);
-  const who = name && name.trim() !== "" ? `${word}, ${name.trim()}.` : `${word}.`;
-  return `${who} right then — what are we making pop today?`;
+  void hour;
+  void name;
+  return "Make marketing pop.";
 }
 
 export const ONBOARD_COPY = {
@@ -77,7 +76,7 @@ export const ONBOARD_COPY = {
     inputLabel: "what are we marketing today?",
     placeholder: "a product, or your website",
     /** Primary action. */
-    submit: "put the team on it",
+    submit: "Start",
     /** Nudge if they hit go with an empty box. */
     needInput: "go on then — give us a product or a url to chew on.",
     /** A quiet line under the input — reassurance, not config. */
@@ -100,6 +99,8 @@ export const ONBOARD_COPY = {
     error: "couldn't get into your site just now. give it another go, or try a different url.",
     /** Move on to the magic. */
     next: "nice. now let's plug in your actual stuff →",
+    /** Live default: move the user into the iMessage-first workspace room instead of a connector theater. */
+    openRoom: "text the team in iMessage →",
   },
 
   /**
@@ -110,6 +111,8 @@ export const ONBOARD_COPY = {
     sectionTitle: "let's borrow your tools. one at a time, no funny business.",
     allow: "allow",
     allowing: "plugging in…",
+    skip: "skip for now",
+    skipNote: "carry on with the site read. accounts can come later.",
     unavailable: "not hooked up yet. we'd rather tell you than do a little theatre.",
     realConnections: "open real connections",
     /** Shown the instant a connection lands, above its real result. */
@@ -139,6 +142,8 @@ export const ONBOARD_COPY = {
     eyebrow: "your first real one",
     /** While we put it together. */
     building: "stitching it together from your actual accounts…",
+    buildingSiteOnly: "stitching it together from the site read…",
+    siteOnly: "site-read draft. connect real accounts before ipop drafts replies or queues anything to publish.",
     /** The "what happens if you say yes" line — honest, reassuring. */
     consequence: "say yes and this publishes. nothing's sent and nothing's charged.",
     /** The approve / reject pair. */

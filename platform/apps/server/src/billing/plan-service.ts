@@ -398,13 +398,14 @@ export class PlanBillingService implements PlanActivator {
       this.logger?.warn({ workspaceId, planKey }, "billing: ignoring activation for unknown plan");
       return undefined;
     }
+    const periodEndsAt = addDays(new Date(), 30);
     const active = await this.store.activate({
       workspaceId,
       planKey: plan.key,
       caps: planCaps(plan),
       providerEventId,
-      expiresAt: addDays(new Date(), 30),
-      nextBillingAt: addDays(new Date(), 30),
+      expiresAt: periodEndsAt,
+      nextBillingAt: periodEndsAt,
     });
     if (metadata.pricingExperimentId && metadata.pricingAssignmentId && this.pricingExperiments) {
       await this.pricingExperiments.markConversion({

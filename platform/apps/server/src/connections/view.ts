@@ -8,13 +8,24 @@
  *    OAuth (customer) connector outright (paste is internal-only), and requires an `owner/repo` + a token.
  *  - {@link decideOneClickConnect} validates a one-click customer consent (e.g. turning on outbound email,
  *    #529): it accepts only a customer connector whose auth is `one_click` and whose live flow is wired
- *    (`available`). No secret is sealed — the consent itself is the connection.
+ *    (`available`). No secret is sealed — the consent is recorded, but provider proof is still required
+ *    before the connection is treated as live.
  *  - {@link decideWaitlist} validates a "notify me" request for a connector whose live flow isn't wired yet
  *    (`coming_soon`), so a not-yet-available connector offers a next step instead of a dead stop.
  */
 
 import type { ServiceKind } from "../onboarding/types.js";
 import type { ConnectionAudience, ConnectionAuthMethod, ConnectionDescriptor, ConnectionStatus } from "./registry.js";
+
+export interface ConnectionProofInput {
+  connected: boolean;
+  envKeys: readonly string[];
+  fingerprint: string;
+  connectedAtMs: number;
+}
+
+export type ConnectionConsentStatus = "none" | "recorded";
+export type ConnectionProviderStatus = "unproven" | "healthy";
 
 /** A connection as rendered in Settings — descriptor metadata + whether it's connected. Never a secret. */
 export interface ConnectionView {
@@ -28,29 +39,82 @@ export interface ConnectionView {
   status: ConnectionStatus;
   capabilities: string[];
   oauthScopes: string[];
+  consentStatus: ConnectionConsentStatus;
+  providerStatus: ConnectionProviderStatus;
+  lastProofAt: number | null;
+  lastProofReceipt: string | null;
+  failureReason: string | null;
+  configIssue: ConnectionDescriptor["configIssue"] | null;
+  /** True only when provider proof has passed; consent alone is not connected (#1284). */
   connected: boolean;
+}
+
+function proofFor(d: ConnectionDescriptor, proof: ConnectionProofInput | undefined): {
+  consentStatus: ConnectionConsentStatus;
+  providerStatus: ConnectionProviderStatus;
+  lastProofAt: number | null;
+  lastProofReceipt: string | null;
+  failureReason: string | null;
+  connected: boolean;
+} {
+  if (!proof?.connected) {
+    return {
+      consentStatus: "none",
+      providerStatus: "unproven",
+      lastProofAt: null,
+      lastProofReceipt: null,
+      failureReason: null,
+      connected: false,
+    };
+  }
+  const hasProviderProof = proof.envKeys.length > 0;
+  if (hasProviderProof) {
+    return {
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+      lastProofAt: proof.connectedAtMs,
+      lastProofReceipt: `vault:${proof.fingerprint.slice(0, 12)}`,
+      failureReason: null,
+      connected: true,
+    };
+  }
+  return {
+    consentStatus: "recorded",
+    providerStatus: "unproven",
+    lastProofAt: null,
+    lastProofReceipt: null,
+    failureReason:
+      d.auth === "one_click"
+        ? "Consent is recorded, but no provider health check has passed yet."
+        : "Provider proof is missing.",
+    connected: false,
+  };
 }
 
 export function decideConnectionView(opts: {
   descriptors: readonly ConnectionDescriptor[];
-  connectedIds: ReadonlySet<string>;
+  proofs: ReadonlyMap<string, ConnectionProofInput>;
   isOwner: boolean;
 }): ConnectionView[] {
   return opts.descriptors
     .filter((d) => d.audience === "customer" || opts.isOwner) // internal connectors are owner-only
-    .map((d) => ({
-      id: d.id,
-      label: d.label,
-      summary: d.summary,
-      provider: d.provider,
-      kind: d.kind,
-      audience: d.audience,
-      auth: d.auth,
-      status: d.status,
-      capabilities: d.capabilities,
-      oauthScopes: d.oauthScopes,
-      connected: opts.connectedIds.has(d.id),
-    }));
+    .map((d) => {
+      const proof = proofFor(d, opts.proofs.get(d.id));
+      return {
+        id: d.id,
+        label: d.label,
+        summary: d.summary,
+        provider: d.provider,
+        kind: d.kind,
+        audience: d.audience,
+        auth: d.auth,
+        status: d.status,
+        capabilities: d.capabilities,
+        oauthScopes: d.oauthScopes,
+        configIssue: d.configIssue ?? null,
+        ...proof,
+      };
+    });
 }
 
 /**
@@ -104,9 +168,10 @@ export type OneClickConnectDecision =
   | { ok: false; reason: string };
 
 /**
- * Validate a one-click customer consent (#529, e.g. turning on outbound email). No secret changes hands —
- * the consent itself is the connection — so this only checks the connector is a customer one-click connector
- * whose live flow is wired. A `coming_soon` connector is refused here (use {@link decideWaitlist} instead).
+ * Validate a one-click customer consent (#529, e.g. turning on outbound email). No secret changes hands, so
+ * this only checks the connector is a customer one-click connector whose live flow is wired. Provider proof
+ * is a separate health/readback step; consent alone must not unlock live capabilities (#1284). A
+ * `coming_soon` connector is refused here (use {@link decideWaitlist} instead).
  */
 export function decideOneClickConnect(opts: {
   descriptor: ConnectionDescriptor | undefined;

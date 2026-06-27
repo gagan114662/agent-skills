@@ -30,6 +30,7 @@ function okFetch(): FetchLike {
 }
 
 function connection(over: Partial<ConnectionView>): ConnectionView {
+  const connected = over.connected ?? false;
   return {
     id: "email",
     label: "Connect email",
@@ -41,7 +42,12 @@ function connection(over: Partial<ConnectionView>): ConnectionView {
     status: "available",
     capabilities: ["send_email"],
     oauthScopes: [],
-    connected: false,
+    consentStatus: connected ? "recorded" : "none",
+    providerStatus: connected ? "healthy" : "unproven",
+    lastProofAt: connected ? 123 : null,
+    lastProofReceipt: connected ? "vault:test" : null,
+    failureReason: null,
+    connected,
     ...over,
   };
 }

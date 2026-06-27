@@ -3,10 +3,8 @@ import { EVERYDAY, GARDEN, PAYWALL, VOICE } from "./brand.js";
 import { ONBOARD_COPY, greeting } from "./components/onboarding/copy.js";
 
 describe("brand voice surfaces (#1071)", () => {
-  it("keeps greetings warm, lowercase, and action-oriented", () => {
-    expect(greeting(14, "Gagan")).toBe(
-      "afternoon, Gagan. right then — what are we making pop today?",
-    );
+  it("keeps greetings warm, simple, and action-oriented", () => {
+    expect(greeting(14, "Gagan")).toBe("Make marketing pop.");
     expect(EVERYDAY.greeting("Gagan", "morning")).toBe(
       "morning, gagan. right then — what are we making pop today?",
     );
