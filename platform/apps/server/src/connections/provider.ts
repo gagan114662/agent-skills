@@ -138,6 +138,7 @@ export interface OAuthClientConfig {
   redirectUri: string;
   scopes: readonly string[];
   tokenAuth?: "client_secret_post" | "basic";
+  tokenMethod?: "POST" | "GET";
   pkce?: {
     secret: string;
     method: "S256";
@@ -191,12 +192,21 @@ export class OAuthConnectProvider implements ConnectProvider {
     } else {
       body.set("client_secret", this.config.clientSecret);
     }
+    const method = this.config.tokenMethod ?? "POST";
+    const tokenUrl = new URL(this.config.tokenUrl);
+    const requestInit: RequestInit =
+      method === "GET"
+        ? { method }
+        : {
+            method,
+            headers,
+            body,
+          };
+    if (method === "GET") {
+      for (const [key, value] of body.entries()) tokenUrl.searchParams.set(key, value);
+    }
     try {
-      const res = await fetch(this.config.tokenUrl, {
-        method: "POST",
-        headers,
-        body,
-      });
+      const res = await fetch(method === "GET" ? tokenUrl.toString() : this.config.tokenUrl, requestInit);
       if (!res.ok) throw new ConnectProviderError(`token exchange returned ${res.status}`);
       return this.mapTokens(await res.json());
     } catch (err) {

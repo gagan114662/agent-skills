@@ -39,6 +39,7 @@ import {
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
 } from "../../src/connections/default.js";
 import type { ApprovalRequest } from "../../src/db/repositories/approvals.js";
@@ -361,6 +362,45 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(url.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/adwords");
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
+  });
+
+  it("defaultConnectProvider wires Meta Ads OAuth with Graph manual-flow token exchange (#1285)", async () => {
+    expect(metaAdsConnectionOAuthConfigStatus({} as NodeJS.ProcessEnv)).toMatchObject({
+      configured: false,
+      missing: ["META_OAUTH_CLIENT_ID", "META_OAUTH_CLIENT_SECRET", "META_ADS_CONNECTION_OAUTH_REDIRECT_URI"],
+      callbackPath: "/me/connections/meta_ads/oauth/callback",
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: "meta-access", token_type: "bearer", expires_in: 3600 }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = defaultConnectProvider("meta_ads", {
+      META_OAUTH_CLIENT_ID: "meta-client",
+      META_OAUTH_CLIENT_SECRET: "meta-secret",
+      META_ADS_CONNECTION_OAUTH_REDIRECT_URI: "https://api.ipop.ai/me/connections/meta_ads/oauth/callback",
+    } as NodeJS.ProcessEnv);
+    expect(provider.live).toBe(true);
+    const url = new URL(provider.authorizeUrl({ state: "state-1" }));
+    expect(url.origin + url.pathname).toBe("https://www.facebook.com/v21.0/dialog/oauth");
+    expect(url.searchParams.get("client_id")).toBe("meta-client");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://api.ipop.ai/me/connections/meta_ads/oauth/callback");
+    expect(url.searchParams.get("scope")).toBe("ads_read ads_management business_management");
+
+    const exchange = await provider.exchange({ code: "code-1", state: "state-1" });
+    expect(exchange.capabilities).toEqual(["ads"]);
+    expect(exchange.secrets).toMatchObject({
+      META_ADS_OAUTH_ACCESS_TOKEN: "meta-access",
+      META_ADS_OAUTH_SCOPE: "ads_read ads_management business_management",
+      META_ADS_OAUTH_TOKEN_TYPE: "bearer",
+    });
+    const tokenUrl = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(tokenUrl.origin + tokenUrl.pathname).toBe("https://graph.facebook.com/v21.0/oauth/access_token");
+    expect(tokenUrl.searchParams.get("client_id")).toBe("meta-client");
+    expect(tokenUrl.searchParams.get("client_secret")).toBe("meta-secret");
+    expect(tokenUrl.searchParams.get("code")).toBe("code-1");
   });
 });
 

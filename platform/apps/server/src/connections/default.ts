@@ -22,6 +22,7 @@ import {
   googleAdsConnectionOAuthConfigStatus,
   resolveGoogleAdsConnectionRedirectUri,
 } from "./google-ads-oauth-config.js";
+import { metaAdsConnectionOAuthConfigStatus } from "./meta-ads-oauth-config.js";
 import { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 import { resolveConnectOnceCaps } from "./caps.js";
 import {
@@ -35,9 +36,11 @@ import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
 export { googleConnectionOAuthConfigStatus } from "./google-oauth-config.js";
 export { googleAdsConnectionOAuthConfigStatus } from "./google-ads-oauth-config.js";
+export { metaAdsConnectionOAuthConfigStatus } from "./meta-ads-oauth-config.js";
 export { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 
 export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+const META_ADS_SCOPES = ["ads_read", "ads_management", "business_management"] as const;
 
 /**
  * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
@@ -64,6 +67,12 @@ export function defaultConnectProvider(
     return createConnectProvider({
       client: loadGoogleAdsConnectionClient(env),
       mapTokens: mapGoogleAdsConnectionTokens,
+    });
+  }
+  if (connectionId === "meta_ads") {
+    return createConnectProvider({
+      client: loadMetaAdsConnectionClient(env),
+      mapTokens: mapMetaAdsConnectionTokens,
     });
   }
   return createConnectProvider({ client: null, mapTokens: () => EMPTY_EXCHANGE });
@@ -200,6 +209,40 @@ function mapGoogleAdsConnectionTokens(json: unknown): ConnectExchangeResult {
     capabilities: scopes.includes(GOOGLE_ADS_SCOPE) ? ["ads"] : [],
     secrets,
   };
+}
+
+function loadMetaAdsConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig | null {
+  if (!metaAdsConnectionOAuthConfigStatus(env).configured) return null;
+  const clientId = env.META_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.META_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = env.META_ADS_CONNECTION_OAUTH_REDIRECT_URI?.trim();
+  return {
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri: redirectUri!,
+    authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
+    scopes: META_ADS_SCOPES,
+    tokenMethod: "GET",
+  };
+}
+
+function mapMetaAdsConnectionTokens(json: unknown): ConnectExchangeResult {
+  const token = json as {
+    access_token?: unknown;
+    expires_in?: unknown;
+    token_type?: unknown;
+  };
+  if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
+  const secrets: Record<string, string> = {
+    META_ADS_OAUTH_ACCESS_TOKEN: token.access_token,
+    META_ADS_OAUTH_SCOPE: META_ADS_SCOPES.join(" "),
+    META_ADS_OAUTH_TOKEN_TYPE: typeof token.token_type === "string" ? token.token_type : "Bearer",
+  };
+  if (typeof token.expires_in === "number" && Number.isFinite(token.expires_in)) {
+    secrets.META_ADS_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
+  }
+  return { capabilities: ["ads"], secrets };
 }
 
 /** Build the production-wired connect-once service. */

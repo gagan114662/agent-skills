@@ -12,6 +12,7 @@ const ORIGINAL_ENC_KEY = process.env.AGENT_CREDENTIALS_ENC_KEY;
 const defaultConnectProvider = vi.fn();
 const googleConnectionOAuthConfigStatus = vi.fn();
 const googleAdsConnectionOAuthConfigStatus = vi.fn();
+const metaAdsConnectionOAuthConfigStatus = vi.fn();
 const xConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
 const recordExecution = vi.fn();
@@ -29,6 +30,7 @@ vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
   createDefaultConnectOnceService: vi.fn(() => ({
     startConnect: vi.fn(async () => ({ status: "coming_soon", reason: "not under test" })),
@@ -117,6 +119,11 @@ beforeEach(() => {
     configured: false,
     missing: ["GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI"],
     callbackPath: "/me/connections/google_ads/oauth/callback",
+  });
+  metaAdsConnectionOAuthConfigStatus.mockReturnValue({
+    configured: false,
+    missing: ["META_ADS_CONNECTION_OAUTH_REDIRECT_URI"],
+    callbackPath: "/me/connections/meta_ads/oauth/callback",
   });
   xConnectionOAuthConfigStatus.mockReturnValue({
     configured: false,
@@ -391,6 +398,163 @@ describe("connectionsRoutes Google Ads OAuth callback (#1285)", () => {
         ok: false,
         error:
           "Google Ads token is missing required scopes: https://www.googleapis.com/auth/adwords",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("connectionsRoutes Meta Ads OAuth callback (#1285)", () => {
+  it("exchanges an approved Meta Ads callback, verifies permissions and identity, seals, and records proof", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              { permission: "ads_read", status: "granted" },
+              { permission: "ads_management", status: "granted" },
+              { permission: "business_management", status: "granted" },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "meta-user-1", name: "Ipop Operator" }),
+        }),
+    );
+    const exchange = vi.fn(async () => ({
+      capabilities: ["ads"],
+      secrets: {
+        META_ADS_OAUTH_ACCESS_TOKEN: "meta-access-token",
+        META_ADS_OAUTH_SCOPE: "ads_read ads_management business_management",
+      },
+    }));
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange,
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "meta_ads", provider: "meta" },
+        summary: "Connect Meta Ads",
+      }),
+    );
+    setServiceCredentials.mockResolvedValue({
+      serviceKey: "meta_ads",
+      connected: true,
+      status: "connected",
+      fingerprint: "fp_meta_ads",
+      envKeys: ["META_ADS_OAUTH_ACCESS_TOKEN", "META_ADS_OAUTH_SCOPE"],
+      scopes: ["ads"],
+      rotationReminderDays: null,
+      connectedAtMs: Date.now(),
+      revokedAtMs: null,
+    });
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "meta_ads", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/meta_ads/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=meta_ads&status=connected");
+      const fetchCalls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+      expect(String(fetchCalls[0][0])).toContain("https://graph.facebook.com/v21.0/me/permissions?");
+      expect(fetchCalls[0][1]).toEqual({ method: "GET" });
+      expect(String(fetchCalls[1][0])).toContain("https://graph.facebook.com/v21.0/me?");
+      expect(fetchCalls[1][1]).toEqual({ method: "GET" });
+      expect(setServiceCredentials).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        serviceKey: "meta_ads",
+        secrets: {
+          META_ADS_OAUTH_ACCESS_TOKEN: "meta-access-token",
+          META_ADS_OAUTH_SCOPE: "ads_read ads_management business_management",
+        },
+        scopes: ["ads"],
+        connectedByMemberId: MEMBER,
+      });
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: true,
+        result: {
+          connectionId: "meta_ads",
+          provider: "meta",
+          envKeys: ["META_ADS_OAUTH_ACCESS_TOKEN", "META_ADS_OAUTH_SCOPE"],
+          fingerprint: "fp_meta_ads",
+          scopes: ["ads"],
+          health: {
+            provider: "meta",
+            checkedAtMs: expect.any(Number),
+            scopes: ["ads_read", "ads_management", "business_management"],
+            subject: "meta-user-1",
+            audience: "Ipop Operator",
+          },
+        },
+      });
+      expect(String(res.headers.location)).not.toContain("meta-access-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to seal Meta Ads when a required permission is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { permission: "ads_read", status: "granted" },
+            { permission: "ads_management", status: "declined" },
+          ],
+        }),
+      })),
+    );
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(async () => ({
+        capabilities: ["ads"],
+        secrets: {
+          META_ADS_OAUTH_ACCESS_TOKEN: "meta-access-token",
+          META_ADS_OAUTH_SCOPE: "ads_read ads_management business_management",
+        },
+      })),
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "meta_ads", provider: "meta" },
+        summary: "Connect Meta Ads",
+      }),
+    );
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "meta_ads", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/meta_ads/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=meta_ads&status=error");
+      expect(setServiceCredentials).not.toHaveBeenCalled();
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: false,
+        error:
+          "Meta Ads token is missing required permissions: ads_management, business_management",
       });
     } finally {
       await app.close();

@@ -24,6 +24,7 @@ import {
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
 } from "../connections/default.js";
 import { getRequest, recordExecution } from "../db/repositories/approvals.js";
@@ -200,6 +201,20 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
                 missingEnv: status.missing,
                 remedy:
                   "Set GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/google_ads/oauth/callback URL and add that exact URI to the Google OAuth client.",
+            },
+        };
+      }
+      if (descriptor.id === "meta_ads") {
+        const status = metaAdsConnectionOAuthConfigStatus();
+        return {
+          ...descriptor,
+          configIssue: status.configured
+            ? undefined
+            : {
+                code: "meta_ads_connection_oauth_missing_config",
+                missingEnv: status.missing,
+                remedy:
+                  "Set META_OAUTH_CLIENT_ID, META_OAUTH_CLIENT_SECRET, and META_ADS_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/meta_ads/oauth/callback URL, then add that exact URI to the Meta app.",
               },
         };
       }
@@ -379,6 +394,8 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
           ? googleConnectionOAuthConfigStatus()
           : id === "google_ads" && !googleAdsConnectionOAuthConfigStatus().configured
             ? googleAdsConnectionOAuthConfigStatus()
+            : id === "meta_ads" && !metaAdsConnectionOAuthConfigStatus().configured
+              ? metaAdsConnectionOAuthConfigStatus()
           : id === "x" && !xConnectionOAuthConfigStatus().configured
             ? xConnectionOAuthConfigStatus()
           : null;
@@ -393,6 +410,8 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
                   ? "x_connection_oauth_missing_config"
                   : id === "google_ads"
                     ? "google_ads_connection_oauth_missing_config"
+                    : id === "meta_ads"
+                      ? "meta_ads_connection_oauth_missing_config"
                   : "google_connection_oauth_missing_config",
               missingEnv: setup.missing,
               callbackPath: setup.callbackPath,
