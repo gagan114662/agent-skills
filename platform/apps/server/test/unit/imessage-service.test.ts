@@ -78,9 +78,15 @@ describe("IMessageRelayService", () => {
         enabled: true,
         configured: false,
         dryRun: false,
+        recipient: "gagan@example.com",
+        recipientSource: "member_pending",
+        requiresVerification: true,
         maxChars: 120,
       }),
-    ).toMatchObject({ status: "not_configured" });
+    ).toMatchObject({
+      status: "not_configured",
+      error: "Verify this iMessage recipient with a successful test send before starting the room.",
+    });
     expect(
       imessageRoomPreflight({
         enabled: true,
@@ -102,6 +108,27 @@ describe("IMessageRelayService", () => {
         maxChars: 120,
       }),
     ).toBeNull();
+  });
+
+  it("keeps member recipients pending until a successful verification send", () => {
+    const service = new IMessageRelayService({ ...base, recipient: undefined }, { send: vi.fn() });
+
+    expect(
+      service.statusFor({ recipient: "gagan@example.com", source: "member_pending", verified: false }),
+    ).toMatchObject({
+      configured: false,
+      recipient: "gagan@example.com",
+      recipientSource: "member_pending",
+      requiresVerification: true,
+    });
+    expect(
+      service.statusFor({ recipient: "gagan@example.com", source: "member_verified", verified: true }),
+    ).toMatchObject({
+      configured: true,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+    });
   });
 
   it("sends through the adapter when enabled and configured", async () => {
