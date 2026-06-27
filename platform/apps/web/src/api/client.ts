@@ -77,6 +77,7 @@ import type {
   MarketingTargetInputDto,
   ExternalAccountConnectInput,
   ConnectionsResponse,
+  ConnectionOAuthStartResponse,
   GoogleAuthStatus,
   IMessageRoomResponse,
   FirstRunReceiptInput,
@@ -470,8 +471,8 @@ export const api = {
     await request(`/me/connections/${encodeURIComponent(id)}/waitlist`, { method: "POST" });
   },
   // Begin a consumer-OAuth connect. Unwired providers reply 501 "coming soon"; live providers park consent.
-  startConnectionOAuth(id: string): Promise<unknown> {
-    return request(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  startConnectionOAuth(id: string): Promise<ConnectionOAuthStartResponse> {
+    return request<ConnectionOAuthStartResponse>(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
   },
   startIMessageRoom(channelId: string, text: string): Promise<IMessageRoomResponse> {
     return request<IMessageRoomResponse>(

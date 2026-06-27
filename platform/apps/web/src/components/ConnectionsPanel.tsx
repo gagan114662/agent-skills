@@ -10,6 +10,10 @@ import type { ConnectionsResponse } from "../api/types.js";
 import { CONNECTIONS } from "../brand.js";
 import { Connections } from "./Connections.js";
 
+function navigateToAuthorizePath(authorizePath: string): void {
+  window.location.assign(authorizePath);
+}
+
 export function ConnectionsPanel(): React.JSX.Element {
   const [data, setData] = useState<ConnectionsResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,9 +49,11 @@ export function ConnectionsPanel(): React.JSX.Element {
         busy={busy}
         error={error}
         onOAuthConnect={(id) =>
-          // The consumer-OAuth redirect is a follow-up; the server replies "coming soon" today.
           void run(async () => {
-            await api.startConnectionOAuth(id).catch(() => undefined);
+            const result = await api.startConnectionOAuth(id).catch(() => undefined);
+            if (result?.status === "pending_approval" && result.authorizePath) {
+              navigateToAuthorizePath(result.authorizePath);
+            }
             return api.getConnections();
           })
         }
