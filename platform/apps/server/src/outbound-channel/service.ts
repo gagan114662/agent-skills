@@ -1,9 +1,12 @@
 import { tokenFingerprint } from "../crypto/secretbox.js";
+import { evaluatePlanLimit, getPlan, type Plan } from "../billing/plans.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
 import { getChannelDescriptor, LOWEST_RISK_CHANNEL, type OutboundChannel } from "./channel.js";
 import { buildEspReadbackReceipt, buildLiveUrlReceipt, isExternalReceipt, type ExternalReceipt } from "./receipt.js";
 import type { OutboundReceiptSource } from "./constants.js";
 import {
   getChannelConnection,
+  listChannelConnections,
   recordSendReceipt,
   upsertChannelConnection,
   type ChannelConnectionRow,
@@ -39,11 +42,37 @@ export interface ConnectChannelInput {
   env?: NodeJS.ProcessEnv;
   /** Injected clock; defaults to `Date.now`. */
   now?: () => number;
+  /** Test seam; production resolves the active paid plan from workspace_plans. */
+  planForWorkspace?: (workspaceId: string) => Promise<Plan | null | undefined>;
+  /** Test seam; production reads the channel ledger. */
+  listConnectionsForWorkspace?: (workspaceId: string) => Promise<ChannelConnectionRow[]>;
 }
 
 export type ConnectChannelResult =
   | { ok: true; connection: ChannelConnectionRow }
-  | { ok: false; code: "unknown_channel" | "missing_from" | "missing_credential"; error: string };
+  | {
+      ok: false;
+      code: "unknown_channel" | "missing_from" | "missing_credential" | "plan_limit";
+      error: string;
+      limit?: number;
+      used?: number;
+      planKey?: string;
+    };
+
+async function activePlanForWorkspace(workspaceId: string): Promise<Plan | null> {
+  const active = await dbWorkspacePlanStore.getActive(workspaceId);
+  if (!active || active.status !== "active") return null;
+  return getPlan(active.planKey) ?? null;
+}
+
+export function countConnectedChannels(
+  rows: readonly ChannelConnectionRow[],
+  channelBeingConnected: OutboundChannel,
+): number {
+  const connected = new Set(rows.filter((r) => r.status === "connected").map((r) => r.channel));
+  connected.add(channelBeingConnected);
+  return connected.size;
+}
 
 /**
  * Record the owner's connect-once consent for a channel. Reads the owner-gated credential inline, stores
@@ -69,6 +98,27 @@ export async function connectChannel(input: ConnectChannelInput): Promise<Connec
       code: "missing_credential",
       error: `Not connected: the owner must set ${descriptor.credentialEnvKey} (e.g. \`fly secrets set ${descriptor.credentialEnvKey}=...\`) before this channel can send.`,
     };
+  }
+  const [plan, connections] = await Promise.all([
+    (input.planForWorkspace ?? activePlanForWorkspace)(input.workspaceId),
+    (input.listConnectionsForWorkspace ?? listChannelConnections)(input.workspaceId),
+  ]);
+  if (plan) {
+    const alreadyConnected = connections.some((r) => r.status === "connected" && r.channel === channel);
+    const usedBeforeThisConnect = countConnectedChannels(connections, channel) - 1;
+    const decision = alreadyConnected
+      ? null
+      : evaluatePlanLimit(plan, "connectedChannels", usedBeforeThisConnect);
+    if (decision && !decision.allowed) {
+      return {
+        ok: false,
+        code: "plan_limit",
+        error: `Connected-channel limit reached for ${plan.name}. ${decision.upgradeTrigger}`,
+        limit: decision.limit,
+        used: usedBeforeThisConnect + 1,
+        planKey: plan.key,
+      };
+    }
   }
   const at = new Date(input.now ? input.now() : Date.now());
   const connection = await upsertChannelConnection({

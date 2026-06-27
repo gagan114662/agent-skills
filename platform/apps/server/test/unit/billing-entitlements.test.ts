@@ -31,7 +31,7 @@ describe("plan quota entitlements (#877)", () => {
     expect(decidePlanQuota({ plan: plan({ planKey: "agency", agentSeats: 30 }), usage: { agents: 29, channels: 0 }, resource: "agent", now: NOW })).toMatchObject({ ok: true });
   });
 
-  it("blocks channel creation once the plan fleet-size cap is reached", () => {
+  it("blocks channel creation once the plan connected-channel cap is reached (#1290)", () => {
     expect(decidePlanQuota({ plan: plan({ planKey: "starter", fleetSize: 1 }), usage: { agents: 0, channels: 1 }, resource: "channel", now: NOW })).toMatchObject({ ok: false, statusCode: 403, limit: 1 });
     expect(decidePlanQuota({ plan: plan({ planKey: "pro", fleetSize: 3 }), usage: { agents: 0, channels: 2 }, resource: "channel", now: NOW })).toMatchObject({ ok: true });
     expect(decidePlanQuota({ plan: plan({ planKey: "agency", fleetSize: 10 }), usage: { agents: 0, channels: 9 }, resource: "channel", now: NOW })).toMatchObject({ ok: true });
