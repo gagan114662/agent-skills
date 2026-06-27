@@ -9089,6 +9089,7 @@ select:focus-visible {
   padding: clamp(18px, 4vw, 40px);
   display: flex;
   flex-direction: column;
+  isolation: isolate;
 }
 .onboard > * {
   position: relative;
@@ -9324,10 +9325,13 @@ select:focus-visible {
   min-height: 620px;
   overflow: hidden;
   background:
-    radial-gradient(620px 300px at 52% 111%, rgba(78, 172, 68, 0.62), transparent 72%),
-    radial-gradient(360px 190px at 80% 94%, rgba(53, 130, 48, 0.32), transparent 70%),
-    linear-gradient(180deg, #95c8e6 0%, #b9dceb 56%, #e5e0b7 100%);
+    radial-gradient(820px 440px at 50% 0%, rgba(255, 248, 121, 0.58), transparent 68%),
+    radial-gradient(680px 360px at 78% 38%, rgba(255, 203, 88, 0.18), transparent 74%),
+    radial-gradient(620px 300px at 52% 111%, rgba(85, 178, 72, 0.58), transparent 72%),
+    linear-gradient(180deg, #ffe779 0%, #ffd978 24%, #a6d8ee 64%, #e4dfa5 100%);
+  background-size: 100% 100%, 110% 110%, 100% 100%, 100% 100%;
   color: #111;
+  animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::before,
 .onboard[data-phase="door"]::after {
@@ -9337,30 +9341,30 @@ select:focus-visible {
 }
 .onboard[data-phase="door"]::before {
   z-index: 0;
-  top: clamp(54px, 9vh, 86px);
+  top: clamp(70px, 13vh, 130px);
   left: 50%;
-  width: clamp(210px, 24vw, 370px);
+  width: clamp(300px, 36vw, 560px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 4deg, rgba(255, 246, 118, 0.28) 0 7deg, transparent 7deg 18deg),
-    radial-gradient(circle, #fff978 0 31%, rgba(255, 236, 91, 0.52) 32% 54%, transparent 55%);
-  filter: blur(0.2px);
-  opacity: 0.86;
-  transform: translateX(-50%);
-  animation: onboard-sun-turn 38s linear infinite;
+    repeating-conic-gradient(from 7deg, rgba(255, 243, 92, 0.32) 0 8deg, transparent 8deg 18deg),
+    radial-gradient(circle at 50% 50%, #fff56a 0 30%, rgba(255, 216, 73, 0.72) 31% 47%, rgba(255, 183, 68, 0.24) 48% 62%, transparent 63%);
+  filter: saturate(1.04);
+  opacity: 0.96;
+  transform: translateX(-50%) rotate(0deg) scale(1);
+  animation: onboard-sun-turn 40s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::after {
   z-index: 0;
-  inset: auto -8% -14% -8%;
-  height: clamp(150px, 23vh, 230px);
+  inset: auto -8% -12% -8%;
+  height: clamp(170px, 25vh, 260px);
   background:
-    radial-gradient(ellipse at 14% 74%, rgba(36, 118, 48, 0.3) 0 9%, transparent 10%),
-    radial-gradient(ellipse at 30% 48%, rgba(126, 206, 75, 0.42) 0 8%, transparent 9%),
-    radial-gradient(ellipse at 54% 63%, rgba(43, 124, 54, 0.32) 0 10%, transparent 11%),
-    radial-gradient(ellipse at 72% 50%, rgba(123, 206, 68, 0.38) 0 8%, transparent 9%),
-    linear-gradient(180deg, transparent 0 10%, rgba(67, 152, 62, 0.38) 42%, rgba(29, 92, 42, 0.56) 100%);
-  filter: blur(10px);
+    radial-gradient(ellipse at 14% 74%, rgba(36, 118, 48, 0.26) 0 9%, transparent 10%),
+    radial-gradient(ellipse at 30% 48%, rgba(145, 218, 79, 0.38) 0 8%, transparent 9%),
+    radial-gradient(ellipse at 54% 63%, rgba(43, 124, 54, 0.28) 0 10%, transparent 11%),
+    radial-gradient(ellipse at 72% 50%, rgba(153, 219, 82, 0.34) 0 8%, transparent 9%),
+    linear-gradient(180deg, transparent 0 10%, rgba(98, 170, 65, 0.32) 42%, rgba(32, 101, 45, 0.5) 100%);
+  filter: blur(9px);
   transform-origin: 50% 100%;
   animation: onboard-field-breathe 9s ease-in-out infinite;
 }
@@ -10155,7 +10159,29 @@ select:focus-visible {
 
 @keyframes onboard-sun-turn {
   to {
-    transform: translateX(-50%) rotate(360deg);
+    transform: translateX(-50%) rotate(360deg) scale(1);
+  }
+}
+
+@keyframes onboard-sun-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 80px rgba(255, 244, 95, 0.38),
+      0 0 180px rgba(255, 203, 72, 0.26);
+  }
+  50% {
+    box-shadow:
+      0 0 120px rgba(255, 244, 95, 0.54),
+      0 0 240px rgba(255, 184, 72, 0.34);
+  }
+}
+
+@keyframes onboard-sky-warmth {
+  0%, 100% {
+    background-position: 50% 0%, 50% 50%, 50% 100%, 50% 50%;
+  }
+  50% {
+    background-position: 50% 3%, 54% 46%, 50% 100%, 50% 50%;
   }
 }
 
