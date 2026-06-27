@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import type { IMessageStatusResponse } from "../../api/types.js";
 import { EVERYDAY } from "../../brand.js";
+import { CopyButton } from "../CopyButton.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
 import {
@@ -150,14 +151,17 @@ function GroupChatHero({
   thread,
   memberName,
   onSubmit,
+  operatorPacket,
 }: {
   greeting: string;
   lanes: readonly AgentLane[];
   thread: readonly ThreadEntry[];
   memberName: string;
   onSubmit: (goal: string) => void;
+  operatorPacket?: string | null;
 }): React.JSX.Element {
   const preview = chatPreviewFrom({ entries: thread, lanes, memberName });
+  const packetCopy = EVERYDAY.codexLane;
   return (
     <header className="everyday-hero">
       <div className="everyday-hero__brief">
@@ -211,6 +215,22 @@ function GroupChatHero({
             </article>
           ))}
         </div>
+        {operatorPacket && (
+          <section className="everyday-operator-packet" aria-label={packetCopy.packetTitle}>
+            <div>
+              <p className="everyday-eyebrow">{packetCopy.title}</p>
+              <h3>{packetCopy.packetTitle}</h3>
+              <p>{packetCopy.packetBody}</p>
+            </div>
+            <div className="everyday-operator-packet__actions">
+              <CopyButton text={operatorPacket} label={packetCopy.copyPacket} />
+              <details>
+                <summary>{packetCopy.openPacket}</summary>
+                <pre>{operatorPacket}</pre>
+              </details>
+            </div>
+          </section>
+        )}
       </section>
     </header>
   );
@@ -1033,6 +1053,7 @@ export function EverydayShell({
   onTestIMessageRecipient,
   onDeleteIMessageRecipient,
   onStartRoom,
+  operatorPacketForGoal,
   dashboardFirst = false,
 }: {
   data?: EverydayData;
@@ -1044,6 +1065,7 @@ export function EverydayShell({
   onTestIMessageRecipient?: () => Promise<void> | void;
   onDeleteIMessageRecipient?: () => Promise<void> | void;
   onStartRoom?: (goal: string) => Promise<void> | void;
+  operatorPacketForGoal?: (goal: string) => string;
   dashboardFirst?: boolean;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
@@ -1051,11 +1073,13 @@ export function EverydayShell({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [room, setRoom] = useState<readonly AgentLane[]>(data.room);
   const [localThread, setLocalThread] = useState<readonly ThreadEntry[]>([]);
+  const [operatorPacket, setOperatorPacket] = useState<string | null>(null);
   const pending = data.approvals.filter((c) => !shipped.includes(c.id));
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
   const thread = [...data.thread, ...localThread];
 
   function startRoom(goal: string): void {
+    setOperatorPacket(operatorPacketForGoal?.(goal) ?? null);
     const userEntry: ThreadEntry = {
       id: "local-" + Date.now(),
       kind: "agent-line",
@@ -1140,6 +1164,7 @@ export function EverydayShell({
           thread={thread}
           memberName={data.memberName}
           onSubmit={startRoom}
+          operatorPacket={operatorPacket}
         />
         {!dashboardFirst && (
           <WorkSummary data={{ ...data, room, thread, approvals: pending }} />

@@ -1513,18 +1513,6 @@ export const CONSOLE = {
       dismissLabel: "Dismiss the startup error",
     },
   },
-  /**
-   * Owner dogfood banner for the Codex operator lane (#1265): shown only on the chat-first surface, where the
-   * marketing agents visibly coordinate. This is a handoff lane, not a backend runtime credential.
-   */
-  codexLane: {
-    title: "Codex operator lane",
-    status: "Ready for owner handoff",
-    body:
-      "When the fleet needs product work, it packages context for Codex, waits for the returned files, PR, " +
-      "tests, and risks, then records the result as an audited artifact. Your ChatGPT subscription stays in " +
-      "your Codex session; the backend never borrows it.",
-  },
   /** Reports view sections. */
   reports: {
     overnightTitle: "While you were out",
@@ -1741,6 +1729,18 @@ export const EVERYDAY = {
       done: "done",
       codex: "operator handoff",
     },
+  },
+
+  /**
+   * Owner-visible Codex operator packet (#1265): a handoff preview/copy affordance, not a backend runtime
+   * credential claim.
+   */
+  codexLane: {
+    title: "Codex operator lane",
+    packetTitle: "Operator packet",
+    packetBody: "The exact handoff Codex will receive for this room.",
+    openPacket: "Open packet",
+    copyPacket: "Copy packet",
   },
 
   /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */

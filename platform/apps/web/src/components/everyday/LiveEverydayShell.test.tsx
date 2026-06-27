@@ -288,6 +288,11 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(operator?.task).toContain("credential_boundary");
     expect(operator?.task).toContain("Return payload schema");
     expect(operator?.task).toContain("pr_or_issue_links");
+    expect(await screen.findByText("Operator packet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy packet" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Open packet"));
+    expect(screen.getByText(/codex_work_packet/)).toBeInTheDocument();
+    expect(screen.getByText(/audit_label: codex_operator_lane/)).toBeInTheDocument();
   });
 
   it("lets the signed-in user save and verify their iMessage destination before room launch (#1283)", async () => {

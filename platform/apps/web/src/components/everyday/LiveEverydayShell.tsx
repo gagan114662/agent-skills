@@ -447,6 +447,12 @@ function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
   );
 }
 
+function codexOperatorPacket(goal: string): string {
+  const spec = ROOM_AGENT_TASKS.find((item) => item.role === "Codex");
+  if (!spec) return "";
+  return structuredRoomTask(spec, goal);
+}
+
 function slug(value: string): string {
   return (
     value
@@ -602,6 +608,7 @@ export function LiveEverydayShell({
         await refreshIMessageStatus();
       }}
       onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
+      operatorPacketForGoal={codexOperatorPacket}
       dashboardFirst={dashboardFirst}
     />
   );
