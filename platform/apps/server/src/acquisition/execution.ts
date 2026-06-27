@@ -56,6 +56,8 @@ export interface AcquisitionPayload {
 export interface DispatchContext {
   workspaceId: string;
   requesterMemberId: string;
+  /** The #13 approval request that authorized this irreversible send. */
+  requestId?: string;
 }
 
 /** A persisted send receipt — the external-grounded record (#200 §2/§3) the brief + CAC read from. */
@@ -96,6 +98,17 @@ export interface ReceiptStore {
   record(receipt: SendReceiptInput): Promise<void>;
 }
 
+export interface OutboundEmailReadbackStore {
+  recordPostmarkReadbacks(input: {
+    workspaceId: string;
+    approvalRequestId: string;
+    recipients: readonly string[];
+    messageIds: readonly string[];
+    provider: string;
+    detail: Record<string, unknown>;
+  }): Promise<void>;
+}
+
 /** How many email sends have gone out today (for warmup headroom), and which warmup day we are on. */
 export interface EmailWindowStore {
   /** Sends today for the workspace's sending domain + the warmup day index (days since first send). */
@@ -108,6 +121,7 @@ export interface AcquisitionDispatcherDeps {
   envelopes: EnvelopeStore;
   suppressions: SuppressionStore;
   receipts: ReceiptStore;
+  outboundReadbacks?: OutboundEmailReadbackStore;
   emailWindow: EmailWindowStore;
   /** The CAN-SPAM/GDPR footer facts for the workspace (from caps/onboarding), or null when unset. */
   footerInfo: (workspaceId: string) => FooterInfo | null;
@@ -289,6 +303,32 @@ async function dispatchEmail(
     body,
     recipients: toSend,
   });
+  if (outcome.status === "sent" && outcome.provider === "postmark" && outcome.detail.dryRun !== true) {
+    if (!deps.outboundReadbacks) {
+      throw new ActionExecutionError("postmark send cannot be proven because the readback recorder is not configured");
+    }
+    const approvalRequestId = (ctx.requestId ?? "").trim();
+    if (!approvalRequestId) {
+      throw new ActionExecutionError("postmark send cannot be proven without a #13 approval request id");
+    }
+    const rawMessageIds = Array.isArray(outcome.detail.messageIds)
+      ? outcome.detail.messageIds
+      : outcome.externalId
+        ? [outcome.externalId]
+        : [];
+    const messageIds = rawMessageIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    if (messageIds.length === 0) {
+      throw new ActionExecutionError("postmark send returned no production readback message id");
+    }
+    await deps.outboundReadbacks.recordPostmarkReadbacks({
+      workspaceId: ctx.workspaceId,
+      approvalRequestId,
+      recipients: toSend,
+      messageIds,
+      provider: outcome.provider,
+      detail: outcome.detail,
+    });
+  }
   return recordAndReturn(deps, {
     workspaceId: ctx.workspaceId,
     ideaId,

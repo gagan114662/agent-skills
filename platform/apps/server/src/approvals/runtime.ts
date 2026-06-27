@@ -372,6 +372,7 @@ function makeExternalSend(
         const dispatched = await dispatcher.dispatch(payload, {
           workspaceId: ctx.workspaceId,
           requesterMemberId: ctx.requesterMemberId,
+          requestId: ctx.requestId,
         });
         if (dispatched) return dispatched;
       }
