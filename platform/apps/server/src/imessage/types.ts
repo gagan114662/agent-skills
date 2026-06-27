@@ -9,6 +9,7 @@ export interface IMessageRelayConfig {
 export interface IMessageSendInput {
   text: string;
   recipient?: string;
+  serviceName?: string;
 }
 
 export type IMessageSendStatus = "sent" | "dry_run" | "disabled" | "not_configured" | "too_long" | "failed";
@@ -25,6 +26,8 @@ export interface IMessageStatus {
   configured: boolean;
   dryRun: boolean;
   recipient?: string;
+  recipientSource?: "member_verified" | "member_pending" | "workspace" | "none";
+  requiresVerification?: boolean;
   maxChars: number;
 }
 
