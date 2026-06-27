@@ -8,7 +8,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const plansRes = {
   plans: [
-    { key: "pro", name: "Pro", tagline: "", priceCents: 19900, currency: "usd", interval: "month", agentSeats: 10, monthlySessionBudgetCents: 100000, fleetSize: 3, highlights: [], featured: true },
+    { key: "pro", name: "Pro", tagline: "", priceCents: 19900, currency: "usd", interval: "month", agentSeats: 10, monthlySessionBudgetCents: 100000, fleetSize: 3, dailyValue: "SEO, content, outreach, and analytics agents working together.", dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.", upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.", highlights: [], featured: true },
   ],
   current: { planKey: "pro", status: "active", agentSeats: 10, monthlySessionBudgetCents: 100000, fleetSize: 3, activatedAt: "2026-06-01" },
 };

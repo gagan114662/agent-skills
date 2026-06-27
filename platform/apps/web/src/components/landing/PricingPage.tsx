@@ -98,6 +98,18 @@ export function PricingPage(): React.JSX.Element {
                   <span className="pricing-card__period">{isAnnual ? PRICING.perYear : PRICING.perMonth}</span>
                 </p>
                 <p className="pricing-card__tagline">{plan.tagline}</p>
+                <div className="pricing-card__value" aria-label={`Everyday value for ${plan.name}`}>
+                  <p className="pricing-card__value-label">Every day</p>
+                  <p className="pricing-card__value-copy">{plan.dailyValue}</p>
+                </div>
+                <div className="pricing-card__limit">
+                  <p>
+                    <span>Limit:</span> {plan.dailyLimit}
+                  </p>
+                  <p>
+                    <span>Upgrade:</span> {plan.upgradeTrigger}
+                  </p>
+                </div>
                 <ul className="pricing-card__highlights">
                   {plan.highlights.map((h) => (
                     <li key={h} className="pricing-card__highlight">

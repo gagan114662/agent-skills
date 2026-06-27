@@ -23,6 +23,9 @@ describe("billing plan catalog (#125 — pure)", () => {
       expect(p.agentSeats).toBeGreaterThan(0);
       expect(p.monthlySessionBudgetCents).toBeGreaterThan(0);
       expect(p.fleetSize).toBeGreaterThan(0);
+      expect(p.dailyValue).toMatch(/daily|every day/i);
+      expect(p.dailyLimit).toMatch(/cap|active/i);
+      expect(p.upgradeTrigger).toMatch(/upgrade|talk to us/i);
       expect(p.highlights.length).toBeGreaterThanOrEqual(3);
     }
   });

@@ -18,6 +18,9 @@ describe("PricingPage (#214)", () => {
       expect(within(grid).getByText(plan.name)).toBeInTheDocument();
       expect(within(grid).getByText(plan.price)).toBeInTheDocument();
       expect(within(grid).getByText(plan.tagline)).toBeInTheDocument();
+      expect(within(grid).getByText(plan.dailyValue)).toBeInTheDocument();
+      expect(within(grid).getByText(plan.dailyLimit, { exact: false })).toBeInTheDocument();
+      expect(within(grid).getByText(plan.upgradeTrigger, { exact: false })).toBeInTheDocument();
       for (const h of plan.highlights) {
         expect(within(grid).getByText(h)).toBeInTheDocument();
       }
@@ -66,7 +69,7 @@ describe("PricingPage (#214)", () => {
     for (const item of matched) {
       expect(screen.getByText(item.q)).toBeInTheDocument();
     }
-    expect(screen.getByText(/starter is \$49\/month for proving the loop/i)).toBeInTheDocument();
+    expect(screen.getByText(/starter is \$49\/month for a daily checkup/i)).toBeInTheDocument();
     expect(screen.getByText(/priority autonomy means pro work gets/i)).toBeInTheDocument();
     expect(screen.getByText(/deploy-to-live means approved site or venture changes/i)).toBeInTheDocument();
   });

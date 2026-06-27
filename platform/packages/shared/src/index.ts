@@ -354,6 +354,12 @@ export interface PlanDto {
   monthlySessionBudgetCents: number;
   /** Tenant cap: department fleet size. */
   fleetSize: number;
+  /** Outcome-first summary: what useful work this tier should produce every day. */
+  dailyValue: string;
+  /** Plain-English limit that turns value into an upgrade moment. */
+  dailyLimit: string;
+  /** The buyer-facing reason to upgrade from this tier. */
+  upgradeTrigger: string;
   highlights: string[];
   /** The recommended tier (rendered with a "most popular" treatment). */
   featured: boolean;

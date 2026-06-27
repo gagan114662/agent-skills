@@ -499,6 +499,12 @@ export interface PlanTeaser {
   readonly name: string;
   readonly price: string;
   readonly tagline: string;
+  /** Outcome-first summary: what useful work this tier should produce every day. */
+  readonly dailyValue: string;
+  /** Plain-English limit that makes the upgrade ask predictable. */
+  readonly dailyLimit: string;
+  /** The buyer-facing reason to move up from this tier. */
+  readonly upgradeTrigger: string;
   readonly featured: boolean;
   /** What you get — feature bullets, mirroring the server catalog so pricing reads from one truth. */
   readonly highlights: readonly string[];
@@ -624,8 +630,8 @@ export const LANDING = {
     howSub: "Three steps. No onboarding call, no Gantt chart.",
     fleetTitle: "Meet the department",
     fleetSub: "Eight specialists, one channel each, all on the same team.",
-    pricingTitle: "Pick your pop",
-    pricingSub: "Start small, grow when you feel like it.",
+    pricingTitle: "See value first",
+    pricingSub: "A useful daily marketing room, capped before spend gets silly.",
     pricingCta: "See all plans",
     ctaTitle: "Your new marketing team is waiting.",
     ctaSub: "We don't drink coffee, we don't take weekends, and we've already had three ideas.",
@@ -638,25 +644,34 @@ export const LANDING = {
       key: "starter",
       name: "Starter",
       price: "$49",
-      tagline: "Your first three agents.",
+      tagline: "A daily checkup for one campaign.",
+      dailyValue: "Site read, quick-win plan, and one draft your team can use.",
+      dailyLimit: "1 active campaign, 3 agents, $200/mo work cap.",
+      upgradeTrigger: "Upgrade when you want the agents to keep going after that first lane fills.",
       featured: false,
-      highlights: ["3 agent seats", "$200/mo session budget", "1 department fleet", "Approvals + audit trail included"],
+      highlights: ["Daily SEO/content/social check-ins", "3 agent seats for one focused lane", "$200/mo agent-work cap with receipts", "Approvals + audit trail included"],
     },
     {
       key: "pro",
       name: "Pro",
       price: "$199",
-      tagline: "A team that never sleeps.",
+      tagline: "Your everyday growth room.",
+      dailyValue: "SEO, content, outreach, and analytics agents working together.",
+      dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
+      upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
       featured: true,
-      highlights: ["10 agent seats", "$1,000/mo session budget", "3 department fleets", "Priority autonomy + deploy-to-live"],
+      highlights: ["Daily multi-agent growth standup", "10 agent seats across 3 lanes", "$1,000/mo agent-work cap with receipts", "Priority autonomy + deploy-to-live"],
     },
     {
       key: "agency",
       name: "Agency",
       price: "$499",
-      tagline: "A whole building of agents.",
+      tagline: "A full agency floor.",
+      dailyValue: "Every day, multiple brands, launches, and client workstreams run in parallel.",
+      dailyLimit: "10 active campaign lanes, 30 agents, $5,000/mo work cap.",
+      upgradeTrigger: "Talk to us when you need custom controls, procurement, or a bigger cap.",
       featured: false,
-      highlights: ["30 agent seats", "$5,000/mo session budget", "10 department fleets", "Everything in Pro, at scale"],
+      highlights: ["Daily cross-client mission control", "30 agent seats across 10 lanes", "$5,000/mo agent-work cap with receipts", "Everything in Pro, at scale"],
     },
   ] as readonly PlanTeaser[],
   /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
@@ -705,8 +720,8 @@ export const LANDING = {
  */
 export const PRICING = {
   eyebrow: "Plans & pricing",
-  title: "Pick your pop.",
-  sub: "Choose monthly or annual, create the workspace, and checkout opens right away. No sales call. No interpretive dance.",
+  title: "See value first.",
+  sub: "Start free, watch the agents do useful daily work, then upgrade when you want more lanes running at once.",
   /** Accessible label for the plans grid region (distinct from the hero heading). */
   plansLabel: "Plans",
   perMonth: "/mo",
@@ -717,10 +732,20 @@ export const PRICING = {
   /** The one recommended-tier ribbon. */
   popularBadge: "Most popular",
   /** Per-plan CTA — creates the account and opens hosted checkout for that tier. */
-  planCta: "Start checkout",
+  planCta: "Keep them working",
+  tableTitle: "Keep the agents working.",
+  tableLede:
+    "Start free, see useful work every day, then upgrade when you want more campaigns, more agents, or more live work moving at once.",
+  everyDayLabel: "Every day",
+  limitLabel: "Limit:",
+  upgradeLabel: "Upgrade:",
+  currentPlanCta: "Your plan",
+  pendingCheckoutCta: "Opening checkout…",
+  tableFootnote:
+    "everyday work is capped before spend gets silly. the agents are enthusiastic; billing is not.",
   /** Reassurance under the grid (honest: self-serve checkout, no sales call, you set the ceiling). */
   footnote:
-    "Self-serve checkout takes card payment through Stripe after signup — no sales call, no mystery invoice. Agent compute is billed against a cap you set; we never cross it. SLA and refund terms are published before you pay.",
+    "Self-serve checkout takes card payment through Stripe after signup. Agent work is capped by plan, approvals stay visible, and we ask for the upgrade at the moment there is more useful work to do.",
   /** Pricing-specific questions, surfaced from the FAQ by question text (no copy duplicated). */
   faqMatch: [/cost/i, /free/i, /starter.*pro/i, /priority autonomy|deploy-to-live/i] as readonly RegExp[],
   faqTitle: "Pricing questions",
@@ -729,8 +754,8 @@ export const PRICING = {
   /** Signup trial framing (#214). `plan` is the chosen plan's display name. */
   trial: {
     eyebrow: "Free trial",
-    onPlan: (plan: string): string => `You're starting the ${plan} checkout. Tiny form first, Stripe next.`,
-    generic: "Create the workspace, then checkout opens. No sales call. Blissfully few forms.",
+    onPlan: (plan: string): string => `You're choosing ${plan}. Tiny form first, useful agents next, checkout when you want more.`,
+    generic: "Create the workspace, see the first useful work, then checkout opens when you want more.",
   },
 } as const;
 
@@ -1744,21 +1769,21 @@ export const BILLING = {
   billingLabel: "Billing",
   navItems: ["General", "Members", "Billing", "Security"],
   heading: "Plan & billing",
-  subheading: "Pick your pop. Change or cancel any time — no calls, no contracts.",
+  subheading: "Start with everyday value. Upgrade when you want more lanes moving.",
   currentLabel: "Current plan",
   selectLabel: "Choose",
   perMonth: "/mo",
   /** Which plan renders as the currently-active subscription in the chrome. */
   currentPlan: "Pro",
   /** A couple of true-to-product line items under the plan cards. */
-  footnote: "Usage-based agent compute is billed against your cap. You set the ceiling; we never cross it.",
+  footnote: "Everyday agent work is billed against your cap. You set the ceiling; we never cross it.",
   /**
    * The real, in-app Settings → Billing panel (not the landing mockup): current plan, this-window usage vs
    * cap, and a clearly-marked test-mode note. Reused by {@link BillingSettings}.
    */
   panel: {
     eyebrow: "Plan & billing",
-    blurb: "See your plan and what you've used this window — upgrade any time, no calls, no contracts.",
+    blurb: "See today's value, this-window usage, and the upgrade path when you want more agents moving.",
     currentPlanLabel: "Current plan",
     trialPlan: "Free trial",
     usageLabel: "Usage this window",
@@ -1815,7 +1840,7 @@ export const FAQ = {
     },
     {
       q: "What does it cost, and what's the difference between Starter and Pro?",
-      a: "Start free, no card. Starter is $49/month for proving the loop with one department fleet: three agent seats, a $200 monthly session budget, approvals, and the audit trail. Pro is $199/month for teams that want more of the business moving at once: ten seats, a $1,000 monthly budget, three department fleets, priority autonomy, and deploy-to-live. Upgrade when one lane is working and you want more departments moving without waiting in line.",
+      a: "Start free, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, three agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
     },
     {
       q: "What is the refund policy and support SLA?",
@@ -2627,12 +2652,12 @@ export const PAGE_SEO = {
 
 /** Copy for the soft paywall nudge (#153 trial funnel). Honest: surfaces the real plan + the real cap. */
 export const PAYWALL = {
-  title: "tiny runway situation",
+  title: "that's today's free work used up",
   body:
-    "Your trial hit its cap. Nothing's lost; the agents are lined up at the door, politely not spending " +
-    "another penny until you give them more room.",
-  cta: "show me plans",
+    "You've seen the useful bit: the audit, the plan, and drafts. Upgrade when you want the agents to " +
+    "keep going across more campaigns.",
+  cta: "keep them working",
   dismiss: "not now",
   /** Shown as the small print under the nudge, naming the current plan. */
-  onPlan: (planName: string): string => `currently on ${planName}. modest, but respectable.`,
+  onPlan: (planName: string): string => `currently on ${planName}. capped on purpose.`,
 } as const;

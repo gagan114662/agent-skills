@@ -22,6 +22,9 @@ const STARTER: PlansResponseDto["plans"][number] = {
   agentSeats: 3,
   monthlySessionBudgetCents: 20_000,
   fleetSize: 1,
+  dailyValue: "A daily marketing checkup.",
+  dailyLimit: "1 active campaign, 3 agents, and a $200 monthly agent-work cap.",
+  upgradeTrigger: "Upgrade when you want more lanes.",
   highlights: ["3 agent seats"],
   featured: false,
 };
@@ -43,6 +46,9 @@ const FULL_CATALOG: PlansResponseDto = {
       agentSeats: 10,
       monthlySessionBudgetCents: 100_000,
       fleetSize: 3,
+      dailyValue: "SEO, content, outreach, and analytics agents working together.",
+      dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
+      upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
       highlights: ["10 agent seats"],
       featured: true,
     },
@@ -56,6 +62,9 @@ const FULL_CATALOG: PlansResponseDto = {
       agentSeats: 30,
       monthlySessionBudgetCents: 500_000,
       fleetSize: 10,
+      dailyValue: "Every day, multiple brands, launches, and client workstreams run in parallel.",
+      dailyLimit: "10 active campaign lanes, 30 agents, $5,000/mo work cap.",
+      upgradeTrigger: "Talk to us when you need custom controls, procurement, or a bigger cap.",
       highlights: ["30 agent seats"],
       featured: false,
     },
@@ -100,7 +109,7 @@ describe("PricingPanel loading + cache (#169 bug 11)", () => {
     expect(screen.queryByText(/loading plans/i)).toBeNull();
   });
 
-  it("#321: renders every tier the catalog returns — at least 3 plans, each with a price and a Choose CTA", async () => {
+  it("#321: renders every tier the catalog returns — at least 3 plans, each with a price and a keep-working CTA", async () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(FULL_CATALOG);
     const store = await bootedStore("ws-tiers");
     render(
@@ -122,7 +131,7 @@ describe("PricingPanel loading + cache (#169 bug 11)", () => {
       expect(screen.getByText(price)).toBeInTheDocument();
       const cta = screen.getByLabelText(`Choose the ${p.name} plan`);
       expect(cta).toBeEnabled();
-      expect(cta).toHaveTextContent("Choose");
+      expect(cta).toHaveTextContent("Keep them working");
     }
   });
 
