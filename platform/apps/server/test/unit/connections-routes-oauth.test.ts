@@ -11,6 +11,7 @@ const ORIGINAL_ENC_KEY = process.env.AGENT_CREDENTIALS_ENC_KEY;
 
 const defaultConnectProvider = vi.fn();
 const googleConnectionOAuthConfigStatus = vi.fn();
+const googleAdsConnectionOAuthConfigStatus = vi.fn();
 const xConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
 const recordExecution = vi.fn();
@@ -26,6 +27,7 @@ vi.mock("../../src/config/loader.js", () => ({
 
 vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
+  googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
   createDefaultConnectOnceService: vi.fn(() => ({
@@ -110,6 +112,11 @@ beforeEach(() => {
     configured: false,
     missing: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
     callbackPath: "/me/connections/google/oauth/callback",
+  });
+  googleAdsConnectionOAuthConfigStatus.mockReturnValue({
+    configured: false,
+    missing: ["GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI"],
+    callbackPath: "/me/connections/google_ads/oauth/callback",
   });
   xConnectionOAuthConfigStatus.mockReturnValue({
     configured: false,
@@ -240,6 +247,150 @@ describe("connectionsRoutes X OAuth callback (#1285)", () => {
       expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
         ok: false,
         error: "X token is missing required scopes: tweet.write",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("connectionsRoutes Google Ads OAuth callback (#1285)", () => {
+  it("exchanges an approved Google Ads callback, verifies tokeninfo scope, seals, and records proof", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          scope: "https://www.googleapis.com/auth/adwords",
+          sub: "google-ads-sub-1",
+          aud: "google-client-id",
+        }),
+      })),
+    );
+    const exchange = vi.fn(async () => ({
+      capabilities: ["ads"],
+      secrets: {
+        GOOGLE_ADS_OAUTH_ACCESS_TOKEN: "ads-access-token",
+        GOOGLE_ADS_OAUTH_SCOPE: "https://www.googleapis.com/auth/adwords",
+      },
+    }));
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange,
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "google_ads", provider: "google" },
+        summary: "Connect Google Ads",
+      }),
+    );
+    setServiceCredentials.mockResolvedValue({
+      serviceKey: "google_ads",
+      connected: true,
+      status: "connected",
+      fingerprint: "fp_google_ads",
+      envKeys: ["GOOGLE_ADS_OAUTH_ACCESS_TOKEN", "GOOGLE_ADS_OAUTH_SCOPE"],
+      scopes: ["ads"],
+      rotationReminderDays: null,
+      connectedAtMs: Date.now(),
+      revokedAtMs: null,
+    });
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "google_ads", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/google_ads/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=google_ads&status=connected");
+      expect(fetch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          href: expect.stringContaining("https://oauth2.googleapis.com/tokeninfo?"),
+        }),
+        { method: "GET" },
+      );
+      expect(setServiceCredentials).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        serviceKey: "google_ads",
+        secrets: {
+          GOOGLE_ADS_OAUTH_ACCESS_TOKEN: "ads-access-token",
+          GOOGLE_ADS_OAUTH_SCOPE: "https://www.googleapis.com/auth/adwords",
+        },
+        scopes: ["ads"],
+        connectedByMemberId: MEMBER,
+      });
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: true,
+        result: {
+          connectionId: "google_ads",
+          provider: "google",
+          envKeys: ["GOOGLE_ADS_OAUTH_ACCESS_TOKEN", "GOOGLE_ADS_OAUTH_SCOPE"],
+          fingerprint: "fp_google_ads",
+          scopes: ["ads"],
+          health: {
+            provider: "google",
+            checkedAtMs: expect.any(Number),
+            scopes: ["https://www.googleapis.com/auth/adwords"],
+            subject: "google-ads-sub-1",
+            audience: "google-client-id",
+          },
+        },
+      });
+      expect(String(res.headers.location)).not.toContain("ads-access-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to seal Google Ads when tokeninfo lacks the adwords scope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ scope: "openid email profile" }),
+      })),
+    );
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(async () => ({
+        capabilities: ["ads"],
+        secrets: {
+          GOOGLE_ADS_OAUTH_ACCESS_TOKEN: "ads-access-token",
+          GOOGLE_ADS_OAUTH_SCOPE: "https://www.googleapis.com/auth/adwords",
+        },
+      })),
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "google_ads", provider: "google" },
+        summary: "Connect Google Ads",
+      }),
+    );
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "google_ads", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/google_ads/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=google_ads&status=error");
+      expect(setServiceCredentials).not.toHaveBeenCalled();
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: false,
+        error:
+          "Google Ads token is missing required scopes: https://www.googleapis.com/auth/adwords",
       });
     } finally {
       await app.close();
