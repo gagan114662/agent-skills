@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { messages } from "../schema/index.js";
 import { MAX_MESSAGE_BODY_LENGTH } from "../../messaging/limits.js";
@@ -17,6 +17,13 @@ export interface Message {
   parentMessageId: string | null;
   alsoSentToChannel: boolean;
   body: string;
+}
+
+export interface CodexOperatorReceiptMessage {
+  id: string;
+  authorMemberId: string;
+  body: string;
+  createdAt: Date;
 }
 
 /** The columns that make up the public Message shape (REST + realtime payloads). */
@@ -91,6 +98,31 @@ export async function listThreadReplies(rootId: string, limit?: number): Promise
     .orderBy(desc(messages.createdAt))
     .limit(clampMessageReadLimit(limit));
   return (rows as Message[]).reverse();
+}
+
+/** Durable Codex operator returns, written as room messages with the #1265 receipt prefix. */
+export async function listCodexOperatorReceiptMessages(
+  workspaceId: string,
+  limit?: number,
+): Promise<CodexOperatorReceiptMessage[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      authorMemberId: messages.authorMemberId,
+      body: messages.body,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.workspaceId, workspaceId),
+        isNull(messages.deletedAt),
+        sql`${messages.body} LIKE ${"codex_operator_lane receipt%"}`,
+      ),
+    )
+    .orderBy(desc(messages.createdAt))
+    .limit(clampMessageReadLimit(limit));
+  return rows as CodexOperatorReceiptMessage[];
 }
 
 /** Number of non-deleted replies under a root message. */

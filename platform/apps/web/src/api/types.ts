@@ -1132,7 +1132,7 @@ export interface TaskTemplateDto {
 export interface AuditEventDto {
   at: string;
   kind: string;
-  source: "approval" | "automation" | "agent";
+  source: "approval" | "automation" | "agent" | "credential";
   actorMemberId: string | null;
   actorLabel: string;
   summary: string;

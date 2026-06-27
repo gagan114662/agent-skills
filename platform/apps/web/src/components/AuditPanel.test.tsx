@@ -14,7 +14,7 @@ describe("AuditPanel empty state (#649)", () => {
     const { store } = renderWithStore(<AuditPanel />);
     await store.bootstrap();
 
-    expect(await screen.findByText(/Gated actions, automation runs, and agent launches/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Gated actions, automation runs, agent launches, and Codex returns/i)).toBeInTheDocument();
     expect(screen.getByText(/approve or run one/i)).toBeInTheDocument();
   });
 });
