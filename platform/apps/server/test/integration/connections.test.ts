@@ -27,6 +27,11 @@ afterAll(async () => {
 
 afterEach(() => {
   delete process.env.RELOAD_MARKETING_OWNER_WORKSPACE_ID;
+  delete process.env.RELOAD_REACH_SEND_PROVIDER;
+  delete process.env.RELOAD_REACH_LIVE_SEND_ENABLED;
+  delete process.env.POSTMARK_SERVER_TOKEN;
+  delete process.env.POSTMARK_FROM;
+  delete process.env.POSTMARK_AUTH_RESULTS_HEADER;
 });
 
 async function seed(): Promise<{ cookie: string; workspaceId: string }> {
@@ -162,6 +167,50 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       summary: "email credentials connected scopes=send_email",
       status: "connected",
     });
+  });
+
+  it("email one-click becomes connected only when live Postmark proof is configured (#1285)", async () => {
+    process.env.RELOAD_REACH_SEND_PROVIDER = "postmark";
+    process.env.RELOAD_REACH_LIVE_SEND_ENABLED = "1";
+    process.env.POSTMARK_SERVER_TOKEN = "pm-live-token";
+    process.env.POSTMARK_FROM = "hello@ipop.ai";
+    process.env.POSTMARK_AUTH_RESULTS_HEADER = "spf=pass dkim=pass dmarc=pass";
+    const { cookie, workspaceId } = await seed();
+
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/email/enable",
+      cookies: { rid: cookie },
+    });
+    expect(enable.statusCode).toBe(200);
+    expect(enable.json()).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+    });
+
+    const after = (
+      await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
+    ).json();
+    const emailAfter = after.connections.find((c: { id: string }) => c.id === "email");
+    expect(emailAfter).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+    });
+    expect(emailAfter.lastProofReceipt).toMatch(/^vault:/);
+
+    const postmarkSecrets = await resolveServiceSecrets(workspaceId, "postmark");
+    expect(postmarkSecrets.POSTMARK_SERVER_TOKEN).toBe("pm-live-token");
+    expect(postmarkSecrets.POSTMARK_FROM).toBe("hello@ipop.ai");
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: "/me/connections/email",
+      cookies: { rid: cookie },
+    });
+    expect(del.statusCode).toBe(200);
+    expect(await resolveServiceSecrets(workspaceId, "postmark")).toEqual({});
   });
 
   it("enabling a not-yet-available connector is refused; a coming-soon connector offers the waitlist instead (#507)", async () => {
