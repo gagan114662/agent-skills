@@ -9441,13 +9441,13 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 17%, rgba(255, 255, 241, 1) 0 7%, rgba(255, 249, 114, 0.95) 8% 17%, rgba(255, 204, 67, 0.32) 18% 31%, transparent 32%),
-    conic-gradient(from 12deg at 50% 17%, rgba(255, 244, 86, 0.78) 0 4deg, transparent 4deg 13deg, rgba(255, 177, 52, 0.5) 13deg 19deg, transparent 19deg 32deg),
-    radial-gradient(980px 560px at 50% 18%, rgba(255, 220, 61, 0.72), transparent 72%),
-    radial-gradient(860px 460px at 20% 92%, rgba(255, 145, 58, 0.28), transparent 70%),
-    radial-gradient(860px 460px at 84% 92%, rgba(255, 226, 89, 0.26), transparent 70%),
-    linear-gradient(180deg, #fff879 0%, #ffd56c 33%, #ffb46a 68%, #fff3af 100%);
-  background-size: 112% 112%, 132% 132%, 120% 112%, 112% 106%, 112% 106%, 100% 100%;
+    radial-gradient(circle at 50% 10%, #fffde8 0 6%, #fff879 7% 16%, rgba(255, 183, 43, 0.58) 17% 29%, transparent 31%),
+    conic-gradient(from -18deg at 50% 10%, rgba(255, 247, 83, 0.76) 0 5deg, transparent 5deg 16deg, rgba(255, 180, 42, 0.56) 16deg 22deg, transparent 22deg 34deg),
+    radial-gradient(1100px 620px at 50% 11%, rgba(255, 235, 77, 0.72), rgba(255, 183, 52, 0.2) 48%, transparent 72%),
+    linear-gradient(112deg, transparent 0 17%, rgba(255, 249, 130, 0.24) 18% 20%, transparent 21% 45%, rgba(255, 211, 66, 0.18) 46% 49%, transparent 50%),
+    linear-gradient(66deg, transparent 0 24%, rgba(255, 255, 198, 0.22) 25% 28%, transparent 29% 66%, rgba(255, 159, 58, 0.16) 67% 70%, transparent 71%),
+    linear-gradient(180deg, #fff879 0%, #ffd965 26%, #ffaf58 62%, #fff0a6 100%);
+  background-size: 116% 116%, 136% 136%, 122% 112%, 120% 100%, 120% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9458,16 +9458,16 @@ select:focus-visible {
   z-index: 0;
   top: clamp(-34px, -3vh, 14px);
   left: 50%;
-  width: clamp(560px, 66vw, 1040px);
+  width: clamp(620px, 72vw, 1160px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 7deg, rgba(255, 246, 78, 0.82) 0 4deg, transparent 4deg 12deg),
-    radial-gradient(circle at 50% 50%, #fffde1 0 17%, #fff35d 18% 33%, rgba(255, 186, 39, 0.8) 34% 51%, rgba(255, 125, 51, 0.24) 52% 67%, transparent 68%);
-  filter: saturate(1.2) drop-shadow(0 0 86px rgba(255, 226, 61, 0.78));
+    repeating-conic-gradient(from 7deg, rgba(255, 249, 88, 0.92) 0 5deg, transparent 5deg 13deg),
+    radial-gradient(circle at 50% 50%, #fffef0 0 16%, #fff879 17% 34%, rgba(255, 187, 37, 0.86) 35% 52%, rgba(255, 119, 42, 0.28) 53% 69%, transparent 70%);
+  filter: saturate(1.22) drop-shadow(0 0 96px rgba(255, 226, 61, 0.86));
   opacity: 0.98;
   transform: translateX(-50%) rotate(0deg) scale(1);
-  animation: onboard-sun-turn 44s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
+  animation: onboard-sun-turn 38s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::after {
   content: "";
@@ -9477,11 +9477,11 @@ select:focus-visible {
   inset: 0 -10% auto -10%;
   height: 100%;
   background:
-    linear-gradient(115deg, transparent 0 17%, rgba(255, 246, 130, 0.22) 18% 21%, transparent 22% 43%, rgba(255, 226, 99, 0.18) 44% 48%, transparent 49%),
-    linear-gradient(72deg, transparent 0 28%, rgba(255, 184, 73, 0.16) 29% 33%, transparent 34% 64%, rgba(255, 250, 167, 0.18) 65% 68%, transparent 69%),
-    radial-gradient(ellipse at 50% 104%, rgba(255, 240, 102, 0.34) 0 18%, rgba(255, 148, 62, 0.16) 19% 34%, transparent 52%);
+    linear-gradient(114deg, transparent 0 14%, rgba(255, 246, 130, 0.28) 15% 18%, transparent 19% 41%, rgba(255, 225, 89, 0.22) 42% 46%, transparent 47%),
+    linear-gradient(72deg, transparent 0 25%, rgba(255, 183, 63, 0.2) 26% 30%, transparent 31% 62%, rgba(255, 252, 169, 0.24) 63% 67%, transparent 68%),
+    radial-gradient(ellipse at 50% 101%, rgba(255, 218, 73, 0.4) 0 16%, rgba(255, 139, 54, 0.18) 17% 31%, transparent 50%);
   mix-blend-mode: screen;
-  opacity: 0.78;
+  opacity: 0.84;
   transform-origin: 50% 18%;
   animation: onboard-ray-drift 12s ease-in-out infinite;
 }
