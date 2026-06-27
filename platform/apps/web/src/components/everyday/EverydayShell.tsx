@@ -450,9 +450,25 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
         <ol className="everyday-dashboard__metrics" aria-label={d.heading + " metrics"}>
           {brief.metrics.map((metric) => (
             <li key={metric.label} className="everyday-dashboard__metric">
+              <small data-proof-kind={metric.proofKind} title={metric.proof}>
+                {proofKindLabel(metric.proofKind)}
+              </small>
               <strong>{metric.value}</strong>
               <span>{metric.label}</span>
               <em data-tone={metric.tone}>{metric.detail}</em>
+              <b>{metric.proof}</b>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="everyday-dashboard__readiness">
+        <p className="everyday-eyebrow">launch readiness</p>
+        <ol className="everyday-dashboard__readiness-list">
+          {brief.readiness.map((item) => (
+            <li key={item.label} data-status={item.status}>
+              <span>{item.label}</span>
+              <strong>{item.status}</strong>
+              <em>{item.proof}</em>
             </li>
           ))}
         </ol>
@@ -526,6 +542,19 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
   );
 }
 
+function proofKindLabel(kind: MarketingBrief["metrics"][number]["proofKind"]): string {
+  switch (kind) {
+    case "external":
+      return "external proof";
+    case "dogfood":
+      return "dogfood";
+    case "sample":
+      return "sample";
+    case "live":
+      return "live";
+  }
+}
+
 function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
   const deliverables = data.thread.filter((entry) => entry.kind === "deliverable").length;
   return {
@@ -544,26 +573,34 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         value: compactCount(data.northStar.customers),
         detail: data.northStar.revenue,
         tone: data.northStar.customers > 0 ? "good" : "bad",
+        proofKind: "live",
+        proof: "workspace north-star row",
       },
-      { label: "qualified", value: "0", detail: "no lead qualification feed", tone: "bad" },
-      { label: "replies", value: "0", detail: "no reply feed connected", tone: "bad" },
+      { label: "qualified", value: "0", detail: "no lead qualification feed", tone: "bad", proofKind: "live", proof: "qualification feed missing" },
+      { label: "replies", value: "0", detail: "no reply feed connected", tone: "bad", proofKind: "live", proof: "reply feed missing" },
       {
         label: "approvals",
         value: String(data.approvals.length),
         detail: "waiting on owner decisions",
         tone: data.approvals.length > 0 ? "warn" : "neutral",
+        proofKind: "live",
+        proof: "workspace approval queue",
       },
       {
         label: "assets shipped",
         value: String(deliverables),
         detail: "thread deliverables only",
         tone: deliverables > 0 ? "warn" : "neutral",
+        proofKind: "live",
+        proof: "workspace thread deliverables",
       },
       {
         label: "receipts",
         value: String(data.transparency.length),
         detail: "external action log",
         tone: data.transparency.length > 0 ? "good" : "neutral",
+        proofKind: data.transparency.length > 0 ? "external" : "live",
+        proof: data.transparency.length > 0 ? "transparency receipt log" : "no external receipts yet",
       },
     ],
     funnel: [
@@ -616,6 +653,15 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         owner: "Operator",
         proof: "replace fallbackMarketingBrief",
       },
+    ],
+    readiness: [
+      { label: "auth", status: "pending", proof: "workspace identity loaded; team-runtime proof not attached" },
+      { label: "connectors", status: "blocked", proof: "no connector metrics feed attached" },
+      { label: "first run", status: data.thread.length > 0 ? "pending" : "blocked", proof: data.thread.length > 0 ? "thread activity exists; first-run receipt not classified" : "no first-run receipt" },
+      { label: "outbound", status: "blocked", proof: "no real sent-message receipt" },
+      { label: "billing", status: "pending", proof: "north-star revenue present; plan enforcement not shown" },
+      { label: "observability", status: "blocked", proof: "no agent health/audit feed attached" },
+      { label: "legal/trust", status: "pending", proof: "legal state is not part of workspace feed" },
     ],
   };
 }

@@ -100,6 +100,14 @@ export interface MarketingMetric {
   readonly value: string;
   readonly detail: string;
   readonly tone: "good" | "warn" | "bad" | "neutral";
+  readonly proofKind: "live" | "sample" | "dogfood" | "external";
+  readonly proof: string;
+}
+
+export interface LaunchReadinessItem {
+  readonly label: "auth" | "connectors" | "first run" | "outbound" | "billing" | "observability" | "legal/trust";
+  readonly status: "ready" | "blocked" | "pending";
+  readonly proof: string;
 }
 
 export interface MarketingChannel {
@@ -142,6 +150,7 @@ export interface MarketingBrief {
   readonly blockers: readonly MarketingAction[];
   readonly decisions: readonly MarketingAction[];
   readonly nextActions: readonly MarketingAction[];
+  readonly readiness: readonly LaunchReadinessItem[];
 }
 
 /** Everything the everyday shell renders. */
@@ -211,12 +220,12 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
         confidence: "low",
       },
       metrics: [
-        { label: "leads found", value: "0", detail: "no prospect source connected", tone: "bad" },
-        { label: "qualified", value: "0", detail: "no ICP scoring run yet", tone: "neutral" },
-        { label: "replies", value: "0", detail: "no outbound channel proven", tone: "bad" },
-        { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral" },
-        { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral" },
-        { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral" },
+        { label: "leads found", value: "0", detail: "no prospect source connected", tone: "bad", proofKind: "live", proof: "empty live workspace" },
+        { label: "qualified", value: "0", detail: "no ICP scoring run yet", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
+        { label: "replies", value: "0", detail: "no outbound channel proven", tone: "bad", proofKind: "live", proof: "empty live workspace" },
+        { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
+        { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
+        { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
       ],
       funnel: [
         { label: "audience read", count: "0", detail: "no site/source crawl receipt", tone: "bad" },
@@ -265,6 +274,15 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
           owner: "Lens",
           proof: "CMO brief must come from source rows, not copy",
         },
+      ],
+      readiness: [
+        { label: "auth", status: "blocked", proof: "no signed-in team-engine proof yet" },
+        { label: "connectors", status: "blocked", proof: "no provider receipt connected" },
+        { label: "first run", status: "pending", proof: "waiting for first customer site-read receipt" },
+        { label: "outbound", status: "blocked", proof: "no real send path receipt" },
+        { label: "billing", status: "pending", proof: "pricing exists; activation limits need live plan data" },
+        { label: "observability", status: "pending", proof: "no agent health/audit feed on this dashboard" },
+        { label: "legal/trust", status: "pending", proof: "legal links exist; customer-proof policy still needs enforcement" },
       ],
     },
   };
@@ -622,12 +640,12 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         confidence: "low",
       },
       metrics: [
-        { label: "leads found", value: "0", detail: "no live prospect source connected", tone: "bad" },
-        { label: "qualified", value: "0", detail: "no ICP scoring receipt", tone: "bad" },
-        { label: "contacted", value: "0", detail: "outbound path still gated", tone: "bad" },
-        { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad" },
-        { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad" },
-        { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral" },
+        { label: "leads found", value: "0", detail: "no live prospect source connected", tone: "bad", proofKind: "live", proof: "public dashboard has no prospect source receipt" },
+        { label: "qualified", value: "0", detail: "no ICP scoring receipt", tone: "bad", proofKind: "live", proof: "public dashboard has no ICP scoring receipt" },
+        { label: "contacted", value: "0", detail: "outbound path still gated", tone: "bad", proofKind: "live", proof: "public dashboard has no sent-message receipt" },
+        { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad", proofKind: "external", proof: "zero reply/customer receipts" },
+        { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad", proofKind: "external", proof: "zero signup/payment/customer approval receipts" },
+        { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral", proofKind: "live", proof: "no paid campaign spend receipt" },
       ],
       funnel: [
         { label: "market read", count: "1", detail: "Tomo/reload.chat dogfood brief converted into product work", tone: "warn" },
@@ -675,6 +693,15 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { title: "Make dashboard live-data backed", owner: "Lens", proof: "GitHub #1287" },
         { title: "Enable one real OAuth/provider path", owner: "Scout", proof: "GitHub #1285" },
         { title: "Replace mock reach with one real prospect flow", owner: "Echo", proof: "GitHub #1286" },
+      ],
+      readiness: [
+        { label: "auth", status: "blocked", proof: "Google sign-in and signed-in team runtime remain the gate" },
+        { label: "connectors", status: "blocked", proof: "OAuth/provider paths still need real receipts" },
+        { label: "first run", status: "pending", proof: "site-read flow exists; server-backed team activation is still pending merge" },
+        { label: "outbound", status: "blocked", proof: "real send path is not proven" },
+        { label: "billing", status: "pending", proof: "pricing is visible; plan enforcement needs live subscription receipts" },
+        { label: "observability", status: "pending", proof: "agent health/audit trail not surfaced here yet" },
+        { label: "legal/trust", status: "ready", proof: "terms/privacy/company links are visible; customer-proof claims stay zero" },
       ],
     },
   };

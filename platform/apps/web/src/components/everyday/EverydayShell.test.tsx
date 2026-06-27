@@ -145,7 +145,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(dashboard).toHaveAttribute("id", "dashboard");
     expect(within(dashboard).getByText(EVERYDAY.dashboard.funnel)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
-    expect(within(dashboard).getByText(EVERYDAY.dashboard.blockers)).toBeInTheDocument();
+    expect(within(dashboard).getAllByText(EVERYDAY.dashboard.blockers).length).toBeGreaterThan(0);
     expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
     expect(within(dashboard).getByText("customers")).toBeInTheDocument();
@@ -154,6 +154,27 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("briefed")).toBeInTheDocument();
     expect(within(dashboard).getByText("workspace")).toBeInTheDocument();
     expect(within(dashboard).getByText(/needs CMO metrics feed/i)).toBeInTheDocument();
+    expect(within(dashboard).getAllByText("live").length).toBeGreaterThan(0);
+    expect(within(dashboard).getByText("launch readiness")).toBeInTheDocument();
+    expect(within(dashboard).getByText("auth")).toBeInTheDocument();
+    expect(within(dashboard).getByText("connectors")).toBeInTheDocument();
+    expect(within(dashboard).getByText("first run")).toBeInTheDocument();
+    expect(within(dashboard).getByText("outbound")).toBeInTheDocument();
+    expect(within(dashboard).getByText("billing")).toBeInTheDocument();
+    expect(within(dashboard).getByText("observability")).toBeInTheDocument();
+    expect(within(dashboard).getByText("legal/trust")).toBeInTheDocument();
+  });
+
+  it("labels public dogfood dashboard metrics by proof class instead of implying sample traction is live", () => {
+    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+    const metrics = within(dashboard).getByRole("list", { name: EVERYDAY.dashboard.heading + " metrics" });
+
+    expect(within(metrics).getAllByText("external proof").length).toBeGreaterThan(0);
+    expect(within(metrics).getAllByText("live").length).toBeGreaterThan(0);
+    expect(within(metrics).queryByText("sample")).not.toBeInTheDocument();
+    expect(within(dashboard).getByText("zero signup/payment/customer approval receipts")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
   });
 
   it("shows iMessage as the only messaging setup lane", () => {
