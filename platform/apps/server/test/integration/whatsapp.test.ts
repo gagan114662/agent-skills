@@ -60,8 +60,12 @@ afterAll(async () => {
   await closeRedis();
 });
 
+function signRaw(rawBody: string): string {
+  return "sha256=" + createHmac("sha256", "app-secret").update(rawBody).digest("hex");
+}
+
 function sign(payload: unknown): string {
-  return "sha256=" + createHmac("sha256", "app-secret").update(JSON.stringify(payload)).digest("hex");
+  return signRaw(JSON.stringify(payload));
 }
 
 async function newOwner(): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
@@ -178,11 +182,15 @@ describe("WhatsApp room bridge (#1267)", () => {
     });
     expect(wrongSender.statusCode).toBe(403);
 
+    const rawPayload = JSON.stringify(payload, null, 2);
     const inbound = await app.inject({
       method: "POST",
       url: "/whatsapp/webhook",
-      headers: { "x-hub-signature-256": sign(payload) },
-      payload,
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signRaw(rawPayload),
+      },
+      payload: rawPayload,
     });
     expect(inbound.statusCode).toBe(201);
     expect(inbound.json()).toMatchObject({
@@ -206,4 +214,3 @@ describe("WhatsApp room bridge (#1267)", () => {
     ]);
   });
 });
-

@@ -63,7 +63,15 @@ function extractInboundMessage(body: unknown): { from: string; text: string; rec
 }
 
 function rawJsonBody(req: FastifyRequest): string {
-  return JSON.stringify(req.body ?? {});
+  return Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
+}
+
+function parseRawJsonBody(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesOptions): Promise<void> {
@@ -127,53 +135,67 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
     return reply.code(statusCode(result)).send({ ...result, receipt, message });
   });
 
-  app.post("/whatsapp/webhook", async (req, reply) => {
-    const signature = req.headers["x-hub-signature-256"];
-    const presented = Array.isArray(signature) ? signature[0] : signature;
-    if (!opts.service.verifySignature(rawJsonBody(req), presented)) {
-      return reply.code(401).send({ error: "unauthorized" });
-    }
-    const inbound = extractInboundMessage(req.body);
-    if (!inbound || !inbound.receipt) {
-      return reply.code(400).send({ error: "WhatsApp message, sender, and room receipt are required" });
-    }
-    const receipt = parseWhatsAppRoomReceipt(inbound.receipt);
-    if (!receipt) return reply.code(400).send({ error: "invalid WhatsApp room receipt" });
-
-    const original = await getMessage(receipt.messageId);
-    if (!original || original.channelId !== receipt.channelId) {
-      return reply.code(404).send({ error: "WhatsApp room receipt not found" });
-    }
-    const channel = await getChannel(receipt.channelId);
-    if (!channel || channel.isArchived) {
-      return reply.code(404).send({ error: "WhatsApp room channel not found" });
-    }
-    const secrets = await resolveServiceSecrets(channel.workspaceId, WHATSAPP_ROOM_CONNECTION_ID);
-    const expected = normalizePhone(secrets[WHATSAPP_RECIPIENT_KEY]);
-    if (!expected || expected !== inbound.from) {
-      return reply.code(403).send({ error: "WhatsApp sender is not connected to this workspace" });
-    }
-
-    const message = await postMessage({
-      workspaceId: channel.workspaceId,
-      channelId: receipt.channelId,
-      authorMemberId: original.authorMemberId,
-      parentMessageId: receipt.messageId,
-      alsoSentToChannel: true,
-      body: inbound.text,
-    });
-    await deliverThreadReply(
-      req.log,
-      { workspaceId: channel.workspaceId, memberId: original.authorMemberId, kind: "human", displayName: "WhatsApp" },
-      channel,
-      message,
-      original.authorMemberId,
+  await app.register(async (webhookScope) => {
+    webhookScope.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_req, body, done) => done(null, body),
     );
-    return reply.code(201).send({
-      status: "ingested",
-      receipt: inbound.receipt,
-      message,
-      command: parseVisibilityChannelCommand(inbound.text),
+
+    webhookScope.post("/whatsapp/webhook", async (req, reply) => {
+      const signature = req.headers["x-hub-signature-256"];
+      const presented = Array.isArray(signature) ? signature[0] : signature;
+      const rawBody = rawJsonBody(req);
+      if (!opts.service.verifySignature(rawBody, presented)) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+      const inbound = extractInboundMessage(parseRawJsonBody(rawBody));
+      if (!inbound || !inbound.receipt) {
+        return reply.code(400).send({ error: "WhatsApp message, sender, and room receipt are required" });
+      }
+      const receipt = parseWhatsAppRoomReceipt(inbound.receipt);
+      if (!receipt) return reply.code(400).send({ error: "invalid WhatsApp room receipt" });
+
+      const original = await getMessage(receipt.messageId);
+      if (!original || original.channelId !== receipt.channelId) {
+        return reply.code(404).send({ error: "WhatsApp room receipt not found" });
+      }
+      const channel = await getChannel(receipt.channelId);
+      if (!channel || channel.isArchived) {
+        return reply.code(404).send({ error: "WhatsApp room channel not found" });
+      }
+      const secrets = await resolveServiceSecrets(channel.workspaceId, WHATSAPP_ROOM_CONNECTION_ID);
+      const expected = normalizePhone(secrets[WHATSAPP_RECIPIENT_KEY]);
+      if (!expected || expected !== inbound.from) {
+        return reply.code(403).send({ error: "WhatsApp sender is not connected to this workspace" });
+      }
+
+      const message = await postMessage({
+        workspaceId: channel.workspaceId,
+        channelId: receipt.channelId,
+        authorMemberId: original.authorMemberId,
+        parentMessageId: receipt.messageId,
+        alsoSentToChannel: true,
+        body: inbound.text,
+      });
+      await deliverThreadReply(
+        req.log,
+        {
+          workspaceId: channel.workspaceId,
+          memberId: original.authorMemberId,
+          kind: "human",
+          displayName: "WhatsApp",
+        },
+        channel,
+        message,
+        original.authorMemberId,
+      );
+      return reply.code(201).send({
+        status: "ingested",
+        receipt: inbound.receipt,
+        message,
+        command: parseVisibilityChannelCommand(inbound.text),
+      });
     });
   });
 }
