@@ -94,7 +94,9 @@ describe("shell layout overflow guards (#169)", () => {
     const sun = ruleBody('.onboard[data-phase="door"]::before');
 
     expect(decl(door, "background")).toContain("conic-gradient");
-    expect(decl(sun, "width")).toBe("clamp(560px, 66vw, 1040px)");
+    expect(decl(door, "background")).toContain("radial-gradient(circle at 72% 14%");
+    expect(decl(sun, "left")).toBe("72%");
+    expect(decl(sun, "width")).toBe("clamp(520px, 54vw, 920px)");
     expect(decl(sun, "animation")).toContain("onboard-sun-turn");
     expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
   });
@@ -131,7 +133,8 @@ describe("Tomo-simple onboarding door viewport guards", () => {
     expect(decl(sun, "background")).toContain("radial-gradient");
     expect(decl(sun, "animation")).toContain("onboard-sun-turn");
     expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
-    expect(decl(rays, "background")).toContain("linear-gradient(115deg");
+    expect(decl(rays, "background")).toContain("linear-gradient(116deg");
+    expect(decl(rays, "background")).toContain("repeating-linear-gradient(92deg");
     expect(decl(rays, "animation")).toBe("onboard-ray-drift 12s ease-in-out infinite");
   });
 
