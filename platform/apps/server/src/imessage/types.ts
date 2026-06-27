@@ -12,13 +12,14 @@ export interface IMessageSendInput {
   serviceName?: string;
 }
 
-export type IMessageSendStatus = "sent" | "dry_run" | "disabled" | "not_configured" | "too_long" | "failed";
+export type IMessageSendStatus = "sent" | "queued" | "dry_run" | "disabled" | "not_configured" | "too_long" | "failed";
 
 export interface IMessageSendResult {
   status: IMessageSendStatus;
   recipient?: string;
   dryRun: boolean;
   error?: string;
+  jobId?: string;
 }
 
 export interface IMessageStatus {

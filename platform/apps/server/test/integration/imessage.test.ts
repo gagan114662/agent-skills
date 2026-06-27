@@ -29,10 +29,10 @@ afterAll(async () => {
   await closeRedis();
 });
 
-async function newOwner(): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
+async function newOwner(targetApp = app): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
   const slug = `imessage-${newId()}`;
   slugs.push(slug);
-  const signup = await app.inject({
+  const signup = await targetApp.inject({
     method: "POST",
     url: "/auth/signup",
     payload: {
@@ -44,12 +44,12 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
   });
   expect(signup.statusCode).toBe(201);
   const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
-  const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
+  const me = (await targetApp.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
-async function createChannel(owner: { cookie: string; workspaceId: string }, name = "general"): Promise<string> {
-  const res = await app.inject({
+async function createChannel(owner: { cookie: string; workspaceId: string }, name = "general", targetApp = app): Promise<string> {
+  const res = await targetApp.inject({
     method: "POST",
     url: `/workspaces/${owner.workspaceId}/channels`,
     cookies: { rid: owner.cookie },
@@ -291,5 +291,102 @@ describe("iMessage member recipient relay", () => {
     });
     const messages = await listChannelMessages(channelId);
     expect(messages.map((m) => m.body)).toEqual(["start in messages", "tell Scout to compare competitors"]);
+  });
+
+  it("queues outbound work for a signed Mac relay worker when direct Apple Messages is unavailable (#1341)", async () => {
+    const queuedApp = buildApp({
+      imessage: new IMessageRelayService(
+        { enabled: false, dryRun: false, maxChars: 2000 },
+        { send },
+      ),
+      imessageWebhookSecret: "relay-secret",
+    });
+    await queuedApp.ready();
+    try {
+      send.mockClear();
+      const owner = await newOwner(queuedApp);
+      const channelId = await createChannel(owner, "mac-relay-room", queuedApp);
+
+      await queuedApp.inject({
+        method: "PUT",
+        url: "/me/imessage/recipient",
+        cookies: { rid: owner.cookie },
+        payload: { recipient: "gagan@example.com", serviceName: "E:test" },
+      });
+
+      const testSend = await queuedApp.inject({
+        method: "POST",
+        url: "/me/imessage/test",
+        cookies: { rid: owner.cookie },
+        payload: { text: "verify me over the Mac relay" },
+      });
+      expect(testSend.statusCode).toBe(202);
+      expect(testSend.json()).toMatchObject({
+        status: "queued",
+        recipient: "gagan@example.com",
+        memberRecipient: { verified: false },
+      });
+      expect(testSend.json().jobId).toEqual(expect.any(String));
+      expect(send).not.toHaveBeenCalled();
+
+      const claimVerification = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/outbound/claim",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", limit: 1 },
+      });
+      expect(claimVerification.statusCode).toBe(200);
+      expect(claimVerification.json().jobs).toHaveLength(1);
+      expect(claimVerification.json().jobs[0]).toMatchObject({
+        purpose: "verification",
+        recipient: "gagan@example.com",
+        serviceName: "E:test",
+        text: "verify me over the Mac relay",
+        status: "claimed",
+      });
+
+      const completeVerification = await queuedApp.inject({
+        method: "POST",
+        url: `/imessage/relay/outbound/${claimVerification.json().jobs[0].id}/complete`,
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", status: "sent" },
+      });
+      expect(completeVerification.statusCode).toBe(200);
+      expect(completeVerification.json()).toMatchObject({
+        job: { status: "sent", purpose: "verification" },
+        memberRecipient: { recipient: "gagan@example.com", verified: true },
+      });
+
+      const started = await queuedApp.inject({
+        method: "POST",
+        url: `/channels/${channelId}/imessage/room`,
+        cookies: { rid: owner.cookie },
+        payload: { text: "agents, show your work in Messages" },
+      });
+      expect(started.statusCode).toBe(202);
+      expect(started.json()).toMatchObject({
+        status: "queued",
+        recipient: "gagan@example.com",
+        receipt: `imessage:${channelId}:${started.json().message.id}`,
+      });
+      await expect(listChannelMessages(channelId)).resolves.toHaveLength(1);
+
+      const claimRoom = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/outbound/claim",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", limit: 1 },
+      });
+      expect(claimRoom.statusCode).toBe(200);
+      expect(claimRoom.json().jobs[0]).toMatchObject({
+        purpose: "room",
+        recipient: "gagan@example.com",
+        serviceName: "E:test",
+        text: expect.stringContaining(`receipt: imessage:${channelId}:${started.json().message.id}`),
+        receipt: `imessage:${channelId}:${started.json().message.id}`,
+      });
+    } finally {
+      await queuedApp.close();
+    }
   });
 });
