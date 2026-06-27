@@ -37,6 +37,7 @@ import {
 } from "../../src/connections/registry.js";
 import {
   defaultConnectProvider,
+  googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
 } from "../../src/connections/default.js";
@@ -330,6 +331,36 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(url.searchParams.get("redirect_uri")).toBe("https://api.ipop.ai/me/connections/x/oauth/callback");
     expect(url.searchParams.get("scope")).toBe("tweet.read tweet.write users.read offline.access");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("defaultConnectProvider wires Google Ads OAuth with the adwords scope and offline consent (#1285)", () => {
+    expect(
+      googleAdsConnectionOAuthConfigStatus({
+        GOOGLE_OAUTH_CLIENT_ID: "cid",
+        GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      configured: true,
+      missing: [],
+      callbackPath: "/me/connections/google_ads/oauth/callback",
+    });
+
+    const provider = defaultConnectProvider("google_ads", {
+      GOOGLE_OAUTH_CLIENT_ID: "cid",
+      GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+      GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+    } as NodeJS.ProcessEnv);
+    expect(provider.live).toBe(true);
+    const url = new URL(provider.authorizeUrl({ state: "state-1" }));
+    expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(url.searchParams.get("client_id")).toBe("cid");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://api.ipop.ai/me/connections/google_ads/oauth/callback",
+    );
+    expect(url.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/adwords");
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
   });
 });
 

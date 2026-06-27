@@ -18,6 +18,10 @@ import {
   googleConnectionOAuthConfigStatus,
   resolveGoogleConnectionRedirectUri,
 } from "./google-oauth-config.js";
+import {
+  googleAdsConnectionOAuthConfigStatus,
+  resolveGoogleAdsConnectionRedirectUri,
+} from "./google-ads-oauth-config.js";
 import { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 import { resolveConnectOnceCaps } from "./caps.js";
 import {
@@ -30,7 +34,10 @@ import {
 import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
 export { googleConnectionOAuthConfigStatus } from "./google-oauth-config.js";
+export { googleAdsConnectionOAuthConfigStatus } from "./google-ads-oauth-config.js";
 export { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
+
+export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
 
 /**
  * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
@@ -51,6 +58,12 @@ export function defaultConnectProvider(
     return createConnectProvider({
       client: loadXConnectionClient(env),
       mapTokens: mapXConnectionTokens,
+    });
+  }
+  if (connectionId === "google_ads") {
+    return createConnectProvider({
+      client: loadGoogleAdsConnectionClient(env),
+      mapTokens: mapGoogleAdsConnectionTokens,
     });
   }
   return createConnectProvider({ client: null, mapTokens: () => EMPTY_EXCHANGE });
@@ -141,6 +154,50 @@ function mapXConnectionTokens(json: unknown): ConnectExchangeResult {
   const scopes = scope.split(/\s+/).filter(Boolean);
   return {
     capabilities: scopes.includes("tweet.write") && scopes.includes("users.read") ? ["post_social"] : [],
+    secrets,
+  };
+}
+
+function loadGoogleAdsConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig | null {
+  if (!googleAdsConnectionOAuthConfigStatus(env).configured) return null;
+  const clientId = env.GOOGLE_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = resolveGoogleAdsConnectionRedirectUri(env);
+  return {
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri: redirectUri!,
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: [GOOGLE_ADS_SCOPE],
+    authorizeParams: { access_type: "offline", prompt: "consent" },
+  };
+}
+
+function mapGoogleAdsConnectionTokens(json: unknown): ConnectExchangeResult {
+  const token = json as {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+    scope?: unknown;
+    token_type?: unknown;
+  };
+  if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
+  const scope = typeof token.scope === "string" ? token.scope : GOOGLE_ADS_SCOPE;
+  const secrets: Record<string, string> = {
+    GOOGLE_ADS_OAUTH_ACCESS_TOKEN: token.access_token,
+    GOOGLE_ADS_OAUTH_SCOPE: scope,
+    GOOGLE_ADS_OAUTH_TOKEN_TYPE: typeof token.token_type === "string" ? token.token_type : "Bearer",
+  };
+  if (typeof token.refresh_token === "string" && token.refresh_token.trim()) {
+    secrets.GOOGLE_ADS_OAUTH_REFRESH_TOKEN = token.refresh_token;
+  }
+  if (typeof token.expires_in === "number" && Number.isFinite(token.expires_in)) {
+    secrets.GOOGLE_ADS_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
+  }
+  const scopes = scope.split(/\s+/).filter(Boolean);
+  return {
+    capabilities: scopes.includes(GOOGLE_ADS_SCOPE) ? ["ads"] : [],
     secrets,
   };
 }

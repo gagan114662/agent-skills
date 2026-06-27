@@ -142,6 +142,7 @@ export interface OAuthClientConfig {
     secret: string;
     method: "S256";
   };
+  authorizeParams?: Record<string, string>;
 }
 
 /**
@@ -169,6 +170,9 @@ export class OAuthConnectProvider implements ConnectProvider {
     if (this.config.pkce) {
       params.set("code_challenge", pkceChallenge(pkceVerifier(input.state, this.config.pkce.secret)));
       params.set("code_challenge_method", this.config.pkce.method);
+    }
+    for (const [key, value] of Object.entries(this.config.authorizeParams ?? {})) {
+      params.set(key, value);
     }
     return `${this.config.authorizeUrl}?${params.toString()}`;
   }

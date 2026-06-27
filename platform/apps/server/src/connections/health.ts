@@ -16,6 +16,7 @@ export type ConnectionHealthProof =
   | { ok: false; provider: string; reason: string };
 
 const GOOGLE_TOKENINFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo";
+const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
 const X_USERS_ME_ENDPOINT = "https://api.x.com/2/users/me";
 
 function parseScopes(value: unknown): string[] {
@@ -131,6 +132,55 @@ async function verifyXConnectionHealth(
   };
 }
 
+async function verifyGoogleAdsConnectionHealth(
+  descriptor: ConnectionDescriptor,
+  secrets: Record<string, string>,
+  fetchImpl: typeof fetch,
+): Promise<ConnectionHealthProof> {
+  const token = secrets.GOOGLE_ADS_OAUTH_ACCESS_TOKEN?.trim();
+  if (!token) return { ok: false, provider: descriptor.provider, reason: "missing Google Ads access token" };
+
+  let res: Response;
+  try {
+    const url = new URL(GOOGLE_TOKENINFO_ENDPOINT);
+    url.searchParams.set("access_token", token);
+    res = await fetchImpl(url, { method: "GET" });
+  } catch (err) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `Google Ads token health check failed: ${(err as Error).message}`,
+    };
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `Google Ads token health check returned ${res.status}`,
+    };
+  }
+
+  const json = (await res.json()) as { scope?: unknown; sub?: unknown; aud?: unknown };
+  const scopes = parseScopes(json.scope);
+  if (!scopes.includes(GOOGLE_ADS_SCOPE)) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `Google Ads token is missing required scopes: ${GOOGLE_ADS_SCOPE}`,
+    };
+  }
+
+  return {
+    ok: true,
+    provider: descriptor.provider,
+    checkedAtMs: Date.now(),
+    scopes,
+    subject: typeof json.sub === "string" && json.sub.trim() ? json.sub : null,
+    audience: typeof json.aud === "string" && json.aud.trim() ? json.aud : null,
+  };
+}
+
 /**
  * Provider readback before a connector is marked healthy (#1285). A token exchange is not enough: the
  * callback must prove the credential can still be introspected and carries the scopes the agents need.
@@ -145,6 +195,9 @@ export async function verifyConnectionHealth(input: {
   }
   if (input.descriptor.id === "x") {
     return verifyXConnectionHealth(input.descriptor, input.secrets, input.fetchImpl ?? fetch);
+  }
+  if (input.descriptor.id === "google_ads") {
+    return verifyGoogleAdsConnectionHealth(input.descriptor, input.secrets, input.fetchImpl ?? fetch);
   }
   return {
     ok: false,
