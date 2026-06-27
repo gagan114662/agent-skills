@@ -16,7 +16,11 @@ import {
   type ConnectExchangeResult,
   type OAuthClientConfig,
 } from "../../src/connections/provider.js";
-import { decideConnectStart, mapExchangeToSeal } from "../../src/connections/connect.js";
+import {
+  decideApprovedConnectRequest,
+  decideConnectStart,
+  mapExchangeToSeal,
+} from "../../src/connections/connect.js";
 import {
   decideConnectedCapabilities,
   hasConnectedCapability,
@@ -32,6 +36,8 @@ import {
   type ConnectionDescriptor,
 } from "../../src/connections/registry.js";
 import { defaultConnectProvider } from "../../src/connections/default.js";
+import type { ApprovalRequest } from "../../src/db/repositories/approvals.js";
+import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../../src/approvals/policy.js";
 
 const SECRET = "test-connect-once-secret";
 const OWNER = "ws-owner";
@@ -98,6 +104,20 @@ describe("connectOnce state (#258 Stage 2) — HMAC, no DB, workspace+connection
     expect(verifyConnectState(state, SECRET, { now })).toEqual({
       workspaceId: OWNER,
       connectionId: "google",
+      nonce: "n1",
+    });
+  });
+
+  it("round-trips the approval request id that is allowed to execute the callback", () => {
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "google", approvalRequestId: "req-1", nonce: "n1" },
+      SECRET,
+      now,
+    );
+    expect(verifyConnectState(state, SECRET, { now })).toEqual({
+      workspaceId: OWNER,
+      connectionId: "google",
+      approvalRequestId: "req-1",
       nonce: "n1",
     });
   });
@@ -319,6 +339,75 @@ describe("mapExchangeToSeal (#258 Stage 2) — never seal a blank", () => {
       exchange: { capabilities: [], secrets: { GOOGLE_TOKEN: "t" } },
     });
     expect(decision.seal && decision.scopes).toEqual([...GOOGLE.capabilities]);
+  });
+});
+
+describe("decideApprovedConnectRequest (#1285) — exact owner-approved consent only", () => {
+  function request(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
+    const now = new Date("2026-06-27T00:00:00Z");
+    return {
+      id: "req-1",
+      workspaceId: OWNER,
+      requesterMemberId: "m1",
+      actionType: CONNECTION_CONNECT_ACCOUNT_ACTION,
+      payload: { connectionId: "google", provider: "google" },
+      amount: null,
+      summary: "Connect Google",
+      status: "approved",
+      reason: null,
+      decidedByMemberId: "owner",
+      decidedAt: now,
+      expiresAt: null,
+      expiresAtTimezone: "UTC",
+      result: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  it("accepts an approved connection request for the same workspace and connector", () => {
+    const decision = decideApprovedConnectRequest({
+      request: request(),
+      workspaceId: OWNER,
+      connectionId: "google",
+    });
+    expect(decision.ok).toBe(true);
+  });
+
+  it("rejects missing, cross-workspace, wrong-action, wrong-connector, and non-approved requests", () => {
+    expect(
+      decideApprovedConnectRequest({ request: undefined, workspaceId: OWNER, connectionId: "google" }),
+    ).toMatchObject({ ok: false, statusCode: 404 });
+    expect(
+      decideApprovedConnectRequest({
+        request: request({ workspaceId: OTHER }),
+        workspaceId: OWNER,
+        connectionId: "google",
+      }),
+    ).toMatchObject({ ok: false, statusCode: 403 });
+    expect(
+      decideApprovedConnectRequest({
+        request: request({ actionType: "external.send" }),
+        workspaceId: OWNER,
+        connectionId: "google",
+      }),
+    ).toMatchObject({ ok: false, statusCode: 400 });
+    expect(
+      decideApprovedConnectRequest({
+        request: request({ payload: { connectionId: "x", provider: "x" } }),
+        workspaceId: OWNER,
+        connectionId: "google",
+      }),
+    ).toMatchObject({ ok: false, statusCode: 400 });
+    expect(
+      decideApprovedConnectRequest({
+        request: request({ status: "pending" }),
+        workspaceId: OWNER,
+        connectionId: "google",
+      }),
+    ).toMatchObject({ ok: false, statusCode: 409 });
   });
 });
 

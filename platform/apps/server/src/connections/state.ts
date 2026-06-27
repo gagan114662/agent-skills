@@ -16,6 +16,8 @@ export interface ConnectStatePayload {
   workspaceId: string;
   /** The connection descriptor id the consent is for (e.g. `google`, `x`, `linkedin`, `website`). */
   connectionId: string;
+  /** The owner-approved `connection.connect_account` request this consent is allowed to execute. */
+  approvalRequestId?: string;
   nonce: string;
 }
 
@@ -36,6 +38,7 @@ export function signConnectState(
   const signed: SignedConnectState = {
     workspaceId: payload.workspaceId,
     connectionId: payload.connectionId,
+    ...(payload.approvalRequestId ? { approvalRequestId: payload.approvalRequestId } : {}),
     nonce: payload.nonce,
     ts: now,
   };
@@ -83,6 +86,9 @@ export function verifyConnectState(
   return {
     workspaceId: parsed.workspaceId,
     connectionId: parsed.connectionId,
+    ...(typeof parsed.approvalRequestId === "string" && parsed.approvalRequestId
+      ? { approvalRequestId: parsed.approvalRequestId }
+      : {}),
     nonce: parsed.nonce,
   };
 }
