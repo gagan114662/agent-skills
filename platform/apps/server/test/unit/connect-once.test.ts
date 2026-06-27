@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   CONNECT_ONCE_DEFAULTS,
   resolveConnectOnceCaps,
@@ -38,6 +38,7 @@ import {
 import {
   defaultConnectProvider,
   googleConnectionOAuthConfigStatus,
+  xConnectionOAuthConfigStatus,
 } from "../../src/connections/default.js";
 import type { ApprovalRequest } from "../../src/db/repositories/approvals.js";
 import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../../src/approvals/policy.js";
@@ -48,6 +49,10 @@ const OTHER = "ws-other";
 
 const GOOGLE = getConnectionDescriptor("google") as ConnectionDescriptor;
 const SITE_PUBLISH = getConnectionDescriptor("site_publish_github") as ConnectionDescriptor;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 // --------------------------------------------------------------------------------------------------
 // caps — default OFF, owner-workspace-first
@@ -218,6 +223,56 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(url).toContain("client_id=id");
   });
 
+  it("OAuthConnectProvider supports X-style PKCE and basic token auth (#1285)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: "x-access",
+        refresh_token: "x-refresh",
+        scope: "tweet.read tweet.write users.read offline.access",
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new OAuthConnectProvider(
+      {
+        clientId: "x-client",
+        clientSecret: "x-secret",
+        authorizeUrl: "https://x.com/i/oauth2/authorize",
+        tokenUrl: "https://api.x.com/2/oauth2/token",
+        redirectUri: "https://api.ipop.ai/me/connections/x/oauth/callback",
+        scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+        tokenAuth: "basic",
+        pkce: { method: "S256", secret: "x-secret" },
+      },
+      (json) => ({
+        capabilities: ["post_social"],
+        secrets: { X_OAUTH_ACCESS_TOKEN: (json as { access_token: string }).access_token },
+      }),
+    );
+
+    const authorize = new URL(provider.authorizeUrl({ state: "state-1" }));
+    expect(authorize.origin + authorize.pathname).toBe("https://x.com/i/oauth2/authorize");
+    expect(authorize.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(authorize.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(authorize.searchParams.get("scope")).toBe("tweet.read tweet.write users.read offline.access");
+
+    const result = await provider.exchange({ code: "code-1", state: "state-1" });
+    expect(result).toMatchObject({
+      capabilities: ["post_social"],
+      secrets: { X_OAUTH_ACCESS_TOKEN: "x-access" },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [
+      string,
+      { headers: Record<string, string>; body: URLSearchParams },
+    ];
+    expect(init.headers.authorization).toBe(
+      "Basic " + Buffer.from("x-client:x-secret", "utf8").toString("base64"),
+    );
+    expect(init.body.get("client_secret")).toBeNull();
+    expect(init.body.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
   it("defaultConnectProvider derives the Google connection callback from the API Google redirect (#1285)", () => {
     expect(
       googleConnectionOAuthConfigStatus({
@@ -254,6 +309,27 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(url).toContain(
       "redirect_uri=https%3A%2F%2Fapi.ipop.ai%2Fme%2Fconnections%2Fgoogle%2Foauth%2Fcallback",
     );
+  });
+
+  it("defaultConnectProvider wires X only when the dedicated OAuth client is configured (#1285)", () => {
+    expect(xConnectionOAuthConfigStatus({} as NodeJS.ProcessEnv)).toMatchObject({
+      configured: false,
+      missing: ["X_OAUTH_CLIENT_ID", "X_OAUTH_CLIENT_SECRET", "X_CONNECTION_OAUTH_REDIRECT_URI"],
+      callbackPath: "/me/connections/x/oauth/callback",
+    });
+
+    const provider = defaultConnectProvider("x", {
+      X_OAUTH_CLIENT_ID: "x-client",
+      X_OAUTH_CLIENT_SECRET: "x-secret",
+      X_CONNECTION_OAUTH_REDIRECT_URI: "https://api.ipop.ai/me/connections/x/oauth/callback",
+    } as NodeJS.ProcessEnv);
+    expect(provider.live).toBe(true);
+    const url = new URL(provider.authorizeUrl({ state: "state-1" }));
+    expect(url.origin + url.pathname).toBe("https://x.com/i/oauth2/authorize");
+    expect(url.searchParams.get("client_id")).toBe("x-client");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://api.ipop.ai/me/connections/x/oauth/callback");
+    expect(url.searchParams.get("scope")).toBe("tweet.read tweet.write users.read offline.access");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 });
 
