@@ -793,4 +793,73 @@ describe("ReachService.summary mode badge (#1286)", () => {
     expect(summary.mode.email).toEqual({ provider: "postmark", live: true });
     expect(summary.mode.reasons).toEqual([]);
   });
+
+  it("fails closed when a production/live run would use mock prospects and dry-run sending", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () => caps({ prospectSource: "mock", sendProvider: "dryrun" }),
+      resolveSource: mockSource,
+    });
+
+    const preflight = await svc.livePreflight("ws1");
+    const run = await svc.runLiveBatch("ws1");
+
+    expect(preflight.ok).toBe(false);
+    expect(preflight.reasons).toEqual([
+      "mock prospects",
+      "dry-run or queue-only send channels",
+    ]);
+    expect(run.status).toBe("skipped");
+    expect(run.reason).toContain("mock prospects");
+    expect(run.reason).toContain("dry-run or queue-only send channels");
+    expect(run.messagesSent).toBe(0);
+    expect(f.sends).toHaveLength(0);
+  });
+
+  it("fails closed when config claims live email but channel health resolves back to dry-run", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () =>
+        caps({
+          prospectSource: "imported",
+          sendProvider: "postmark",
+          liveSendEnabled: true,
+        }),
+      liveChannelHealth: async () => [
+        "email sender is dry-run (missing live ESP credentials)",
+        "email deliverability not confirmed",
+      ],
+      resolveSource: mockSource,
+    });
+
+    const preflight = await svc.livePreflight("ws1");
+
+    expect(preflight.ok).toBe(false);
+    expect(preflight.mode.label).toBe("live");
+    expect(preflight.reasons).toContain("email sender is dry-run (missing live ESP credentials)");
+    expect(preflight.reasons).toContain("email deliverability not confirmed");
+  });
+
+  it("passes the live preflight only with a real source, live sender config, and healthy channel", async () => {
+    const f = fakes();
+    const svc = new ReachService({
+      ...f.deps,
+      caps: () =>
+        caps({
+          prospectSource: "imported",
+          sendProvider: "postmark",
+          liveSendEnabled: true,
+        }),
+      liveChannelHealth: async () => [],
+      resolveSource: mockSource,
+    });
+
+    const preflight = await svc.livePreflight("ws1");
+
+    expect(preflight.ok).toBe(true);
+    expect(preflight.reasons).toEqual([]);
+    expect(preflight.detail).toBe("Reach can run as live autonomous outreach.");
+  });
 });

@@ -8,8 +8,11 @@ import { isReachReceiptKind, isReachSignalKind } from "../reach/types.js";
  * workspace (#3).
  *
  *  - `POST /me/reach/run` runs ONE batch of the outbound loop now (the cron entrypoint — an external
- *    scheduler hits this on an interval, or an owner triggers it manually). It auto-sends within the
- *    per-domain cap + suppression; a PAID data source parks a money-gated #13 request instead of spending.
+ *    scheduler hits this on an interval, or an owner triggers it manually). Pass `{ "mode": "live" }` or
+ *    `{ "requireLive": true }` from production/autonomous surfaces so mock/dry-run setups fail closed before
+ *    ipop claims agents are reaching out. Demo callers may omit it to exercise the dry-run pipeline.
+ *    It auto-sends within the per-domain cap + suppression; a PAID data source parks a money-gated #13 request instead of spending.
+ *  - `GET /me/reach/preflight` returns the same live/autonomous truth gate for UI badges and schedulers.
  *  - `POST /me/reach/receipts` records an external engagement receipt (open/reply/booked) — the only
  *    source of measurement truth; a reply stops that prospect's cadence.
  *  - `GET /me/reach/summary` returns the headline numbers (prospects reached, sent, replies, booked).
@@ -102,7 +105,16 @@ export async function reachRoutes(app: FastifyInstance, opts: ReachRoutesOptions
   app.post("/me/reach/run", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
+    const body = (req.body ?? {}) as { requireLive?: unknown; mode?: unknown };
+    const requireLive = body.requireLive === true || body.mode === "live";
+    if (requireLive) return service.runLiveBatch(id.workspaceId);
     return service.runBatch(id.workspaceId);
+  });
+
+  app.get("/me/reach/preflight", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return service.livePreflight(id.workspaceId);
   });
 
   app.get("/me/reach/summary", async (req, reply) => {
