@@ -209,6 +209,74 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
 
+  it("launches every room agent with the shared prompt structure and a Codex operator packet (#1265)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+      connected: true,
+      reason: "",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "sent",
+      dryRun: false,
+      receipt: "imessage:c1:room",
+      message: makeMessage({ id: "room", channelId: "c1", body: "grow ipop.ai" }),
+    });
+    vi.spyOn(api, "searchMembers").mockImplementation(async (_workspaceId, q) => [
+      { id: "ag-" + q.toLowerCase(), kind: "agent", displayName: q },
+    ]);
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun").mockResolvedValue({
+      teamRunId: "team-1",
+      subtaskCount: 5,
+      subtasks: [],
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "grow ipop.ai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
+    const [channelId, subtasks] = launchTeamRun.mock.calls[0]!;
+    expect(channelId).toBe("c1");
+    expect(subtasks).toHaveLength(5);
+    expect(subtasks.every((subtask) => subtask.harness === "codex")).toBe(true);
+    for (const subtask of subtasks) {
+      expect(subtask.task).toContain("1. Task context");
+      expect(subtask.task).toContain("2. Tone context");
+      expect(subtask.task).toContain("3. Background data, documents, and images");
+      expect(subtask.task).toContain("4. Detailed task description & rules");
+      expect(subtask.task).toContain("5. Examples");
+      expect(subtask.task).toContain("6. Conversation history");
+      expect(subtask.task).toContain("7. Immediate task description or request");
+      expect(subtask.task).toContain("8. Thinking step by step / take a deep breath");
+      expect(subtask.task).toContain("9. Output formatting");
+      expect(subtask.task).toContain("10. Prefilled response (if any)");
+      expect(subtask.task).toContain("grow ipop.ai");
+      expect(subtask.task).toContain("Do real marketing work");
+      expect(subtask.task).toContain("Do not send, publish, spend");
+    }
+    const operator = subtasks.find((subtask) => subtask.branch.startsWith("ipop-codex-"));
+    expect(operator?.task).toContain("codex_work_packet");
+    expect(operator?.task).toContain("audit_label: codex_operator_lane");
+    expect(operator?.task).toContain("credential_boundary");
+    expect(operator?.task).toContain("Return payload schema");
+    expect(operator?.task).toContain("pr_or_issue_links");
+  });
+
   it("lets the signed-in user save and verify their iMessage destination before room launch (#1283)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [
