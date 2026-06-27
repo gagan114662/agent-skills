@@ -105,10 +105,10 @@ describe("defaultConnectors (#1265)", () => {
   it("models the direct connect setup without pretending anything is connected", () => {
     const connectors = defaultConnectors();
     expect(connectors.map((connector) => connector.name)).toContain("Email");
+    expect(connectors.map((connector) => connector.name)).toContain("Web room");
     expect(connectors.map((connector) => connector.name)).toContain("iMessage");
-    expect(connectors.map((connector) => connector.name)).not.toEqual(
-      expect.arrayContaining(["Web chat", "WhatsApp", "Telegram"]),
-    );
+    expect(connectors.map((connector) => connector.name)).toContain("WhatsApp room");
+    expect(connectors.map((connector) => connector.name)).toContain("Telegram room");
     expect(new Set(connectors.map((connector) => connector.group))).toEqual(
       new Set(["visibility", "productivity", "marketing", "publishing"]),
     );

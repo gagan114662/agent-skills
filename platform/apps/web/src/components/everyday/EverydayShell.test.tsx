@@ -180,16 +180,18 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
   });
 
-  it("shows iMessage as the only messaging setup lane", () => {
+  it("shows all room visibility lanes without pretending external transports are live", () => {
     const onConnectorConnect = vi.fn();
     render(<EverydayShell data={seedEveryday()} onConnectorConnect={onConnectorConnect} />);
     const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
     expect(within(setup).getByRole("heading", { name: EVERYDAY.connectors.heading })).toBeInTheDocument();
     expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.visibility })).toBeInTheDocument();
     expect(within(setup).getByRole("region", { name: EVERYDAY.connectors.groups.productivity })).toBeInTheDocument();
+    expect(within(setup).getByText("Web room")).toBeInTheDocument();
     expect(within(setup).getByText("iMessage")).toBeInTheDocument();
-    expect(within(setup).queryByText("WhatsApp")).not.toBeInTheDocument();
-    expect(within(setup).queryByText("Telegram")).not.toBeInTheDocument();
+    expect(within(setup).getByText("WhatsApp room")).toBeInTheDocument();
+    expect(within(setup).getByText("Telegram room")).toBeInTheDocument();
+    expect(within(setup).getAllByText("notify me").length).toBeGreaterThanOrEqual(2);
     expect(within(setup).getByText("Gmail")).toBeInTheDocument();
     expect(within(setup).getByText("gagan@getfoolish.com")).toBeInTheDocument();
     expect(within(setup).getByText(EVERYDAY.connectors.connected)).toBeInTheDocument();

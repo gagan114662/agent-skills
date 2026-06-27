@@ -6,7 +6,10 @@ import {
   listConnectionDescriptors,
   SOCIAL_AGGREGATOR_ID,
   SITE_PUBLISH_GITHUB_ID,
+  TELEGRAM_ROOM_CONNECTION_ID,
+  WEB_ROOM_CONNECTION_ID,
   WEBSITE_CONNECTION_ID,
+  WHATSAPP_ROOM_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
 /**
@@ -117,6 +120,31 @@ describe("connection registry (#258)", () => {
     expect(d?.capabilities).toEqual(expect.arrayContaining(["agent_room_visibility", "inbound_replies"]));
     expect(d?.statusReason).toMatch(/signed Mac relay host/i);
     expect(d?.statusReason).toMatch(/Fly cannot run Apple Messages/i);
+  });
+
+  it("surfaces web, WhatsApp, and Telegram room visibility without faking live transports (#1267)", () => {
+    const web = getConnectionDescriptor(WEB_ROOM_CONNECTION_ID);
+    expect(web?.audience).toBe("customer");
+    expect(web?.auth).toBe("one_click");
+    expect(web?.status).toBe("available");
+    expect(web?.capabilities).toEqual(
+      expect.arrayContaining(["work_visibility", "agent_room_visibility", "inbound_replies"]),
+    );
+    expect(web?.oauthScopes).toEqual([]);
+    expect(web?.envKeys).toEqual([]);
+
+    for (const id of [WHATSAPP_ROOM_CONNECTION_ID, TELEGRAM_ROOM_CONNECTION_ID]) {
+      const descriptor = getConnectionDescriptor(id);
+      expect(descriptor?.audience, id).toBe("customer");
+      expect(descriptor?.auth, id).toBe("one_click");
+      expect(descriptor?.status, id).toBe("coming_soon");
+      expect(descriptor?.statusReason?.trim().length, id).toBeGreaterThan(0);
+      expect(descriptor?.capabilities, id).toEqual(
+        expect.arrayContaining(["work_visibility", "mobile_messaging", "agent_room_visibility", "inbound_replies"]),
+      );
+      expect(descriptor?.oauthScopes, id).toEqual([]);
+      expect(descriptor?.envKeys, id).toEqual([]);
+    }
   });
 
   it("listConnectionDescriptors filters by audience", () => {

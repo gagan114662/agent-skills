@@ -11,7 +11,10 @@ import {
   getConnectionDescriptor,
   SOCIAL_AGGREGATOR_ID,
   SITE_PUBLISH_GITHUB_ID,
+  TELEGRAM_ROOM_CONNECTION_ID,
+  WEB_ROOM_CONNECTION_ID,
   WEBSITE_CONNECTION_ID,
+  WHATSAPP_ROOM_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
 function proofs(entries: Array<[string, { envKeys?: string[]; connectedAtMs?: number; fingerprint?: string }]> = []) {
@@ -142,6 +145,7 @@ describe("decideOneClickConnect (#529/#507)", () => {
       [EMAIL_CONNECTION_ID, "esp", "send_email"],
       [SOCIAL_AGGREGATOR_ID, "ad_account", "post_social"],
       [WEBSITE_CONNECTION_ID, "hosting", "site_publish"],
+      [WEB_ROOM_CONNECTION_ID, "other", "work_visibility"],
     ] as const) {
       const d = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
       expect(d.ok, id).toBe(true);
@@ -168,17 +172,24 @@ describe("decideOneClickConnect (#529/#507)", () => {
 
 describe("decideWaitlist (#507)", () => {
   it("accepts a coming-soon customer connector (a next step instead of a dead stop)", () => {
-    const d = decideWaitlist({ descriptor: getConnectionDescriptor("google") });
-    expect(d.ok).toBe(true);
-    if (!d.ok) return;
-    expect(d.connectionId).toBe("google");
-    expect(d.provider).toBe("google");
+    for (const [id, provider] of [
+      ["google", "google"],
+      [WHATSAPP_ROOM_CONNECTION_ID, "whatsapp"],
+      [TELEGRAM_ROOM_CONNECTION_ID, "telegram"],
+    ] as const) {
+      const d = decideWaitlist({ descriptor: getConnectionDescriptor(id) });
+      expect(d.ok, id).toBe(true);
+      if (!d.ok) continue;
+      expect(d.connectionId).toBe(id);
+      expect(d.provider).toBe(provider);
+    }
   });
 
   it("refuses an already-available connector (connect it, don't waitlist it)", () => {
     expect(decideWaitlist({ descriptor: getConnectionDescriptor(EMAIL_CONNECTION_ID) })).toMatchObject({ ok: false });
     expect(decideWaitlist({ descriptor: getConnectionDescriptor(SOCIAL_AGGREGATOR_ID) })).toMatchObject({ ok: false });
     expect(decideWaitlist({ descriptor: getConnectionDescriptor(WEBSITE_CONNECTION_ID) })).toMatchObject({ ok: false });
+    expect(decideWaitlist({ descriptor: getConnectionDescriptor(WEB_ROOM_CONNECTION_ID) })).toMatchObject({ ok: false });
   });
 
   it("refuses an internal connector (never customer-facing)", () => {

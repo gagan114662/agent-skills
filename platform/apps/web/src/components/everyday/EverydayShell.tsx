@@ -257,7 +257,7 @@ function ConnectorSetup({
       group,
       items:
         group === "visibility"
-          ? connectors.filter((item) => item.id === "imessage")
+          ? connectors.filter((item) => item.group === "visibility")
           : connectors.filter((item) => item.group === group),
     }))
     .filter(({ items }) => items.length > 0);

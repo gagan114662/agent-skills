@@ -1748,8 +1748,8 @@ export const EVERYDAY = {
 
   /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */
   connectors: {
-    heading: "iMessage setup",
-    subhead: "one messaging home for agent work. no WhatsApp, no Telegram, no fake green ticks.",
+    heading: "Room visibility",
+    subhead: "web room today, external chat bridges only when verified. no fake green ticks.",
     connect: "connect",
     connected: "connected",
     pending: "verify",

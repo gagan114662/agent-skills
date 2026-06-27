@@ -77,6 +77,13 @@ export const WEBSITE_CONNECTION_ID = "website";
 /** The iMessage work-visibility connector — the intended primary messaging home for the ipop room. */
 export const IMESSAGE_CONNECTION_ID = "imessage";
 
+/** Native in-product room visibility. This is the always-present web source of truth for the agent room. */
+export const WEB_ROOM_CONNECTION_ID = "web_room";
+
+/** Future mobile/chat visibility channels tracked honestly in the connections surface (#1267). */
+export const WHATSAPP_ROOM_CONNECTION_ID = "whatsapp_room";
+export const TELEGRAM_ROOM_CONNECTION_ID = "telegram_room";
+
 export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   // -------------------------------------------------------------------------------------------------
   // INTERNAL — ipop.ai's own publishing mechanism. A customer NEVER sees this; it exists only so ipop
@@ -153,6 +160,20 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     envKeys: [],
   },
   {
+    id: WEB_ROOM_CONNECTION_ID,
+    label: "Connect web room",
+    summary:
+      "Use the signed-in ipop room as the canonical transcript before any external messaging bridge is live.",
+    provider: "web",
+    kind: "other",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    capabilities: ["work_visibility", "agent_room_visibility", "inbound_replies"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
     id: IMESSAGE_CONNECTION_ID,
     label: "Connect iMessage",
     summary:
@@ -164,6 +185,38 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     status: "coming_soon",
     statusReason: "Requires a signed Mac relay host before iMessage can be used in production.",
     capabilities: ["work_visibility", "mobile_messaging", "imessage_room"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: WHATSAPP_ROOM_CONNECTION_ID,
+    label: "Connect WhatsApp room",
+    summary:
+      "Mirror the agent room into WhatsApp after a signed business sender and webhook loop are production-ready.",
+    provider: "whatsapp",
+    kind: "sms",
+    audience: "customer",
+    auth: "one_click",
+    status: "coming_soon",
+    statusReason:
+      "Requires a verified WhatsApp Business sender, webhook signature verification, and end-to-end room smoke before it can run.",
+    capabilities: ["work_visibility", "mobile_messaging", "agent_room_visibility", "inbound_replies"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    id: TELEGRAM_ROOM_CONNECTION_ID,
+    label: "Connect Telegram room",
+    summary:
+      "Mirror the agent room into Telegram after bot setup, webhook verification, and transcript correlation are production-ready.",
+    provider: "telegram",
+    kind: "sms",
+    audience: "customer",
+    auth: "one_click",
+    status: "coming_soon",
+    statusReason:
+      "Requires a verified Telegram bot, signed webhook handling, and end-to-end room smoke before it can run.",
+    capabilities: ["work_visibility", "mobile_messaging", "agent_room_visibility", "inbound_replies"],
     oauthScopes: [],
     envKeys: [],
   },
