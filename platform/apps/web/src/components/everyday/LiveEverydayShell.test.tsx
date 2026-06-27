@@ -33,6 +33,15 @@ describe("LiveEverydayShell (#1181)", () => {
   beforeEach(() => {
     vi.spyOn(api, "getFirstRunReceipt").mockResolvedValue({ firstRun: null });
     vi.spyOn(api, "recordFirstRunReceipt").mockResolvedValue({ firstRun: null });
+    vi.spyOn(api, "getIMessageStatus").mockResolvedValue({
+      enabled: true,
+      configured: false,
+      dryRun: false,
+      recipientSource: "none",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: null,
+    });
     window.sessionStorage.clear();
   });
 
@@ -198,6 +207,112 @@ describe("LiveEverydayShell (#1181)", () => {
       await screen.findByText("iMessage relay is still in dry-run mode; no real Messages room was started."),
     ).toBeInTheDocument();
     expect(launchTeamRun).not.toHaveBeenCalled();
+  });
+
+  it("lets the signed-in user save and verify their iMessage destination before room launch (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    const getStatus = vi.mocked(api.getIMessageStatus);
+    getStatus
+      .mockResolvedValueOnce({
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        recipientSource: "none",
+        requiresVerification: false,
+        maxChars: 2000,
+        memberRecipient: null,
+      })
+      .mockResolvedValueOnce({
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        recipientSource: "member_pending",
+        requiresVerification: true,
+        maxChars: 2000,
+        memberRecipient: {
+          recipient: "gagan@example.com",
+          serviceName: null,
+          verified: false,
+          verifiedAt: null,
+        },
+      })
+      .mockResolvedValue({
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        recipientSource: "member_verified",
+        requiresVerification: false,
+        maxChars: 2000,
+        memberRecipient: {
+          recipient: "gagan@example.com",
+          serviceName: null,
+          verified: true,
+          verifiedAt: "2026-06-27T06:00:00.000Z",
+        },
+      });
+    const save = vi.spyOn(api, "saveIMessageRecipient").mockResolvedValue({
+      status: "pending_verification",
+      recipient: "gagan@example.com",
+      serviceName: null,
+      verified: false,
+      message: "Send a test message before using this iMessage destination for the agent room.",
+    });
+    const test = vi.spyOn(api, "testIMessageRecipient").mockResolvedValue({
+      status: "sent",
+      dryRun: false,
+      recipient: "gagan@example.com",
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: true,
+        verifiedAt: "2026-06-27T06:00:00.000Z",
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByLabelText(EVERYDAY.connectors.imessage.label), {
+      target: { value: "GAGAN@Example.COM" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.save }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith({ recipient: "GAGAN@Example.COM", serviceName: undefined }),
+    );
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.pending)).toBeInTheDocument();
+    expect(screen.getByText(/gagan@example.com/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.test }));
+
+    await waitFor(() => expect(test).toHaveBeenCalled());
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.verified)).toBeInTheDocument();
   });
 
   it("surfaces the persisted first-run receipt as live CMO dashboard proof (#1289)", async () => {

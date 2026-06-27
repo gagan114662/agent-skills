@@ -33,7 +33,7 @@ export interface EverydayConnector {
   readonly id: string;
   readonly group: "productivity" | "marketing" | "publishing" | "visibility";
   readonly name: string;
-  readonly status: "connected" | "available" | "coming_soon";
+  readonly status: "connected" | "available" | "coming_soon" | "pending";
   readonly detail: string;
   readonly actionLabel: string;
 }

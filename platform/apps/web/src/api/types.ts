@@ -179,6 +179,40 @@ export interface IMessageRoomResponse {
   message?: Message;
 }
 
+export interface IMessageRecipientView {
+  recipient: string;
+  serviceName: string | null;
+  verified: boolean;
+  verifiedAt: string | null;
+}
+
+export interface IMessageStatusResponse {
+  enabled: boolean;
+  configured: boolean;
+  dryRun: boolean;
+  recipient?: string;
+  recipientSource?: "member_verified" | "member_pending" | "workspace" | "none";
+  requiresVerification?: boolean;
+  maxChars: number;
+  memberRecipient: IMessageRecipientView | null;
+}
+
+export interface IMessageRecipientSaveResponse {
+  status: "pending_verification";
+  recipient: string;
+  serviceName: string | null;
+  verified: false;
+  message: string;
+}
+
+export interface IMessageTestResponse {
+  status: IMessageSendStatus;
+  recipient?: string;
+  dryRun: boolean;
+  error?: string;
+  memberRecipient: IMessageRecipientView | null;
+}
+
 export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
 
 export interface FirstRunReceiptDto {

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ApprovalRequestDto } from "@reload/shared";
 import { api } from "../../api/client.js";
-import type { ConnectionView, FirstRunReceiptDto, TeamRunSubtaskInput } from "../../api/types.js";
+import type {
+  ConnectionView,
+  FirstRunReceiptDto,
+  IMessageStatusResponse,
+  TeamRunSubtaskInput,
+} from "../../api/types.js";
 import type { AppState } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
@@ -248,13 +253,30 @@ function groupForConnection(connection: ConnectionView): EverydayConnector["grou
   return "productivity";
 }
 
-function connectorFromConnection(connection: ConnectionView): EverydayConnector {
+function connectorFromConnection(
+  connection: ConnectionView,
+  imessageStatus?: IMessageStatusResponse | null,
+): EverydayConnector {
+  const isIMessage = connection.id === "imessage";
+  const imessageRecipient = isIMessage ? imessageStatus?.memberRecipient : null;
+  const status = imessageRecipient?.verified
+    ? "connected"
+    : imessageRecipient
+      ? "pending"
+      : connection.connected
+        ? "connected"
+        : connection.status;
   return {
     id: connection.id,
     group: groupForConnection(connection),
     name: connection.label.replace(/^connect\s+/i, "").replace(/^sign in with\s+/i, ""),
-    status: connection.connected ? "connected" : connection.status,
-    detail: connection.summary,
+    status,
+    detail:
+      isIMessage && imessageRecipient
+        ? imessageRecipient.verified
+          ? "verified destination: " + imessageRecipient.recipient
+          : "test needed before agents can relay to " + imessageRecipient.recipient
+        : connection.summary,
     actionLabel:
       connection.id === "imessage"
         ? "set up iMessage"
@@ -366,11 +388,16 @@ export function LiveEverydayShell({
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
+  const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();
     setConnections(response.connections.filter((connection) => connection.audience === "customer"));
+  }
+
+  async function refreshIMessageStatus(): Promise<void> {
+    setIMessageStatus(await api.getIMessageStatus());
   }
 
   async function refreshFirstRun(): Promise<void> {
@@ -389,6 +416,7 @@ export function LiveEverydayShell({
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
     void refreshConnections().catch(() => setConnections(null));
+    void refreshIMessageStatus().catch(() => setIMessageStatus(null));
     void refreshFirstRun().catch(() => setFirstRun(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
@@ -410,9 +438,24 @@ export function LiveEverydayShell({
     <EverydayShell
       data={{
         ...data,
-        connectors: connections ? connections.map(connectorFromConnection) : data.connectors,
+        connectors: connections
+          ? connections.map((connection) => connectorFromConnection(connection, imessageStatus))
+          : data.connectors,
       }}
       onConnectorConnect={(id) => void connect(id)}
+      imessageStatus={imessageStatus}
+      onSaveIMessageRecipient={async (input) => {
+        await api.saveIMessageRecipient(input);
+        await refreshIMessageStatus();
+      }}
+      onTestIMessageRecipient={async () => {
+        await api.testIMessageRecipient();
+        await refreshIMessageStatus();
+      }}
+      onDeleteIMessageRecipient={async () => {
+        await api.deleteIMessageRecipient();
+        await refreshIMessageStatus();
+      }}
       onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
       dashboardFirst={dashboardFirst}
     />
