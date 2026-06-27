@@ -6,12 +6,10 @@ import {
   CONNECTION_DESCRIPTORS,
   EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
+  IMESSAGE_CONNECTION_ID,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
-import {
-  decideApprovedConnectRequest,
-  mapExchangeToSeal,
-} from "../connections/connect.js";
+import { decideApprovedConnectRequest, mapExchangeToSeal } from "../connections/connect.js";
 import { signConnectState, verifyConnectState } from "../connections/state.js";
 import { ConnectProviderError, isValidAuthCode } from "../connections/provider.js";
 import {
@@ -55,6 +53,8 @@ const POSTMARK_SERVICE_KEY = "postmark";
 const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
 const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
 const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
+const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
+const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 
 function firstEnv(keys: readonly string[]): string {
   for (const key of keys) {
@@ -74,7 +74,9 @@ function emailProviderProofSecrets(workspaceId: string): Record<string, string> 
     [POSTMARK_TOKEN_KEY]: token,
     POSTMARK_FROM: from,
     ...(process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim()
-      ? { [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim() }
+      ? {
+          [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim(),
+        }
       : {}),
   };
 }
@@ -114,6 +116,32 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
 
   function runtimeDescriptors(): ConnectionDescriptor[] {
     return CONNECTION_DESCRIPTORS.map((descriptor) => {
+      if (descriptor.id === IMESSAGE_CONNECTION_ID) {
+        const enabled =
+          process.env.IMESSAGE_RELAY_ENABLED === "true" ||
+          process.env.IMESSAGE_RELAY_ENABLED === "1";
+        const dryRun =
+          process.env.IMESSAGE_RELAY_DRY_RUN === "true" ||
+          process.env.IMESSAGE_RELAY_DRY_RUN === "1";
+        if (enabled && !dryRun) {
+          return {
+            ...descriptor,
+            status: "available",
+            summary:
+              "Send the team room to Apple Messages after you add and verify your iMessage email or phone.",
+          };
+        }
+        return {
+          ...descriptor,
+          configIssue: {
+            code: dryRun ? "imessage_relay_dry_run" : "imessage_relay_disabled",
+            missingEnv: enabled ? [...IMESSAGE_DRY_RUN_KEYS] : [...IMESSAGE_ENABLED_KEYS],
+            remedy: dryRun
+              ? "Set IMESSAGE_RELAY_DRY_RUN=0 and verify the macOS Messages relay host before offering this connector."
+              : "Set IMESSAGE_RELAY_ENABLED=1 on a macOS relay host that can run osascript against Messages.",
+          },
+        };
+      }
       if (descriptor.auth !== "oauth") return descriptor;
       const provider = defaultConnectProvider(descriptor.id);
       if (provider.live) return { ...descriptor, status: "available" };
@@ -366,7 +394,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       exchange = await provider.exchange({ code: query.code, state: query.state as string });
     } catch (err) {
       const reason = err instanceof ConnectProviderError ? err.message : "token exchange failed";
-      await recordExecution(approval.request.id, identity.workspaceId, { ok: false, error: reason });
+      await recordExecution(approval.request.id, identity.workspaceId, {
+        ok: false,
+        error: reason,
+      });
       return finish("error");
     }
     const seal = mapExchangeToSeal({ descriptor, exchange });
@@ -412,7 +443,11 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (id === EMAIL_CONNECTION_ID) {
       const proofs = await connectionProofs(identity.workspaceId);
       if (proofs.get(POSTMARK_SERVICE_KEY)?.connected) {
-        await revokeServiceCredentials(identity.workspaceId, POSTMARK_SERVICE_KEY, identity.memberId);
+        await revokeServiceCredentials(
+          identity.workspaceId,
+          POSTMARK_SERVICE_KEY,
+          identity.memberId,
+        );
       }
     }
     return { revoked: true, id };
