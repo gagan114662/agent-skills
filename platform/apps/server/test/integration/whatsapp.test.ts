@@ -164,8 +164,9 @@ describe("WhatsApp room bridge (#1267)", () => {
                 messages: [
                   {
                     from: "15551112222",
+                    context: { id: "wamid.room.42" },
                     text: {
-                      body: `YES ship homepage because the draft is approved receipt: whatsapp:${channelId}:${started.json().message.id}`,
+                      body: "YES ship homepage because the draft is approved",
                     },
                   },
                 ],
@@ -191,7 +192,7 @@ describe("WhatsApp room bridge (#1267)", () => {
       headers: { "x-hub-signature-256": sign(wrongSenderPayload) },
       payload: wrongSenderPayload,
     });
-    expect(wrongSender.statusCode).toBe(403);
+    expect(wrongSender.statusCode).toBe(400);
 
     const rawPayload = JSON.stringify(payload, null, 2);
     const inbound = await app.inject({
@@ -206,6 +207,7 @@ describe("WhatsApp room bridge (#1267)", () => {
     expect(inbound.statusCode).toBe(201);
     expect(inbound.json()).toMatchObject({
       status: "ingested",
+      receipt: "whatsapp-provider:wamid.room.42",
       command: {
         kind: "approval_decision",
         decision: "approve",
@@ -221,7 +223,7 @@ describe("WhatsApp room bridge (#1267)", () => {
     });
     expect((await listChannelMessages(channelId)).map((m) => m.body)).toEqual([
       "agents, show the WhatsApp room",
-      `YES ship homepage because the draft is approved receipt: whatsapp:${channelId}:${started.json().message.id}`,
+      "YES ship homepage because the draft is approved",
     ]);
 
     const agent = await newAgent(owner, `agent-${newId()}`);
@@ -242,8 +244,9 @@ describe("WhatsApp room bridge (#1267)", () => {
                 messages: [
                   {
                     from: "15551112222",
+                    context: { id: "wamid.room.42" },
                     text: {
-                      body: `YES approval ${rid} because reviewed in WhatsApp receipt: whatsapp:${channelId}:${started.json().message.id}`,
+                      body: `YES approval ${rid} because reviewed in WhatsApp`,
                     },
                   },
                 ],

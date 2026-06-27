@@ -3,6 +3,10 @@ import { requireChannelCapability } from "../auth/access.js";
 import { requireIdentity } from "../auth/guard.js";
 import { getChannel } from "../db/repositories/channels.js";
 import { getServiceCredentialActor, resolveServiceSecrets } from "../db/repositories/external-credentials.js";
+import {
+  getExternalRoomMessageReceipt,
+  recordExternalRoomMessageReceipt,
+} from "../db/repositories/external-room-message-receipts.js";
 import { getMessage, postMessage } from "../db/repositories/messages.js";
 import { WHATSAPP_ROOM_CONNECTION_ID } from "../connections/registry.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
@@ -40,13 +44,22 @@ function findReceipt(text: string): string | null {
   return match?.[1] ?? null;
 }
 
-function extractInboundMessage(body: unknown): { from: string; text: string; receipt: string | null } | null {
+function normalizeProviderMessageId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value ? value : null;
+}
+
+function extractInboundMessage(
+  body: unknown,
+): { from: string; text: string; receipt: string | null; providerReplyToMessageId: string | null } | null {
   const payload = body as {
     entry?: Array<{
       changes?: Array<{
         value?: {
           messages?: Array<{
             from?: unknown;
+            context?: { id?: unknown };
             text?: { body?: unknown };
             button?: { text?: unknown };
           }>;
@@ -59,8 +72,9 @@ function extractInboundMessage(body: unknown): { from: string; text: string; rec
   const textRaw = message?.text?.body ?? message?.button?.text;
   const text = typeof textRaw === "string" ? textRaw.trim() : "";
   const receipt = findReceipt(text);
+  const providerReplyToMessageId = normalizeProviderMessageId(message?.context?.id);
   if (!from || !text) return null;
-  return { from, text, receipt };
+  return { from, text, receipt, providerReplyToMessageId };
 }
 
 function rawJsonBody(req: FastifyRequest): string {
@@ -133,6 +147,16 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         text,
       }),
     });
+    if (result.status === "sent") {
+      await recordExternalRoomMessageReceipt({
+        workspaceId: identity.workspaceId,
+        channelId: cid,
+        messageId: message.id,
+        provider: "whatsapp",
+        providerConversationId: recipient,
+        providerMessageId: result.providerMessageId,
+      });
+    }
     return reply.code(statusCode(result)).send({ ...result, receipt, message });
   });
 
@@ -151,11 +175,19 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         return reply.code(401).send({ error: "unauthorized" });
       }
       const inbound = extractInboundMessage(parseRawJsonBody(rawBody));
-      if (!inbound || !inbound.receipt) {
-        return reply.code(400).send({ error: "WhatsApp message, sender, and room receipt are required" });
+      if (!inbound || (!inbound.receipt && !inbound.providerReplyToMessageId)) {
+        return reply.code(400).send({ error: "WhatsApp message, sender, and room reply reference are required" });
       }
-      const receipt = parseWhatsAppRoomReceipt(inbound.receipt);
-      if (!receipt) return reply.code(400).send({ error: "invalid WhatsApp room receipt" });
+      const receipt =
+        parseWhatsAppRoomReceipt(inbound.receipt) ??
+        (inbound.providerReplyToMessageId
+          ? await getExternalRoomMessageReceipt({
+              provider: "whatsapp",
+              providerConversationId: inbound.from,
+              providerMessageId: inbound.providerReplyToMessageId,
+            })
+          : null);
+      if (!receipt) return reply.code(400).send({ error: "invalid WhatsApp room reply reference" });
 
       const original = await getMessage(receipt.messageId);
       if (!original || original.channelId !== receipt.channelId) {
@@ -202,7 +234,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
       });
       return reply.code(201).send({
         status: "ingested",
-        receipt: inbound.receipt,
+        receipt: inbound.receipt ?? "whatsapp-provider:" + inbound.providerReplyToMessageId,
         message,
         command,
         approvalDecision,
