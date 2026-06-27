@@ -8713,6 +8713,57 @@ select:focus-visible {
   background: color-mix(in srgb, #d6b2ff 16%, var(--ed-bg));
 }
 
+.everyday-operator-packet {
+  border: 1px solid color-mix(in srgb, #d6b2ff 42%, var(--ed-border));
+  border-radius: var(--ed-radius);
+  background: color-mix(in srgb, #d6b2ff 10%, var(--ed-bg));
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+.everyday-operator-packet h3,
+.everyday-operator-packet p {
+  margin: 0;
+}
+.everyday-operator-packet p:not(.everyday-eyebrow) {
+  margin-top: 4px;
+  color: var(--ed-text-dim);
+  font-size: 13px;
+}
+.everyday-operator-packet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.everyday-operator-packet details {
+  max-width: min(520px, 78vw);
+}
+.everyday-operator-packet summary {
+  min-height: 34px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--ed-text);
+  background: color-mix(in srgb, var(--ed-surface) 76%, transparent);
+}
+.everyday-operator-packet pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0 0;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  padding: 10px;
+  background: var(--ed-bg);
+  color: var(--ed-text);
+  font-size: 12px;
+}
+
 /* ---- Buttons. The pop is reserved for the primary action. ---------------- */
 .everyday-btn {
   font: inherit;
