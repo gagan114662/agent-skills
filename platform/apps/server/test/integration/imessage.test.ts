@@ -281,6 +281,7 @@ describe("iMessage member recipient relay", () => {
     expect(inbound.json()).toMatchObject({
       status: "ingested",
       receipt,
+      command: null,
       message: {
         channelId,
         authorMemberId: owner.memberId,
@@ -291,6 +292,28 @@ describe("iMessage member recipient relay", () => {
     });
     const messages = await listChannelMessages(channelId);
     expect(messages.map((m) => m.body)).toEqual(["start in messages", "tell Scout to compare competitors"]);
+
+    const command = await app.inject({
+      method: "POST",
+      url: "/imessage/relay/inbound",
+      headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+      payload: {
+        workspaceId: owner.workspaceId,
+        receipt,
+        sender: "gagan@example.com",
+        text: "YES ship homepage because the draft is approved",
+      },
+    });
+    expect(command.statusCode).toBe(201);
+    expect(command.json()).toMatchObject({
+      status: "ingested",
+      command: {
+        kind: "approval_decision",
+        decision: "approve",
+        target: "ship homepage",
+        reason: "the draft is approved",
+      },
+    });
   });
 
   it("queues outbound work for a signed Mac relay worker when direct Apple Messages is unavailable (#1341)", async () => {
