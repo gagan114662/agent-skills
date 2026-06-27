@@ -218,7 +218,7 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(url).toContain("client_id=id");
   });
 
-  it("defaultConnectProvider wires Google live only with a dedicated connection redirect URI (#1285)", () => {
+  it("defaultConnectProvider derives the Google connection callback from the API Google redirect (#1285)", () => {
     expect(
       googleConnectionOAuthConfigStatus({
         GOOGLE_OAUTH_CLIENT_ID: "cid",
@@ -226,18 +226,20 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
         GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
       } as NodeJS.ProcessEnv),
     ).toMatchObject({
-      configured: false,
-      missing: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+      configured: true,
+      missing: [],
       callbackPath: "/me/connections/google/oauth/callback",
     });
 
-    expect(
-      defaultConnectProvider("google", {
-        GOOGLE_OAUTH_CLIENT_ID: "cid",
-        GOOGLE_OAUTH_CLIENT_SECRET: "secret",
-        GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
-      } as NodeJS.ProcessEnv).live,
-    ).toBe(false);
+    const derivedProvider = defaultConnectProvider("google", {
+      GOOGLE_OAUTH_CLIENT_ID: "cid",
+      GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+      GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+    } as NodeJS.ProcessEnv);
+    expect(derivedProvider.live).toBe(true);
+    expect(derivedProvider.authorizeUrl({ state: "state-1" })).toContain(
+      "redirect_uri=https%3A%2F%2Fapi.ipop.ai%2Fme%2Fconnections%2Fgoogle%2Foauth%2Fcallback",
+    );
 
     const provider = defaultConnectProvider("google", {
       GOOGLE_OAUTH_CLIENT_ID: "cid",

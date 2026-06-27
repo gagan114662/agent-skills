@@ -14,6 +14,10 @@ import { createRequest } from "../db/repositories/approvals.js";
 import { loadConfig } from "../config/loader.js";
 import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../approvals/policy.js";
 import { GOOGLE_ANALYTICS_SCOPE, GOOGLE_SEARCH_CONSOLE_SCOPE } from "../auth/google-oauth.js";
+import {
+  googleConnectionOAuthConfigStatus,
+  resolveGoogleConnectionRedirectUri,
+} from "./google-oauth-config.js";
 import { resolveConnectOnceCaps } from "./caps.js";
 import {
   createConnectProvider,
@@ -24,30 +28,7 @@ import {
 } from "./provider.js";
 import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
-export const GOOGLE_CONNECTION_OAUTH_ENV_KEYS = [
-  "GOOGLE_OAUTH_CLIENT_ID",
-  "GOOGLE_OAUTH_CLIENT_SECRET",
-  "GOOGLE_CONNECTION_OAUTH_REDIRECT_URI",
-] as const;
-
-export type GoogleConnectionOAuthEnvKey = (typeof GOOGLE_CONNECTION_OAUTH_ENV_KEYS)[number];
-
-export interface GoogleConnectionOAuthConfigStatus {
-  configured: boolean;
-  missing: GoogleConnectionOAuthEnvKey[];
-  callbackPath: "/me/connections/google/oauth/callback";
-}
-
-export function googleConnectionOAuthConfigStatus(
-  env: NodeJS.ProcessEnv = process.env,
-): GoogleConnectionOAuthConfigStatus {
-  const missing = GOOGLE_CONNECTION_OAUTH_ENV_KEYS.filter((key) => !env[key]?.trim());
-  return {
-    configured: missing.length === 0,
-    missing,
-    callbackPath: "/me/connections/google/oauth/callback",
-  };
-}
+export { googleConnectionOAuthConfigStatus } from "./google-oauth-config.js";
 
 /**
  * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
@@ -71,7 +52,7 @@ function loadGoogleConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig |
   if (!googleConnectionOAuthConfigStatus(env).configured) return null;
   const clientId = env.GOOGLE_OAUTH_CLIENT_ID?.trim();
   const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
-  const redirectUri = env.GOOGLE_CONNECTION_OAUTH_REDIRECT_URI?.trim();
+  const redirectUri = resolveGoogleConnectionRedirectUri(env);
   return {
     clientId: clientId!,
     clientSecret: clientSecret!,
