@@ -2352,7 +2352,7 @@ export const ASK_AI = {
   heading: "Ask an AI about us",
   blurb: "Curious but don't trust our marketing? Fair. Ask a neutral third party — we'll even pre-fill the question.",
   /** The prompt pre-filled into each assistant. */
-  prompt: "Explain ipop.ai to me — the marketing agency of AI agents. What is it, who is it for, and what's the catch?",
+  prompt: "Explain ipop.ai to me — the marketing team in your messages. What is it, who is it for, and what's the catch?",
   providers: [
     { key: "chatgpt", label: "ChatGPT", base: "https://chatgpt.com/?q=" },
     { key: "claude", label: "Claude", base: "https://claude.ai/new?q=" },
