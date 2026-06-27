@@ -48,6 +48,8 @@ describe("#253 ReportsView proof scorecard", () => {
             trendDetail: "+3",
             source: "Published artifacts (#231)",
             note: null,
+            evidenceKind: "dogfood",
+            receipt: null,
           },
         ],
       },
@@ -59,6 +61,7 @@ describe("#253 ReportsView proof scorecard", () => {
     expect(screen.getByText("Quill · Content")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText(/\+3/)).toBeInTheDocument();
+    expect(screen.getByText(/dogfood/i)).toBeInTheDocument();
     expect(screen.getByText(/Published artifacts/)).toBeInTheDocument();
   });
 
@@ -83,6 +86,8 @@ describe("#253 ReportsView proof scorecard", () => {
             trendDetail: "—",
             source: "Search Console not connected",
             note: "connect Google Search Console to prove indexed pages + rankings",
+            evidenceKind: "live",
+            receipt: null,
           },
         ],
       },
@@ -91,6 +96,40 @@ describe("#253 ReportsView proof scorecard", () => {
 
     expect(screen.getByText("not connected")).toBeInTheDocument();
     expect(screen.getByText(/Search Console not connected/)).toBeInTheDocument();
+    expect(screen.getByText(/^live$/i)).toBeInTheDocument();
+  });
+
+  it("labels sample proof as sample instead of live", () => {
+    const data = dto({
+      proofScorecard: {
+        connectedCount: 1,
+        total: 7,
+        tiles: [
+          {
+            department: "content",
+            agent: "Quill",
+            title: "Content",
+            metricLabel: "Articles live on the blog",
+            connection: "connected",
+            unit: "count",
+            value: 2,
+            display: "2",
+            trend: "none",
+            delta: null,
+            improving: null,
+            trendDetail: "—",
+            source: "Sample workspace rows",
+            note: null,
+            evidenceKind: "sample",
+            receipt: null,
+          },
+        ],
+      },
+    });
+    render(<ReportsView console={data} onApprove={noop} onPeekBrief={noop} decidingId={null} />);
+
+    expect(screen.getByText(/^sample$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^live$/i)).not.toBeInTheDocument();
   });
 
   it("renders per-artifact attributed revenue from the attribution ledger (#868)", () => {

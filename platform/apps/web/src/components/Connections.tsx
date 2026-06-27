@@ -109,6 +109,18 @@ function CustomerAction(props: {
       </span>
     );
   }
+  if (c.status === "blocked") {
+    return (
+      <span className="connections__action">
+        <span className="connections__label">{c.label}</span>
+        <span className="connections__soon">{CONNECTIONS.blocked}</span>
+        {c.statusReason ? <span className="connections__reason">{c.statusReason}</span> : null}
+        <button type="button" disabled>
+          {c.label}
+        </button>
+      </span>
+    );
+  }
   // Not live yet: a clear next step (join the waitlist) instead of a dead, disabled "Coming soon" button.
   if (c.status === "coming_soon") {
     const detail = c.configIssue

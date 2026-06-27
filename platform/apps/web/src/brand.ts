@@ -253,6 +253,7 @@ export const CONNECTIONS = {
   // A not-yet-live connector offers "notify me" instead of a dead stop (#507).
   waitlist: "Notify me when it's ready",
   waitlisted: "You're on the list — we'll let you know when it's ready.",
+  blocked: "Setup required",
   connect: "Connect",
   connectedBadge: "Connected",
   proofPendingBadge: "Setup pending",
@@ -708,6 +709,55 @@ export const LANDING = {
     /** No public profile links are rendered until real external accounts exist. */
     social: [] as readonly FooterSocialLink[],
   },
+} as const;
+
+/**
+ * Production-readiness readout for the public pricing path and the owner dogfood surface (#1265/#1290/#1293).
+ * It is intentionally plain about what is live, dogfood, demo, or blocked; a launch page that mixes those
+ * buckets makes the product look better for a minute and less trustworthy forever.
+ */
+export const LAUNCH_READINESS = {
+  eyebrow: "Launch readiness",
+  title: "What is live, what is dogfood, and what still needs a real connector.",
+  sub:
+    "The product should show receipts instead of vibes. This readout separates real billing and agent work " +
+    "from demo data, and names the operator lane that lets the owner use Codex without pretending a ChatGPT " +
+    "subscription is a backend API key.",
+  proofLabel: "Proof type",
+  proof: [
+    { label: "Live", body: "Real production code path with a receipt from the app, API, checkout, or connector." },
+    { label: "Dogfood", body: "Work the fleet is doing for this product in the owner's workspace." },
+    { label: "Demo", body: "Sample rows or scripted site visuals, clearly marked as non-customer proof." },
+    { label: "Blocked", body: "Needs a connected provider, relay host, or owner approval before it can be called live." },
+  ],
+  pricing: {
+    title: "Real pricing in the product",
+    body:
+      "The public plans match the billing catalog: Starter $49, Pro $199, Agency $499. Each plan carries " +
+      "agent seats and a monthly session cap so upgrade moments can point at the exact value unlocked.",
+    limits: [
+      "Starter: 3 agent seats, $200 monthly session cap",
+      "Pro: 10 agent seats, $1,000 monthly session cap",
+      "Agency: 30 agent seats, $5,000 monthly session cap",
+    ],
+  },
+  codex: {
+    title: "Codex operator lane",
+    status: "Dogfood handoff, not hidden credential use",
+    body:
+      "Agents can package implementation work for the owner's Codex environment and ingest the returned PR, " +
+      "files, tests, and risks as an audited artifact. The production backend does not store or impersonate " +
+      "the owner's ChatGPT session.",
+  },
+  checklistTitle: "Production checklist",
+  checklist: [
+    { area: "Auth and billing", state: "Live", detail: "Signup, plan intent, checkout return, and billing caps are visible in-app." },
+    { area: "Marketing room", state: "Dogfood", detail: "The web coordination room shows departments, threads, DMs, and live session state." },
+    { area: "Codex capacity", state: "Dogfood", detail: "Operator packets can hand build work to the owner's active Codex subscription." },
+    { area: "Outbound OAuth", state: "Blocked", detail: "Google, social, and ads need live OAuth token exchange before they can be marked connected." },
+    { area: "iMessage", state: "Blocked", detail: "Production needs a signed Mac relay host; Fly cannot run Apple Messages directly." },
+    { area: "Customer proof", state: "Blocked", detail: "External proof requires a signup, payment, reply, booked call, or approval receipt." },
+  ],
 } as const;
 
 /**
@@ -1398,6 +1448,18 @@ export const CONSOLE = {
       dismiss: "Dismiss",
       dismissLabel: "Dismiss the startup error",
     },
+  },
+  /**
+   * Owner dogfood banner for the Codex operator lane (#1265): shown only on the chat-first surface, where the
+   * marketing agents visibly coordinate. This is a handoff lane, not a backend runtime credential.
+   */
+  codexLane: {
+    title: "Codex operator lane",
+    status: "Ready for owner handoff",
+    body:
+      "When the fleet needs product work, it packages context for Codex, waits for the returned files, PR, " +
+      "tests, and risks, then records the result as an audited artifact. Your ChatGPT subscription stays in " +
+      "your Codex session; the backend never borrows it.",
   },
   /** Reports view sections. */
   reports: {

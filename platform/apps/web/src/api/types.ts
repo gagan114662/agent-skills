@@ -108,7 +108,8 @@ export interface ConnectionView {
   kind: string;
   audience: "customer" | "internal";
   auth: "oauth" | "one_click" | "paste_internal";
-  status: "available" | "coming_soon";
+  status: "available" | "coming_soon" | "blocked";
+  statusReason?: string | null;
   capabilities: string[];
   oauthScopes: string[];
   consentStatus: "none" | "recorded";
@@ -779,6 +780,8 @@ export interface FounderConsoleDto {
       trendDetail: string;
       source: string;
       note: string | null;
+      evidenceKind: "live" | "sample" | "dogfood" | "external_customer_proof";
+      receipt: { kind: "signup" | "payment" | "reply" | "call_booked" | "customer_approval"; ref: string } | null;
     }[];
   };
   /** Whether the platform needs a human right now, and why. */

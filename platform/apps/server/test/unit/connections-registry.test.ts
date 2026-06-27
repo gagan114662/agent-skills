@@ -101,6 +101,24 @@ describe("connection registry (#258)", () => {
     expect(d?.envKeys).toEqual([]);
   });
 
+  it("keeps unavailable customer connectors visibly explained", () => {
+    const customer = listConnectionDescriptors({ audience: "customer" });
+    for (const d of customer.filter((descriptor) => descriptor.status !== "available")) {
+      expect(d.statusReason, `${d.id} must explain why it is not live`).toEqual(expect.any(String));
+      expect(d.statusReason?.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("models iMessage room visibility as blocked until a signed Mac relay exists", () => {
+    const d = getConnectionDescriptor("imessage_room");
+    expect(d?.audience).toBe("customer");
+    expect(d?.auth).toBe("oauth");
+    expect(d?.status).toBe("blocked");
+    expect(d?.capabilities).toEqual(expect.arrayContaining(["agent_room_visibility", "inbound_replies"]));
+    expect(d?.statusReason).toMatch(/signed Mac relay host/i);
+    expect(d?.statusReason).toMatch(/Fly cannot run Apple Messages/i);
+  });
+
   it("listConnectionDescriptors filters by audience", () => {
     const internal = listConnectionDescriptors({ audience: "internal" });
     expect(internal.every((d) => d.audience === "internal")).toBe(true);

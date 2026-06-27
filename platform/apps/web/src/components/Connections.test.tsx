@@ -18,6 +18,7 @@ function view(over: Partial<ConnectionView>): ConnectionView {
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: null,
     capabilities: ["search_console"],
     oauthScopes: ["webmasters"],
     consentStatus: "none",
@@ -56,6 +57,27 @@ describe("Connections (#258)", () => {
     expect(screen.getByText("Connect X")).toBeInTheDocument();
     // coming_soon ⇒ NOT a dead, disabled button: a "notify me" waitlist button is the next step.
     expect(screen.getAllByRole("button", { name: /notify me/i }).length).toBeGreaterThan(0);
+  });
+
+  it("renders blocked connectors as setup-required with a concrete reason", () => {
+    const onOAuthConnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "imessage_room",
+          label: "Connect iMessage room",
+          status: "blocked",
+          statusReason: "Requires a signed Mac relay host; Fly cannot run Apple Messages directly.",
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} onOAuthConnect={onOAuthConnect} />);
+
+    expect(screen.getByText(/setup required/i)).toBeInTheDocument();
+    expect(screen.getByText(/signed Mac relay host/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /connect imessage room/i }));
+    expect(onOAuthConnect).not.toHaveBeenCalled();
   });
 
   it("never shows the internal GitHub paste form to a customer (no admin form)", () => {

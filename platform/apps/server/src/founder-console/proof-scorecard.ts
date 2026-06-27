@@ -23,6 +23,17 @@ export type ProofTrend = "up" | "down" | "flat" | "none";
 /** How to format a value: a raw count, money (cents), or a basis-points ratio. */
 export type ProofUnit = "count" | "currency" | "ratio_bps";
 
+/** What kind of evidence backs a metric. External customer proof requires a receipt. */
+export type ProofEvidenceKind = "live" | "sample" | "dogfood" | "external_customer_proof";
+
+/** A real customer receipt that allows a tile to claim external customer proof. */
+export type ProofReceiptKind = "signup" | "payment" | "reply" | "call_booked" | "customer_approval";
+
+export interface ProofReceipt {
+  kind: ProofReceiptKind;
+  ref: string;
+}
+
 /**
  * One department's real reading, supplied by the wiring (default.ts). A reading with `connected: false`
  * (or a `null` current) renders a "not connected" tile — but still carries the `source`/`note` so the
@@ -44,6 +55,10 @@ export interface ProofMetricReading {
   source?: string;
   /** A caveat when the source is partial (e.g. "impressions not connected"). */
   note?: string;
+  /** Labels whether this is live system data, sample/demo, dogfood, or external customer proof. */
+  evidenceKind?: ProofEvidenceKind;
+  /** Required when evidenceKind is external_customer_proof. */
+  receipt?: ProofReceipt | null;
   /** Lower-is-better metrics (CAC) set this false so a falling value reads as an improvement. Default true. */
   higherIsBetter?: boolean;
 }
@@ -74,6 +89,10 @@ export interface ProofTile {
   source: string;
   /** Partial-source caveat, or null. */
   note: string | null;
+  /** Labels whether this is live system data, sample/demo, dogfood, or external customer proof. */
+  evidenceKind: ProofEvidenceKind;
+  /** The customer receipt backing external_customer_proof; null for other evidence kinds. */
+  receipt: ProofReceipt | null;
 }
 
 /** The whole scorecard: one tile per department + a connected/total tally. */
@@ -102,6 +121,16 @@ const DEFAULT_METRIC_LABEL: Record<string, string> = {
 
 const NOT_CONNECTED_DISPLAY = "not connected";
 
+function evidenceKind(reading: ProofMetricReading | undefined): ProofEvidenceKind {
+  return reading?.evidenceKind ?? "live";
+}
+
+function receipt(reading: ProofMetricReading | undefined): ProofReceipt | null {
+  const r = reading?.receipt ?? null;
+  if (!r || r.ref.trim().length === 0) return null;
+  return r;
+}
+
 function formatValue(unit: ProofUnit, value: number): string {
   switch (unit) {
     case "currency":
@@ -126,12 +155,32 @@ function buildTile(
   reading: ProofMetricReading | undefined,
 ): ProofTile {
   const metricLabel = reading?.metricLabel ?? DEFAULT_METRIC_LABEL[dept.key] ?? dept.title;
+  const kind = evidenceKind(reading);
+  const externalReceipt = receipt(reading);
   const base = {
     department: dept.key,
     agent: dept.agent.displayName,
     title: dept.title,
     metricLabel,
   };
+
+  if (reading?.connected && reading.current !== null && kind === "external_customer_proof" && !externalReceipt) {
+    return {
+      ...base,
+      connection: "not_connected",
+      unit: reading.unit,
+      value: null,
+      display: NOT_CONNECTED_DISPLAY,
+      trend: "none",
+      delta: null,
+      improving: null,
+      trendDetail: "—",
+      source: "External customer proof missing receipt",
+      note: "requires signup, payment, reply, call booked, or customer approval receipt",
+      evidenceKind: kind,
+      receipt: null,
+    };
+  }
 
   // Not connected: no source wired (or no reading at all). We surface the WHY (source/note) but never a number.
   if (!reading || !reading.connected || reading.current === null) {
@@ -147,6 +196,8 @@ function buildTile(
       trendDetail: "—",
       source: reading?.source ?? "not connected",
       note: reading?.note ?? null,
+      evidenceKind: kind,
+      receipt: externalReceipt,
     };
   }
 
@@ -176,6 +227,8 @@ function buildTile(
     trendDetail,
     source: reading.source ?? "connected",
     note: reading.note ?? null,
+    evidenceKind: kind,
+    receipt: externalReceipt,
   };
 }
 

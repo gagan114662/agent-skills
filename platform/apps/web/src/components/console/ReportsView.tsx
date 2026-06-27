@@ -44,6 +44,14 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
     value.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const trendGlyph = (trend: string): string =>
     trend === "up" ? "▲" : trend === "down" ? "▼" : trend === "flat" ? "▬" : "";
+  const evidenceLabel = (kind: string): string =>
+    kind === "external_customer_proof"
+      ? "external customer proof"
+      : kind === "dogfood"
+        ? "dogfood"
+        : kind === "sample"
+          ? "sample"
+          : "live";
   const brief = attention.required
     ? attention.reasons.join(" · ")
     : `${fleet.activeSessions} in motion · ${pendingApprovals.length} waiting · ${fmtCents(budget.estimatedCostCents)} spent this window`;
@@ -80,6 +88,9 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
                   </div>
                   <div className="proof-tile__metric">{t.metricLabel}</div>
                   <div className="proof-tile__value">{t.display}</div>
+                  <div className={`proof-tile__evidence proof-tile__evidence--${t.evidenceKind}`}>
+                    {evidenceLabel(t.evidenceKind)}
+                  </div>
                   {t.trend !== "none" && (
                     <div
                       className={`proof-tile__trend proof-tile__trend--${
@@ -92,6 +103,7 @@ export function ReportsView({ console: data, onApprove, onPeekBrief, decidingId 
                   <div className="proof-tile__source">
                     {t.source}
                     {t.note ? ` · ${t.note}` : ""}
+                    {t.receipt ? ` · ${t.receipt.kind.replace(/_/g, " ")}: ${t.receipt.ref}` : ""}
                   </div>
                 </article>
               ))}

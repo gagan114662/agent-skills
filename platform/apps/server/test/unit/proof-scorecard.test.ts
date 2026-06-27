@@ -48,6 +48,8 @@ describe("buildProofScorecard (#253 — the per-department proof scorecard)", ()
     expect(tile.improving).toBe(true);
     expect(tile.trendDetail).toBe("+3");
     expect(tile.source).toBe("Published artifacts (#231)");
+    expect(tile.evidenceKind).toBe("live");
+    expect(tile.receipt).toBeNull();
   });
 
   it("formats currency values and deltas, and treats a falling CAC as an improvement (higherIsBetter:false)", () => {
@@ -137,5 +139,60 @@ describe("buildProofScorecard (#253 — the per-department proof scorecard)", ()
       ],
     });
     expect(card.connectedCount).toBe(2);
+  });
+
+  it("preserves sample evidence as sample, never as live", () => {
+    const tile = buildProofScorecard({
+      readings: [
+        {
+          department: "content",
+          connected: true,
+          current: 3,
+          unit: "count",
+          evidenceKind: "sample",
+          source: "Sample workspace rows",
+        },
+      ],
+    }).tiles.find((t) => t.department === "content")!;
+    expect(tile.connection).toBe("connected");
+    expect(tile.evidenceKind).toBe("sample");
+    expect(tile.display).toBe("3");
+  });
+
+  it("refuses external customer proof without a real receipt", () => {
+    const tile = buildProofScorecard({
+      readings: [
+        {
+          department: "reach",
+          connected: true,
+          current: 1,
+          unit: "count",
+          evidenceKind: "external_customer_proof",
+          source: "Customer replied",
+        },
+      ],
+    }).tiles.find((t) => t.department === "reach")!;
+    expect(tile.connection).toBe("not_connected");
+    expect(tile.value).toBeNull();
+    expect(tile.source).toMatch(/missing receipt/i);
+  });
+
+  it("allows external customer proof only when a typed receipt is present", () => {
+    const tile = buildProofScorecard({
+      readings: [
+        {
+          department: "reach",
+          connected: true,
+          current: 1,
+          unit: "count",
+          evidenceKind: "external_customer_proof",
+          receipt: { kind: "reply", ref: "gmail:thread-123" },
+          source: "Customer replied",
+        },
+      ],
+    }).tiles.find((t) => t.department === "reach")!;
+    expect(tile.connection).toBe("connected");
+    expect(tile.evidenceKind).toBe("external_customer_proof");
+    expect(tile.receipt).toEqual({ kind: "reply", ref: "gmail:thread-123" });
   });
 });
