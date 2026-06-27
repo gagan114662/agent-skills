@@ -138,6 +138,7 @@ describe("OnboardingExperience (#784)", () => {
   it("opens on the warm door — one simple promise, one input, nothing else", () => {
     render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
     expect(screen.getByText(/make marketing pop/i)).toBeInTheDocument();
+    expect(screen.getByText(/marketing team in your messages/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
     expect(screen.getByText(/customer/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
@@ -172,8 +173,10 @@ describe("OnboardingExperience (#784)", () => {
     const preview = screen.getByRole("region", { name: /marketing work preview/i });
 
     expect(within(preview).getByText("ICP folder")).toBeInTheDocument();
+    expect(within(preview).getByText("where to win")).toBeInTheDocument();
     expect(within(preview).getByText("sharp truth")).toBeInTheDocument();
     expect(within(preview).getByText("platform draft")).toBeInTheDocument();
+    expect(within(preview).getByText("reply ready")).toBeInTheDocument();
     expect(within(preview).getByText("spend dial")).toBeInTheDocument();
     expect(within(preview).getByText("proof saved")).toBeInTheDocument();
     expect(
