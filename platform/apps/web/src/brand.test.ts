@@ -19,6 +19,7 @@ import {
   FLEET,
   agentColor,
   LANDING,
+  LAUNCH_READINESS,
   PRICING,
   SECURITY,
   SITE,
@@ -327,6 +328,22 @@ describe("company/procurement page copy (#1188)", () => {
       ]),
     );
   });
+
+  it("footer links only point at public routes or in-page anchors (#link-qa)", () => {
+    const publicPrefixes = ["/security", "/pricing", "/blog", "/guides", "/stories", "/changelog", "/compare"];
+    const links = [
+      ...LANDING.footer.product,
+      ...LANDING.footer.resources,
+      ...LANDING.footer.social,
+    ];
+    for (const link of links) {
+      expect(
+        link.href.startsWith("#") || publicPrefixes.some((prefix) => link.href === prefix || link.href.startsWith(prefix + "/")),
+        link.label + " -> " + link.href,
+      ).toBe(true);
+    }
+    expect(links.map((l) => l.href).join(" ")).not.toContain("/social/");
+  });
 });
 
 describe("pricing page + trial framing copy (#214)", () => {
@@ -357,6 +374,15 @@ describe("pricing page + trial framing copy (#214)", () => {
     );
     expect(matched.some((item) => /three agent seats|ten seats|department fleet/i.test(item.a))).toBe(true);
     expect(matched.some((item) => /priority autonomy|deploy-to-live/i.test(item.a))).toBe(true);
+  });
+
+  it("has a readiness readout that separates real, dogfood, demo, and blocked proof", () => {
+    expect(LAUNCH_READINESS.checklist.map((row) => row.state)).toEqual(
+      expect.arrayContaining(["Live", "Dogfood", "Blocked"]),
+    );
+    expect(LAUNCH_READINESS.proof.map((row) => row.label)).toEqual(["Live", "Dogfood", "Demo", "Blocked"]);
+    expect(LAUNCH_READINESS.codex.body).toMatch(/backend/i);
+    expect(LAUNCH_READINESS.pricing.body).toContain("$199");
   });
 });
 
@@ -561,6 +587,7 @@ describe("no hardcoded brand strings in product chrome", () => {
     "components/landing/WorkspaceSim.tsx",
     "components/landing/Vignettes.tsx",
     "components/landing/BillingScreen.tsx",
+    "components/landing/LaunchReadiness.tsx",
     "components/landing/Faq.tsx",
     "components/landing/ContactForm.tsx",
     // The public trust page (#151).

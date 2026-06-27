@@ -43,8 +43,8 @@ import {
  *    repo into the encrypted #192 vault so `publish_site` no longer needs a Fly server secret. It refuses
  *    a non-owner and refuses an OAuth (customer) connector outright.
  *  - `POST /me/connections/:id/oauth/start` is the consumer-OAuth seam. The live redirect flow is a
- *    follow-up; today it 501s with `status: "coming_soon"` so the UI is honest. The model is already
- *    OAuth-shaped, so the redirect slots in here without re-modelling.
+ *    follow-up; today it 501s with `status: "coming_soon"` or `status: "blocked"` so the UI is honest.
+ *    The model is already OAuth-shaped, so the redirect slots in here without re-modelling.
  *
  * Connecting is a one-time CONSENT, not money — so it carries no #13 gate (consistent with #243 money-only
  * and the #192 non-money connects). Real spend through a connected channel stays money-gated, unchanged.
@@ -297,6 +297,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const descriptor = getConnectionDescriptor(id);
     if (!descriptor || descriptor.auth !== "oauth") {
       return reply.code(400).send({ error: "not an OAuth connection" });
+    }
+    if (descriptor.status === "blocked") {
+      return reply.code(501).send({
+        status: "blocked",
+        provider: descriptor.provider,
+        scopes: descriptor.oauthScopes,
+        reason: descriptor.statusReason ?? "This connection needs setup before it can run.",
+      });
     }
     const result = await connectOnce.startConnect(
       { workspaceId: identity.workspaceId, requesterMemberId: identity.memberId },

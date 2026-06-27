@@ -583,6 +583,8 @@ export function createDefaultFounderConsoleService(deps: {
         const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
         const since7 = new Date(now.getTime() - WEEK_MS);
         const epoch = new Date(0);
+        const defaultEvidenceKind =
+          loadConfig(workspaceId).marketing.ownerWorkspaceId === workspaceId ? "dogfood" : "live";
         const readings: ProofMetricReading[] = [];
 
         // content (Quill): articles published & live, off the #231 real-world publish artifacts.
@@ -787,7 +789,7 @@ export function createDefaultFounderConsoleService(deps: {
           note: `${reach.prospects} prospects · ${reach.replies} replies · ${reach.booked} meetings booked`,
         });
 
-        return readings;
+        return readings.map((r) => ({ ...r, evidenceKind: r.evidenceKind ?? defaultEvidenceKind }));
       },
     },
     now: deps.now,

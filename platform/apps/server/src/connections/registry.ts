@@ -30,7 +30,7 @@ export type ConnectionAuthMethod =
 export type ConnectionAudience = "customer" | "internal";
 
 /** Whether the live connect flow is wired yet. */
-export type ConnectionStatus = "available" | "coming_soon";
+export type ConnectionStatus = "available" | "coming_soon" | "blocked";
 
 export interface ConnectionDescriptor {
   /** Stable id — also the `service_key` used in the #192 vault and the connect routes. */
@@ -46,6 +46,8 @@ export interface ConnectionDescriptor {
   audience: ConnectionAudience;
   auth: ConnectionAuthMethod;
   status: ConnectionStatus;
+  /** Human-readable reason when status is not available. */
+  statusReason?: string;
   /** The real-world capabilities this one consent unlocks (e.g. `search_console`, `post_social`). */
   capabilities: string[];
   /** OAuth scopes the consent covers (empty for paste connections). */
@@ -128,6 +130,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: "Live Google OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["search_console", "analytics"],
     oauthScopes: [
       "https://www.googleapis.com/auth/webmasters",
@@ -159,7 +162,24 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "one_click",
     status: "coming_soon",
+    statusReason: "Requires a signed Mac relay host before iMessage can be used in production.",
     capabilities: ["work_visibility", "mobile_messaging", "imessage_room"],
+    oauthScopes: [],
+    envKeys: [],
+  },
+  {
+    // #1283/#1341 — do not market iMessage as a working production room while Fly cannot run Apple
+    // Messages. This stays blocked until a signed Mac relay host is active and smoke-tested.
+    id: "imessage_room",
+    label: "Connect iMessage room",
+    summary: "Mirror the agent room into Apple Messages after a signed Mac relay host is installed.",
+    provider: "imessage",
+    kind: "other",
+    audience: "customer",
+    auth: "oauth",
+    status: "blocked",
+    statusReason: "Requires a signed Mac relay host; Fly cannot run Apple Messages directly.",
+    capabilities: ["agent_room_visibility", "inbound_replies"],
     oauthScopes: [],
     envKeys: [],
   },
@@ -172,6 +192,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: "Live X OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["post_social"],
     oauthScopes: ["tweet.read", "tweet.write", "users.read"],
     envKeys: [],
@@ -185,6 +206,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: "Live LinkedIn OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["post_social"],
     oauthScopes: ["w_member_social"],
     envKeys: [],
@@ -219,6 +241,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: "Live Google Ads OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["ads"],
     oauthScopes: ["https://www.googleapis.com/auth/adwords"],
     envKeys: [],
@@ -235,6 +258,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
+    statusReason: "Live Meta Ads OAuth token exchange is not wired for this deployment yet.",
     capabilities: ["ads"],
     oauthScopes: ["ads_read", "ads_management", "business_management"],
     envKeys: [],

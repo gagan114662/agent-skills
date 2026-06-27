@@ -16,6 +16,7 @@ import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
 import { useState } from "react";
+import { LaunchReadiness } from "./LaunchReadiness.js";
 
 type BillingInterval = "month" | "year";
 
@@ -140,6 +141,8 @@ export function PricingPage(): React.JSX.Element {
             </Link>
           </p>
         </section>
+
+        <LaunchReadiness />
 
         <section className="pricing-page__faq landing__section" aria-labelledby="pricing-faq-title">
           <h2 id="pricing-faq-title" className="landing__section-title">

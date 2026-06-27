@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PricingPage } from "./PricingPage.js";
-import { FAQ, LANDING, PRICING, REFUND_POLICY } from "../../brand.js";
+import { FAQ, LANDING, LAUNCH_READINESS, PRICING, REFUND_POLICY } from "../../brand.js";
 
 describe("PricingPage (#214)", () => {
   it("leads with the focused pricing hero", () => {
@@ -72,6 +72,19 @@ describe("PricingPage (#214)", () => {
     expect(screen.getByText(/starter is \$49\/month for a daily checkup/i)).toBeInTheDocument();
     expect(screen.getByText(/priority autonomy means pro work gets/i)).toBeInTheDocument();
     expect(screen.getByText(/deploy-to-live means approved site or venture changes/i)).toBeInTheDocument();
+  });
+
+  it("shows launch readiness, Codex handoff, and the real plan limits", () => {
+    render(<PricingPage />);
+    expect(screen.getByRole("heading", { name: LAUNCH_READINESS.title })).toBeInTheDocument();
+    expect(screen.getByText(LAUNCH_READINESS.codex.title)).toBeInTheDocument();
+    for (const limit of LAUNCH_READINESS.pricing.limits) {
+      expect(screen.getByText(limit)).toBeInTheDocument();
+    }
+    const proof = screen.getByLabelText(LAUNCH_READINESS.proofLabel);
+    for (const item of LAUNCH_READINESS.proof) {
+      expect(within(proof).getByText(item.label)).toBeInTheDocument();
+    }
   });
 
   it("offers a way back to the homepage", () => {
