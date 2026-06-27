@@ -3,6 +3,7 @@ import type {
   ActivePlanDto,
   BillingInvoiceDto,
   BillingInvoicesResponseDto,
+  BillingQuotaMeterDto,
   BillingStatusDto,
   CheckoutResponseDto,
   PaymentLinkDto,
@@ -30,11 +31,16 @@ import {
   type PlanListing,
   type PricingExperimentReport,
 } from "../billing/plan-service.js";
-import { isBillingInterval, type Plan } from "../billing/plans.js";
+import { evaluatePlanLimit, getPlan, isBillingInterval, type Plan } from "../billing/plans.js";
 import { WebhookVerificationError } from "../billing/webhook.js";
 import type { PriceInterval } from "../billing/provider.js";
 import type { TrialNurtureService, TrialNurtureSignalKind } from "../billing/trial-nurture.js";
 import { recordWebhookSignatureFailure } from "../observability/metrics.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { countMarketingTasksByStatus } from "../db/repositories/marketing-tasks.js";
+import { listChannelConnections } from "../db/repositories/outbound-channels.js";
+import { countRequestsByStatus } from "../db/repositories/approvals.js";
+import { PgOutreachStore } from "../linkedin-outreach/default.js";
 
 export interface BillingRoutesOptions {
   billingManager: BillingManager;
@@ -49,6 +55,7 @@ export interface BillingRoutesOptions {
 const MAX_NAME_LEN = 200;
 const VALID_INTERVALS: readonly PriceInterval[] = ["day", "week", "month", "year"];
 const MAX_RETURN_URL_LEN = 2048;
+const outreachStore = new PgOutreachStore();
 
 function isWebhookConfigError(err: WebhookVerificationError): boolean {
   return err.message.includes("no webhook secret configured");
@@ -219,6 +226,65 @@ export async function billingRoutes(
     };
   }
 
+  function startOfUtcDay(at = new Date()): Date {
+    return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+  }
+
+  async function quotaMeters(workspaceId: string): Promise<BillingQuotaMeterDto[]> {
+    const active = await dbWorkspacePlanStore.getActive(workspaceId);
+    if (!active || active.status !== "active" || active.renewalStatus === "expired") return [];
+    const plan = getPlan(active.planKey);
+    if (!plan) return [];
+    const [activeCampaignLanes, connections, dailyOutreachSends, approvalQueue] = await Promise.all([
+      countMarketingTasksByStatus(workspaceId, "launched"),
+      listChannelConnections(workspaceId),
+      outreachStore.countSentSince(workspaceId, startOfUtcDay()),
+      countRequestsByStatus(workspaceId, "pending"),
+    ]);
+    const connectedChannels = new Set(
+      connections.filter((connection) => connection.status === "connected").map((connection) => connection.channel),
+    ).size;
+    const specs = [
+      {
+        resource: "active_campaign_lanes" as const,
+        label: "Active campaign lanes",
+        metric: "activeCampaignLanes" as const,
+        used: activeCampaignLanes,
+      },
+      {
+        resource: "connected_channels" as const,
+        label: "Connected channels",
+        metric: "connectedChannels" as const,
+        used: connectedChannels,
+      },
+      {
+        resource: "daily_outreach_sends" as const,
+        label: "Daily outreach sends",
+        metric: "dailyOutreachSends" as const,
+        used: dailyOutreachSends,
+        window: "today",
+      },
+      {
+        resource: "approval_queue" as const,
+        label: "Pending approvals",
+        metric: "approvalQueueSize" as const,
+        used: approvalQueue,
+      },
+    ];
+    return specs.map((spec) => {
+      const decision = evaluatePlanLimit(plan, spec.metric, spec.used);
+      return {
+        resource: spec.resource,
+        label: spec.label,
+        used: decision.used,
+        limit: decision.limit,
+        remaining: Math.max(0, decision.limit - decision.used),
+        upgradeTrigger: decision.upgradeTrigger,
+        ...(spec.window ? { window: spec.window } : {}),
+      };
+    });
+  }
+
   function toPricingReportDto(r: PricingExperimentReport): PricingExperimentReportDto {
     return { ...r, variants: r.variants.map((v) => ({ ...v })) };
   }
@@ -351,6 +417,7 @@ export async function billingRoutes(
       provider: status.provider,
       mode: status.mode,
       live: status.live,
+      quotas: await quotaMeters(wid),
     };
     return reply.send(dto);
   });
