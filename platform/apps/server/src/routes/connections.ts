@@ -4,6 +4,7 @@ import { loadConfig } from "../config/loader.js";
 import { loadStateSecret, newStateNonce } from "../auth/oauth-state.js";
 import {
   CONNECTION_DESCRIPTORS,
+  EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
@@ -50,6 +51,33 @@ import {
  * and the #192 non-money connects). Real spend through a connected channel stays money-gated, unchanged.
  */
 const CONNECTION_RETURN_PATH = "/everyday";
+const POSTMARK_SERVICE_KEY = "postmark";
+const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
+const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
+const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
+
+function firstEnv(keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function emailProviderProofSecrets(workspaceId: string): Record<string, string> {
+  const reach = loadConfig(workspaceId).reach;
+  if (reach?.sendProvider !== "postmark" || reach.liveSendEnabled !== true) return {};
+  const token = process.env[POSTMARK_TOKEN_KEY]?.trim() ?? "";
+  const from = firstEnv(POSTMARK_FROM_KEYS);
+  if (!token || !from) return {};
+  return {
+    [POSTMARK_TOKEN_KEY]: token,
+    POSTMARK_FROM: from,
+    ...(process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim()
+      ? { [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim() }
+      : {}),
+  };
+}
 
 export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
   function isOwnerWorkspace(workspaceId: string): boolean {
@@ -68,7 +96,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     >
   > {
     const rows = await listServiceStatuses(workspaceId);
-    return new Map(
+    const proofs = new Map(
       rows.map((r) => [
         r.serviceKey,
         {
@@ -79,6 +107,9 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         },
       ]),
     );
+    const postmark = proofs.get(POSTMARK_SERVICE_KEY);
+    if (postmark?.connected) proofs.set(EMAIL_CONNECTION_ID, postmark);
+    return proofs;
   }
 
   function runtimeDescriptors(): ConnectionDescriptor[] {
@@ -159,10 +190,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const id = (req.params as { id: string }).id;
     const decision = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    const providerSecrets =
+      decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : {};
     await setServiceCredentials({
       workspaceId: wid,
-      serviceKey: decision.serviceKey,
-      secrets: {}, // a one-click consent seals no secret — the connection IS the consent.
+      serviceKey: providerSecrets[POSTMARK_TOKEN_KEY] ? POSTMARK_SERVICE_KEY : decision.serviceKey,
+      // Without live provider proof, one-click records consent only. With live Postmark configured, seal the
+      // provider credential where the sender actually reads it, then alias that proof back to the email card.
+      secrets: providerSecrets,
       scopes: decision.scopes,
       connectedByMemberId: identity.memberId,
     });
@@ -374,6 +409,12 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: "internal connection — admin only" });
     }
     await revokeServiceCredentials(identity.workspaceId, id, identity.memberId);
+    if (id === EMAIL_CONNECTION_ID) {
+      const proofs = await connectionProofs(identity.workspaceId);
+      if (proofs.get(POSTMARK_SERVICE_KEY)?.connected) {
+        await revokeServiceCredentials(identity.workspaceId, POSTMARK_SERVICE_KEY, identity.memberId);
+      }
+    }
     return { revoked: true, id };
   });
 }
