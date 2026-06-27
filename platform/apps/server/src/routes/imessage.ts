@@ -21,6 +21,7 @@ import { getChannel } from "../db/repositories/channels.js";
 import { getMessage } from "../db/repositories/messages.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 import { parseVisibilityChannelCommand } from "../messaging/visibility-commands.js";
+import { decideRoomApprovalCommand } from "../messaging/room-approval-decisions.js";
 import {
   imessageRoomPreflight,
   imessageRoomReceipt,
@@ -394,11 +395,19 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       original.authorMemberId,
     );
     const command = parseVisibilityChannelCommand(text);
+    const approvalDecision = await decideRoomApprovalCommand({
+      workspaceId,
+      deciderMemberId: recipient.memberId,
+      command,
+      provider: "imessage",
+      log: req.log,
+    });
     return reply.code(201).send({
       status: "ingested",
       receipt: body.receipt,
       message,
       command,
+      approvalDecision,
     });
   });
 }

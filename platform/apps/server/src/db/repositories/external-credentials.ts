@@ -39,6 +39,11 @@ export interface CredentialAuditEventRow {
   createdAt: Date;
 }
 
+export interface ServiceCredentialActor {
+  serviceKey: string;
+  connectedByMemberId: string | null;
+}
+
 /** Connect (or re-connect) a service's credentials. The secret values are sealed; last write wins. */
 export async function setServiceCredentials(input: {
   workspaceId: string;
@@ -146,6 +151,29 @@ export async function resolveServiceSecrets(
     out[name] = open(sealedValue, key);
   }
   return out;
+}
+
+/** Non-secret lookup for the human who connected a service, used to attribute signed provider callbacks. */
+export async function getServiceCredentialActor(
+  workspaceId: string,
+  serviceKey: string,
+): Promise<ServiceCredentialActor | null> {
+  const [row] = await db
+    .select({
+      serviceKey: externalCredentials.serviceKey,
+      connectedByMemberId: externalCredentials.connectedByMemberId,
+      status: externalCredentials.status,
+    })
+    .from(externalCredentials)
+    .where(
+      and(
+        eq(externalCredentials.workspaceId, workspaceId),
+        eq(externalCredentials.serviceKey, serviceKey),
+      ),
+    )
+    .limit(1);
+  if (!row || row.status !== "connected") return null;
+  return { serviceKey: row.serviceKey, connectedByMemberId: row.connectedByMemberId };
 }
 
 /**

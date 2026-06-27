@@ -2,11 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireChannelCapability } from "../auth/access.js";
 import { requireIdentity } from "../auth/guard.js";
 import { getChannel } from "../db/repositories/channels.js";
-import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
+import { getServiceCredentialActor, resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { getMessage, postMessage } from "../db/repositories/messages.js";
 import { TELEGRAM_ROOM_CONNECTION_ID } from "../connections/registry.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 import { parseVisibilityChannelCommand } from "../messaging/visibility-commands.js";
+import { decideRoomApprovalCommand } from "../messaging/room-approval-decisions.js";
 import {
   parseTelegramRoomReceipt,
   telegramRoomReceipt,
@@ -156,11 +157,21 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
       message,
       original.authorMemberId,
     );
+    const command = parseVisibilityChannelCommand(inbound.text);
+    const actor = await getServiceCredentialActor(channel.workspaceId, TELEGRAM_ROOM_CONNECTION_ID);
+    const approvalDecision = await decideRoomApprovalCommand({
+      workspaceId: channel.workspaceId,
+      deciderMemberId: actor?.connectedByMemberId ?? null,
+      command,
+      provider: "telegram",
+      log: req.log,
+    });
     return reply.code(201).send({
       status: "ingested",
       receipt: inbound.receipt,
       message,
-      command: parseVisibilityChannelCommand(inbound.text),
+      command,
+      approvalDecision,
     });
   });
 }

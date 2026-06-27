@@ -83,6 +83,17 @@ async function createChannel(owner: { cookie: string; workspaceId: string }, nam
   return res.json().id as string;
 }
 
+async function newAgent(owner: { cookie: string; workspaceId: string }, name: string): Promise<{ token: string }> {
+  const res = await app.inject({
+    method: "POST",
+    url: `/workspaces/${owner.workspaceId}/agents`,
+    cookies: { rid: owner.cookie },
+    payload: { name },
+  });
+  expect(res.statusCode).toBe(201);
+  return { token: res.json().token as string };
+}
+
 describe("Telegram room bridge (#1267)", () => {
   it("connects a configured Telegram room, mirrors room events, and ingests signed replies", async () => {
     const owner = await newOwner();
@@ -192,6 +203,36 @@ describe("Telegram room bridge (#1267)", () => {
       "agents, show the Telegram room",
       "YES ship homepage because the draft is approved",
     ]);
+
+    const agent = await newAgent(owner, `agent-${newId()}`);
+    const submit = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/actions`,
+      headers: { authorization: `Bearer ${agent.token}` },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_telegram", reason: "duplicate" } },
+    });
+    expect(submit.statusCode).toBe(202);
+    const rid = submit.json().request.id as string;
+
+    const approval = await app.inject({
+      method: "POST",
+      url: "/telegram/webhook",
+      headers: { "x-telegram-bot-api-secret-token": "telegram-secret" },
+      payload: {
+        message: {
+          chat: { id: 123456 },
+          text: `YES approval ${rid} because reviewed in the room`,
+          reply_to_message: { text: `receipt: telegram:${channelId}:${started.json().message.id}` },
+        },
+      },
+    });
+    expect(approval.statusCode).toBe(201);
+    expect(approval.json()).toMatchObject({
+      approvalDecision: { status: "executed", request: { id: rid, decidedByMemberId: owner.memberId } },
+    });
+    const request = (
+      await app.inject({ method: "GET", url: `/approvals/${rid}`, cookies: { rid: owner.cookie } })
+    ).json();
+    expect(request.status).toBe("executed");
   });
 });
-

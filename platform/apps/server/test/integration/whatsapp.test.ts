@@ -98,6 +98,17 @@ async function createChannel(owner: { cookie: string; workspaceId: string }, nam
   return res.json().id as string;
 }
 
+async function newAgent(owner: { cookie: string; workspaceId: string }, name: string): Promise<{ token: string }> {
+  const res = await app.inject({
+    method: "POST",
+    url: `/workspaces/${owner.workspaceId}/agents`,
+    cookies: { rid: owner.cookie },
+    payload: { name },
+  });
+  expect(res.statusCode).toBe(201);
+  return { token: res.json().token as string };
+}
+
 describe("WhatsApp room bridge (#1267)", () => {
   it("connects a configured WhatsApp room, mirrors room events, and ingests signed replies", async () => {
     const owner = await newOwner();
@@ -212,5 +223,53 @@ describe("WhatsApp room bridge (#1267)", () => {
       "agents, show the WhatsApp room",
       `YES ship homepage because the draft is approved receipt: whatsapp:${channelId}:${started.json().message.id}`,
     ]);
+
+    const agent = await newAgent(owner, `agent-${newId()}`);
+    const submit = await app.inject({
+      method: "POST",
+      url: `/workspaces/${owner.workspaceId}/actions`,
+      headers: { authorization: `Bearer ${agent.token}` },
+      payload: { actionType: "billing.refund", payload: { paymentIntentId: "pi_whatsapp", reason: "duplicate" } },
+    });
+    expect(submit.statusCode).toBe(202);
+    const rid = submit.json().request.id as string;
+    const approvalPayload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    from: "15551112222",
+                    text: {
+                      body: `YES approval ${rid} because reviewed in WhatsApp receipt: whatsapp:${channelId}:${started.json().message.id}`,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const approvalRaw = JSON.stringify(approvalPayload);
+    const approval = await app.inject({
+      method: "POST",
+      url: "/whatsapp/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signRaw(approvalRaw),
+      },
+      payload: approvalRaw,
+    });
+    expect(approval.statusCode).toBe(201);
+    expect(approval.json()).toMatchObject({
+      approvalDecision: { status: "executed", request: { id: rid, decidedByMemberId: owner.memberId } },
+    });
+    const request = (
+      await app.inject({ method: "GET", url: `/approvals/${rid}`, cookies: { rid: owner.cookie } })
+    ).json();
+    expect(request.status).toBe("executed");
   });
 });
