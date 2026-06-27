@@ -307,7 +307,7 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
     );
   }
   const relay = await api.startIMessageRoom(channelId, goal);
-  if (relay.status !== "sent" && relay.status !== "dry_run") {
+  if (relay.status !== "sent") {
     throw new Error(
       relay.error ??
         "iMessage relay is not ready for this workspace yet. Set up Messages before starting the agent room.",

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { IMessageRelayService, imessageRoomReceipt } from "../../src/imessage/service.js";
+import {
+  IMessageRelayService,
+  imessageRoomPreflight,
+  imessageRoomReceipt,
+} from "../../src/imessage/service.js";
 
 const base = {
   enabled: true,
@@ -57,6 +61,47 @@ describe("IMessageRelayService", () => {
 
     await expect(service.send({ text: "hello" })).resolves.toMatchObject({ status: "dry_run" });
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("blocks room startup before persistence when the relay is not live (#1283)", () => {
+    expect(
+      imessageRoomPreflight({
+        enabled: false,
+        configured: true,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        maxChars: 120,
+      }),
+    ).toMatchObject({ status: "disabled" });
+    expect(
+      imessageRoomPreflight({
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        maxChars: 120,
+      }),
+    ).toMatchObject({ status: "not_configured" });
+    expect(
+      imessageRoomPreflight({
+        enabled: true,
+        configured: true,
+        dryRun: true,
+        recipient: "gagan@example.com",
+        maxChars: 120,
+      }),
+    ).toMatchObject({
+      status: "dry_run",
+      error: "iMessage relay is still in dry-run mode; no real Messages room was started.",
+    });
+    expect(
+      imessageRoomPreflight({
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        maxChars: 120,
+      }),
+    ).toBeNull();
   });
 
   it("sends through the adapter when enabled and configured", async () => {

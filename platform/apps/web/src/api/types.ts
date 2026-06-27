@@ -165,8 +165,8 @@ export interface IMessageRoomResponse {
   recipient?: string;
   dryRun: boolean;
   error?: string;
-  receipt: string;
-  message: Message;
+  receipt?: string;
+  message?: Message;
 }
 
 export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";

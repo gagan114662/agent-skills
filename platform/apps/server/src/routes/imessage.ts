@@ -3,7 +3,11 @@ import { requireIdentity } from "../auth/guard.js";
 import { requireChannelCapability } from "../auth/access.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { deliverPostedMessage } from "../messaging/delivery.js";
-import { imessageRoomReceipt, type IMessageRelayService } from "../imessage/service.js";
+import {
+  imessageRoomPreflight,
+  imessageRoomReceipt,
+  type IMessageRelayService,
+} from "../imessage/service.js";
 
 export interface IMessageRoutesOptions {
   service: IMessageRelayService;
@@ -47,6 +51,9 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       typeof body.text === "string" && body.text.trim()
         ? body.text.trim()
         : "start the iMessage room and show me what the team is doing.";
+    const preflight = imessageRoomPreflight(opts.service.status());
+    if (preflight) return reply.code(statusCode(preflight.status)).send(preflight);
+
     const message = await postMessage({
       workspaceId: identity.workspaceId,
       channelId: cid,
