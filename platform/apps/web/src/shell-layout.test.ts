@@ -81,8 +81,10 @@ describe("shell layout overflow guards (#169)", () => {
   });
 
   it("the public homepage door is a fixed one-viewport scene with hidden overflow", () => {
+    const shell = ruleBody(".onboard");
     const door = ruleBody('.onboard[data-phase="door"]');
 
+    expect(decl(shell, "box-sizing")).toBe("border-box");
     expect(decl(door, "height")).toBe("100dvh");
     expect(decl(door, "max-height")).toBe("100dvh");
     expect(decl(door, "overflow")).toBe("hidden");
@@ -93,8 +95,8 @@ describe("shell layout overflow guards (#169)", () => {
     const door = ruleBody('.onboard[data-phase="door"]');
     const sun = ruleBody('.onboard[data-phase="door"]::before');
 
-    expect(decl(door, "background")).toContain("conic-gradient");
-    expect(decl(door, "background")).toContain("radial-gradient(circle at 72% 14%");
+    expect(decl(door, "background")).toContain("radial-gradient(880px 620px at 72% 16%");
+    expect(decl(sun, "background")).toContain("repeating-conic-gradient");
     expect(decl(sun, "left")).toBe("72%");
     expect(decl(sun, "width")).toBe("clamp(520px, 54vw, 920px)");
     expect(decl(sun, "animation")).toContain("onboard-sun-turn");
