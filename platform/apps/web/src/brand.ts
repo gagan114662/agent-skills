@@ -649,7 +649,7 @@ export const LANDING = {
       dailyLimit: "1 active campaign, 3 agents, $200/mo work cap.",
       upgradeTrigger: "Upgrade when you want the agents to keep going after that first lane fills.",
       featured: false,
-      highlights: ["Daily SEO/content/social check-ins", "3 agent seats", "$200/mo cap with receipts", "Approvals + audit trail included"],
+      highlights: ["Daily SEO/content/social check-ins", "3 agent seats for one focused lane", "$200/mo agent-work cap with receipts", "Approvals + audit trail included"],
     },
     {
       key: "pro",
@@ -660,7 +660,7 @@ export const LANDING = {
       dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
       upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
       featured: true,
-      highlights: ["Daily multi-agent growth standup", "10 agent seats", "$1,000/mo cap with receipts", "Priority autonomy + deploy-to-live"],
+      highlights: ["Daily multi-agent growth standup", "10 agent seats across 3 lanes", "$1,000/mo agent-work cap with receipts", "Priority autonomy + deploy-to-live"],
     },
     {
       key: "agency",
@@ -671,7 +671,7 @@ export const LANDING = {
       dailyLimit: "10 active campaign lanes, 30 agents, $5,000/mo work cap.",
       upgradeTrigger: "Talk to us when you need custom controls, procurement, or a bigger cap.",
       featured: false,
-      highlights: ["Daily cross-client mission control", "30 agent seats", "$5,000/mo cap with receipts", "Everything in Pro, at scale"],
+      highlights: ["Daily cross-client mission control", "30 agent seats across 10 lanes", "$5,000/mo agent-work cap with receipts", "Everything in Pro, at scale"],
     },
   ] as readonly PlanTeaser[],
   /** Sticky in-page anchor nav (#165). Jump links to the page's own sections — the product's own chrome. */
@@ -733,6 +733,16 @@ export const PRICING = {
   popularBadge: "Most popular",
   /** Per-plan CTA — creates the account and opens hosted checkout for that tier. */
   planCta: "Keep them working",
+  tableTitle: "Keep the agents working.",
+  tableLede:
+    "Start free, see useful work every day, then upgrade when you want more campaigns, more agents, or more live work moving at once.",
+  everyDayLabel: "Every day",
+  limitLabel: "Limit:",
+  upgradeLabel: "Upgrade:",
+  currentPlanCta: "Your plan",
+  pendingCheckoutCta: "Opening checkout…",
+  tableFootnote:
+    "everyday work is capped before spend gets silly. the agents are enthusiastic; billing is not.",
   /** Reassurance under the grid (honest: self-serve checkout, no sales call, you set the ceiling). */
   footnote:
     "Self-serve checkout takes card payment through Stripe after signup. Agent work is capped by plan, approvals stay visible, and we ask for the upgrade at the moment there is more useful work to do.",
