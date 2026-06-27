@@ -20,6 +20,34 @@ export function imessageRoomReceipt(input: IMessageRoomReceiptInput): string {
   ].join("\n");
 }
 
+export function imessageRoomPreflight(status: IMessageStatus): IMessageSendResult | null {
+  if (!status.enabled) {
+    return {
+      status: "disabled",
+      dryRun: status.dryRun,
+      recipient: status.recipient,
+      error: "iMessage relay is disabled for this workspace.",
+    };
+  }
+  if (!status.configured) {
+    return {
+      status: "not_configured",
+      dryRun: status.dryRun,
+      recipient: status.recipient,
+      error: "iMessage relay is not configured for this workspace yet.",
+    };
+  }
+  if (status.dryRun) {
+    return {
+      status: "dry_run",
+      dryRun: true,
+      recipient: status.recipient,
+      error: "iMessage relay is still in dry-run mode; no real Messages room was started.",
+    };
+  }
+  return null;
+}
+
 export class IMessageRelayService {
   constructor(
     private readonly config: IMessageRelayConfig,
