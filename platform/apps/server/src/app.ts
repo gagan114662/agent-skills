@@ -69,11 +69,12 @@ import { turnRoutes } from "./routes/turns.js";
 import { createTurnController } from "./turns/default.js";
 import type { TurnController } from "./turns/controller.js";
 import { autonomyRoutes } from "./routes/autonomy.js";
-import { teamRoutes } from "./routes/team.js";
+import { teamRoutes, type CodexSubscriptionStatusProvider } from "./routes/team.js";
 import { searchRoutes } from "./routes/search.js";
 import { mcpRoutes, type McpRoutesOptions } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
+import { createCodexSubscriptionStatusProvider } from "./runtime/codex-subscription.js";
 import type { SessionManager } from "./runtime/manager.js";
 import { runRoutes } from "./routes/run.js";
 import { createDefaultRunProcessManager } from "./run/default.js";
@@ -406,6 +407,8 @@ export interface BuildAppOptions {
   authSessionCleanupEngine?: AuthSessionCleanupEngine;
   /** Tests inject a TeamCoordinator over a fake-runtime SessionManager (Team Mode). */
   teamCoordinator?: TeamCoordinator;
+  /** #1282 Codex subscription status gate: tests inject deterministic status; default probes Codex doctor. */
+  codexSubscription?: CodexSubscriptionStatusProvider;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
   cloudWorkspaceManager?: CloudWorkspaceManager;
   /**
@@ -1303,7 +1306,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.
   const teamCoordinator =
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
-  app.register(teamRoutes, { coordinator: teamCoordinator });
+  app.register(teamRoutes, {
+    coordinator: teamCoordinator,
+    codexSubscription: opts.codexSubscription ?? createCodexSubscriptionStatusProvider(),
+  });
   // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in
   // (AUTONOMY_INTERVAL_MS, default off) and started in index.ts; tests inject the engine and
