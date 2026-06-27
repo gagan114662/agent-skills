@@ -3,7 +3,7 @@
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
-  "buildCommand": "VITE_RELOAD_BUILD_SHA=\"${VERCEL_GIT_COMMIT_SHA:-}\" pnpm --filter @reload/web build",
+  "buildCommand": "RELOAD_BUILD_SHA=\"${RELOAD_BUILD_SHA:-${VERCEL_GIT_COMMIT_SHA:-}}\" VITE_RELOAD_BUILD_SHA=\"${VITE_RELOAD_BUILD_SHA:-${RELOAD_BUILD_SHA:-${VERCEL_GIT_COMMIT_SHA:-}}}\" pnpm --filter @reload/web build",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     { "source": "/healthz", "destination": "https://api.ipop.ai/healthz" },

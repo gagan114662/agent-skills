@@ -49,14 +49,22 @@ describe("resolveOrigin", () => {
 });
 
 describe("resolveBuildSha", () => {
-  it("prefers an explicit Vite build SHA, then Vercel, then GitHub Actions", () => {
+  it("prefers an explicit Vite build SHA, then manual deploy, then Vercel, then GitHub Actions", () => {
     expect(
       resolveBuildSha({
         VITE_RELOAD_BUILD_SHA: "ABC1234",
+        RELOAD_BUILD_SHA: "badcafe",
         VERCEL_GIT_COMMIT_SHA: "deadbeef",
         GITHUB_SHA: "feedface",
       }),
     ).toBe("abc1234");
+    expect(
+      resolveBuildSha({
+        RELOAD_BUILD_SHA: "BADCAFE",
+        VERCEL_GIT_COMMIT_SHA: "deadbeef",
+        GITHUB_SHA: "feedface",
+      }),
+    ).toBe("badcafe");
     expect(resolveBuildSha({ VERCEL_GIT_COMMIT_SHA: "DEADBEEF", GITHUB_SHA: "feedface" })).toBe("deadbeef");
     expect(resolveBuildSha({ GITHUB_SHA: "FEEDFACE" })).toBe("feedface");
   });

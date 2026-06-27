@@ -50,10 +50,13 @@ export function resolveOrigin(env: Record<string, string | undefined> = {}): str
 /**
  * Resolve the build SHA that should be embedded into prerendered HTML. Vercel exposes
  * VERCEL_GIT_COMMIT_SHA; GitHub Actions exposes GITHUB_SHA; local builds may pass
- * VITE_RELOAD_BUILD_SHA. Missing/malformed values return null so unstamped local builds stay valid.
+ * VITE_RELOAD_BUILD_SHA. Manual deploys may pass RELOAD_BUILD_SHA when the platform does not expose git
+ * metadata to the remote build. Missing/malformed values return null so unstamped local builds stay valid.
  */
 export function resolveBuildSha(env: Record<string, string | undefined> = {}): string | null {
-  return normalizeBuildSha(env.VITE_RELOAD_BUILD_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? env.GITHUB_SHA);
+  return normalizeBuildSha(
+    env.VITE_RELOAD_BUILD_SHA ?? env.RELOAD_BUILD_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? env.GITHUB_SHA,
+  );
 }
 
 /** Absolute canonical URL for a path. Home is the bare origin with a trailing slash; others have none. */
