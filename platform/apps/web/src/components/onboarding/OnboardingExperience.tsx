@@ -20,6 +20,7 @@ import { api, googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
+import { Wordmark } from "../Wordmark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
 import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
 import {
@@ -277,11 +278,13 @@ function PublicTrustLinks(): React.JSX.Element {
 }
 
 const MARKETING_ICON_ROW = [
+  { key: "market", label: "market", detail: "where to win" },
   { key: "brief", label: "brief", detail: "one-line target" },
   { key: "icp", label: "customer", detail: "ICP folder" },
   { key: "site", label: "website", detail: "site read" },
   { key: "insight", label: "insight", detail: "sharp truth" },
   { key: "creative", label: "creative", detail: "platform draft" },
+  { key: "email", label: "email", detail: "reply ready" },
   { key: "seo", label: "search", detail: "intent map" },
   { key: "social", label: "social", detail: "channel test" },
   { key: "paid", label: "paid", detail: "spend dial" },
@@ -290,10 +293,10 @@ const MARKETING_ICON_ROW = [
 ] as const;
 
 const DOOR_ACTIONS = [
-  { key: "login", mark: "◎", label: "Login", href: APP_ROUTES.everyday },
-  { key: "love", mark: "♡", label: "Love", href: "#onboard-target" },
-  { key: "dashboard", mark: "▦", label: "Dashboard", href: APP_ROUTES.dashboard },
-  { key: "start", mark: "●", label: "Start", href: "#onboard-target" },
+  { key: "login", label: "Login", href: APP_ROUTES.everyday },
+  { key: "love", label: "Love", href: "#onboard-target" },
+  { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
+  { key: "start", label: "Start", href: "#onboard-target" },
 ] as const;
 
 function MarketingIconRow(): React.JSX.Element {
@@ -323,9 +326,7 @@ function DoorActions(): React.JSX.Element {
           data-kind={action.key}
           href={action.href}
         >
-          <span className="onboard-door-action__mark" aria-hidden="true">
-            {action.mark}
-          </span>
+          <span className="onboard-door-action__mark" aria-hidden="true" />
           <span className="onboard-door-action__label">{action.label}</span>
         </a>
       ))}
@@ -466,7 +467,9 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
     <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
       <header className="onboard__nav">
         <a href={APP_ROUTES.home} className="onboard__brand" aria-label={BRAND.name}>
-          {BRAND.name}
+          <PopMark className="onboard__brand-mark" size={42} />
+          <Wordmark className="onboard__brand-word" />
+          <span className="onboard__brand-proof">marketing team in your messages</span>
         </a>
         <DoorActions />
       </header>
