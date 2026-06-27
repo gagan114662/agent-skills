@@ -24,7 +24,6 @@ import {
   PRICING,
   SEGMENT_LANDING_PAGES,
 } from "./brand.js";
-import { Landing } from "./components/landing/Landing.js";
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { Security } from "./components/landing/Security.js";
@@ -231,13 +230,14 @@ export function prerenderPages(): PrerenderPage[] {
 
   const posts = listPostMeta();
 
-  // The marketing homepage. Its head meta already lives in index.html, so we only inject the body — plus
-  // the Organization + WebSite JSON-LD (#294) and the SoftwareApplication node (#467) so crawlers understand
-  // ipop as the SaaS product it is (a marketing BusinessApplication), not just an org behind a website.
+  // The marketing homepage. It must prerender the same message-first public door the client shows at `/`;
+  // otherwise production can serve the stale brochure homepage until JS hydrates. Its head meta already lives
+  // in index.html, so we only inject the body — plus the Organization + WebSite JSON-LD (#294) and the
+  // SoftwareApplication node (#467) so crawlers understand ipop as the SaaS product it is.
   pages.push({
     outFile: "index.html",
     urlPath: "/",
-    html: renderToStaticMarkup(<Landing />),
+    html: renderToStaticMarkup(<OnboardingExperience hour={14} />),
     lastmod: posts[0]?.date,
     priority: 1.0,
     headExtra:

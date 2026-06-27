@@ -84,6 +84,19 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(new Set(titles).size, "two prerendered pages share a <title>").toBe(titles.length);
   });
 
+  it("prerenders / as the same message-first onboarding door the client shows", () => {
+    const home = byPath("/")!;
+    const welcome = byPath("/welcome")!;
+
+    expect(home.html).toContain("Make marketing pop.");
+    expect(home.html).toContain("what are we marketing today?");
+    expect(home.html).toContain("marketing team in your messages");
+    expect(home.html).toContain("marketing work preview");
+    expect(home.html).not.toContain("Start free");
+    expect(home.html).not.toContain("Watch live demo");
+    expect(home.html).toBe(welcome.html);
+  });
+
   it("front-loads each sub-page title with its own subject (brand trails, never leads)", () => {
     // The home page is the one route whose subject *is* the brand, so it may lead with it; every other
     // route must put its distinguishing term first (Scout's "real title buried after build-config" finding).
@@ -107,7 +120,6 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
   it.each([
     ["/start", "Start", "Your website"],
-    ["/welcome", "Welcome", "what are we marketing today?"],
     ["/demo", "Live demo", "Build my free deliverable"],
     ["/sandbox", "Sandbox", "Build my free deliverable"],
     ["/login", "Sign in", "Sign in"],
@@ -119,6 +131,17 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.description, `${urlPath} has no description`).toBeTruthy();
     expect(page.html).toContain(bodyText);
     expect(page.html).not.toBe(home.html);
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+  });
+
+  it("keeps /welcome as an explicit alias of the public homepage door", () => {
+    const page = byPath("/welcome")!;
+    const home = byPath("/")!;
+
+    expect(page.title).toContain("Welcome");
+    expect(page.description).toContain("connect your tools");
+    expect(page.html).toContain("what are we marketing today?");
+    expect(page.html).toBe(home.html);
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
