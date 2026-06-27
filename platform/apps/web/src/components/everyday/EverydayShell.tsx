@@ -337,6 +337,12 @@ function IMessageSetup({
   const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
   const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
   const relayJob = status?.lastRelayJob ?? null;
+  const relayHeartbeat = status?.relayHeartbeat ?? null;
+  const relayHostProof = relayHeartbeat
+    ? relayHeartbeat.active
+      ? "Mac relay host active: " + relayHeartbeat.host
+      : "Mac relay host stale: last check-in " + relayHeartbeat.checkedInAt
+    : "Mac relay host has not checked in yet.";
   const relayProof =
     relayJob?.status === "sent"
       ? "last iMessage relay sent: " + (relayJob.receipt ?? relayJob.purpose)
@@ -427,6 +433,7 @@ function IMessageSetup({
         </div>
       </form>
       <p className="everyday-imessage-setup__detail">{detail}</p>
+      <p className="everyday-imessage-setup__detail">{relayHostProof}</p>
       {relayProof && <p className="everyday-imessage-setup__detail">{relayProof}</p>}
       {notice && <p className="everyday-imessage-setup__notice" role="status">{notice}</p>}
       {error && <p className="everyday-imessage-setup__error" role="alert">{error}</p>}

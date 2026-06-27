@@ -56,6 +56,12 @@ promise.
 | `IMESSAGE_RELAY_SERVICE` | — | Optional Messages service name for AppleScript sends. |
 | `IMESSAGE_RELAY_MAX_CHARS` | `1800` | Outbound relay length guardrail. |
 | `IMESSAGE_RELAY_WEBHOOK_SECRET` | — | Shared secret required by `POST /imessage/relay/inbound` before a Mac relay can post an inbound Messages reply into an ipop room. |
+| `IMESSAGE_RELAY_API_BASE` | `https://api.ipop.ai` | Mac relay worker API base URL. Set on the logged-in macOS relay host. |
+| `IMESSAGE_RELAY_ID` | `mac-${hostname}` | Stable id for the logged-in macOS relay host. |
+| `IMESSAGE_RELAY_VERSION` | — | Optional operator-supplied worker version shown in relay heartbeat status. |
+| `IMESSAGE_RELAY_POLL_MS` | `5000` | Mac relay worker poll/heartbeat interval. |
+| `IMESSAGE_RELAY_CLAIM_LIMIT` | `5` | Max outbound jobs claimed per Mac relay poll. |
+| `IMESSAGE_RELAY_LEASE_MS` | `120000` | Claim lease for outbound jobs before another relay can retry them. |
 
 ## Profiles
 

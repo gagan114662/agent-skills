@@ -63,3 +63,19 @@ export const imessageRelayJobs = pgTable(
     statusCk: check("imessage_relay_jobs_status_ck", sql`${t.status} IN ('pending','claimed','sent','failed')`),
   }),
 );
+
+/** Last-seen heartbeat for signed Mac relay workers. This proves a host is online without exposing secrets. */
+export const imessageRelayHeartbeats = pgTable(
+  "imessage_relay_heartbeats",
+  {
+    relayId: text("relay_id").primaryKey(),
+    host: text("host").notNull(),
+    version: text("version"),
+    checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    checkedIn: index("imessage_relay_heartbeats_checked_in_idx").on(t.checkedInAt),
+  }),
+);

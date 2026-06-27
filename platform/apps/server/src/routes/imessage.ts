@@ -10,7 +10,9 @@ import {
   findVerifiedIMessageRecipientByRecipient,
   getIMessageRecipient,
   getLatestIMessageRelayJobForMember,
+  getLatestIMessageRelayHeartbeat,
   markIMessageRecipientVerified,
+  recordIMessageRelayHeartbeat,
   upsertIMessageRecipient,
   type IMessageRelayJob,
   type IMessageRecipient,
@@ -25,6 +27,8 @@ import {
   parseIMessageRoomReceipt,
   type IMessageRelayService,
 } from "../imessage/service.js";
+
+const RELAY_HEARTBEAT_ACTIVE_MS = 120_000;
 
 export interface IMessageRoutesOptions {
   service: IMessageRelayService;
@@ -103,6 +107,20 @@ function relayJobPayload(job: IMessageRelayJob): Record<string, unknown> {
   };
 }
 
+function relayHeartbeatPayload(
+  heartbeat: Awaited<ReturnType<typeof getLatestIMessageRelayHeartbeat>>,
+): Record<string, unknown> | null {
+  if (!heartbeat) return null;
+  const checkedInAtMs = heartbeat.checkedInAt.getTime();
+  return {
+    relayId: heartbeat.relayId,
+    host: heartbeat.host,
+    version: heartbeat.version,
+    checkedInAt: heartbeat.checkedInAt.toISOString(),
+    active: Date.now() - checkedInAtMs <= RELAY_HEARTBEAT_ACTIVE_MS,
+  };
+}
+
 async function enqueueRelaySend(input: {
   workspaceId: string;
   memberId?: string | null;
@@ -146,11 +164,17 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
   app.get("/me/imessage/status", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    const [{ status, row }, lastRelayJob] = await Promise.all([
+    const [{ status, row }, lastRelayJob, relayHeartbeat] = await Promise.all([
       memberStatus(opts.service, identity.workspaceId, identity.memberId),
       getLatestIMessageRelayJobForMember({ workspaceId: identity.workspaceId, memberId: identity.memberId }),
+      getLatestIMessageRelayHeartbeat(),
     ]);
-    return { ...status, memberRecipient: recipientPayload(row), lastRelayJob: lastRelayJob ? relayJobPayload(lastRelayJob) : null };
+    return {
+      ...status,
+      memberRecipient: recipientPayload(row),
+      lastRelayJob: lastRelayJob ? relayJobPayload(lastRelayJob) : null,
+      relayHeartbeat: relayHeartbeatPayload(relayHeartbeat),
+    };
   });
 
   app.put("/me/imessage/recipient", async (req, reply) => {
@@ -292,6 +316,16 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     const leaseMs = typeof body.leaseMs === "number" ? body.leaseMs : 120_000;
     const jobs = await claimIMessageRelayJobs({ relayId, limit, leaseMs });
     return { jobs: jobs.map(relayJobPayload) };
+  });
+
+  app.post("/imessage/relay/heartbeat", async (req, reply) => {
+    if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
+    const body = (req.body ?? {}) as { relayId?: unknown; host?: unknown; version?: unknown };
+    const relayId = typeof body.relayId === "string" && body.relayId.trim() ? body.relayId.trim().slice(0, 120) : "mac-relay";
+    const host = typeof body.host === "string" && body.host.trim() ? body.host.trim().slice(0, 180) : "macOS relay host";
+    const version = typeof body.version === "string" && body.version.trim() ? body.version.trim().slice(0, 120) : null;
+    const heartbeat = await recordIMessageRelayHeartbeat({ relayId, host, version });
+    return { relayHeartbeat: relayHeartbeatPayload(heartbeat) };
   });
 
   app.post("/imessage/relay/outbound/:id/complete", async (req, reply) => {

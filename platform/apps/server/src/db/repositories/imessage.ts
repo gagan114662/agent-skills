@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, getPool } from "../index.js";
-import { imessageRecipients, imessageRelayJobs } from "../schema/index.js";
+import { imessageRecipients, imessageRelayHeartbeats, imessageRelayJobs } from "../schema/index.js";
 
 export type IMessageRelayJobPurpose = "verification" | "room" | "notification";
 export type IMessageRelayJobStatus = "pending" | "claimed" | "sent" | "failed";
@@ -37,6 +37,15 @@ export interface IMessageRelayJob {
   updatedAt: Date;
 }
 
+export interface IMessageRelayHeartbeat {
+  relayId: string;
+  host: string;
+  version: string | null;
+  checkedInAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const COLUMNS = {
   id: imessageRecipients.id,
   workspaceId: imessageRecipients.workspaceId,
@@ -67,6 +76,15 @@ const JOB_COLUMNS = {
   error: imessageRelayJobs.error,
   createdAt: imessageRelayJobs.createdAt,
   updatedAt: imessageRelayJobs.updatedAt,
+} as const;
+
+const HEARTBEAT_COLUMNS = {
+  relayId: imessageRelayHeartbeats.relayId,
+  host: imessageRelayHeartbeats.host,
+  version: imessageRelayHeartbeats.version,
+  checkedInAt: imessageRelayHeartbeats.checkedInAt,
+  createdAt: imessageRelayHeartbeats.createdAt,
+  updatedAt: imessageRelayHeartbeats.updatedAt,
 } as const;
 
 export async function getIMessageRecipient(
@@ -255,6 +273,44 @@ export async function getLatestIMessageRelayJobForMember(input: {
     .orderBy(desc(imessageRelayJobs.createdAt))
     .limit(1);
   return row as IMessageRelayJob | undefined;
+}
+
+export async function recordIMessageRelayHeartbeat(input: {
+  relayId: string;
+  host: string;
+  version?: string | null;
+  nowMs?: number;
+}): Promise<IMessageRelayHeartbeat> {
+  const now = new Date(input.nowMs ?? Date.now());
+  const [row] = await db
+    .insert(imessageRelayHeartbeats)
+    .values({
+      relayId: input.relayId,
+      host: input.host,
+      version: input.version ?? null,
+      checkedInAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: imessageRelayHeartbeats.relayId,
+      set: {
+        host: input.host,
+        version: input.version ?? null,
+        checkedInAt: now,
+        updatedAt: now,
+      },
+    })
+    .returning(HEARTBEAT_COLUMNS);
+  return row as IMessageRelayHeartbeat;
+}
+
+export async function getLatestIMessageRelayHeartbeat(): Promise<IMessageRelayHeartbeat | undefined> {
+  const [row] = await db
+    .select(HEARTBEAT_COLUMNS)
+    .from(imessageRelayHeartbeats)
+    .orderBy(desc(imessageRelayHeartbeats.checkedInAt))
+    .limit(1);
+  return row as IMessageRelayHeartbeat | undefined;
 }
 
 function rowToRelayJob(row: Record<string, unknown>): IMessageRelayJob {

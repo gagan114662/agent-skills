@@ -458,6 +458,13 @@ describe("LiveEverydayShell (#1181)", () => {
         createdAt: "2026-06-27T06:02:00.000Z",
         updatedAt: "2026-06-27T06:03:00.000Z",
       },
+      relayHeartbeat: {
+        relayId: "gagan-mac",
+        host: "Gagans-MacBook-Pro",
+        version: "dev-1341",
+        checkedInAt: "2026-06-27T06:04:00.000Z",
+        active: true,
+      },
     });
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
@@ -467,6 +474,7 @@ describe("LiveEverydayShell (#1181)", () => {
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
     expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mac relay host active: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
   });
