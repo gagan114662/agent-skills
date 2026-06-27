@@ -136,7 +136,9 @@ describe("OnboardingExperience (#784)", () => {
   });
 
   it("opens on the warm door — one simple promise, one input, nothing else", () => {
-    render(<OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />);
+    const { container } = render(
+      <OnboardingExperience provider={fakeProvider()} hour={14} name="gagan" />,
+    );
     expect(screen.getByText(/make marketing pop/i)).toBeInTheDocument();
     expect(screen.getByText(/marketing team in your messages/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
@@ -146,6 +148,8 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expect(container.querySelector(".onboard-sunscape__sun")).toBeInTheDocument();
+    expect(container.querySelectorAll(".onboard-sunscape__ray")).toHaveLength(3);
     expect(
       screen.queryByRole("complementary", { name: /ipop cowork room/i }),
     ).not.toBeInTheDocument();
