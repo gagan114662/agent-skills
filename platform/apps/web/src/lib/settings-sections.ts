@@ -19,7 +19,8 @@ export type SettingsSection =
   | "garden"
   | "accounts"
   | "brand"
-  | "billing";
+  | "billing"
+  | "policy";
 
 /** DOM attribute each overlay section carries so a deep-link can find its target. */
 export const SETTINGS_SECTION_ATTR = "data-settings-section";
