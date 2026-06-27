@@ -18,8 +18,8 @@ export type JsonLdNode = Record<string, unknown>;
 /** The brand identity referenced by every node, so the Organization is one stable entity across pages. */
 const ORG_NAME = "ipop";
 const ORG_DESCRIPTION =
-  "The marketing agency of AI agents. A whole marketing department — Scout, Quill, Echo and the rest — " +
-  "that drafts, researches, and plans around the clock. You steer, they ship.";
+  "A marketing team in your messages. Scout, Quill, Echo and the rest read the market, draft useful work, " +
+  "and leave receipts while you steer the room.";
 
 function imageUrl(origin: string): string {
   return `${origin}/og-image.png`;
