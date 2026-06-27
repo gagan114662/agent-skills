@@ -330,7 +330,20 @@ describe("company/procurement page copy (#1188)", () => {
   });
 
   it("footer links only point at public routes or in-page anchors (#link-qa)", () => {
-    const publicPrefixes = ["/security", "/pricing", "/blog", "/guides", "/stories", "/changelog", "/compare"];
+    const publicPrefixes = [
+      "/security",
+      "/pricing",
+      "/blog",
+      "/guides",
+      "/stories",
+      "/changelog",
+      "/compare",
+      "/company",
+      "/refund-policy",
+      "/terms",
+      "/privacy",
+      "/dpa",
+    ];
     const links = [
       ...LANDING.footer.product,
       ...LANDING.footer.resources,
@@ -338,7 +351,9 @@ describe("company/procurement page copy (#1188)", () => {
     ];
     for (const link of links) {
       expect(
-        link.href.startsWith("#") || publicPrefixes.some((prefix) => link.href === prefix || link.href.startsWith(prefix + "/")),
+        link.href.startsWith("#") ||
+          link.href.startsWith("mailto:") ||
+          publicPrefixes.some((prefix) => link.href === prefix || link.href.startsWith(prefix + "/")),
         link.label + " -> " + link.href,
       ).toBe(true);
     }
