@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { closeRedis } from "../../src/redis/index.js";
-import { workspaces } from "../../src/db/schema/index.js";
+import { marketingTasks, workspacePlans, workspaces } from "../../src/db/schema/index.js";
 import { newId } from "../../src/db/id.js";
+import { createMarketingTask } from "../../src/db/repositories/marketing-tasks.js";
 import { LocalRuntime } from "../../src/runtime/local.js";
 import { SessionManager, type SessionLogger } from "../../src/runtime/manager.js";
 import { StaticSecretsResolver } from "../../src/runtime/secrets-resolver.js";
@@ -297,6 +298,65 @@ describe("#123 marketing department fleet (real Postgres)", () => {
     expect(await waitForSession(owner, seo.id, sessionId)).toBe("completed");
     const replies = await threadReplies(owner, seo.id, body.messageId);
     expect(replies.map((r) => r.body).join("\n")).toContain(`agent: task=${goal}`);
+  });
+
+  it("trims the department task history to the active plan's dashboard history window (#1290)", async () => {
+    const owner = await newOwner();
+    const seedResult = (await seed(owner)).json() as {
+      channels: Array<{ id: string; name: string }>;
+      agents: Array<{ handle: string; department: string; agentMemberId: string }>;
+    };
+    const seo = seedResult.channels.find((c) => c.name === "seo")!;
+    const scout = seedResult.agents.find((a) => a.handle === "scout")!;
+    const recentGoal = "ship the pricing proof update";
+    const oldGoal = "audit the old launch copy";
+    await createMarketingTask({
+      workspaceId: owner.workspaceId,
+      channelId: seo.id,
+      department: "seo",
+      agentMemberId: scout.agentMemberId,
+      kind: "mention",
+      task: recentGoal,
+      createdByMemberId: owner.memberId,
+    });
+    await createMarketingTask({
+      workspaceId: owner.workspaceId,
+      channelId: seo.id,
+      department: "seo",
+      agentMemberId: scout.agentMemberId,
+      kind: "mention",
+      task: oldGoal,
+      createdByMemberId: owner.memberId,
+    });
+    await db.insert(workspacePlans).values({
+      workspaceId: owner.workspaceId,
+      planKey: "starter",
+      status: "active",
+      agentSeats: 3,
+      monthlySessionBudgetCents: 20_000,
+      fleetSize: 1,
+      providerEventId: "test-history-window",
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      nextBillingAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      renewalStatus: "active",
+    });
+    await db
+      .update(marketingTasks)
+      .set({
+        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      })
+      .where(and(eq(marketingTasks.workspaceId, owner.workspaceId), eq(marketingTasks.task, oldGoal)));
+
+    const feed = await app.inject({
+      method: "GET",
+      url: `/workspaces/${owner.workspaceId}/department/tasks`,
+      cookies: { rid: owner.cookie },
+    });
+    expect(feed.statusCode).toBe(200);
+    const tasks = feed.json() as Array<{ task: string }>;
+    expect(tasks.some((task) => task.task === recentGoal)).toBe(true);
+    expect(tasks.some((task) => task.task === oldGoal)).toBe(false);
   });
 
   it("rejects a brief with an unknown lead (400) or a goal-less brief (400), launching nothing", async () => {

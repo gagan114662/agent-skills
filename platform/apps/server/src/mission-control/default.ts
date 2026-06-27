@@ -13,6 +13,8 @@ import {
   getPreferences,
   listNotificationsForMember,
 } from "../db/repositories/notifications.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { dashboardHistoryCutoffForWorkspace } from "../billing/dashboard-history.js";
 import { MissionControlService } from "./service.js";
 import { shouldQueueActivationHealthAlert } from "./activation-alert.js";
 import type { MissionDiagnostic, RecentFailureView } from "./diagnose.js";
@@ -54,8 +56,11 @@ export function createDefaultMissionControlService(): MissionControlService {
   return new MissionControlService({
     listLiveSessions: (workspaceId) => listWorkspaceLiveSessions(workspaceId),
     rate: (workspaceId) => resolveScaleCaps(loadConfig(workspaceId).scale).computeRateCentsPerMinute,
-    recentSessions: async (workspaceId) =>
-      (await listRecentWorkspaceSessions(workspaceId, 25)).map((s) => ({
+    recentSessions: async (workspaceId) => {
+      const cutoff = await dashboardHistoryCutoffForWorkspace(workspaceId, {
+        activePlanForWorkspace: dbWorkspacePlanStore.getActive,
+      });
+      return (await listRecentWorkspaceSessions(workspaceId, 25, cutoff)).map((s) => ({
         id: s.id,
         channelId: s.channelId,
         agentMemberId: s.agentMemberId,
@@ -64,7 +69,8 @@ export function createDefaultMissionControlService(): MissionControlService {
         result: s.result,
         endedAtMs: s.endedAt ? s.endedAt.getTime() : null,
         createdAtMs: s.createdAt.getTime(),
-      })),
+      }));
+    },
     hasVenture: async (workspaceId) => (await listEvaluations(workspaceId)).length > 0,
     // The venture has work to pick up once its #96 loop produced an epic (epicTaskId set, #230 kickoff),
     // or there is any venture-labelled task on the board.

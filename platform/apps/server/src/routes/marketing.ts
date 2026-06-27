@@ -5,6 +5,8 @@ import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { listPersonas } from "../db/repositories/personas.js";
 import { listLiveSessions } from "../db/repositories/agent-sessions.js";
 import { listMarketingTasks } from "../db/repositories/marketing-tasks.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { dashboardHistoryCutoffForWorkspace } from "../billing/dashboard-history.js";
 import { getMessage } from "../db/repositories/messages.js";
 import { buildMarketingRoster } from "../marketing/roster.js";
 import { BRAND_VOICE } from "../marketing/blueprint.js";
@@ -140,7 +142,10 @@ export async function marketingRoutes(app: FastifyInstance, opts: MarketingRoute
     if (!id) return;
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
-    return listMarketingTasks(wid);
+    const cutoff = await dashboardHistoryCutoffForWorkspace(wid, {
+      activePlanForWorkspace: dbWorkspacePlanStore.getActive,
+    });
+    return listMarketingTasks(wid, undefined, cutoff);
   });
 
   // @mention path: launch a REAL session for every department agent @-mentioned on a message, threading

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { marketingTasks } from "../schema/index.js";
 
@@ -64,11 +64,17 @@ export async function createMarketingTask(input: {
 }
 
 /** A workspace's task records, newest first (the team panel's activity feed). */
-export async function listMarketingTasks(workspaceId: string, limit?: number): Promise<MarketingTask[]> {
+export async function listMarketingTasks(
+  workspaceId: string,
+  limit?: number,
+  createdSince?: Date | null,
+): Promise<MarketingTask[]> {
+  const filters = [eq(marketingTasks.workspaceId, workspaceId)];
+  if (createdSince) filters.push(gte(marketingTasks.createdAt, createdSince));
   const rows = await db
     .select()
     .from(marketingTasks)
-    .where(eq(marketingTasks.workspaceId, workspaceId))
+    .where(and(...filters))
     .orderBy(desc(marketingTasks.createdAt))
     .limit(clampMarketingTaskListLimit(limit));
   return rows as MarketingTask[];
