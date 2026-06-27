@@ -18,7 +18,7 @@ beforeAll(async () => {
     { enabled: true, dryRun: false, maxChars: 2000 },
     { send },
   );
-  app = buildApp({ imessage: service });
+  app = buildApp({ imessage: service, imessageWebhookSecret: "relay-secret" });
   await app.ready();
 });
 
@@ -211,5 +211,85 @@ describe("iMessage member recipient relay", () => {
     expect(blocked.json()).toMatchObject({ status: "not_configured" });
     await expect(listChannelMessages(channelId)).resolves.toHaveLength(0);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("ingests a signed inbound iMessage reply into the correlated ipop room (#1283)", async () => {
+    send.mockClear();
+    const owner = await newOwner();
+    const channelId = await createChannel(owner, "messages-room");
+
+    await app.inject({
+      method: "PUT",
+      url: "/me/imessage/recipient",
+      cookies: { rid: owner.cookie },
+      payload: { recipient: "gagan@example.com" },
+    });
+    const testSend = await app.inject({
+      method: "POST",
+      url: "/me/imessage/test",
+      cookies: { rid: owner.cookie },
+    });
+    expect(testSend.statusCode).toBe(200);
+
+    const started = await app.inject({
+      method: "POST",
+      url: `/channels/${channelId}/imessage/room`,
+      cookies: { rid: owner.cookie },
+      payload: { text: "start in messages" },
+    });
+    expect(started.statusCode).toBe(200);
+    const receipt = started.json().receipt as string;
+    const rootMessageId = started.json().message.id as string;
+
+    const unsigned = await app.inject({
+      method: "POST",
+      url: "/imessage/relay/inbound",
+      payload: {
+        workspaceId: owner.workspaceId,
+        receipt,
+        sender: "gagan@example.com",
+        text: "tell Scout to compare competitors",
+      },
+    });
+    expect(unsigned.statusCode).toBe(401);
+
+    const wrongSender = await app.inject({
+      method: "POST",
+      url: "/imessage/relay/inbound",
+      headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+      payload: {
+        workspaceId: owner.workspaceId,
+        receipt,
+        sender: "other@example.com",
+        text: "try to spoof the room",
+      },
+    });
+    expect(wrongSender.statusCode).toBe(403);
+
+    const inbound = await app.inject({
+      method: "POST",
+      url: "/imessage/relay/inbound",
+      headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+      payload: {
+        workspaceId: owner.workspaceId,
+        receipt,
+        sender: "GAGAN@Example.COM",
+        text: "tell Scout to compare competitors",
+      },
+    });
+    expect(inbound.statusCode).toBe(201);
+    expect(inbound.json()).toMatchObject({
+      status: "ingested",
+      receipt,
+      message: {
+        channelId,
+        authorMemberId: owner.memberId,
+        parentMessageId: rootMessageId,
+        alsoSentToChannel: true,
+        body: "tell Scout to compare competitors",
+      },
+    });
+    const messages = await listChannelMessages(channelId);
+    expect(messages.map((m) => m.body)).toEqual(["start in messages", "tell Scout to compare competitors"]);
   });
 });

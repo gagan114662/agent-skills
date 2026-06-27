@@ -12,12 +12,20 @@ export function imessageRoomReceipt(input: IMessageRoomReceiptInput): string {
   return [
     "ipop iMessage room",
     "author: " + input.author,
+    "workspace: " + input.workspaceId,
     "channel: " + input.channelId,
     "message: " + input.messageId,
     "receipt: imessage:" + input.channelId + ":" + input.messageId,
     "",
     input.text,
   ].join("\n");
+}
+
+export function parseIMessageRoomReceipt(receipt: unknown): { channelId: string; messageId: string } | null {
+  if (typeof receipt !== "string") return null;
+  const match = receipt.trim().match(/^imessage:([^:\s]+):([^:\s]+)$/);
+  if (!match) return null;
+  return { channelId: match[1]!, messageId: match[2]! };
 }
 
 export function imessageRoomPreflight(status: IMessageStatus): IMessageSendResult | null {

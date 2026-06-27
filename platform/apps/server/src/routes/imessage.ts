@@ -4,20 +4,25 @@ import { requireChannelCapability } from "../auth/access.js";
 import { postMessage } from "../db/repositories/messages.js";
 import {
   deleteIMessageRecipient,
+  findVerifiedIMessageRecipientByRecipient,
   getIMessageRecipient,
   markIMessageRecipientVerified,
   upsertIMessageRecipient,
   type IMessageRecipient,
 } from "../db/repositories/imessage.js";
-import { deliverPostedMessage } from "../messaging/delivery.js";
+import { getChannel } from "../db/repositories/channels.js";
+import { getMessage } from "../db/repositories/messages.js";
+import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
 import {
   imessageRoomPreflight,
   imessageRoomReceipt,
+  parseIMessageRoomReceipt,
   type IMessageRelayService,
 } from "../imessage/service.js";
 
 export interface IMessageRoutesOptions {
   service: IMessageRelayService;
+  webhookSecret?: string;
 }
 
 function statusCode(status: string): number {
@@ -172,6 +177,59 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     return reply.code(statusCode(result.status)).send({
       ...result,
       receipt: "imessage:" + cid + ":" + message.id,
+      message,
+    });
+  });
+
+  app.post("/imessage/relay/inbound", async (req, reply) => {
+    if (!opts.webhookSecret) return reply.code(503).send({ error: "iMessage inbound relay is not configured" });
+    const header = req.headers["x-ipop-imessage-relay-secret"];
+    const presented = Array.isArray(header) ? header[0] : header;
+    if (presented !== opts.webhookSecret) return reply.code(401).send({ error: "unauthorized" });
+
+    const body = (req.body ?? {}) as {
+      workspaceId?: unknown;
+      receipt?: unknown;
+      sender?: unknown;
+      text?: unknown;
+    };
+    const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+    const receipt = parseIMessageRoomReceipt(body.receipt);
+    const sender = normalizeRecipient(body.sender);
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!workspaceId || !receipt || !sender || !text) {
+      return reply.code(400).send({ error: "workspaceId, receipt, sender, and text are required" });
+    }
+
+    const original = await getMessage(receipt.messageId);
+    if (!original || original.channelId !== receipt.channelId) {
+      return reply.code(404).send({ error: "iMessage room receipt not found" });
+    }
+    const channel = await getChannel(receipt.channelId);
+    if (!channel || channel.workspaceId !== workspaceId || channel.isArchived) {
+      return reply.code(404).send({ error: "iMessage room channel not found" });
+    }
+    const recipient = await findVerifiedIMessageRecipientByRecipient({ workspaceId, recipient: sender });
+    if (!recipient) return reply.code(403).send({ error: "sender is not a verified iMessage recipient" });
+
+    const message = await postMessage({
+      workspaceId,
+      channelId: receipt.channelId,
+      authorMemberId: recipient.memberId,
+      parentMessageId: receipt.messageId,
+      alsoSentToChannel: true,
+      body: text,
+    });
+    await deliverThreadReply(
+      req.log,
+      { workspaceId, memberId: recipient.memberId, kind: "human", displayName: "iMessage" },
+      channel,
+      message,
+      original.authorMemberId,
+    );
+    return reply.code(201).send({
+      status: "ingested",
+      receipt: body.receipt,
       message,
     });
   });
