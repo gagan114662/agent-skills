@@ -50,6 +50,10 @@ import type { ServiceKind } from "../onboarding/types.js";
 import { realWorldReadinessNeeded } from "../realworld/decide.js";
 import { resolveRealworldCaps } from "../realworld/caps.js";
 import { countPublishedArtifacts, listArtifacts } from "../db/repositories/realworld-artifacts.js";
+import {
+  listTraceEvents,
+  listTraceRuns,
+} from "../db/repositories/agent-trace.js";
 import { dbBrandKitStore, dbAssetStore } from "../db/repositories/assets.js";
 import { reachProofReading } from "../db/repositories/reach.js";
 import { dbSeoRankStore } from "../db/repositories/seo-ranks.js";
@@ -66,6 +70,7 @@ import {
 } from "../db/repositories/acquisition.js";
 import { buildAcquisitionBriefView } from "../acquisition/cac.js";
 import type { ProofMetricReading } from "./proof-scorecard.js";
+import { agentObservabilityFromTraces } from "./agent-observability.js";
 
 function describeSeoTargets(targetKeywords: readonly string[] | undefined): string {
   const targets = (targetKeywords ?? []).map((keyword) => keyword.trim()).filter(Boolean);
@@ -177,6 +182,17 @@ export function createDefaultFounderConsoleService(deps: {
     reliability: {
       insights: async (workspaceId) =>
         computeReliabilityInsights(await listIncidents(workspaceId, { limit: 200 }), new Date()),
+    },
+    // #1292: audit coverage comes from the append-only agent trace, strict about workspace/user/run/action
+    // ids on every tool call. Missing envelopes become unaudited tool calls in the Founder Console.
+    agentObservability: {
+      snapshot: async (workspaceId, now) => {
+        const runs = await listTraceRuns(workspaceId, { limit: 50 });
+        const events = (
+          await Promise.all(runs.map((run) => listTraceEvents(workspaceId, run.id)))
+        ).flat();
+        return agentObservabilityFromTraces({ runs, events, nowMs: now.getTime() });
+      },
     },
     gateBoundaries: {
       boundaries: async (workspaceId) => {
