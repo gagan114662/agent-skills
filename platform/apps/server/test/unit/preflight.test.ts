@@ -302,7 +302,7 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_SECRET");
   });
 
-  it("Google connection OAuth preflight fails prod when the marketing callback is missing (#1285)", () => {
+  it("Google connection OAuth preflight passes prod when the callback derives from the Google API redirect (#1285)", () => {
     const report = preflight(
       input({
         profile: "prod",
@@ -314,6 +314,29 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
           GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
         },
         googleOAuthRequired: true,
+        googleConnectionOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "google-connection-oauth");
+    expect(check?.status).toBe("pass");
+    expect(report.ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_VALUE");
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_SECRET");
+    expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai");
+  });
+
+  it("Google connection OAuth preflight still fails when no dedicated or derivable callback exists (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_VALUE",
+          GOOGLE_OAUTH_CLIENT_SECRET: "SECRET_CLIENT_SECRET",
+        },
+        googleOAuthRequired: false,
         googleConnectionOAuthRequired: true,
       }),
       { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
