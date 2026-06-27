@@ -75,6 +75,8 @@ export interface Env {
   imessage: IMessageEnv;
   /** Telegram bot bridge for room visibility (#1267). */
   telegram: TelegramEnv;
+  /** WhatsApp Cloud API bridge for room visibility (#1267). */
+  whatsapp: WhatsAppEnv;
   /** Approval gates (#13). */
   approval: ApprovalEnv;
   /** Team Mode: parallel multi-agent runs. */
@@ -389,6 +391,23 @@ export interface TelegramEnv {
   maxChars: number;
 }
 
+export interface WhatsAppEnv {
+  /** Meta Graph API token for the WhatsApp Business sender. */
+  accessToken?: string;
+  /** WhatsApp Business phone number id used in Graph /messages calls. */
+  phoneNumberId?: string;
+  /** Verified owner/dogfood WhatsApp recipient in E.164-ish digits, no plus required by Graph. */
+  roomRecipient?: string;
+  /** Webhook verify token used by Meta's GET challenge. */
+  webhookVerifyToken?: string;
+  /** App secret used to verify X-Hub-Signature-256 on inbound webhooks. */
+  appSecret?: string;
+  /** Optional Graph API origin/version override for tests/private deployments. */
+  apiBaseUrl: string;
+  /** Message length guardrail before calling the Cloud API. */
+  maxChars: number;
+}
+
 export interface ApprovalEnv {
   /** Default TTL (seconds) after which an undecided request expires. Override per request. */
   defaultTtlSeconds: number;
@@ -634,6 +653,15 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       webhookSecret: source.TELEGRAM_WEBHOOK_SECRET || undefined,
       apiBaseUrl: source.TELEGRAM_API_BASE_URL || "https://api.telegram.org",
       maxChars: num(source.TELEGRAM_MESSAGE_MAX_CHARS, 3500),
+    },
+    whatsapp: {
+      accessToken: source.WHATSAPP_ACCESS_TOKEN || undefined,
+      phoneNumberId: source.WHATSAPP_PHONE_NUMBER_ID || undefined,
+      roomRecipient: source.WHATSAPP_ROOM_RECIPIENT || undefined,
+      webhookVerifyToken: source.WHATSAPP_WEBHOOK_VERIFY_TOKEN || undefined,
+      appSecret: source.WHATSAPP_APP_SECRET || undefined,
+      apiBaseUrl: source.WHATSAPP_API_BASE_URL || "https://graph.facebook.com/v20.0",
+      maxChars: num(source.WHATSAPP_MESSAGE_MAX_CHARS, 3500),
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),
