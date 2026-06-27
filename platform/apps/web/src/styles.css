@@ -9698,14 +9698,12 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 72% 14%, #fffef3 0 5%, #fff879 6% 16%, rgba(255, 183, 41, 0.74) 17% 29%, transparent 31%),
-    conic-gradient(from -18deg at 72% 14%, rgba(255, 250, 105, 0.82) 0 5deg, transparent 5deg 13deg, rgba(255, 184, 42, 0.58) 13deg 18deg, transparent 18deg 31deg),
-    radial-gradient(920px 620px at 72% 18%, rgba(255, 245, 79, 0.64), rgba(255, 172, 43, 0.28) 42%, transparent 72%),
-    linear-gradient(108deg, transparent 0 14%, rgba(255, 250, 129, 0.24) 15% 19%, transparent 20% 46%, rgba(255, 218, 74, 0.18) 47% 52%, transparent 53%),
-    linear-gradient(70deg, transparent 0 28%, rgba(255, 255, 214, 0.22) 29% 34%, transparent 35% 67%, rgba(255, 155, 58, 0.14) 68% 72%, transparent 73%),
-    radial-gradient(1200px 460px at 50% 106%, rgba(79, 209, 31, 0.32), rgba(255, 233, 143, 0.28) 44%, transparent 74%),
-    linear-gradient(180deg, #fff879 0%, #ffe06a 19%, #ffc15e 52%, #fff2b4 100%);
-  background-size: 112% 112%, 132% 132%, 118% 112%, 118% 100%, 118% 100%, 110% 100%, 100% 100%;
+    radial-gradient(820px 560px at 74% 15%, rgba(255, 247, 111, 0.72), rgba(255, 166, 57, 0.22) 48%, transparent 72%),
+    linear-gradient(105deg, transparent 0 12%, rgba(255, 252, 151, 0.34) 13% 18%, transparent 19% 44%, rgba(255, 202, 66, 0.2) 45% 51%, transparent 52%),
+    linear-gradient(74deg, transparent 0 30%, rgba(255, 240, 141, 0.26) 31% 36%, transparent 37% 68%, rgba(255, 148, 61, 0.16) 69% 74%, transparent 75%),
+    radial-gradient(980px 320px at 50% 112%, rgba(98, 210, 51, 0.26), rgba(255, 214, 94, 0.28) 50%, transparent 78%),
+    linear-gradient(180deg, #fff879 0%, #ffdf67 28%, #ffc45f 62%, #ffefab 100%);
+  background-size: 116% 100%, 122% 100%, 122% 100%, 100% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9714,20 +9712,12 @@ select:focus-visible {
   position: absolute;
   pointer-events: none;
   z-index: 0;
-  top: clamp(-110px, -8vh, -24px);
-  left: 72%;
-  width: clamp(520px, 54vw, 920px);
-  aspect-ratio: 1;
-  border-radius: 999px;
+  inset: 0;
   background:
-    radial-gradient(circle at 40% 34%, rgba(255, 255, 255, 0.96) 0 5%, transparent 6%),
-    radial-gradient(circle at 62% 57%, rgba(255, 150, 48, 0.34) 0 7%, transparent 8%),
-    repeating-conic-gradient(from 9deg, rgba(255, 250, 94, 0.98) 0 4deg, rgba(255, 197, 48, 0.58) 4deg 7deg, transparent 7deg 13deg),
-    radial-gradient(circle at 50% 50%, #fffef0 0 15%, #fff879 16% 34%, rgba(255, 190, 31, 0.94) 35% 54%, rgba(255, 118, 42, 0.28) 55% 70%, transparent 71%);
-  filter: saturate(1.34) drop-shadow(0 0 92px rgba(255, 226, 61, 0.92));
-  opacity: 0.98;
-  transform: translateX(-50%) rotate(0deg) scale(1);
-  animation: onboard-sun-turn 42s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
+    radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.18) 0 1px, transparent 2px) 0 0 / 34px 34px,
+    radial-gradient(circle at 86% 28%, rgba(255, 255, 255, 0.16) 0 1px, transparent 2px) 0 0 / 46px 46px,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 36%);
+  opacity: 0.72;
 }
 .onboard[data-phase="door"]::after {
   content: "";
@@ -9737,14 +9727,69 @@ select:focus-visible {
   inset: 0 -10% auto -10%;
   height: 100%;
   background:
-    linear-gradient(116deg, transparent 0 10%, rgba(255, 249, 123, 0.38) 11% 15%, transparent 16% 37%, rgba(255, 225, 89, 0.32) 38% 43%, transparent 44%),
-    linear-gradient(74deg, transparent 0 22%, rgba(255, 183, 63, 0.28) 23% 28%, transparent 29% 59%, rgba(255, 252, 169, 0.32) 60% 65%, transparent 66%),
-    repeating-linear-gradient(92deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 22px),
-    radial-gradient(ellipse at 50% 102%, rgba(255, 219, 69, 0.42) 0 16%, rgba(255, 139, 54, 0.2) 17% 31%, transparent 50%);
+    linear-gradient(112deg, transparent 0 9%, rgba(255, 254, 180, 0.42) 10% 14%, transparent 15% 34%, rgba(255, 218, 74, 0.34) 35% 40%, transparent 41%),
+    linear-gradient(72deg, transparent 0 24%, rgba(255, 184, 59, 0.25) 25% 29%, transparent 30% 61%, rgba(255, 252, 169, 0.32) 62% 67%, transparent 68%),
+    radial-gradient(ellipse at 50% 108%, rgba(255, 214, 54, 0.46) 0 15%, rgba(255, 137, 54, 0.2) 16% 30%, transparent 48%);
   mix-blend-mode: screen;
-  opacity: 0.86;
+  opacity: 0.92;
   transform-origin: 50% 18%;
   animation: onboard-ray-drift 12s ease-in-out infinite;
+}
+.onboard-sunscape {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  overflow: hidden;
+}
+.onboard[data-phase="door"] .onboard-sunscape {
+  display: block;
+}
+.onboard-sunscape__sun {
+  position: absolute;
+  top: clamp(-86px, -5vh, -20px);
+  left: min(75vw, 1120px);
+  width: clamp(330px, 34vw, 620px);
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.96) 0 5%, transparent 6%),
+    radial-gradient(circle at 62% 57%, rgba(255, 151, 49, 0.32) 0 7%, transparent 8%),
+    repeating-conic-gradient(from 8deg, rgba(255, 251, 94, 0.96) 0 4deg, rgba(255, 196, 49, 0.55) 4deg 7deg, transparent 7deg 13deg),
+    radial-gradient(circle at 50% 50%, #fffef0 0 16%, #fff879 17% 36%, rgba(255, 187, 31, 0.94) 37% 56%, rgba(255, 115, 42, 0.22) 57% 71%, transparent 72%);
+  box-shadow:
+    0 0 72px rgba(255, 226, 61, 0.72),
+    0 0 180px rgba(255, 183, 51, 0.34);
+  opacity: 0.98;
+  transform: translateX(-50%) rotate(0deg) scale(1);
+  animation: onboard-sun-turn 44s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
+}
+.onboard-sunscape__ray {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  width: 92vw;
+  height: clamp(120px, 16vw, 260px);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 210, 0), rgba(255, 255, 177, 0.24), rgba(255, 206, 68, 0));
+  mix-blend-mode: screen;
+  transform-origin: 12% 50%;
+  animation: onboard-ray-drift 13s ease-in-out infinite;
+}
+.onboard-sunscape__ray--one {
+  transform: translateX(-14%) rotate(11deg);
+}
+.onboard-sunscape__ray--two {
+  top: 35%;
+  transform: translateX(-18%) rotate(-7deg);
+  animation-delay: -4s;
+}
+.onboard-sunscape__ray--three {
+  top: 55%;
+  transform: translateX(-28%) rotate(6deg);
+  opacity: 0.62;
+  animation-delay: -8s;
 }
 .onboard[data-phase="door"] .onboard__nav {
   color: #171312;
@@ -10558,27 +10603,29 @@ select:focus-visible {
 
 @keyframes onboard-sky-warmth {
   0%, 100% {
-    background-position: 72% 10%, 72% 8%, 72% 13%, 18% 88%, 84% 88%, 50% 100%, 50% 50%;
+    background-position: 74% 15%, 50% 0, 50% 0, 50% 100%, 50% 50%;
   }
   50% {
-    background-position: 72% 13%, 74% 7%, 72% 16%, 16% 91%, 86% 86%, 50% 102%, 50% 50%;
+    background-position: 76% 18%, 49% 0, 51% 0, 50% 102%, 50% 50%;
   }
 }
 
 @keyframes onboard-ray-drift {
   0%, 100% {
     opacity: 0.72;
-    transform: translateX(0) rotate(0deg) scale(1);
+    filter: saturate(1);
   }
   50% {
     opacity: 0.9;
-    transform: translateX(1.4%) rotate(0.8deg) scale(1.015);
+    filter: saturate(1.12) brightness(1.04);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .onboard-door-action,
   .onboard-marketing__item,
+  .onboard-sunscape__sun,
+  .onboard-sunscape__ray,
   .onboard[data-phase="door"]::before,
   .onboard[data-phase="door"]::after {
     animation: none;

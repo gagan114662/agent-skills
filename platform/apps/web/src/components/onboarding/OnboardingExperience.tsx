@@ -465,6 +465,12 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
 
   return (
     <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
+      <div className="onboard-sunscape" aria-hidden="true">
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--one" />
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--two" />
+        <span className="onboard-sunscape__ray onboard-sunscape__ray--three" />
+        <span className="onboard-sunscape__sun" />
+      </div>
       <header className="onboard__nav">
         <a href={APP_ROUTES.home} className="onboard__brand" aria-label={BRAND.name}>
           <PopMark className="onboard__brand-mark" size={42} />
