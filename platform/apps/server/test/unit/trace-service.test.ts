@@ -118,6 +118,43 @@ describe("TraceService", () => {
     expect(trace!.run.eventCount).toBe(5);
   });
 
+  it("can emit successful and failed tool-call audit envelopes for observability coverage (#1292)", async () => {
+    const { deps } = makeFakeDeps();
+    const svc = new TraceService(deps);
+    const { id: okRun } = await svc.openRun({ workspaceId: WS, label: "successful run" });
+    const { id: failedRun } = await svc.openRun({ workspaceId: WS, label: "failed run" });
+
+    await svc.recordToolCall(WS, okRun, {
+      turn: 0,
+      label: "search",
+      payload: { audit: { workspaceId: WS, userId: "user-1", runId: okRun, actionId: "act-ok" } },
+    });
+    await svc.recordToolResult(WS, okRun, { turn: 0, label: "search", payload: { ok: true } });
+    await svc.recordToolCall(WS, failedRun, {
+      turn: 0,
+      label: "browser",
+      payload: { audit: { workspaceId: WS, userId: "user-1", runId: failedRun, actionId: "act-fail" } },
+    });
+    await svc.recordToolResult(WS, failedRun, {
+      turn: 0,
+      label: "browser",
+      payload: { ok: false, error: "provider timeout" },
+    });
+
+    const okTrace = await svc.getTrace(WS, okRun);
+    const failedTrace = await svc.getTrace(WS, failedRun);
+    expect(okTrace!.events.find((event) => event.type === "tool_call")!.payload).toMatchObject({
+      audit: { workspaceId: WS, userId: "user-1", runId: okRun, actionId: "act-ok" },
+    });
+    expect(failedTrace!.events.find((event) => event.type === "tool_call")!.payload).toMatchObject({
+      audit: { workspaceId: WS, userId: "user-1", runId: failedRun, actionId: "act-fail" },
+    });
+    expect(failedTrace!.events.find((event) => event.type === "tool_result")!.payload).toMatchObject({
+      ok: false,
+      error: "provider timeout",
+    });
+  });
+
   it("is workspace-scoped: a foreign workspace cannot read the trace", async () => {
     const { deps } = makeFakeDeps();
     const svc = new TraceService(deps);

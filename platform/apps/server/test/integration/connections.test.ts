@@ -27,6 +27,13 @@ afterAll(async () => {
 
 afterEach(() => {
   delete process.env.RELOAD_MARKETING_OWNER_WORKSPACE_ID;
+  delete process.env.RELOAD_REACH_SEND_PROVIDER;
+  delete process.env.RELOAD_REACH_LIVE_SEND_ENABLED;
+  delete process.env.POSTMARK_SERVER_TOKEN;
+  delete process.env.POSTMARK_FROM;
+  delete process.env.POSTMARK_AUTH_RESULTS_HEADER;
+  delete process.env.IMESSAGE_RELAY_ENABLED;
+  delete process.env.IMESSAGE_RELAY_DRY_RUN;
 });
 
 async function seed(): Promise<{ cookie: string; workspaceId: string }> {
@@ -67,6 +74,10 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     expect(body.connections.find((c: { id: string }) => c.id === "imessage")).toMatchObject({
       auth: "one_click",
       status: "coming_soon",
+      configIssue: {
+        code: "imessage_relay_disabled",
+        missingEnv: ["IMESSAGE_RELAY_ENABLED"],
+      },
       capabilities: expect.arrayContaining(["work_visibility", "imessage_room"]),
     });
 
@@ -86,6 +97,61 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       cookies: { rid: cookie },
     });
     expect(del.statusCode).toBe(403);
+  });
+
+  it("offers iMessage setup only when the real Apple Messages relay is enabled (#1283)", async () => {
+    process.env.IMESSAGE_RELAY_ENABLED = "1";
+    process.env.IMESSAGE_RELAY_DRY_RUN = "0";
+    const { cookie } = await seed();
+
+    const list = (
+      await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
+    ).json();
+    expect(list.connections.find((c: { id: string }) => c.id === "imessage")).toMatchObject({
+      auth: "one_click",
+      status: "available",
+      configIssue: null,
+      connected: false,
+      consentStatus: "none",
+      providerStatus: "unproven",
+      summary: expect.stringMatching(/Apple Messages/i),
+    });
+
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/imessage/enable",
+      cookies: { rid: cookie },
+    });
+    expect(enable.statusCode).toBe(200);
+    expect(enable.json()).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
+  });
+
+  it("keeps iMessage unavailable when the relay is dry-run only (#1283)", async () => {
+    process.env.IMESSAGE_RELAY_ENABLED = "1";
+    process.env.IMESSAGE_RELAY_DRY_RUN = "1";
+    const { cookie } = await seed();
+
+    const list = (
+      await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
+    ).json();
+    expect(list.connections.find((c: { id: string }) => c.id === "imessage")).toMatchObject({
+      status: "coming_soon",
+      configIssue: {
+        code: "imessage_relay_dry_run",
+        missingEnv: ["IMESSAGE_RELAY_DRY_RUN"],
+      },
+    });
+
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/imessage/enable",
+      cookies: { rid: cookie },
+    });
+    expect(enable.statusCode).toBe(400);
   });
 
   it("a customer can record one-click consent without pretending provider proof passed (#529/#507/#1284)", async () => {
@@ -162,6 +228,50 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       summary: "email credentials connected scopes=send_email",
       status: "connected",
     });
+  });
+
+  it("email one-click becomes connected only when live Postmark proof is configured (#1285)", async () => {
+    process.env.RELOAD_REACH_SEND_PROVIDER = "postmark";
+    process.env.RELOAD_REACH_LIVE_SEND_ENABLED = "1";
+    process.env.POSTMARK_SERVER_TOKEN = "pm-live-token";
+    process.env.POSTMARK_FROM = "hello@ipop.ai";
+    process.env.POSTMARK_AUTH_RESULTS_HEADER = "spf=pass dkim=pass dmarc=pass";
+    const { cookie, workspaceId } = await seed();
+
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/email/enable",
+      cookies: { rid: cookie },
+    });
+    expect(enable.statusCode).toBe(200);
+    expect(enable.json()).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+    });
+
+    const after = (
+      await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
+    ).json();
+    const emailAfter = after.connections.find((c: { id: string }) => c.id === "email");
+    expect(emailAfter).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+    });
+    expect(emailAfter.lastProofReceipt).toMatch(/^vault:/);
+
+    const postmarkSecrets = await resolveServiceSecrets(workspaceId, "postmark");
+    expect(postmarkSecrets.POSTMARK_SERVER_TOKEN).toBe("pm-live-token");
+    expect(postmarkSecrets.POSTMARK_FROM).toBe("hello@ipop.ai");
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: "/me/connections/email",
+      cookies: { rid: cookie },
+    });
+    expect(del.statusCode).toBe(200);
+    expect(await resolveServiceSecrets(workspaceId, "postmark")).toEqual({});
   });
 
   it("enabling a not-yet-available connector is refused; a coming-soon connector offers the waitlist instead (#507)", async () => {

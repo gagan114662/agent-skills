@@ -56,6 +56,126 @@ describe("FounderDashboard (#104)", () => {
     expect(card).toHaveTextContent("1"); // open incidents
   });
 
+  it("labels dashboard metrics by proof source and shows launch readiness (#1293)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          fleet: { activeSessions: 0, sessionsThisWindow: 2, globalInFlight: 1 },
+          revenue: {
+            currency: "usd",
+            totalCents: 19900,
+            paymentCount: 1,
+            willingnessToPayCount: 1,
+            hasWillingnessToPay: true,
+          },
+          outreach: {
+            experimentsRunning: 1,
+            experimentsConcluded: 0,
+            messagesPendingApproval: 0,
+            messagesSent: 3,
+            replies: 1,
+            meetings: 0,
+            signups: 0,
+          },
+          proofScorecard: {
+            connectedCount: 1,
+            total: 2,
+            tiles: [
+              {
+                department: "seo",
+                agent: "Scout",
+                title: "SEO proof",
+                metricLabel: "indexed pages",
+                connection: "connected",
+                unit: "count",
+                value: 12,
+                display: "12",
+                trend: "up",
+                delta: 2,
+                improving: true,
+                trendDetail: "+2 this week",
+                source: "Search Console receipt",
+                note: null,
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: /launch readiness/i })).toBeInTheDocument();
+    expect(screen.getByText(/2 sessions this window/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 sent, 1 replies/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/external customer proof/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Search Console receipt/i)).toBeInTheDocument();
+  });
+
+  it("surfaces production agent observability and blocks green readiness on unaudited tool calls (#1292)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          agentObservability: {
+            scheduler: { status: "stopped", lastTickAgeSeconds: 900 },
+            queueDepth: 12,
+            runningRuns: 3,
+            stalledRuns: 2,
+            failedRunsLast24h: 4,
+            retryRate: 0.25,
+            recovery: { state: "needs_human", retryableStuckRuns: 2, lastRecoveryAtMs: 1_700_000_000_000 },
+            audit: { toolCalls: 10, auditedToolCalls: 8, unauditedToolCalls: 2, coverage: 0.8 },
+            connectorSilentFailures: [{ connector: "Google Ads", status: "silent", lastOkAgeSeconds: 7200 }],
+            alerts: ["Google Ads has not emitted a success receipt in 2h"],
+          },
+        })}
+      />,
+    );
+
+    const card = screen.getByRole("heading", { name: /agent observability/i }).closest("article")!;
+    expect(card).toHaveTextContent(/stopped/i);
+    expect(card).toHaveTextContent(/80%/i);
+    expect(card).toHaveTextContent(/2/);
+    expect(card).toHaveTextContent(/Google Ads has not emitted/i);
+    expect(screen.getByLabelText(/silent connector failures/i)).toHaveTextContent(/Google Ads/i);
+    expect(screen.getByText(/80% audited, 2 stalled/i)).toBeInTheDocument();
+  });
+
+  it("never renders an unconnected proof-scorecard row as live proof (#1293)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          proofScorecard: {
+            connectedCount: 0,
+            total: 1,
+            tiles: [
+              {
+                department: "reach",
+                agent: "Comet",
+                title: "Reach proof",
+                metricLabel: "replies",
+                connection: "not_connected",
+                unit: "count",
+                value: null,
+                display: "0",
+                trend: "none",
+                delta: null,
+                improving: null,
+                trendDetail: "No source",
+                source: "sample outreach fixture",
+                note: "Connect outbound to verify.",
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    const proofCard = screen.getByRole("heading", { name: /proof scorecard/i }).closest("article")!;
+    expect(proofCard).toHaveTextContent(/not live/i);
+    expect(proofCard).toHaveTextContent(/sample/i);
+    expect(proofCard).not.toHaveTextContent(/sample outreach fixture/i);
+    expect(proofCard).not.toHaveTextContent(/external customer proof/i);
+  });
+
   it("renders a zeroed reliability pane when the field is absent (loop off / unwired)", () => {
     render(<FounderDashboard console={console_()} />);
     const card = screen.getByRole("heading", { name: /reliability/i }).closest("article")!;

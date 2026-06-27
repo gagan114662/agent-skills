@@ -4,13 +4,12 @@ import { loadConfig } from "../config/loader.js";
 import { loadStateSecret, newStateNonce } from "../auth/oauth-state.js";
 import {
   CONNECTION_DESCRIPTORS,
+  EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
+  IMESSAGE_CONNECTION_ID,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
-import {
-  decideApprovedConnectRequest,
-  mapExchangeToSeal,
-} from "../connections/connect.js";
+import { decideApprovedConnectRequest, mapExchangeToSeal } from "../connections/connect.js";
 import { signConnectState, verifyConnectState } from "../connections/state.js";
 import { ConnectProviderError, isValidAuthCode } from "../connections/provider.js";
 import {
@@ -50,6 +49,37 @@ import {
  * and the #192 non-money connects). Real spend through a connected channel stays money-gated, unchanged.
  */
 const CONNECTION_RETURN_PATH = "/everyday";
+const POSTMARK_SERVICE_KEY = "postmark";
+const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
+const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
+const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
+const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
+const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
+
+function firstEnv(keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function emailProviderProofSecrets(workspaceId: string): Record<string, string> {
+  const reach = loadConfig(workspaceId).reach;
+  if (reach?.sendProvider !== "postmark" || reach.liveSendEnabled !== true) return {};
+  const token = process.env[POSTMARK_TOKEN_KEY]?.trim() ?? "";
+  const from = firstEnv(POSTMARK_FROM_KEYS);
+  if (!token || !from) return {};
+  return {
+    [POSTMARK_TOKEN_KEY]: token,
+    POSTMARK_FROM: from,
+    ...(process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim()
+      ? {
+          [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim(),
+        }
+      : {}),
+  };
+}
 
 export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
   function isOwnerWorkspace(workspaceId: string): boolean {
@@ -68,7 +98,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     >
   > {
     const rows = await listServiceStatuses(workspaceId);
-    return new Map(
+    const proofs = new Map(
       rows.map((r) => [
         r.serviceKey,
         {
@@ -79,10 +109,39 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         },
       ]),
     );
+    const postmark = proofs.get(POSTMARK_SERVICE_KEY);
+    if (postmark?.connected) proofs.set(EMAIL_CONNECTION_ID, postmark);
+    return proofs;
   }
 
   function runtimeDescriptors(): ConnectionDescriptor[] {
     return CONNECTION_DESCRIPTORS.map((descriptor) => {
+      if (descriptor.id === IMESSAGE_CONNECTION_ID) {
+        const enabled =
+          process.env.IMESSAGE_RELAY_ENABLED === "true" ||
+          process.env.IMESSAGE_RELAY_ENABLED === "1";
+        const dryRun =
+          process.env.IMESSAGE_RELAY_DRY_RUN === "true" ||
+          process.env.IMESSAGE_RELAY_DRY_RUN === "1";
+        if (enabled && !dryRun) {
+          return {
+            ...descriptor,
+            status: "available",
+            summary:
+              "Send the team room to Apple Messages after you add and verify your iMessage email or phone.",
+          };
+        }
+        return {
+          ...descriptor,
+          configIssue: {
+            code: dryRun ? "imessage_relay_dry_run" : "imessage_relay_disabled",
+            missingEnv: enabled ? [...IMESSAGE_DRY_RUN_KEYS] : [...IMESSAGE_ENABLED_KEYS],
+            remedy: dryRun
+              ? "Set IMESSAGE_RELAY_DRY_RUN=0 and verify the macOS Messages relay host before offering this connector."
+              : "Set IMESSAGE_RELAY_ENABLED=1 on a macOS relay host that can run osascript against Messages.",
+          },
+        };
+      }
       if (descriptor.auth !== "oauth") return descriptor;
       const provider = defaultConnectProvider(descriptor.id);
       if (provider.live) return { ...descriptor, status: "available" };
@@ -102,6 +161,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       }
       return descriptor;
     });
+  }
+
+  function runtimeDescriptor(id: string): ConnectionDescriptor | undefined {
+    return runtimeDescriptors().find((descriptor) => descriptor.id === id);
   }
 
   // What this workspace can connect (+ which are already connected). Read-only, never a secret.
@@ -157,12 +220,16 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (!identity) return;
     const wid = identity.workspaceId;
     const id = (req.params as { id: string }).id;
-    const decision = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
+    const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    const providerSecrets =
+      decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : {};
     await setServiceCredentials({
       workspaceId: wid,
-      serviceKey: decision.serviceKey,
-      secrets: {}, // a one-click consent seals no secret — the connection IS the consent.
+      serviceKey: providerSecrets[POSTMARK_TOKEN_KEY] ? POSTMARK_SERVICE_KEY : decision.serviceKey,
+      // Without live provider proof, one-click records consent only. With live Postmark configured, seal the
+      // provider credential where the sender actually reads it, then alias that proof back to the email card.
+      secrets: providerSecrets,
       scopes: decision.scopes,
       connectedByMemberId: identity.memberId,
     });
@@ -188,7 +255,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const id = (req.params as { id: string }).id;
-    const decision = decideWaitlist({ descriptor: getConnectionDescriptor(id) });
+    const decision = decideWaitlist({ descriptor: runtimeDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     req.log.info(
       {
@@ -331,7 +398,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       exchange = await provider.exchange({ code: query.code, state: query.state as string });
     } catch (err) {
       const reason = err instanceof ConnectProviderError ? err.message : "token exchange failed";
-      await recordExecution(approval.request.id, identity.workspaceId, { ok: false, error: reason });
+      await recordExecution(approval.request.id, identity.workspaceId, {
+        ok: false,
+        error: reason,
+      });
       return finish("error");
     }
     const seal = mapExchangeToSeal({ descriptor, exchange });
@@ -374,6 +444,16 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: "internal connection — admin only" });
     }
     await revokeServiceCredentials(identity.workspaceId, id, identity.memberId);
+    if (id === EMAIL_CONNECTION_ID) {
+      const proofs = await connectionProofs(identity.workspaceId);
+      if (proofs.get(POSTMARK_SERVICE_KEY)?.connected) {
+        await revokeServiceCredentials(
+          identity.workspaceId,
+          POSTMARK_SERVICE_KEY,
+          identity.memberId,
+        );
+      }
+    }
     return { revoked: true, id };
   });
 }

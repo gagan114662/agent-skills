@@ -1,6 +1,7 @@
 import { accessSync, constants as fsConstants, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { ReachConfig } from "../config/schema.js";
+import { resolveGoogleConnectionRedirectUri } from "../connections/google-oauth-config.js";
 import type { RuntimeKind } from "../db/repositories/agent-sessions.js";
 import { resolveReachCaps } from "../reach/caps.js";
 import type { HarnessKind } from "./harness.js";
@@ -340,7 +341,7 @@ function checkGoogleConnectionOAuth(
   const vars = {
     GOOGLE_OAUTH_CLIENT_ID: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
     GOOGLE_OAUTH_CLIENT_SECRET: Boolean(env.GOOGLE_OAUTH_CLIENT_SECRET),
-    GOOGLE_CONNECTION_OAUTH_REDIRECT_URI: Boolean(env.GOOGLE_CONNECTION_OAUTH_REDIRECT_URI),
+    GOOGLE_CONNECTION_OAUTH_REDIRECT_URI: Boolean(resolveGoogleConnectionRedirectUri(env)),
   } as const;
   const entries = Object.entries(vars);
   const present = entries.filter(([, v]) => v).length;
@@ -360,7 +361,7 @@ function checkGoogleConnectionOAuth(
     status: required ? "fail" : "warn",
     message: "Google connection OAuth config incomplete — missing: " + missing.join(", "),
     remedy:
-      "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/google/oauth/callback and add that exact URI to the Google OAuth web client.",
+      "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/google/oauth/callback, or set GOOGLE_OAUTH_REDIRECT_URI on the same API origin so the connection callback can be derived. Add the exact callback URI to the Google OAuth web client.",
   };
 }
 

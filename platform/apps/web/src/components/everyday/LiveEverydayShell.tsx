@@ -5,6 +5,7 @@ import type {
   ConnectionView,
   FirstRunReceiptDto,
   FirstRunReceiptInput,
+  IMessageStatusResponse,
   TeamRunSubtaskInput,
 } from "../../api/types.js";
 import type { AppState } from "../../store/store.js";
@@ -133,19 +134,37 @@ function withFirstRunReceipt(
         confidence: "medium",
       },
       metrics: [
-        { label: "site reads", value: "1", detail: firstRun.target, tone: "good" },
-        { label: "agent artifacts", value: "1", detail: firstRun.artifactTitle, tone: "good" },
+        {
+          label: "site reads",
+          value: "1",
+          detail: firstRun.target,
+          tone: "good",
+          proofKind: "live",
+          proof: firstRun.receipt,
+        },
+        {
+          label: "agent artifacts",
+          value: "1",
+          detail: firstRun.artifactTitle,
+          tone: "good",
+          proofKind: "dogfood",
+          proof: firstRun.artifactSummary,
+        },
         {
           label: "receipts",
           value: String(data.transparency.length + 1),
           detail: firstRun.receipt,
           tone: "good",
+          proofKind: "live",
+          proof: "first-run receipt persisted",
         },
         {
           label: "blocked sends",
           value: "0",
           detail: "nothing external sent without approval",
           tone: "neutral",
+          proofKind: "live",
+          proof: "no external transparency receipt created",
         },
       ],
       funnel: [
@@ -196,6 +215,15 @@ function withFirstRunReceipt(
           proof: firstRun.artifactSummary,
         },
       ],
+      readiness: [
+        { label: "auth", status: "ready", proof: "signed-in workspace state loaded" },
+        { label: "connectors", status: "blocked", proof: "external connector proof still required" },
+        { label: "first run", status: "ready", proof: firstRun.receipt },
+        { label: "outbound", status: "blocked", proof: "no real sent-message receipt" },
+        { label: "billing", status: "pending", proof: "plan limits not attached to this brief" },
+        { label: "observability", status: "pending", proof: "team health/audit feed not attached here" },
+        { label: "legal/trust", status: "pending", proof: "legal state not attached to workspace brief" },
+      ],
     },
   };
 }
@@ -226,13 +254,41 @@ function groupForConnection(connection: ConnectionView): EverydayConnector["grou
   return "productivity";
 }
 
-function connectorFromConnection(connection: ConnectionView): EverydayConnector {
+function connectorFromConnection(
+  connection: ConnectionView,
+  imessageStatus?: IMessageStatusResponse | null,
+): EverydayConnector {
+  const isIMessage = connection.id === "imessage";
+  const imessageRecipient = isIMessage ? imessageStatus?.memberRecipient : null;
+  const imessageRelayReady = Boolean(
+    isIMessage &&
+      imessageRecipient?.verified &&
+      imessageStatus?.enabled &&
+      imessageStatus.configured &&
+      !imessageStatus.dryRun,
+  );
+  const status = imessageRelayReady
+    ? "connected"
+    : imessageRecipient
+      ? "pending"
+      : connection.connected
+        ? "connected"
+        : connection.status;
   return {
     id: connection.id,
     group: groupForConnection(connection),
     name: connection.label.replace(/^connect\s+/i, "").replace(/^sign in with\s+/i, ""),
-    status: connection.connected ? "connected" : connection.status,
-    detail: connection.summary,
+    status,
+    detail:
+      isIMessage && imessageRecipient
+        ? imessageRelayReady
+          ? "live relay verified for " + imessageRecipient.recipient
+          : imessageRecipient.verified
+            ? "recipient verified; relay is " +
+              (imessageStatus?.dryRun ? "dry-run" : imessageStatus?.enabled ? "not live" : "disabled") +
+              " before agents can use Messages"
+          : "test needed before agents can relay to " + imessageRecipient.recipient
+        : connection.summary,
     actionLabel:
       connection.id === "imessage"
         ? "set up iMessage"
@@ -242,43 +298,154 @@ function connectorFromConnection(connection: ConnectionView): EverydayConnector 
   };
 }
 
-const ROOM_AGENT_TASKS: Array<{ role: string; task: (goal: string) => string }> = [
+type RoomAgentRole = "Scout" | "Quill" | "Echo" | "Lens" | "Codex";
+
+interface RoomAgentSpec {
+  readonly role: RoomAgentRole;
+  readonly lane: string;
+  readonly immediateRequest: (goal: string) => string;
+  readonly outputFormat: readonly string[];
+}
+
+const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Scout",
-    task: (goal) =>
-      "Mine customer/category/product/user/time/space insights for: " +
+    lane: "insight mining",
+    immediateRequest: (goal) =>
+      "Mine customer/category/product/user/time/space insights for " +
       goal +
-      ". Start from public evidence and rank the strongest tensions before recommending work.",
+      " from public evidence. Rank the strongest tensions before recommending work.",
+    outputFormat: [
+      "top 5 ranked insights with evidence strength",
+      "what to ask the brand next",
+      "one recommended first useful move",
+    ],
   },
   {
     role: "Quill",
-    task: (goal) =>
-      "Turn the strongest insight into a distinctive marketing platform for: " +
+    lane: "creative platform",
+    immediateRequest: (goal) =>
+      "Turn the strongest insight into a distinctive marketing platform for " +
       goal +
       ". Reference award-winning work from another category and adapt the mechanism, not the surface.",
+    outputFormat: [
+      "campaign platform",
+      "why it is not generic AI copy",
+      "first asset draft ready for approval",
+    ],
   },
   {
     role: "Echo",
-    task: (goal) =>
-      "Plan the first outreach/content distribution moves for: " +
+    lane: "distribution",
+    immediateRequest: (goal) =>
+      "Plan the first outreach/content distribution moves for " +
       goal +
       ". Do not send externally; prepare approval-ready drafts and connector blockers.",
+    outputFormat: [
+      "channel sequence",
+      "approval-ready drafts",
+      "connectors or policies blocking real sends",
+    ],
   },
   {
     role: "Lens",
-    task: (goal) =>
-      "Review the work for brand taste, originality, proof, and anti-slop quality for: " +
+    lane: "taste and proof",
+    immediateRequest: (goal) =>
+      "Review the work for brand taste, originality, proof, and anti-slop quality for " +
       goal +
       ". Challenge weak insights before anything ships.",
+    outputFormat: [
+      "taste verdict",
+      "specific slop risks to remove",
+      "approval criteria before publishing or sending",
+    ],
   },
   {
     role: "Codex",
-    task: (goal) =>
-      "Act as the implementation operator for the marketing room. Convert approved product/website/workflow decisions into implementation tasks, PRs, or verified fixes for: " +
+    lane: "codex_operator_lane",
+    immediateRequest: (goal) =>
+      "Act as the implementation operator for the marketing room. Convert approved product, website, workflow, connector, or observability decisions into implementation tasks, PRs, issues, or verified fixes for " +
       goal +
       ". Report links and verification back into the room.",
+    outputFormat: [
+      "codex_operator_lane receipt",
+      "files, PRs, issues, or artifacts changed",
+      "verification performed",
+      "residual risks and next recommended work",
+    ],
   },
 ];
+
+const PROMPT_STRUCTURE_LABELS = [
+  "1. Task context",
+  "2. Tone context",
+  "3. Background data, documents, and images",
+  "4. Detailed task description & rules",
+  "5. Examples",
+  "6. Conversation history",
+  "7. Immediate task description or request",
+  "8. Thinking step by step / take a deep breath",
+  "9. Output formatting",
+  "10. Prefilled response (if any)",
+] as const;
+
+function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
+  const baseSections = [
+    [
+      PROMPT_STRUCTURE_LABELS[0],
+      "You are " +
+        spec.role +
+        " in ipop's live marketing room. Work on the owner's current growth goal: " +
+        goal +
+        ". Your lane is " +
+        spec.lane +
+        ".",
+    ],
+    [
+      PROMPT_STRUCTURE_LABELS[1],
+      "Warm, plain, sharp, and useful. Think innocent-drinks-ish: human and a little playful, never fake, never corporate sludge.",
+    ],
+    [
+      PROMPT_STRUCTURE_LABELS[2],
+      "Use the workspace channel, public website/category evidence, connected-account receipts, approval state, and any uploaded brand material. If proof is missing, say exactly what is missing instead of inventing it.",
+    ],
+    [
+      PROMPT_STRUCTURE_LABELS[3],
+      "Do real marketing work. Mine, rank, and validate insights through product, user, time, space, purchase journey, competing products, intrinsic benefits, and culture. Adapt mechanisms from excellent work in other categories; do not copy surface style. Do not send, publish, spend, or claim external customer proof without connector receipts and owner approval.",
+    ],
+    [
+      PROMPT_STRUCTURE_LABELS[4],
+      "Good: a specific tension with evidence, a clear audience, a draft or decision the owner can act on. Bad: generic slogans, unsupported claims, fake connected states, or dashboard theatre.",
+    ],
+    [
+      PROMPT_STRUCTURE_LABELS[5],
+      "Read the live room thread and prior agent handoffs before acting. Build on the latest Scout/Quill/Echo/Lens/Operator messages; call out conflicts rather than smoothing them over.",
+    ],
+    [PROMPT_STRUCTURE_LABELS[6], spec.immediateRequest(goal)],
+    [
+      PROMPT_STRUCTURE_LABELS[7],
+      "Reason step by step internally, check evidence before confidence, then return the concise work product. Do not expose hidden chain-of-thought.",
+    ],
+    [PROMPT_STRUCTURE_LABELS[8], spec.outputFormat.map((item) => "- " + item).join("\n")],
+    [PROMPT_STRUCTURE_LABELS[9], "None."],
+  ];
+
+  const rendered = baseSections.map(([heading, body]) => heading + "\n" + body).join("\n\n");
+  if (spec.role !== "Codex") return rendered;
+  return (
+    "codex_work_packet\n" +
+    "audit_label: codex_operator_lane\n" +
+    "credential_boundary: use the signed-in Codex runtime only; do not request or store API keys, cookies, passwords, or browser session secrets.\n\n" +
+    rendered +
+    "\n\nReturn payload schema:\n" +
+    "- summary\n" +
+    "- files_or_artifacts\n" +
+    "- pr_or_issue_links\n" +
+    "- verification\n" +
+    "- residual_risks\n" +
+    "- next_recommended_work"
+  );
+}
 
 function slug(value: string): string {
   return (
@@ -325,7 +492,7 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
     if (!agentMemberId) continue;
     subtasks.push({
       agentMemberId,
-      task: spec.task(goal),
+      task: structuredRoomTask(spec, goal),
       branch: "ipop-" + slug(spec.role) + "-" + slug(goal),
       harness: "codex",
     });
@@ -362,11 +529,16 @@ export function LiveEverydayShell({
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
+  const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();
     setConnections(response.connections.filter((connection) => connection.audience === "customer"));
+  }
+
+  async function refreshIMessageStatus(): Promise<void> {
+    setIMessageStatus(await api.getIMessageStatus());
   }
 
   async function refreshFirstRun(): Promise<void> {
@@ -386,6 +558,7 @@ export function LiveEverydayShell({
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
     void refreshConnections().catch(() => setConnections(null));
+    void refreshIMessageStatus().catch(() => setIMessageStatus(null));
     void refreshFirstRun().catch(() => setFirstRun(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
@@ -407,9 +580,27 @@ export function LiveEverydayShell({
     <EverydayShell
       data={{
         ...data,
-        connectors: connections ? connections.map(connectorFromConnection) : data.connectors,
+        connectors: connections
+          ? connections.map((connection) => connectorFromConnection(connection, imessageStatus))
+          : data.connectors,
       }}
       onConnectorConnect={(id) => void connect(id)}
+      imessageStatus={imessageStatus}
+      onSaveIMessageRecipient={async (input) => {
+        await api.saveIMessageRecipient(input);
+        await refreshIMessageStatus();
+      }}
+      onTestIMessageRecipient={async () => {
+        const result = await api.testIMessageRecipient();
+        await refreshIMessageStatus();
+        if (result.status !== "sent") {
+          throw new Error(result.error ?? "iMessage relay did not send a live test message.");
+        }
+      }}
+      onDeleteIMessageRecipient={async () => {
+        await api.deleteIMessageRecipient();
+        await refreshIMessageStatus();
+      }}
       onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
       dashboardFirst={dashboardFirst}
     />

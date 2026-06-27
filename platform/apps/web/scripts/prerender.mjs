@@ -22,11 +22,12 @@ const SSR_BUNDLE = join(WEB_ROOT, "dist-ssr", "entry-server.js");
 
 async function main() {
   // Pull the rendered pages + pure helpers out of the SSR bundle.
-  const { prerenderPages, resolveOrigin, injectPage, buildSitemap, buildRobots } = await import(
+  const { prerenderPages, resolveOrigin, resolveBuildSha, injectBuildStamp, injectPage, buildSitemap, buildRobots } = await import(
     pathToFileURL(SSR_BUNDLE).href
   );
 
   const origin = resolveOrigin(process.env);
+  const buildSha = resolveBuildSha(process.env);
   const template = await readFile(join(DIST, "index.html"), "utf8");
 
   // Guard: if Vite ever stops shipping the empty root div, our injection would silently no-op — fail loud.
@@ -38,7 +39,7 @@ async function main() {
   const written = [];
 
   for (const page of pages) {
-    const finalHtml = injectPage(template, page, origin);
+    const finalHtml = injectBuildStamp(injectPage(template, page, origin), buildSha);
     const outPath = join(DIST, page.outFile);
     await mkdir(dirname(outPath), { recursive: true });
     await writeFile(outPath, finalHtml, "utf8");
@@ -50,6 +51,7 @@ async function main() {
   await writeFile(join(DIST, "robots.txt"), buildRobots(origin), "utf8");
 
   console.log(`prerender: origin ${origin}`);
+  console.log(`prerender: build sha ${buildSha ?? "unstamped"}`);
   for (const line of written) console.log(`  ${line}`);
   console.log(`  /sitemap.xml → dist/sitemap.xml (${pages.length} urls)`);
   console.log(`  /robots.txt  → dist/robots.txt`);

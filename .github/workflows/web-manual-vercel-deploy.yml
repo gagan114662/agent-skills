@@ -1,0 +1,75 @@
+name: web-manual-vercel-deploy
+
+# #1321 fallback: the GitHub/Vercel integration can leave ipop.ai stale when Vercel rate-limits
+# deployment uploads. This manual workflow uses the Vercel CLI archive upload path and verifies the
+# live homepage after deployment with the same freshness probe used by web-deploy-freshness.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref/SHA to deploy. Defaults to the workflow ref."
+        required: false
+      target:
+        description: "Production web URL to verify after deploy."
+        required: false
+        default: "https://ipop.ai/"
+
+concurrency:
+  group: web-manual-vercel-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PRODUCTION_WEB_URL: ${{ inputs.target || vars.PRODUCTION_WEB_URL || 'https://ipop.ai/' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - name: Verify Vercel secrets
+        run: |
+          set -euo pipefail
+          missing=
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "Missing required Vercel secret(s):$missing" >&2
+            exit 1
+          fi
+      - name: Install dependencies
+        working-directory: platform
+        run: pnpm install --frozen-lockfile
+      - name: Compute deployed SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Pull Vercel production env
+        working-directory: platform/apps/web
+        run: npx --yes vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
+      - name: Build web for Vercel production
+        working-directory: platform/apps/web
+        env:
+          VITE_RELOAD_BUILD_SHA: ${{ steps.sha.outputs.sha }}
+          VERCEL_GIT_COMMIT_SHA: ${{ steps.sha.outputs.sha }}
+        run: npx --yes vercel@latest build --prod --token "$VERCEL_TOKEN"
+      - name: Deploy prebuilt web via archive upload
+        working-directory: platform/apps/web
+        run: npx --yes vercel@latest deploy --prebuilt --prod --archive=tgz --token "$VERCEL_TOKEN"
+      - name: Verify live production freshness
+        working-directory: platform
+        env:
+          EXPECTED_WEB_SHA: ${{ steps.sha.outputs.sha }}
+        run: pnpm --filter @reload/web deploy:freshness

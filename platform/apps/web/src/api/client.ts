@@ -79,6 +79,9 @@ import type {
   ConnectionsResponse,
   ConnectionOAuthStartResponse,
   GoogleAuthStatus,
+  IMessageRecipientSaveResponse,
+  IMessageStatusResponse,
+  IMessageTestResponse,
   IMessageRoomResponse,
   FirstRunReceiptInput,
   FirstRunReceiptResponse,
@@ -473,6 +476,24 @@ export const api = {
   // Begin a consumer-OAuth connect. Unwired providers reply 501 "coming soon"; live providers park consent.
   startConnectionOAuth(id: string): Promise<ConnectionOAuthStartResponse> {
     return request<ConnectionOAuthStartResponse>(`/me/connections/${encodeURIComponent(id)}/oauth/start`, { method: "POST" });
+  },
+  getIMessageStatus(): Promise<IMessageStatusResponse> {
+    return request<IMessageStatusResponse>("/me/imessage/status");
+  },
+  saveIMessageRecipient(input: { recipient: string; serviceName?: string }): Promise<IMessageRecipientSaveResponse> {
+    return request<IMessageRecipientSaveResponse>("/me/imessage/recipient", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteIMessageRecipient(): Promise<void> {
+    await del("/me/imessage/recipient");
+  },
+  testIMessageRecipient(text?: string): Promise<IMessageTestResponse> {
+    return request<IMessageTestResponse>("/me/imessage/test", {
+      method: "POST",
+      body: JSON.stringify(text ? { text } : {}),
+    });
   },
   startIMessageRoom(channelId: string, text: string): Promise<IMessageRoomResponse> {
     return request<IMessageRoomResponse>(

@@ -224,6 +224,7 @@ import { workspaceContextRoutes } from "./routes/workspace-context.js";
 import { marketingTargetRoutes } from "./routes/marketing-target.js";
 import { provisioningRoutes } from "./routes/provisioning.js";
 import { createIMessageRelayService } from "./imessage/default.js";
+import type { IMessageRelayService } from "./imessage/service.js";
 import { createDefaultProvisioningService } from "./provisioning/default.js";
 import { adsRoutes } from "./routes/ads.js";
 import { createDefaultAdsService } from "./ads/default.js";
@@ -550,6 +551,8 @@ export interface BuildAppOptions {
    * flow stays an honest `coming_soon` until wired.
    */
   claudeConnect?: ClaudeConnectRoutesOptions;
+  /** #1283 iMessage room: tests inject a fake relay service; default uses the macOS Messages adapter. */
+  imessage?: IMessageRelayService;
   /**
    * #300 low-commitment front door. Tests inject `signupEntry` caps so the read-only sample workspace can
    * be exercised without a config file. Default reads the layered config (sample workspace OFF).
@@ -1159,7 +1162,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Customer connectors are consumer OAuth; the internal GitHub site-publish connector (owner-only) seals
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
   app.register(connectionsRoutes);
-  app.register(imessageRoutes, { service: createIMessageRelayService(env.imessage) });
+  app.register(imessageRoutes, { service: opts.imessage ?? createIMessageRelayService(env.imessage) });
   // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
   // approval. The catalog is read-only and always listable.

@@ -179,6 +179,40 @@ export interface IMessageRoomResponse {
   message?: Message;
 }
 
+export interface IMessageRecipientView {
+  recipient: string;
+  serviceName: string | null;
+  verified: boolean;
+  verifiedAt: string | null;
+}
+
+export interface IMessageStatusResponse {
+  enabled: boolean;
+  configured: boolean;
+  dryRun: boolean;
+  recipient?: string;
+  recipientSource?: "member_verified" | "member_pending" | "workspace" | "none";
+  requiresVerification?: boolean;
+  maxChars: number;
+  memberRecipient: IMessageRecipientView | null;
+}
+
+export interface IMessageRecipientSaveResponse {
+  status: "pending_verification";
+  recipient: string;
+  serviceName: string | null;
+  verified: false;
+  message: string;
+}
+
+export interface IMessageTestResponse {
+  status: IMessageSendStatus;
+  recipient?: string;
+  dryRun: boolean;
+  error?: string;
+  memberRecipient: IMessageRecipientView | null;
+}
+
 export type FirstRunStage = "source_read" | "agent_result" | "dashboard_receipt";
 
 export interface FirstRunReceiptDto {
@@ -650,6 +684,35 @@ export interface FounderConsoleDto {
     openCount: number;
     total: number;
     noisiestComponents: { service: string; count: number }[];
+  };
+  /** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+  agentObservability?: {
+    scheduler: {
+      status: "healthy" | "degraded" | "stopped" | "unknown";
+      lastTickAgeSeconds: number | null;
+    };
+    queueDepth: number;
+    runningRuns: number;
+    stalledRuns: number;
+    failedRunsLast24h: number;
+    retryRate: number | null;
+    recovery: {
+      state: "idle" | "retrying" | "needs_human" | "unknown";
+      retryableStuckRuns: number;
+      lastRecoveryAtMs: number | null;
+    };
+    audit: {
+      toolCalls: number;
+      auditedToolCalls: number;
+      unauditedToolCalls: number;
+      coverage: number | null;
+    };
+    connectorSilentFailures: {
+      connector: string;
+      status: "silent" | "failing" | "unknown";
+      lastOkAgeSeconds: number | null;
+    }[];
+    alerts: string[];
   };
   /** The Growth Loop roll-up (#102/#222): event-driven funnel counts (no longer placeholders). */
   growth?: {

@@ -1623,8 +1623,33 @@ export const EVERYDAY = {
     subhead: "one messaging home for agent work. no WhatsApp, no Telegram, no fake green ticks.",
     connect: "connect",
     connected: "connected",
+    pending: "verify",
     publicAction: "open workspace",
     publicHint: "connectors need your workspace before they can run.",
+    imessage: {
+      title: "Text the team",
+      body:
+        "Add the iMessage address or phone number where the team should send receipts. We'll send one test first, then the room can start.",
+      label: "iMessage email or phone",
+      placeholder: "you@example.com or +15551234567",
+      serviceLabel: "Messages service",
+      servicePlaceholder: "iMessage",
+      save: "save",
+      test: "send test",
+      disconnect: "remove",
+      verified: "verified",
+      blocked: "relay not live",
+      pending: "test needed",
+      notSet: "not connected",
+      readyDetail: "agent-room relay can send receipts here.",
+      blockedDetail: "recipient is verified, but the Messages relay is not live yet.",
+      pendingDetail: "saved, but not used until a test send works.",
+      emptyDetail: "no personal iMessage destination yet.",
+      saved: "Saved. Send the test before starting the room.",
+      tested: "Test sent. The room can use this destination now.",
+      removed: "Removed.",
+      error: "That didn't pop. Check the address and try again.",
+    },
     groups: {
       productivity: "productivity",
       visibility: "visibility",
@@ -1790,6 +1815,21 @@ export const BILLING = {
     capSuffix: "cap",
     noCap: "no cap set",
     seatsSuffix: "seats",
+    valueTitle: "Work left this month",
+    valueReadyTitle: "Room to keep working",
+    valueReadyBody: (remaining: string, cap: string): string =>
+      `${remaining} of ${cap} remains before the agents pause for the month.`,
+    valueNearCapTitle: "Nearly at the line",
+    valueNearCapBody: (remaining: string, cap: string): string =>
+      `${remaining} remains from ${cap}. Time to upgrade before good work starts waiting.`,
+    valuePausedTitle: "Agents paused at the cap",
+    valuePausedBody: (cap: string): string =>
+      `This workspace has used its ${cap} agent-work cap. Upgrade to open more room.`,
+    valueNoCapTitle: "No monthly work cap set",
+    valueNoCapBody: "Set a plan cap before letting the agents run unattended.",
+    dailyValueLabel: "Everyday value",
+    dailyLimitLabel: "Plan limit",
+    upgradeTriggerLabel: "Upgrade moment",
     /** Clearly-marked safety note: live charges stay off until the owner connects Stripe. */
     testModeTitle: "Test mode — no live charges yet",
     testModeBody:
@@ -2312,7 +2352,7 @@ export const ASK_AI = {
   heading: "Ask an AI about us",
   blurb: "Curious but don't trust our marketing? Fair. Ask a neutral third party — we'll even pre-fill the question.",
   /** The prompt pre-filled into each assistant. */
-  prompt: "Explain ipop.ai to me — the marketing agency of AI agents. What is it, who is it for, and what's the catch?",
+  prompt: "Explain ipop.ai to me — the marketing team in your messages. What is it, who is it for, and what's the catch?",
   providers: [
     { key: "chatgpt", label: "ChatGPT", base: "https://chatgpt.com/?q=" },
     { key: "claude", label: "Claude", base: "https://claude.ai/new?q=" },

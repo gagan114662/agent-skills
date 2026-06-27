@@ -34,7 +34,9 @@ export function imessageRoomPreflight(status: IMessageStatus): IMessageSendResul
       status: "not_configured",
       dryRun: status.dryRun,
       recipient: status.recipient,
-      error: "iMessage relay is not configured for this workspace yet.",
+      error: status.requiresVerification
+        ? "Verify this iMessage recipient with a successful test send before starting the room."
+        : "iMessage relay is not configured for this workspace yet.",
     };
   }
   if (status.dryRun) {
@@ -55,11 +57,20 @@ export class IMessageRelayService {
   ) {}
 
   status(): IMessageStatus {
+    return this.statusFor();
+  }
+
+  statusFor(input: { recipient?: string; source?: IMessageStatus["recipientSource"]; verified?: boolean } = {}): IMessageStatus {
+    const recipient = input.recipient ?? this.config.recipient;
+    const source = input.source ?? (recipient ? "workspace" : "none");
+    const requiresVerification = source === "member_pending" || input.verified === false;
     return {
       enabled: this.config.enabled,
-      configured: Boolean(this.config.recipient),
+      configured: Boolean(recipient) && !requiresVerification,
       dryRun: this.config.dryRun,
-      recipient: this.config.recipient,
+      recipient,
+      recipientSource: source,
+      requiresVerification,
       maxChars: this.config.maxChars,
     };
   }
@@ -73,7 +84,7 @@ export class IMessageRelayService {
     }
     if (this.config.dryRun) return { status: "dry_run", dryRun: true, recipient };
     try {
-      await this.adapter.send({ recipient, text: input.text, serviceName: this.config.serviceName });
+      await this.adapter.send({ recipient, text: input.text, serviceName: input.serviceName ?? this.config.serviceName });
       return { status: "sent", dryRun: false, recipient };
     } catch (err) {
       return {

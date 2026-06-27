@@ -46,6 +46,15 @@ describe("LiveEverydayShell (#1181)", () => {
       launched: [],
       connectPrompted: [],
     });
+    vi.spyOn(api, "getIMessageStatus").mockResolvedValue({
+      enabled: true,
+      configured: false,
+      dryRun: false,
+      recipientSource: "none",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: null,
+    });
     window.sessionStorage.clear();
   });
 
@@ -211,6 +220,293 @@ describe("LiveEverydayShell (#1181)", () => {
       await screen.findByText("iMessage relay is still in dry-run mode; no real Messages room was started."),
     ).toBeInTheDocument();
     expect(launchTeamRun).not.toHaveBeenCalled();
+  });
+
+  it("launches every room agent with the shared prompt structure and a Codex operator packet (#1265)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+      connected: true,
+      reason: "",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "sent",
+      dryRun: false,
+      receipt: "imessage:c1:room",
+      message: makeMessage({ id: "room", channelId: "c1", body: "grow ipop.ai" }),
+    });
+    vi.spyOn(api, "searchMembers").mockImplementation(async (_workspaceId, q) => [
+      { id: "ag-" + q.toLowerCase(), kind: "agent", displayName: q },
+    ]);
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun").mockResolvedValue({
+      teamRunId: "team-1",
+      subtaskCount: 5,
+      subtasks: [],
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "grow ipop.ai" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
+    const [channelId, subtasks] = launchTeamRun.mock.calls[0]!;
+    expect(channelId).toBe("c1");
+    expect(subtasks).toHaveLength(5);
+    expect(subtasks.every((subtask) => subtask.harness === "codex")).toBe(true);
+    for (const subtask of subtasks) {
+      expect(subtask.task).toContain("1. Task context");
+      expect(subtask.task).toContain("2. Tone context");
+      expect(subtask.task).toContain("3. Background data, documents, and images");
+      expect(subtask.task).toContain("4. Detailed task description & rules");
+      expect(subtask.task).toContain("5. Examples");
+      expect(subtask.task).toContain("6. Conversation history");
+      expect(subtask.task).toContain("7. Immediate task description or request");
+      expect(subtask.task).toContain("8. Thinking step by step / take a deep breath");
+      expect(subtask.task).toContain("9. Output formatting");
+      expect(subtask.task).toContain("10. Prefilled response (if any)");
+      expect(subtask.task).toContain("grow ipop.ai");
+      expect(subtask.task).toContain("Do real marketing work");
+      expect(subtask.task).toContain("Do not send, publish, spend");
+    }
+    const operator = subtasks.find((subtask) => subtask.branch.startsWith("ipop-codex-"));
+    expect(operator?.task).toContain("codex_work_packet");
+    expect(operator?.task).toContain("audit_label: codex_operator_lane");
+    expect(operator?.task).toContain("credential_boundary");
+    expect(operator?.task).toContain("Return payload schema");
+    expect(operator?.task).toContain("pr_or_issue_links");
+  });
+
+  it("lets the signed-in user save and verify their iMessage destination before room launch (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    const getStatus = vi.mocked(api.getIMessageStatus);
+    getStatus
+      .mockResolvedValueOnce({
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        recipientSource: "none",
+        requiresVerification: false,
+        maxChars: 2000,
+        memberRecipient: null,
+      })
+      .mockResolvedValueOnce({
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        recipientSource: "member_pending",
+        requiresVerification: true,
+        maxChars: 2000,
+        memberRecipient: {
+          recipient: "gagan@example.com",
+          serviceName: null,
+          verified: false,
+          verifiedAt: null,
+        },
+      })
+      .mockResolvedValue({
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "gagan@example.com",
+        recipientSource: "member_verified",
+        requiresVerification: false,
+        maxChars: 2000,
+        memberRecipient: {
+          recipient: "gagan@example.com",
+          serviceName: null,
+          verified: true,
+          verifiedAt: "2026-06-27T06:00:00.000Z",
+        },
+      });
+    const save = vi.spyOn(api, "saveIMessageRecipient").mockResolvedValue({
+      status: "pending_verification",
+      recipient: "gagan@example.com",
+      serviceName: null,
+      verified: false,
+      message: "Send a test message before using this iMessage destination for the agent room.",
+    });
+    const test = vi.spyOn(api, "testIMessageRecipient").mockResolvedValue({
+      status: "sent",
+      dryRun: false,
+      recipient: "gagan@example.com",
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: true,
+        verifiedAt: "2026-06-27T06:00:00.000Z",
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByLabelText(EVERYDAY.connectors.imessage.label), {
+      target: { value: "GAGAN@Example.COM" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.save }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith({ recipient: "GAGAN@Example.COM", serviceName: undefined }),
+    );
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.pending)).toBeInTheDocument();
+    expect(screen.getByText(/gagan@example.com/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.test }));
+
+    await waitFor(() => expect(test).toHaveBeenCalled());
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.verified)).toBeInTheDocument();
+  });
+
+  it("does not mark iMessage connected when the recipient is verified but the relay is dry-run (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "recorded",
+          providerStatus: "healthy",
+          lastProofAt: 123,
+          lastProofReceipt: "imessage:test",
+          failureReason: null,
+          connected: true,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      dryRun: true,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: true,
+        verifiedAt: "2026-06-27T06:00:00.000Z",
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
+    expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
+  });
+
+  it("surfaces a dry-run iMessage test as an error instead of a successful verification (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: false,
+      dryRun: true,
+      recipient: "gagan@example.com",
+      recipientSource: "member_pending",
+      requiresVerification: true,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: false,
+        verifiedAt: null,
+      },
+    });
+    vi.spyOn(api, "testIMessageRecipient").mockResolvedValue({
+      status: "dry_run",
+      dryRun: true,
+      recipient: "gagan@example.com",
+      error: "iMessage relay is still in dry-run mode; no real Messages test was sent.",
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: false,
+        verifiedAt: null,
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: EVERYDAY.connectors.imessage.test }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/dry-run mode/i);
+    expect(screen.queryByText(EVERYDAY.connectors.imessage.verified)).not.toBeInTheDocument();
   });
 
   it("surfaces the persisted first-run receipt as live CMO dashboard proof (#1289)", async () => {
