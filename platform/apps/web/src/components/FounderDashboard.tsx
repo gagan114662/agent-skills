@@ -32,6 +32,25 @@ function mttr(ms: number | null): string {
   return `${min} min`;
 }
 
+type EvidenceKind = "live" | "sample" | "dogfood" | "external";
+
+function evidenceLabel(kind: EvidenceKind): string {
+  switch (kind) {
+    case "external":
+      return "external customer proof";
+    case "dogfood":
+      return "dogfood";
+    case "sample":
+      return "sample";
+    case "live":
+      return "live";
+  }
+}
+
+function EvidenceBadge({ kind }: { kind: EvidenceKind }): React.JSX.Element {
+  return <span className={`founder__evidence founder__evidence--${kind}`}>{evidenceLabel(kind)}</span>;
+}
+
 export interface FounderDashboardProps {
   console: FounderConsoleDto | null;
   /**
@@ -72,6 +91,77 @@ export function FounderDashboard({
     total: 0,
     noisiestComponents: [],
   };
+  const proofScorecard = data.proofScorecard ?? { connectedCount: 0, total: 0, tiles: [] };
+  const outreach = data.outreach ?? {
+    experimentsRunning: 0,
+    experimentsConcluded: 0,
+    messagesPendingApproval: 0,
+    messagesSent: 0,
+    replies: 0,
+    meetings: 0,
+    signups: 0,
+  };
+  const hasExternalProof =
+    revenue.paymentCount > 0 ||
+    outreach.replies > 0 ||
+    outreach.meetings > 0 ||
+    outreach.signups > 0;
+  const hasFirstRun = fleet.sessionsThisWindow > 0;
+  const launchReadiness = [
+    {
+      label: "Auth",
+      ready: hasFirstRun || fleet.activeSessions > 0,
+      evidence: hasFirstRun || fleet.activeSessions > 0 ? "live" : "sample",
+      detail: hasFirstRun ? "at least one agent run recorded" : "no signed-in run evidence yet",
+    },
+    {
+      label: "Connectors",
+      ready: proofScorecard.connectedCount > 0,
+      evidence: proofScorecard.connectedCount > 0 ? "live" : "sample",
+      detail:
+        proofScorecard.total > 0
+          ? `${proofScorecard.connectedCount}/${proofScorecard.total} proof sources connected`
+          : "no proof sources connected yet",
+    },
+    {
+      label: "First run",
+      ready: hasFirstRun,
+      evidence: hasFirstRun ? "live" : "sample",
+      detail: `${fleet.sessionsThisWindow} sessions this window`,
+    },
+    {
+      label: "Outbound",
+      ready: outreach.messagesSent > 0 || outreach.messagesPendingApproval > 0,
+      evidence: hasExternalProof ? "external" : outreach.messagesPendingApproval > 0 ? "live" : "sample",
+      detail:
+        outreach.messagesSent > 0
+          ? `${outreach.messagesSent} sent, ${outreach.replies} replies`
+          : `${outreach.messagesPendingApproval} sends waiting for approval`,
+    },
+    {
+      label: "Billing",
+      ready: budget.budgetCents > 0 || revenue.paymentCount > 0,
+      evidence: revenue.paymentCount > 0 ? "external" : budget.budgetCents > 0 ? "live" : "sample",
+      detail:
+        revenue.paymentCount > 0
+          ? `${revenue.paymentCount} payment receipts`
+          : budget.budgetCents > 0
+            ? `${dollars(budget.budgetCents)} cap set`
+            : "no billing cap or payment receipt yet",
+    },
+    {
+      label: "Observability",
+      ready: true,
+      evidence: "live",
+      detail: `${reliability.openCount} open incidents, MTTR ${mttr(reliability.mttrMs)}`,
+    },
+    {
+      label: "Legal/trust",
+      ready: true,
+      evidence: "dogfood",
+      detail: "terms, privacy, refund, DPA, and security pages are published",
+    },
+  ] satisfies { label: string; ready: boolean; evidence: EvidenceKind; detail: string }[];
 
   return (
     <section className="founder" aria-label="Founder console">
@@ -87,7 +177,7 @@ export function FounderDashboard({
 
       <div className="founder__grid">
         <article className="founder__card">
-          <h3>Pending approvals</h3>
+          <h3>Pending approvals <EvidenceBadge kind="live" /></h3>
           {pendingApprovals.length === 0 ? (
             <EmptyState className="emptystate--compact">{VOICE.noPendingApprovals}</EmptyState>
           ) : (
@@ -109,7 +199,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Fleet</h3>
+          <h3>Fleet <EvidenceBadge kind="live" /></h3>
           <dl className="founder__stats">
             <div>
               <dt>Active sessions</dt>
@@ -127,7 +217,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Venture pipeline</h3>
+          <h3>Venture pipeline <EvidenceBadge kind="dogfood" /></h3>
           <dl className="founder__stats">
             <div>
               <dt>Active</dt>
@@ -155,7 +245,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Revenue</h3>
+          <h3>Revenue <EvidenceBadge kind={revenue.paymentCount > 0 ? "external" : "live"} /></h3>
           <dl className="founder__stats">
             <div>
               <dt>Total</dt>
@@ -176,7 +266,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Budget · {budget.window}</h3>
+          <h3>Budget · {budget.window} <EvidenceBadge kind="live" /></h3>
           {budget.overBudget && (
             <p className="founder__overbudget" role="alert">
               ⛔ Over budget — new sessions are halted.
@@ -206,7 +296,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Switches</h3>
+          <h3>Switches <EvidenceBadge kind="live" /></h3>
           <dl className="founder__stats founder__switches">
             <SwitchControl
               label="Kill switch"
@@ -242,7 +332,7 @@ export function FounderDashboard({
         </article>
 
         <article className="founder__card">
-          <h3>Reliability</h3>
+          <h3>Reliability <EvidenceBadge kind="live" /></h3>
           <dl className="founder__stats">
             <div>
               <dt>MTTR</dt>
@@ -269,6 +359,53 @@ export function FounderDashboard({
               </dd>
             </div>
           </dl>
+        </article>
+
+        <article className="founder__card founder__card--wide">
+          <h3>Launch readiness <EvidenceBadge kind={hasExternalProof ? "external" : "dogfood"} /></h3>
+          <ul className="founder__readiness">
+            {launchReadiness.map((item) => (
+              <li key={item.label} className={item.ready ? "is-ready" : "is-waiting"}>
+                <span className="founder__readiness-state" aria-hidden="true">
+                  {item.ready ? "✓" : "·"}
+                </span>
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </span>
+                <EvidenceBadge kind={item.evidence} />
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="founder__card founder__card--wide">
+          <h3>
+            Proof scorecard{" "}
+            <EvidenceBadge kind={proofScorecard.connectedCount > 0 ? "live" : "sample"} />
+          </h3>
+          {proofScorecard.tiles.length === 0 ? (
+            <EmptyState className="emptystate--compact">
+              No proof sources connected yet. Sample/demo rows stay out of live metrics.
+            </EmptyState>
+          ) : (
+            <ul className="founder__proof">
+              {proofScorecard.tiles.map((tile) => {
+                const connected = tile.connection === "connected";
+                return (
+                  <li key={`${tile.department}-${tile.metricLabel}`} className={connected ? "is-live" : "is-sample"}>
+                    <div>
+                      <strong>{tile.title}</strong>
+                      <span>{tile.metricLabel}</span>
+                    </div>
+                    <b>{connected ? tile.display : "not live"}</b>
+                    <EvidenceBadge kind={connected ? "live" : "sample"} />
+                    <small>{connected ? tile.source : "No real source receipt connected."}</small>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </article>
       </div>
     </section>

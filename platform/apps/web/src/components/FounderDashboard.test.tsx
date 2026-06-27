@@ -56,6 +56,97 @@ describe("FounderDashboard (#104)", () => {
     expect(card).toHaveTextContent("1"); // open incidents
   });
 
+  it("labels dashboard metrics by proof source and shows launch readiness (#1293)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          fleet: { activeSessions: 0, sessionsThisWindow: 2, globalInFlight: 1 },
+          revenue: {
+            currency: "usd",
+            totalCents: 19900,
+            paymentCount: 1,
+            willingnessToPayCount: 1,
+            hasWillingnessToPay: true,
+          },
+          outreach: {
+            experimentsRunning: 1,
+            experimentsConcluded: 0,
+            messagesPendingApproval: 0,
+            messagesSent: 3,
+            replies: 1,
+            meetings: 0,
+            signups: 0,
+          },
+          proofScorecard: {
+            connectedCount: 1,
+            total: 2,
+            tiles: [
+              {
+                department: "seo",
+                agent: "Scout",
+                title: "SEO proof",
+                metricLabel: "indexed pages",
+                connection: "connected",
+                unit: "count",
+                value: 12,
+                display: "12",
+                trend: "up",
+                delta: 2,
+                improving: true,
+                trendDetail: "+2 this week",
+                source: "Search Console receipt",
+                note: null,
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: /launch readiness/i })).toBeInTheDocument();
+    expect(screen.getByText(/2 sessions this window/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 sent, 1 replies/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/external customer proof/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Search Console receipt/i)).toBeInTheDocument();
+  });
+
+  it("never renders an unconnected proof-scorecard row as live proof (#1293)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          proofScorecard: {
+            connectedCount: 0,
+            total: 1,
+            tiles: [
+              {
+                department: "reach",
+                agent: "Comet",
+                title: "Reach proof",
+                metricLabel: "replies",
+                connection: "not_connected",
+                unit: "count",
+                value: null,
+                display: "0",
+                trend: "none",
+                delta: null,
+                improving: null,
+                trendDetail: "No source",
+                source: "sample outreach fixture",
+                note: "Connect outbound to verify.",
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    const proofCard = screen.getByRole("heading", { name: /proof scorecard/i }).closest("article")!;
+    expect(proofCard).toHaveTextContent(/not live/i);
+    expect(proofCard).toHaveTextContent(/sample/i);
+    expect(proofCard).not.toHaveTextContent(/sample outreach fixture/i);
+    expect(proofCard).not.toHaveTextContent(/external customer proof/i);
+  });
+
   it("renders a zeroed reliability pane when the field is absent (loop off / unwired)", () => {
     render(<FounderDashboard console={console_()} />);
     const card = screen.getByRole("heading", { name: /reliability/i }).closest("article")!;
