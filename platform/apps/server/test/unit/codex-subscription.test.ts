@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { codexStatusFromDoctor } from "../../src/runtime/codex-subscription.js";
+import {
+  codexStatusFromDoctor,
+  createCodexSubscriptionStatusProvider,
+} from "../../src/runtime/codex-subscription.js";
 
 function doctor(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -57,5 +60,55 @@ describe("Codex subscription status (#1282)", () => {
       fallback: "none",
       apiKeySatisfies: false,
     });
+  });
+
+  it("fails closed instead of throwing when doctor JSON is null or another non-object", () => {
+    expect(codexStatusFromDoctor("null")).toMatchObject({
+      connected: false,
+      reason: "Codex doctor did not return a valid JSON report object.",
+    });
+    expect(codexStatusFromDoctor("[]")).toMatchObject({
+      connected: false,
+      reason: "Codex doctor did not return a valid JSON report object.",
+    });
+  });
+
+  it("uses JSON stdout from a non-zero doctor exit so unrelated doctor failures do not block runs", async () => {
+    const err = Object.assign(new Error("doctor exited 1"), { stdout: doctor() });
+    const provider = createCodexSubscriptionStatusProvider({
+      runDoctor: async () => {
+        throw err;
+      },
+    });
+    await expect(provider.status()).resolves.toMatchObject({
+      connected: true,
+      runtimeAuth: "signed_in_subscription",
+      apiKeySatisfies: false,
+    });
+  });
+
+  it("deduplicates concurrent doctor checks so status polling cannot stampede processes", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const provider = createCodexSubscriptionStatusProvider({
+      runDoctor: async () => {
+        calls += 1;
+        await ready;
+        return doctor();
+      },
+    });
+
+    const first = provider.status();
+    const second = provider.status();
+    release();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ connected: true }),
+      expect.objectContaining({ connected: true }),
+    ]);
+    expect(calls).toBe(1);
   });
 });

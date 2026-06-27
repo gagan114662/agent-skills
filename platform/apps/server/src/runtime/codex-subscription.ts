@@ -46,7 +46,11 @@ function baseStatus(overrides: Partial<CodexSubscriptionStatus>): CodexSubscript
 export function codexStatusFromDoctor(stdout: string): CodexSubscriptionStatus {
   let report: CodexDoctorReport;
   try {
-    report = JSON.parse(stdout) as CodexDoctorReport;
+    const parsed = JSON.parse(stdout);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return baseStatus({ reason: "Codex doctor did not return a valid JSON report object." });
+    }
+    report = parsed as CodexDoctorReport;
   } catch {
     return baseStatus({ reason: "Codex doctor did not return parseable JSON." });
   }
@@ -87,6 +91,12 @@ export function codexStatusFromDoctor(stdout: string): CodexSubscriptionStatus {
   });
 }
 
+function stdoutFromThrownDoctorError(err: unknown): string | null {
+  if (!err || typeof err !== "object" || !("stdout" in err)) return null;
+  const stdout = (err as { stdout?: unknown }).stdout;
+  return typeof stdout === "string" && stdout.trim() ? stdout : null;
+}
+
 export function createCodexSubscriptionStatusProvider(
   options: CodexDoctorStatusProviderOptions = {},
 ): CodexSubscriptionStatusProvider {
@@ -102,18 +112,30 @@ export function createCodexSubscriptionStatusProvider(
       });
       return stdout;
     });
+  let activePromise: Promise<CodexSubscriptionStatus> | null = null;
 
   return {
     async status() {
-      try {
-        return codexStatusFromDoctor(await runDoctor());
-      } catch (err) {
-        const reason =
-          err instanceof Error && err.message.trim()
-            ? "Codex subscription auth check failed: " + err.message
-            : "Codex subscription auth check failed.";
-        return baseStatus({ reason });
-      }
+      if (activePromise) return activePromise;
+      activePromise = (async () => {
+        try {
+          return codexStatusFromDoctor(await runDoctor());
+        } catch (err) {
+          const stdout = stdoutFromThrownDoctorError(err);
+          if (stdout) {
+            const status = codexStatusFromDoctor(stdout);
+            if (status.reason !== "Codex doctor did not return parseable JSON.") return status;
+          }
+          const reason =
+            err instanceof Error && err.message.trim()
+              ? "Codex subscription auth check failed: " + err.message
+              : "Codex subscription auth check failed.";
+          return baseStatus({ reason });
+        } finally {
+          activePromise = null;
+        }
+      })();
+      return activePromise;
     },
   };
 }
