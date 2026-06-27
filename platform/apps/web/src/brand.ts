@@ -1956,6 +1956,7 @@ export const BILLING = {
     dailyValueLabel: "Everyday value",
     dailyLimitLabel: "Plan limit",
     productLimitsLabel: "Included quota",
+    liveQuotasLabel: "Live quota usage",
     activeCampaignLanesLabel: "Campaign lanes",
     connectedChannelsLabel: "Connected channels",
     dailyOutreachSendsLabel: "Daily sends",

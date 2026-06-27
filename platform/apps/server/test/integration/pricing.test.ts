@@ -395,7 +395,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
         cookies: { rid: tw.cookie },
       })
     ).json();
-    expect(testStatus).toEqual({ provider: "none", mode: "test", live: false });
+    expect(testStatus).toEqual({ provider: "none", mode: "test", live: false, quotas: [] });
 
     // Owner has flipped go-live: stripe backend + live mode → real money is on.
     const liveApp = await startApp({
@@ -410,7 +410,7 @@ describe("Pricing + Stripe checkout (#125 — real Postgres + Redis, no-network 
         cookies: { rid: lw.cookie },
       })
     ).json();
-    expect(liveStatus).toEqual({ provider: "stripe", mode: "live", live: true });
+    expect(liveStatus).toEqual({ provider: "stripe", mode: "live", live: true, quotas: [] });
   }, INTEGRATION_TIMEOUT_MS);
 
   it("cannot read another workspace's billing status (IDOR, #481)", async () => {

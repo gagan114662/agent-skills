@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { ActivePlanDto, PlanDto } from "@reload/shared";
+import type { ActivePlanDto, BillingQuotaMeterDto, PlanDto } from "@reload/shared";
 import type { UsageReport } from "../api/types.js";
 import { BillingSettings } from "./BillingSettings.js";
 import { BILLING } from "../brand.js";
@@ -56,6 +56,26 @@ const USAGE: UsageReport = {
   overBudget: false,
 };
 
+const QUOTAS: BillingQuotaMeterDto[] = [
+  {
+    resource: "active_campaign_lanes",
+    label: "Active campaign lanes",
+    used: 1,
+    limit: 3,
+    remaining: 2,
+    upgradeTrigger: PRO_PLAN.upgradeTrigger,
+  },
+  {
+    resource: "daily_outreach_sends",
+    label: "Daily outreach sends",
+    used: 12,
+    limit: 150,
+    remaining: 138,
+    upgradeTrigger: PRO_PLAN.upgradeTrigger,
+    window: "today",
+  },
+];
+
 describe("BillingSettings (#215)", () => {
   it("shows the active plan name, seats, and usage vs cap", () => {
     render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} />);
@@ -82,6 +102,17 @@ describe("BillingSettings (#215)", () => {
     expect(screen.getByText("150 sends/day")).toBeInTheDocument();
     expect(screen.getByText(BILLING.panel.upgradeTriggerLabel)).toBeInTheDocument();
     expect(screen.getByText(PRO_PLAN.upgradeTrigger)).toBeInTheDocument();
+  });
+
+  it("shows live used/limit quota meters when billing status provides them (#1290)", () => {
+    render(<BillingSettings current={ACTIVE} plans={PLANS} usage={USAGE} quotas={QUOTAS} />);
+    expect(screen.getByRole("list", { name: BILLING.panel.liveQuotasLabel })).toBeInTheDocument();
+    expect(screen.getByText("Active campaign lanes")).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: "Active campaign lanes" })).toHaveAttribute("value", "1");
+    expect(screen.getByText("2 left")).toBeInTheDocument();
+    expect(screen.getByText("12 / 150 today")).toBeInTheDocument();
+    expect(screen.getByText("138 left")).toBeInTheDocument();
   });
 
   it("shows a cap-hit upgrade moment when the workspace is out of monthly room (#1290)", () => {

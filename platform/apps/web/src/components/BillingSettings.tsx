@@ -6,7 +6,7 @@
  * and {@link ConnectClaude}. The actual upgrade buttons (→ Stripe checkout) are the embedded
  * {@link PricingPanel}; this component is the summary that sits above it.
  */
-import type { ActivePlanDto, BillingInvoiceDto, PlanDto } from "@reload/shared";
+import type { ActivePlanDto, BillingInvoiceDto, BillingQuotaMeterDto, PlanDto } from "@reload/shared";
 import type { UsageReport } from "../api/types.js";
 import { BILLING } from "../brand.js";
 
@@ -24,12 +24,17 @@ function formatLimit(value: number, unit: string): string {
   return `${value.toLocaleString()} ${unit}`;
 }
 
+function formatQuota(quota: BillingQuotaMeterDto): string {
+  return `${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${quota.window ? ` ${quota.window}` : ""}`;
+}
+
 export function BillingSettings({
   current,
   plans,
   usage,
   live = false,
   invoices = [],
+  quotas = [],
 }: {
   current: ActivePlanDto | null;
   plans: readonly PlanDto[];
@@ -37,6 +42,8 @@ export function BillingSettings({
   /** #481 go-live: true once real payments are on (stripe + live mode) — flips the safety note. */
   live?: boolean;
   invoices?: readonly BillingInvoiceDto[];
+  /** Live #1290 quota meters from billing status. Empty falls back to static plan limits. */
+  quotas?: readonly BillingQuotaMeterDto[];
 }): React.JSX.Element {
   // The display name of the active plan (catalog lookup); a workspace with no activated plan is on trial.
   const activePlan = current ? plans.find((p) => p.key === current.planKey) : null;
@@ -140,28 +147,51 @@ export function BillingSettings({
             <div>
               <dt>{BILLING.panel.productLimitsLabel}</dt>
               <dd>
-                <ul className="billing-settings__quota-list">
-                  <li>
-                    <span>{BILLING.panel.activeCampaignLanesLabel}</span>
-                    <strong>{formatLimit(activePlan.productLimits.activeCampaignLanes, "lanes")}</strong>
-                  </li>
-                  <li>
-                    <span>{BILLING.panel.connectedChannelsLabel}</span>
-                    <strong>{formatLimit(activePlan.productLimits.connectedChannels, "channels")}</strong>
-                  </li>
-                  <li>
-                    <span>{BILLING.panel.dailyOutreachSendsLabel}</span>
-                    <strong>{formatLimit(activePlan.productLimits.dailyOutreachSends, "sends/day")}</strong>
-                  </li>
-                  <li>
-                    <span>{BILLING.panel.approvalQueueSizeLabel}</span>
-                    <strong>{formatLimit(activePlan.productLimits.approvalQueueSize, "pending")}</strong>
-                  </li>
-                  <li>
-                    <span>{BILLING.panel.dashboardHistoryDaysLabel}</span>
-                    <strong>{formatLimit(activePlan.productLimits.dashboardHistoryDays, "days")}</strong>
-                  </li>
-                </ul>
+                {quotas.length > 0 ? (
+                  <ul className="billing-settings__quota-list" aria-label={BILLING.panel.liveQuotasLabel}>
+                    {quotas.map((quota) => {
+                      const percent = quota.limit > 0 ? clampPercent((quota.used / quota.limit) * 100) : 0;
+                      return (
+                        <li key={quota.resource}>
+                          <span>{quota.label}</span>
+                          <strong>{formatQuota(quota)}</strong>
+                          <meter
+                            min={0}
+                            max={quota.limit > 0 ? quota.limit : 1}
+                            value={Math.min(quota.used, quota.limit)}
+                            aria-label={quota.label}
+                            title={quota.upgradeTrigger}
+                          />
+                          <em>{quota.remaining.toLocaleString()} left</em>
+                          <span className="billing-settings__quota-fill" style={{ width: `${percent}%` }} />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <ul className="billing-settings__quota-list">
+                    <li>
+                      <span>{BILLING.panel.activeCampaignLanesLabel}</span>
+                      <strong>{formatLimit(activePlan.productLimits.activeCampaignLanes, "lanes")}</strong>
+                    </li>
+                    <li>
+                      <span>{BILLING.panel.connectedChannelsLabel}</span>
+                      <strong>{formatLimit(activePlan.productLimits.connectedChannels, "channels")}</strong>
+                    </li>
+                    <li>
+                      <span>{BILLING.panel.dailyOutreachSendsLabel}</span>
+                      <strong>{formatLimit(activePlan.productLimits.dailyOutreachSends, "sends/day")}</strong>
+                    </li>
+                    <li>
+                      <span>{BILLING.panel.approvalQueueSizeLabel}</span>
+                      <strong>{formatLimit(activePlan.productLimits.approvalQueueSize, "pending")}</strong>
+                    </li>
+                    <li>
+                      <span>{BILLING.panel.dashboardHistoryDaysLabel}</span>
+                      <strong>{formatLimit(activePlan.productLimits.dashboardHistoryDays, "days")}</strong>
+                    </li>
+                  </ul>
+                )}
               </dd>
             </div>
             <div>

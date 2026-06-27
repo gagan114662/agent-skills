@@ -429,6 +429,20 @@ export interface CheckoutResponseDto {
   pricingAssignmentId?: string | null;
 }
 
+export interface BillingQuotaMeterDto {
+  resource:
+    | "active_campaign_lanes"
+    | "connected_channels"
+    | "daily_outreach_sends"
+    | "approval_queue";
+  label: string;
+  used: number;
+  limit: number;
+  remaining: number;
+  upgradeTrigger: string;
+  window?: string;
+}
+
 /**
  * `GET /workspaces/:wid/billing/status` payload (#481 go-live). Lets the UI render the real billing state
  * instead of a hardcoded "test mode" banner: `live` is true ONLY when the `stripe` backend runs in `live`
@@ -441,6 +455,8 @@ export interface BillingStatusDto {
   mode: string;
   /** True iff real money can be charged right now (stripe + live). */
   live: boolean;
+  /** Live plan quota meters for upgrade moments (#1290). Empty until a plan is active. */
+  quotas?: BillingQuotaMeterDto[];
 }
 
 // The wire codec (marker prefix + encode/parse) lives in the server (`src/team/protocol.ts`):

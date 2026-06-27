@@ -76,7 +76,21 @@ describe("BillingSettingsPanel (#215)", () => {
   it("renders the current plan + usage vs cap and embeds the upgrade table", async () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
     vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
-    vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "none", mode: "test", live: false });
+    vi.spyOn(api.billing, "status").mockResolvedValue({
+      provider: "none",
+      mode: "test",
+      live: false,
+      quotas: [
+        {
+          resource: "connected_channels",
+          label: "Connected channels",
+          used: 2,
+          limit: 3,
+          remaining: 1,
+          upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
+        },
+      ],
+    });
     vi.spyOn(api.billing, "listInvoices").mockResolvedValue({ invoices: [] });
     const store = await bootedStore("ws-billing");
 
@@ -95,12 +109,13 @@ describe("BillingSettingsPanel (#215)", () => {
     expect(screen.getAllByText("Pro").length).toBeGreaterThan(0);
     // Not live → the test-mode safety note shows (#481).
     expect(screen.getByText(BILLING.panel.testModeTitle)).toBeInTheDocument();
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
   });
 
   it("flips to the live-mode note when the billing status reports go-live is on (#481)", async () => {
     vi.spyOn(api.billing, "listPlans").mockResolvedValue(PLANS_RESPONSE);
     vi.spyOn(api, "getScaleUsage").mockResolvedValue(USAGE);
-    vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "stripe", mode: "live", live: true });
+    vi.spyOn(api.billing, "status").mockResolvedValue({ provider: "stripe", mode: "live", live: true, quotas: [] });
     vi.spyOn(api.billing, "listInvoices").mockResolvedValue({
       invoices: [
         {

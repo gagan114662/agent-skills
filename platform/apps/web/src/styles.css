@@ -6733,10 +6733,15 @@ select:focus-visible {
 .billing-settings__plan-value dt { margin: 0 0 4px; color: var(--text-dim); font-family: var(--console-mono);
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; }
 .billing-settings__plan-value dd { margin: 0; color: var(--text); font-size: 13px; line-height: 1.25; }
-.billing-settings__quota-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
-.billing-settings__quota-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.billing-settings__quota-list span { color: var(--text-dim); }
-.billing-settings__quota-list strong { font-family: var(--console-mono); font-size: 12px; white-space: nowrap; }
+.billing-settings__quota-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.billing-settings__quota-list li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px; align-items: center; overflow: hidden; }
+.billing-settings__quota-list span { min-width: 0; color: var(--text-dim); overflow-wrap: anywhere; }
+.billing-settings__quota-list strong { position: relative; z-index: 1; font-family: var(--console-mono); font-size: 12px; white-space: nowrap; }
+.billing-settings__quota-list meter { grid-column: 1 / -1; width: 100%; height: 6px; }
+.billing-settings__quota-list em { position: relative; z-index: 1; color: var(--text-dim); font-style: normal;
+  font-family: var(--console-mono); font-size: 11px; }
+.billing-settings__quota-fill { display: none; }
 .billing-settings__testmode { display: flex; flex-direction: column; gap: 3px; padding: 10px 13px;
   background: var(--bg-1); border: 1px solid var(--line); border-left: 3px solid var(--away);
   border-radius: var(--radius); color: var(--text-dim); }
