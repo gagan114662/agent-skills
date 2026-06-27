@@ -1813,6 +1813,21 @@ export const BILLING = {
     capSuffix: "cap",
     noCap: "no cap set",
     seatsSuffix: "seats",
+    valueTitle: "Work left this month",
+    valueReadyTitle: "Room to keep working",
+    valueReadyBody: (remaining: string, cap: string): string =>
+      `${remaining} of ${cap} remains before the agents pause for the month.`,
+    valueNearCapTitle: "Nearly at the line",
+    valueNearCapBody: (remaining: string, cap: string): string =>
+      `${remaining} remains from ${cap}. Time to upgrade before good work starts waiting.`,
+    valuePausedTitle: "Agents paused at the cap",
+    valuePausedBody: (cap: string): string =>
+      `This workspace has used its ${cap} agent-work cap. Upgrade to open more room.`,
+    valueNoCapTitle: "No monthly work cap set",
+    valueNoCapBody: "Set a plan cap before letting the agents run unattended.",
+    dailyValueLabel: "Everyday value",
+    dailyLimitLabel: "Plan limit",
+    upgradeTriggerLabel: "Upgrade moment",
     /** Clearly-marked safety note: live charges stay off until the owner connects Stripe. */
     testModeTitle: "Test mode — no live charges yet",
     testModeBody:
