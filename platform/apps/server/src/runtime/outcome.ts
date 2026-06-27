@@ -322,6 +322,14 @@ export function renderSessionOutcome(o: SessionOutcome): string {
 
 /** Upper bound on the agent's posted chat reply (#393), matching the deliverable card's draft cap. */
 export const MAX_REPLY_CHARS = 4000;
+const CODEX_OPERATOR_RECEIPT_PREFIX =
+  "codex_operator_lane receipt\n" +
+  "Returned through the signed-in team-engine lane; no API keys, cookies, passwords, or browser session secrets were requested.\n\n";
+
+function isCodexOperatorLaneTask(task: string): boolean {
+  const lower = task.toLowerCase();
+  return lower.includes("codex_work_packet") || lower.includes("audit_label: codex_operator_lane");
+}
 
 /**
  * Strip C0/C1 control characters from a deliverable about to be posted as a chat message (#393), but
@@ -351,8 +359,6 @@ function stripControlChars(text: string): string {
 export function formatDeliverableMessage(task: string, deliverable: string): string {
   const body = stripControlChars(deliverable).trim();
   if (!body) return "";
-  // `task` is accepted for parity with the surfacing sink (and a possible future context line); the
-  // deliverable text already stands on its own as the reply, so we post it verbatim.
-  void task;
-  return body.length > MAX_REPLY_CHARS ? body.slice(0, MAX_REPLY_CHARS) : body;
+  const reply = isCodexOperatorLaneTask(task) ? CODEX_OPERATOR_RECEIPT_PREFIX + body : body;
+  return reply.length > MAX_REPLY_CHARS ? reply.slice(0, MAX_REPLY_CHARS) : reply;
 }

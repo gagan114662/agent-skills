@@ -110,6 +110,35 @@ describe("FounderDashboard (#104)", () => {
     expect(screen.getByText(/Search Console receipt/i)).toBeInTheDocument();
   });
 
+  it("surfaces production agent observability and blocks green readiness on unaudited tool calls (#1292)", () => {
+    render(
+      <FounderDashboard
+        console={console_({
+          agentObservability: {
+            scheduler: { status: "stopped", lastTickAgeSeconds: 900 },
+            queueDepth: 12,
+            runningRuns: 3,
+            stalledRuns: 2,
+            failedRunsLast24h: 4,
+            retryRate: 0.25,
+            recovery: { state: "needs_human", retryableStuckRuns: 2, lastRecoveryAtMs: 1_700_000_000_000 },
+            audit: { toolCalls: 10, auditedToolCalls: 8, unauditedToolCalls: 2, coverage: 0.8 },
+            connectorSilentFailures: [{ connector: "Google Ads", status: "silent", lastOkAgeSeconds: 7200 }],
+            alerts: ["Google Ads has not emitted a success receipt in 2h"],
+          },
+        })}
+      />,
+    );
+
+    const card = screen.getByRole("heading", { name: /agent observability/i }).closest("article")!;
+    expect(card).toHaveTextContent(/stopped/i);
+    expect(card).toHaveTextContent(/80%/i);
+    expect(card).toHaveTextContent(/2/);
+    expect(card).toHaveTextContent(/Google Ads has not emitted/i);
+    expect(screen.getByLabelText(/silent connector failures/i)).toHaveTextContent(/Google Ads/i);
+    expect(screen.getByText(/80% audited, 2 stalled/i)).toBeInTheDocument();
+  });
+
   it("never renders an unconnected proof-scorecard row as live proof (#1293)", () => {
     render(
       <FounderDashboard

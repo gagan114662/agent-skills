@@ -311,9 +311,11 @@ function IMessageSetup({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const verified = Boolean(status?.memberRecipient?.verified);
+  const relayReady = Boolean(verified && status?.enabled && status.configured && !status.dryRun);
+  const relayBlocked = Boolean(verified && !relayReady);
   const pending = Boolean(status?.memberRecipient && !verified);
-  const stateLabel = verified ? copy.verified : pending ? copy.pending : copy.notSet;
-  const detail = verified ? copy.readyDetail : pending ? copy.pendingDetail : copy.emptyDetail;
+  const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
+  const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
 
   useEffect(() => {
     setRecipientInput(recipient);
@@ -328,15 +330,15 @@ function IMessageSetup({
     try {
       await action();
       setNotice(kind === "save" ? copy.saved : kind === "test" ? copy.tested : copy.removed);
-    } catch {
-      setError(copy.error);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : copy.error);
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={verified ? "verified" : pending ? "pending" : "empty"}>
+    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={relayReady ? "verified" : pending || relayBlocked ? "pending" : "empty"}>
       <div className="everyday-imessage-setup__copy">
         <div>
           <h3>{copy.title}</h3>
@@ -683,15 +685,34 @@ function proofKindLabel(kind: MarketingBrief["metrics"][number]["proofKind"]): s
 
 function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
   const deliverables = data.thread.filter((entry) => entry.kind === "deliverable").length;
+  const connectedChannels = data.connectors.filter((connector) => connector.status === "connected");
+  const pendingChannels = data.connectors.filter((connector) => connector.status === "pending");
+  const blockedChannels = data.connectors.filter(
+    (connector) => connector.status === "coming_soon",
+  );
+  const workingAgents = data.room.filter((lane) => lane.status === "working").length;
+  const operatorReady = data.room.some((lane) => lane.status === "codex");
+  const liveReceipts = data.transparency.length;
+  const pendingDecisions = data.approvals.length;
+  const hasBrief = data.thread.length > 0;
+  const hasExternalReceipts = liveReceipts > 0;
   return {
     mode: "live",
-    headline: "Live workspace data is present, but the marketing brief has not been wired to pipeline rows yet.",
+    headline:
+      hasBrief || pendingDecisions || hasExternalReceipts
+        ? "Live CMO readout from this workspace: work in motion, decisions waiting, channel truth, and proof gaps."
+        : "No measurable marketing work yet. Start the room and this brief should fill with live proof, not sample traction.",
     goal: {
       label: "customer goal",
       target: data.northStar.customers > 0 ? String(data.northStar.customers) : "not set",
       current: `${compactCount(data.northStar.customers)} customers`,
-      pace: data.northStar.trend === "up" ? "moving" : "no acquisition pace yet",
-      confidence: data.northStar.customers > 0 ? "medium" : "low",
+      pace:
+        data.northStar.trend === "up"
+          ? "moving"
+          : hasBrief || pendingDecisions
+            ? "work started; conversion not proven"
+            : "no acquisition pace yet",
+      confidence: data.northStar.customers > 0 ? "medium" : hasBrief || pendingDecisions ? "medium" : "low",
     },
     metrics: [
       {
@@ -702,13 +723,32 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proofKind: "live",
         proof: "workspace north-star row",
       },
-      { label: "qualified", value: "0", detail: "no lead qualification feed", tone: "bad", proofKind: "live", proof: "qualification feed missing" },
-      { label: "replies", value: "0", detail: "no reply feed connected", tone: "bad", proofKind: "live", proof: "reply feed missing" },
+      {
+        label: "team lanes",
+        value: String(data.room.length),
+        detail: workingAgents > 0 ? `${workingAgents} actively working` : "standing by",
+        tone: workingAgents > 0 ? "good" : "neutral",
+        proofKind: "live",
+        proof: "workspace agent lane state",
+      },
+      {
+        label: "channels live",
+        value: String(connectedChannels.length),
+        detail:
+          pendingChannels.length > 0
+            ? `${pendingChannels.length} pending verification`
+            : blockedChannels.length > 0
+              ? `${blockedChannels.length} blocked or not live`
+              : "no connector blockers",
+        tone: connectedChannels.length > 0 ? "good" : "bad",
+        proofKind: "live",
+        proof: "workspace connector catalog",
+      },
       {
         label: "approvals",
-        value: String(data.approvals.length),
-        detail: "waiting on owner decisions",
-        tone: data.approvals.length > 0 ? "warn" : "neutral",
+        value: String(pendingDecisions),
+        detail: pendingDecisions > 0 ? "waiting on owner decisions" : "nothing waiting",
+        tone: pendingDecisions > 0 ? "warn" : "neutral",
         proofKind: "live",
         proof: "workspace approval queue",
       },
@@ -722,19 +762,19 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       },
       {
         label: "receipts",
-        value: String(data.transparency.length),
+        value: String(liveReceipts),
         detail: "external action log",
-        tone: data.transparency.length > 0 ? "good" : "neutral",
-        proofKind: data.transparency.length > 0 ? "external" : "live",
-        proof: data.transparency.length > 0 ? "transparency receipt log" : "no external receipts yet",
+        tone: hasExternalReceipts ? "good" : "neutral",
+        proofKind: hasExternalReceipts ? "external" : "live",
+        proof: hasExternalReceipts ? "transparency receipt log" : "no external receipts yet",
       },
     ],
     funnel: [
       {
         label: "briefed",
-        count: data.thread.length > 0 ? "1" : "0",
-        detail: data.thread.length > 0 ? "workspace thread has activity" : "no brief received",
-        tone: data.thread.length > 0 ? "warn" : "neutral",
+        count: hasBrief ? "1" : "0",
+        detail: hasBrief ? "workspace thread has activity" : "no brief received",
+        tone: hasBrief ? "good" : "neutral",
       },
       {
         label: "assets",
@@ -744,15 +784,15 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       },
       {
         label: "approved",
-        count: String(data.approvals.length),
-        detail: "owner decisions waiting",
-        tone: data.approvals.length > 0 ? "warn" : "neutral",
+        count: String(pendingDecisions),
+        detail: pendingDecisions > 0 ? "owner decisions waiting" : "nothing queued",
+        tone: pendingDecisions > 0 ? "warn" : "neutral",
       },
       {
         label: "sent",
-        count: String(data.transparency.length),
+        count: String(liveReceipts),
         detail: "external receipts",
-        tone: data.transparency.length > 0 ? "good" : "bad",
+        tone: hasExternalReceipts ? "good" : "bad",
       },
       {
         label: "won",
@@ -762,31 +802,68 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       },
     ],
     channels: [
+      ...data.connectors.slice(0, 4).map((connector) => ({
+        source: connector.name,
+        status: connector.status === "connected" ? "live" : connector.status === "pending" ? "needs proof" : connector.status,
+        pipeline: connector.status === "connected" ? "usable" : "0 usable conversations",
+        conversion: connector.status === "connected" ? "unmeasured" : "blocked",
+        spend: "$0",
+        next: connector.detail,
+      })),
       {
         source: "workspace",
-        status: "needs CMO metrics feed",
-        pipeline: "not wired",
+        status: operatorReady ? "operator lane ready" : "operator lane missing",
+        pipeline: hasBrief ? "brief active" : "no brief",
         conversion: "—",
         spend: data.northStar.revenue,
-        next: "connect acquisition, revenue, and approval data into this brief",
+        next: "attach lead, revenue, and conversion feeds when the real channel starts",
       },
     ],
-    blockers: [{ title: "CMO dashboard feed missing", owner: "Lens", proof: "using fallback metrics" }],
-    decisions: [{ title: "Set the customer goal this dashboard should pace against", owner: "You", proof: "no goal row found" }],
+    blockers: [
+      ...(connectedChannels.length === 0
+        ? [{ title: "No live acquisition channel", owner: "Scout", proof: "connector catalog has zero connected channels" }]
+        : []),
+      ...(hasExternalReceipts
+        ? []
+        : [{ title: "No external send/revenue receipt", owner: "Echo", proof: "transparency log has zero external receipts" }]),
+      ...(data.northStar.customers > 0
+        ? []
+        : [{ title: "No paying customer proof", owner: "Lens", proof: "north-star customer count is zero" }]),
+    ],
+    decisions: [
+      { title: "Set the customer goal this dashboard should pace against", owner: "You", proof: "no goal row found" },
+      ...(pendingDecisions > 0
+        ? [{ title: "Clear the pending approval queue", owner: "You", proof: `${pendingDecisions} approval card(s) waiting` }]
+        : []),
+    ],
     nextActions: [
       {
-        title: "Wire lead, channel, spend, and conversion sources",
+        title: connectedChannels.length > 0 ? "Measure the first live channel" : "Connect one real acquisition channel",
         owner: "Operator",
-        proof: "replace fallbackMarketingBrief",
+        proof: connectedChannels.length > 0 ? "channel is live; conversion is unmeasured" : "no connected channel in catalog",
+      },
+      {
+        title: "Turn the latest room work into an approval-backed artifact",
+        owner: "Quill",
+        proof: hasBrief ? "thread activity exists" : "no active brief yet",
       },
     ],
     readiness: [
-      { label: "auth", status: "pending", proof: "workspace identity loaded; team-runtime proof not attached" },
-      { label: "connectors", status: "blocked", proof: "no connector metrics feed attached" },
-      { label: "first run", status: data.thread.length > 0 ? "pending" : "blocked", proof: data.thread.length > 0 ? "thread activity exists; first-run receipt not classified" : "no first-run receipt" },
-      { label: "outbound", status: "blocked", proof: "no real sent-message receipt" },
-      { label: "billing", status: "pending", proof: "north-star revenue present; plan enforcement not shown" },
-      { label: "observability", status: "blocked", proof: "no agent health/audit feed attached" },
+      { label: "auth", status: "ready", proof: "signed-in workspace identity loaded" },
+      {
+        label: "connectors",
+        status: connectedChannels.length > 0 ? "ready" : pendingChannels.length > 0 ? "pending" : "blocked",
+        proof:
+          connectedChannels.length > 0
+            ? `${connectedChannels.length} connector(s) connected`
+            : pendingChannels.length > 0
+              ? `${pendingChannels.length} connector(s) pending verification`
+              : "no connected acquisition channel",
+      },
+      { label: "first run", status: hasBrief ? "pending" : "blocked", proof: hasBrief ? "thread activity exists; no persisted first-run receipt" : "no first-run receipt" },
+      { label: "outbound", status: hasExternalReceipts ? "ready" : "blocked", proof: hasExternalReceipts ? "external receipt exists" : "no real sent-message receipt" },
+      { label: "billing", status: data.northStar.revenue === "$0" ? "pending" : "ready", proof: `workspace revenue reads ${data.northStar.revenue}` },
+      { label: "observability", status: operatorReady ? "pending" : "blocked", proof: operatorReady ? "operator lane visible; health feed not attached" : "operator lane missing" },
       { label: "legal/trust", status: "pending", proof: "legal state is not part of workspace feed" },
     ],
   };

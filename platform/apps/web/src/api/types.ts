@@ -685,6 +685,35 @@ export interface FounderConsoleDto {
     total: number;
     noisiestComponents: { service: string; count: number }[];
   };
+  /** Production agent observability (#1292): scheduler, queue, audit coverage, stalls, and recovery. */
+  agentObservability?: {
+    scheduler: {
+      status: "healthy" | "degraded" | "stopped" | "unknown";
+      lastTickAgeSeconds: number | null;
+    };
+    queueDepth: number;
+    runningRuns: number;
+    stalledRuns: number;
+    failedRunsLast24h: number;
+    retryRate: number | null;
+    recovery: {
+      state: "idle" | "retrying" | "needs_human" | "unknown";
+      retryableStuckRuns: number;
+      lastRecoveryAtMs: number | null;
+    };
+    audit: {
+      toolCalls: number;
+      auditedToolCalls: number;
+      unauditedToolCalls: number;
+      coverage: number | null;
+    };
+    connectorSilentFailures: {
+      connector: string;
+      status: "silent" | "failing" | "unknown";
+      lastOkAgeSeconds: number | null;
+    }[];
+    alerts: string[];
+  };
   /** The Growth Loop roll-up (#102/#222): event-driven funnel counts (no longer placeholders). */
   growth?: {
     score: number;
