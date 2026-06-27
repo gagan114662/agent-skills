@@ -123,6 +123,32 @@ describe("#235 MarketingBriefService", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("#1290 blocks over-plan campaign lanes before posting the brief", async () => {
+    const { deps, post, launch } = baseDeps({
+      campaignLaneQuota: vi.fn(async () => ({
+        ok: false as const,
+        code: 403 as const,
+        error: "Active campaign-lane limit reached for Starter.",
+        resource: "active_campaign_lanes" as const,
+        limit: 1,
+        used: 1,
+        planKey: "starter",
+        upgradeTrigger: "Upgrade when you want the agents to keep working after the first campaign lane fills up.",
+      })),
+    });
+    const res = await new MarketingBriefService(deps).brief(identity, { lead: "scout", goal: "do a thing" });
+    expect(res).toMatchObject({
+      ok: false,
+      code: 403,
+      resource: "active_campaign_lanes",
+      limit: 1,
+      used: 1,
+      planKey: "starter",
+    });
+    expect(post).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+  });
+
   it("propagates a launch RBAC denial (the brief is posted, the work is not)", async () => {
     const { deps, post } = baseDeps({
       launch: vi.fn(async () => ({ ok: false as const, code: 403, error: "not permitted" })) as never,

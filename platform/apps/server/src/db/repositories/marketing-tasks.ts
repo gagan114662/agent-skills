@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { marketingTasks } from "../schema/index.js";
 
@@ -72,6 +72,17 @@ export async function listMarketingTasks(workspaceId: string, limit?: number): P
     .orderBy(desc(marketingTasks.createdAt))
     .limit(clampMarketingTaskListLimit(limit));
   return rows as MarketingTask[];
+}
+
+export async function countMarketingTasksByStatus(
+  workspaceId: string,
+  status: MarketingTaskStatus,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(marketingTasks)
+    .where(and(eq(marketingTasks.workspaceId, workspaceId), eq(marketingTasks.status, status)));
+  return row?.count ?? 0;
 }
 
 /**
