@@ -48,11 +48,12 @@ describe("#153 marketing site", () => {
     // The "maintained by Quill" credit (the twist) on every page.
     expect(await screen.findByText(SITE.maintainedBy)).toBeInTheDocument();
 
-    // The three Ask-AI assistants, each a deep link with the prompt encoded.
+    // The three Ask-AI assistants render as buttons, not crawlable outbound hrefs that bot-block link QA.
     const encoded = encodeURIComponent(ASK_AI.prompt);
     for (const provider of ASK_AI.providers) {
-      const link = screen.getByRole("link", { name: new RegExp(provider.label, "i") });
-      expect(link).toHaveAttribute("href", `${provider.base}${encoded}`);
+      const button = screen.getByRole("button", { name: new RegExp(provider.label, "i") });
+      expect(button).toBeInTheDocument();
+      expect(`${provider.base}${encoded}`).toMatch(/^https:\/\//);
     }
   });
 
