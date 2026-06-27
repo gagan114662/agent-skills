@@ -42,13 +42,27 @@ gh api "repos/gagan114662/agent-skills/commits/$(git rev-parse origin/main)/stat
 
 2. If the status says `Deployment rate limited`, do not close the product issue as fixed. Leave the deploy-freshness issue open until production passes the manual probe.
 
-3. Retry from Vercel when quota resets, or use the Vercel dashboard suggested by the failing status target. After retrying, rerun:
+3. If waiting for quota reset is acceptable, retry from Vercel when quota resets, or use the Vercel dashboard suggested by the failing status target. After retrying, rerun:
 
 ```bash
 EXPECTED_WEB_SHA="$(git rev-parse origin/main)" pnpm --filter @reload/web deploy:freshness
 ```
 
-4. Only call the production homepage fixed when the command exits 0 and the live root no longer contains the stale copy.
+4. If production must be unstuck immediately, run the manual GitHub Action `web-manual-vercel-deploy` against `main`. It deploys `platform/apps/web` with Vercel CLI `--archive=tgz`, stamps the build SHA, then runs the freshness probe.
+
+Required repository secrets:
+
+- `VERCEL_TOKEN`
+- `VERCEL_PROJECT_ID`
+- `VERCEL_ORG_ID` or `VERCEL_TEAM_ID`
+
+The manual workflow should end with the same recovery signal:
+
+```bash
+EXPECTED_WEB_SHA="$(git rev-parse origin/main)" pnpm --filter @reload/web deploy:freshness
+```
+
+5. Only call the production homepage fixed when the command exits 0 and the live root no longer contains the stale copy.
 
 ## Expected Recovery Signal
 
