@@ -4,27 +4,86 @@
  *
  *   - `caps` — the layered #58 config (`connectOnce` block → `resolveConnectOnceCaps`). Default OFF,
  *     owner-workspace-first.
- *   - `provider` — the CONSERVATIVE production default is the dry-run provider for EVERY connection: no live
- *     OAuth client is wired in this slice (premortem #200 §3 — nothing real is minted until a provider is
- *     genuinely live), so the flow stays an honest `coming_soon` even when enabled. A per-department
- *     follow-up (#265 Google, #268 ESP, #269 social, #272 ads) registers a real `OAuthConnectProvider` here.
+ *   - `provider` — dry-run by default for every connection. Google is the first live OAuth candidate: it
+ *     becomes live only when the deployment has the Google client id/secret AND a dedicated connection
+ *     redirect URI. Everything else stays honest `coming_soon` until its real provider is wired.
  *   - `park` — parks a PENDING `connection.connect_account` #13 request (a CONSENT the owner gates; recorded
  *     -only on approval). There is no autonomous-connect path.
  */
 import { createRequest } from "../db/repositories/approvals.js";
 import { loadConfig } from "../config/loader.js";
 import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../approvals/policy.js";
+import { GOOGLE_ANALYTICS_SCOPE, GOOGLE_SEARCH_CONSOLE_SCOPE } from "../auth/google-oauth.js";
 import { resolveConnectOnceCaps } from "./caps.js";
-import { DryRunConnectProvider, type ConnectProvider } from "./provider.js";
+import {
+  createConnectProvider,
+  EMPTY_EXCHANGE,
+  type ConnectExchangeResult,
+  type ConnectProvider,
+  type OAuthClientConfig,
+} from "./provider.js";
 import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
 /**
- * The provider wired for a connection id. The production default is dry-run for every connector (no live
- * OAuth client is configured in this slice). A per-department follow-up replaces this with a registry that
- * returns a live `OAuthConnectProvider` for its connector and dry-run for the rest.
+ * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
+ * deployment supplies a dedicated connection OAuth redirect URI. We deliberately do NOT reuse the public
+ * sign-in callback URI: a connection callback seals tenant credentials, while sign-in creates a session.
  */
-export function defaultConnectProvider(_connectionId: string): ConnectProvider {
-  return new DryRunConnectProvider();
+export function defaultConnectProvider(
+  connectionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ConnectProvider {
+  if (connectionId === "google") {
+    return createConnectProvider({
+      client: loadGoogleConnectionClient(env),
+      mapTokens: mapGoogleConnectionTokens,
+    });
+  }
+  return createConnectProvider({ client: null, mapTokens: () => EMPTY_EXCHANGE });
+}
+
+function loadGoogleConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig | null {
+  const clientId = env.GOOGLE_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = env.GOOGLE_CONNECTION_OAUTH_REDIRECT_URI?.trim();
+  if (!clientId || !clientSecret || !redirectUri) return null;
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: [GOOGLE_SEARCH_CONSOLE_SCOPE, GOOGLE_ANALYTICS_SCOPE],
+  };
+}
+
+function mapGoogleConnectionTokens(json: unknown): ConnectExchangeResult {
+  const token = json as {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+    scope?: unknown;
+    token_type?: unknown;
+  };
+  if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
+  const scope = typeof token.scope === "string" ? token.scope : "";
+  const scopes = scope.split(/\s+/).filter(Boolean);
+  const secrets: Record<string, string> = {
+    GOOGLE_OAUTH_ACCESS_TOKEN: token.access_token,
+    GOOGLE_OAUTH_SCOPE: scope || [GOOGLE_SEARCH_CONSOLE_SCOPE, GOOGLE_ANALYTICS_SCOPE].join(" "),
+    GOOGLE_OAUTH_TOKEN_TYPE: typeof token.token_type === "string" ? token.token_type : "Bearer",
+  };
+  if (typeof token.refresh_token === "string" && token.refresh_token.trim()) {
+    secrets.GOOGLE_OAUTH_REFRESH_TOKEN = token.refresh_token;
+  }
+  if (typeof token.expires_in === "number" && Number.isFinite(token.expires_in)) {
+    secrets.GOOGLE_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
+  }
+  const capabilities = [
+    ...(scopes.includes(GOOGLE_SEARCH_CONSOLE_SCOPE) ? ["search_console"] : []),
+    ...(scopes.includes(GOOGLE_ANALYTICS_SCOPE) ? ["analytics"] : []),
+  ];
+  return { capabilities, secrets };
 }
 
 /** Build the production-wired connect-once service. */
