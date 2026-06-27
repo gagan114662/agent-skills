@@ -94,7 +94,7 @@ describe("shell layout overflow guards (#169)", () => {
     const sun = ruleBody('.onboard[data-phase="door"]::before');
 
     expect(decl(door, "background")).toContain("conic-gradient");
-    expect(decl(sun, "width")).toBe("clamp(420px, 52vw, 860px)");
+    expect(decl(sun, "width")).toBe("clamp(560px, 66vw, 1040px)");
     expect(decl(sun, "animation")).toContain("onboard-sun-turn");
     expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
   });
@@ -125,11 +125,14 @@ describe("Tomo-simple onboarding door viewport guards", () => {
 
   it("uses an animated sun layer instead of cloud art as the homepage background", () => {
     const sun = ruleBody('.onboard[data-phase="door"]::before');
+    const rays = ruleBody('.onboard[data-phase="door"]::after');
 
     expect(decl(sun, "background")).toContain("repeating-conic-gradient");
     expect(decl(sun, "background")).toContain("radial-gradient");
     expect(decl(sun, "animation")).toContain("onboard-sun-turn");
     expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
+    expect(decl(rays, "background")).toContain("linear-gradient(115deg");
+    expect(decl(rays, "animation")).toBe("onboard-ray-drift 12s ease-in-out infinite");
   });
 
   it("keeps the marketing artefact strip small enough for a clean first viewport", () => {
