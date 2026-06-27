@@ -1,4 +1,5 @@
 import type { ActivePlan, WorkspacePlanStore } from "./plan-service.js";
+import { getPlan } from "./plans.js";
 
 export type PlanQuotaResource = "agent" | "channel";
 
@@ -31,7 +32,8 @@ function planIsCurrent(plan: ActivePlan, now: Date): boolean {
 }
 
 function limitFor(plan: ActivePlan, resource: PlanQuotaResource): number {
-  return resource === "agent" ? plan.agentSeats : plan.fleetSize;
+  if (resource === "agent") return plan.agentSeats;
+  return getPlan(plan.planKey)?.productLimits.connectedChannels ?? plan.fleetSize;
 }
 
 function usedFor(usage: PlanQuotaUsage, resource: PlanQuotaResource): number {
