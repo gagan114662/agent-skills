@@ -259,7 +259,14 @@ function connectorFromConnection(
 ): EverydayConnector {
   const isIMessage = connection.id === "imessage";
   const imessageRecipient = isIMessage ? imessageStatus?.memberRecipient : null;
-  const status = imessageRecipient?.verified
+  const imessageRelayReady = Boolean(
+    isIMessage &&
+      imessageRecipient?.verified &&
+      imessageStatus?.enabled &&
+      imessageStatus.configured &&
+      !imessageStatus.dryRun,
+  );
+  const status = imessageRelayReady
     ? "connected"
     : imessageRecipient
       ? "pending"
@@ -273,8 +280,12 @@ function connectorFromConnection(
     status,
     detail:
       isIMessage && imessageRecipient
-        ? imessageRecipient.verified
-          ? "verified destination: " + imessageRecipient.recipient
+        ? imessageRelayReady
+          ? "live relay verified for " + imessageRecipient.recipient
+          : imessageRecipient.verified
+            ? "recipient verified; relay is " +
+              (imessageStatus?.dryRun ? "dry-run" : imessageStatus?.enabled ? "not live" : "disabled") +
+              " before agents can use Messages"
           : "test needed before agents can relay to " + imessageRecipient.recipient
         : connection.summary,
     actionLabel:
@@ -560,8 +571,11 @@ export function LiveEverydayShell({
         await refreshIMessageStatus();
       }}
       onTestIMessageRecipient={async () => {
-        await api.testIMessageRecipient();
+        const result = await api.testIMessageRecipient();
         await refreshIMessageStatus();
+        if (result.status !== "sent") {
+          throw new Error(result.error ?? "iMessage relay did not send a live test message.");
+        }
       }}
       onDeleteIMessageRecipient={async () => {
         await api.deleteIMessageRecipient();

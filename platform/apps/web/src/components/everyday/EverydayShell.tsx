@@ -311,9 +311,11 @@ function IMessageSetup({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const verified = Boolean(status?.memberRecipient?.verified);
+  const relayReady = Boolean(verified && status?.enabled && status.configured && !status.dryRun);
+  const relayBlocked = Boolean(verified && !relayReady);
   const pending = Boolean(status?.memberRecipient && !verified);
-  const stateLabel = verified ? copy.verified : pending ? copy.pending : copy.notSet;
-  const detail = verified ? copy.readyDetail : pending ? copy.pendingDetail : copy.emptyDetail;
+  const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
+  const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
 
   useEffect(() => {
     setRecipientInput(recipient);
@@ -328,15 +330,15 @@ function IMessageSetup({
     try {
       await action();
       setNotice(kind === "save" ? copy.saved : kind === "test" ? copy.tested : copy.removed);
-    } catch {
-      setError(copy.error);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : copy.error);
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={verified ? "verified" : pending ? "pending" : "empty"}>
+    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={relayReady ? "verified" : pending || relayBlocked ? "pending" : "empty"}>
       <div className="everyday-imessage-setup__copy">
         <div>
           <h3>{copy.title}</h3>

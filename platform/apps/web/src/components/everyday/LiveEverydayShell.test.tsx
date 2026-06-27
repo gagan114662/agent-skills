@@ -383,6 +383,119 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(await screen.findByText(EVERYDAY.connectors.imessage.verified)).toBeInTheDocument();
   });
 
+  it("does not mark iMessage connected when the recipient is verified but the relay is dry-run (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "recorded",
+          providerStatus: "healthy",
+          lastProofAt: 123,
+          lastProofReceipt: "imessage:test",
+          failureReason: null,
+          connected: true,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      dryRun: true,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: true,
+        verifiedAt: "2026-06-27T06:00:00.000Z",
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
+    expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
+  });
+
+  it("surfaces a dry-run iMessage test as an error instead of a successful verification (#1283)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "Connect iMessage",
+          summary: "Text the team where work happens.",
+          provider: "apple",
+          kind: "messaging",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: false,
+      dryRun: true,
+      recipient: "gagan@example.com",
+      recipientSource: "member_pending",
+      requiresVerification: true,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: false,
+        verifiedAt: null,
+      },
+    });
+    vi.spyOn(api, "testIMessageRecipient").mockResolvedValue({
+      status: "dry_run",
+      dryRun: true,
+      recipient: "gagan@example.com",
+      error: "iMessage relay is still in dry-run mode; no real Messages test was sent.",
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: null,
+        verified: false,
+        verifiedAt: null,
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: EVERYDAY.connectors.imessage.test }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/dry-run mode/i);
+    expect(screen.queryByText(EVERYDAY.connectors.imessage.verified)).not.toBeInTheDocument();
+  });
+
   it("surfaces the persisted first-run receipt as live CMO dashboard proof (#1289)", async () => {
     vi.mocked(api.getFirstRunReceipt).mockResolvedValue({
       firstRun: {
