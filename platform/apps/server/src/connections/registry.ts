@@ -52,6 +52,12 @@ export interface ConnectionDescriptor {
   oauthScopes: string[];
   /** Env var names the agents resolve once connected (paste connections seal these into the vault). */
   envKeys: string[];
+  /** Secret-free deployment setup issue when a live connector is unavailable for config reasons. */
+  configIssue?: {
+    code: string;
+    missingEnv: string[];
+    remedy: string;
+  };
 }
 
 /** The internal GitHub site-publish connection id (ipop.ai's own mechanism — admin only). */

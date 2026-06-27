@@ -35,7 +35,10 @@ import {
   CONNECTION_DESCRIPTORS,
   type ConnectionDescriptor,
 } from "../../src/connections/registry.js";
-import { defaultConnectProvider } from "../../src/connections/default.js";
+import {
+  defaultConnectProvider,
+  googleConnectionOAuthConfigStatus,
+} from "../../src/connections/default.js";
 import type { ApprovalRequest } from "../../src/db/repositories/approvals.js";
 import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../../src/approvals/policy.js";
 
@@ -216,6 +219,18 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
   });
 
   it("defaultConnectProvider wires Google live only with a dedicated connection redirect URI (#1285)", () => {
+    expect(
+      googleConnectionOAuthConfigStatus({
+        GOOGLE_OAUTH_CLIENT_ID: "cid",
+        GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+        GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      configured: false,
+      missing: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+      callbackPath: "/me/connections/google/oauth/callback",
+    });
+
     expect(
       defaultConnectProvider("google", {
         GOOGLE_OAUTH_CLIENT_ID: "cid",

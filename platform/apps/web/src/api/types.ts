@@ -116,6 +116,11 @@ export interface ConnectionView {
   lastProofAt: number | null;
   lastProofReceipt: string | null;
   failureReason: string | null;
+  configIssue?: {
+    code: string;
+    missingEnv: string[];
+    remedy: string;
+  } | null;
   /** True only when provider proof has passed; consent alone is not connected (#1284). */
   connected: boolean;
 }
@@ -140,6 +145,11 @@ export type ConnectionOAuthStartResponse =
       provider: string;
       scopes: string[];
       message: string;
+      issue?: {
+        code: string;
+        missingEnv: string[];
+        callbackPath?: string;
+      } | null;
     };
 
 export interface GoogleAuthStatus {

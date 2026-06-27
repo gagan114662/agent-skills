@@ -158,16 +158,21 @@ names, never values:
 GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
 GOOGLE_OAUTH_REDIRECT_URI=https://api.ipop.ai/auth/google/callback
+GOOGLE_CONNECTION_OAUTH_REDIRECT_URI=https://api.ipop.ai/me/connections/google/oauth/callback
 ```
 
 Set or rotate them in Google Cloud Console -> APIs & Services -> Credentials -> OAuth 2.0 Client IDs.
 The authorized redirect URI in Google must match `GOOGLE_OAUTH_REDIRECT_URI` byte-for-byte, including
-scheme, host, path, and trailing slash behavior. After changing credentials:
+scheme, host, path, and trailing slash behavior. Add the connection callback URI too:
+`GOOGLE_CONNECTION_OAUTH_REDIRECT_URI`. Sign-in and connector callbacks are deliberately separate because
+the connector callback seals Search Console + Analytics credentials into the workspace vault. After changing
+credentials:
 
 ```bash
 fly secrets set GOOGLE_OAUTH_CLIENT_ID="..." --app reload-api
 fly secrets set GOOGLE_OAUTH_CLIENT_SECRET="..." --app reload-api
 fly secrets set GOOGLE_OAUTH_REDIRECT_URI="https://api.ipop.ai/auth/google/callback" --app reload-api
+fly secrets set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI="https://api.ipop.ai/me/connections/google/oauth/callback" --app reload-api
 fly deploy --ha=false --app reload-api
 curl -s https://api.ipop.ai/auth/google/status
 curl -I "https://api.ipop.ai/auth/google/start?domain=example.com"

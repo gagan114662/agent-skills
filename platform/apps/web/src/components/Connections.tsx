@@ -111,6 +111,9 @@ function CustomerAction(props: {
   }
   // Not live yet: a clear next step (join the waitlist) instead of a dead, disabled "Coming soon" button.
   if (c.status === "coming_soon") {
+    const detail = c.configIssue
+      ? c.configIssue.remedy + " Missing: " + c.configIssue.missingEnv.join(", ") + "."
+      : null;
     if (waitlisted) {
       return (
         <span className="connections__soon" role="status">
@@ -121,7 +124,7 @@ function CustomerAction(props: {
     return (
       <span className="connections__action">
         <span className="connections__label">{c.label}</span>
-        <span className="connections__soon">{CONNECTIONS.comingSoon}</span>
+        <span className="connections__soon">{detail ?? CONNECTIONS.comingSoon}</span>
         <button
           type="button"
           className="connections__waitlist"

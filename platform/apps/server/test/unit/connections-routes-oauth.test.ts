@@ -10,6 +10,7 @@ const STATE_SECRET = "test-state-secret";
 const ORIGINAL_ENC_KEY = process.env.AGENT_CREDENTIALS_ENC_KEY;
 
 const defaultConnectProvider = vi.fn();
+const googleConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
 const recordExecution = vi.fn();
 const setServiceCredentials = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("../../src/config/loader.js", () => ({
 
 vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
+  googleConnectionOAuthConfigStatus,
   createDefaultConnectOnceService: vi.fn(() => ({
     startConnect: vi.fn(async () => ({ status: "coming_soon", reason: "not under test" })),
   })),
@@ -89,6 +91,11 @@ beforeEach(() => {
     connectedAtMs: Date.now(),
     revokedAtMs: null,
   });
+  googleConnectionOAuthConfigStatus.mockReturnValue({
+    configured: false,
+    missing: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+    callbackPath: "/me/connections/google/oauth/callback",
+  });
 });
 
 afterEach(() => {
@@ -113,7 +120,15 @@ describe("connectionsRoutes OAuth callback (#1285)", () => {
         url: "/me/connections/google/oauth/authorize?requestId=req-1",
       });
       expect(res.statusCode).toBe(501);
-      expect(res.json()).toMatchObject({ status: "coming_soon", provider: "google" });
+      expect(res.json()).toMatchObject({
+        status: "coming_soon",
+        provider: "google",
+        issue: {
+          code: "google_connection_oauth_missing_config",
+          missingEnv: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+          callbackPath: "/me/connections/google/oauth/callback",
+        },
+      });
       expect(getRequest).not.toHaveBeenCalled();
     } finally {
       await app.close();
