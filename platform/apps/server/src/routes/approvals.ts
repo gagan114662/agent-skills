@@ -23,6 +23,11 @@ import type { ExecutorRegistry } from "../approvals/executor.js";
 import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 import { getWorkspaceTimeZone } from "../db/repositories/workspaces.js";
 import {
+  checkApprovalQueueQuota,
+  type ApprovalQueueQuotaReaders,
+} from "../billing/approval-queue-quota.js";
+import { defaultApprovalQueueQuotaReaders } from "../billing/approval-queue-quota-default.js";
+import {
   upsertPolicy,
   listPolicies,
   listPolicyRules,
@@ -49,6 +54,7 @@ import {
  */
 export interface ApprovalRoutesOptions {
   registry?: ExecutorRegistry;
+  approvalQueueQuota?: ApprovalQueueQuotaReaders;
   /** #151 RBAC seams (injected in tests). Default: per-tenant config + the governance repo. */
   rbacEnabled?: (workspaceId: string) => boolean;
   loadMemberRole?: (workspaceId: string, memberId: string) => Promise<WorkspaceRole | null>;
@@ -145,6 +151,7 @@ export async function approvalRoutes(
   opts: ApprovalRoutesOptions = {},
 ): Promise<void> {
   const registry = opts.registry ?? defaultRegistry;
+  const approvalQueueQuota = opts.approvalQueueQuota ?? defaultApprovalQueueQuotaReaders;
   const riskModel = opts.riskModel ?? null;
   const rbacEnabled = opts.rbacEnabled ?? ((wid: string) => resolveRbacConfig(loadConfig(wid).rbac).enabled);
   const loadMemberRole = opts.loadMemberRole ?? getMemberRole;
@@ -350,6 +357,16 @@ export async function approvalRoutes(
         : loadEnv().approval.defaultTtlSeconds;
     const expiresAtTimezone = normalizeTimeZone(await getWorkspaceTimeZone(wid));
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    const quota = await checkApprovalQueueQuota(approvalQueueQuota, wid);
+    if (!quota.ok) {
+      return reply.code(quota.statusCode).send({
+        error: quota.error,
+        resource: "approval_queue",
+        limit: quota.limit,
+        used: quota.used,
+        planKey: quota.plan.planKey,
+      });
+    }
     const request = await createRequest({
       workspaceId: wid,
       requesterMemberId: id.memberId,

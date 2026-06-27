@@ -235,6 +235,17 @@ export async function listRequests(
   return rows as ApprovalRequest[];
 }
 
+export async function countRequestsByStatus(
+  workspaceId: string,
+  status: ApprovalStatus,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(approvalRequests)
+    .where(and(eq(approvalRequests.workspaceId, workspaceId), eq(approvalRequests.status, status)));
+  return row?.n ?? 0;
+}
+
 export const MAX_APPROVAL_REQUEST_LIST_LIMIT = 500;
 export const MAX_APPROVAL_EVENT_LIST_LIMIT = 500;
 
