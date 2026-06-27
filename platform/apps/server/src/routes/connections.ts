@@ -8,6 +8,7 @@ import {
   getConnectionDescriptor,
   IMESSAGE_CONNECTION_ID,
   TELEGRAM_ROOM_CONNECTION_ID,
+  WHATSAPP_ROOM_CONNECTION_ID,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
 import { decideApprovedConnectRequest, mapExchangeToSeal } from "../connections/connect.js";
@@ -66,6 +67,12 @@ const TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN";
 const TELEGRAM_ROOM_CHAT_ID_KEY = "TELEGRAM_ROOM_CHAT_ID";
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const TELEGRAM_WEBHOOK_SECRET_KEY = "TELEGRAM_WEBHOOK_SECRET";
+const WHATSAPP_ACCESS_TOKEN_KEY = "WHATSAPP_ACCESS_TOKEN";
+const WHATSAPP_PHONE_NUMBER_ID_KEY = "WHATSAPP_PHONE_NUMBER_ID";
+const WHATSAPP_ROOM_RECIPIENT_KEY = "WHATSAPP_ROOM_RECIPIENT";
+const WHATSAPP_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
+const WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY = "WHATSAPP_WEBHOOK_VERIFY_TOKEN";
+const WHATSAPP_APP_SECRET_KEY = "WHATSAPP_APP_SECRET";
 
 function oauthSetupStatus(id: string):
   | ReturnType<typeof googleConnectionOAuthConfigStatus>
@@ -132,6 +139,18 @@ function telegramProviderProofSecrets(): Record<string, string> {
   if (!botToken || !chatId || !webhookSecret) return {};
   return {
     [TELEGRAM_CHAT_ID_KEY]: chatId,
+  };
+}
+
+function whatsappProviderProofSecrets(): Record<string, string> {
+  const accessToken = process.env[WHATSAPP_ACCESS_TOKEN_KEY]?.trim() ?? "";
+  const phoneNumberId = process.env[WHATSAPP_PHONE_NUMBER_ID_KEY]?.trim() ?? "";
+  const recipient = process.env[WHATSAPP_ROOM_RECIPIENT_KEY]?.trim() ?? "";
+  const verifyToken = process.env[WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]?.trim() ?? "";
+  const appSecret = process.env[WHATSAPP_APP_SECRET_KEY]?.trim() ?? "";
+  if (!accessToken || !phoneNumberId || !recipient || !verifyToken || !appSecret) return {};
+  return {
+    [WHATSAPP_RECIPIENT_KEY]: recipient,
   };
 }
 
@@ -229,6 +248,32 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
             missingEnv: missing,
             remedy:
               "Set TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks with X-Telegram-Bot-Api-Secret-Token.",
+          },
+        };
+      }
+      if (descriptor.id === WHATSAPP_ROOM_CONNECTION_ID) {
+        const missing = [
+          ...(process.env[WHATSAPP_ACCESS_TOKEN_KEY]?.trim() ? [] : [WHATSAPP_ACCESS_TOKEN_KEY]),
+          ...(process.env[WHATSAPP_PHONE_NUMBER_ID_KEY]?.trim() ? [] : [WHATSAPP_PHONE_NUMBER_ID_KEY]),
+          ...(process.env[WHATSAPP_ROOM_RECIPIENT_KEY]?.trim() ? [] : [WHATSAPP_ROOM_RECIPIENT_KEY]),
+          ...(process.env[WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]?.trim() ? [] : [WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]),
+          ...(process.env[WHATSAPP_APP_SECRET_KEY]?.trim() ? [] : [WHATSAPP_APP_SECRET_KEY]),
+        ];
+        if (missing.length === 0) {
+          return {
+            ...descriptor,
+            status: "available",
+            summary:
+              "Mirror the agent room into the configured WhatsApp Business chat with signed webhook replies back into ipop.",
+          };
+        }
+        return {
+          ...descriptor,
+          configIssue: {
+            code: "whatsapp_room_missing_config",
+            missingEnv: missing,
+            remedy:
+              "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ROOM_RECIPIENT, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for /whatsapp/webhook.",
           },
         };
       }
@@ -373,6 +418,8 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         ? emailProviderProofSecrets(wid)
         : decision.serviceKey === TELEGRAM_ROOM_CONNECTION_ID
           ? telegramProviderProofSecrets()
+          : decision.serviceKey === WHATSAPP_ROOM_CONNECTION_ID
+            ? whatsappProviderProofSecrets()
           : {};
     await setServiceCredentials({
       workspaceId: wid,

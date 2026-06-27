@@ -73,6 +73,18 @@ promise.
 | `TELEGRAM_API_BASE_URL` | `https://api.telegram.org` | Telegram API base URL override for tests/private deployments. |
 | `TELEGRAM_MESSAGE_MAX_CHARS` | `3500` | Outbound Telegram message length guardrail. |
 
+## WhatsApp Room Bridge
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `WHATSAPP_ACCESS_TOKEN` | — | Meta Graph API token used to send via the WhatsApp Cloud API. |
+| `WHATSAPP_PHONE_NUMBER_ID` | — | WhatsApp Business phone number id used in Graph `/messages` calls. |
+| `WHATSAPP_ROOM_RECIPIENT` | — | Verified owner/dogfood WhatsApp recipient for the first production room mirror. |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | — | Verify token Meta uses for the `/whatsapp/webhook` challenge. |
+| `WHATSAPP_APP_SECRET` | — | App secret used to verify `X-Hub-Signature-256` on inbound webhooks. |
+| `WHATSAPP_API_BASE_URL` | `https://graph.facebook.com/v20.0` | Graph API base URL override for tests/private deployments. |
+| `WHATSAPP_MESSAGE_MAX_CHARS` | `3500` | Outbound WhatsApp message length guardrail. |
+
 ## Profiles
 
 | Var | Default | Purpose |
