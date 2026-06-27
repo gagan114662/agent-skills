@@ -17,6 +17,7 @@ import {
 import { getChannel } from "../db/repositories/channels.js";
 import { getMessage } from "../db/repositories/messages.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
+import { parseVisibilityChannelCommand } from "../messaging/visibility-commands.js";
 import {
   imessageRoomPreflight,
   imessageRoomReceipt,
@@ -354,10 +355,12 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       message,
       original.authorMemberId,
     );
+    const command = parseVisibilityChannelCommand(text);
     return reply.code(201).send({
       status: "ingested",
       receipt: body.receipt,
       message,
+      command,
     });
   });
 }
