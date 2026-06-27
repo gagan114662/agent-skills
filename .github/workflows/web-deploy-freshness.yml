@@ -48,4 +48,14 @@ jobs:
           cache-dependency-path: platform/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - name: Probe live web deploy freshness
-        run: pnpm --filter @reload/web deploy:freshness
+        run: |
+          for attempt in {1..12}; do
+            echo "freshness attempt ${attempt}/12 for ${PRODUCTION_WEB_URL} expecting ${EXPECTED_WEB_SHA}"
+            if pnpm --filter @reload/web deploy:freshness; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then
+              sleep 30
+            fi
+          done
+          exit 1

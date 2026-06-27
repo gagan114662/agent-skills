@@ -4,6 +4,7 @@ import { api } from "../../api/client.js";
 import type {
   ConnectionView,
   FirstRunReceiptDto,
+  FirstRunReceiptInput,
   IMessageStatusResponse,
   TeamRunSubtaskInput,
 } from "../../api/types.js";
@@ -504,6 +505,24 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
   await api.launchTeamRun(channelId, subtasks);
 }
 
+async function activateFirstRunTeam(
+  state: AppState,
+  pending: FirstRunReceiptInput,
+): Promise<void> {
+  const workspaceId = state.identity?.workspaceId;
+  if (!workspaceId) throw new Error("No signed-in workspace is ready for first-run activation.");
+  await api.department.seed(workspaceId, { welcomeTasks: true });
+  await api.department.brief(workspaceId, {
+    lead: "scout",
+    goal:
+      "Use the first-run site read for " +
+      pending.target +
+      ". Finding: " +
+      pending.finding +
+      " Turn it into the next useful marketing move, keep send/spend gated, and leave receipts.",
+  });
+}
+
 export function LiveEverydayShell({
   dashboardFirst = false,
 }: { dashboardFirst?: boolean } = {}): React.JSX.Element {
@@ -526,6 +545,7 @@ export function LiveEverydayShell({
     const pending = readPendingFirstRunReceipt();
     if (pending) {
       const response = await api.recordFirstRunReceipt(pending);
+      await activateFirstRunTeam(state, pending);
       clearPendingFirstRunReceipt();
       setFirstRun(response.firstRun);
       return;
