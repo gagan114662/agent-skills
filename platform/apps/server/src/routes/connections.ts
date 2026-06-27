@@ -1,11 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { requireIdentity } from "../auth/guard.js";
 import { loadConfig } from "../config/loader.js";
+import { loadStateSecret, newStateNonce } from "../auth/oauth-state.js";
 import {
   CONNECTION_DESCRIPTORS,
   getConnectionDescriptor,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
+import {
+  decideApprovedConnectRequest,
+  mapExchangeToSeal,
+} from "../connections/connect.js";
+import { signConnectState, verifyConnectState } from "../connections/state.js";
+import { ConnectProviderError, isValidAuthCode } from "../connections/provider.js";
 import {
   decideConnectionView,
   decideInternalConnect,
@@ -13,6 +20,7 @@ import {
   decideWaitlist,
 } from "../connections/view.js";
 import { createDefaultConnectOnceService, defaultConnectProvider } from "../connections/default.js";
+import { getRequest, recordExecution } from "../db/repositories/approvals.js";
 import {
   listServiceStatuses,
   setServiceCredentials,
@@ -37,6 +45,8 @@ import {
  * Connecting is a one-time CONSENT, not money — so it carries no #13 gate (consistent with #243 money-only
  * and the #192 non-money connects). Real spend through a connected channel stays money-gated, unchanged.
  */
+const CONNECTION_RETURN_PATH = "/everyday";
+
 export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
   function isOwnerWorkspace(workspaceId: string): boolean {
     return loadConfig(workspaceId).marketing.ownerWorkspaceId === workspaceId;
@@ -196,6 +206,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(202).send({
         status: "pending_approval",
         requestId: result.requestId,
+        authorizePath: `/me/connections/${encodeURIComponent(id)}/oauth/authorize?requestId=${encodeURIComponent(result.requestId)}`,
         provider: descriptor.provider,
         scopes: descriptor.oauthScopes,
         message: `Connecting ${descriptor.label} needs your approval — it's waiting in your decision queue.`,
@@ -207,6 +218,119 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       scopes: descriptor.oauthScopes,
       message: result.reason,
     });
+  });
+
+  // Owner-approved OAuth redirect (#1285) — turns the parked approval request into a real IdP consent URL.
+  // This route still mints no credential; it only signs a callback state bound to the workspace, connector,
+  // and approval request id. A pending/rejected/executed approval cannot start the live redirect.
+  app.get("/me/connections/:id/oauth/authorize", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const id = (req.params as { id: string }).id;
+    const query = (req.query ?? {}) as { requestId?: unknown };
+    const requestId = typeof query.requestId === "string" ? query.requestId.trim() : "";
+    if (!requestId) return reply.code(400).send({ error: "requestId is required" });
+    const descriptor = getConnectionDescriptor(id);
+    if (!descriptor || descriptor.auth !== "oauth") {
+      return reply.code(400).send({ error: "not an OAuth connection" });
+    }
+    const provider = defaultConnectProvider(id);
+    if (!provider.live) {
+      return reply.code(501).send({
+        status: "coming_soon",
+        provider: descriptor.provider,
+        scopes: descriptor.oauthScopes,
+      });
+    }
+    const approval = decideApprovedConnectRequest({
+      request: await getRequest(requestId),
+      workspaceId: identity.workspaceId,
+      connectionId: id,
+    });
+    if (!approval.ok) return reply.code(approval.statusCode).send({ error: approval.reason });
+    const state = signConnectState(
+      {
+        workspaceId: identity.workspaceId,
+        connectionId: id,
+        approvalRequestId: approval.request.id,
+        nonce: newStateNonce(),
+      },
+      loadStateSecret(),
+    );
+    return reply.redirect(provider.authorizeUrl({ state }));
+  });
+
+  // Provider callback (#1285) — verifies the state, exchanges the code, seals the credential into the #192
+  // vault, and marks the approved request executed. The response never exposes token material.
+  app.get("/me/connections/:id/oauth/callback", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const id = (req.params as { id: string }).id;
+    const descriptor = getConnectionDescriptor(id);
+    const query = (req.query ?? {}) as { state?: unknown; code?: unknown };
+    const finish = (status: string): void =>
+      void reply.redirect(
+        `${CONNECTION_RETURN_PATH}?connection=${encodeURIComponent(id)}&status=${encodeURIComponent(status)}`,
+      );
+
+    if (!descriptor || descriptor.auth !== "oauth") return finish("error");
+    if (!isValidAuthCode(query.code)) return finish("error");
+    const payload =
+      typeof query.state === "string" ? verifyConnectState(query.state, loadStateSecret()) : null;
+    if (
+      !payload ||
+      payload.workspaceId !== identity.workspaceId ||
+      payload.connectionId !== id ||
+      !payload.approvalRequestId
+    ) {
+      return finish("error");
+    }
+
+    const approval = decideApprovedConnectRequest({
+      request: await getRequest(payload.approvalRequestId),
+      workspaceId: identity.workspaceId,
+      connectionId: id,
+    });
+    if (!approval.ok) return finish("error");
+
+    const provider = defaultConnectProvider(id);
+    if (!provider.live) return finish("coming_soon");
+
+    let exchange;
+    try {
+      exchange = await provider.exchange({ code: query.code, state: query.state as string });
+    } catch (err) {
+      const reason = err instanceof ConnectProviderError ? err.message : "token exchange failed";
+      await recordExecution(approval.request.id, identity.workspaceId, { ok: false, error: reason });
+      return finish("error");
+    }
+    const seal = mapExchangeToSeal({ descriptor, exchange });
+    if (!seal.seal) {
+      await recordExecution(approval.request.id, identity.workspaceId, {
+        ok: false,
+        error: seal.reason,
+      });
+      return finish("error");
+    }
+    const proof = await setServiceCredentials({
+      workspaceId: identity.workspaceId,
+      serviceKey: seal.serviceKey,
+      secrets: seal.secrets,
+      scopes: seal.scopes,
+      connectedByMemberId: identity.memberId,
+    });
+    const recorded = await recordExecution(approval.request.id, identity.workspaceId, {
+      ok: true,
+      result: {
+        connectionId: seal.serviceKey,
+        provider: descriptor.provider,
+        envKeys: proof.envKeys,
+        fingerprint: proof.fingerprint,
+        scopes: proof.scopes,
+      },
+    });
+    if (recorded.outcome !== "recorded") return finish("conflict");
+    return finish("connected");
   });
 
   // Disconnect — dependent capabilities go offline gracefully (the vault marks the row revoked).

@@ -14,6 +14,8 @@ import type { ConnectionDescriptor } from "./registry.js";
 import type { ConnectOnceCaps } from "./caps.js";
 import { isConnectOnceLiveInScope } from "./caps.js";
 import type { ConnectExchangeResult } from "./provider.js";
+import type { ApprovalRequest } from "../db/repositories/approvals.js";
+import { CONNECTION_CONNECT_ACCOUNT_ACTION } from "../approvals/policy.js";
 
 export type ConnectStartOutcome =
   /** The live flow is offered + in scope: park a PENDING `connection.connect_account` #13 request. */
@@ -81,4 +83,42 @@ export function mapExchangeToSeal(input: {
     scopes,
     secrets,
   };
+}
+
+export type ApprovedConnectRequestDecision =
+  | { ok: true; request: ApprovalRequest }
+  | { ok: false; statusCode: 400 | 403 | 404 | 409; reason: string };
+
+/**
+ * Validate that an approved #13 request can execute a live OAuth connect callback. This binds the redirect
+ * to the exact owner-approved consent row, the caller's workspace, and the connector id. Pure, so the route
+ * can stay small and every fail-closed branch is covered without reaching for the DB.
+ */
+export function decideApprovedConnectRequest(input: {
+  request: ApprovalRequest | undefined;
+  workspaceId: string;
+  connectionId: string;
+}): ApprovedConnectRequestDecision {
+  const request = input.request;
+  if (!request) return { ok: false, statusCode: 404, reason: "approval request not found" };
+  if (request.workspaceId !== input.workspaceId) {
+    return { ok: false, statusCode: 403, reason: "approval request is for another workspace" };
+  }
+  if (request.actionType !== CONNECTION_CONNECT_ACCOUNT_ACTION) {
+    return { ok: false, statusCode: 400, reason: "approval request is not a connection approval" };
+  }
+  if (request.payload.connectionId !== input.connectionId) {
+    return { ok: false, statusCode: 400, reason: "approval request is for another connection" };
+  }
+  if (request.status !== "approved") {
+    return {
+      ok: false,
+      statusCode: 409,
+      reason:
+        request.status === "pending"
+          ? "connection approval is still pending"
+          : "connection approval is no longer executable",
+    };
+  }
+  return { ok: true, request };
 }
