@@ -258,6 +258,8 @@ export const CONNECTIONS = {
   connectedBadge: "Connected",
   proofPendingBadge: "Setup pending",
   proofPendingDetail: "Consent recorded. We'll show connected after the provider check passes.",
+  unlocks: "Unlocks",
+  lockedUntilConnected: "Locked until connected",
   disconnect: "Disconnect",
   internalTitle: "Site publishing (admin)",
   internalHint: "Internal publishing connection — admin only. Not shown to customers.",

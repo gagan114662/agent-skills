@@ -162,7 +162,7 @@ describe("Landing", () => {
 
   it("renders pricing as the in-app billing screen with the current plan marked", () => {
     render(<Landing />);
-    const pricing = screen.getByRole("region", { name: /pick your pop/i });
+    const pricing = screen.getByRole("region", { name: new RegExp(LANDING.sections.pricingTitle, "i") });
     for (const plan of LANDING.plans) {
       expect(within(pricing).getByText(plan.name)).toBeInTheDocument();
     }

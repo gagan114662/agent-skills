@@ -49,6 +49,7 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
         {customer.map((c) => (
           <li key={c.id} className="connections__item">
             <span className="connections__summary">{c.summary}</span>
+            <CapabilityProof connection={c} />
             <CustomerAction
               connection={c}
               busy={busy}
@@ -73,6 +74,30 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
         </p>
       ) : null}
     </div>
+  );
+}
+
+function capabilityLabel(capability: string): string {
+  return capability.replace(/[_-]+/g, " ");
+}
+
+function CapabilityProof({ connection }: { connection: ConnectionView }): React.JSX.Element | null {
+  if (connection.capabilities.length === 0) return null;
+  const title = connection.connected ? CONNECTIONS.unlocks : CONNECTIONS.lockedUntilConnected;
+  return (
+    <span className="connections__capabilities" aria-label={title + ": " + connection.label}>
+      <span className="connections__capabilities-title">{title}</span>
+      <span className="connections__chips">
+        {connection.capabilities.map((capability) => (
+          <span
+            key={capability}
+            className={connection.connected ? "connections__chip connections__chip--on" : "connections__chip"}
+          >
+            {capabilityLabel(capability)}
+          </span>
+        ))}
+      </span>
+    </span>
   );
 }
 

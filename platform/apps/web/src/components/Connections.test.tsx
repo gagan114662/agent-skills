@@ -59,6 +59,34 @@ describe("Connections (#258)", () => {
     expect(screen.getAllByRole("button", { name: /notify me/i }).length).toBeGreaterThan(0);
   });
 
+  it("shows the real marketing capabilities a connected account unlocks (#1285)", () => {
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "google",
+          status: "available",
+          connected: true,
+          capabilities: ["search_console", "analytics"],
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    const proof = screen.getByLabelText("Unlocks: Sign in with Google");
+    expect(within(proof).getByText("search console")).toBeInTheDocument();
+    expect(within(proof).getByText("analytics")).toBeInTheDocument();
+  });
+
+  it("shows locked marketing capabilities before the provider is connected (#1285)", () => {
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [view({ id: "google", status: "available", capabilities: ["search_console"] })],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    const proof = screen.getByLabelText("Locked until connected: Sign in with Google");
+    expect(within(proof).getByText("search console")).toBeInTheDocument();
+  });
+
   it("renders blocked connectors as setup-required with a concrete reason", () => {
     const onOAuthConnect = vi.fn();
     const data: ConnectionsResponse = {
