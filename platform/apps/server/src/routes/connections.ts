@@ -163,6 +163,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     });
   }
 
+  function runtimeDescriptor(id: string): ConnectionDescriptor | undefined {
+    return runtimeDescriptors().find((descriptor) => descriptor.id === id);
+  }
+
   // What this workspace can connect (+ which are already connected). Read-only, never a secret.
   app.get("/me/connections", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
@@ -216,7 +220,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (!identity) return;
     const wid = identity.workspaceId;
     const id = (req.params as { id: string }).id;
-    const decision = decideOneClickConnect({ descriptor: getConnectionDescriptor(id) });
+    const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     const providerSecrets =
       decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : {};
@@ -251,7 +255,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const id = (req.params as { id: string }).id;
-    const decision = decideWaitlist({ descriptor: getConnectionDescriptor(id) });
+    const decision = decideWaitlist({ descriptor: runtimeDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     req.log.info(
       {
