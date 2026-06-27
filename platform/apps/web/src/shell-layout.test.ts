@@ -80,6 +80,35 @@ describe("shell layout overflow guards (#169)", () => {
     expect(decl(card, "box-sizing")).toBe("border-box");
   });
 
+  it("the public homepage door is a fixed one-viewport scene with hidden overflow", () => {
+    const door = ruleBody('.onboard[data-phase="door"]');
+
+    expect(decl(door, "height")).toBe("100dvh");
+    expect(decl(door, "max-height")).toBe("100dvh");
+    expect(decl(door, "overflow")).toBe("hidden");
+    expect(decl(door, "animation")).toBe("onboard-sky-warmth 14s ease-in-out infinite");
+  });
+
+  it("the public homepage uses the animated sun as the dominant background scene", () => {
+    const door = ruleBody('.onboard[data-phase="door"]');
+    const sun = ruleBody('.onboard[data-phase="door"]::before');
+
+    expect(decl(door, "background")).toContain("conic-gradient");
+    expect(decl(sun, "width")).toBe("clamp(420px, 52vw, 860px)");
+    expect(decl(sun, "animation")).toContain("onboard-sun-turn");
+    expect(decl(sun, "animation")).toContain("onboard-sun-breathe");
+  });
+
+  it("the marketing artefact row stays compact enough for the Tomo-style first viewport", () => {
+    const primary = ruleBody('.onboard[data-phase="door"] .onboard__primary');
+    const item = ruleBody(".onboard-marketing__mark");
+    const tallItem = ruleBody('.onboard-marketing__item[data-kind="creative"] .onboard-marketing__mark');
+
+    expect(decl(primary, "height")).toBe("min(560px, calc(100dvh - 132px))");
+    expect(decl(item, "width")).toBe("clamp(46px, 4.35vw, 78px)");
+    expect(decl(tallItem, "height")).toBe("clamp(64px, 5.9vw, 98px)");
+  });
+
   it("the Deploy two-column grid can shrink its tracks below their content width", () => {
     expect(decl(ruleBody(".deploy__sidebar,\n.deploy__main"), "min-width")).toBe("0");
   });

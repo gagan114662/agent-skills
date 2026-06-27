@@ -9225,6 +9225,8 @@ select:focus-visible {
 }
 .onboard-door-action__label {
   text-shadow: 0 1px 12px rgba(255, 255, 255, 0.42);
+  font-size: clamp(12px, 1vw, 15px);
+  line-height: 1;
 }
 .onboard-door-action:nth-child(2) {
   animation-delay: -1.2s;
@@ -9361,12 +9363,13 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 14%, rgba(255, 252, 176, 0.86) 0 11%, transparent 22%),
-    radial-gradient(980px 520px at 50% 4%, rgba(255, 226, 57, 0.5), transparent 72%),
-    radial-gradient(820px 400px at 4% 94%, rgba(117, 205, 82, 0.22), transparent 66%),
-    radial-gradient(760px 360px at 96% 92%, rgba(44, 143, 235, 0.13), transparent 68%),
-    linear-gradient(180deg, #fff77d 0%, #ffe66b 15%, #ffc95a 38%, #97d8ff 72%, #dfe983 100%);
-  background-size: 108% 108%, 118% 112%, 112% 100%, 112% 100%, 100% 100%;
+    radial-gradient(circle at 50% 19%, rgba(255, 255, 240, 0.98) 0 8%, rgba(255, 247, 123, 0.78) 9% 18%, transparent 28%),
+    conic-gradient(from 8deg at 50% 20%, rgba(255, 255, 178, 0.74) 0 5deg, transparent 5deg 17deg, rgba(255, 212, 79, 0.42) 17deg 23deg, transparent 23deg 37deg),
+    radial-gradient(980px 540px at 50% 16%, rgba(255, 239, 89, 0.62), transparent 70%),
+    radial-gradient(760px 420px at 16% 88%, rgba(255, 187, 66, 0.2), transparent 64%),
+    radial-gradient(760px 420px at 84% 88%, rgba(72, 178, 255, 0.14), transparent 66%),
+    linear-gradient(180deg, #fff879 0%, #ffe578 26%, #ffc76f 56%, #aeddff 100%);
+  background-size: 108% 108%, 122% 122%, 116% 110%, 110% 100%, 110% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9378,30 +9381,29 @@ select:focus-visible {
 }
 .onboard[data-phase="door"]::before {
   z-index: 0;
-  top: clamp(46px, 8vh, 92px);
+  top: clamp(28px, 5.5vh, 70px);
   left: 50%;
-  width: clamp(430px, 52vw, 820px);
+  width: clamp(420px, 52vw, 860px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 7deg, rgba(255, 244, 93, 0.56) 0 6deg, transparent 6deg 16deg),
-    radial-gradient(circle at 50% 50%, #fffef2 0 12%, #fffba7 13% 24%, #fff052 25% 37%, rgba(255, 185, 51, 0.74) 38% 51%, rgba(255, 169, 45, 0.2) 52% 68%, transparent 69%);
-  filter: saturate(1.12) drop-shadow(0 0 62px rgba(255, 239, 90, 0.66));
-  opacity: 0.96;
+    repeating-conic-gradient(from 7deg, rgba(255, 238, 63, 0.7) 0 5deg, transparent 5deg 13deg),
+    radial-gradient(circle at 50% 50%, #fffdd0 0 19%, #fff35d 20% 34%, rgba(255, 190, 45, 0.72) 35% 52%, rgba(255, 151, 42, 0.18) 53% 68%, transparent 69%);
+  filter: saturate(1.14) drop-shadow(0 0 60px rgba(255, 230, 71, 0.62));
+  opacity: 0.95;
   transform: translateX(-50%) rotate(0deg) scale(1);
   animation: onboard-sun-turn 40s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::after {
   z-index: 0;
-  inset: auto -8% -12% -8%;
-  height: clamp(170px, 25vh, 260px);
+  inset: auto -8% -15% -8%;
+  height: clamp(130px, 19vh, 210px);
   background:
-    radial-gradient(ellipse at 14% 74%, rgba(36, 118, 48, 0.26) 0 9%, transparent 10%),
-    radial-gradient(ellipse at 30% 48%, rgba(145, 218, 79, 0.38) 0 8%, transparent 9%),
-    radial-gradient(ellipse at 54% 63%, rgba(43, 124, 54, 0.28) 0 10%, transparent 11%),
-    radial-gradient(ellipse at 72% 50%, rgba(153, 219, 82, 0.34) 0 8%, transparent 9%),
-    linear-gradient(180deg, transparent 0 10%, rgba(98, 170, 65, 0.32) 42%, rgba(32, 101, 45, 0.5) 100%);
-  filter: blur(9px);
+    radial-gradient(ellipse at 16% 86%, rgba(38, 128, 49, 0.18) 0 8%, transparent 9%),
+    radial-gradient(ellipse at 44% 78%, rgba(148, 214, 74, 0.24) 0 9%, transparent 10%),
+    radial-gradient(ellipse at 76% 84%, rgba(46, 129, 55, 0.18) 0 8%, transparent 9%),
+    linear-gradient(180deg, transparent 0 20%, rgba(119, 187, 75, 0.24) 58%, rgba(37, 111, 49, 0.38) 100%);
+  filter: blur(11px);
   transform-origin: 50% 100%;
   animation: onboard-field-breathe 9s ease-in-out infinite;
 }
@@ -9418,15 +9420,15 @@ select:focus-visible {
   display: none;
 }
 .onboard[data-phase="door"] .onboard__inner {
-  width: min(100%, 1480px);
+  width: min(100%, 1540px);
   flex: 1 1 auto;
   min-height: 0;
   grid-template-columns: 1fr;
   align-items: end;
-  padding: clamp(6px, 1.2vh, 14px) clamp(16px, 2.6vw, 38px) clamp(10px, 1.6vh, 22px);
+  padding: clamp(4px, 1vh, 12px) clamp(16px, 2.6vw, 38px) clamp(8px, 1.6vh, 20px);
 }
 .onboard[data-phase="door"] .onboard__primary {
-  height: min(560px, calc(100dvh - 146px));
+  height: min(560px, calc(100dvh - 132px));
   min-height: 0;
   justify-content: space-between;
 }
@@ -9676,16 +9678,16 @@ select:focus-visible {
 .onboard-door {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: clamp(10px, 1.8vh, 22px);
+  gap: clamp(8px, 1.35vh, 16px);
   min-height: inherit;
   height: 100%;
   align-content: space-between;
 }
 .onboard-door__greeting {
-  max-width: 12ch;
+  max-width: 11.5ch;
   font-family: var(--o-sans);
   font-weight: 900;
-  font-size: clamp(48px, 6.6vw, 88px);
+  font-size: clamp(46px, 6vw, 78px);
   line-height: 0.92;
   letter-spacing: 0;
   margin: 0;
@@ -9703,8 +9705,8 @@ select:focus-visible {
 .onboard-door__field {
   position: relative;
   display: flex;
-  width: min(640px, 100%);
-  min-height: 70px;
+  width: min(620px, 100%);
+  min-height: 66px;
   overflow: hidden;
   align-items: center;
   border: 1px solid rgba(0, 0, 0, 0.13);
@@ -9864,7 +9866,7 @@ select:focus-visible {
 .onboard-marketing__label {
   max-width: 10ch;
   color: rgba(5, 5, 5, 0.72);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 1.05;
   text-align: center;
