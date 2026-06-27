@@ -5,7 +5,9 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveOrigin,
+  resolveBuildSha,
   canonicalUrl,
+  injectBuildStamp,
   injectPage,
   buildSitemap,
   buildRobots,
@@ -43,6 +45,25 @@ describe("resolveOrigin", () => {
   it("defaults to https://ipop.ai and honours SITE_ORIGIN, stripping trailing slashes", () => {
     expect(resolveOrigin({})).toBe("https://ipop.ai");
     expect(resolveOrigin({ SITE_ORIGIN: "https://preview.example.com/" })).toBe("https://preview.example.com");
+  });
+});
+
+describe("resolveBuildSha", () => {
+  it("prefers an explicit Vite build SHA, then Vercel, then GitHub Actions", () => {
+    expect(
+      resolveBuildSha({
+        VITE_RELOAD_BUILD_SHA: "ABC1234",
+        VERCEL_GIT_COMMIT_SHA: "deadbeef",
+        GITHUB_SHA: "feedface",
+      }),
+    ).toBe("abc1234");
+    expect(resolveBuildSha({ VERCEL_GIT_COMMIT_SHA: "DEADBEEF", GITHUB_SHA: "feedface" })).toBe("deadbeef");
+    expect(resolveBuildSha({ GITHUB_SHA: "FEEDFACE" })).toBe("feedface");
+  });
+
+  it("returns null for unstamped or malformed builds", () => {
+    expect(resolveBuildSha({})).toBeNull();
+    expect(resolveBuildSha({ VERCEL_GIT_COMMIT_SHA: "not a sha" })).toBeNull();
   });
 });
 
@@ -136,6 +157,27 @@ describe("injectPage", () => {
     };
     const out = injectPage(SHELL, page, origin);
     expect(out).toContain("<title>Tom &amp; &quot;Jerry&quot; &lt;tag&gt;</title>");
+  });
+});
+
+describe("injectBuildStamp", () => {
+  it("adds a build-sha meta tag inside the prerendered head", () => {
+    const out = injectBuildStamp(SHELL, "ABC1234");
+    expect(out).toContain('<meta name="reload-build-sha" content="abc1234" />');
+    expect(out.indexOf('name="reload-build-sha"')).toBeLessThan(out.indexOf("</head>"));
+  });
+
+  it("replaces an existing build-sha meta tag instead of duplicating it", () => {
+    const stamped = injectBuildStamp(SHELL, "abc1234");
+    const restamped = injectBuildStamp(stamped, "deadbeef");
+    expect(restamped.match(/name="reload-build-sha"/g)).toHaveLength(1);
+    expect(restamped).toContain('<meta name="reload-build-sha" content="deadbeef" />');
+    expect(restamped).not.toContain("abc1234");
+  });
+
+  it("leaves local unstamped builds unchanged", () => {
+    expect(injectBuildStamp(SHELL, null)).toBe(SHELL);
+    expect(injectBuildStamp(SHELL, "not a sha")).toBe(SHELL);
   });
 });
 

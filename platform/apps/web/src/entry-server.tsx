@@ -52,7 +52,7 @@ import {
 
 // Re-export the pure SEO helpers so the prerender build script (scripts/prerender.mjs) can import
 // everything it needs from this one built SSR bundle.
-export { resolveOrigin, injectPage, buildSitemap, buildRobots } from "./blog/seo.js";
+export { resolveOrigin, resolveBuildSha, injectBuildStamp, injectPage, buildSitemap, buildRobots } from "./blog/seo.js";
 export type { PrerenderPage } from "./blog/seo.js";
 
 // The prerender origin (same resolution the build script uses) so JSON-LD URLs are absolute + canonical.

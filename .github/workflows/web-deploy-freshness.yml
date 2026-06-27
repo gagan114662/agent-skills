@@ -1,0 +1,51 @@
+name: web-deploy-freshness
+
+# #1321: production ipop.ai can remain stale when Vercel deployment is rate-limited. This probe
+# fetches the public static homepage and fails loudly when it lacks the current build stamp or still
+# contains old landing copy. It is intentionally separate from uptime: a 200 OK can still be stale.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Expected deployed web git SHA. Defaults to this workflow commit."
+        required: false
+      target:
+        description: "Production web URL to probe."
+        required: false
+        default: "https://ipop.ai/"
+  schedule:
+    - cron: "17 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - "platform/apps/web/**"
+      - ".github/workflows/web-deploy-freshness.yml"
+
+concurrency:
+  group: web-deploy-freshness
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: platform
+
+jobs:
+  production-freshness:
+    runs-on: ubuntu-latest
+    env:
+      PRODUCTION_WEB_URL: ${{ inputs.target || vars.PRODUCTION_WEB_URL || 'https://ipop.ai/' }}
+      EXPECTED_WEB_SHA: ${{ inputs.expected_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: platform/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Probe live web deploy freshness
+        run: pnpm --filter @reload/web deploy:freshness
