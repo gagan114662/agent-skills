@@ -28,6 +28,7 @@ import { createAcquisitionProviders } from "./providers.js";
 import { createPostmarkEspProvider, type PostmarkEspResolution } from "./postmark-esp.js";
 import { getChannelConnection } from "../db/repositories/outbound-channels.js";
 import { getChannelDescriptor, LOWEST_RISK_CHANNEL } from "../outbound-channel/channel.js";
+import { verifyAndRecordSend } from "../outbound-channel/service.js";
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { buildHostedPublishDispatcher } from "../hosted/default.js";
@@ -93,6 +94,28 @@ export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
     envelopes: dbEnvelopeStore,
     suppressions: dbSuppressionStore,
     receipts: dbReceiptStore,
+    outboundReadbacks: {
+      async recordPostmarkReadbacks(input) {
+        await Promise.all(
+          input.messageIds.map((messageId, index) =>
+            verifyAndRecordSend({
+              workspaceId: input.workspaceId,
+              channel: LOWEST_RISK_CHANNEL,
+              recipient: input.recipients[index] ?? input.recipients[0] ?? "",
+              approvalRequestId: input.approvalRequestId,
+              probe: async () => ({
+                messageId,
+                observedAt: new Date().toISOString(),
+                detail: {
+                  provider: input.provider,
+                  ...input.detail,
+                },
+              }),
+            }),
+          ),
+        );
+      },
+    },
     emailWindow: {
       warmupState: (workspaceId) => emailWarmupState(workspaceId, Date.now()),
     },

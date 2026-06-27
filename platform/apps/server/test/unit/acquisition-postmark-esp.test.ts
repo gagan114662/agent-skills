@@ -163,6 +163,14 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
   function buildHarness(resolve: () => { live: boolean; serverToken: string; from: string }, reply: { status?: number; body: unknown }) {
     const { impl, calls } = fakeFetch(reply);
     const receipts: SendReceiptInput[] = [];
+    const readbacks: Array<{
+      workspaceId: string;
+      approvalRequestId: string;
+      recipients: readonly string[];
+      messageIds: readonly string[];
+      provider: string;
+      detail: Record<string, unknown>;
+    }> = [];
     const deps: AcquisitionDispatcherDeps = {
       resolveCaps: () => resolveAcquisitionCaps({ enabled: true, email: true, espProvider: "postmark" }),
       providers: createAcquisitionProviders(
@@ -182,12 +190,18 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
           return Promise.resolve();
         },
       },
+      outboundReadbacks: {
+        recordPostmarkReadbacks: (r) => {
+          readbacks.push(r);
+          return Promise.resolve();
+        },
+      },
       emailWindow: { warmupState: () => Promise.resolve({ dayIndex: 99, sentToday: 0 }) },
       footerInfo: () => footer,
     };
     const permissiveEgress: EgressEnforcer = { enforce: () => Promise.resolve(null) };
     const registry = buildDefaultRegistry(permissiveEgress, noopComplianceEnforcer, createAcquisitionDispatcher(deps));
-    return { registry, receipts, calls };
+    return { registry, receipts, readbacks, calls };
   }
 
   const ctx = {
@@ -198,7 +212,7 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
   };
 
   it("an APPROVED send is dispatched via the real Postmark provider", async () => {
-    const { registry, receipts, calls } = buildHarness(
+    const { registry, receipts, readbacks, calls } = buildHarness(
       () => ({ live: true, serverToken: TOKEN, from: FROM }),
       { body: { MessageID: "pm-approved-1", ErrorCode: 0 } },
     );
@@ -216,6 +230,71 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
     expect(calls).toHaveLength(1); // a real send left the building
     expect(receipts[0]!.provider).toBe("postmark");
     expect(receipts[0]!.status).toBe("sent");
+    expect(readbacks).toEqual([
+      expect.objectContaining({
+        workspaceId: "ws_test",
+        approvalRequestId: "req_approved",
+        recipients: ["prospect@example.com"],
+        messageIds: ["pm-approved-1"],
+        provider: "postmark",
+      }),
+    ]);
+  });
+
+  it("fails closed when a real Postmark send cannot be tied to a #13 approval id", async () => {
+    const { registry } = buildHarness(
+      () => ({ live: true, serverToken: TOKEN, from: FROM }),
+      { body: { MessageID: "pm-approved-1", ErrorCode: 0 } },
+    );
+    const action = buildOutboundEmailAction({
+      to: "prospect@example.com",
+      subject: "Quick intro",
+      body: "Hello there",
+    });
+    await expect(
+      registry.get("external.send")!.execute(action.payload, {
+        workspaceId: "ws_test",
+        requesterMemberId: "mem_owner",
+        log: silentLogger,
+      }),
+    ).rejects.toThrow(/approval request id/);
+  });
+
+  it("fails closed when a real Postmark send has no readback recorder wired", async () => {
+    const { impl } = fakeFetch({ body: { MessageID: "pm-approved-1", ErrorCode: 0 } });
+    const deps: AcquisitionDispatcherDeps = {
+      resolveCaps: () => resolveAcquisitionCaps({ enabled: true, email: true, espProvider: "postmark" }),
+      providers: createAcquisitionProviders(
+        {},
+        {
+          esp: createPostmarkEspProvider({
+            resolve: () => ({ live: true, serverToken: TOKEN, from: FROM }),
+            fetchImpl: impl as never,
+          }),
+        },
+      ),
+      envelopes: {
+        getActiveAdsEnvelope: () => Promise.resolve(null),
+        reserveAdsSpend: () => Promise.resolve(null),
+        refundAdsSpend: () => Promise.resolve(),
+        debitAdsEnvelope: () => Promise.resolve(),
+      },
+      suppressions: { loadSuppressed: () => Promise.resolve(new Set<string>()) },
+      receipts: { record: () => Promise.resolve() },
+      emailWindow: { warmupState: () => Promise.resolve({ dayIndex: 99, sentToday: 0 }) },
+      footerInfo: () => footer,
+    };
+    const registry = buildDefaultRegistry(
+      { enforce: () => Promise.resolve(null) },
+      noopComplianceEnforcer,
+      createAcquisitionDispatcher(deps),
+    );
+    const action = buildOutboundEmailAction({
+      to: "prospect@example.com",
+      subject: "Quick intro",
+      body: "Hello there",
+    });
+    await expect(registry.get("external.send")!.execute(action.payload, ctx)).rejects.toThrow(/readback recorder/);
   });
 
   it("with the channel connected but NOT enabled, an approved send stays recorded-only (no network)", async () => {
