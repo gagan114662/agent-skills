@@ -16,7 +16,7 @@
  * overlays from the left footer / the paywall nudge rather than a tab strip.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalRequestDto, ApprovalStatus } from "@reload/shared";
+import type { ApprovalRequestDto, ApprovalStatus, PolicySimulationInput, PolicySimulationResult } from "@reload/shared";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { api, ApiError, CHECKOUT_RETURN_PARAM } from "../../api/client.js";
@@ -684,6 +684,11 @@ export function ConsoleView({
     }
   }
 
+  async function simulatePolicy(input: PolicySimulationInput): Promise<PolicySimulationResult> {
+    if (!workspaceId) throw new Error("Workspace not ready");
+    return api.approvals.simulatePolicy(workspaceId, input);
+  }
+
   /**
    * First-run activation: hire the founding team and light up the board. Runs the REAL #123/#138 seed
    * (seven department leads, each launching its first welcome session — `welcomeTasks`), then reloads the
@@ -1130,6 +1135,7 @@ export function ConsoleView({
               loggedDecisions={shipped.length}
               busy={policyBusy}
               onToggleKillSwitch={(next) => void togglePolicyKillSwitch(next)}
+              onSimulatePolicy={simulatePolicy}
             />
           </div>
           <div {...{ [SETTINGS_SECTION_ATTR]: "budget" }}>

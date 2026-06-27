@@ -161,6 +161,13 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       listPolicies: vi.fn(async () => [] as ApprovalPolicyDto[]),
       upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => ({ ...STUB_POLICY, actionType: input.actionType })),
       deletePolicy: vi.fn(async () => ({ ok: true }) as const),
+      simulatePolicy: vi.fn(async (_w: string, input: { actionType: string }) => ({
+        actionType: input.actionType,
+        amount: null,
+        outcome: "auto_runs" as const,
+        reason: "auto-approved by policy",
+        rollbackStatus: "No external mutation.",
+      })),
       submitAction: vi.fn(async () => ({ status: "pending" as const, reason: "policy", request: STUB_REQUEST })),
     },
     review: {

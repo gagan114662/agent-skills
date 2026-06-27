@@ -1380,7 +1380,8 @@ export const CONSOLE = {
     maintenanceOn: "read-only",
     maintenanceOff: "normal writes",
     simulatorTitle: "Dry-run simulator",
-    simulatorSub: "Representative actions through the current production policy posture.",
+    simulatorSub: "Try any action against the current production policy posture.",
+    simulate: "Run dry-run",
     outcomes: {
       auto: "auto-runs",
       approval: "queues for approval",

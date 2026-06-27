@@ -1,8 +1,9 @@
 /**
- * Settings -> Policy control center (#1291). Presentational: ConsoleView supplies the live switch and
- * approval counts; the rows are static product policy examples from brand.ts so buyers can see how real
- * work routes before they hand agents live accounts.
+ * Settings -> Policy control center (#1291). ConsoleView supplies live switches, counts, and the backend
+ * simulator; static rows stay as rollback examples for the common external-action classes.
  */
+import { useState } from "react";
+import type { PolicySimulationInput, PolicySimulationResult } from "@reload/shared";
 import { CONSOLE } from "../brand.js";
 
 type PolicyOutcome = "auto" | "approval" | "blocked";
@@ -14,6 +15,7 @@ export interface PolicyControlCenterProps {
   loggedDecisions: number;
   busy?: boolean;
   onToggleKillSwitch: (next: boolean) => void;
+  onSimulatePolicy?: (input: PolicySimulationInput) => Promise<PolicySimulationResult>;
 }
 
 function outcomeLabel(outcome: PolicyOutcome): string {
@@ -27,8 +29,36 @@ export function PolicyControlCenter({
   loggedDecisions,
   busy,
   onToggleKillSwitch,
+  onSimulatePolicy,
 }: PolicyControlCenterProps): React.JSX.Element {
   const copy = CONSOLE.policy;
+  const [actionType, setActionType] = useState("external.send");
+  const [amount, setAmount] = useState("");
+  const [simulating, setSimulating] = useState(false);
+  const [simulation, setSimulation] = useState<PolicySimulationResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function simulate(): Promise<void> {
+    if (!onSimulatePolicy || simulating) return;
+    setSimulating(true);
+    setError(null);
+    try {
+      const trimmedAmount = amount.trim();
+      const result = await onSimulatePolicy({
+        actionType: actionType.trim(),
+        amount: trimmedAmount === "" ? null : Number(trimmedAmount),
+      });
+      setSimulation(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Policy simulation failed");
+    } finally {
+      setSimulating(false);
+    }
+  }
+
+  const simulatedOutcome =
+    simulation?.outcome === "auto_runs" ? "auto" : simulation?.outcome === "queues_for_approval" ? "approval" : "blocked";
+
   return (
     <section className="policy-center" aria-labelledby="policy-control-title">
       <p className="settings-eyebrow">{copy.eyebrow}</p>
@@ -70,6 +100,52 @@ export function PolicyControlCenter({
       <div className="policy-center__section">
         <h3>{copy.simulatorTitle}</h3>
         <p>{copy.simulatorSub}</p>
+        {onSimulatePolicy && (
+          <form
+            className="policy-simulator"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void simulate();
+            }}
+          >
+            <label>
+              Action type
+              <input
+                value={actionType}
+                onChange={(event) => setActionType(event.target.value)}
+                placeholder="external.send"
+                aria-label="Action type to simulate"
+              />
+            </label>
+            <label>
+              Amount
+              <input
+                type="number"
+                min="0"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="optional"
+                aria-label="Amount to simulate"
+              />
+            </label>
+            <button type="submit" className="btn btn--primary" disabled={simulating || actionType.trim() === ""}>
+              {simulating ? copy.working : copy.simulate}
+            </button>
+          </form>
+        )}
+        {error && (
+          <p className="policy-simulator__error" role="alert">
+            {error}
+          </p>
+        )}
+        {simulation && (
+          <article className={"policy-simulator__result policy-row--" + simulatedOutcome}>
+            <span>{simulation.actionType}</span>
+            <b>{outcomeLabel(simulatedOutcome)}</b>
+            <small>{simulation.reason}</small>
+            <small className="policy-row__rollback">{simulation.rollbackStatus}</small>
+          </article>
+        )}
         <ul className="policy-center__rows">
           {copy.policyRows.map((row) => (
             <li key={row.area} className={"policy-row policy-row--" + row.outcome}>

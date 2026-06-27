@@ -89,6 +89,13 @@ export function makeApprovalsFake(over: ApprovalFixtureOverrides = {}) {
       makePolicy({ id: "new", actionType: input.actionType }),
     ),
     deletePolicy: vi.fn(async () => ({ ok: true }) as const),
+    simulatePolicy: vi.fn(async (_wid: string, input: { actionType: string }) => ({
+      actionType: input.actionType,
+      amount: null,
+      outcome: "auto_runs" as const,
+      reason: "auto-approved by policy",
+      rollbackStatus: "No external mutation.",
+    })),
     submitAction: vi.fn(async () => ({
       status: "pending" as const,
       reason: "policy",

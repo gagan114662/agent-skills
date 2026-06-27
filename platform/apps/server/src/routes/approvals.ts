@@ -44,6 +44,7 @@ import {
   sweepExpiredDetailed,
   type ApprovalRequest,
 } from "../db/repositories/approvals.js";
+import { getControls as getAutonomyControls } from "../db/repositories/autonomy.js";
 
 /**
  * Human approval gates & governance (issue #13, ADR-0013). A member submits an action; the pure
@@ -100,6 +101,19 @@ export function parseApprovalEdit(
     return { ok: false, error: "edit.value must be at most " + MAX_APPROVAL_EDIT_VALUE_LENGTH + " characters" };
   }
   return { ok: true, value: { field, value } };
+}
+
+function rollbackStatusForPolicySimulation(actionType: string): string {
+  if (/refund|rollback|restore|unpublish|delete|remove|revoke/.test(actionType)) {
+    return "Reversible through the provider or audit replay when the executor supports it.";
+  }
+  if (/publish|deploy|post|send|outreach|external|message/.test(actionType)) {
+    return "Undo depends on the connected provider; the executed approval keeps the audit receipt.";
+  }
+  if (/spend|charge|billing|wallet|payout|disburse|ad/.test(actionType)) {
+    return "Money movement is not assumed reversible; owner approval is required before execution.";
+  }
+  return "No provider rollback is known yet; the action remains audit-only until an executor declares one.";
 }
 
 /** A decision (approve/reject) is restricted to human members — "humans only on critical decisions". */
@@ -221,6 +235,40 @@ export async function approvalRoutes(
     const { wid } = req.params as { wid: string };
     if (!assertWorkspace(id, wid, reply)) return;
     return listPolicies(wid);
+  });
+
+  app.post("/workspaces/:wid/approval-policies/simulate", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { wid } = req.params as { wid: string };
+    if (!assertWorkspace(id, wid, reply)) return;
+    const b = req.body as { actionType?: unknown; amount?: unknown };
+    const actionType = typeof b.actionType === "string" ? b.actionType.trim() : "";
+    if (!actionType) return reply.code(400).send({ error: "actionType required" });
+    if (actionType.length > 200) return reply.code(400).send({ error: "actionType must be at most 200 characters" });
+
+    const parsed = parseApprovalAmount(b.amount, "amount");
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+
+    const controls = await getAutonomyControls(wid);
+    if (controls.killSwitch) {
+      return {
+        actionType,
+        amount: parsed.value,
+        outcome: "blocked",
+        reason: "break-glass pause is engaged; queued external work is stopped before execution",
+        rollbackStatus: rollbackStatusForPolicySimulation(actionType),
+      };
+    }
+
+    const decision = evaluatePolicy({ actionType, amount: parsed.value }, await listPolicyRules(wid));
+    return {
+      actionType,
+      amount: parsed.value,
+      outcome: decision.requiresApproval ? "queues_for_approval" : "auto_runs",
+      reason: decision.reason,
+      rollbackStatus: rollbackStatusForPolicySimulation(actionType),
+    };
   });
 
   app.delete("/workspaces/:wid/approval-policies/:ruleId", async (req, reply) => {
