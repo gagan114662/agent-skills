@@ -410,7 +410,10 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     }
     await revokeServiceCredentials(identity.workspaceId, id, identity.memberId);
     if (id === EMAIL_CONNECTION_ID) {
-      await revokeServiceCredentials(identity.workspaceId, POSTMARK_SERVICE_KEY, identity.memberId);
+      const proofs = await connectionProofs(identity.workspaceId);
+      if (proofs.get(POSTMARK_SERVICE_KEY)?.connected) {
+        await revokeServiceCredentials(identity.workspaceId, POSTMARK_SERVICE_KEY, identity.memberId);
+      }
     }
     return { revoked: true, id };
   });
