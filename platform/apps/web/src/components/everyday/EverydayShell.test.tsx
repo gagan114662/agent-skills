@@ -149,11 +149,14 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
     expect(within(dashboard).getByText("customers")).toBeInTheDocument();
-    expect(within(dashboard).getByText("qualified")).toBeInTheDocument();
+    expect(within(dashboard).getByText("team lanes")).toBeInTheDocument();
+    expect(within(dashboard).getByText("channels live")).toBeInTheDocument();
+    expect(within(dashboard).getByText("approvals")).toBeInTheDocument();
     expect(within(dashboard).getByText("customer goal")).toBeInTheDocument();
     expect(within(dashboard).getByText("briefed")).toBeInTheDocument();
     expect(within(dashboard).getByText("workspace")).toBeInTheDocument();
-    expect(within(dashboard).getByText(/needs CMO metrics feed/i)).toBeInTheDocument();
+    expect(within(dashboard).getByText(/operator lane ready/i)).toBeInTheDocument();
+    expect(within(dashboard).queryByText(/needs CMO metrics feed/i)).not.toBeInTheDocument();
     expect(within(dashboard).getAllByText("live").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("launch readiness")).toBeInTheDocument();
     expect(within(dashboard).getByText("auth")).toBeInTheDocument();
