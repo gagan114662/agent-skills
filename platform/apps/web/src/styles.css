@@ -9441,13 +9441,13 @@ select:focus-visible {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 10%, #fffde8 0 6%, #fff879 7% 16%, rgba(255, 183, 43, 0.58) 17% 29%, transparent 31%),
-    conic-gradient(from -18deg at 50% 10%, rgba(255, 247, 83, 0.76) 0 5deg, transparent 5deg 16deg, rgba(255, 180, 42, 0.56) 16deg 22deg, transparent 22deg 34deg),
-    radial-gradient(1100px 620px at 50% 11%, rgba(255, 235, 77, 0.72), rgba(255, 183, 52, 0.2) 48%, transparent 72%),
-    linear-gradient(112deg, transparent 0 17%, rgba(255, 249, 130, 0.24) 18% 20%, transparent 21% 45%, rgba(255, 211, 66, 0.18) 46% 49%, transparent 50%),
-    linear-gradient(66deg, transparent 0 24%, rgba(255, 255, 198, 0.22) 25% 28%, transparent 29% 66%, rgba(255, 159, 58, 0.16) 67% 70%, transparent 71%),
-    linear-gradient(180deg, #fff879 0%, #ffd965 26%, #ffaf58 62%, #fff0a6 100%);
-  background-size: 116% 116%, 136% 136%, 122% 112%, 120% 100%, 120% 100%, 100% 100%;
+    radial-gradient(circle at 50% 8%, rgba(255, 255, 239, 0.92) 0 5%, rgba(255, 248, 121, 0.72) 6% 16%, rgba(255, 180, 37, 0.34) 17% 28%, transparent 30%),
+    conic-gradient(from -22deg at 50% 8%, rgba(255, 248, 92, 0.72) 0 4deg, transparent 4deg 16deg, rgba(255, 191, 55, 0.48) 16deg 22deg, transparent 22deg 38deg),
+    radial-gradient(980px 540px at 50% 9%, rgba(255, 240, 92, 0.62), rgba(255, 176, 47, 0.18) 50%, transparent 73%),
+    linear-gradient(112deg, transparent 0 17%, rgba(255, 252, 152, 0.2) 18% 20%, transparent 21% 45%, rgba(255, 215, 72, 0.14) 46% 49%, transparent 50%),
+    linear-gradient(66deg, transparent 0 24%, rgba(255, 255, 210, 0.18) 25% 28%, transparent 29% 66%, rgba(255, 159, 58, 0.12) 67% 70%, transparent 71%),
+    linear-gradient(180deg, #fff879 0%, #ffd868 25%, #ffb35d 60%, #fff1aa 100%);
+  background-size: 112% 112%, 132% 132%, 116% 108%, 118% 100%, 118% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9456,18 +9456,18 @@ select:focus-visible {
   position: absolute;
   pointer-events: none;
   z-index: 0;
-  top: clamp(-34px, -3vh, 14px);
+  top: clamp(-58px, -4.6vh, -10px);
   left: 50%;
-  width: clamp(620px, 72vw, 1160px);
+  width: clamp(560px, 66vw, 1040px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 7deg, rgba(255, 249, 88, 0.92) 0 5deg, transparent 5deg 13deg),
-    radial-gradient(circle at 50% 50%, #fffef0 0 16%, #fff879 17% 34%, rgba(255, 187, 37, 0.86) 35% 52%, rgba(255, 119, 42, 0.28) 53% 69%, transparent 70%);
-  filter: saturate(1.22) drop-shadow(0 0 96px rgba(255, 226, 61, 0.86));
-  opacity: 0.98;
+    repeating-conic-gradient(from 7deg, rgba(255, 249, 88, 0.9) 0 4deg, transparent 4deg 12deg),
+    radial-gradient(circle at 50% 50%, #fffef0 0 15%, #fff879 16% 33%, rgba(255, 186, 36, 0.82) 34% 51%, rgba(255, 119, 42, 0.24) 52% 68%, transparent 69%);
+  filter: saturate(1.18) drop-shadow(0 0 82px rgba(255, 226, 61, 0.78));
+  opacity: 0.94;
   transform: translateX(-50%) rotate(0deg) scale(1);
-  animation: onboard-sun-turn 38s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
+  animation: onboard-sun-turn 42s linear infinite, onboard-sun-breathe 7s ease-in-out infinite;
 }
 .onboard[data-phase="door"]::after {
   content: "";
@@ -9477,7 +9477,7 @@ select:focus-visible {
   inset: 0 -10% auto -10%;
   height: 100%;
   background:
-    linear-gradient(114deg, transparent 0 14%, rgba(255, 246, 130, 0.28) 15% 18%, transparent 19% 41%, rgba(255, 225, 89, 0.22) 42% 46%, transparent 47%),
+    linear-gradient(115deg, transparent 0 14%, rgba(255, 246, 130, 0.28) 15% 18%, transparent 19% 41%, rgba(255, 225, 89, 0.22) 42% 46%, transparent 47%),
     linear-gradient(72deg, transparent 0 25%, rgba(255, 183, 63, 0.2) 26% 30%, transparent 31% 62%, rgba(255, 252, 169, 0.24) 63% 67%, transparent 68%),
     radial-gradient(ellipse at 50% 101%, rgba(255, 218, 73, 0.4) 0 16%, rgba(255, 139, 54, 0.18) 17% 31%, transparent 50%);
   mix-blend-mode: screen;
@@ -10297,10 +10297,10 @@ select:focus-visible {
 
 @keyframes onboard-sky-warmth {
   0%, 100% {
-    background-position: 50% 8%, 50% 7%, 50% 12%, 18% 88%, 84% 88%, 50% 50%;
+    background-position: 50% 7%, 50% 6%, 50% 11%, 18% 88%, 84% 88%, 50% 50%;
   }
   50% {
-    background-position: 50% 12%, 52% 4%, 50% 15%, 16% 91%, 86% 86%, 50% 50%;
+    background-position: 50% 10%, 52% 4%, 50% 14%, 16% 91%, 86% 86%, 50% 50%;
   }
 }
 
