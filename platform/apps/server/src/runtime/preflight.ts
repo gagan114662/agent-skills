@@ -81,6 +81,8 @@ export interface PreflightInput {
    * partial config still warns because it would route users into a broken auth start.
    */
   googleOAuthRequired?: boolean;
+  /** Whether Google must also be connectable as a marketing-data connector (#1285). */
+  googleConnectionOAuthRequired?: boolean;
   /** Reach outbound policy for the deployment-level live-proof gate (#1286). */
   reach?: ReachConfig;
   /** Whether enabled Reach must prove it is not mock/dry-run before a release can pass (#1286). */
@@ -112,6 +114,17 @@ export function googleOAuthRequiredForRelease(
     profile === "prod" ||
     env.RELOAD_REQUIRE_GOOGLE_OAUTH === "1" ||
     env.RELOAD_REQUIRE_GOOGLE_OAUTH === "true"
+  );
+}
+
+export function googleConnectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return (
+    profile === "prod" ||
+    env.RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH === "1" ||
+    env.RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH === "true"
   );
 }
 
@@ -318,6 +331,39 @@ function checkGoogleOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResul
   };
 }
 
+/** Google connector OAuth powers Search Console + Analytics work after sign-in (#1285). */
+function checkGoogleConnectionOAuth(
+  env: NodeJS.ProcessEnv,
+  required: boolean,
+): CheckResult | undefined {
+  const name = "google-connection-oauth";
+  const vars = {
+    GOOGLE_OAUTH_CLIENT_ID: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
+    GOOGLE_OAUTH_CLIENT_SECRET: Boolean(env.GOOGLE_OAUTH_CLIENT_SECRET),
+    GOOGLE_CONNECTION_OAUTH_REDIRECT_URI: Boolean(env.GOOGLE_CONNECTION_OAUTH_REDIRECT_URI),
+  } as const;
+  const entries = Object.entries(vars);
+  const present = entries.filter(([, v]) => v).length;
+  if (present === entries.length) {
+    return {
+      name,
+      status: "pass",
+      message:
+        "Google connection OAuth config present (GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET + GOOGLE_CONNECTION_OAUTH_REDIRECT_URI)",
+    };
+  }
+  if (!required && present === 0) return undefined;
+
+  const missing = entries.filter(([, v]) => !v).map(([k]) => k);
+  return {
+    name,
+    status: required ? "fail" : "warn",
+    message: "Google connection OAuth config incomplete — missing: " + missing.join(", "),
+    remedy:
+      "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/google/oauth/callback and add that exact URI to the Google OAuth web client.",
+  };
+}
+
 /**
  * Reach can be demo-safe with imported/mock prospects + recorded-only senders, but production must not
  * present that as autonomous customer acquisition. This check is intentionally secret-free: it reads only
@@ -463,6 +509,11 @@ export function preflight(
 
   const googleOAuth = checkGoogleOAuth(input.env, Boolean(input.googleOAuthRequired));
   if (googleOAuth) checks.push(googleOAuth);
+  const googleConnectionOAuth = checkGoogleConnectionOAuth(
+    input.env,
+    Boolean(input.googleConnectionOAuthRequired),
+  );
+  if (googleConnectionOAuth) checks.push(googleConnectionOAuth);
 
   const reachLiveProof = checkReachLiveProof(input.reach, Boolean(input.reachLiveProofRequired));
   if (reachLiveProof) checks.push(reachLiveProof);

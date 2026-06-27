@@ -19,7 +19,12 @@ import { buildDeliveryDispatcher } from "../delivery/default.js";
 import { createDefaultVerificationEngine } from "../verification/default.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
-import { googleOAuthRequiredForRelease, preflight, type PreflightReport } from "./preflight.js";
+import {
+  googleConnectionOAuthRequiredForRelease,
+  googleOAuthRequiredForRelease,
+  preflight,
+  type PreflightReport,
+} from "./preflight.js";
 import {
   EnvSecretsResolver,
   ExternalSecretsResolver,
@@ -184,6 +189,7 @@ export function defaultPreflight(): PreflightReport {
     browserEnabled,
     workspaceRoot,
     googleOAuthRequired: googleOAuthRequiredForRelease(env.profile, process.env),
+    googleConnectionOAuthRequired: googleConnectionOAuthRequiredForRelease(env.profile, process.env),
     reach: loadConfig().reach,
     reachLiveProofRequired:
       env.profile === "prod" ||

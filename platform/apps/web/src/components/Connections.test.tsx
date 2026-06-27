@@ -101,6 +101,28 @@ describe("Connections (#258)", () => {
     expect(screen.getByText(/we'll let you know/i)).toBeInTheDocument();
   });
 
+  it("shows the exact Google connector setup issue when OAuth callback config is missing (#1285)", () => {
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "google",
+          label: "Sign in with Google",
+          status: "coming_soon",
+          configIssue: {
+            code: "google_connection_oauth_missing_config",
+            missingEnv: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+            remedy:
+              "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/google/oauth/callback URL and add that exact URI to the Google OAuth client.",
+          },
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    expect(screen.getByText(/GOOGLE_CONNECTION_OAUTH_REDIRECT_URI/)).toBeInTheDocument();
+    expect(screen.getByText(/connections\/google\/oauth\/callback/)).toBeInTheDocument();
+  });
+
   it("renders the admin paste form and submits repo + token when the owner manages internal", () => {
     const onInternalConnect = vi.fn();
     const data: ConnectionsResponse = {

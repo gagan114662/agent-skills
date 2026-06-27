@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  googleConnectionOAuthRequiredForRelease,
   googleOAuthRequiredForRelease,
   preflight,
   PreflightError,
@@ -287,8 +288,8 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
         runtime: "local",
         harness: "demo",
         env: {
-          GOOGLE_OAUTH_CLIENT_ID: "client",
-          GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_VALUE",
+          GOOGLE_OAUTH_CLIENT_SECRET: "SECRET_CLIENT_SECRET",
           GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
         },
         googleOAuthRequired: true,
@@ -297,8 +298,65 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     );
     expect(report.checks.find((c) => c.name === "google-oauth")?.status).toBe("pass");
     expect(report.ok).toBe(true);
-    expect(JSON.stringify(report)).not.toContain("client");
-    expect(JSON.stringify(report)).not.toContain("secret");
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_VALUE");
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_SECRET");
+  });
+
+  it("Google connection OAuth preflight fails prod when the marketing callback is missing (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_VALUE",
+          GOOGLE_OAUTH_CLIENT_SECRET: "SECRET_CLIENT_SECRET",
+          GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+        },
+        googleOAuthRequired: true,
+        googleConnectionOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "google-connection-oauth");
+    expect(check?.status).toBe("fail");
+    expect(check?.message).toContain("GOOGLE_CONNECTION_OAUTH_REDIRECT_URI");
+    expect(check?.remedy).toContain("/me/connections/google/oauth/callback");
+    expect(report.ok).toBe(false);
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_VALUE");
+    expect(JSON.stringify(report)).not.toContain("SECRET_CLIENT_SECRET");
+  });
+
+  it("Google connection OAuth preflight passes when the connector callback is present (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_CLIENT_VALUE",
+          GOOGLE_OAUTH_CLIENT_SECRET: "SECRET_CLIENT_SECRET",
+          GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+          GOOGLE_CONNECTION_OAUTH_REDIRECT_URI:
+            "https://api.ipop.ai/me/connections/google/oauth/callback",
+        },
+        googleOAuthRequired: true,
+        googleConnectionOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+    expect(report.checks.find((c) => c.name === "google-connection-oauth")?.status).toBe("pass");
+    expect(report.ok).toBe(true);
+  });
+
+  it("requires Google connection OAuth by default for prod release gates (#1285)", () => {
+    expect(googleConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+    expect(googleConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
+    expect(
+      googleConnectionOAuthRequiredForRelease("dev", {
+        RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH: "true",
+      }),
+    ).toBe(true);
   });
 
   it("Reach live-proof fails prod when autonomous outreach is enabled with mock prospects (#1286)", () => {

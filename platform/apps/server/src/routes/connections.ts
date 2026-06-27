@@ -19,7 +19,11 @@ import {
   decideOneClickConnect,
   decideWaitlist,
 } from "../connections/view.js";
-import { createDefaultConnectOnceService, defaultConnectProvider } from "../connections/default.js";
+import {
+  createDefaultConnectOnceService,
+  defaultConnectProvider,
+  googleConnectionOAuthConfigStatus,
+} from "../connections/default.js";
 import { getRequest, recordExecution } from "../db/repositories/approvals.js";
 import {
   listServiceStatuses,
@@ -81,7 +85,22 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return CONNECTION_DESCRIPTORS.map((descriptor) => {
       if (descriptor.auth !== "oauth") return descriptor;
       const provider = defaultConnectProvider(descriptor.id);
-      return provider.live ? { ...descriptor, status: "available" } : descriptor;
+      if (provider.live) return { ...descriptor, status: "available" };
+      if (descriptor.id === "google") {
+        const status = googleConnectionOAuthConfigStatus();
+        return {
+          ...descriptor,
+          configIssue: status.configured
+            ? undefined
+            : {
+                code: "google_connection_oauth_missing_config",
+                missingEnv: status.missing,
+                remedy:
+                  "Set GOOGLE_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/google/oauth/callback URL and add that exact URI to the Google OAuth client.",
+              },
+        };
+      }
+      return descriptor;
     });
   }
 
@@ -236,10 +255,21 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     }
     const provider = defaultConnectProvider(id);
     if (!provider.live) {
+      const setup =
+        id === "google" && !googleConnectionOAuthConfigStatus().configured
+          ? googleConnectionOAuthConfigStatus()
+          : null;
       return reply.code(501).send({
         status: "coming_soon",
         provider: descriptor.provider,
         scopes: descriptor.oauthScopes,
+        issue: setup
+          ? {
+              code: "google_connection_oauth_missing_config",
+              missingEnv: setup.missing,
+              callbackPath: setup.callbackPath,
+            }
+          : null,
       });
     }
     const approval = decideApprovedConnectRequest({
