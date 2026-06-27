@@ -126,6 +126,22 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+export type ConnectionOAuthStartResponse =
+  | {
+      status: "pending_approval";
+      requestId: string;
+      authorizePath?: string;
+      provider: string;
+      scopes: string[];
+      message: string;
+    }
+  | {
+      status: "coming_soon";
+      provider: string;
+      scopes: string[];
+      message: string;
+    };
+
 export interface GoogleAuthStatus {
   configured: boolean;
   status: "ready" | "maintenance";
