@@ -6,14 +6,14 @@ import type { HarnessKind } from "./harness.js";
  *
  * A "profile" is a named preset of the deployment's execution posture — the pair of
  * `{ runtime, harness }` that, together, decide whether agents run locally with the echo `demo`
- * harness or in a Vercel sandbox with the real `claude-code` CLI. It exists so the whole cloud +
+ * harness or in a Vercel sandbox with the real `codex` CLI. It exists so the whole cloud +
  * real-agent posture flips with ONE switch (`RELOAD_PROFILE`) instead of remembering to set both
  * `AGENT_RUNTIME` and `AGENT_HARNESS` in lockstep.
  *
  * Two profiles:
  *   - `dev`  = local + demo        → the default. No cloud spend, no model spend, no binaries; the
  *                                    posture CI and a fresh clone run on, unchanged from before #69.
- *   - `prod` = sandbox + claude-code → the productized cloud + real-agent posture, opt-in and gated
+ *   - `prod` = sandbox + codex      → the productized cloud + real-agent posture, opt-in and gated
  *                                    by preflight ({@link ./preflight}).
  *
  * Precedence (resolved in `env.ts`): **explicit env (`AGENT_RUNTIME`/`AGENT_HARNESS`) > profile
@@ -32,7 +32,7 @@ export interface Profile {
 
 export const PROFILES: Record<ProfileName, Profile> = {
   dev: { runtime: "local", harness: "demo" },
-  prod: { runtime: "sandbox", harness: "claude-code" },
+  prod: { runtime: "sandbox", harness: "codex" },
 };
 
 /** The default posture: local/demo, so CI and a fresh clone need no cloud. */

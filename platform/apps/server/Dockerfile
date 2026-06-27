@@ -68,10 +68,10 @@ ARG INSTALL_AGENT_BROWSER=false
 # A world-readable browser cache so Chromium (installed as root below) is runnable by the `reload` user.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install the Claude Code CLI globally (PINNED, #166) so the `claude-code` harness can run a REAL agent
-# under AGENT_RUNTIME=local (#68). Auth is per-tenant at runtime — the workspace's own subscription token
-# (CLAUDE_CODE_OAUTH_TOKEN), resolved per session and injected as env — so NO credential is baked into
-# the image. The binary is on PATH as `claude`, which the #69 preflight checks for. The reload user is
+# Install the agent CLIs globally (PINNED, #166/#1270) so the real harnesses can run under
+# AGENT_RUNTIME=local (#68). Auth is injected at runtime — Claude per-workspace via
+# CLAUDE_CODE_OAUTH_TOKEN, Codex via CODEX_AUTH_JSON — so NO credential is baked into the image. The
+# binaries are on PATH as `claude` and `codex`, which the #69 preflight checks for. The reload user is
 # created with debian's useradd (not busybox adduser).
 #
 # #238: also install `git` (PINNED). debian-bookworm-slim does NOT ship git, and the `claude-code`
@@ -88,9 +88,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # build. The #69 preflight does NOT gate on it (the harness runs without it), so this can never block a deploy.
 RUN corepack enable \
   && apt-get update \
-  && apt-get install -y --no-install-recommends git=1:2.39.5-0+deb12u3 ripgrep \
+  && apt-get install -y --no-install-recommends ca-certificates git=1:2.39.5-0+deb12u3 ripgrep \
   && rm -rf /var/lib/apt/lists/* \
-  && npm install -g @anthropic-ai/claude-code@2.1.173 \
+  && npm install -g @anthropic-ai/claude-code@2.1.173 @openai/codex@0.142.2 \
   && groupadd --system reload \
   && useradd --system --gid reload --home-dir /home/reload --create-home reload \
   # #238: a writable per-session workspace root for the non-root user (see RELOAD_WORKSPACE_ROOT above).

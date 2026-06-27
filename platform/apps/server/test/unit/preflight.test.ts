@@ -152,6 +152,36 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(report.ok).toBe(false);
   });
 
+  it("codex with the binary present + subscription auth passes (#1270)", () => {
+    const report = preflight(
+      input({ runtime: "local", harness: "codex", env: { CODEX_AUTH_JSON: "json" } }),
+      okDeps,
+    );
+    expect(report.ok).toBe(true);
+    expect(report.checks.find((c) => c.name === "codex-binary")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "codex-auth")?.status).toBe("pass");
+  });
+
+  it("codex with a MISSING binary fails (and honors CODEX_BIN in the message)", () => {
+    const report = preflight(
+      input({ runtime: "local", harness: "codex", env: { CODEX_BIN: "/opt/codex", CODEX_AUTH_JSON: "json" } }),
+      { binaryAvailable: (n) => n !== "/opt/codex", moduleResolvable: () => true },
+    );
+    const check = report.checks.find((c) => c.name === "codex-binary");
+    expect(check?.status).toBe("fail");
+    expect(check?.message).toContain("/opt/codex");
+    expect(report.ok).toBe(false);
+  });
+
+  it("codex fails preflight without subscription auth JSON — no API-key fallback (#1270)", () => {
+    const report = preflight(input({ runtime: "local", harness: "codex", env: {} }), okDeps);
+    const check = report.checks.find((c) => c.name === "codex-auth");
+    expect(check?.status).toBe("fail");
+    expect(check?.message).toContain("CODEX_AUTH_JSON");
+    expect(check?.remedy).not.toContain("OPENAI_API_KEY");
+    expect(report.ok).toBe(false);
+  });
+
   it("the demo harness does NOT require git (it never shells out to it) — #238", () => {
     const report = preflight(
       input({ profile: "dev", runtime: "local", harness: "demo", env: {} }),

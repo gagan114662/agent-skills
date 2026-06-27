@@ -712,7 +712,10 @@ function makeSelectableManager(runtime: AgentRuntime) {
       const specs: Record<string, { command: string; args: string[] }> = {
         demo: { command: "bash", args: ["scripts/agent-harness-demo.sh"] },
         "claude-code": { command: "claude-bin", args: ["--default"] },
-        codex: { command: "bash", args: ["-lc", "'codex' exec \"$AGENT_TASK\" --json --full-auto"] },
+        codex: {
+          command: "bash",
+          args: ["-lc", "'codex' exec \"$AGENT_TASK\" --json --dangerously-bypass-approvals-and-sandbox"],
+        },
       };
       return { ...specs[kind], decode: harnessLineDecoder(kind as Parameters<typeof harnessLineDecoder>[0]) };
     },

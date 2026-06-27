@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { PROFILES, DEFAULT_PROFILE, parseProfile, profilePreset } from "../../src/runtime/posture.js";
 import { loadEnv } from "../../src/env.js";
 
-describe("posture profiles (#69 — dev=local/demo, prod=sandbox/claude-code)", () => {
+describe("posture profiles (#69/#1270 — dev=local/demo, prod=sandbox/codex)", () => {
   it("defines the dev and prod presets", () => {
     expect(PROFILES.dev).toEqual({ runtime: "local", harness: "demo" });
-    expect(PROFILES.prod).toEqual({ runtime: "sandbox", harness: "claude-code" });
+    expect(PROFILES.prod).toEqual({ runtime: "sandbox", harness: "codex" });
   });
 
   it("defaults to dev for unset/unknown values (CI-safe)", () => {
@@ -29,7 +29,7 @@ describe("loadEnv profile wiring (#69 — explicit env > profile preset > built-
     const env = loadEnv({ RELOAD_PROFILE: "prod" }).agent;
     expect(env.profile).toBe("prod");
     expect(env.runtime).toBe("sandbox");
-    expect(env.harness).toBe("claude-code");
+    expect(env.harness).toBe("codex");
   });
 
   it("an explicit AGENT_RUNTIME / AGENT_HARNESS overrides the profile preset", () => {

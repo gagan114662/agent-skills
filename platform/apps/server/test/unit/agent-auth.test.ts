@@ -33,13 +33,13 @@ describe("decideAgentAuth (#68/#246 — subscription-ONLY, per-tenant)", () => {
   });
 });
 
-describe("harnessRequiresAuth (#68 — only real harnesses need model auth)", () => {
+describe("harnessRequiresAuth (#68/#1270 — only claude-code needs per-workspace Claude auth)", () => {
   it("is false for the demo harness (no model spend, no auth needed)", () => {
     expect(harnessRequiresAuth("demo")).toBe(false);
   });
 
-  it("is true for real coding harnesses", () => {
+  it("is true only for claude-code; codex uses deployment subscription auth", () => {
     expect(harnessRequiresAuth("claude-code")).toBe(true);
-    expect(harnessRequiresAuth("codex")).toBe(true);
+    expect(harnessRequiresAuth("codex")).toBe(false);
   });
 });
