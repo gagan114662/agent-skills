@@ -8,10 +8,13 @@ const OWNER = "ws-owner";
 const MEMBER = "member-owner";
 const STATE_SECRET = "test-state-secret";
 const ORIGINAL_ENC_KEY = process.env.AGENT_CREDENTIALS_ENC_KEY;
+const ORIGINAL_LINKEDIN_CLIENT_ID = process.env.LINKEDIN_OAUTH_CLIENT_ID;
+const ORIGINAL_LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_OAUTH_CLIENT_SECRET;
 
 const defaultConnectProvider = vi.fn();
 const googleConnectionOAuthConfigStatus = vi.fn();
 const googleAdsConnectionOAuthConfigStatus = vi.fn();
+const linkedInConnectionOAuthConfigStatus = vi.fn();
 const metaAdsConnectionOAuthConfigStatus = vi.fn();
 const xConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
@@ -30,6 +33,7 @@ vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  linkedInConnectionOAuthConfigStatus,
   metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
   createDefaultConnectOnceService: vi.fn(() => ({
@@ -119,6 +123,11 @@ beforeEach(() => {
     configured: false,
     missing: ["GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI"],
     callbackPath: "/me/connections/google_ads/oauth/callback",
+  });
+  linkedInConnectionOAuthConfigStatus.mockReturnValue({
+    configured: false,
+    missing: ["LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI"],
+    callbackPath: "/me/connections/linkedin/oauth/callback",
   });
   metaAdsConnectionOAuthConfigStatus.mockReturnValue({
     configured: false,
@@ -562,12 +571,180 @@ describe("connectionsRoutes Meta Ads OAuth callback (#1285)", () => {
   });
 });
 
+describe("connectionsRoutes LinkedIn OAuth callback (#1285)", () => {
+  it("exchanges an approved LinkedIn callback, introspects token scopes, seals, and records proof", async () => {
+    process.env.LINKEDIN_OAUTH_CLIENT_ID = "linkedin-client";
+    process.env.LINKEDIN_OAUTH_CLIENT_SECRET = "linkedin-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          active: true,
+          status: "active",
+          scope: "w_member_social",
+          client_id: "linkedin-client",
+          auth_type: "3L",
+        }),
+      })),
+    );
+    const exchange = vi.fn(async () => ({
+      capabilities: ["post_social"],
+      secrets: {
+        LINKEDIN_OAUTH_ACCESS_TOKEN: "linkedin-access-token",
+        LINKEDIN_OAUTH_SCOPE: "w_member_social",
+      },
+    }));
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange,
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "linkedin", provider: "linkedin" },
+        summary: "Connect LinkedIn",
+      }),
+    );
+    setServiceCredentials.mockResolvedValue({
+      serviceKey: "linkedin",
+      connected: true,
+      status: "connected",
+      fingerprint: "fp_linkedin",
+      envKeys: ["LINKEDIN_OAUTH_ACCESS_TOKEN", "LINKEDIN_OAUTH_SCOPE"],
+      scopes: ["post_social"],
+      rotationReminderDays: null,
+      connectedAtMs: Date.now(),
+      revokedAtMs: null,
+    });
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "linkedin", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/linkedin/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=linkedin&status=connected");
+      expect(fetch).toHaveBeenCalledWith("https://www.linkedin.com/oauth/v2/introspectToken", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: expect.any(URLSearchParams),
+      });
+      const body = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as URLSearchParams;
+      expect(body.get("client_id")).toBe("linkedin-client");
+      expect(body.get("client_secret")).toBe("linkedin-secret");
+      expect(body.get("token")).toBe("linkedin-access-token");
+      expect(setServiceCredentials).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        serviceKey: "linkedin",
+        secrets: {
+          LINKEDIN_OAUTH_ACCESS_TOKEN: "linkedin-access-token",
+          LINKEDIN_OAUTH_SCOPE: "w_member_social",
+        },
+        scopes: ["post_social"],
+        connectedByMemberId: MEMBER,
+      });
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: true,
+        result: {
+          connectionId: "linkedin",
+          provider: "linkedin",
+          envKeys: ["LINKEDIN_OAUTH_ACCESS_TOKEN", "LINKEDIN_OAUTH_SCOPE"],
+          fingerprint: "fp_linkedin",
+          scopes: ["post_social"],
+          health: {
+            provider: "linkedin",
+            checkedAtMs: expect.any(Number),
+            scopes: ["w_member_social"],
+            subject: "3L",
+            audience: "linkedin-client",
+          },
+        },
+      });
+      expect(String(res.headers.location)).not.toContain("linkedin-access-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses to seal LinkedIn when token introspection lacks w_member_social", async () => {
+    process.env.LINKEDIN_OAUTH_CLIENT_ID = "linkedin-client";
+    process.env.LINKEDIN_OAUTH_CLIENT_SECRET = "linkedin-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          active: true,
+          status: "active",
+          scope: "r_liteprofile",
+          client_id: "linkedin-client",
+          auth_type: "3L",
+        }),
+      })),
+    );
+    defaultConnectProvider.mockReturnValue({
+      live: true,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(async () => ({
+        capabilities: ["post_social"],
+        secrets: {
+          LINKEDIN_OAUTH_ACCESS_TOKEN: "linkedin-access-token",
+          LINKEDIN_OAUTH_SCOPE: "w_member_social",
+        },
+      })),
+    });
+    getRequest.mockResolvedValue(
+      approval({
+        payload: { connectionId: "linkedin", provider: "linkedin" },
+        summary: "Connect LinkedIn",
+      }),
+    );
+    const state = signConnectState(
+      { workspaceId: OWNER, connectionId: "linkedin", approvalRequestId: "req-1", nonce: "n1" },
+      STATE_SECRET,
+    );
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: `/me/connections/linkedin/oauth/callback?code=auth-code-1&state=${encodeURIComponent(state)}`,
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/everyday?connection=linkedin&status=error");
+      expect(setServiceCredentials).not.toHaveBeenCalled();
+      expect(recordExecution).toHaveBeenCalledWith("req-1", OWNER, {
+        ok: false,
+        error: "LinkedIn token is missing required scopes: w_member_social",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   if (ORIGINAL_ENC_KEY === undefined) {
     delete process.env.AGENT_CREDENTIALS_ENC_KEY;
   } else {
     process.env.AGENT_CREDENTIALS_ENC_KEY = ORIGINAL_ENC_KEY;
+  }
+  if (ORIGINAL_LINKEDIN_CLIENT_ID === undefined) {
+    delete process.env.LINKEDIN_OAUTH_CLIENT_ID;
+  } else {
+    process.env.LINKEDIN_OAUTH_CLIENT_ID = ORIGINAL_LINKEDIN_CLIENT_ID;
+  }
+  if (ORIGINAL_LINKEDIN_CLIENT_SECRET === undefined) {
+    delete process.env.LINKEDIN_OAUTH_CLIENT_SECRET;
+  } else {
+    process.env.LINKEDIN_OAUTH_CLIENT_SECRET = ORIGINAL_LINKEDIN_CLIENT_SECRET;
   }
 });
 

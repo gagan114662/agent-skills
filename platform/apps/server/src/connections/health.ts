@@ -17,6 +17,7 @@ export type ConnectionHealthProof =
 
 const GOOGLE_TOKENINFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo";
 const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+const LINKEDIN_INTROSPECT_ENDPOINT = "https://www.linkedin.com/oauth/v2/introspectToken";
 const META_GRAPH_ME_ENDPOINT = "https://graph.facebook.com/v21.0/me";
 const META_GRAPH_PERMISSIONS_ENDPOINT = "https://graph.facebook.com/v21.0/me/permissions";
 const X_USERS_ME_ENDPOINT = "https://api.x.com/2/users/me";
@@ -265,6 +266,86 @@ async function verifyMetaAdsConnectionHealth(
   };
 }
 
+async function verifyLinkedInConnectionHealth(
+  descriptor: ConnectionDescriptor,
+  secrets: Record<string, string>,
+  fetchImpl: typeof fetch,
+): Promise<ConnectionHealthProof> {
+  const token = secrets.LINKEDIN_OAUTH_ACCESS_TOKEN?.trim();
+  if (!token) return { ok: false, provider: descriptor.provider, reason: "missing LinkedIn access token" };
+
+  const clientId = process.env.LINKEDIN_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.LINKEDIN_OAUTH_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: "LinkedIn token introspection requires LINKEDIN_OAUTH_CLIENT_ID and LINKEDIN_OAUTH_CLIENT_SECRET",
+    };
+  }
+
+  let res: Response;
+  try {
+    res = await fetchImpl(LINKEDIN_INTROSPECT_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        token,
+      }),
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `LinkedIn token introspection failed: ${(err as Error).message}`,
+    };
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `LinkedIn token introspection returned ${res.status}`,
+    };
+  }
+
+  const json = (await res.json()) as {
+    active?: unknown;
+    status?: unknown;
+    scope?: unknown;
+    client_id?: unknown;
+    auth_type?: unknown;
+  };
+  if (json.active !== true || json.status === "revoked" || json.status === "expired") {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: "LinkedIn token is not active",
+    };
+  }
+
+  const scopes = parseScopes(typeof json.scope === "string" ? json.scope.replace(/,/g, " ") : "");
+  const missing = requiredScopes(descriptor).filter((scope) => !scopes.includes(scope));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      provider: descriptor.provider,
+      reason: `LinkedIn token is missing required scopes: ${missing.join(", ")}`,
+    };
+  }
+
+  return {
+    ok: true,
+    provider: descriptor.provider,
+    checkedAtMs: Date.now(),
+    scopes,
+    subject: typeof json.auth_type === "string" && json.auth_type.trim() ? json.auth_type : null,
+    audience: typeof json.client_id === "string" && json.client_id.trim() ? json.client_id : null,
+  };
+}
+
 /**
  * Provider readback before a connector is marked healthy (#1285). A token exchange is not enough: the
  * callback must prove the credential can still be introspected and carries the scopes the agents need.
@@ -285,6 +366,9 @@ export async function verifyConnectionHealth(input: {
   }
   if (input.descriptor.id === "meta_ads") {
     return verifyMetaAdsConnectionHealth(input.descriptor, input.secrets, input.fetchImpl ?? fetch);
+  }
+  if (input.descriptor.id === "linkedin") {
+    return verifyLinkedInConnectionHealth(input.descriptor, input.secrets, input.fetchImpl ?? fetch);
   }
   return {
     ok: false,

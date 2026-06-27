@@ -22,6 +22,7 @@ import {
   googleAdsConnectionOAuthConfigStatus,
   resolveGoogleAdsConnectionRedirectUri,
 } from "./google-ads-oauth-config.js";
+import { linkedInConnectionOAuthConfigStatus } from "./linkedin-oauth-config.js";
 import { metaAdsConnectionOAuthConfigStatus } from "./meta-ads-oauth-config.js";
 import { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 import { resolveConnectOnceCaps } from "./caps.js";
@@ -36,10 +37,12 @@ import { ConnectOnceService, type ConnectOnceDeps } from "./service.js";
 
 export { googleConnectionOAuthConfigStatus } from "./google-oauth-config.js";
 export { googleAdsConnectionOAuthConfigStatus } from "./google-ads-oauth-config.js";
+export { linkedInConnectionOAuthConfigStatus } from "./linkedin-oauth-config.js";
 export { metaAdsConnectionOAuthConfigStatus } from "./meta-ads-oauth-config.js";
 export { xConnectionOAuthConfigStatus } from "./x-oauth-config.js";
 
 export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+const LINKEDIN_SCOPES = ["w_member_social"] as const;
 const META_ADS_SCOPES = ["ads_read", "ads_management", "business_management"] as const;
 
 /**
@@ -73,6 +76,12 @@ export function defaultConnectProvider(
     return createConnectProvider({
       client: loadMetaAdsConnectionClient(env),
       mapTokens: mapMetaAdsConnectionTokens,
+    });
+  }
+  if (connectionId === "linkedin") {
+    return createConnectProvider({
+      client: loadLinkedInConnectionClient(env),
+      mapTokens: mapLinkedInConnectionTokens,
     });
   }
   return createConnectProvider({ client: null, mapTokens: () => EMPTY_EXCHANGE });
@@ -243,6 +252,44 @@ function mapMetaAdsConnectionTokens(json: unknown): ConnectExchangeResult {
     secrets.META_ADS_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
   }
   return { capabilities: ["ads"], secrets };
+}
+
+function loadLinkedInConnectionClient(env: NodeJS.ProcessEnv): OAuthClientConfig | null {
+  if (!linkedInConnectionOAuthConfigStatus(env).configured) return null;
+  const clientId = env.LINKEDIN_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.LINKEDIN_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = env.LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI?.trim();
+  return {
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri: redirectUri!,
+    authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
+    scopes: LINKEDIN_SCOPES,
+  };
+}
+
+function mapLinkedInConnectionTokens(json: unknown): ConnectExchangeResult {
+  const token = json as {
+    access_token?: unknown;
+    expires_in?: unknown;
+    scope?: unknown;
+  };
+  if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
+  const scope = typeof token.scope === "string" ? token.scope : LINKEDIN_SCOPES.join(" ");
+  const secrets: Record<string, string> = {
+    LINKEDIN_OAUTH_ACCESS_TOKEN: token.access_token,
+    LINKEDIN_OAUTH_SCOPE: scope,
+    LINKEDIN_OAUTH_TOKEN_TYPE: "Bearer",
+  };
+  if (typeof token.expires_in === "number" && Number.isFinite(token.expires_in)) {
+    secrets.LINKEDIN_OAUTH_EXPIRES_AT = String(Date.now() + token.expires_in * 1000);
+  }
+  const scopes = scope.split(/[\s,]+/).filter(Boolean);
+  return {
+    capabilities: scopes.includes("w_member_social") ? ["post_social"] : [],
+    secrets,
+  };
 }
 
 /** Build the production-wired connect-once service. */

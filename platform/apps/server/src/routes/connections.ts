@@ -24,6 +24,7 @@ import {
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  linkedInConnectionOAuthConfigStatus,
   metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
 } from "../connections/default.js";
@@ -60,6 +61,39 @@ const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
 const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
 const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 const IMESSAGE_MACOS_HOST_KEYS = ["IMESSAGE_RELAY_MACOS_HOST"] as const;
+
+function oauthSetupStatus(id: string):
+  | ReturnType<typeof googleConnectionOAuthConfigStatus>
+  | ReturnType<typeof googleAdsConnectionOAuthConfigStatus>
+  | ReturnType<typeof metaAdsConnectionOAuthConfigStatus>
+  | ReturnType<typeof linkedInConnectionOAuthConfigStatus>
+  | ReturnType<typeof xConnectionOAuthConfigStatus>
+  | null {
+  if (id === "google" && !googleConnectionOAuthConfigStatus().configured) {
+    return googleConnectionOAuthConfigStatus();
+  }
+  if (id === "google_ads" && !googleAdsConnectionOAuthConfigStatus().configured) {
+    return googleAdsConnectionOAuthConfigStatus();
+  }
+  if (id === "meta_ads" && !metaAdsConnectionOAuthConfigStatus().configured) {
+    return metaAdsConnectionOAuthConfigStatus();
+  }
+  if (id === "linkedin" && !linkedInConnectionOAuthConfigStatus().configured) {
+    return linkedInConnectionOAuthConfigStatus();
+  }
+  if (id === "x" && !xConnectionOAuthConfigStatus().configured) {
+    return xConnectionOAuthConfigStatus();
+  }
+  return null;
+}
+
+function oauthMissingConfigCode(id: string): string {
+  if (id === "x") return "x_connection_oauth_missing_config";
+  if (id === "google_ads") return "google_ads_connection_oauth_missing_config";
+  if (id === "meta_ads") return "meta_ads_connection_oauth_missing_config";
+  if (id === "linkedin") return "linkedin_connection_oauth_missing_config";
+  return "google_connection_oauth_missing_config";
+}
 
 function firstEnv(keys: readonly string[]): string {
   for (const key of keys) {
@@ -215,6 +249,20 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
                 missingEnv: status.missing,
                 remedy:
                   "Set META_OAUTH_CLIENT_ID, META_OAUTH_CLIENT_SECRET, and META_ADS_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/meta_ads/oauth/callback URL, then add that exact URI to the Meta app.",
+            },
+        };
+      }
+      if (descriptor.id === "linkedin") {
+        const status = linkedInConnectionOAuthConfigStatus();
+        return {
+          ...descriptor,
+          configIssue: status.configured
+            ? undefined
+            : {
+                code: "linkedin_connection_oauth_missing_config",
+                missingEnv: status.missing,
+                remedy:
+                  "Set LINKEDIN_OAUTH_CLIENT_ID, LINKEDIN_OAUTH_CLIENT_SECRET, and LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI to the deployed /me/connections/linkedin/oauth/callback URL, then add that exact absolute URL to the LinkedIn app.",
               },
         };
       }
@@ -389,30 +437,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     }
     const provider = defaultConnectProvider(id);
     if (!provider.live) {
-      const setup =
-        id === "google" && !googleConnectionOAuthConfigStatus().configured
-          ? googleConnectionOAuthConfigStatus()
-          : id === "google_ads" && !googleAdsConnectionOAuthConfigStatus().configured
-            ? googleAdsConnectionOAuthConfigStatus()
-            : id === "meta_ads" && !metaAdsConnectionOAuthConfigStatus().configured
-              ? metaAdsConnectionOAuthConfigStatus()
-          : id === "x" && !xConnectionOAuthConfigStatus().configured
-            ? xConnectionOAuthConfigStatus()
-          : null;
+      const setup = oauthSetupStatus(id);
       return reply.code(501).send({
         status: "coming_soon",
         provider: descriptor.provider,
         scopes: descriptor.oauthScopes,
         issue: setup
           ? {
-              code:
-                id === "x"
-                  ? "x_connection_oauth_missing_config"
-                  : id === "google_ads"
-                    ? "google_ads_connection_oauth_missing_config"
-                    : id === "meta_ads"
-                      ? "meta_ads_connection_oauth_missing_config"
-                  : "google_connection_oauth_missing_config",
+              code: oauthMissingConfigCode(id),
               missingEnv: setup.missing,
               callbackPath: setup.callbackPath,
             }

@@ -39,6 +39,7 @@ import {
   defaultConnectProvider,
   googleAdsConnectionOAuthConfigStatus,
   googleConnectionOAuthConfigStatus,
+  linkedInConnectionOAuthConfigStatus,
   metaAdsConnectionOAuthConfigStatus,
   xConnectionOAuthConfigStatus,
 } from "../../src/connections/default.js";
@@ -401,6 +402,57 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     expect(tokenUrl.searchParams.get("client_id")).toBe("meta-client");
     expect(tokenUrl.searchParams.get("client_secret")).toBe("meta-secret");
     expect(tokenUrl.searchParams.get("code")).toBe("code-1");
+  });
+
+  it("defaultConnectProvider wires LinkedIn OAuth with authorization-code token exchange (#1285)", async () => {
+    expect(linkedInConnectionOAuthConfigStatus({} as NodeJS.ProcessEnv)).toMatchObject({
+      configured: false,
+      missing: [
+        "LINKEDIN_OAUTH_CLIENT_ID",
+        "LINKEDIN_OAUTH_CLIENT_SECRET",
+        "LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI",
+      ],
+      callbackPath: "/me/connections/linkedin/oauth/callback",
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: "linkedin-access", scope: "w_member_social", expires_in: 3600 }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = defaultConnectProvider("linkedin", {
+      LINKEDIN_OAUTH_CLIENT_ID: "linkedin-client",
+      LINKEDIN_OAUTH_CLIENT_SECRET: "linkedin-secret",
+      LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI:
+        "https://api.ipop.ai/me/connections/linkedin/oauth/callback",
+    } as NodeJS.ProcessEnv);
+    expect(provider.live).toBe(true);
+    const url = new URL(provider.authorizeUrl({ state: "state-1" }));
+    expect(url.origin + url.pathname).toBe("https://www.linkedin.com/oauth/v2/authorization");
+    expect(url.searchParams.get("client_id")).toBe("linkedin-client");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://api.ipop.ai/me/connections/linkedin/oauth/callback",
+    );
+    expect(url.searchParams.get("scope")).toBe("w_member_social");
+
+    const exchange = await provider.exchange({ code: "code-1", state: "state-1" });
+    expect(exchange.capabilities).toEqual(["post_social"]);
+    expect(exchange.secrets).toMatchObject({
+      LINKEDIN_OAUTH_ACCESS_TOKEN: "linkedin-access",
+      LINKEDIN_OAUTH_SCOPE: "w_member_social",
+      LINKEDIN_OAUTH_TOKEN_TYPE: "Bearer",
+    });
+    const [tokenUrl, init] = fetchMock.mock.calls[0] as [
+      string,
+      { method: string; headers: Record<string, string>; body: URLSearchParams },
+    ];
+    expect(tokenUrl).toBe("https://www.linkedin.com/oauth/v2/accessToken");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "content-type": "application/x-www-form-urlencoded" });
+    expect(init.body.get("client_id")).toBe("linkedin-client");
+    expect(init.body.get("client_secret")).toBe("linkedin-secret");
+    expect(init.body.get("code")).toBe("code-1");
   });
 });
 
