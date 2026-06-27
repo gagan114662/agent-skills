@@ -20,6 +20,10 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function formatLimit(value: number, unit: string): string {
+  return `${value.toLocaleString()} ${unit}`;
+}
+
 export function BillingSettings({
   current,
   plans,
@@ -132,6 +136,33 @@ export function BillingSettings({
             <div>
               <dt>{BILLING.panel.dailyLimitLabel}</dt>
               <dd>{activePlan.dailyLimit}</dd>
+            </div>
+            <div>
+              <dt>{BILLING.panel.productLimitsLabel}</dt>
+              <dd>
+                <ul className="billing-settings__quota-list">
+                  <li>
+                    <span>{BILLING.panel.activeCampaignLanesLabel}</span>
+                    <strong>{formatLimit(activePlan.productLimits.activeCampaignLanes, "lanes")}</strong>
+                  </li>
+                  <li>
+                    <span>{BILLING.panel.connectedChannelsLabel}</span>
+                    <strong>{formatLimit(activePlan.productLimits.connectedChannels, "channels")}</strong>
+                  </li>
+                  <li>
+                    <span>{BILLING.panel.dailyOutreachSendsLabel}</span>
+                    <strong>{formatLimit(activePlan.productLimits.dailyOutreachSends, "sends/day")}</strong>
+                  </li>
+                  <li>
+                    <span>{BILLING.panel.approvalQueueSizeLabel}</span>
+                    <strong>{formatLimit(activePlan.productLimits.approvalQueueSize, "pending")}</strong>
+                  </li>
+                  <li>
+                    <span>{BILLING.panel.dashboardHistoryDaysLabel}</span>
+                    <strong>{formatLimit(activePlan.productLimits.dashboardHistoryDays, "days")}</strong>
+                  </li>
+                </ul>
+              </dd>
             </div>
             <div>
               <dt>{BILLING.panel.upgradeTriggerLabel}</dt>

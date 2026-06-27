@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PLANS, getPlan, planCaps, isPlanKey, type Plan } from "../../src/billing/plans.js";
+import { PLANS, evaluatePlanLimit, getPlan, isPlanKey, planCaps, type Plan } from "../../src/billing/plans.js";
 
 /**
  * The pure plan catalog (#125): the single source of truth the pricing page and the server both read.
@@ -23,6 +23,11 @@ describe("billing plan catalog (#125 — pure)", () => {
       expect(p.agentSeats).toBeGreaterThan(0);
       expect(p.monthlySessionBudgetCents).toBeGreaterThan(0);
       expect(p.fleetSize).toBeGreaterThan(0);
+      expect(p.productLimits.activeCampaignLanes).toBeGreaterThan(0);
+      expect(p.productLimits.connectedChannels).toBeGreaterThan(0);
+      expect(p.productLimits.dailyOutreachSends).toBeGreaterThan(0);
+      expect(p.productLimits.approvalQueueSize).toBeGreaterThan(0);
+      expect(p.productLimits.dashboardHistoryDays).toBeGreaterThan(0);
       expect(p.dailyValue).toMatch(/daily|every day/i);
       expect(p.dailyLimit).toMatch(/cap|active/i);
       expect(p.upgradeTrigger).toMatch(/upgrade|talk to us/i);
@@ -30,11 +35,16 @@ describe("billing plan catalog (#125 — pure)", () => {
     }
   });
 
-  it("caps grow with price (seats, budget, fleet all monotonically increase)", () => {
+  it("caps grow with price (seats, budget, fleet, and buyer-visible limits all monotonically increase)", () => {
     const seats = PLANS.map((p) => p.agentSeats);
     const budgets = PLANS.map((p) => p.monthlySessionBudgetCents);
     const fleets = PLANS.map((p) => p.fleetSize);
-    for (const arr of [seats, budgets, fleets]) {
+    const campaignLanes = PLANS.map((p) => p.productLimits.activeCampaignLanes);
+    const channels = PLANS.map((p) => p.productLimits.connectedChannels);
+    const sends = PLANS.map((p) => p.productLimits.dailyOutreachSends);
+    const approvals = PLANS.map((p) => p.productLimits.approvalQueueSize);
+    const history = PLANS.map((p) => p.productLimits.dashboardHistoryDays);
+    for (const arr of [seats, budgets, fleets, campaignLanes, channels, sends, approvals, history]) {
       for (let i = 1; i < arr.length; i++) expect(arr[i]).toBeGreaterThan(arr[i - 1]!);
     }
   });
@@ -64,5 +74,22 @@ describe("billing plan catalog (#125 — pure)", () => {
       monthlySessionBudgetCents: pro.monthlySessionBudgetCents,
       fleetSize: pro.fleetSize,
     });
+  });
+
+  it("evaluatePlanLimit blocks quota bypasses with the plan upgrade trigger (#1290)", () => {
+    const starter = getPlan("starter") as Plan;
+    expect(evaluatePlanLimit(starter, "connectedChannels", 0)).toMatchObject({
+      allowed: true,
+      limit: starter.productLimits.connectedChannels,
+      remaining: 0,
+      upgradeTrigger: starter.upgradeTrigger,
+    });
+    expect(evaluatePlanLimit(starter, "connectedChannels", 1)).toMatchObject({
+      allowed: false,
+      limit: starter.productLimits.connectedChannels,
+      remaining: 0,
+      upgradeTrigger: starter.upgradeTrigger,
+    });
+    expect(evaluatePlanLimit(starter, "dailyOutreachSends", 24, 2).message).toContain("Starter allows 25");
   });
 });

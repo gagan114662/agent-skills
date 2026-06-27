@@ -1955,6 +1955,12 @@ export const BILLING = {
     valueNoCapBody: "Set a plan cap before letting the agents run unattended.",
     dailyValueLabel: "Everyday value",
     dailyLimitLabel: "Plan limit",
+    productLimitsLabel: "Included quota",
+    activeCampaignLanesLabel: "Campaign lanes",
+    connectedChannelsLabel: "Connected channels",
+    dailyOutreachSendsLabel: "Daily sends",
+    approvalQueueSizeLabel: "Approval queue",
+    dashboardHistoryDaysLabel: "History",
     upgradeTriggerLabel: "Upgrade moment",
     /** Clearly-marked safety note: live charges stay off until the owner connects Stripe. */
     testModeTitle: "Test mode — no live charges yet",

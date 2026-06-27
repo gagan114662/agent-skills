@@ -35,6 +35,13 @@ const PLANS_RESPONSE: PlansResponseDto = {
       agentSeats: 10,
       monthlySessionBudgetCents: 100_000,
       fleetSize: 3,
+      productLimits: {
+        activeCampaignLanes: 3,
+        connectedChannels: 3,
+        dailyOutreachSends: 150,
+        approvalQueueSize: 75,
+        dashboardHistoryDays: 90,
+      },
       dailyValue: "SEO, content, outreach, and analytics agents working together.",
       dailyLimit: "3 active campaign lanes, 10 agents, $1,000/mo work cap.",
       upgradeTrigger: "Upgrade when you need more brands, clients, or parallel departments.",
@@ -83,7 +90,7 @@ describe("BillingSettingsPanel (#215)", () => {
 
     // Summary: active plan + usage ($2.50 of $5.00 cap).
     expect(await screen.findByText("$2.50")).toBeInTheDocument();
-    expect(screen.getByText(/\$5\.00/)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$5\.00/).length).toBeGreaterThan(0);
     // Embedded PricingPanel renders the catalog so the upgrade path is right here in Settings.
     expect(screen.getAllByText("Pro").length).toBeGreaterThan(0);
     // Not live → the test-mode safety note shows (#481).

@@ -6726,13 +6726,17 @@ select:focus-visible {
 .billing-settings__value--near .billing-settings__meter span { background: linear-gradient(90deg, var(--away), var(--accent)); }
 .billing-settings__value--paused .billing-settings__meter span { background: var(--danger); }
 .billing-settings__value-body { margin: 0; color: var(--text-dim); }
-.billing-settings__plan-value { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+.billing-settings__plan-value { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
   margin: 0; }
 .billing-settings__plan-value div { min-width: 0; padding: 9px 10px; background: var(--bg);
   border: 1px solid var(--line); border-radius: calc(var(--radius) - 2px); }
 .billing-settings__plan-value dt { margin: 0 0 4px; color: var(--text-dim); font-family: var(--console-mono);
   font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; }
 .billing-settings__plan-value dd { margin: 0; color: var(--text); font-size: 13px; line-height: 1.25; }
+.billing-settings__quota-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.billing-settings__quota-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.billing-settings__quota-list span { color: var(--text-dim); }
+.billing-settings__quota-list strong { font-family: var(--console-mono); font-size: 12px; white-space: nowrap; }
 .billing-settings__testmode { display: flex; flex-direction: column; gap: 3px; padding: 10px 13px;
   background: var(--bg-1); border: 1px solid var(--line); border-left: 3px solid var(--away);
   border-radius: var(--radius); color: var(--text-dim); }

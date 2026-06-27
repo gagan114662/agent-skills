@@ -354,6 +354,14 @@ export interface PlanDto {
   monthlySessionBudgetCents: number;
   /** Tenant cap: department fleet size. */
   fleetSize: number;
+  /** Buyer-visible limits that become quota meters and upgrade prompts in the product. */
+  productLimits: {
+    activeCampaignLanes: number;
+    connectedChannels: number;
+    dailyOutreachSends: number;
+    approvalQueueSize: number;
+    dashboardHistoryDays: number;
+  };
   /** Outcome-first summary: what useful work this tier should produce every day. */
   dailyValue: string;
   /** Plain-English limit that turns value into an upgrade moment. */

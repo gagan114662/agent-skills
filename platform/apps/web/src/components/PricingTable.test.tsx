@@ -13,6 +13,13 @@ const plan = (over: Partial<PlanDto> = {}): PlanDto => ({
   agentSeats: 3,
   monthlySessionBudgetCents: 20_000,
   fleetSize: 1,
+  productLimits: {
+    activeCampaignLanes: 1,
+    connectedChannels: 1,
+    dailyOutreachSends: 25,
+    approvalQueueSize: 20,
+    dashboardHistoryDays: 14,
+  },
   dailyValue: "A daily marketing checkup.",
   dailyLimit: "1 active campaign, 3 agents, and a $200 monthly agent-work cap.",
   upgradeTrigger: "Upgrade when you want more lanes.",

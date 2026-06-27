@@ -191,6 +191,7 @@ export async function billingRoutes(
       agentSeats: p.agentSeats,
       monthlySessionBudgetCents: p.monthlySessionBudgetCents,
       fleetSize: p.fleetSize,
+      productLimits: { ...p.productLimits },
       dailyValue: p.dailyValue,
       dailyLimit: p.dailyLimit,
       upgradeTrigger: p.upgradeTrigger,
