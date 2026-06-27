@@ -14,7 +14,13 @@ import { listWorkspaceIds } from "../db/repositories/workspaces.js";
 import { listWorkspaceMembers } from "../db/repositories/members.js";
 import { listMentionsOnMessage } from "../db/repositories/mentions.js";
 import { getPersona, getPersonaByHandle, definePersona } from "../db/repositories/personas.js";
-import { createMarketingTask, listMarketingTasks } from "../db/repositories/marketing-tasks.js";
+import {
+  countMarketingTasksByStatus,
+  createMarketingTask,
+  listMarketingTasks,
+} from "../db/repositories/marketing-tasks.js";
+import { dbWorkspacePlanStore } from "../db/repositories/plans.js";
+import { decideCampaignLaneQuota } from "../billing/campaign-lane-quota.js";
 import { upsertMemory } from "../db/repositories/memories.js";
 import { createIdea, getOrCreateEvaluation, listEvaluations } from "../db/repositories/venture.js";
 import { foundingVentureFor } from "./blueprint.js";
@@ -517,6 +523,11 @@ export function createMarketingBriefService(
         await coordinationBridge.post(input.workspaceId, leadPlanEvent),
       );
     },
+    campaignLaneQuota: (workspaceId) =>
+      decideCampaignLaneQuota(workspaceId, {
+        activePlanForWorkspace: dbWorkspacePlanStore.getActive,
+        countActiveCampaignLanes: (id) => countMarketingTasksByStatus(id, "launched"),
+      }),
   });
 }
 

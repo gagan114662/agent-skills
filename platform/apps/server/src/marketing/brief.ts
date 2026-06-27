@@ -70,6 +70,20 @@ export interface MarketingBriefDeps {
     channel: string;
     goal: string;
   }): Promise<void>;
+  /** Optional paid-plan gate for parallel campaign lanes (#1290). Absent preserves today's behavior. */
+  campaignLaneQuota?(workspaceId: string): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        code: 402 | 403;
+        error: string;
+        resource: "active_campaign_lanes";
+        limit: number;
+        used: number;
+        planKey: string;
+        upgradeTrigger: string;
+      }
+  >;
 }
 
 export type MarketingBriefResult =
@@ -85,7 +99,16 @@ export type MarketingBriefResult =
       /** Personas skipped as a duplicate of an open task (#322); [] when dedup is off. */
       deduped: DedupedMention[];
     }
-  | { ok: false; code: number; error: string };
+  | {
+      ok: false;
+      code: number;
+      error: string;
+      resource?: string;
+      limit?: number;
+      used?: number;
+      planKey?: string;
+      upgradeTrigger?: string;
+    };
 
 export class MarketingBriefService {
   constructor(private readonly deps: MarketingBriefDeps) {}
@@ -115,6 +138,8 @@ export class MarketingBriefService {
     if (!channel) {
       return { ok: false, code: 409, error: "this department hasn't been hired yet — activate the fleet first" };
     }
+    const quota = await this.deps.campaignLaneQuota?.(identity.workspaceId);
+    if (quota && !quota.ok) return quota;
 
     // The @mention is a fixed structural prefix; the goal is owner-authored data (never tool instructions).
     const body = `@${lead.handle} ${goal}`;
