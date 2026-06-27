@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../index.js";
 import { agentSessions } from "../schema/index.js";
 import type { EffortLevel, ProviderKind, SessionMode } from "../../config/schema.js";
@@ -393,7 +393,10 @@ export interface RecentWorkspaceSession {
 export async function listRecentWorkspaceSessions(
   workspaceId: string,
   limit = 20,
+  createdSince?: Date | null,
 ): Promise<RecentWorkspaceSession[]> {
+  const filters = [eq(agentSessions.workspaceId, workspaceId)];
+  if (createdSince) filters.push(gte(agentSessions.createdAt, createdSince));
   const rows = await db
     .select({
       id: agentSessions.id,
@@ -406,7 +409,7 @@ export async function listRecentWorkspaceSessions(
       createdAt: agentSessions.createdAt,
     })
     .from(agentSessions)
-    .where(eq(agentSessions.workspaceId, workspaceId))
+    .where(and(...filters))
     .orderBy(desc(agentSessions.createdAt))
     .limit(limit);
   return rows as RecentWorkspaceSession[];
