@@ -73,6 +73,8 @@ export interface Env {
   notify: NotifyEnv;
   /** Apple Messages relay for iMessage-visible agent work. */
   imessage: IMessageEnv;
+  /** Telegram bot bridge for room visibility (#1267). */
+  telegram: TelegramEnv;
   /** Approval gates (#13). */
   approval: ApprovalEnv;
   /** Team Mode: parallel multi-agent runs. */
@@ -374,6 +376,19 @@ export interface IMessageEnv {
   macosHost: boolean;
 }
 
+export interface TelegramEnv {
+  /** Bot token from BotFather. Unset keeps the Telegram room connector unavailable. */
+  botToken?: string;
+  /** The verified owner/dogfood Telegram chat that receives room updates in the first production slice. */
+  roomChatId?: string;
+  /** Secret Telegram sends in X-Telegram-Bot-Api-Secret-Token for webhook authenticity. */
+  webhookSecret?: string;
+  /** Optional API origin override for tests/private deployments. */
+  apiBaseUrl: string;
+  /** Message length guardrail before calling sendMessage. */
+  maxChars: number;
+}
+
 export interface ApprovalEnv {
   /** Default TTL (seconds) after which an undecided request expires. Override per request. */
   defaultTtlSeconds: number;
@@ -612,6 +627,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       maxChars: num(source.IMESSAGE_RELAY_MAX_CHARS, 1800),
       webhookSecret: source.IMESSAGE_RELAY_WEBHOOK_SECRET || undefined,
       macosHost: source.IMESSAGE_RELAY_MACOS_HOST === "true" || source.IMESSAGE_RELAY_MACOS_HOST === "1",
+    },
+    telegram: {
+      botToken: source.TELEGRAM_BOT_TOKEN || undefined,
+      roomChatId: source.TELEGRAM_ROOM_CHAT_ID || undefined,
+      webhookSecret: source.TELEGRAM_WEBHOOK_SECRET || undefined,
+      apiBaseUrl: source.TELEGRAM_API_BASE_URL || "https://api.telegram.org",
+      maxChars: num(source.TELEGRAM_MESSAGE_MAX_CHARS, 3500),
     },
     approval: {
       defaultTtlSeconds: num(source.APPROVAL_TTL_SECONDS, 86_400),

@@ -7,6 +7,7 @@ import {
   EMAIL_CONNECTION_ID,
   getConnectionDescriptor,
   IMESSAGE_CONNECTION_ID,
+  TELEGRAM_ROOM_CONNECTION_ID,
   type ConnectionDescriptor,
 } from "../connections/registry.js";
 import { decideApprovedConnectRequest, mapExchangeToSeal } from "../connections/connect.js";
@@ -61,6 +62,10 @@ const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
 const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
 const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 const IMESSAGE_MACOS_HOST_KEYS = ["IMESSAGE_RELAY_MACOS_HOST"] as const;
+const TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN";
+const TELEGRAM_ROOM_CHAT_ID_KEY = "TELEGRAM_ROOM_CHAT_ID";
+const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
+const TELEGRAM_WEBHOOK_SECRET_KEY = "TELEGRAM_WEBHOOK_SECRET";
 
 function oauthSetupStatus(id: string):
   | ReturnType<typeof googleConnectionOAuthConfigStatus>
@@ -117,6 +122,16 @@ function emailProviderProofSecrets(workspaceId: string): Record<string, string> 
           [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim(),
         }
       : {}),
+  };
+}
+
+function telegramProviderProofSecrets(): Record<string, string> {
+  const botToken = process.env[TELEGRAM_BOT_TOKEN_KEY]?.trim() ?? "";
+  const chatId = process.env[TELEGRAM_ROOM_CHAT_ID_KEY]?.trim() ?? "";
+  const webhookSecret = process.env[TELEGRAM_WEBHOOK_SECRET_KEY]?.trim() ?? "";
+  if (!botToken || !chatId || !webhookSecret) return {};
+  return {
+    [TELEGRAM_CHAT_ID_KEY]: chatId,
   };
 }
 
@@ -190,6 +205,30 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
               : dryRun
                 ? "Set IMESSAGE_RELAY_DRY_RUN=0 and verify the macOS Messages relay host before offering this connector."
                 : "Set IMESSAGE_RELAY_ENABLED=1 on a logged-in macOS relay host that can run osascript against Messages.",
+          },
+        };
+      }
+      if (descriptor.id === TELEGRAM_ROOM_CONNECTION_ID) {
+        const missing = [
+          ...(process.env[TELEGRAM_BOT_TOKEN_KEY]?.trim() ? [] : [TELEGRAM_BOT_TOKEN_KEY]),
+          ...(process.env[TELEGRAM_ROOM_CHAT_ID_KEY]?.trim() ? [] : [TELEGRAM_ROOM_CHAT_ID_KEY]),
+          ...(process.env[TELEGRAM_WEBHOOK_SECRET_KEY]?.trim() ? [] : [TELEGRAM_WEBHOOK_SECRET_KEY]),
+        ];
+        if (missing.length === 0) {
+          return {
+            ...descriptor,
+            status: "available",
+            summary:
+              "Mirror the agent room into the configured Telegram chat with signed webhook replies back into ipop.",
+          };
+        }
+        return {
+          ...descriptor,
+          configIssue: {
+            code: "telegram_room_missing_config",
+            missingEnv: missing,
+            remedy:
+              "Set TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks with X-Telegram-Bot-Api-Secret-Token.",
           },
         };
       }
@@ -330,7 +369,11 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     const providerSecrets =
-      decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : {};
+      decision.serviceKey === EMAIL_CONNECTION_ID
+        ? emailProviderProofSecrets(wid)
+        : decision.serviceKey === TELEGRAM_ROOM_CONNECTION_ID
+          ? telegramProviderProofSecrets()
+          : {};
     await setServiceCredentials({
       workspaceId: wid,
       serviceKey: providerSecrets[POSTMARK_TOKEN_KEY] ? POSTMARK_SERVICE_KEY : decision.serviceKey,

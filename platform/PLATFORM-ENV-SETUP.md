@@ -63,6 +63,16 @@ promise.
 | `IMESSAGE_RELAY_CLAIM_LIMIT` | `5` | Max outbound jobs claimed per Mac relay poll. |
 | `IMESSAGE_RELAY_LEASE_MS` | `120000` | Claim lease for outbound jobs before another relay can retry them. |
 
+## Telegram Room Bridge
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | — | BotFather token used to call Telegram `sendMessage`; absence keeps the Telegram room connector unavailable. |
+| `TELEGRAM_ROOM_CHAT_ID` | — | Verified owner/dogfood chat id that receives the first production Telegram room mirror. |
+| `TELEGRAM_WEBHOOK_SECRET` | — | Secret Telegram must send in `X-Telegram-Bot-Api-Secret-Token` before `/telegram/webhook` can ingest replies. |
+| `TELEGRAM_API_BASE_URL` | `https://api.telegram.org` | Telegram API base URL override for tests/private deployments. |
+| `TELEGRAM_MESSAGE_MAX_CHARS` | `3500` | Outbound Telegram message length guardrail. |
+
 ## Profiles
 
 | Var | Default | Purpose |
