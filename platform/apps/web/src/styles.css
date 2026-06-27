@@ -9322,14 +9322,16 @@ select:focus-visible {
 }
 .onboard[data-phase="door"] {
   height: 100dvh;
-  min-height: 620px;
+  max-height: 100dvh;
+  min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(820px 440px at 50% 0%, rgba(255, 248, 121, 0.58), transparent 68%),
-    radial-gradient(680px 360px at 78% 38%, rgba(255, 203, 88, 0.18), transparent 74%),
-    radial-gradient(620px 300px at 52% 111%, rgba(85, 178, 72, 0.58), transparent 72%),
-    linear-gradient(180deg, #ffe779 0%, #ffd978 24%, #a6d8ee 64%, #e4dfa5 100%);
-  background-size: 100% 100%, 110% 110%, 100% 100%, 100% 100%;
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 190, 0.82) 0 12%, transparent 28%),
+    radial-gradient(920px 460px at 50% 8%, rgba(255, 226, 72, 0.54), transparent 70%),
+    radial-gradient(760px 320px at 18% 74%, rgba(255, 185, 69, 0.18), transparent 68%),
+    radial-gradient(820px 340px at 84% 74%, rgba(83, 181, 255, 0.16), transparent 68%),
+    linear-gradient(180deg, #fff879 0%, #ffe366 22%, #ffd27c 52%, #bde6ff 76%, #e8e292 100%);
+  background-size: 110% 110%, 120% 112%, 110% 100%, 110% 100%, 100% 100%;
   color: #111;
   animation: onboard-sky-warmth 14s ease-in-out infinite;
 }
@@ -9341,16 +9343,16 @@ select:focus-visible {
 }
 .onboard[data-phase="door"]::before {
   z-index: 0;
-  top: clamp(70px, 13vh, 130px);
+  top: clamp(18px, 4.5vh, 54px);
   left: 50%;
-  width: clamp(300px, 36vw, 560px);
+  width: clamp(360px, 46vw, 720px);
   aspect-ratio: 1;
   border-radius: 999px;
   background:
-    repeating-conic-gradient(from 7deg, rgba(255, 243, 92, 0.32) 0 8deg, transparent 8deg 18deg),
-    radial-gradient(circle at 50% 50%, #fff56a 0 30%, rgba(255, 216, 73, 0.72) 31% 47%, rgba(255, 183, 68, 0.24) 48% 62%, transparent 63%);
-  filter: saturate(1.04);
-  opacity: 0.96;
+    repeating-conic-gradient(from 7deg, rgba(255, 241, 78, 0.5) 0 7deg, transparent 7deg 15deg),
+    radial-gradient(circle at 50% 50%, #fffdb1 0 21%, #fff45b 22% 34%, rgba(255, 196, 49, 0.72) 35% 50%, rgba(255, 174, 54, 0.22) 51% 65%, transparent 66%);
+  filter: saturate(1.08) drop-shadow(0 0 48px rgba(255, 239, 90, 0.52));
+  opacity: 0.98;
   transform: translateX(-50%) rotate(0deg) scale(1);
   animation: onboard-sun-turn 40s linear infinite, onboard-sun-breathe 8s ease-in-out infinite;
 }
@@ -10166,22 +10168,24 @@ select:focus-visible {
 @keyframes onboard-sun-breathe {
   0%, 100% {
     box-shadow:
-      0 0 80px rgba(255, 244, 95, 0.38),
-      0 0 180px rgba(255, 203, 72, 0.26);
+      0 0 90px rgba(255, 248, 111, 0.48),
+      0 0 220px rgba(255, 207, 72, 0.32),
+      0 0 360px rgba(255, 169, 54, 0.16);
   }
   50% {
     box-shadow:
-      0 0 120px rgba(255, 244, 95, 0.54),
-      0 0 240px rgba(255, 184, 72, 0.34);
+      0 0 130px rgba(255, 252, 138, 0.66),
+      0 0 290px rgba(255, 191, 58, 0.42),
+      0 0 460px rgba(255, 169, 54, 0.22);
   }
 }
 
 @keyframes onboard-sky-warmth {
   0%, 100% {
-    background-position: 50% 0%, 50% 50%, 50% 100%, 50% 50%;
+    background-position: 50% 10%, 50% 8%, 18% 74%, 84% 74%, 50% 50%;
   }
   50% {
-    background-position: 50% 3%, 54% 46%, 50% 100%, 50% 50%;
+    background-position: 50% 14%, 52% 5%, 16% 70%, 86% 77%, 50% 50%;
   }
 }
 
@@ -10607,12 +10611,18 @@ select:focus-visible {
 @media (max-width: 720px) {
   .onboard[data-phase="door"] {
     height: 100svh;
-    min-height: 580px;
+    max-height: 100svh;
+    min-height: 0;
     overflow: hidden;
     padding: 16px;
   }
   .onboard[data-phase="door"] .onboard__nav {
     align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .onboard[data-phase="door"] .onboard__brand {
+    align-self: flex-start;
   }
   .onboard__brand {
     gap: 7px;
@@ -10638,15 +10648,22 @@ select:focus-visible {
     flex-direction: row;
   }
   .onboard-door-actions {
-    gap: 10px;
+    position: static;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .onboard-door-action {
+    gap: 3px;
   }
   .onboard-door-action__mark {
-    width: 42px;
-    height: 42px;
-    font-size: 24px;
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
   }
   .onboard-door-action__label {
-    font-size: 11px;
+    font-size: 10px;
   }
   .onboard-trust {
     justify-content: flex-start;
@@ -10703,26 +10720,31 @@ select:focus-visible {
   .onboard-marketing__detail {
     font-size: 7px;
   }
-  .onboard-door__field,
   .onboard-card__actions,
   .onboard-instant__actions {
     flex-direction: column;
   }
   .onboard-door__field {
+    flex-direction: row;
     min-height: 0;
   }
   .onboard-door__field::after {
     display: none;
   }
   .onboard[data-phase="door"] .onboard-cta {
-    min-width: 0;
-    min-height: 62px;
-    border-top: 1px solid rgba(0, 0, 0, 0.12);
-    border-left: 0;
+    flex: 0 0 96px;
+    min-width: 96px;
+    min-height: 0;
+    border-top: 0;
+    border-left: 1px solid rgba(0, 0, 0, 0.12);
   }
-  .onboard-cta,
-  .onboard-input {
+  .onboard-cta {
     width: 100%;
+  }
+  .onboard-input {
+    width: auto;
+    font-size: clamp(18px, 5.3vw, 22px);
+    padding: 18px 16px;
   }
 }
 
