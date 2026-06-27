@@ -18,6 +18,7 @@ import {
   decideOneClickConnect,
   decideWaitlist,
 } from "../connections/view.js";
+import { verifyConnectionHealth } from "../connections/health.js";
 import {
   createDefaultConnectOnceService,
   defaultConnectProvider,
@@ -412,6 +413,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       });
       return finish("error");
     }
+    const health = await verifyConnectionHealth({ descriptor, secrets: seal.secrets });
+    if (!health.ok) {
+      await recordExecution(approval.request.id, identity.workspaceId, {
+        ok: false,
+        error: health.reason,
+      });
+      return finish("error");
+    }
     const proof = await setServiceCredentials({
       workspaceId: identity.workspaceId,
       serviceKey: seal.serviceKey,
@@ -427,6 +436,13 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         envKeys: proof.envKeys,
         fingerprint: proof.fingerprint,
         scopes: proof.scopes,
+        health: {
+          provider: health.provider,
+          checkedAtMs: health.checkedAtMs,
+          scopes: health.scopes,
+          subject: health.subject,
+          audience: health.audience,
+        },
       },
     });
     if (recorded.outcome !== "recorded") return finish("conflict");
