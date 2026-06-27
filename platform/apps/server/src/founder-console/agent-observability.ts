@@ -1,4 +1,6 @@
 import type { AgentTraceEventRow, AgentTraceRunRow } from "../db/repositories/agent-trace.js";
+import type { WorkspaceLiveSession } from "../db/repositories/agent-sessions.js";
+import type { SchedulerJobState } from "../scheduler/types.js";
 import type { AgentObservabilityView } from "./aggregate.js";
 
 const STALLED_RUN_AGE_MS = 15 * 60 * 1000;
@@ -33,21 +35,37 @@ function plural(count: number, singular: string, pluralized = singular + "s"): s
 export function agentObservabilityFromTraces(input: {
   runs: readonly AgentTraceRunRow[];
   events: readonly AgentTraceEventRow[];
+  liveSessions?: readonly WorkspaceLiveSession[];
+  schedulerJobs?: readonly SchedulerJobState[];
+  staleCutoffMs?: number;
   nowMs: number;
 }): AgentObservabilityView {
   const toolCalls = input.events.filter((event) => event.type === "tool_call");
   const auditedToolCalls = toolCalls.filter(hasAuditEnvelope).length;
   const unauditedToolCalls = toolCalls.length - auditedToolCalls;
-  const runningRuns = input.runs.filter((run) => run.status === "open").length;
-  const stalledRuns = input.runs.filter(
-    (run) => run.status === "open" && input.nowMs - run.startedAt.getTime() >= STALLED_RUN_AGE_MS,
-  ).length;
+  const staleCutoffMs = input.staleCutoffMs ?? STALLED_RUN_AGE_MS;
+  const liveSessions = input.liveSessions ?? [];
+  const runningRuns =
+    liveSessions.length > 0
+      ? liveSessions.filter((session) => session.status === "running").length
+      : input.runs.filter((run) => run.status === "open").length;
+  const queueDepth = liveSessions.filter((session) => session.status === "provisioning").length;
+  const stalledRuns =
+    liveSessions.length > 0
+      ? liveSessions.filter((session) => input.nowMs - session.progressAt.getTime() >= staleCutoffMs).length
+      : input.runs.filter(
+          (run) => run.status === "open" && input.nowMs - run.startedAt.getTime() >= staleCutoffMs,
+        ).length;
   const failedRuns = new Set(
     input.events
       .filter((event) => failedToolResult(event) && input.nowMs - event.occurredAt.getTime() <= DAY_MS)
       .map((event) => event.runId),
   );
+  const scheduler = schedulerStatus(input.schedulerJobs ?? [], input.nowMs);
   const alerts: string[] = [];
+  if (scheduler.status === "unknown") alerts.push("Scheduler heartbeat is not available");
+  if (scheduler.status === "stopped") alerts.push("Scheduler cursor is overdue");
+  if (scheduler.status === "degraded") alerts.push("Scheduler has recent failures");
   if (unauditedToolCalls > 0) {
     alerts.push(plural(unauditedToolCalls, "tool call") + " audit envelopes are missing or incomplete");
   }
@@ -55,8 +73,8 @@ export function agentObservabilityFromTraces(input: {
   if (failedRuns.size > 0) alerts.push(plural(failedRuns.size, "agent run") + " failed in the last 24h");
 
   return {
-    scheduler: { status: "unknown", lastTickAgeSeconds: null },
-    queueDepth: 0,
+    scheduler,
+    queueDepth,
     runningRuns,
     stalledRuns,
     failedRunsLast24h: failedRuns.size,
@@ -75,4 +93,24 @@ export function agentObservabilityFromTraces(input: {
     connectorSilentFailures: [],
     alerts,
   };
+}
+
+function schedulerStatus(
+  jobs: readonly SchedulerJobState[],
+  nowMs: number,
+): AgentObservabilityView["scheduler"] {
+  if (jobs.length === 0) return { status: "unknown", lastTickAgeSeconds: null };
+  const lastRunAtMs = Math.max(...jobs.map((job) => job.lastRunAtMs ?? 0));
+  const lastTickAgeSeconds =
+    lastRunAtMs > 0 ? Math.max(0, Math.floor((nowMs - lastRunAtMs) / 1000)) : null;
+  if (jobs.some((job) => job.lastStatus === "error" || job.consecutiveFailures > 0)) {
+    return { status: "degraded", lastTickAgeSeconds };
+  }
+  const overdue = jobs.some((job) => {
+    if (job.lockedUntilMs !== null && job.lockedUntilMs > nowMs) return false;
+    return nowMs > job.nextRunAtMs + Math.max(job.intervalMs, 60_000);
+  });
+  if (overdue) return { status: "stopped", lastTickAgeSeconds };
+  if (lastTickAgeSeconds === null) return { status: "unknown", lastTickAgeSeconds };
+  return { status: "healthy", lastTickAgeSeconds };
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { agentObservabilityFromTraces } from "../../src/founder-console/agent-observability.js";
 import type { AgentTraceEventRow, AgentTraceRunRow } from "../../src/db/repositories/agent-trace.js";
+import type { WorkspaceLiveSession } from "../../src/db/repositories/agent-sessions.js";
+import type { SchedulerJobState } from "../../src/scheduler/types.js";
 
 const NOW = Date.parse("2026-06-27T08:00:00Z");
 const WS = "ws-1";
@@ -42,11 +44,42 @@ function event(over: Partial<AgentTraceEventRow> = {}): AgentTraceEventRow {
   };
 }
 
+function liveSession(over: Partial<WorkspaceLiveSession> = {}): WorkspaceLiveSession {
+  return {
+    id: "session-1",
+    channelId: "channel-1",
+    agentMemberId: "agent-1",
+    status: "running",
+    agentStatus: "drafting",
+    createdAt: new Date(NOW - 60_000),
+    startedAt: new Date(NOW - 50_000),
+    progressAt: new Date(NOW - 10_000),
+    ...over,
+  };
+}
+
+function schedulerJob(over: Partial<SchedulerJobState> = {}): SchedulerJobState {
+  return {
+    jobKey: "watchdog",
+    intervalMs: 60_000,
+    nextRunAtMs: NOW + 30_000,
+    lastRunAtMs: NOW - 30_000,
+    lastStatus: "ok",
+    lastError: null,
+    consecutiveFailures: 0,
+    lockedBy: null,
+    lockedUntilMs: null,
+    updatedAtMs: NOW - 30_000,
+    ...over,
+  };
+}
+
 describe("agentObservabilityFromTraces (#1292)", () => {
   it("counts successful and failed audited tool calls as fully covered", () => {
     const view = agentObservabilityFromTraces({
       nowMs: NOW,
       runs: [run({ id: "run-ok" }), run({ id: "run-fail" })],
+      schedulerJobs: [schedulerJob()],
       events: [
         event({
           id: "ok-call",
@@ -81,6 +114,7 @@ describe("agentObservabilityFromTraces (#1292)", () => {
       unauditedToolCalls: 0,
       coverage: 1,
     });
+    expect(view.scheduler).toEqual({ status: "healthy", lastTickAgeSeconds: 30 });
     expect(view.failedRunsLast24h).toBe(1);
     expect(view.alerts).toContain("1 agent run failed in the last 24h");
   });
@@ -89,6 +123,7 @@ describe("agentObservabilityFromTraces (#1292)", () => {
     const view = agentObservabilityFromTraces({
       nowMs: NOW,
       runs: [run()],
+      schedulerJobs: [schedulerJob()],
       events: [
         event({ id: "good", payload: { audit: { workspaceId: WS, userId: "u", runId: "run-1", actionId: "a" } } }),
         event({ id: "missing-user", seq: 1, payload: { audit: { workspaceId: WS, runId: "run-1", actionId: "b" } } }),
@@ -103,16 +138,49 @@ describe("agentObservabilityFromTraces (#1292)", () => {
     expect(view.alerts).toContain("2 tool calls audit envelopes are missing or incomplete");
   });
 
-  it("marks old open trace runs as stalled and requiring recovery", () => {
+  it("uses live session heartbeats for queue depth, running count, and stalled recovery", () => {
     const view = agentObservabilityFromTraces({
       nowMs: NOW,
-      runs: [run({ status: "open", startedAt: new Date(NOW - 30 * 60_000), endedAt: null })],
+      runs: [],
+      liveSessions: [
+        liveSession({ id: "queued", status: "provisioning", startedAt: null }),
+        liveSession({ id: "running", status: "running" }),
+        liveSession({ id: "stalled", progressAt: new Date(NOW - 6 * 60_000) }),
+      ],
+      staleCutoffMs: 5 * 60_000,
+      schedulerJobs: [schedulerJob()],
       events: [],
     });
 
-    expect(view.runningRuns).toBe(1);
+    expect(view.queueDepth).toBe(1);
+    expect(view.runningRuns).toBe(2);
     expect(view.stalledRuns).toBe(1);
     expect(view.recovery.state).toBe("needs_human");
     expect(view.alerts).toContain("1 agent run stalled");
+  });
+
+  it("marks scheduler jobs stopped when their durable cursor is overdue", () => {
+    const view = agentObservabilityFromTraces({
+      nowMs: NOW,
+      runs: [],
+      schedulerJobs: [schedulerJob({ nextRunAtMs: NOW - 5 * 60_000, lastRunAtMs: NOW - 10 * 60_000 })],
+      events: [],
+    });
+
+    expect(view.scheduler.status).toBe("stopped");
+    expect(view.scheduler.lastTickAgeSeconds).toBe(600);
+    expect(view.alerts).toContain("Scheduler cursor is overdue");
+  });
+
+  it("marks scheduler jobs degraded when the last durable tick failed", () => {
+    const view = agentObservabilityFromTraces({
+      nowMs: NOW,
+      runs: [],
+      schedulerJobs: [schedulerJob({ lastStatus: "error", consecutiveFailures: 2 })],
+      events: [],
+    });
+
+    expect(view.scheduler.status).toBe("degraded");
+    expect(view.alerts).toContain("Scheduler has recent failures");
   });
 });
