@@ -33,6 +33,19 @@ describe("LiveEverydayShell (#1181)", () => {
   beforeEach(() => {
     vi.spyOn(api, "getFirstRunReceipt").mockResolvedValue({ firstRun: null });
     vi.spyOn(api, "recordFirstRunReceipt").mockResolvedValue({ firstRun: null });
+    vi.spyOn(api.department, "seed").mockResolvedValue({
+      channels: [],
+      agents: [],
+      welcomeTasks: [],
+    });
+    vi.spyOn(api.department, "brief").mockResolvedValue({
+      lead: "scout",
+      department: "growth",
+      channelId: "c1",
+      messageId: "m-brief",
+      launched: [],
+      connectPrompted: [],
+    });
     window.sessionStorage.clear();
   });
 
@@ -252,6 +265,8 @@ describe("LiveEverydayShell (#1181)", () => {
         recordedAtMs: Date.UTC(2026, 5, 26, 12, 45),
       },
     });
+    const seed = vi.mocked(api.department.seed);
+    const brief = vi.mocked(api.department.brief);
     const { store } = renderWithStore(<LiveEverydayShell dashboardFirst />, {
       messages: [],
       approvals: [],
@@ -271,7 +286,48 @@ describe("LiveEverydayShell (#1181)", () => {
         receipt: "team mission recorded",
       }),
     );
+    expect(seed).toHaveBeenCalledWith("w1", { welcomeTasks: true });
+    expect(brief).toHaveBeenCalledWith("w1", {
+      lead: "scout",
+      goal:
+        "Use the first-run site read for acme.com. Finding: your hero buries the offer below the fold. " +
+        "Turn it into the next useful marketing move, keep send/spend gated, and leave receipts.",
+    });
     expect(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY)).toBeNull();
     expect((await screen.findAllByText("team mission recorded")).length).toBeGreaterThan(0);
+  });
+
+  it("keeps the public first-run handoff pending if real team activation fails", async () => {
+    const pending = {
+      stage: "agent_result",
+      target: "acme.com",
+      finding: "your hero buries the offer below the fold.",
+      artifactTitle: "site-read receipt",
+      artifactSummary: "hero rewrite + launch-week post plan",
+      receipt: "team mission recorded",
+    };
+    window.sessionStorage.setItem(FIRST_RUN_RECEIPT_KEY, JSON.stringify(pending));
+    vi.mocked(api.recordFirstRunReceipt).mockResolvedValue({
+      firstRun: {
+        ...pending,
+        stage: "agent_result",
+        recordedAtMs: Date.UTC(2026, 5, 26, 12, 45),
+      },
+    });
+    vi.mocked(api.department.brief).mockRejectedValue(new Error("agent runtime not connected"));
+    const { store } = renderWithStore(<LiveEverydayShell dashboardFirst />, {
+      messages: [],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    await waitFor(() => expect(api.department.seed).toHaveBeenCalledWith("w1", { welcomeTasks: true }));
+    await waitFor(() => expect(api.department.brief).toHaveBeenCalled());
+    expect(JSON.parse(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY) ?? "{}")).toMatchObject(
+      pending,
+    );
   });
 });
