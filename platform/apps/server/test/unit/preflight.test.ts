@@ -419,11 +419,11 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     ).toBe(true);
   });
 
-  it("requires every live connection OAuth provider by default for prod release gates (#1285)", () => {
-    expect(xConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
-    expect(googleAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
-    expect(metaAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
-    expect(linkedInConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+  it("keeps optional social and room providers non-fatal by default for prod release gates (#1285 #1267 #1283)", () => {
+    expect(xConnectionOAuthRequiredForRelease("prod", {})).toBe(false);
+    expect(googleAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(false);
+    expect(metaAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(false);
+    expect(linkedInConnectionOAuthRequiredForRelease("prod", {})).toBe(false);
 
     expect(xConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
     expect(googleAdsConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
@@ -446,22 +446,44 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
         RELOAD_REQUIRE_LINKEDIN_CONNECTION_OAUTH: "true",
       }),
     ).toBe(true);
-    expect(telegramRoomRequiredForRelease("prod", {})).toBe(true);
+    expect(telegramRoomRequiredForRelease("prod", {})).toBe(false);
     expect(telegramRoomRequiredForRelease("dev", {})).toBe(false);
     expect(telegramRoomRequiredForRelease("dev", { RELOAD_REQUIRE_TELEGRAM_ROOM: "1" })).toBe(true);
-    expect(whatsAppRoomRequiredForRelease("prod", {})).toBe(true);
+    expect(whatsAppRoomRequiredForRelease("prod", {})).toBe(false);
     expect(whatsAppRoomRequiredForRelease("dev", {})).toBe(false);
     expect(whatsAppRoomRequiredForRelease("dev", { RELOAD_REQUIRE_WHATSAPP_ROOM: "true" })).toBe(
       true,
     );
-    expect(iMessageRelayRequiredForRelease("prod", {})).toBe(true);
+    expect(iMessageRelayRequiredForRelease("prod", {})).toBe(false);
     expect(iMessageRelayRequiredForRelease("dev", {})).toBe(false);
     expect(iMessageRelayRequiredForRelease("dev", { RELOAD_REQUIRE_IMESSAGE_RELAY: "1" })).toBe(
       true,
     );
   });
 
-  it("social and ads connection OAuth preflight fails prod release gates when config is absent (#1285)", () => {
+  it("social and ads connection OAuth preflight skips absent optional config by default (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {},
+        xConnectionOAuthRequired: false,
+        googleAdsConnectionOAuthRequired: false,
+        metaAdsConnectionOAuthRequired: false,
+        linkedInConnectionOAuthRequired: false,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.ok).toBe(true);
+    expect(report.checks.find((c) => c.name === "x-connection-oauth")).toBeUndefined();
+    expect(report.checks.find((c) => c.name === "google-ads-connection-oauth")).toBeUndefined();
+    expect(report.checks.find((c) => c.name === "meta-ads-connection-oauth")).toBeUndefined();
+    expect(report.checks.find((c) => c.name === "linkedin-connection-oauth")).toBeUndefined();
+  });
+
+  it("social and ads connection OAuth preflight fails when explicitly required and config is absent (#1285)", () => {
     const report = preflight(
       input({
         profile: "prod",
@@ -537,7 +559,27 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai");
   });
 
-  it("messaging room preflight fails prod release gates when config is absent (#1267 #1283)", () => {
+  it("messaging room preflight skips absent optional config by default (#1267 #1283)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {},
+        telegramRoomRequired: false,
+        whatsAppRoomRequired: false,
+        iMessageRelayRequired: false,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.ok).toBe(true);
+    expect(report.checks.find((c) => c.name === "telegram-room")).toBeUndefined();
+    expect(report.checks.find((c) => c.name === "whatsapp-room")).toBeUndefined();
+    expect(report.checks.find((c) => c.name === "imessage-relay")).toBeUndefined();
+  });
+
+  it("messaging room preflight fails when explicitly required and config is absent (#1267 #1283)", () => {
     const report = preflight(
       input({
         profile: "prod",

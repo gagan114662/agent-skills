@@ -145,11 +145,11 @@ export function googleConnectionOAuthRequiredForRelease(
 }
 
 function connectionOAuthRequiredForRelease(
-  profile: ProfileName,
+  _profile: ProfileName,
   env: NodeJS.ProcessEnv,
   envFlag: string,
 ): boolean {
-  return profile === "prod" || env[envFlag] === "1" || env[envFlag] === "true";
+  return env[envFlag] === "1" || env[envFlag] === "true";
 }
 
 export function xConnectionOAuthRequiredForRelease(
