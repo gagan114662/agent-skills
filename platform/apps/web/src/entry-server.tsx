@@ -87,6 +87,7 @@ function marketingPages(): PrerenderPage[] {
     "/login": <StaticAuthPage mode="login" />,
     "/signup": <StaticAuthPage mode="signup" />,
     "/everyday": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Everyday workspace" body="Review approvals, receipts, and the work queue after signing in. This route never serves the homepage to crawlers." />,
+    "/dashboard": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Dashboard" body="Review live ipop work receipts, workspace state, and agent coordination after signing in. This route never serves a static 404 to crawlers." />,
     "/theater": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Agent theater" body="Watch workspace-scoped reasoning, actions, artifacts, and receipts after signing in." />,
     "/support/status": <StaticAppRouteShell eyebrow="Support ticket" title="Ticket status" body="Open a ticket status link with its secure parameters to see SLA, response state, and timeline." />,
     "/status/test": <StaticAppRouteShell eyebrow="Public status" title="Workspace status" body="Published status pages show component health and incident history for workspaces that opt in." />,

@@ -42,6 +42,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
       "/login",
       "/signup",
       "/everyday",
+      "/dashboard",
       "/theater",
       "/support/status",
       "/status/test",
@@ -147,6 +148,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
   it.each([
     ["/everyday", "Everyday workspace", "Review approvals"],
+    ["/dashboard", "Dashboard", "Review live ipop work receipts"],
     ["/theater", "Agent theater", "Watch workspace-scoped"],
     ["/support/status", "Support ticket status", "Ticket status"],
     ["/status/test", "Status page", "component health"],
