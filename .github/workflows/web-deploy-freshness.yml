@@ -73,6 +73,10 @@ jobs:
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Test production web probes
+        run: |
+          pnpm --filter @reload/web deploy:freshness:test
+          pnpm --filter @reload/web qa:links:test
       - name: Probe live web deploy freshness
         env:
           EXPECTED_WEB_SHA: ${{ steps.expected.outputs.sha }}
@@ -87,3 +91,5 @@ jobs:
             fi
           done
           exit 1
+      - name: Crawl live web links
+        run: pnpm --filter @reload/web qa:links
