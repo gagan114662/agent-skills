@@ -8057,6 +8057,22 @@ select:focus-visible {
   gap: 6px;
   margin: 8px 0;
 }
+.connections__config {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, var(--line));
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.connections__config-missing {
+  font-family: var(--console-mono);
+  color: var(--danger);
+}
 .connections__capabilities-title {
   color: var(--text-dim);
   font-size: 11px;

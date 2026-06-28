@@ -49,6 +49,7 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
         {customer.map((c) => (
           <li key={c.id} className="connections__item">
             <span className="connections__summary">{c.summary}</span>
+            <ConfigIssueNotice connection={c} />
             <CapabilityProof connection={c} />
             <CustomerAction
               connection={c}
@@ -79,6 +80,19 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
 
 function capabilityLabel(capability: string): string {
   return capability.replace(/[_-]+/g, " ");
+}
+
+function ConfigIssueNotice({ connection }: { connection: ConnectionView }): React.JSX.Element | null {
+  if (!connection.configIssue) return null;
+  if (connection.status === "coming_soon") return null;
+  return (
+    <span className="connections__config" role="status">
+      <span>{connection.configIssue.remedy}</span>
+      <span className="connections__config-missing">
+        {connection.configIssue.missingEnv.join(", ")}
+      </span>
+    </span>
+  );
 }
 
 function CapabilityProof({ connection }: { connection: ConnectionView }): React.JSX.Element | null {
