@@ -1,6 +1,10 @@
 #!/usr/bin/env tsx
 import { pathToFileURL } from "node:url";
 import { PostmarkEspProvider } from "../email/postmark-provider.js";
+import type { OutboundDeliveryProof } from "../first-customer/proof.js";
+import { buildEspReadbackReceipt } from "./receipt.js";
+
+type VerifyAndRecordSend = typeof import("./service.js").verifyAndRecordSend;
 
 export type OutboundDoctorStatus = "pass" | "fail" | "warn";
 
@@ -8,6 +12,7 @@ export interface OutboundDoctorCheck {
   name: string;
   status: OutboundDoctorStatus;
   message: string;
+  outboundDeliveryProof?: OutboundDeliveryProof;
 }
 
 export interface OutboundDoctorConfig {
@@ -23,11 +28,15 @@ export interface OutboundDoctorConfig {
   smokeTo: string;
   smokeSubject: string;
   smokeText: string;
+  workspaceId: string;
+  approvalRequestId: string;
+  proofJson: boolean;
   apiBaseUrl: string;
 }
 
 export interface OutboundDoctorDeps {
   fetchImpl?: typeof fetch;
+  verifyAndRecordSend?: VerifyAndRecordSend;
 }
 
 const FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
@@ -78,6 +87,16 @@ export function parseOutboundDoctorConfig(
     smokeText:
       argValue(argv, "--text") ??
       "ipop outbound doctor smoke: Postmark live-send setup is reachable; reply to complete first-customer proof.",
+    workspaceId:
+      argValue(argv, "--workspace-id")?.trim() ??
+      env.RELOAD_OWNER_WORKSPACE_ID?.trim() ??
+      env.RELOAD_MARKETING_OWNER_WORKSPACE_ID?.trim() ??
+      "",
+    approvalRequestId:
+      argValue(argv, "--approval-request-id")?.trim() ??
+      env.RELOAD_OUTBOUND_DOCTOR_APPROVAL_REQUEST_ID?.trim() ??
+      "",
+    proofJson: hasArg(argv, "--proof-json"),
     apiBaseUrl: env.POSTMARK_API_BASE_URL?.trim() || "https://api.postmarkapp.com",
   };
 }
@@ -181,27 +200,34 @@ async function checkPostmarkServer(
 async function maybeSendSmoke(
   config: OutboundDoctorConfig,
   fetchImpl: typeof fetch,
-): Promise<OutboundDoctorCheck> {
+  verifyAndRecordSend: VerifyAndRecordSend,
+): Promise<OutboundDoctorCheck[]> {
   if (!config.sendSmoke) {
-    return {
-      name: "postmark-send-smoke",
-      status: "warn",
-      message: "skipped; pass --send-smoke --to <recipient> to send a tagged Postmark message",
-    };
+    return [
+      {
+        name: "postmark-send-smoke",
+        status: "warn",
+        message: "skipped; pass --send-smoke --to <recipient> to send a tagged Postmark message",
+      },
+    ];
   }
   if (!config.smokeTo) {
-    return {
-      name: "postmark-send-smoke",
-      status: "fail",
-      message: "--to is required when --send-smoke is set",
-    };
+    return [
+      {
+        name: "postmark-send-smoke",
+        status: "fail",
+        message: "--to is required when --send-smoke is set",
+      },
+    ];
   }
   if (!config.serverToken || !config.from) {
-    return {
-      name: "postmark-send-smoke",
-      status: "fail",
-      message: "POSTMARK_SERVER_TOKEN and sender env are required before sending smoke",
-    };
+    return [
+      {
+        name: "postmark-send-smoke",
+        status: "fail",
+        message: "POSTMARK_SERVER_TOKEN and sender env are required before sending smoke",
+      },
+    ];
   }
   try {
     const provider = new PostmarkEspProvider({
@@ -218,17 +244,66 @@ async function maybeSendSmoke(
         "X-ipop-Proof": "outbound-doctor-smoke",
       },
     });
-    return {
-      name: "postmark-send-smoke",
-      status: "pass",
-      message: "sent Postmark smoke message id " + result.externalId,
-    };
+    const observedAt = new Date().toISOString();
+    const receipt = buildEspReadbackReceipt({
+      messageId: result.externalId,
+      observedAt,
+      detail: { provider: "postmark", source: "outbound-doctor-smoke" },
+    });
+    const outboundDeliveryProof = receipt
+      ? {
+          channel: "email_postmark" as const,
+          provider: "postmark",
+          receipt,
+          recipient: config.smokeTo,
+          approvalRequestId: config.approvalRequestId,
+        }
+      : undefined;
+    const checks: OutboundDoctorCheck[] = [
+      {
+        name: "postmark-send-smoke",
+        status: "pass",
+        message: "sent Postmark smoke message id " + result.externalId,
+        outboundDeliveryProof,
+      },
+    ];
+    if (!config.workspaceId || !config.approvalRequestId) {
+      checks.push({
+        name: "outbound-proof-ledger",
+        status: "warn",
+        message:
+          "not recorded; pass --workspace-id and --approval-request-id to append a verified #13 send receipt",
+      });
+      return checks;
+    }
+    const recorded = await verifyAndRecordSend({
+      workspaceId: config.workspaceId,
+      channel: "email_postmark",
+      recipient: config.smokeTo,
+      approvalRequestId: config.approvalRequestId,
+      probe: async () => ({
+        messageId: result.externalId,
+        observedAt,
+        detail: { provider: "postmark", source: "outbound-doctor-smoke" },
+      }),
+    });
+    checks.push({
+      name: "outbound-proof-ledger",
+      status: recorded.verified ? "pass" : "fail",
+      message: recorded.verified
+        ? "recorded verified send receipt " + (recorded.row?.id ?? "(no row id)")
+        : "Postmark returned a message id but the receipt did not verify",
+      outboundDeliveryProof,
+    });
+    return checks;
   } catch (error) {
-    return {
-      name: "postmark-send-smoke",
-      status: "fail",
-      message: error instanceof Error ? error.message : String(error),
-    };
+    return [
+      {
+        name: "postmark-send-smoke",
+        status: "fail",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
   }
 }
 
@@ -237,19 +312,30 @@ export async function runOutboundDoctor(
   deps: OutboundDoctorDeps = {},
 ): Promise<OutboundDoctorCheck[]> {
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const verifyAndRecordSend: VerifyAndRecordSend =
+    deps.verifyAndRecordSend ??
+    (async (...args) => {
+      const mod = await import("./service.js");
+      return mod.verifyAndRecordSend(...args);
+    });
   return [
     configCheck(config),
     acquisitionCheck(config),
     complianceCheck(config),
     await checkPostmarkServer(config, fetchImpl),
-    await maybeSendSmoke(config, fetchImpl),
+    ...(await maybeSendSmoke(config, fetchImpl, verifyAndRecordSend)),
   ];
 }
 
 async function main(): Promise<void> {
-  const checks = await runOutboundDoctor(parseOutboundDoctorConfig());
+  const config = parseOutboundDoctorConfig();
+  const checks = await runOutboundDoctor(config);
   for (const check of checks) {
     console.log(check.status.toUpperCase() + " " + check.name + ": " + check.message);
+  }
+  const proof = checks.find((check) => check.outboundDeliveryProof)?.outboundDeliveryProof;
+  if (proof && config.proofJson) {
+    console.log(JSON.stringify({ outboundDelivery: proof }, null, 2));
   }
   if (checks.some((check) => check.status === "fail")) process.exitCode = 1;
 }

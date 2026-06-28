@@ -20,6 +20,15 @@ To send an explicit tagged smoke email:
 Only run --send-smoke against an owner-controlled recipient until suppression, approval, and first-customer
 proof are being intentionally exercised.
 
+To turn an approved real send into queryable #395/#908 evidence, include the workspace and #13 approval id:
+
+    pnpm -C platform --filter @reload/server outbound:doctor -- --send-smoke --to buyer@realcompany.com --workspace-id <workspace-id> --approval-request-id <approval-request-id> --proof-json
+
+With those two ids present, the doctor records the Postmark MessageID as a verified
+production_readback row in outbound_send_receipts and prints the outboundDelivery JSON block that the
+first-customer proof file expects. Without the approval id, a smoke send can prove Postmark reachability but
+cannot close the irreversible-send approval requirement.
+
 ## Required Production Env
 
 - POSTMARK_SERVER_TOKEN
@@ -34,7 +43,8 @@ proof are being intentionally exercised.
 ## Proof Before Closure
 
 - outbound:doctor passes config, Postmark server identity, and compliance checks.
-- outbound:doctor -- --send-smoke sends a tagged smoke email and returns a Postmark MessageID.
+- outbound:doctor -- --send-smoke sends a tagged email to a non-example recipient, returns a Postmark
+  MessageID, and records it with --workspace-id plus --approval-request-id.
 - A real approved acquisition send records the Postmark MessageID as a production_readback receipt in
   outbound_send_receipts.
 - The larger #908 path then needs a real non-example prospect, visible reply or routed inbound lead, and a

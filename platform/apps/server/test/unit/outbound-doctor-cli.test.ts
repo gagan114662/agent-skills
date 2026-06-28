@@ -132,6 +132,114 @@ describe("outbound doctor CLI (#395)", () => {
           name: "postmark-send-smoke",
           status: "pass",
           message: expect.stringContaining("pm-123"),
+          outboundDeliveryProof: expect.objectContaining({
+            channel: "email_postmark",
+            provider: "postmark",
+            recipient: "founder@example.com",
+            approvalRequestId: "",
+            receipt: expect.objectContaining({
+              source: "production_readback",
+              externalRef: "pm-123",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          name: "outbound-proof-ledger",
+          status: "warn",
+          message: expect.stringContaining("--workspace-id and --approval-request-id"),
+        }),
+      ]),
+    );
+  });
+
+  it("records the Postmark smoke readback when workspace and approval proof are provided", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+      const value = String(url);
+      if (value.endsWith("/server")) return jsonResponse({ ID: 42, Name: "ipop production" });
+      return jsonResponse({ ErrorCode: 0, MessageID: "pm-proof-456" });
+    });
+    const verifyAndRecordSend = vi.fn(async () => ({
+      verified: true,
+      recorded: true,
+      receipt: {
+        source: "production_readback" as const,
+        externalRef: "pm-proof-456",
+        observedAt: "2026-06-28T00:00:00.000Z",
+      },
+      row: {
+        id: "receipt-row-1",
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        channel: "email_postmark" as const,
+        approvalRequestId: "00000000-0000-4000-8000-000000000013",
+        recipient: "buyer@realcompany.com",
+        source: "production_readback" as const,
+        externalRef: "pm-proof-456",
+        httpStatus: null,
+        verified: true,
+        detail: null,
+        observedAtMs: 0,
+        createdAtMs: 0,
+      },
+    }));
+    const config = parseOutboundDoctorConfig({
+      argv: [
+        "--send-smoke",
+        "--to",
+        "buyer@realcompany.com",
+        "--workspace-id",
+        "00000000-0000-4000-8000-000000000001",
+        "--approval-request-id",
+        "00000000-0000-4000-8000-000000000013",
+        "--proof-json",
+      ],
+      env: {
+        POSTMARK_SERVER_TOKEN: "pm-secret",
+        POSTMARK_FROM: "hello@ipop.ai",
+        RELOAD_ACQUISITION_ENABLED: "true",
+        RELOAD_ACQUISITION_EMAIL: "true",
+        RELOAD_ACQUISITION_ESP_PROVIDER: "postmark",
+        RELOAD_ACQUISITION_BRAND_NAME: "ipop",
+        RELOAD_ACQUISITION_POSTAL_ADDRESS: "1 Market St, San Francisco, CA",
+        RELOAD_ACQUISITION_UNSUBSCRIBE_URL: "https://ipop.ai/unsubscribe",
+      },
+    });
+
+    const checks = await runOutboundDoctor(config, { fetchImpl, verifyAndRecordSend });
+
+    expect(config.proofJson).toBe(true);
+    expect(verifyAndRecordSend).toHaveBeenCalledWith({
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+      channel: "email_postmark",
+      recipient: "buyer@realcompany.com",
+      approvalRequestId: "00000000-0000-4000-8000-000000000013",
+      probe: expect.any(Function),
+    });
+    const probe = verifyAndRecordSend.mock.calls[0]?.[0].probe;
+    await expect(
+      probe?.({
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        channel: "email_postmark",
+        recipient: "buyer@realcompany.com",
+        approvalRequestId: "00000000-0000-4000-8000-000000000013",
+      }),
+    ).resolves.toMatchObject({
+      messageId: "pm-proof-456",
+      detail: { provider: "postmark", source: "outbound-doctor-smoke" },
+    });
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "outbound-proof-ledger",
+          status: "pass",
+          message: expect.stringContaining("receipt-row-1"),
+          outboundDeliveryProof: expect.objectContaining({
+            approvalRequestId: "00000000-0000-4000-8000-000000000013",
+            recipient: "buyer@realcompany.com",
+            receipt: expect.objectContaining({
+              source: "production_readback",
+              externalRef: "pm-proof-456",
+            }),
+          }),
         }),
       ]),
     );
