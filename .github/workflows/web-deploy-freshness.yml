@@ -35,9 +35,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PRODUCTION_WEB_URL: ${{ inputs.target || vars.PRODUCTION_WEB_URL || 'https://ipop.ai/' }}
-      EXPECTED_WEB_SHA: ${{ inputs.expected_sha || github.sha }}
+      REQUESTED_EXPECTED_WEB_SHA: ${{ inputs.expected_sha || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -47,7 +49,33 @@ jobs:
           cache: pnpm
           cache-dependency-path: platform/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - name: Resolve expected web build SHA
+        id: expected
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED_EXPECTED_WEB_SHA:-}" ]; then
+            echo "sha=${REQUESTED_EXPECTED_WEB_SHA}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha="$(
+            git log -1 --format=%H HEAD -- \
+              apps/web \
+              packages/shared \
+              vercel.json \
+              scripts/vercel-ignore-build.mjs \
+              package.json \
+              pnpm-lock.yaml \
+              pnpm-workspace.yaml \
+              tsconfig.json
+          )"
+          if [ -z "$sha" ]; then
+            echo "Could not resolve a web-relevant SHA" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Probe live web deploy freshness
+        env:
+          EXPECTED_WEB_SHA: ${{ steps.expected.outputs.sha }}
         run: |
           for attempt in {1..12}; do
             echo "freshness attempt ${attempt}/12 for ${PRODUCTION_WEB_URL} expecting ${EXPECTED_WEB_SHA}"
