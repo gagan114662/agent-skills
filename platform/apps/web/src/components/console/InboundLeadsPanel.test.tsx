@@ -71,6 +71,26 @@ describe("InboundLeadsPanel (#898)", () => {
       "href",
       "/start?source=landing_booking_cta&ref=ipop_deadbeefdeadbeef",
     );
+    const draftHref = within(proof).getByRole("link", { name: "Proof JSON draft" }).getAttribute("href") ?? "";
+    expect(within(proof).getByRole("link", { name: "Proof JSON draft" })).toHaveAttribute(
+      "download",
+      "first-customer-proof-ipop_deadbeefdeadbeef.json",
+    );
+    const draft = JSON.parse(decodeURIComponent(draftHref.replace("data:application/json;charset=utf-8,", "")));
+    expect(draft.prospectSource).toMatchObject({
+      trackingRef: "ipop_deadbeefdeadbeef",
+      sampleEmails: ["jane@buyerco.io"],
+      fabricatedCount: 0,
+    });
+    expect(draft.outboundDelivery).toMatchObject({
+      recipient: "jane@buyerco.io",
+      approvalRequestId: "",
+      trackingRef: "ipop_deadbeefdeadbeef",
+    });
+    expect(draft.outboundDelivery.receipt.externalRef).toBe("");
+    expect(draft.outboundDelivery.receipt.observedAt).toBe("");
+    expect(draft.reply.providerThreadId).toBe("");
+    expect(draft.booking.url).toBe("https://ipop.ai/start?source=landing_booking_cta&ref=ipop_deadbeefdeadbeef");
   });
 
   it("flags 24h SLA breaches in the owner queue", async () => {
