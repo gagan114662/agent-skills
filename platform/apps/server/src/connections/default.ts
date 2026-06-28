@@ -4,9 +4,9 @@
  *
  *   - `caps` — the layered #58 config (`connectOnce` block → `resolveConnectOnceCaps`). Default OFF,
  *     owner-workspace-first.
- *   - `provider` — dry-run by default for every connection. Google is the first live OAuth candidate: it
- *     becomes live only when the deployment has the Google client id/secret AND a dedicated connection
- *     redirect URI. Everything else stays honest `coming_soon` until its real provider is wired.
+ *   - `provider` — dry-run by default for every connection. Google, X, Google Ads, Meta Ads, and LinkedIn
+ *     become live only when the deployment has that provider's client id/secret and dedicated connection
+ *     redirect URI. Unconfigured providers stay honest `coming_soon`.
  *   - `park` — parks a PENDING `connection.connect_account` #13 request (a CONSENT the owner gates; recorded
  *     -only on approval). There is no autonomous-connect path.
  */
@@ -46,9 +46,10 @@ const LINKEDIN_SCOPES = ["w_member_social"] as const;
 const META_ADS_SCOPES = ["ads_read", "ads_management", "business_management"] as const;
 
 /**
- * The provider wired for a connection id. Dry-run is still the default, but Google can become live when the
- * deployment supplies a dedicated connection OAuth redirect URI. We deliberately do NOT reuse the public
- * sign-in callback URI: a connection callback seals tenant credentials, while sign-in creates a session.
+ * The provider wired for a connection id. Dry-run is still the default, but each supported OAuth connector
+ * can become live when deployment supplies its dedicated connection OAuth config. We deliberately do NOT
+ * reuse public sign-in callback URIs: connection callbacks seal tenant credentials, while sign-in creates a
+ * session.
  */
 export function defaultConnectProvider(
   connectionId: string,

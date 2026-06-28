@@ -141,6 +141,71 @@ beforeEach(() => {
   });
 });
 
+describe("connectionsRoutes OAuth descriptor availability (#1285)", () => {
+  it("marks every wired OAuth provider available on the customer connections surface", async () => {
+    const liveIds = new Set(["google", "x", "google_ads", "meta_ads", "linkedin"]);
+    defaultConnectProvider.mockImplementation((id: string) => ({
+      live: liveIds.has(id),
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(),
+    }));
+
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/me/connections",
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        connections: Array<{ id: string; status: string; configIssue?: unknown }>;
+      };
+      for (const id of liveIds) {
+        const connection = body.connections.find((item) => item.id === id);
+        expect(connection).toMatchObject({ id, status: "available" });
+        expect(connection?.configIssue ?? null).toBeNull();
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("keeps an unwired OAuth provider honest with missing-config setup details", async () => {
+    defaultConnectProvider.mockReturnValue({
+      live: false,
+      authorizeUrl: vi.fn(),
+      exchange: vi.fn(),
+    });
+
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/me/connections",
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        connections: Array<{
+          id: string;
+          status: string;
+          configIssue?: { code: string; missingEnv: string[] };
+        }>;
+      };
+      expect(body.connections.find((item) => item.id === "google")).toMatchObject({
+        status: "coming_soon",
+        configIssue: {
+          code: "google_connection_oauth_missing_config",
+          missingEnv: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("connectionsRoutes X OAuth callback (#1285)", () => {
   it("exchanges an approved X callback, verifies /2/users/me, seals, and records non-secret proof", async () => {
     vi.stubGlobal(

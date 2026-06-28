@@ -5,9 +5,9 @@
  * NEVER a paste-a-token. The sole paste path is `paste_internal`: ipop's OWN site-publish mechanism
  * (committing to ipop.ai's repo), which is admin/internal and never offered to a customer.
  *
- * This module is pure data + selectors. The live OAuth redirect flow is a follow-up; the descriptors are
- * already OAuth-shaped (provider, scopes, capabilities) so the redirect slots in behind the same model,
- * and the Settings UI can render the consumer "Connect" buttons today (as `coming_soon`).
+ * This module is pure data + selectors. OAuth descriptors start as `coming_soon` in static data, then the
+ * runtime route marks the wired provider `available` only when deployment config can support a real
+ * redirect, exchange, health proof, and vault seal.
  */
 
 import type { ServiceKind } from "../onboarding/types.js";
@@ -105,8 +105,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
   },
 
   // -------------------------------------------------------------------------------------------------
-  // CUSTOMER — consumer OAuth, one consent each. The live redirect is a follow-up (`coming_soon`), but
-  // the model is already OAuth-shaped so it slots in without re-modelling.
+  // CUSTOMER — consumer OAuth, one consent each. OAuth descriptors default to `coming_soon` here; the
+  // route lifts each one to `available` only when that provider's live config is present.
   //
   // Outbound EMAIL is the exception: it's the first channel wired end-to-end (#529), so it is `available`
   // today. Turning it on is a one-click consent — no redirect, no pasted secret — and every email the fleet
@@ -137,7 +137,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
-    statusReason: "Live Google OAuth token exchange is not wired for this deployment yet.",
+    statusReason: "Set Google connection OAuth config before this deployment can offer live consent.",
     capabilities: ["search_console", "analytics"],
     oauthScopes: [
       "https://www.googleapis.com/auth/webmasters",
@@ -245,7 +245,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
-    statusReason: "Live X OAuth token exchange is not wired for this deployment yet.",
+    statusReason: "Set X connection OAuth config before this deployment can offer live consent.",
     capabilities: ["post_social"],
     oauthScopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     envKeys: [],
@@ -259,7 +259,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
-    statusReason: "Live LinkedIn OAuth token exchange is not wired for this deployment yet.",
+    statusReason: "Set LinkedIn connection OAuth config before this deployment can offer live consent.",
     capabilities: ["post_social"],
     oauthScopes: ["w_member_social"],
     envKeys: [],
@@ -282,9 +282,8 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     envKeys: [],
   },
   {
-    // #272 — Bid's one-click ad account connect. One OAuth consent connects Google Ads (with billing in
-    // place on the customer's own account); Bid manages campaigns through it, but EVERY real spend stays a
-    // #13 money-gated owner yes (ADR-0272). The live redirect is a follow-up, so it renders `coming_soon`.
+    // #272 — One OAuth consent connects Google Ads (with billing in the customer's own account); Bid manages
+    // campaigns through it, but EVERY real spend stays a #13 money-gated owner yes (ADR-0272).
     id: "google_ads",
     label: "Connect Google Ads",
     summary:
@@ -294,7 +293,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
-    statusReason: "Live Google Ads OAuth token exchange is not wired for this deployment yet.",
+    statusReason: "Set Google Ads connection OAuth config before this deployment can offer live consent.",
     capabilities: ["ads"],
     oauthScopes: ["https://www.googleapis.com/auth/adwords"],
     envKeys: [],
@@ -311,7 +310,7 @@ export const CONNECTION_DESCRIPTORS: readonly ConnectionDescriptor[] = [
     audience: "customer",
     auth: "oauth",
     status: "coming_soon",
-    statusReason: "Live Meta Ads OAuth token exchange is not wired for this deployment yet.",
+    statusReason: "Set Meta Ads connection OAuth config before this deployment can offer live consent.",
     capabilities: ["ads"],
     oauthScopes: ["ads_read", "ads_management", "business_management"],
     envKeys: [],
