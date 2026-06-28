@@ -136,6 +136,36 @@ describe("Connections (#258)", () => {
     expect(onOneClickConnect).toHaveBeenCalledWith("email");
   });
 
+  it("surfaces live-send config blockers even when outbound email is available to connect (#395)", () => {
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "email",
+          label: "Connect email",
+          auth: "one_click",
+          status: "available",
+          configIssue: {
+            code: "email_outbound_live_send_missing_config",
+            missingEnv: [
+              "RELOAD_REACH_SEND_PROVIDER=postmark",
+              "POSTMARK_SERVER_TOKEN",
+              "RELOAD_ACQUISITION_UNSUBSCRIBE_URL",
+            ],
+            remedy:
+              "Set Postmark token/sender env, enable reach live-send and acquisition email with Postmark, add brand/postal/unsubscribe compliance env, then enable Connect email again so ipop can seal provider proof.",
+          },
+        }),
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+
+    expect(screen.getByText(/enable reach live-send and acquisition email/i)).toBeInTheDocument();
+    expect(screen.getByText(/RELOAD_REACH_SEND_PROVIDER=postmark/)).toBeInTheDocument();
+    expect(screen.getByText(/POSTMARK_SERVER_TOKEN/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect email/i })).toBeInTheDocument();
+  });
+
   it("a coming-soon connector waitlists instead of dead-ending, then confirms (#507)", () => {
     const onWaitlist = vi.fn();
     const data: ConnectionsResponse = {
