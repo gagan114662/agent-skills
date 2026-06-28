@@ -21,6 +21,7 @@ import {
   decideWaitlist,
 } from "../connections/view.js";
 import { verifyConnectionHealth } from "../connections/health.js";
+import { emailOutboundConfigIssue } from "../connections/email-readiness.js";
 import {
   createDefaultConnectOnceService,
   defaultConnectProvider,
@@ -187,8 +188,14 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return proofs;
   }
 
-  function runtimeDescriptors(): ConnectionDescriptor[] {
+  function runtimeDescriptors(workspaceId: string): ConnectionDescriptor[] {
     return CONNECTION_DESCRIPTORS.map((descriptor) => {
+      if (descriptor.id === EMAIL_CONNECTION_ID) {
+        return {
+          ...descriptor,
+          configIssue: emailOutboundConfigIssue({ reach: loadConfig(workspaceId).reach }),
+        };
+      }
       if (descriptor.id === IMESSAGE_CONNECTION_ID) {
         const enabled =
           process.env.IMESSAGE_RELAY_ENABLED === "true" ||
@@ -354,8 +361,8 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     });
   }
 
-  function runtimeDescriptor(id: string): ConnectionDescriptor | undefined {
-    return runtimeDescriptors().find((descriptor) => descriptor.id === id);
+  function runtimeDescriptor(workspaceId: string, id: string): ConnectionDescriptor | undefined {
+    return runtimeDescriptors(workspaceId).find((descriptor) => descriptor.id === id);
   }
 
   // What this workspace can connect (+ which are already connected). Read-only, never a secret.
@@ -365,7 +372,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const wid = identity.workspaceId;
     const isOwner = isOwnerWorkspace(wid);
     const connections = decideConnectionView({
-      descriptors: runtimeDescriptors(),
+      descriptors: runtimeDescriptors(wid),
       proofs: await connectionProofs(wid),
       isOwner,
     });
@@ -396,7 +403,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     });
     // Re-read so the caller sees the freshly-connected state — never the secret.
     const connections = decideConnectionView({
-      descriptors: runtimeDescriptors(),
+      descriptors: runtimeDescriptors(wid),
       proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
@@ -411,7 +418,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (!identity) return;
     const wid = identity.workspaceId;
     const id = (req.params as { id: string }).id;
-    const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(id) });
+    const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(wid, id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     const providerSecrets =
       decision.serviceKey === EMAIL_CONNECTION_ID
@@ -431,7 +438,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       connectedByMemberId: identity.memberId,
     });
     const connections = decideConnectionView({
-      descriptors: runtimeDescriptors(),
+      descriptors: runtimeDescriptors(wid),
       proofs: await connectionProofs(wid),
       isOwner: isOwnerWorkspace(wid),
     });
@@ -452,7 +459,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
     const id = (req.params as { id: string }).id;
-    const decision = decideWaitlist({ descriptor: runtimeDescriptor(id) });
+    const decision = decideWaitlist({ descriptor: runtimeDescriptor(identity.workspaceId, id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     req.log.info(
       {
