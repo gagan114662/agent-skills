@@ -314,6 +314,37 @@ describe("connectOnce provider (#258 Stage 2) — adapters + injection defense",
     );
   });
 
+  it("defaultConnectProvider grants Google capabilities when token response omits unchanged scope (#1285)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: "google-access",
+          token_type: "Bearer",
+          expires_in: 3600,
+        }),
+      })),
+    );
+    const provider = defaultConnectProvider("google", {
+      GOOGLE_OAUTH_CLIENT_ID: "cid",
+      GOOGLE_OAUTH_CLIENT_SECRET: "secret",
+      GOOGLE_CONNECTION_OAUTH_REDIRECT_URI:
+        "https://api.ipop.ai/me/connections/google/oauth/callback",
+    } as NodeJS.ProcessEnv);
+
+    const result = await provider.exchange({ code: "code-1", state: "state-1" });
+
+    expect(result.capabilities).toEqual(["search_console", "analytics"]);
+    expect(result.secrets).toMatchObject({
+      GOOGLE_OAUTH_ACCESS_TOKEN: "google-access",
+      GOOGLE_OAUTH_SCOPE:
+        "https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly",
+      GOOGLE_OAUTH_TOKEN_TYPE: "Bearer",
+    });
+  });
+
   it("defaultConnectProvider wires X only when the dedicated OAuth client is configured (#1285)", () => {
     expect(xConnectionOAuthConfigStatus({} as NodeJS.ProcessEnv)).toMatchObject({
       configured: false,
