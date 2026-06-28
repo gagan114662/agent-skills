@@ -281,6 +281,7 @@ describe("iMessage member recipient relay", () => {
     expect(inbound.json()).toMatchObject({
       status: "ingested",
       receipt,
+      acknowledgementJob: null,
       inboundReceipt: {
         workspaceId: owner.workspaceId,
         memberId: owner.memberId,
@@ -496,6 +497,75 @@ describe("iMessage member recipient relay", () => {
         text: expect.stringContaining(`receipt: imessage:${channelId}:${started.json().message.id}`),
         receipt: `imessage:${channelId}:${started.json().message.id}`,
       });
+
+      const roomReceipt = started.json().receipt as string;
+      const completeRoom = await queuedApp.inject({
+        method: "POST",
+        url: `/imessage/relay/outbound/${claimRoom.json().jobs[0].id}/complete`,
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", status: "sent" },
+      });
+      expect(completeRoom.statusCode).toBe(200);
+      expect(completeRoom.json()).toMatchObject({
+        job: { status: "sent", purpose: "room", receipt: roomReceipt },
+      });
+
+      const inbound = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/inbound",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: {
+          workspaceId: owner.workspaceId,
+          receipt: roomReceipt,
+          sender: "gagan@example.com",
+          text: "reply from Messages: tell Scout to update pricing",
+        },
+      });
+      expect(inbound.statusCode).toBe(201);
+      expect(inbound.json()).toMatchObject({
+        status: "ingested",
+        acknowledgementJob: {
+          status: "queued",
+          recipient: "gagan@example.com",
+          receipt: roomReceipt,
+        },
+        inboundReceipt: {
+          workspaceId: owner.workspaceId,
+          memberId: owner.memberId,
+          channelId,
+          receipt: roomReceipt,
+          text: "reply from Messages: tell Scout to update pricing",
+        },
+      });
+
+      const claimAck = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/outbound/claim",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", limit: 1 },
+      });
+      expect(claimAck.statusCode).toBe(200);
+      expect(claimAck.json().jobs).toHaveLength(1);
+      expect(claimAck.json().jobs[0]).toMatchObject({
+        purpose: "notification",
+        recipient: "gagan@example.com",
+        serviceName: "E:test",
+        receipt: roomReceipt,
+        text: expect.stringContaining("ipop received your iMessage reply"),
+      });
+      expect(claimAck.json().jobs[0].text).toContain("reply from Messages: tell Scout to update pricing");
+
+      const completeAck = await queuedApp.inject({
+        method: "POST",
+        url: `/imessage/relay/outbound/${claimAck.json().jobs[0].id}/complete`,
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", status: "sent" },
+      });
+      expect(completeAck.statusCode).toBe(200);
+      expect(completeAck.json()).toMatchObject({
+        job: { status: "sent", purpose: "notification", receipt: roomReceipt },
+      });
+      await expect(listChannelMessages(channelId)).resolves.toHaveLength(2);
     } finally {
       await queuedApp.close();
     }
