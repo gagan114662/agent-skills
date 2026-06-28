@@ -33,6 +33,58 @@ function trackedBookingHref(lead: InboundLeadDto): string {
   return `${CONTACT.bookingHref}${separator}ref=${encodeURIComponent(lead.trackingRef)}`;
 }
 
+function trackedBookingProofUrl(lead: InboundLeadDto): string {
+  return new URL(trackedBookingHref(lead), "https://ipop.ai").toString();
+}
+
+function proofDraftHref(lead: InboundLeadDto): string | null {
+  if (!lead.trackingRef || !hasRealEmail(lead.email)) return null;
+  const proof = {
+    prospectSource: {
+      kind: "csv_import",
+      importedCount: 1,
+      fabricatedCount: 0,
+      trackingRef: lead.trackingRef,
+      sampleEmails: [lead.email],
+    },
+    outboundDelivery: {
+      channel: "email_postmark",
+      provider: "postmark",
+      recipient: lead.email,
+      approvalRequestId: "",
+      trackingRef: lead.trackingRef,
+      receipt: {
+        source: "production_readback",
+        externalRef: "",
+        observedAt: "",
+        detail: { provider: "postmark" },
+      },
+    },
+    reply: {
+      providerThreadId: "",
+      replyMessageId: "",
+      replyFrom: lead.email,
+      visibleInLeadTimeline: false,
+      visibleInInbox: false,
+    },
+    inboundRoute: {
+      leadId: lead.id,
+      leadEmail: lead.email,
+      rule: "inbound_lead",
+      trackingRef: lead.trackingRef,
+      autoQualified: lead.status === "working" || lead.status === "converted",
+      acknowledged: false,
+      routedToCadence: lead.status === "working" || lead.status === "converted",
+    },
+    booking: {
+      url: trackedBookingProofUrl(lead),
+      surface: "landing_form",
+      trackingRef: lead.trackingRef,
+    },
+  };
+  return `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(proof, null, 2))}`;
+}
+
 function proofStepClass(done: boolean): string {
   return `inbound-leads__proofstep${done ? " inbound-leads__proofstep--done" : ""}`;
 }
@@ -68,6 +120,7 @@ export function InboundLeadsPanel(): React.JSX.Element {
     () => leads.find((lead) => lead.id === selectedId) ?? leads[0] ?? null,
     [leads, selectedId],
   );
+  const selectedProofDraftHref = selected ? proofDraftHref(selected) : null;
   const openCount = leads.filter((lead) => lead.status === "new" || lead.status === "working").length;
   const breachCount = leads.filter((lead) => lead.slaBreached && lead.status !== "converted" && lead.status !== "archived").length;
 
@@ -160,7 +213,16 @@ export function InboundLeadsPanel(): React.JSX.Element {
               <section className="inbound-leads__proof" aria-labelledby="first-customer-proof-title">
                 <div className="inbound-leads__proofhead">
                   <h4 id="first-customer-proof-title">First-customer proof</h4>
-                  <a href={trackedBookingHref(selected)}>Tracked booking link</a>
+                  <span className="inbound-leads__prooflinks">
+                    <a href={trackedBookingHref(selected)}>Tracked booking link</a>
+                    {selectedProofDraftHref ? (
+                      <a href={selectedProofDraftHref} download={`first-customer-proof-${selected.trackingRef}.json`}>
+                        Proof JSON draft
+                      </a>
+                    ) : (
+                      <span>Proof draft needs real email + tracking ref</span>
+                    )}
+                  </span>
                 </div>
                 <ol className="inbound-leads__proofsteps">
                   <li className={proofStepClass(hasRealEmail(selected.email) && selected.trackingRef !== null)}>
