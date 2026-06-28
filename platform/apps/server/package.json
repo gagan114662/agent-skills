@@ -41,6 +41,7 @@
     "imessage:relay:doctor": "tsx src/imessage/relay-worker-cli.ts --doctor",
     "room:doctor": "tsx src/messaging/external-room-doctor-cli.ts",
     "outbound:doctor": "tsx src/outbound-channel/outbound-doctor-cli.ts",
+    "imessage-room:proof": "tsx src/imessage/proof-cli.ts",
     "soak": "tsx scripts/cloud-e2e-soak.ts",
     "perf": "tsx scripts/perf.ts"
   },
