@@ -116,6 +116,30 @@ async function checkOsascript(input: {
   }
 }
 
+async function checkMessagesAccess(input: {
+  osascriptBin: string;
+  execFileImpl?: typeof execFileAsync;
+}): Promise<DoctorCheck> {
+  try {
+    const result = await (input.execFileImpl ?? execFileAsync)(input.osascriptBin, [
+      "-e",
+      "tell application \"Messages\" to count services",
+    ]);
+    const serviceCount = String(result.stdout ?? "").trim();
+    return {
+      name: "messages-access",
+      status: "pass",
+      message: "Messages AppleScript access is available (" + (serviceCount || "unknown") + " service(s) visible)",
+    };
+  } catch (error) {
+    return {
+      name: "messages-access",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function runRelayDoctor(input: {
   config: RelayWorkerConfig;
   execFileImpl?: typeof execFileAsync;
@@ -124,6 +148,9 @@ export async function runRelayDoctor(input: {
   const checks: DoctorCheck[] = [];
   checks.push(
     await checkOsascript({ osascriptBin: input.config.osascriptBin, execFileImpl: input.execFileImpl }),
+  );
+  checks.push(
+    await checkMessagesAccess({ osascriptBin: input.config.osascriptBin, execFileImpl: input.execFileImpl }),
   );
   try {
     await (input.postJsonImpl ?? postJson)(apiUrl(input.config.baseUrl, "/imessage/relay/heartbeat"), input.config.secret, {

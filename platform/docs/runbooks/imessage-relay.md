@@ -31,6 +31,7 @@ The doctor is safe to run during setup. It checks:
 
 - this is a macOS-capable worker environment
 - `osascript` can execute a harmless script
+- Apple Messages is reachable through AppleScript without sending a message
 - the API accepts a signed relay heartbeat
 
 It does not claim queued jobs and does not send an iMessage.

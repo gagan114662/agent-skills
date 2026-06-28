@@ -44,7 +44,10 @@ describe("iMessage relay worker CLI (#1341)", () => {
   });
 
   it("doctor proves osascript and signed heartbeat without claiming or sending jobs", async () => {
-    const execFileImpl = vi.fn(async () => ({ stdout: "ok", stderr: "" }));
+    const execFileImpl = vi.fn(async (_bin, args) => ({
+      stdout: args.includes("return \"ok\"") ? "ok" : "2\n",
+      stderr: "",
+    }));
     const postJsonImpl = vi.fn(async () => ({ relayHeartbeat: { active: true } }));
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
@@ -60,6 +63,11 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(checks).toEqual([
       { name: "osascript", status: "pass", message: "osascript is runnable" },
       {
+        name: "messages-access",
+        status: "pass",
+        message: "Messages AppleScript access is available (2 service(s) visible)",
+      },
+      {
         name: "api-heartbeat",
         status: "pass",
         message: "signed heartbeat accepted by https://api.ipop.ai",
@@ -67,10 +75,46 @@ describe("iMessage relay worker CLI (#1341)", () => {
     ]);
     expect(JSON.stringify(checks)).not.toContain("secret");
     expect(execFileImpl).toHaveBeenCalledWith("osascript", ["-e", "return \"ok\""]);
+    expect(execFileImpl).toHaveBeenCalledWith("osascript", [
+      "-e",
+      "tell application \"Messages\" to count services",
+    ]);
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
       { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null },
+    );
+  });
+
+  it("doctor reports missing Messages AppleScript access without hiding a valid API heartbeat", async () => {
+    const checks = await runRelayDoctor({
+      config: parseRelayWorkerConfig({
+        argv: ["--doctor"],
+        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "secret" },
+        platform: "darwin",
+        host: "Gagans-MacBook-Pro",
+      }),
+      execFileImpl: vi.fn(async (_bin, args) => {
+        if (args.includes("return \"ok\"")) return { stdout: "ok", stderr: "" };
+        throw new Error("Not authorized to send Apple events to Messages");
+      }),
+      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+    });
+
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        { name: "osascript", status: "pass", message: "osascript is runnable" },
+        {
+          name: "messages-access",
+          status: "fail",
+          message: "Not authorized to send Apple events to Messages",
+        },
+        {
+          name: "api-heartbeat",
+          status: "pass",
+          message: "signed heartbeat accepted by https://api.ipop.ai",
+        },
+      ]),
     );
   });
 
