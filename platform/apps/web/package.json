@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "content:gate": "node scripts/content-gate.mjs",
     "deploy:freshness": "node scripts/production-freshness.mjs",
+    "qa:links": "node scripts/live-link-qa.mjs",
+    "qa:links:test": "node --test scripts/live-link-qa.test.mjs",
     "deploy:freshness:test": "node --test scripts/production-freshness.test.mjs",
     "visual:verify": "node scripts/visual-match.mjs"
   },
