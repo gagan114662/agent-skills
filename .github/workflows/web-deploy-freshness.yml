@@ -98,4 +98,5 @@ jobs:
           done
           exit 1
       - name: Crawl live web links
+        if: ${{ always() }}
         run: pnpm --filter @reload/web qa:links
