@@ -20,6 +20,14 @@ To send an explicit smoke message to the configured dogfood chat or recipient:
 
 Only run --send-smoke after the configured chat or recipient is known to be the owner dogfood channel.
 
+To make the smoke auditable against the canonical web room, pass the room correlation ids from an existing
+workspace/channel/message:
+
+    pnpm -C platform --filter @reload/server room:doctor -- --send-smoke --text "ipop room bridge smoke" --workspace-id <workspace-id> --channel-id <channel-id> --message-id <message-id>
+
+With those ids present, the doctor records each provider MessageID in external_room_message_receipts. Without
+them, the doctor can prove provider reachability but cannot prove the provider message maps back to the room.
+
 ## Telegram Production Checklist
 
 Required env: TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET.
@@ -28,8 +36,9 @@ Provider setup: configure Telegram to send webhooks to https://api.ipop.ai/teleg
 X-Telegram-Bot-Api-Secret-Token set to the same TELEGRAM_WEBHOOK_SECRET.
 
 Proof before closure: room:doctor passes Telegram config and identity; room:doctor -- --send-smoke sends a
-tagged message to the connected Telegram chat; a reply in Telegram lands back in the canonical ipop web room;
-an explicit approval command with a concrete approval id resolves through the canonical approval path.
+tagged message to the connected Telegram chat and records the provider MessageID with the room correlation
+ids; a reply in Telegram lands back in the canonical ipop web room; an explicit approval command with a
+concrete approval id resolves through the canonical approval path.
 
 ## WhatsApp Production Checklist
 
@@ -41,6 +50,6 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN for the GET challenge, and ensure Meta signs POST 
 X-Hub-Signature-256 so ipop can verify them with WHATSAPP_APP_SECRET.
 
 Proof before closure: room:doctor passes WhatsApp config, sender lookup, and signature checks; room:doctor
--- --send-smoke sends a tagged message to the connected WhatsApp recipient; a context reply in WhatsApp
-lands back in the canonical ipop web room; an explicit approval command with a concrete approval id resolves
-through the canonical approval path.
+-- --send-smoke sends a tagged message to the connected WhatsApp recipient and records the provider MessageID
+with the room correlation ids; a context reply in WhatsApp lands back in the canonical ipop web room; an
+explicit approval command with a concrete approval id resolves through the canonical approval path.

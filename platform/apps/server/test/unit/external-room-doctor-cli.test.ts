@@ -130,7 +130,94 @@ describe("external room doctor CLI (#1267)", () => {
     expect(checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "telegram-send-smoke", status: "pass" }),
+        expect.objectContaining({
+          name: "telegram-room-receipt",
+          status: "warn",
+          message: expect.stringContaining("--workspace-id, --channel-id, and --message-id"),
+        }),
         expect.objectContaining({ name: "whatsapp-send-smoke", status: "pass" }),
+        expect.objectContaining({
+          name: "whatsapp-room-receipt",
+          status: "warn",
+          message: expect.stringContaining("--workspace-id, --channel-id, and --message-id"),
+        }),
+      ]),
+    );
+  });
+
+  it("records room message receipts for explicit correlated smoke sends", async () => {
+    const telegramTransport: TelegramTransport = {
+      sendMessage: vi.fn(async () => ({ ok: true, messageId: "tg-77" })),
+    };
+    const whatsAppTransport: WhatsAppTransport = {
+      sendMessage: vi.fn(async () => ({ ok: true, messageId: "wamid.77" })),
+    };
+    const recordExternalRoomMessageReceipt = vi.fn(async () => undefined);
+    const config = parseExternalRoomDoctorConfig({
+      argv: [
+        "--send-smoke",
+        "--text",
+        "doctor correlated smoke",
+        "--workspace-id",
+        "00000000-0000-4000-8000-000000000001",
+        "--channel-id",
+        "00000000-0000-4000-8000-0000000000c1",
+        "--message-id",
+        "00000000-0000-4000-8000-0000000000d1",
+      ],
+      env: {
+        TELEGRAM_BOT_TOKEN: "telegram-secret",
+        TELEGRAM_ROOM_CHAT_ID: "123",
+        TELEGRAM_WEBHOOK_SECRET: "telegram-webhook",
+        WHATSAPP_ACCESS_TOKEN: "whatsapp-secret",
+        WHATSAPP_PHONE_NUMBER_ID: "phone-id",
+        WHATSAPP_ROOM_RECIPIENT: "15551112222",
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: "verify-token",
+        WHATSAPP_APP_SECRET: "app-secret",
+      },
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (url) =>
+      String(url).includes("/getMe")
+        ? jsonResponse({ ok: true, result: { id: 123 } })
+        : jsonResponse({ id: "phone-id" }),
+    );
+
+    const checks = await runExternalRoomDoctor(config, {
+      fetchImpl,
+      telegramService: new TelegramRoomService(config.telegram, telegramTransport),
+      whatsappService: new WhatsAppRoomService(config.whatsapp, whatsAppTransport),
+      recordExternalRoomMessageReceipt,
+    });
+
+    expect(recordExternalRoomMessageReceipt).toHaveBeenCalledTimes(2);
+    expect(recordExternalRoomMessageReceipt).toHaveBeenCalledWith({
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+      channelId: "00000000-0000-4000-8000-0000000000c1",
+      messageId: "00000000-0000-4000-8000-0000000000d1",
+      provider: "telegram",
+      providerConversationId: "123",
+      providerMessageId: "tg-77",
+    });
+    expect(recordExternalRoomMessageReceipt).toHaveBeenCalledWith({
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+      channelId: "00000000-0000-4000-8000-0000000000c1",
+      messageId: "00000000-0000-4000-8000-0000000000d1",
+      provider: "whatsapp",
+      providerConversationId: "15551112222",
+      providerMessageId: "wamid.77",
+    });
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "telegram-room-receipt",
+          status: "pass",
+          message: expect.stringContaining("tg-77"),
+        }),
+        expect.objectContaining({
+          name: "whatsapp-room-receipt",
+          status: "pass",
+          message: expect.stringContaining("wamid.77"),
+        }),
       ]),
     );
   });
