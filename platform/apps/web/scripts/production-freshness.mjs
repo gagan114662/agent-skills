@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
+
 /**
  * Production deploy freshness probe (#1321). Fetches the live public homepage and fails loudly when
  * production is stale: wrong/missing build stamp, old landing copy still present, or the current
@@ -32,14 +34,34 @@ export function sameCommit(a, b) {
   return Boolean(left && right && (left.startsWith(right) || right.startsWith(left)));
 }
 
-export function evaluateFreshness({ html, expectedSha, requiredText = DEFAULT_REQUIRED_TEXT, forbiddenText = DEFAULT_FORBIDDEN_TEXT }) {
+export function expectedCommitIsAncestor(expectedSha, liveSha) {
+  const expected = normalizeSha(expectedSha);
+  const live = normalizeSha(liveSha);
+  if (!expected || !live) return false;
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", expected, live], {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function evaluateFreshness({
+  html,
+  expectedSha,
+  requiredText = DEFAULT_REQUIRED_TEXT,
+  forbiddenText = DEFAULT_FORBIDDEN_TEXT,
+  containsExpectedCommit = expectedCommitIsAncestor,
+}) {
   const liveSha = extractBuildSha(html);
   const expected = normalizeSha(expectedSha);
   const failures = [];
 
   if (!expected) failures.push("expected SHA is missing or malformed; pass EXPECTED_WEB_SHA or run from GitHub Actions.");
   if (!liveSha) failures.push("live homepage has no <meta name=\"reload-build-sha\"> stamp.");
-  if (expected && liveSha && !sameCommit(expected, liveSha)) {
+  if (expected && liveSha && !sameCommit(expected, liveSha) && !containsExpectedCommit(expected, liveSha)) {
     failures.push(`live homepage is on ${liveSha}, expected ${expected}.`);
   }
 
