@@ -139,6 +139,96 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText("auth").closest("li")).toHaveAttribute("data-status", "blocked");
   });
 
+  it("surfaces Mac relay heartbeat plus outbound and inbound iMessage proof (#1341)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "iMessage",
+          summary: "Production Messages bridge",
+          provider: "apple",
+          kind: "chat",
+          audience: "customer",
+          auth: "paste_internal",
+          status: "blocked",
+          statusReason: null,
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      dryRun: false,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: "iMessage",
+        verified: true,
+        verifiedAt: "2026-06-28T05:00:00.000Z",
+      },
+      relayHeartbeat: {
+        relayId: "gagan-mac",
+        host: "Gagans-MacBook-Pro",
+        version: "dev-1341",
+        checkedInAt: "2026-06-28T05:01:00.000Z",
+        active: true,
+      },
+      lastRelayJob: {
+        id: "job-1",
+        workspaceId: "w1",
+        memberId: "m1",
+        channelId: "c1",
+        messageId: "root-1",
+        purpose: "room",
+        recipient: "gagan@example.com",
+        serviceName: "iMessage",
+        text: "room receipt",
+        receipt: "imessage:c1:root-1",
+        status: "sent",
+        lockedBy: null,
+        lockedUntil: null,
+        sentAt: "2026-06-28T05:02:00.000Z",
+        failedAt: null,
+        error: null,
+        createdAt: "2026-06-28T05:01:30.000Z",
+        updatedAt: "2026-06-28T05:02:00.000Z",
+      },
+      lastInboundReceipt: {
+        id: "inbound-1",
+        workspaceId: "w1",
+        memberId: "m1",
+        channelId: "c1",
+        messageId: "reply-1",
+        replyToMessageId: "root-1",
+        sender: "gagan@example.com",
+        receipt: "imessage:c1:root-1",
+        text: "tell Scout to compare competitors",
+        createdAt: "2026-06-28T05:03:00.000Z",
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(await screen.findByText("Mac relay host active: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
+    expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
+  });
+
   it("blocks iMessage room launch before posting when the signed-in team engine is not connected", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],

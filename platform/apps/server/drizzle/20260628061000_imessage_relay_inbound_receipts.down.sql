@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS imessage_relay_inbound_receipts_member_idx;
+DROP INDEX IF EXISTS imessage_relay_inbound_receipts_workspace_idx;
+DROP TABLE IF EXISTS imessage_relay_inbound_receipts;

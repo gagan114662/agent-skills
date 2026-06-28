@@ -79,3 +79,35 @@ export const imessageRelayHeartbeats = pgTable(
     checkedIn: index("imessage_relay_heartbeats_checked_in_idx").on(t.checkedInAt),
   }),
 );
+
+/** Inbound replies accepted from the signed Mac relay, used for owner-visible loop proof. */
+export const imessageRelayInboundReceipts = pgTable(
+  "imessage_relay_inbound_receipts",
+  {
+    id: uuid("id").primaryKey().$defaultFn(newId),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    replyToMessageId: uuid("reply_to_message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    sender: text("sender").notNull(),
+    receipt: text("receipt").notNull(),
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workspaceCreated: index("imessage_relay_inbound_receipts_workspace_idx").on(t.workspaceId, t.createdAt),
+    memberCreated: index("imessage_relay_inbound_receipts_member_idx").on(t.workspaceId, t.memberId, t.createdAt),
+    messageUnique: uniqueIndex("imessage_relay_inbound_receipts_message_uidx").on(t.messageId),
+  }),
+);

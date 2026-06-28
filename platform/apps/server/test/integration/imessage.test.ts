@@ -281,6 +281,15 @@ describe("iMessage member recipient relay", () => {
     expect(inbound.json()).toMatchObject({
       status: "ingested",
       receipt,
+      inboundReceipt: {
+        workspaceId: owner.workspaceId,
+        memberId: owner.memberId,
+        channelId,
+        replyToMessageId: rootMessageId,
+        sender: "gagan@example.com",
+        receipt,
+        text: "tell Scout to compare competitors",
+      },
       command: null,
       message: {
         channelId,
@@ -292,6 +301,24 @@ describe("iMessage member recipient relay", () => {
     });
     const messages = await listChannelMessages(channelId);
     expect(messages.map((m) => m.body)).toEqual(["start in messages", "tell Scout to compare competitors"]);
+
+    const status = await app.inject({
+      method: "GET",
+      url: "/me/imessage/status",
+      cookies: { rid: owner.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      lastInboundReceipt: {
+        workspaceId: owner.workspaceId,
+        memberId: owner.memberId,
+        channelId,
+        replyToMessageId: rootMessageId,
+        sender: "gagan@example.com",
+        receipt,
+        text: "tell Scout to compare competitors",
+      },
+    });
 
     const command = await app.inject({
       method: "POST",

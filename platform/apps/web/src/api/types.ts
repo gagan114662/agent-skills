@@ -164,6 +164,7 @@ export interface GoogleAuthStatus {
 }
 
 export type IMessageSendStatus =
+  | "queued"
   | "sent"
   | "dry_run"
   | "disabled"
@@ -216,6 +217,19 @@ export interface IMessageRelayHeartbeatView {
   active: boolean;
 }
 
+export interface IMessageRelayInboundReceiptView {
+  id: string;
+  workspaceId: string;
+  memberId: string;
+  channelId: string;
+  messageId: string;
+  replyToMessageId: string;
+  sender: string;
+  receipt: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface IMessageStatusResponse {
   enabled: boolean;
   configured: boolean;
@@ -227,6 +241,7 @@ export interface IMessageStatusResponse {
   memberRecipient: IMessageRecipientView | null;
   lastRelayJob?: IMessageRelayJobView | null;
   relayHeartbeat?: IMessageRelayHeartbeatView | null;
+  lastInboundReceipt?: IMessageRelayInboundReceiptView | null;
 }
 
 export interface IMessageRecipientSaveResponse {
