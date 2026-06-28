@@ -40,6 +40,20 @@ function trackedBookingProofUrl(lead: InboundLeadDto): string {
 function proofDraftHref(lead: InboundLeadDto): string | null {
   if (!lead.trackingRef || !hasRealEmail(lead.email)) return null;
   const proof = {
+    _meta: {
+      validator:
+        "pnpm -C platform --filter @reload/server first-customer:proof -- --file first-customer-proof.json",
+      requiredEvidence: [
+        "approvalRequestId",
+        "outboundDelivery.receipt.externalRef",
+        "outboundDelivery.receipt.observedAt",
+        "reply.providerThreadId",
+        "reply.replyMessageId",
+        "reply.visibleInLeadTimeline",
+        "reply.visibleInInbox",
+        "inboundRoute.acknowledged",
+      ],
+    },
     prospectSource: {
       kind: "csv_import",
       importedCount: 1,
