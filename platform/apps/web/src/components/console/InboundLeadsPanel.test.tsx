@@ -77,6 +77,16 @@ describe("InboundLeadsPanel (#898)", () => {
       "first-customer-proof-ipop_deadbeefdeadbeef.json",
     );
     const draft = JSON.parse(decodeURIComponent(draftHref.replace("data:application/json;charset=utf-8,", "")));
+    expect(draft._meta).toMatchObject({
+      validator:
+        "pnpm -C platform --filter @reload/server first-customer:proof -- --file first-customer-proof.json",
+      requiredEvidence: expect.arrayContaining([
+        "approvalRequestId",
+        "outboundDelivery.receipt.externalRef",
+        "reply.providerThreadId",
+        "inboundRoute.acknowledged",
+      ]),
+    });
     expect(draft.prospectSource).toMatchObject({
       trackingRef: "ipop_deadbeefdeadbeef",
       sampleEmails: ["jane@buyerco.io"],
