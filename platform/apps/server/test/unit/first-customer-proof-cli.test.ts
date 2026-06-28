@@ -14,6 +14,7 @@ const proof: FirstCustomerProof = {
     kind: "csv_import",
     importedCount: 1,
     fabricatedCount: 0,
+    trackingRef: "ipop_deadbeefdeadbeef",
     sampleEmails: ["founder@real-startup.co"],
   },
   outboundDelivery: {
@@ -21,6 +22,7 @@ const proof: FirstCustomerProof = {
     provider: "postmark",
     recipient: "founder@real-startup.co",
     approvalRequestId: "approval_123",
+    trackingRef: "ipop_deadbeefdeadbeef",
     receipt: {
       source: "production_readback",
       externalRef: "pm-message-id-123",
@@ -31,19 +33,23 @@ const proof: FirstCustomerProof = {
   reply: {
     providerThreadId: "thread_pm_123",
     replyMessageId: "reply_pm_123",
+    replyFrom: "founder@real-startup.co",
     visibleInLeadTimeline: true,
     visibleInInbox: true,
   },
   inboundRoute: {
     leadId: "lead_123",
+    leadEmail: "founder@real-startup.co",
     rule: "inbound_lead",
+    trackingRef: "ipop_deadbeefdeadbeef",
     autoQualified: true,
     acknowledged: true,
     routedToCadence: true,
   },
   booking: {
-    url: "https://cal.com/ipop/intro",
+    url: "https://cal.com/ipop/intro?ref=ipop_deadbeefdeadbeef",
     surface: "outreach_cta",
+    trackingRef: "ipop_deadbeefdeadbeef",
   },
 };
 
@@ -83,6 +89,7 @@ describe("first-customer proof CLI (#908)", () => {
       ...proof,
       prospectSource: {
         ...proof.prospectSource,
+        trackingRef: "",
         fabricatedCount: 1,
         sampleEmails: ["buyer@example.test"],
       },
@@ -90,17 +97,19 @@ describe("first-customer proof CLI (#908)", () => {
         ...proof.outboundDelivery,
         provider: "dryrun",
         approvalRequestId: "",
+        trackingRef: "ipop_other",
         receipt: {
           source: "agent_says_so",
           externalRef: "sent",
           observedAt: "2026-06-26T04:30:00.000Z",
         },
       },
-      reply: { ...proof.reply, visibleInInbox: false },
-      booking: { ...proof.booking, url: "" },
+      reply: { ...proof.reply, replyFrom: "other@real-company.co", visibleInInbox: false },
+      inboundRoute: { ...proof.inboundRoute, trackingRef: "ipop_other" },
+      booking: { ...proof.booking, url: "https://cal.com/ipop/intro", trackingRef: "ipop_other" },
     });
 
-    expect(lines[0]).toBe("FAIL first-customer-proof: 7 gap(s)");
+    expect(lines[0]).toBe("FAIL first-customer-proof: 12 gap(s)");
     expect(lines).toEqual(
       expect.arrayContaining([
         expect.stringContaining("real_prospect_source"),

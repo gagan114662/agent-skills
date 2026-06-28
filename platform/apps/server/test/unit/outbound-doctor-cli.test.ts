@@ -110,6 +110,8 @@ describe("outbound doctor CLI (#395)", () => {
         "doctor subject",
         "--text",
         "doctor smoke",
+        "--tracking-ref",
+        "ipop_deadbeefdeadbeef",
       ],
       env: {
         POSTMARK_SERVER_TOKEN: "pm-secret",
@@ -137,6 +139,7 @@ describe("outbound doctor CLI (#395)", () => {
             provider: "postmark",
             recipient: "founder@example.com",
             approvalRequestId: "",
+            trackingRef: "ipop_deadbeefdeadbeef",
             receipt: expect.objectContaining({
               source: "production_readback",
               externalRef: "pm-123",
@@ -190,6 +193,8 @@ describe("outbound doctor CLI (#395)", () => {
         "00000000-0000-4000-8000-000000000001",
         "--approval-request-id",
         "00000000-0000-4000-8000-000000000013",
+        "--tracking-ref",
+        "ipop_deadbeefdeadbeef",
         "--proof-json",
       ],
       env: {
@@ -235,6 +240,7 @@ describe("outbound doctor CLI (#395)", () => {
           outboundDeliveryProof: expect.objectContaining({
             approvalRequestId: "00000000-0000-4000-8000-000000000013",
             recipient: "buyer@realcompany.com",
+            trackingRef: "ipop_deadbeefdeadbeef",
             receipt: expect.objectContaining({
               source: "production_readback",
               externalRef: "pm-proof-456",

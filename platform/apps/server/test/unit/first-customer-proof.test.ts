@@ -9,6 +9,7 @@ const baseProof: FirstCustomerProof = {
     kind: "csv_import",
     importedCount: 1,
     fabricatedCount: 0,
+    trackingRef: "ipop_deadbeefdeadbeef",
     sampleEmails: ["founder@real-startup.co"],
   },
   outboundDelivery: {
@@ -16,6 +17,7 @@ const baseProof: FirstCustomerProof = {
     provider: "postmark",
     recipient: "founder@real-startup.co",
     approvalRequestId: "approval_123",
+    trackingRef: "ipop_deadbeefdeadbeef",
     receipt: {
       source: "production_readback",
       externalRef: "pm-message-id-123",
@@ -26,19 +28,23 @@ const baseProof: FirstCustomerProof = {
   reply: {
     providerThreadId: "thread_pm_123",
     replyMessageId: "reply_pm_123",
+    replyFrom: "founder@real-startup.co",
     visibleInLeadTimeline: true,
     visibleInInbox: true,
   },
   inboundRoute: {
     leadId: "lead_123",
+    leadEmail: "founder@real-startup.co",
     rule: "inbound_lead",
+    trackingRef: "ipop_deadbeefdeadbeef",
     autoQualified: true,
     acknowledged: true,
     routedToCadence: true,
   },
   booking: {
-    url: "https://cal.com/ipop/intro",
+    url: "https://cal.com/ipop/intro?ref=ipop_deadbeefdeadbeef",
     surface: "outreach_cta",
+    trackingRef: "ipop_deadbeefdeadbeef",
   },
 };
 
@@ -55,13 +61,15 @@ describe("verifyFirstCustomerProof (#908 / #395 close gate)", () => {
         kind: "csv_import",
         importedCount: 1,
         fabricatedCount: 3,
+        trackingRef: "",
         sampleEmails: ["buyer@example.test"],
       },
       outboundDelivery: {
         channel: "email_postmark",
         provider: "dryrun",
-        recipient: "buyer@example.test",
+        recipient: "other@real-company.co",
         approvalRequestId: "",
+        trackingRef: "ipop_other",
         receipt: {
           source: "live_url",
           externalRef: "https://ipop.ai/blog/dryrun",
@@ -72,19 +80,23 @@ describe("verifyFirstCustomerProof (#908 / #395 close gate)", () => {
       reply: {
         providerThreadId: "",
         replyMessageId: "",
+        replyFrom: "someone-else@real-company.co",
         visibleInLeadTimeline: false,
         visibleInInbox: false,
       },
       inboundRoute: {
         leadId: "",
+        leadEmail: "someone-else@real-company.co",
         rule: "inbound_lead",
+        trackingRef: "ipop_other",
         autoQualified: false,
         acknowledged: false,
         routedToCadence: false,
       },
       booking: {
-        url: "",
+        url: "https://cal.com/ipop/intro",
         surface: "landing_form",
+        trackingRef: "ipop_other",
       },
     });
 
@@ -92,15 +104,54 @@ describe("verifyFirstCustomerProof (#908 / #395 close gate)", () => {
     expect(result.gaps.map((g) => g.requirement)).toEqual([
       "real_prospect_source",
       "real_prospect_source",
+      "real_prospect_source",
+      "real_outbound_delivery",
       "real_outbound_delivery",
       "real_outbound_delivery",
       "real_outbound_delivery",
       "real_outbound_delivery",
       "reply_ingested_visible",
       "reply_ingested_visible",
+      "reply_ingested_visible",
+      "inbound_qualified_routed",
+      "inbound_qualified_routed",
       "inbound_qualified_routed",
       "inbound_qualified_routed",
       "booking_or_trial_link",
     ]);
+  });
+
+  it("rejects a Frankenstein proof where valid stages belong to different buyers", () => {
+    const result = verifyFirstCustomerProof({
+      ...baseProof,
+      outboundDelivery: {
+        ...baseProof.outboundDelivery,
+        recipient: "finance@other-buyer.co",
+      },
+      reply: {
+        ...baseProof.reply,
+        replyFrom: "ops@another-buyer.co",
+      },
+      inboundRoute: {
+        ...baseProof.inboundRoute,
+        leadEmail: "founder@real-startup.co",
+        trackingRef: "ipop_otherref",
+      },
+      booking: {
+        ...baseProof.booking,
+        url: "https://cal.com/ipop/intro?ref=ipop_otherref",
+        trackingRef: "ipop_otherref",
+      },
+    });
+
+    expect(result.proven).toBe(false);
+    expect(result.gaps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requirement: "real_outbound_delivery" }),
+        expect.objectContaining({ requirement: "reply_ingested_visible" }),
+        expect.objectContaining({ requirement: "inbound_qualified_routed" }),
+        expect.objectContaining({ requirement: "booking_or_trial_link" }),
+      ]),
+    );
   });
 });
