@@ -1,6 +1,11 @@
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db, getPool } from "../index.js";
-import { imessageRecipients, imessageRelayHeartbeats, imessageRelayJobs } from "../schema/index.js";
+import {
+  imessageRecipients,
+  imessageRelayHeartbeats,
+  imessageRelayInboundReceipts,
+  imessageRelayJobs,
+} from "../schema/index.js";
 
 export type IMessageRelayJobPurpose = "verification" | "room" | "notification";
 export type IMessageRelayJobStatus = "pending" | "claimed" | "sent" | "failed";
@@ -46,6 +51,19 @@ export interface IMessageRelayHeartbeat {
   updatedAt: Date;
 }
 
+export interface IMessageRelayInboundReceipt {
+  id: string;
+  workspaceId: string;
+  memberId: string;
+  channelId: string;
+  messageId: string;
+  replyToMessageId: string;
+  sender: string;
+  receipt: string;
+  text: string;
+  createdAt: Date;
+}
+
 const COLUMNS = {
   id: imessageRecipients.id,
   workspaceId: imessageRecipients.workspaceId,
@@ -85,6 +103,19 @@ const HEARTBEAT_COLUMNS = {
   checkedInAt: imessageRelayHeartbeats.checkedInAt,
   createdAt: imessageRelayHeartbeats.createdAt,
   updatedAt: imessageRelayHeartbeats.updatedAt,
+} as const;
+
+const INBOUND_RECEIPT_COLUMNS = {
+  id: imessageRelayInboundReceipts.id,
+  workspaceId: imessageRelayInboundReceipts.workspaceId,
+  memberId: imessageRelayInboundReceipts.memberId,
+  channelId: imessageRelayInboundReceipts.channelId,
+  messageId: imessageRelayInboundReceipts.messageId,
+  replyToMessageId: imessageRelayInboundReceipts.replyToMessageId,
+  sender: imessageRelayInboundReceipts.sender,
+  receipt: imessageRelayInboundReceipts.receipt,
+  text: imessageRelayInboundReceipts.text,
+  createdAt: imessageRelayInboundReceipts.createdAt,
 } as const;
 
 export async function getIMessageRecipient(
@@ -311,6 +342,49 @@ export async function getLatestIMessageRelayHeartbeat(): Promise<IMessageRelayHe
     .orderBy(desc(imessageRelayHeartbeats.checkedInAt))
     .limit(1);
   return row as IMessageRelayHeartbeat | undefined;
+}
+
+export async function recordIMessageRelayInboundReceipt(input: {
+  workspaceId: string;
+  memberId: string;
+  channelId: string;
+  messageId: string;
+  replyToMessageId: string;
+  sender: string;
+  receipt: string;
+  text: string;
+}): Promise<IMessageRelayInboundReceipt> {
+  const [row] = await db
+    .insert(imessageRelayInboundReceipts)
+    .values(input)
+    .onConflictDoUpdate({
+      target: imessageRelayInboundReceipts.messageId,
+      set: {
+        sender: input.sender,
+        receipt: input.receipt,
+        text: input.text,
+      },
+    })
+    .returning(INBOUND_RECEIPT_COLUMNS);
+  return row as IMessageRelayInboundReceipt;
+}
+
+export async function getLatestIMessageRelayInboundReceiptForMember(input: {
+  workspaceId: string;
+  memberId: string;
+}): Promise<IMessageRelayInboundReceipt | undefined> {
+  const [row] = await db
+    .select(INBOUND_RECEIPT_COLUMNS)
+    .from(imessageRelayInboundReceipts)
+    .where(
+      and(
+        eq(imessageRelayInboundReceipts.workspaceId, input.workspaceId),
+        eq(imessageRelayInboundReceipts.memberId, input.memberId),
+      ),
+    )
+    .orderBy(desc(imessageRelayInboundReceipts.createdAt))
+    .limit(1);
+  return row as IMessageRelayInboundReceipt | undefined;
 }
 
 function rowToRelayJob(row: Record<string, unknown>): IMessageRelayJob {

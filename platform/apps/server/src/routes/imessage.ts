@@ -9,12 +9,15 @@ import {
   enqueueIMessageRelayJob,
   findVerifiedIMessageRecipientByRecipient,
   getIMessageRecipient,
+  getLatestIMessageRelayInboundReceiptForMember,
   getLatestIMessageRelayJobForMember,
   getLatestIMessageRelayHeartbeat,
   markIMessageRecipientVerified,
+  recordIMessageRelayInboundReceipt,
   recordIMessageRelayHeartbeat,
   upsertIMessageRecipient,
   type IMessageRelayJob,
+  type IMessageRelayInboundReceipt,
   type IMessageRecipient,
 } from "../db/repositories/imessage.js";
 import { getChannel } from "../db/repositories/channels.js";
@@ -122,6 +125,21 @@ function relayHeartbeatPayload(
   };
 }
 
+function relayInboundReceiptPayload(receipt: IMessageRelayInboundReceipt): Record<string, unknown> {
+  return {
+    id: receipt.id,
+    workspaceId: receipt.workspaceId,
+    memberId: receipt.memberId,
+    channelId: receipt.channelId,
+    messageId: receipt.messageId,
+    replyToMessageId: receipt.replyToMessageId,
+    sender: receipt.sender,
+    receipt: receipt.receipt,
+    text: receipt.text,
+    createdAt: receipt.createdAt.toISOString(),
+  };
+}
+
 async function enqueueRelaySend(input: {
   workspaceId: string;
   memberId?: string | null;
@@ -165,16 +183,18 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
   app.get("/me/imessage/status", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
     if (!identity) return;
-    const [{ status, row }, lastRelayJob, relayHeartbeat] = await Promise.all([
+    const [{ status, row }, lastRelayJob, relayHeartbeat, lastInboundReceipt] = await Promise.all([
       memberStatus(opts.service, identity.workspaceId, identity.memberId),
       getLatestIMessageRelayJobForMember({ workspaceId: identity.workspaceId, memberId: identity.memberId }),
       getLatestIMessageRelayHeartbeat(),
+      getLatestIMessageRelayInboundReceiptForMember({ workspaceId: identity.workspaceId, memberId: identity.memberId }),
     ]);
     return {
       ...status,
       memberRecipient: recipientPayload(row),
       lastRelayJob: lastRelayJob ? relayJobPayload(lastRelayJob) : null,
       relayHeartbeat: relayHeartbeatPayload(relayHeartbeat),
+      lastInboundReceipt: lastInboundReceipt ? relayInboundReceiptPayload(lastInboundReceipt) : null,
     };
   });
 
@@ -361,7 +381,8 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       text?: unknown;
     };
     const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
-    const receipt = parseIMessageRoomReceipt(body.receipt);
+    const rawReceipt = typeof body.receipt === "string" ? body.receipt : "";
+    const receipt = parseIMessageRoomReceipt(rawReceipt);
     const sender = normalizeRecipient(body.sender);
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!workspaceId || !receipt || !sender || !text) {
@@ -387,6 +408,16 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       alsoSentToChannel: true,
       body: text,
     });
+    const inboundReceipt = await recordIMessageRelayInboundReceipt({
+      workspaceId,
+      memberId: recipient.memberId,
+      channelId: receipt.channelId,
+      messageId: message.id,
+      replyToMessageId: receipt.messageId,
+      sender,
+      receipt: rawReceipt,
+      text,
+    });
     await deliverThreadReply(
       req.log,
       { workspaceId, memberId: recipient.memberId, kind: "human", displayName: "iMessage" },
@@ -404,7 +435,8 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     });
     return reply.code(201).send({
       status: "ingested",
-      receipt: body.receipt,
+      receipt: rawReceipt,
+      inboundReceipt: relayInboundReceiptPayload(inboundReceipt),
       message,
       command,
       approvalDecision,

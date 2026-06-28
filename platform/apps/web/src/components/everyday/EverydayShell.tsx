@@ -338,21 +338,16 @@ function IMessageSetup({
   const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
   const relayJob = status?.lastRelayJob ?? null;
   const relayHeartbeat = status?.relayHeartbeat ?? null;
+  const inboundReceipt = status?.lastInboundReceipt ?? null;
   const relayHostProof = relayHeartbeat
     ? relayHeartbeat.active
       ? "Mac relay host active: " + relayHeartbeat.host
       : "Mac relay host stale: last check-in " + relayHeartbeat.checkedInAt
     : "Mac relay host has not checked in yet.";
-  const relayProof =
-    relayJob?.status === "sent"
-      ? "last iMessage relay sent: " + (relayJob.receipt ?? relayJob.purpose)
-      : relayJob?.status === "failed"
-        ? "last iMessage relay failed: " + (relayJob.error ?? "relay send failed")
-        : relayJob?.status === "claimed"
-          ? "last iMessage relay claimed by " + (relayJob.lockedBy ?? "Mac relay")
-          : relayJob?.status === "pending"
-            ? "last iMessage relay queued: " + relayJob.purpose
-            : null;
+  const relayProof = relayJobProof(relayJob);
+  const inboundProof = inboundReceipt
+    ? "last inbound iMessage reply landed: " + inboundReceipt.receipt
+    : null;
 
   useEffect(() => {
     setRecipientInput(recipient);
@@ -435,10 +430,20 @@ function IMessageSetup({
       <p className="everyday-imessage-setup__detail">{detail}</p>
       <p className="everyday-imessage-setup__detail">{relayHostProof}</p>
       {relayProof && <p className="everyday-imessage-setup__detail">{relayProof}</p>}
+      {inboundProof && <p className="everyday-imessage-setup__detail">{inboundProof}</p>}
       {notice && <p className="everyday-imessage-setup__notice" role="status">{notice}</p>}
       {error && <p className="everyday-imessage-setup__error" role="alert">{error}</p>}
     </section>
   );
+}
+
+function relayJobProof(job: IMessageStatusResponse["lastRelayJob"] | null | undefined): string | null {
+  if (!job) return null;
+  if (job.status === "sent") return "last iMessage relay sent: " + (job.receipt ?? job.purpose);
+  if (job.status === "failed") return "last iMessage relay failed: " + (job.error ?? "relay send failed");
+  if (job.status === "claimed") return "last iMessage relay claimed by " + (job.lockedBy ?? "Mac relay");
+  if (job.status === "pending") return "last iMessage relay queued: " + job.purpose;
+  return null;
 }
 
 /** One ship-decision card: the finished deliverable + the single consequence; money is the only hard gate. */
