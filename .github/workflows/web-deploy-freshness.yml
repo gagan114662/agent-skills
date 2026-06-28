@@ -66,7 +66,13 @@ jobs:
               package.json \
               pnpm-lock.yaml \
               pnpm-workspace.yaml \
-              tsconfig.json
+              tsconfig.json \
+              ':(exclude)apps/web/scripts/production-freshness.mjs' \
+              ':(exclude)apps/web/scripts/production-freshness.test.mjs' \
+              ':(exclude)apps/web/scripts/live-link-qa.mjs' \
+              ':(exclude)apps/web/scripts/live-link-qa.test.mjs' \
+              ':(exclude)apps/web/scripts/vercel-prebuilt-freshness.mjs' \
+              ':(exclude)apps/web/scripts/vercel-prebuilt-freshness.test.mjs'
           )"
           if [ -z "$sha" ]; then
             echo "Could not resolve a web-relevant SHA" >&2
