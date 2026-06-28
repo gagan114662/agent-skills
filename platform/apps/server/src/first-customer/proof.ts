@@ -21,6 +21,8 @@ export interface ProspectSourceProof {
   readonly kind: "csv_import" | "json_import" | "owner_connected_source";
   readonly importedCount: number;
   readonly fabricatedCount: number;
+  /** The campaign/customer ref minted for this buyer; must follow the prospect through send, lead, and booking. */
+  readonly trackingRef: string;
   readonly sampleEmails: readonly string[];
 }
 
@@ -30,18 +32,22 @@ export interface OutboundDeliveryProof {
   readonly receipt: ExternalReceipt;
   readonly recipient: string;
   readonly approvalRequestId: string;
+  readonly trackingRef: string;
 }
 
 export interface ReplyProof {
   readonly providerThreadId: string;
   readonly replyMessageId: string;
+  readonly replyFrom: string;
   readonly visibleInLeadTimeline: boolean;
   readonly visibleInInbox: boolean;
 }
 
 export interface InboundRouteProof {
   readonly leadId: string;
+  readonly leadEmail: string;
   readonly rule: "inbound_lead";
+  readonly trackingRef: string;
   readonly autoQualified: boolean;
   readonly acknowledged: boolean;
   readonly routedToCadence: boolean;
@@ -50,6 +56,7 @@ export interface InboundRouteProof {
 export interface BookingProof {
   readonly url: string;
   readonly surface: "outreach_cta" | "landing_form" | "trial_start";
+  readonly trackingRef: string;
 }
 
 export interface FirstCustomerProof {
@@ -83,6 +90,14 @@ function hasMockEmail(email: string): boolean {
   return MOCK_EMAIL_DOMAINS.some((suffix) => normalized.endsWith(suffix));
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function nonBlank(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -98,6 +113,9 @@ function push(gaps: FirstCustomerProofGap[], requirement: FirstCustomerRequireme
 
 export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustomerProofResult {
   const gaps: FirstCustomerProofGap[] = [];
+  const sourceEmails = proof.prospectSource.sampleEmails.map(normalizeEmail);
+  const recipient = normalizeEmail(proof.outboundDelivery.recipient);
+  const trackingRef = proof.prospectSource.trackingRef.trim();
 
   if (proof.prospectSource.importedCount < 1) {
     push(gaps, "real_prospect_source", "At least one prospect must be imported from a real source.");
@@ -110,6 +128,9 @@ export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustom
   }
   if (proof.prospectSource.sampleEmails.some(hasMockEmail)) {
     push(gaps, "real_prospect_source", "Mock/example email domains cannot prove a real prospect source.");
+  }
+  if (!nonBlank(trackingRef)) {
+    push(gaps, "real_prospect_source", "A durable trackingRef is required to correlate the buyer journey.");
   }
 
   const delivery = proof.outboundDelivery;
@@ -125,12 +146,21 @@ export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustom
   if (hasMockEmail(delivery.recipient)) {
     push(gaps, "real_outbound_delivery", "The delivered recipient must not be a mock/example address.");
   }
+  if (!sourceEmails.includes(recipient)) {
+    push(gaps, "real_outbound_delivery", "The delivered recipient must match the imported prospect sample.");
+  }
+  if (delivery.trackingRef.trim() !== trackingRef) {
+    push(gaps, "real_outbound_delivery", "Outbound delivery must carry the same trackingRef as the prospect source.");
+  }
   if (!isExternalReceipt(delivery.receipt) || delivery.receipt.source !== "production_readback") {
     push(gaps, "real_outbound_delivery", "A verified ESP production_readback receipt with message id is required.");
   }
 
   if (proof.reply.providerThreadId.trim() === "" || proof.reply.replyMessageId.trim() === "") {
     push(gaps, "reply_ingested_visible", "Reply proof must include provider thread and message ids.");
+  }
+  if (normalizeEmail(proof.reply.replyFrom) !== recipient) {
+    push(gaps, "reply_ingested_visible", "The visible reply must come from the delivered prospect email.");
   }
   if (!proof.reply.visibleInLeadTimeline || !proof.reply.visibleInInbox) {
     push(gaps, "reply_ingested_visible", "The prospect reply must be threaded and visible in both lead and inbox surfaces.");
@@ -142,6 +172,12 @@ export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustom
   if (proof.inboundRoute.leadId.trim() === "") {
     push(gaps, "inbound_qualified_routed", "Inbound routing proof must include a durable lead id.");
   }
+  if (normalizeEmail(proof.inboundRoute.leadEmail) !== recipient) {
+    push(gaps, "inbound_qualified_routed", "The routed lead must belong to the delivered prospect email.");
+  }
+  if (proof.inboundRoute.trackingRef.trim() !== trackingRef) {
+    push(gaps, "inbound_qualified_routed", "Inbound routing proof must preserve the same trackingRef.");
+  }
   if (!proof.inboundRoute.autoQualified || !proof.inboundRoute.acknowledged || !proof.inboundRoute.routedToCadence) {
     push(
       gaps,
@@ -152,6 +188,9 @@ export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustom
 
   if (!isHttpUrl(proof.booking.url)) {
     push(gaps, "booking_or_trial_link", "A reachable booking or trial HTTP(S) link is required.");
+  }
+  if (proof.booking.trackingRef.trim() !== trackingRef || !proof.booking.url.includes(trackingRef)) {
+    push(gaps, "booking_or_trial_link", "The booking or trial link must carry the same trackingRef.");
   }
 
   return { proven: gaps.length === 0, gaps };

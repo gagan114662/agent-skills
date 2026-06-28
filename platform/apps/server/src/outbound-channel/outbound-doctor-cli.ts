@@ -30,6 +30,7 @@ export interface OutboundDoctorConfig {
   smokeText: string;
   workspaceId: string;
   approvalRequestId: string;
+  trackingRef: string;
   proofJson: boolean;
   apiBaseUrl: string;
 }
@@ -95,6 +96,10 @@ export function parseOutboundDoctorConfig(
     approvalRequestId:
       argValue(argv, "--approval-request-id")?.trim() ??
       env.RELOAD_OUTBOUND_DOCTOR_APPROVAL_REQUEST_ID?.trim() ??
+      "",
+    trackingRef:
+      argValue(argv, "--tracking-ref")?.trim() ??
+      env.RELOAD_OUTBOUND_DOCTOR_TRACKING_REF?.trim() ??
       "",
     proofJson: hasArg(argv, "--proof-json"),
     apiBaseUrl: env.POSTMARK_API_BASE_URL?.trim() || "https://api.postmarkapp.com",
@@ -257,6 +262,7 @@ async function maybeSendSmoke(
           receipt,
           recipient: config.smokeTo,
           approvalRequestId: config.approvalRequestId,
+          trackingRef: config.trackingRef,
         }
       : undefined;
     const checks: OutboundDoctorCheck[] = [

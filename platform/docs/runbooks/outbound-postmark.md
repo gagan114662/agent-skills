@@ -22,12 +22,13 @@ proof are being intentionally exercised.
 
 To turn an approved real send into queryable #395/#908 evidence, include the workspace and #13 approval id:
 
-    pnpm -C platform --filter @reload/server outbound:doctor -- --send-smoke --to buyer@realcompany.com --workspace-id <workspace-id> --approval-request-id <approval-request-id> --proof-json
+    pnpm -C platform --filter @reload/server outbound:doctor -- --send-smoke --to buyer@realcompany.com --workspace-id <workspace-id> --approval-request-id <approval-request-id> --tracking-ref <tracking-ref> --proof-json
 
-With those two ids present, the doctor records the Postmark MessageID as a verified
-production_readback row in outbound_send_receipts and prints the outboundDelivery JSON block that the
-first-customer proof file expects. Without the approval id, a smoke send can prove Postmark reachability but
-cannot close the irreversible-send approval requirement.
+With those ids present, the doctor records the Postmark MessageID as a verified production_readback row in
+outbound_send_receipts and prints the outboundDelivery JSON block that the first-customer proof file expects.
+The `trackingRef` must match the prospect import, routed inbound lead, and booking/trial link in the
+first-customer proof. Without the approval id, a smoke send can prove Postmark reachability but cannot close
+the irreversible-send approval requirement.
 
 ## Required Production Env
 
@@ -44,7 +45,7 @@ cannot close the irreversible-send approval requirement.
 
 - outbound:doctor passes config, Postmark server identity, and compliance checks.
 - outbound:doctor -- --send-smoke sends a tagged email to a non-example recipient, returns a Postmark
-  MessageID, and records it with --workspace-id plus --approval-request-id.
+  MessageID, and records it with --workspace-id plus --approval-request-id plus --tracking-ref.
 - A real approved acquisition send records the Postmark MessageID as a production_readback receipt in
   outbound_send_receipts.
 - The larger #908 path then needs a real non-example prospect, visible reply or routed inbound lead, and a
