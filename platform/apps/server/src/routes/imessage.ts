@@ -455,7 +455,7 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       verified: true,
     });
     const acknowledgementJob =
-      opts.webhookSecret && relayStatus.configured && !relayStatus.dryRun
+      opts.webhookSecret && !relayStatus.enabled && relayStatus.configured && !relayStatus.dryRun
         ? await enqueueRelaySend({
             workspaceId,
             memberId: recipient.memberId,

@@ -281,6 +281,7 @@ describe("iMessage member recipient relay", () => {
     expect(inbound.json()).toMatchObject({
       status: "ingested",
       receipt,
+      acknowledgementJob: null,
       inboundReceipt: {
         workspaceId: owner.workspaceId,
         memberId: owner.memberId,
