@@ -32,6 +32,12 @@ afterEach(() => {
   delete process.env.POSTMARK_SERVER_TOKEN;
   delete process.env.POSTMARK_FROM;
   delete process.env.POSTMARK_AUTH_RESULTS_HEADER;
+  delete process.env.RELOAD_ACQUISITION_ENABLED;
+  delete process.env.RELOAD_ACQUISITION_EMAIL;
+  delete process.env.RELOAD_ACQUISITION_ESP_PROVIDER;
+  delete process.env.RELOAD_ACQUISITION_BRAND_NAME;
+  delete process.env.RELOAD_ACQUISITION_POSTAL_ADDRESS;
+  delete process.env.RELOAD_ACQUISITION_UNSUBSCRIBE_URL;
   delete process.env.IMESSAGE_RELAY_ENABLED;
   delete process.env.IMESSAGE_RELAY_DRY_RUN;
   delete process.env.IMESSAGE_RELAY_MACOS_HOST;
@@ -179,7 +185,24 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
     ).json();
     const email = before.connections.find((c: { id: string }) => c.id === "email");
-    expect(email).toMatchObject({ auth: "one_click", status: "available", connected: false });
+    expect(email).toMatchObject({
+      auth: "one_click",
+      status: "available",
+      connected: false,
+      configIssue: {
+        code: "email_outbound_live_send_missing_config",
+        missingEnv: expect.arrayContaining([
+          "RELOAD_REACH_SEND_PROVIDER=postmark",
+          "RELOAD_REACH_LIVE_SEND_ENABLED=1",
+          "POSTMARK_SERVER_TOKEN",
+          "RELOAD_ACQUISITION_ENABLED=true",
+          "RELOAD_ACQUISITION_EMAIL=true",
+          "RELOAD_ACQUISITION_ESP_PROVIDER=postmark",
+          "RELOAD_ACQUISITION_UNSUBSCRIBE_URL",
+        ]),
+        remedy: expect.stringContaining("enable reach live-send and acquisition email"),
+      },
+    });
 
     // One-click connect — no redirect, no pasted secret.
     const enable = await app.inject({
@@ -253,6 +276,12 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     process.env.POSTMARK_SERVER_TOKEN = "pm-live-token";
     process.env.POSTMARK_FROM = "hello@ipop.ai";
     process.env.POSTMARK_AUTH_RESULTS_HEADER = "spf=pass dkim=pass dmarc=pass";
+    process.env.RELOAD_ACQUISITION_ENABLED = "true";
+    process.env.RELOAD_ACQUISITION_EMAIL = "true";
+    process.env.RELOAD_ACQUISITION_ESP_PROVIDER = "postmark";
+    process.env.RELOAD_ACQUISITION_BRAND_NAME = "ipop";
+    process.env.RELOAD_ACQUISITION_POSTAL_ADDRESS = "1 Market St, San Francisco, CA";
+    process.env.RELOAD_ACQUISITION_UNSUBSCRIBE_URL = "https://ipop.ai/unsubscribe";
     const { cookie, workspaceId } = await seed();
 
     const enable = await app.inject({
@@ -275,6 +304,7 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       connected: true,
       consentStatus: "recorded",
       providerStatus: "healthy",
+      configIssue: null,
     });
     expect(emailAfter.lastProofReceipt).toMatch(/^vault:/);
 
