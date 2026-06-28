@@ -34,6 +34,7 @@
     "sandbox:smoke": "tsx scripts/vercel-sandbox-smoke.ts",
     "agent:browser-smoke": "tsx scripts/agent-browser-smoke.ts",
     "imessage:relay": "tsx src/imessage/relay-worker-cli.ts",
+    "imessage:relay:doctor": "tsx src/imessage/relay-worker-cli.ts --doctor",
     "soak": "tsx scripts/cloud-e2e-soak.ts",
     "perf": "tsx scripts/perf.ts"
   },
