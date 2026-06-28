@@ -227,9 +227,7 @@ function pkceChallenge(verifier: string): string {
 /**
  * Pick the provider for a connection: a live {@link OAuthConnectProvider} when a full OAuth client is
  * supplied, else the dry-run default. Returning the same provider the route reads `provider.live` from means
- * the offer (`available` vs `coming_soon`) and what actually happens can never disagree. No live client is
- * wired in this slice, so every real deployment resolves to the dry-run default (honest `coming_soon`) — the
- * per-department follow-ups supply a real client behind the same call.
+ * the offer (`available` vs `coming_soon`) and what actually happens can never disagree.
  */
 export function createConnectProvider(input: {
   client: OAuthClientConfig | null;

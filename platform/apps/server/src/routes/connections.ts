@@ -48,9 +48,9 @@ import {
  *  - `POST /me/connections/:id/connect` is the INTERNAL paste path (admin only): it seals a GitHub token +
  *    repo into the encrypted #192 vault so `publish_site` no longer needs a Fly server secret. It refuses
  *    a non-owner and refuses an OAuth (customer) connector outright.
- *  - `POST /me/connections/:id/oauth/start` is the consumer-OAuth seam. The live redirect flow is a
- *    follow-up; today it 501s with `status: "coming_soon"` or `status: "blocked"` so the UI is honest.
- *    The model is already OAuth-shaped, so the redirect slots in here without re-modelling.
+ *  - `POST /me/connections/:id/oauth/start` starts the consumer-OAuth consent path. It only returns an
+ *    approval-gated authorize URL when the provider is live for this deployment; otherwise it returns
+ *    honest `coming_soon` / `blocked` state with setup details.
  *
  * Connecting is a one-time CONSENT, not money — so it carries no #13 gate (consistent with #243 money-only
  * and the #192 non-money connects). Real spend through a connected channel stays money-gated, unchanged.
@@ -466,12 +466,11 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(202).send({ status: "waitlisted", id: decision.connectionId });
   });
 
-  // Consumer-OAuth seam (#258 Stage 2) — the shared connect-once flow. When the live flow is OUT of scope
-  // for this workspace (flag OFF / not the owner workspace / no live provider wired) it stays the honest
-  // `coming_soon` (501, today's behavior). When it IS in scope, connecting an outside account ALWAYS pauses
-  // for an explicit owner approval: the service parks a PENDING `connection.connect_account` #13 request and
-  // we return its id — the live redirect + token exchange + vault seal behind that gate is the per-department
-  // follow-up (#265/#268/#269/#272), so nothing is connected without the owner's yes.
+  // Consumer-OAuth seam (#258) — the shared connect-once flow. When the live flow is OUT of scope for this
+  // workspace (flag OFF / not the owner workspace / no live provider wired) it stays honest `coming_soon`.
+  // When it IS in scope, connecting an outside account ALWAYS pauses for explicit owner approval: the service
+  // parks a PENDING `connection.connect_account` #13 request and we return its id. The authorize hop only
+  // appears after that approval.
   const connectOnce = createDefaultConnectOnceService();
   app.post("/me/connections/:id/oauth/start", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
