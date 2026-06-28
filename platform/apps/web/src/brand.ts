@@ -2746,6 +2746,12 @@ export const PAGE_SEO = {
     description:
       "The everyday workspace is where signed-in teams review approvals, receipts, and the work queue before anything risky ships.",
   },
+  "/dashboard": {
+    name: "Dashboard",
+    title: `Dashboard — sign in to review ${BRAND.name} work`,
+    description:
+      "The dashboard opens signed-in teams into live ipop work receipts, workspace state, and agent coordination instead of a dead static link.",
+  },
   "/theater": {
     name: "Agent theater",
     title: `Agent theater — sign in to watch ${BRAND.name} work live`,
