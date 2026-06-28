@@ -3,6 +3,7 @@ import type { ApprovalRequestDto } from "@reload/shared";
 import { api } from "../../api/client.js";
 import type {
   ConnectionView,
+  CodexSubscriptionStatus,
   FirstRunReceiptDto,
   FirstRunReceiptInput,
   IMessageStatusResponse,
@@ -21,6 +22,7 @@ import {
   type ApprovalCard,
   type EverydayConnector,
   type EverydayData,
+  type LaunchReadinessItem,
   type ThreadEntry,
 } from "./everyday-data.js";
 
@@ -228,21 +230,48 @@ function withFirstRunReceipt(
   };
 }
 
+function withCodexReadiness(
+  data: EverydayData,
+  codexStatus: CodexSubscriptionStatus | null,
+): EverydayData {
+  if (!codexStatus || !data.marketingBrief) return data;
+  const auth: LaunchReadinessItem = {
+    label: "auth",
+    status: codexStatus.connected ? "ready" : "blocked",
+    proof: codexStatus.connected
+      ? "signed-in Codex subscription auth is connected"
+      : codexStatus.reason,
+  };
+  return {
+    ...data,
+    marketingBrief: {
+      ...data.marketingBrief,
+      readiness: data.marketingBrief.readiness.map((item) =>
+        item.label === "auth" ? auth : item,
+      ),
+    },
+  };
+}
+
 export function liveEverydayDataFromState(
   state: AppState,
   firstRun: FirstRunReceiptDto | null = null,
+  codexStatus: CodexSubscriptionStatus | null = null,
 ): EverydayData {
   const data = emptyEverydayData(state.identity?.displayName ?? "there");
-  return withFirstRunReceipt(
-    {
-      ...data,
-      thread: threadEntries(state),
-      approvals: state.approvals.requests
-        .filter((request) => request.status === "pending")
-        .map((request) => approvalCard(request, state)),
-      fleetPaused: state.liveSessions.length === 0,
-    },
-    firstRun,
+  return withCodexReadiness(
+    withFirstRunReceipt(
+      {
+        ...data,
+        thread: threadEntries(state),
+        approvals: state.approvals.requests
+          .filter((request) => request.status === "pending")
+          .map((request) => approvalCard(request, state)),
+        fleetPaused: state.liveSessions.length === 0,
+      },
+      firstRun,
+    ),
+    codexStatus,
   );
 }
 
@@ -537,6 +566,7 @@ export function LiveEverydayShell({
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
   const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
+  const [codexStatus, setCodexStatus] = useState<CodexSubscriptionStatus | null>(null);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();
@@ -560,12 +590,17 @@ export function LiveEverydayShell({
     setFirstRun(response.firstRun);
   }
 
+  async function refreshCodexStatus(): Promise<void> {
+    setCodexStatus(await api.getCodexStatus());
+  }
+
   useEffect(() => {
     if (state.phase !== "ready") return;
     void store.loadApprovals("pending");
     void refreshConnections().catch(() => setConnections(null));
     void refreshIMessageStatus().catch(() => setIMessageStatus(null));
     void refreshFirstRun().catch(() => setFirstRun(null));
+    void refreshCodexStatus().catch(() => setCodexStatus(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
   async function connect(id: string): Promise<void> {
@@ -581,7 +616,7 @@ export function LiveEverydayShell({
     await refreshConnections();
   }
 
-  const data = liveEverydayDataFromState(state, firstRun);
+  const data = liveEverydayDataFromState(state, firstRun, codexStatus);
   return (
     <EverydayShell
       data={{

@@ -33,6 +33,16 @@ describe("LiveEverydayShell (#1181)", () => {
   beforeEach(() => {
     vi.spyOn(api, "getFirstRunReceipt").mockResolvedValue({ firstRun: null });
     vi.spyOn(api, "recordFirstRunReceipt").mockResolvedValue({ firstRun: null });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+      connected: true,
+      reason: "",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
     vi.spyOn(api.department, "seed").mockResolvedValue({
       channels: [],
       agents: [],
@@ -102,7 +112,31 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText(EVERYDAY.approvals.empty)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.transparency.empty)).toBeInTheDocument();
     expect(screen.getAllByText("$0").length).toBeGreaterThan(0);
+    expect(await screen.findByText("signed-in Codex subscription auth is connected")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument());
+  });
+
+  it("surfaces missing Codex subscription auth in the live readiness dashboard", async () => {
+    vi.mocked(api.getCodexStatus).mockResolvedValue({
+      connected: false,
+      reason: "Codex subscription auth is not connected for this workspace yet.",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(
+      await screen.findByText("Codex subscription auth is not connected for this workspace yet."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("auth").closest("li")).toHaveAttribute("data-status", "blocked");
   });
 
   it("blocks iMessage room launch before posting when the signed-in team engine is not connected", async () => {
