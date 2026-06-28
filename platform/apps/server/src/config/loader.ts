@@ -535,15 +535,56 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     seo: env.RELOAD_ACQUISITION_SEO,
     autoSend: env.RELOAD_ACQUISITION_AUTO_SEND,
   };
-  if (acqEnabled !== undefined || Object.values(acqChannels).some((v) => v !== undefined)) {
+  const acqOwner = env.RELOAD_ACQUISITION_OWNER_WORKSPACE_ID;
+  const acqEmailWindowCap = env.RELOAD_ACQUISITION_EMAIL_WINDOW_CAP;
+  const acqSocialWindowCap = env.RELOAD_ACQUISITION_SOCIAL_WINDOW_CAP;
+  const acqMaxRetries = env.RELOAD_ACQUISITION_MAX_RETRIES;
+  const acqProviders = {
+    adsProvider: env.RELOAD_ACQUISITION_ADS_PROVIDER,
+    espProvider: env.RELOAD_ACQUISITION_ESP_PROVIDER,
+    socialProvider: env.RELOAD_ACQUISITION_SOCIAL_PROVIDER,
+  };
+  const acqCompliance = {
+    brandName: env.RELOAD_ACQUISITION_BRAND_NAME,
+    postalAddress: env.RELOAD_ACQUISITION_POSTAL_ADDRESS,
+    unsubscribeUrl: env.RELOAD_ACQUISITION_UNSUBSCRIBE_URL,
+  };
+  if (
+    acqEnabled !== undefined ||
+    Object.values(acqChannels).some((v) => v !== undefined) ||
+    acqOwner ||
+    acqEmailWindowCap !== undefined ||
+    acqSocialWindowCap !== undefined ||
+    acqMaxRetries !== undefined ||
+    Object.values(acqProviders).some((v) => v !== undefined) ||
+    Object.values(acqCompliance).some((v) => v !== undefined)
+  ) {
     const acquisition: Record<string, unknown> = {};
     const flag = (v: string | undefined) => v === "true" || v === "1";
+    const positiveInt = (v: string | undefined): number | undefined => {
+      if (v === undefined) return undefined;
+      const parsed = Number.parseInt(v, 10);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+    };
     if (acqEnabled !== undefined) acquisition.enabled = flag(acqEnabled);
     if (acqChannels.ads !== undefined) acquisition.ads = flag(acqChannels.ads);
     if (acqChannels.email !== undefined) acquisition.email = flag(acqChannels.email);
     if (acqChannels.social !== undefined) acquisition.social = flag(acqChannels.social);
     if (acqChannels.seo !== undefined) acquisition.seo = flag(acqChannels.seo);
     if (acqChannels.autoSend !== undefined) acquisition.autoSend = flag(acqChannels.autoSend);
+    if (acqOwner) acquisition.ownerWorkspaceId = acqOwner;
+    const emailWindowCap = positiveInt(acqEmailWindowCap);
+    const socialWindowCap = positiveInt(acqSocialWindowCap);
+    const maxRetries = positiveInt(acqMaxRetries);
+    if (emailWindowCap !== undefined) acquisition.emailWindowCap = emailWindowCap;
+    if (socialWindowCap !== undefined) acquisition.socialWindowCap = socialWindowCap;
+    if (maxRetries !== undefined && maxRetries > 0) acquisition.maxRetries = maxRetries;
+    if (acqProviders.adsProvider) acquisition.adsProvider = acqProviders.adsProvider;
+    if (acqProviders.espProvider) acquisition.espProvider = acqProviders.espProvider;
+    if (acqProviders.socialProvider) acquisition.socialProvider = acqProviders.socialProvider;
+    if (acqCompliance.brandName) acquisition.brandName = acqCompliance.brandName;
+    if (acqCompliance.postalAddress) acquisition.postalAddress = acqCompliance.postalAddress;
+    if (acqCompliance.unsubscribeUrl) acquisition.unsubscribeUrl = acqCompliance.unsubscribeUrl;
     raw.acquisition = acquisition;
   }
   // #222 customer discovery engine: let the deployment env turn the proactive posture on without a
