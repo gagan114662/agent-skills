@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateFreshness, extractBuildSha, sameCommit } from "./production-freshness.mjs";
+import { evaluateFreshness, extractBuildSha, expectedCommitIsAncestor, sameCommit } from "./production-freshness.mjs";
 
 const freshHtml = `<!doctype html>
 <html><head><meta name="reload-build-sha" content="abcdef123456" /></head>
@@ -21,6 +21,21 @@ test("evaluateFreshness passes only when stamp and homepage contract match", () 
   const result = evaluateFreshness({ html: freshHtml, expectedSha: "abcdef1" });
   assert.equal(result.ok, true);
   assert.deepEqual(result.failures, []);
+});
+
+test("evaluateFreshness accepts live deploy SHAs that contain the expected web commit", () => {
+  const result = evaluateFreshness({
+    html: freshHtml,
+    expectedSha: "1234567",
+    containsExpectedCommit: (expected, live) => expected === "1234567" && live === "abcdef123456",
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.failures, []);
+});
+
+test("expectedCommitIsAncestor returns false for malformed or unknown commits", () => {
+  assert.equal(expectedCommitIsAncestor("not-a-sha", "abcdef123456"), false);
+  assert.equal(expectedCommitIsAncestor("abcdef123456", "deadbee"), false);
 });
 
 test("evaluateFreshness fails loudly on old live homepage copy", () => {
