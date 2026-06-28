@@ -57,16 +57,40 @@ jobs:
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Pull Vercel production env
-        working-directory: platform/apps/web
+        working-directory: platform
         run: npx --yes vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
+      - name: Verify Vercel project root
+        working-directory: platform
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const project = JSON.parse(readFileSync(".vercel/project.json", "utf8"));
+          const root = project && project.settings ? project.settings.rootDirectory : null;
+          if (root !== "platform") {
+            console.error(
+              "Refusing to deploy: Vercel project rootDirectory is " +
+                JSON.stringify(root) +
+                ", expected \"platform\" for ipop.ai."
+            );
+            process.exit(1);
+          }
+          console.log("Vercel project root verified: " + root);
+          NODE
       - name: Build web for Vercel production
-        working-directory: platform/apps/web
+        working-directory: platform
         env:
           VITE_RELOAD_BUILD_SHA: ${{ steps.sha.outputs.sha }}
           VERCEL_GIT_COMMIT_SHA: ${{ steps.sha.outputs.sha }}
         run: npx --yes vercel@latest build --prod --token "$VERCEL_TOKEN"
+      - name: Verify prebuilt homepage freshness
+        working-directory: platform
+        env:
+          EXPECTED_WEB_SHA: ${{ steps.sha.outputs.sha }}
+          VERCEL_PREBUILT_INDEX: ../../.vercel/output/static/index.html
+        run: pnpm --filter @reload/web deploy:prebuilt:freshness
       - name: Deploy prebuilt web via archive upload
-        working-directory: platform/apps/web
+        working-directory: platform
         run: npx --yes vercel@latest deploy --prebuilt --prod --archive=tgz --token "$VERCEL_TOKEN"
       - name: Verify live production freshness
         working-directory: platform
