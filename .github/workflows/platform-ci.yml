@@ -216,10 +216,10 @@ jobs:
           demos_file="$(mktemp)"
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             changed="$(git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" -- 'scripts/demos/*.sh' 'scripts/record-demo.sh' || true)"
-            if printf '%s\n' "$changed" | grep -qx 'scripts/record-demo.sh'; then
+            if printf '%s\n' "$changed" | grep -qx 'platform/scripts/record-demo.sh'; then
               find scripts/demos -maxdepth 1 -name '*.sh' | sort | head -n 3 > "$demos_file"
             else
-              printf '%s\n' "$changed" | awk '/^scripts\/demos\/.*\.sh$/ { print }' | sort -u > "$demos_file"
+              printf '%s\n' "$changed" | awk '/^platform\/scripts\/demos\/.*\.sh$/ { print }' | sort -u > "$demos_file"
             fi
           else
             find scripts/demos -maxdepth 1 -name '*.sh' | sort > "$demos_file"
