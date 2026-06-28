@@ -50,6 +50,15 @@ jobs:
             echo "Missing required Vercel secret(s):$missing" >&2
             exit 1
           fi
+      - name: Verify Vercel token auth
+        run: |
+          set -euo pipefail
+          if ! npx --yes vercel@latest whoami --token "$VERCEL_TOKEN" >/tmp/vercel-whoami.txt 2>/tmp/vercel-whoami.err; then
+            echo "::error title=Invalid Vercel token::GitHub Actions secret VERCEL_TOKEN is present but Vercel rejected it. Rotate VERCEL_TOKEN, then rerun web-manual-vercel-deploy."
+            sed -e 's/[[:cntrl:]]//g' /tmp/vercel-whoami.err >&2
+            exit 1
+          fi
+          echo "Vercel token accepted for $(cat /tmp/vercel-whoami.txt)"
       - name: Install dependencies
         working-directory: platform
         run: pnpm install --frozen-lockfile

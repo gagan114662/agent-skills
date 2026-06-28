@@ -56,6 +56,10 @@ Required repository secrets:
 - `VERCEL_PROJECT_ID`
 - `VERCEL_ORG_ID` or `VERCEL_TEAM_ID`
 
+The workflow probes `VERCEL_TOKEN` with `vercel whoami` before pulling production env. If it fails with
+`Invalid Vercel token`, rotate the GitHub Actions `VERCEL_TOKEN` secret to a valid token for the ipop.ai
+Vercel project, then rerun `web-manual-vercel-deploy` on `main`.
+
 The manual workflow should end with the same recovery signal:
 
 ```bash
