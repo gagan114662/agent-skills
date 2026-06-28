@@ -1,6 +1,7 @@
 import { accessSync, constants as fsConstants, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { ReachConfig } from "../config/schema.js";
+import { resolveGoogleAdsConnectionRedirectUri } from "../connections/google-ads-oauth-config.js";
 import { resolveGoogleConnectionRedirectUri } from "../connections/google-oauth-config.js";
 import type { RuntimeKind } from "../db/repositories/agent-sessions.js";
 import { resolveReachCaps } from "../reach/caps.js";
@@ -84,6 +85,14 @@ export interface PreflightInput {
   googleOAuthRequired?: boolean;
   /** Whether Google must also be connectable as a marketing-data connector (#1285). */
   googleConnectionOAuthRequired?: boolean;
+  /** Whether X must be connectable as a social publishing connector (#1285). */
+  xConnectionOAuthRequired?: boolean;
+  /** Whether Google Ads must be connectable as a paid acquisition connector (#1285). */
+  googleAdsConnectionOAuthRequired?: boolean;
+  /** Whether Meta Ads must be connectable as a paid acquisition connector (#1285). */
+  metaAdsConnectionOAuthRequired?: boolean;
+  /** Whether LinkedIn must be connectable as a social publishing connector (#1285). */
+  linkedInConnectionOAuthRequired?: boolean;
   /** Reach outbound policy for the deployment-level live-proof gate (#1286). */
   reach?: ReachConfig;
   /** Whether enabled Reach must prove it is not mock/dry-run before a release can pass (#1286). */
@@ -127,6 +136,42 @@ export function googleConnectionOAuthRequiredForRelease(
     env.RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH === "1" ||
     env.RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH === "true"
   );
+}
+
+function connectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+  envFlag: string,
+): boolean {
+  return profile === "prod" || env[envFlag] === "1" || env[envFlag] === "true";
+}
+
+export function xConnectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_X_CONNECTION_OAUTH");
+}
+
+export function googleAdsConnectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_GOOGLE_ADS_CONNECTION_OAUTH");
+}
+
+export function metaAdsConnectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_META_ADS_CONNECTION_OAUTH");
+}
+
+export function linkedInConnectionOAuthRequiredForRelease(
+  profile: ProfileName,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_LINKEDIN_CONNECTION_OAUTH");
 }
 
 /** Vercel auth: either an OIDC token, or the full access-token trio. Names only, never values. */
@@ -399,6 +444,102 @@ function checkGoogleConnectionOAuth(
   };
 }
 
+function connectionOAuthCheck(input: {
+  name: string;
+  label: string;
+  vars: Record<string, boolean>;
+  required: boolean;
+  remedy: string;
+}): CheckResult | undefined {
+  const entries = Object.entries(input.vars);
+  const present = entries.filter(([, v]) => v).length;
+  if (present === entries.length) {
+    return {
+      name: input.name,
+      status: "pass",
+      message: `${input.label} config present (${entries.map(([key]) => key).join(" + ")})`,
+    };
+  }
+  if (!input.required && present === 0) return undefined;
+
+  const missing = entries.filter(([, v]) => !v).map(([key]) => key);
+  return {
+    name: input.name,
+    status: input.required ? "fail" : "warn",
+    message: `${input.label} config incomplete — missing: ${missing.join(", ")}`,
+    remedy: input.remedy,
+  };
+}
+
+function checkXConnectionOAuth(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "x-connection-oauth",
+    label: "X connection OAuth",
+    vars: {
+      X_OAUTH_CLIENT_ID: Boolean(env.X_OAUTH_CLIENT_ID),
+      X_OAUTH_CLIENT_SECRET: Boolean(env.X_OAUTH_CLIENT_SECRET),
+      X_CONNECTION_OAUTH_REDIRECT_URI: Boolean(env.X_CONNECTION_OAUTH_REDIRECT_URI),
+    },
+    required,
+    remedy:
+      "Set X_OAUTH_CLIENT_ID, X_OAUTH_CLIENT_SECRET, and X_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/x/oauth/callback, then add that exact callback URI to the X app.",
+  });
+}
+
+function checkGoogleAdsConnectionOAuth(
+  env: NodeJS.ProcessEnv,
+  required: boolean,
+): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "google-ads-connection-oauth",
+    label: "Google Ads connection OAuth",
+    vars: {
+      GOOGLE_OAUTH_CLIENT_ID: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
+      GOOGLE_OAUTH_CLIENT_SECRET: Boolean(env.GOOGLE_OAUTH_CLIENT_SECRET),
+      GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI: Boolean(resolveGoogleAdsConnectionRedirectUri(env)),
+    },
+    required,
+    remedy:
+      "Set GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/google_ads/oauth/callback, or set GOOGLE_OAUTH_REDIRECT_URI on the same API origin so the Google Ads callback can be derived. Add the exact callback URI to the Google OAuth web client.",
+  });
+}
+
+function checkMetaAdsConnectionOAuth(
+  env: NodeJS.ProcessEnv,
+  required: boolean,
+): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "meta-ads-connection-oauth",
+    label: "Meta Ads connection OAuth",
+    vars: {
+      META_OAUTH_CLIENT_ID: Boolean(env.META_OAUTH_CLIENT_ID),
+      META_OAUTH_CLIENT_SECRET: Boolean(env.META_OAUTH_CLIENT_SECRET),
+      META_ADS_CONNECTION_OAUTH_REDIRECT_URI: Boolean(env.META_ADS_CONNECTION_OAUTH_REDIRECT_URI),
+    },
+    required,
+    remedy:
+      "Set META_OAUTH_CLIENT_ID, META_OAUTH_CLIENT_SECRET, and META_ADS_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/meta_ads/oauth/callback, then add that exact callback URI to the Meta app.",
+  });
+}
+
+function checkLinkedInConnectionOAuth(
+  env: NodeJS.ProcessEnv,
+  required: boolean,
+): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "linkedin-connection-oauth",
+    label: "LinkedIn connection OAuth",
+    vars: {
+      LINKEDIN_OAUTH_CLIENT_ID: Boolean(env.LINKEDIN_OAUTH_CLIENT_ID),
+      LINKEDIN_OAUTH_CLIENT_SECRET: Boolean(env.LINKEDIN_OAUTH_CLIENT_SECRET),
+      LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI: Boolean(env.LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI),
+    },
+    required,
+    remedy:
+      "Set LINKEDIN_OAUTH_CLIENT_ID, LINKEDIN_OAUTH_CLIENT_SECRET, and LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI to https://<api-host>/me/connections/linkedin/oauth/callback, then add that exact callback URI to the LinkedIn app.",
+  });
+}
+
 /**
  * Reach can be demo-safe with imported/mock prospects + recorded-only senders, but production must not
  * present that as autonomous customer acquisition. This check is intentionally secret-free: it reads only
@@ -552,6 +693,23 @@ export function preflight(
     Boolean(input.googleConnectionOAuthRequired),
   );
   if (googleConnectionOAuth) checks.push(googleConnectionOAuth);
+  const xConnectionOAuth = checkXConnectionOAuth(input.env, Boolean(input.xConnectionOAuthRequired));
+  if (xConnectionOAuth) checks.push(xConnectionOAuth);
+  const googleAdsConnectionOAuth = checkGoogleAdsConnectionOAuth(
+    input.env,
+    Boolean(input.googleAdsConnectionOAuthRequired),
+  );
+  if (googleAdsConnectionOAuth) checks.push(googleAdsConnectionOAuth);
+  const metaAdsConnectionOAuth = checkMetaAdsConnectionOAuth(
+    input.env,
+    Boolean(input.metaAdsConnectionOAuthRequired),
+  );
+  if (metaAdsConnectionOAuth) checks.push(metaAdsConnectionOAuth);
+  const linkedInConnectionOAuth = checkLinkedInConnectionOAuth(
+    input.env,
+    Boolean(input.linkedInConnectionOAuthRequired),
+  );
+  if (linkedInConnectionOAuth) checks.push(linkedInConnectionOAuth);
 
   const reachLiveProof = checkReachLiveProof(input.reach, Boolean(input.reachLiveProofRequired));
   if (reachLiveProof) checks.push(reachLiveProof);

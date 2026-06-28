@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
+  googleAdsConnectionOAuthRequiredForRelease,
   googleConnectionOAuthRequiredForRelease,
   googleOAuthRequiredForRelease,
+  linkedInConnectionOAuthRequiredForRelease,
+  metaAdsConnectionOAuthRequiredForRelease,
   preflight,
   PreflightError,
   type PreflightDeps,
   type PreflightInput,
+  xConnectionOAuthRequiredForRelease,
 } from "../../src/runtime/preflight.js";
 
 /** Deps that satisfy every probe — overridden per test to simulate a missing binary/SDK. */
@@ -410,6 +414,111 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
         RELOAD_REQUIRE_GOOGLE_CONNECTION_OAUTH: "true",
       }),
     ).toBe(true);
+  });
+
+  it("requires every live connection OAuth provider by default for prod release gates (#1285)", () => {
+    expect(xConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+    expect(googleAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+    expect(metaAdsConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+    expect(linkedInConnectionOAuthRequiredForRelease("prod", {})).toBe(true);
+
+    expect(xConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
+    expect(googleAdsConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
+    expect(metaAdsConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
+    expect(linkedInConnectionOAuthRequiredForRelease("dev", {})).toBe(false);
+
+    expect(xConnectionOAuthRequiredForRelease("dev", { RELOAD_REQUIRE_X_CONNECTION_OAUTH: "1" })).toBe(true);
+    expect(
+      googleAdsConnectionOAuthRequiredForRelease("dev", {
+        RELOAD_REQUIRE_GOOGLE_ADS_CONNECTION_OAUTH: "true",
+      }),
+    ).toBe(true);
+    expect(
+      metaAdsConnectionOAuthRequiredForRelease("dev", {
+        RELOAD_REQUIRE_META_ADS_CONNECTION_OAUTH: "1",
+      }),
+    ).toBe(true);
+    expect(
+      linkedInConnectionOAuthRequiredForRelease("dev", {
+        RELOAD_REQUIRE_LINKEDIN_CONNECTION_OAUTH: "true",
+      }),
+    ).toBe(true);
+  });
+
+  it("social and ads connection OAuth preflight fails prod release gates when config is absent (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {},
+        xConnectionOAuthRequired: true,
+        googleAdsConnectionOAuthRequired: true,
+        metaAdsConnectionOAuthRequired: true,
+        linkedInConnectionOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((c) => c.name === "x-connection-oauth")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("X_OAUTH_CLIENT_ID"),
+    });
+    expect(report.checks.find((c) => c.name === "google-ads-connection-oauth")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("GOOGLE_ADS_CONNECTION_OAUTH_REDIRECT_URI"),
+    });
+    expect(report.checks.find((c) => c.name === "meta-ads-connection-oauth")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("META_ADS_CONNECTION_OAUTH_REDIRECT_URI"),
+    });
+    expect(report.checks.find((c) => c.name === "linkedin-connection-oauth")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI"),
+    });
+  });
+
+  it("social and ads connection OAuth preflight passes with full config and redacts values (#1285)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          X_OAUTH_CLIENT_ID: "SECRET_X_CLIENT",
+          X_OAUTH_CLIENT_SECRET: "SECRET_X_SECRET",
+          X_CONNECTION_OAUTH_REDIRECT_URI: "https://api.ipop.ai/me/connections/x/oauth/callback",
+          GOOGLE_OAUTH_CLIENT_ID: "SECRET_GOOGLE_CLIENT",
+          GOOGLE_OAUTH_CLIENT_SECRET: "SECRET_GOOGLE_SECRET",
+          GOOGLE_OAUTH_REDIRECT_URI: "https://api.ipop.ai/auth/google/callback",
+          META_OAUTH_CLIENT_ID: "SECRET_META_CLIENT",
+          META_OAUTH_CLIENT_SECRET: "SECRET_META_SECRET",
+          META_ADS_CONNECTION_OAUTH_REDIRECT_URI:
+            "https://api.ipop.ai/me/connections/meta_ads/oauth/callback",
+          LINKEDIN_OAUTH_CLIENT_ID: "SECRET_LINKEDIN_CLIENT",
+          LINKEDIN_OAUTH_CLIENT_SECRET: "SECRET_LINKEDIN_SECRET",
+          LINKEDIN_CONNECTION_OAUTH_REDIRECT_URI:
+            "https://api.ipop.ai/me/connections/linkedin/oauth/callback",
+        },
+        xConnectionOAuthRequired: true,
+        googleAdsConnectionOAuthRequired: true,
+        metaAdsConnectionOAuthRequired: true,
+        linkedInConnectionOAuthRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.checks.find((c) => c.name === "x-connection-oauth")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "google-ads-connection-oauth")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "meta-ads-connection-oauth")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "linkedin-connection-oauth")?.status).toBe("pass");
+    expect(report.ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("SECRET_X_CLIENT");
+    expect(JSON.stringify(report)).not.toContain("SECRET_GOOGLE_CLIENT");
+    expect(JSON.stringify(report)).not.toContain("SECRET_META_CLIENT");
+    expect(JSON.stringify(report)).not.toContain("SECRET_LINKEDIN_CLIENT");
+    expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai");
   });
 
   it("Reach live-proof fails prod when autonomous outreach is enabled with mock prospects (#1286)", () => {
