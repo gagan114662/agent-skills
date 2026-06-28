@@ -20,10 +20,14 @@ import { createDefaultVerificationEngine } from "../verification/default.js";
 import { publishMessageEvent } from "../realtime/bus.js";
 import { createRuntime } from "./factory.js";
 import {
+  googleAdsConnectionOAuthRequiredForRelease,
   googleConnectionOAuthRequiredForRelease,
   googleOAuthRequiredForRelease,
+  linkedInConnectionOAuthRequiredForRelease,
+  metaAdsConnectionOAuthRequiredForRelease,
   preflight,
   type PreflightReport,
+  xConnectionOAuthRequiredForRelease,
 } from "./preflight.js";
 import {
   EnvSecretsResolver,
@@ -190,6 +194,16 @@ export function defaultPreflight(): PreflightReport {
     workspaceRoot,
     googleOAuthRequired: googleOAuthRequiredForRelease(env.profile, process.env),
     googleConnectionOAuthRequired: googleConnectionOAuthRequiredForRelease(env.profile, process.env),
+    xConnectionOAuthRequired: xConnectionOAuthRequiredForRelease(env.profile, process.env),
+    googleAdsConnectionOAuthRequired: googleAdsConnectionOAuthRequiredForRelease(
+      env.profile,
+      process.env,
+    ),
+    metaAdsConnectionOAuthRequired: metaAdsConnectionOAuthRequiredForRelease(env.profile, process.env),
+    linkedInConnectionOAuthRequired: linkedInConnectionOAuthRequiredForRelease(
+      env.profile,
+      process.env,
+    ),
     reach: loadConfig().reach,
     reachLiveProofRequired:
       env.profile === "prod" ||
