@@ -23,10 +23,13 @@ import {
   googleAdsConnectionOAuthRequiredForRelease,
   googleConnectionOAuthRequiredForRelease,
   googleOAuthRequiredForRelease,
+  iMessageRelayRequiredForRelease,
   linkedInConnectionOAuthRequiredForRelease,
   metaAdsConnectionOAuthRequiredForRelease,
   preflight,
   type PreflightReport,
+  telegramRoomRequiredForRelease,
+  whatsAppRoomRequiredForRelease,
   xConnectionOAuthRequiredForRelease,
 } from "./preflight.js";
 import {
@@ -204,6 +207,9 @@ export function defaultPreflight(): PreflightReport {
       env.profile,
       process.env,
     ),
+    telegramRoomRequired: telegramRoomRequiredForRelease(env.profile, process.env),
+    whatsAppRoomRequired: whatsAppRoomRequiredForRelease(env.profile, process.env),
+    iMessageRelayRequired: iMessageRelayRequiredForRelease(env.profile, process.env),
     reach: loadConfig().reach,
     reachLiveProofRequired:
       env.profile === "prod" ||
