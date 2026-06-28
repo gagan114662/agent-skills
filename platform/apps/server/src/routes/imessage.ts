@@ -140,6 +140,22 @@ function relayInboundReceiptPayload(receipt: IMessageRelayInboundReceipt): Recor
   };
 }
 
+function imessageInboundAcknowledgement(input: {
+  channelId: string;
+  messageId: string;
+  receipt: string;
+  text: string;
+}): string {
+  return [
+    "ipop received your iMessage reply",
+    "channel: " + input.channelId,
+    "message: " + input.messageId,
+    "receipt: " + input.receipt,
+    "",
+    input.text,
+  ].join("\n");
+}
+
 async function enqueueRelaySend(input: {
   workspaceId: string;
   memberId?: string | null;
@@ -433,10 +449,35 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       provider: "imessage",
       log: req.log,
     });
+    const relayStatus = opts.service.statusFor({
+      recipient: recipient.recipient,
+      source: "member_verified",
+      verified: true,
+    });
+    const acknowledgementJob =
+      opts.webhookSecret && relayStatus.configured && !relayStatus.dryRun
+        ? await enqueueRelaySend({
+            workspaceId,
+            memberId: recipient.memberId,
+            channelId: receipt.channelId,
+            messageId: message.id,
+            purpose: "notification",
+            recipient: recipient.recipient,
+            serviceName: recipient.serviceName,
+            text: imessageInboundAcknowledgement({
+              channelId: receipt.channelId,
+              messageId: message.id,
+              receipt: rawReceipt,
+              text,
+            }),
+            receipt: rawReceipt,
+          })
+        : null;
     return reply.code(201).send({
       status: "ingested",
       receipt: rawReceipt,
       inboundReceipt: relayInboundReceiptPayload(inboundReceipt),
+      acknowledgementJob,
       message,
       command,
       approvalDecision,
