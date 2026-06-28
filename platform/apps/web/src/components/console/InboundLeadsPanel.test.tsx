@@ -12,7 +12,7 @@ const lead = (over: Partial<InboundLeadDto> = {}): InboundLeadDto => ({
   id: "lead-1",
   workspaceId: "w1",
   name: "Jane Buyer",
-  email: "jane@example.com",
+  email: "jane@buyerco.io",
   message: "I need an autonomous GTM team before our launch next Friday.",
   source: "site",
   trackingRef: null,
@@ -23,7 +23,7 @@ const lead = (over: Partial<InboundLeadDto> = {}): InboundLeadDto => ({
   slaDueAtMs: Date.parse("2026-06-25T12:00:00Z"),
   slaNotifiedAtMs: null,
   slaBreached: false,
-  reachContactKey: "email:jane@example.com",
+  reachContactKey: "email:jane@buyerco.io",
   createdAtMs: Date.parse("2026-06-24T12:00:00Z"),
   ...over,
 });
@@ -46,8 +46,31 @@ describe("InboundLeadsPanel (#898)", () => {
     const detail = await screen.findByLabelText("Lead details");
     expect(within(detail).getByRole("heading", { name: "Jane Buyer" })).toBeInTheDocument();
     expect(within(detail).getByText("I need an autonomous GTM team before our launch next Friday.")).toBeInTheDocument();
-    expect(within(detail).getByText("email:jane@example.com")).toBeInTheDocument();
+    expect(within(detail).getByText("email:jane@buyerco.io")).toBeInTheDocument();
     expect(getInboundLeads).toHaveBeenCalledWith({ limit: 50 });
+  });
+
+  it("shows the first-customer proof spine and tracked booking link for a captured hand-raiser", async () => {
+    getInboundLeads.mockResolvedValue({
+      leads: [
+        lead({
+          trackingRef: "ipop_deadbeefdeadbeef",
+          respondedAtMs: Date.parse("2026-06-24T13:00:00Z"),
+          status: "working",
+        }),
+      ],
+    });
+
+    render(<InboundLeadsPanel />);
+
+    const proof = await screen.findByRole("region", { name: "First-customer proof" });
+    expect(within(proof).getByText("Real lead captured with ipop_deadbeefdeadbeef")).toBeInTheDocument();
+    expect(within(proof).getByText(/Needs approved Postmark production_readback receipt/)).toBeInTheDocument();
+    expect(within(proof).getByText(/Response recorded/)).toBeInTheDocument();
+    expect(within(proof).getByRole("link", { name: "Tracked booking link" })).toHaveAttribute(
+      "href",
+      "/start?source=landing_booking_cta&ref=ipop_deadbeefdeadbeef",
+    );
   });
 
   it("flags 24h SLA breaches in the owner queue", async () => {

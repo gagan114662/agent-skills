@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client.js";
 import type { InboundLeadDto, InboundLeadStatus } from "../../api/types.js";
+import { CONTACT } from "../../brand.js";
 
 const STATUSES: InboundLeadStatus[] = ["new", "working", "converted", "archived"];
 
@@ -20,6 +21,20 @@ function statusLabel(status: InboundLeadStatus): string {
 
 function preview(message: string): string {
   return message.length > 96 ? `${message.slice(0, 93)}...` : message;
+}
+
+function hasRealEmail(email: string): boolean {
+  return !/@example\.(com|net|org|test)$/i.test(email.trim()) && !/\.example\.test$/i.test(email.trim());
+}
+
+function trackedBookingHref(lead: InboundLeadDto): string {
+  if (!lead.trackingRef) return CONTACT.bookingHref;
+  const separator = CONTACT.bookingHref.includes("?") ? "&" : "?";
+  return `${CONTACT.bookingHref}${separator}ref=${encodeURIComponent(lead.trackingRef)}`;
+}
+
+function proofStepClass(done: boolean): string {
+  return `inbound-leads__proofstep${done ? " inbound-leads__proofstep--done" : ""}`;
 }
 
 export function InboundLeadsPanel(): React.JSX.Element {
@@ -139,8 +154,53 @@ export function InboundLeadsPanel(): React.JSX.Element {
                 <div><dt>Source</dt><dd>{selected.source}</dd></div>
                 <div><dt>SLA due</dt><dd>{formatWhen(selected.slaDueAtMs)}</dd></div>
                 <div><dt>Reach key</dt><dd>{selected.reachContactKey}</dd></div>
+                <div><dt>Tracking ref</dt><dd>{selected.trackingRef ?? "missing"}</dd></div>
               </dl>
               <p className="inbound-leads__message">{selected.message}</p>
+              <section className="inbound-leads__proof" aria-labelledby="first-customer-proof-title">
+                <div className="inbound-leads__proofhead">
+                  <h4 id="first-customer-proof-title">First-customer proof</h4>
+                  <a href={trackedBookingHref(selected)}>Tracked booking link</a>
+                </div>
+                <ol className="inbound-leads__proofsteps">
+                  <li className={proofStepClass(hasRealEmail(selected.email) && selected.trackingRef !== null)}>
+                    <b>Source</b>
+                    <span>
+                      {hasRealEmail(selected.email) && selected.trackingRef
+                        ? `Real lead captured with ${selected.trackingRef}`
+                        : "Needs a non-example prospect email and trackingRef"}
+                    </span>
+                  </li>
+                  <li className={proofStepClass(false)}>
+                    <b>Delivery</b>
+                    <span>Needs approved Postmark production_readback receipt to this email.</span>
+                  </li>
+                  <li className={proofStepClass(false)}>
+                    <b>Reply</b>
+                    <span>
+                      {selected.respondedAtMs
+                        ? `Response recorded ${formatWhen(selected.respondedAtMs)}; verify provider thread visibility.`
+                        : "Needs provider reply ingested and visible in the lead timeline."}
+                    </span>
+                  </li>
+                  <li className={proofStepClass(selected.status === "working" || selected.status === "converted")}>
+                    <b>Route</b>
+                    <span>
+                      {selected.status === "working" || selected.status === "converted"
+                        ? `Lead is ${selected.status}; keep cadence tied to the same trackingRef.`
+                        : "Move to Working after qualification and set the next action."}
+                    </span>
+                  </li>
+                  <li className={proofStepClass(selected.status === "converted")}>
+                    <b>Book</b>
+                    <span>
+                      {selected.status === "converted"
+                        ? "Converted; attach the booked-call or trial-start receipt."
+                        : "Send the tracked booking/trial link and keep the same trackingRef."}
+                    </span>
+                  </li>
+                </ol>
+              </section>
               <label className="inbound-leads__field">
                 <span>Assignee member ID</span>
                 <input value={assignee} onChange={(e) => setAssignee(e.target.value.trim())} placeholder="Member UUID" />
