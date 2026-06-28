@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseOAuthDoctorConfig, runOAuthDoctor } from "../../src/connections/oauth-doctor-cli.js";
+import {
+  parseOAuthDoctorConfig,
+  runOAuthDoctor,
+  runOAuthVaultReadback,
+} from "../../src/connections/oauth-doctor-cli.js";
 
 describe("OAuth connection doctor CLI (#1285)", () => {
   it("reports every missing provider env by name with no secrets", () => {
@@ -85,6 +89,56 @@ describe("OAuth connection doctor CLI (#1285)", () => {
       status: "pass",
       redirectUri: "https://api.ipop.ai/me/connections/google_ads/oauth/callback",
       missingEnv: [],
+    });
+  });
+
+  it("parses an explicit workspace id for vault readback", () => {
+    expect(parseOAuthDoctorConfig({}, ["--workspace-id", "ws-owner"]).workspaceId).toBe("ws-owner");
+    expect(parseOAuthDoctorConfig({}, ["--workspace-id=ws-inline"]).workspaceId).toBe("ws-inline");
+    expect(parseOAuthDoctorConfig({ RELOAD_OWNER_WORKSPACE_ID: "ws-env" }, []).workspaceId).toBe("ws-env");
+  });
+
+  it("reports non-secret vault readback proof for connected OAuth providers", () => {
+    const checks = runOAuthVaultReadback([
+      {
+        serviceKey: "google",
+        connected: true,
+        status: "connected",
+        fingerprint: "fp_google_1234567890",
+        envKeys: ["GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_SCOPE"],
+        scopes: ["search_console", "analytics"],
+        rotationReminderDays: 0,
+        connectedAtMs: 1782628000000,
+        revokedAtMs: null,
+      },
+      {
+        serviceKey: "x",
+        connected: false,
+        status: "connected",
+        fingerprint: "empty",
+        envKeys: [],
+        scopes: [],
+        rotationReminderDays: 0,
+        connectedAtMs: 1782628000000,
+        revokedAtMs: null,
+      },
+    ]);
+
+    expect(checks.find((check) => check.name === "google-vault-readback")).toMatchObject({
+      status: "pass",
+      envKeys: ["GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_SCOPE"],
+      fingerprint: "fp_google_1234567890",
+      connectedAtMs: 1782628000000,
+    });
+    expect(checks.find((check) => check.name === "x-vault-readback")).toMatchObject({
+      status: "fail",
+      envKeys: [],
+      fingerprint: null,
+      connectedAtMs: null,
+    });
+    expect(checks.find((check) => check.name === "linkedin-vault-readback")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("no sealed credential proof"),
     });
   });
 });
