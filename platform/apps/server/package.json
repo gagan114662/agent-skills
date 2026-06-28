@@ -35,6 +35,7 @@
     "agent:browser-smoke": "tsx scripts/agent-browser-smoke.ts",
     "imessage:relay": "tsx src/imessage/relay-worker-cli.ts",
     "imessage:relay:doctor": "tsx src/imessage/relay-worker-cli.ts --doctor",
+    "room:doctor": "tsx src/messaging/external-room-doctor-cli.ts",
     "soak": "tsx scripts/cloud-e2e-soak.ts",
     "perf": "tsx scripts/perf.ts"
   },
