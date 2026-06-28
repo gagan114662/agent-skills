@@ -112,11 +112,14 @@ function mapGoogleConnectionTokens(json: unknown): ConnectExchangeResult {
     token_type?: unknown;
   };
   if (typeof token.access_token !== "string" || !token.access_token.trim()) return EMPTY_EXCHANGE;
-  const scope = typeof token.scope === "string" ? token.scope : "";
+  const scope =
+    typeof token.scope === "string" && token.scope.trim()
+      ? token.scope
+      : [GOOGLE_SEARCH_CONSOLE_SCOPE, GOOGLE_ANALYTICS_SCOPE].join(" ");
   const scopes = scope.split(/\s+/).filter(Boolean);
   const secrets: Record<string, string> = {
     GOOGLE_OAUTH_ACCESS_TOKEN: token.access_token,
-    GOOGLE_OAUTH_SCOPE: scope || [GOOGLE_SEARCH_CONSOLE_SCOPE, GOOGLE_ANALYTICS_SCOPE].join(" "),
+    GOOGLE_OAUTH_SCOPE: scope,
     GOOGLE_OAUTH_TOKEN_TYPE: typeof token.token_type === "string" ? token.token_type : "Bearer",
   };
   if (typeof token.refresh_token === "string" && token.refresh_token.trim()) {
