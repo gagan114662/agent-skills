@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ApprovalRequestDto } from "@reload/shared";
-import { LiveEverydayShell } from "./LiveEverydayShell.js";
+import { LiveEverydayShell, withLiveRoomSessions } from "./LiveEverydayShell.js";
 import { EVERYDAY } from "../../brand.js";
 import { api } from "../../api/client.js";
 import { makeMessage, renderWithStore } from "../../test/utils.js";
 import { FIRST_RUN_RECEIPT_KEY } from "../onboarding/first-run-receipt.js";
+import { emptyEverydayData } from "./everyday-data.js";
+import type { AppState } from "../../store/store.js";
 
 function approval(over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto {
   return {
@@ -137,6 +139,53 @@ describe("LiveEverydayShell (#1181)", () => {
       await screen.findByText("Codex subscription auth is not connected for this workspace yet."),
     ).toBeInTheDocument();
     expect(screen.getByText("auth").closest("li")).toHaveAttribute("data-status", "blocked");
+  });
+
+  it("projects current-channel live marketing agents into the signed-in room data", () => {
+    const data = emptyEverydayData("Ada");
+    const projected = withLiveRoomSessions(data, {
+      activeChannelId: "c1",
+      directory: {
+        "ag-scout": { id: "ag-scout", kind: "agent", displayName: "Scout" },
+        "ag-quill": { id: "ag-quill", kind: "agent", displayName: "Quill" },
+        "ag-codex": { id: "ag-codex", kind: "agent", displayName: "Codex operator" },
+      },
+      liveSessions: [
+        {
+          id: "sess-scout",
+          channelId: "c1",
+          agentMemberId: "ag-scout",
+          status: "running",
+          agentStatus: "thinking",
+        },
+        {
+          id: "sess-quill",
+          channelId: "c1",
+          agentMemberId: "ag-quill",
+          status: "running",
+          agentStatus: "drafting",
+        },
+        {
+          id: "sess-codex",
+          channelId: "c1",
+          agentMemberId: "ag-codex",
+          status: "running",
+          agentStatus: "handoff",
+        },
+      ],
+    } as unknown as AppState);
+
+    expect(projected.room.find((lane) => lane.agent === "Scout")?.status).toBe("working");
+    expect(projected.room.find((lane) => lane.agent === "Scout")?.task).toContain(
+      "Scout is thinking through the next marketing move",
+    );
+    expect(projected.room.find((lane) => lane.agent === "Quill")?.task).toContain(
+      "Quill is drafting work for the room",
+    );
+    expect(projected.room.find((lane) => lane.agent === "Operator")?.task).toContain(
+      "Operator is handing work to the next lane",
+    );
+    expect(projected.marketingBrief?.headline).toContain("Scout working, Quill working, Operator working");
   });
 
   it("surfaces Mac relay heartbeat plus outbound and inbound iMessage proof (#1341)", async () => {

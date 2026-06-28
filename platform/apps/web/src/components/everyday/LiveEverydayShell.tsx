@@ -9,7 +9,7 @@ import type {
   IMessageStatusResponse,
   TeamRunSubtaskInput,
 } from "../../api/types.js";
-import type { AppState } from "../../store/store.js";
+import type { AppState, LiveSessionLite } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import {
@@ -19,6 +19,7 @@ import {
 import { EverydayShell } from "./EverydayShell.js";
 import {
   emptyEverydayData,
+  type AgentLane,
   type ApprovalCard,
   type EverydayConnector,
   type EverydayData,
@@ -253,26 +254,93 @@ function withCodexReadiness(
   };
 }
 
+function laneStatusFromLiveSession(session: LiveSessionLite): AgentLane["status"] {
+  const lifecycle = session.status.toLowerCase();
+  if (lifecycle.includes("fail") || lifecycle.includes("cancel") || lifecycle.includes("timeout")) {
+    return "blocked";
+  }
+  if (lifecycle.includes("complete") || session.agentStatus === "done") return "done";
+  if (session.agentStatus === "waiting") return "blocked";
+  if (session.agentStatus === "idle") return "idle";
+  return "working";
+}
+
+function liveSessionTask(agent: string, session: LiveSessionLite): string {
+  const activity =
+    session.agentStatus === "thinking"
+      ? "thinking through the next marketing move"
+      : session.agentStatus === "drafting"
+        ? "drafting work for the room"
+        : session.agentStatus === "handoff"
+          ? "handing work to the next lane"
+          : session.agentStatus === "waiting"
+            ? "waiting on a connector, approval, or proof receipt"
+            : session.agentStatus === "done"
+              ? "finished its current room task"
+              : "standing by";
+  return agent + " is " + activity + " in this live room. Session " + session.id + " is " + session.status + ".";
+}
+
+function laneMatchesSession(lane: AgentLane, session: LiveSessionLite, state: AppState): boolean {
+  const member = state.directory[session.agentMemberId];
+  const name = member?.displayName.toLowerCase() ?? "";
+  const agent = lane.agent.toLowerCase();
+  if (lane.id === "codex") return name.includes("codex") || name.includes("operator");
+  return name.includes(agent);
+}
+
+export function withLiveRoomSessions(data: EverydayData, state: AppState): EverydayData {
+  const channelId = state.activeChannelId;
+  if (!channelId) return data;
+  const live = state.liveSessions.filter((session) => session.channelId === channelId);
+  if (live.length === 0) return data;
+  const room = data.room.map((lane) => {
+    const session = live.find((item) => laneMatchesSession(lane, item, state));
+    if (!session) return lane;
+    return {
+      ...lane,
+      status: laneStatusFromLiveSession(session),
+      task: liveSessionTask(lane.agent, session),
+    };
+  });
+  const named = room.filter((lane) => live.some((session) => laneMatchesSession(lane, session, state)));
+  const liveLine =
+    named.length > 0
+      ? named.map((lane) => lane.agent + " " + lane.status).join(", ")
+      : String(live.length) + " live agent session(s)";
+  return {
+    ...data,
+    room,
+    marketingBrief: data.marketingBrief
+      ? {
+          ...data.marketingBrief,
+          headline:
+            "Live CMO readout from this workspace: " +
+            liveLine +
+            "; decisions, channel truth, and proof gaps stay visible.",
+        }
+      : data.marketingBrief,
+  };
+}
+
 export function liveEverydayDataFromState(
   state: AppState,
   firstRun: FirstRunReceiptDto | null = null,
   codexStatus: CodexSubscriptionStatus | null = null,
 ): EverydayData {
   const data = emptyEverydayData(state.identity?.displayName ?? "there");
-  return withCodexReadiness(
-    withFirstRunReceipt(
-      {
-        ...data,
-        thread: threadEntries(state),
-        approvals: state.approvals.requests
-          .filter((request) => request.status === "pending")
-          .map((request) => approvalCard(request, state)),
-        fleetPaused: state.liveSessions.length === 0,
-      },
-      firstRun,
-    ),
-    codexStatus,
+  const liveData = withLiveRoomSessions(
+    {
+      ...data,
+      thread: threadEntries(state),
+      approvals: state.approvals.requests
+        .filter((request) => request.status === "pending")
+        .map((request) => approvalCard(request, state)),
+      fleetPaused: state.liveSessions.length === 0,
+    },
+    state,
   );
+  return withCodexReadiness(withFirstRunReceipt(liveData, firstRun), codexStatus);
 }
 
 function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
