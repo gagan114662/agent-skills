@@ -155,6 +155,47 @@ describe("outbound doctor CLI (#395)", () => {
     );
   });
 
+  it("refuses proof JSON smoke sends without approval, workspace, and tracking evidence", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+      const value = String(url);
+      expect(value).toBe("https://api.postmarkapp.com/server");
+      return jsonResponse({ ID: 42, Name: "ipop production" });
+    });
+    const config = parseOutboundDoctorConfig({
+      argv: [
+        "--send-smoke",
+        "--to",
+        "buyer@realcompany.com",
+        "--workspace-id",
+        "00000000-0000-4000-8000-000000000001",
+        "--proof-json",
+      ],
+      env: {
+        POSTMARK_SERVER_TOKEN: "pm-secret",
+        POSTMARK_FROM: "hello@ipop.ai",
+        RELOAD_ACQUISITION_ENABLED: "true",
+        RELOAD_ACQUISITION_EMAIL: "true",
+        RELOAD_ACQUISITION_ESP_PROVIDER: "postmark",
+        RELOAD_ACQUISITION_BRAND_NAME: "ipop",
+        RELOAD_ACQUISITION_POSTAL_ADDRESS: "1 Market St, San Francisco, CA",
+        RELOAD_ACQUISITION_UNSUBSCRIBE_URL: "https://ipop.ai/unsubscribe",
+      },
+    });
+
+    const checks = await runOutboundDoctor(config, { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "outbound-proof-json",
+          status: "fail",
+          message: expect.stringContaining("--approval-request-id"),
+        }),
+      ]),
+    );
+  });
+
   it("records the Postmark smoke readback when workspace and approval proof are provided", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (url) => {
       const value = String(url);

@@ -27,8 +27,9 @@ To turn an approved real send into queryable #395/#908 evidence, include the wor
 With those ids present, the doctor records the Postmark MessageID as a verified production_readback row in
 outbound_send_receipts and prints the outboundDelivery JSON block that the first-customer proof file expects.
 The `trackingRef` must match the prospect import, routed inbound lead, and booking/trial link in the
-first-customer proof. Without the approval id, a smoke send can prove Postmark reachability but cannot close
-the irreversible-send approval requirement.
+first-customer proof. In `--proof-json` mode, the doctor refuses to send unless `--workspace-id`,
+`--approval-request-id`, and `--tracking-ref` are all present. Without those ids, run a plain smoke send
+only; it can prove Postmark reachability but cannot close the irreversible-send approval requirement.
 
 ## Required Production Env
 

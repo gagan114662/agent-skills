@@ -234,6 +234,16 @@ async function maybeSendSmoke(
       },
     ];
   }
+  if (config.proofJson && (!config.workspaceId || !config.approvalRequestId || !config.trackingRef)) {
+    return [
+      {
+        name: "outbound-proof-json",
+        status: "fail",
+        message:
+          "--proof-json requires --workspace-id, --approval-request-id, and --tracking-ref before sending a proof smoke",
+      },
+    ];
+  }
   try {
     const provider = new PostmarkEspProvider({
       serverToken: config.serverToken,
