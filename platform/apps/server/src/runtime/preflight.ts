@@ -93,6 +93,12 @@ export interface PreflightInput {
   metaAdsConnectionOAuthRequired?: boolean;
   /** Whether LinkedIn must be connectable as a social publishing connector (#1285). */
   linkedInConnectionOAuthRequired?: boolean;
+  /** Whether Telegram room visibility must be configured for release (#1267). */
+  telegramRoomRequired?: boolean;
+  /** Whether WhatsApp room visibility must be configured for release (#1267). */
+  whatsAppRoomRequired?: boolean;
+  /** Whether the signed iMessage relay webhook must be configured for release (#1283). */
+  iMessageRelayRequired?: boolean;
   /** Reach outbound policy for the deployment-level live-proof gate (#1286). */
   reach?: ReachConfig;
   /** Whether enabled Reach must prove it is not mock/dry-run before a release can pass (#1286). */
@@ -172,6 +178,18 @@ export function linkedInConnectionOAuthRequiredForRelease(
   env: NodeJS.ProcessEnv,
 ): boolean {
   return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_LINKEDIN_CONNECTION_OAUTH");
+}
+
+export function telegramRoomRequiredForRelease(profile: ProfileName, env: NodeJS.ProcessEnv): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_TELEGRAM_ROOM");
+}
+
+export function whatsAppRoomRequiredForRelease(profile: ProfileName, env: NodeJS.ProcessEnv): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_WHATSAPP_ROOM");
+}
+
+export function iMessageRelayRequiredForRelease(profile: ProfileName, env: NodeJS.ProcessEnv): boolean {
+  return connectionOAuthRequiredForRelease(profile, env, "RELOAD_REQUIRE_IMESSAGE_RELAY");
 }
 
 /** Vercel auth: either an OIDC token, or the full access-token trio. Names only, never values. */
@@ -540,6 +558,51 @@ function checkLinkedInConnectionOAuth(
   });
 }
 
+function checkTelegramRoomConfig(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "telegram-room",
+    label: "Telegram room bridge",
+    vars: {
+      TELEGRAM_BOT_TOKEN: Boolean(env.TELEGRAM_BOT_TOKEN),
+      TELEGRAM_ROOM_CHAT_ID: Boolean(env.TELEGRAM_ROOM_CHAT_ID),
+      TELEGRAM_WEBHOOK_SECRET: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
+    },
+    required,
+    remedy:
+      "Set TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks to https://<api-host>/telegram/webhook with X-Telegram-Bot-Api-Secret-Token.",
+  });
+}
+
+function checkWhatsAppRoomConfig(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "whatsapp-room",
+    label: "WhatsApp room bridge",
+    vars: {
+      WHATSAPP_ACCESS_TOKEN: Boolean(env.WHATSAPP_ACCESS_TOKEN),
+      WHATSAPP_PHONE_NUMBER_ID: Boolean(env.WHATSAPP_PHONE_NUMBER_ID),
+      WHATSAPP_ROOM_RECIPIENT: Boolean(env.WHATSAPP_ROOM_RECIPIENT),
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: Boolean(env.WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+      WHATSAPP_APP_SECRET: Boolean(env.WHATSAPP_APP_SECRET),
+    },
+    required,
+    remedy:
+      "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ROOM_RECIPIENT, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for https://<api-host>/whatsapp/webhook.",
+  });
+}
+
+function checkIMessageRelayConfig(env: NodeJS.ProcessEnv, required: boolean): CheckResult | undefined {
+  return connectionOAuthCheck({
+    name: "imessage-relay",
+    label: "iMessage signed relay",
+    vars: {
+      IMESSAGE_RELAY_WEBHOOK_SECRET: Boolean(env.IMESSAGE_RELAY_WEBHOOK_SECRET),
+    },
+    required,
+    remedy:
+      "Set IMESSAGE_RELAY_WEBHOOK_SECRET on the API and run the signed Mac relay worker with the same secret; Fly/Linux cannot run Apple Messages directly.",
+  });
+}
+
 /**
  * Reach can be demo-safe with imported/mock prospects + recorded-only senders, but production must not
  * present that as autonomous customer acquisition. This check is intentionally secret-free: it reads only
@@ -710,6 +773,12 @@ export function preflight(
     Boolean(input.linkedInConnectionOAuthRequired),
   );
   if (linkedInConnectionOAuth) checks.push(linkedInConnectionOAuth);
+  const telegramRoom = checkTelegramRoomConfig(input.env, Boolean(input.telegramRoomRequired));
+  if (telegramRoom) checks.push(telegramRoom);
+  const whatsAppRoom = checkWhatsAppRoomConfig(input.env, Boolean(input.whatsAppRoomRequired));
+  if (whatsAppRoom) checks.push(whatsAppRoom);
+  const iMessageRelay = checkIMessageRelayConfig(input.env, Boolean(input.iMessageRelayRequired));
+  if (iMessageRelay) checks.push(iMessageRelay);
 
   const reachLiveProof = checkReachLiveProof(input.reach, Boolean(input.reachLiveProofRequired));
   if (reachLiveProof) checks.push(reachLiveProof);

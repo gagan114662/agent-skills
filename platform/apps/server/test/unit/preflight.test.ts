@@ -3,12 +3,15 @@ import {
   googleAdsConnectionOAuthRequiredForRelease,
   googleConnectionOAuthRequiredForRelease,
   googleOAuthRequiredForRelease,
+  iMessageRelayRequiredForRelease,
   linkedInConnectionOAuthRequiredForRelease,
   metaAdsConnectionOAuthRequiredForRelease,
   preflight,
   PreflightError,
+  telegramRoomRequiredForRelease,
   type PreflightDeps,
   type PreflightInput,
+  whatsAppRoomRequiredForRelease,
   xConnectionOAuthRequiredForRelease,
 } from "../../src/runtime/preflight.js";
 
@@ -443,6 +446,19 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
         RELOAD_REQUIRE_LINKEDIN_CONNECTION_OAUTH: "true",
       }),
     ).toBe(true);
+    expect(telegramRoomRequiredForRelease("prod", {})).toBe(true);
+    expect(telegramRoomRequiredForRelease("dev", {})).toBe(false);
+    expect(telegramRoomRequiredForRelease("dev", { RELOAD_REQUIRE_TELEGRAM_ROOM: "1" })).toBe(true);
+    expect(whatsAppRoomRequiredForRelease("prod", {})).toBe(true);
+    expect(whatsAppRoomRequiredForRelease("dev", {})).toBe(false);
+    expect(whatsAppRoomRequiredForRelease("dev", { RELOAD_REQUIRE_WHATSAPP_ROOM: "true" })).toBe(
+      true,
+    );
+    expect(iMessageRelayRequiredForRelease("prod", {})).toBe(true);
+    expect(iMessageRelayRequiredForRelease("dev", {})).toBe(false);
+    expect(iMessageRelayRequiredForRelease("dev", { RELOAD_REQUIRE_IMESSAGE_RELAY: "1" })).toBe(
+      true,
+    );
   });
 
   it("social and ads connection OAuth preflight fails prod release gates when config is absent (#1285)", () => {
@@ -518,6 +534,69 @@ describe("preflight (#69 — validate posture before any run; never throws; secr
     expect(JSON.stringify(report)).not.toContain("SECRET_GOOGLE_CLIENT");
     expect(JSON.stringify(report)).not.toContain("SECRET_META_CLIENT");
     expect(JSON.stringify(report)).not.toContain("SECRET_LINKEDIN_CLIENT");
+    expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai");
+  });
+
+  it("messaging room preflight fails prod release gates when config is absent (#1267 #1283)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {},
+        telegramRoomRequired: true,
+        whatsAppRoomRequired: true,
+        iMessageRelayRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((c) => c.name === "telegram-room")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("TELEGRAM_BOT_TOKEN"),
+    });
+    expect(report.checks.find((c) => c.name === "whatsapp-room")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("WHATSAPP_ACCESS_TOKEN"),
+    });
+    expect(report.checks.find((c) => c.name === "imessage-relay")).toMatchObject({
+      status: "fail",
+      message: expect.stringContaining("IMESSAGE_RELAY_WEBHOOK_SECRET"),
+    });
+  });
+
+  it("messaging room preflight passes with full config and redacts values (#1267 #1283)", () => {
+    const report = preflight(
+      input({
+        profile: "prod",
+        runtime: "local",
+        harness: "demo",
+        env: {
+          TELEGRAM_BOT_TOKEN: "SECRET_TELEGRAM_TOKEN",
+          TELEGRAM_ROOM_CHAT_ID: "SECRET_TELEGRAM_CHAT",
+          TELEGRAM_WEBHOOK_SECRET: "SECRET_TELEGRAM_WEBHOOK",
+          WHATSAPP_ACCESS_TOKEN: "SECRET_WHATSAPP_TOKEN",
+          WHATSAPP_PHONE_NUMBER_ID: "SECRET_WHATSAPP_PHONE",
+          WHATSAPP_ROOM_RECIPIENT: "SECRET_WHATSAPP_RECIPIENT",
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN: "SECRET_WHATSAPP_VERIFY",
+          WHATSAPP_APP_SECRET: "SECRET_WHATSAPP_APP",
+          IMESSAGE_RELAY_WEBHOOK_SECRET: "SECRET_IMESSAGE_WEBHOOK",
+        },
+        telegramRoomRequired: true,
+        whatsAppRoomRequired: true,
+        iMessageRelayRequired: true,
+      }),
+      { binaryAvailable: (n) => n === "bash", moduleResolvable: () => true },
+    );
+
+    expect(report.checks.find((c) => c.name === "telegram-room")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "whatsapp-room")?.status).toBe("pass");
+    expect(report.checks.find((c) => c.name === "imessage-relay")?.status).toBe("pass");
+    expect(report.ok).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("SECRET_TELEGRAM_TOKEN");
+    expect(JSON.stringify(report)).not.toContain("SECRET_WHATSAPP_TOKEN");
+    expect(JSON.stringify(report)).not.toContain("SECRET_IMESSAGE_WEBHOOK");
     expect(JSON.stringify(report)).not.toContain("https://api.ipop.ai");
   });
 
