@@ -23,6 +23,7 @@
     "release:gate": "tsx src/runtime/release-cli.ts",
     "verify:release": "tsx src/runtime/verify-release-cli.ts",
     "first-customer:proof": "tsx src/first-customer/proof-cli.ts",
+    "external-paid-work:proof": "tsx src/founder-work/proof-cli.ts",
     "model:backfill": "tsx src/runtime/model-backfill-cli.ts",
     "dr:drill": "tsx src/dr/drill-cli.ts",
     "sre:drill": "tsx src/sre/drill-cli.ts",
