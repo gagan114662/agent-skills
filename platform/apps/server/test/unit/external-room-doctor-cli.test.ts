@@ -145,6 +145,97 @@ describe("external room doctor CLI (#1267)", () => {
     );
   });
 
+  it("sends smoke messages to workspace-connected destinations before falling back to deployment env", async () => {
+    const telegramTransport: TelegramTransport = {
+      sendMessage: vi.fn(async () => ({ ok: true, messageId: "tg-workspace" })),
+    };
+    const whatsAppTransport: WhatsAppTransport = {
+      sendMessage: vi.fn(async () => ({ ok: true, messageId: "wamid.workspace" })),
+    };
+    const resolveServiceSecrets = vi.fn(async (_workspaceId: string, serviceKey: string) => {
+      if (serviceKey === "telegram_room") return { TELEGRAM_CHAT_ID: "-1009876543210" };
+      if (serviceKey === "whatsapp_room") return { WHATSAPP_RECIPIENT: "15559990000" };
+      return {};
+    });
+    const config = parseExternalRoomDoctorConfig({
+      argv: ["--send-smoke", "--workspace-id", "workspace-live", "--text", "workspace smoke"],
+      env: {
+        TELEGRAM_BOT_TOKEN: "telegram-secret",
+        TELEGRAM_WEBHOOK_SECRET: "telegram-webhook",
+        WHATSAPP_ACCESS_TOKEN: "whatsapp-secret",
+        WHATSAPP_PHONE_NUMBER_ID: "phone-id",
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: "verify-token",
+        WHATSAPP_APP_SECRET: "app-secret",
+      },
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (url) =>
+      String(url).includes("/getMe")
+        ? jsonResponse({ ok: true, result: { id: 123 } })
+        : jsonResponse({ id: "phone-id" }),
+    );
+
+    const checks = await runExternalRoomDoctor(config, {
+      fetchImpl,
+      telegramService: new TelegramRoomService(config.telegram, telegramTransport),
+      whatsappService: new WhatsAppRoomService(config.whatsapp, whatsAppTransport),
+      resolveServiceSecrets,
+    });
+
+    expect(resolveServiceSecrets).toHaveBeenCalledWith("workspace-live", "telegram_room");
+    expect(resolveServiceSecrets).toHaveBeenCalledWith("workspace-live", "whatsapp_room");
+    expect(telegramTransport.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: "-1009876543210", text: "workspace smoke" }),
+    );
+    expect(whatsAppTransport.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ recipient: "15559990000", text: "workspace smoke" }),
+    );
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "telegram-send-smoke", status: "pass" }),
+        expect.objectContaining({ name: "whatsapp-send-smoke", status: "pass" }),
+      ]),
+    );
+  });
+
+  it("reports an actionable gap when a smoke send has no workspace destination", async () => {
+    const config = parseExternalRoomDoctorConfig({
+      argv: ["--send-smoke", "--workspace-id", "workspace-missing"],
+      env: {
+        TELEGRAM_BOT_TOKEN: "telegram-secret",
+        TELEGRAM_WEBHOOK_SECRET: "telegram-webhook",
+        WHATSAPP_ACCESS_TOKEN: "whatsapp-secret",
+        WHATSAPP_PHONE_NUMBER_ID: "phone-id",
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: "verify-token",
+        WHATSAPP_APP_SECRET: "app-secret",
+      },
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (url) =>
+      String(url).includes("/getMe")
+        ? jsonResponse({ ok: true, result: { id: 123 } })
+        : jsonResponse({ id: "phone-id" }),
+    );
+
+    const checks = await runExternalRoomDoctor(config, {
+      fetchImpl,
+      resolveServiceSecrets: vi.fn(async () => ({})),
+    });
+
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "telegram-send-smoke",
+          status: "fail",
+          message: expect.stringContaining("connect telegram_room with TELEGRAM_CHAT_ID"),
+        }),
+        expect.objectContaining({
+          name: "whatsapp-send-smoke",
+          status: "fail",
+          message: expect.stringContaining("connect whatsapp_room with WHATSAPP_RECIPIENT"),
+        }),
+      ]),
+    );
+  });
+
   it("records room message receipts for explicit correlated smoke sends", async () => {
     const telegramTransport: TelegramTransport = {
       sendMessage: vi.fn(async () => ({ ok: true, messageId: "tg-77" })),
@@ -187,6 +278,7 @@ describe("external room doctor CLI (#1267)", () => {
       telegramService: new TelegramRoomService(config.telegram, telegramTransport),
       whatsappService: new WhatsAppRoomService(config.whatsapp, whatsAppTransport),
       recordExternalRoomMessageReceipt,
+      resolveServiceSecrets: vi.fn(async () => ({})),
     });
 
     expect(recordExternalRoomMessageReceipt).toHaveBeenCalledTimes(2);
