@@ -13,8 +13,11 @@ import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import { TeamCoordinator } from "../../src/team/coordinator.js";
 import { TelegramRoomService, type TelegramTransport } from "../../src/telegram/service.js";
+import { WhatsAppRoomService } from "../../src/whatsapp/service.js";
+import { createExternalRoomMirror, setExternalRoomMirror } from "../../src/messaging/external-room-mirror.js";
 
 let app: FastifyInstance;
+let telegramService: TelegramRoomService;
 const slugs: string[] = [];
 const originalEnv = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
@@ -61,12 +64,8 @@ const codexSubscription: CodexSubscriptionStatusProvider = {
   },
 };
 
-beforeAll(async () => {
-  process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-  delete process.env.TELEGRAM_ROOM_CHAT_ID;
-  process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
-  const transport: TelegramTransport = { sendMessage };
-  const teamCoordinator = new TeamCoordinator({
+function createTeamCoordinator(): TeamCoordinator {
+  return new TeamCoordinator({
     launcher: fakeLauncher,
     channel: new TeamChannel({
       poster: channelPoster,
@@ -76,19 +75,42 @@ beforeAll(async () => {
     maxConcurrency: 4,
     logger: silentLogger,
   });
-  app = buildApp({
-    telegram: new TelegramRoomService(
-      {
-        botToken: "bot-token",
-        webhookSecret: "telegram-secret",
-        apiBaseUrl: "https://telegram.test",
-        maxChars: 3500,
-      },
-      transport,
-    ),
-    teamCoordinator,
+}
+
+function buildTelegramTestApp(service: TelegramRoomService): FastifyInstance {
+  return buildApp({
+    telegram: service,
+    teamCoordinator: createTeamCoordinator(),
     codexSubscription,
   });
+}
+
+function restoreExternalRoomMirror(): void {
+  if (!telegramService) return;
+  setExternalRoomMirror(
+    createExternalRoomMirror({
+      telegram: telegramService,
+      whatsapp: new WhatsAppRoomService({ apiBaseUrl: "https://graph.test/v20.0", maxChars: 3500 }),
+      log: silentLogger,
+    }),
+  );
+}
+
+beforeAll(async () => {
+  process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+  delete process.env.TELEGRAM_ROOM_CHAT_ID;
+  process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
+  const transport: TelegramTransport = { sendMessage };
+  telegramService = new TelegramRoomService(
+    {
+      botToken: "bot-token",
+      webhookSecret: "telegram-secret",
+      apiBaseUrl: "https://telegram.test",
+      maxChars: 3500,
+    },
+    transport,
+  );
+  app = buildTelegramTestApp(telegramService);
   await app.ready();
 });
 
@@ -98,6 +120,7 @@ afterEach(() => {
   fakeLauncher.join.mockClear();
   teamLaunches.length = 0;
   codexConnected = false;
+  restoreExternalRoomMirror();
 });
 
 afterAll(async () => {
@@ -111,10 +134,10 @@ afterAll(async () => {
   await closeRedis();
 });
 
-async function newOwner(): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
+async function newOwner(targetApp: FastifyInstance = app): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
   const slug = `telegram-${newId()}`;
   slugs.push(slug);
-  const signup = await app.inject({
+  const signup = await targetApp.inject({
     method: "POST",
     url: "/auth/signup",
     payload: {
@@ -126,12 +149,16 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
   });
   expect(signup.statusCode).toBe(201);
   const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
-  const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
+  const me = (await targetApp.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
-async function createChannel(owner: { cookie: string; workspaceId: string }, name = "telegram-room"): Promise<string> {
-  const res = await app.inject({
+async function createChannel(
+  owner: { cookie: string; workspaceId: string },
+  name = "telegram-room",
+  targetApp: FastifyInstance = app,
+): Promise<string> {
+  const res = await targetApp.inject({
     method: "POST",
     url: `/workspaces/${owner.workspaceId}/channels`,
     cookies: { rid: owner.cookie },
@@ -206,6 +233,48 @@ describe("Telegram room bridge (#1267)", () => {
     });
     expect(reply.statusCode).toBe(201);
     expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: reply: thread reply for Telegram");
+  });
+
+  it("does not persist a Telegram room start when deployment sender config is missing", async () => {
+    const misconfiguredApp = buildTelegramTestApp(
+      new TelegramRoomService(
+        {
+          webhookSecret: "telegram-secret",
+          apiBaseUrl: "https://telegram.test",
+          maxChars: 3500,
+        },
+        { sendMessage },
+      ),
+    );
+    await misconfiguredApp.ready();
+    try {
+      const owner = await newOwner(misconfiguredApp);
+      const channelId = await createChannel(owner, "telegram-missing-sender", misconfiguredApp);
+      const enable = await misconfiguredApp.inject({
+        method: "POST",
+        url: "/me/connections/telegram_room/enable",
+        cookies: { rid: owner.cookie },
+        payload: { chatId: "123456" },
+      });
+      expect(enable.statusCode).toBe(200);
+
+      const started = await misconfiguredApp.inject({
+        method: "POST",
+        url: `/channels/${channelId}/telegram/room`,
+        cookies: { rid: owner.cookie },
+        payload: { text: "agents, show the Telegram room" },
+      });
+      expect(started.statusCode).toBe(503);
+      expect(started.json()).toMatchObject({
+        status: "not_configured",
+        missingEnv: ["TELEGRAM_BOT_TOKEN"],
+      });
+      expect(started.json().message).toBeUndefined();
+      expect(sendMessage).not.toHaveBeenCalled();
+      await expect(listChannelMessages(channelId)).resolves.toHaveLength(0);
+    } finally {
+      await misconfiguredApp.close();
+    }
   });
 
   it("connects a configured Telegram room, mirrors room events, and ingests signed replies", async () => {

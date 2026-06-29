@@ -137,6 +137,14 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         error: "Connect WhatsApp room before sending room events to WhatsApp.",
       });
     }
+    const deployment = opts.service.status();
+    if (!deployment.configured) {
+      return reply.code(503).send({
+        status: "not_configured",
+        error: "WhatsApp sender and webhook credentials are required before room events can be sent to WhatsApp.",
+        missingEnv: deployment.missingEnv,
+      });
+    }
 
     const body = (req.body ?? {}) as { text?: unknown };
     const text =

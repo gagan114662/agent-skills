@@ -116,6 +116,14 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
         error: "Connect Telegram room before sending room events to Telegram.",
       });
     }
+    const deployment = opts.service.status();
+    if (!deployment.configured) {
+      return reply.code(503).send({
+        status: "not_configured",
+        error: "Telegram sender and webhook credentials are required before room events can be sent to Telegram.",
+        missingEnv: deployment.missingEnv,
+      });
+    }
 
     const body = (req.body ?? {}) as { text?: unknown };
     const text =
