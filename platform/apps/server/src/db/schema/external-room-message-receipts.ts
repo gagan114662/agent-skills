@@ -6,6 +6,7 @@ import { messages } from "./messages.js";
 import { workspaces } from "./workspaces.js";
 
 export const EXTERNAL_ROOM_MESSAGE_PROVIDERS = ["telegram", "whatsapp"] as const;
+export const EXTERNAL_ROOM_MESSAGE_DIRECTIONS = ["outbound", "inbound"] as const;
 
 /** Provider-native ids for room messages, used to correlate external replies without visible receipt text. */
 export const externalRoomMessageReceipts = pgTable(
@@ -24,6 +25,7 @@ export const externalRoomMessageReceipts = pgTable(
     provider: text("provider", { enum: EXTERNAL_ROOM_MESSAGE_PROVIDERS }).notNull(),
     providerConversationId: text("provider_conversation_id").notNull(),
     providerMessageId: text("provider_message_id").notNull(),
+    direction: text("direction", { enum: EXTERNAL_ROOM_MESSAGE_DIRECTIONS }).notNull().default("outbound"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -34,6 +36,13 @@ export const externalRoomMessageReceipts = pgTable(
     ),
     byMessage: index("external_room_message_receipts_message_idx").on(t.messageId),
     byWorkspace: index("external_room_message_receipts_workspace_idx").on(t.workspaceId, t.createdAt),
+    byWorkspaceProviderDirection: index("external_room_message_receipts_readiness_idx").on(
+      t.workspaceId,
+      t.provider,
+      t.direction,
+      t.createdAt,
+    ),
     providerCk: check("external_room_message_receipts_provider_ck", sql`${t.provider} IN ('telegram','whatsapp')`),
+    directionCk: check("external_room_message_receipts_direction_ck", sql`${t.direction} IN ('outbound','inbound')`),
   }),
 );

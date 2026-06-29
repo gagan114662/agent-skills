@@ -224,6 +224,17 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
       alsoSentToChannel: true,
       body: inbound.text,
     });
+    if (inbound.providerMessageId) {
+      await recordExternalRoomMessageReceipt({
+        workspaceId: channel.workspaceId,
+        channelId: receipt.channelId,
+        messageId: message.id,
+        provider: "telegram",
+        providerConversationId: inbound.chatId,
+        providerMessageId: inbound.providerMessageId,
+        direction: "inbound",
+      });
+    }
     await deliverThreadReply(
       req.log,
       { workspaceId: channel.workspaceId, memberId: original.authorMemberId, kind: "human", displayName: "Telegram" },
