@@ -6,7 +6,7 @@ import { listChannelMemberIds } from "../db/repositories/channels.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 import { publishMessageEvent, publishMention } from "../realtime/bus.js";
 import { notify } from "../notifications/service.js";
-import { mirrorExternalRoomPost } from "./external-room-mirror.js";
+import { mirrorExternalRoomPost, type ExternalRoomMirrorSource } from "./external-room-mirror.js";
 
 /**
  * Side-effect fan-out for a freshly-persisted message, factored out of the #4 channel routes so the
@@ -57,6 +57,13 @@ async function fireMarketingMention(
     // safety property (no session launched) still holds; we only lose the launch, which we log.
     log.error({ err }, "marketing @mention launch failed");
   }
+}
+
+export function externalRoomSourceForIdentity(
+  identity: Pick<Identity, "kind">,
+  fallback: Exclude<ExternalRoomMirrorSource, "agent_post">,
+): ExternalRoomMirrorSource {
+  return identity.kind === "agent" ? "agent_post" : fallback;
 }
 
 /**
@@ -149,7 +156,7 @@ export async function deliverPostedMessage(
     channelId: channel.id,
     message,
     author: identity.displayName,
-    source: "room_message",
+    source: externalRoomSourceForIdentity(identity, "room_message"),
   });
 }
 
@@ -183,6 +190,6 @@ export async function deliverThreadReply(
     channelId: channel.id,
     message,
     author: identity.displayName,
-    source: "thread_reply",
+    source: externalRoomSourceForIdentity(identity, "thread_reply"),
   });
 }
