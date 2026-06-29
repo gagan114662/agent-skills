@@ -266,4 +266,29 @@ describe("messaging readiness (#1426)", () => {
     expect(messagesBlocked.relayHeartbeat?.messagesAccess).toBe("failed");
     expect(messagesBlocked.notes).toContain("signed Mac relay cannot access Messages");
   });
+
+  it("does not mark iMessage healthy from an inbound reply to an older outbound message", () => {
+    const readiness = buildIMessageReadiness({
+      status: {
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "owner@example.com",
+        recipientSource: "member_verified",
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient(),
+      latestSentJob: relayJob({ messageId: "latest-agent-update" }),
+      latestInboundReceipt: inboundReceipt({ replyToMessageId: "older-room-start" }),
+      relayHeartbeat: heartbeat(),
+      nowMs,
+    });
+
+    expect(readiness.state).toBe("outbound_sent");
+    expect(readiness.healthy).toBe(false);
+    expect(readiness.latestInboundProof?.replyToMessageId).toBe("older-room-start");
+    expect(readiness.notes).toContain(
+      "latest iMessage inbound proof is not threaded to the latest outbound room message",
+    );
+  });
 });
