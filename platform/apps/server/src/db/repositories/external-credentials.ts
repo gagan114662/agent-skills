@@ -44,6 +44,12 @@ export interface ServiceCredentialActor {
   connectedByMemberId: string | null;
 }
 
+export interface ServiceCredentialDestinationOwner {
+  workspaceId: string;
+  serviceKey: string;
+  connectedByMemberId: string | null;
+}
+
 /** Connect (or re-connect) a service's credentials. The secret values are sealed; last write wins. */
 export async function setServiceCredentials(input: {
   workspaceId: string;
@@ -174,6 +180,49 @@ export async function getServiceCredentialActor(
     .limit(1);
   if (!row || row.status !== "connected") return null;
   return { serviceKey: row.serviceKey, connectedByMemberId: row.connectedByMemberId };
+}
+
+/**
+ * Resolve the one connected workspace that owns a non-secret external-room destination value.
+ *
+ * The vault cannot index encrypted JSON values safely, so webhook ingress performs a bounded scan of rows
+ * for the service and compares the decrypted single destination key in process. It returns no match when
+ * the destination is absent or ambiguous, which is fail-closed for inbound provider messages.
+ */
+export async function findServiceCredentialOwnerBySecretValue(input: {
+  serviceKey: string;
+  envKey: string;
+  value: string;
+}): Promise<ServiceCredentialDestinationOwner | null> {
+  const expected = input.value.trim();
+  if (!expected) return null;
+  const rows = await db
+    .select({
+      workspaceId: externalCredentials.workspaceId,
+      serviceKey: externalCredentials.serviceKey,
+      connectedByMemberId: externalCredentials.connectedByMemberId,
+      secrets: externalCredentials.secrets,
+    })
+    .from(externalCredentials)
+    .where(
+      and(
+        eq(externalCredentials.serviceKey, input.serviceKey),
+        eq(externalCredentials.status, "connected"),
+      ),
+    );
+  const key = loadEncKey();
+  const matches: ServiceCredentialDestinationOwner[] = [];
+  for (const row of rows) {
+    const sealedValue = (row.secrets as Record<string, string>)[input.envKey];
+    if (!sealedValue) continue;
+    if (open(sealedValue, key) !== expected) continue;
+    matches.push({
+      workspaceId: row.workspaceId,
+      serviceKey: row.serviceKey,
+      connectedByMemberId: row.connectedByMemberId,
+    });
+  }
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 /**
