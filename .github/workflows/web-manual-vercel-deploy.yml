@@ -66,10 +66,8 @@ jobs:
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Pull Vercel production env
-        working-directory: platform
         run: npx --yes vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
       - name: Verify Vercel project root
-        working-directory: platform
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -87,7 +85,6 @@ jobs:
           console.log("Vercel project root verified: " + root);
           NODE
       - name: Build web for Vercel production
-        working-directory: platform
         env:
           VITE_RELOAD_BUILD_SHA: ${{ steps.sha.outputs.sha }}
           VERCEL_GIT_COMMIT_SHA: ${{ steps.sha.outputs.sha }}
@@ -96,10 +93,9 @@ jobs:
         working-directory: platform
         env:
           EXPECTED_WEB_SHA: ${{ steps.sha.outputs.sha }}
-          VERCEL_PREBUILT_INDEX: ../../.vercel/output/static/index.html
+          VERCEL_PREBUILT_INDEX: ../../../.vercel/output/static/index.html
         run: pnpm --filter @reload/web deploy:prebuilt:freshness
       - name: Deploy prebuilt web via archive upload
-        working-directory: platform
         run: npx --yes vercel@latest deploy --prebuilt --prod --archive=tgz --token "$VERCEL_TOKEN"
       - name: Verify live production freshness
         working-directory: platform
