@@ -27,9 +27,9 @@ import {
 import { PricingPage } from "./components/landing/PricingPage.js";
 import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { Security } from "./components/landing/Security.js";
-import { Onboarding } from "./components/Onboarding.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
+import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
 import { LegalPage } from "./components/landing/LegalPage.js";
 import { CompanyPage } from "./components/landing/CompanyPage.js";
 import { SiteShell } from "./components/site/SiteShell.js";
@@ -80,7 +80,7 @@ function articleMeta(post: BlogPostMeta): string {
  */
 function marketingPages(): PrerenderPage[] {
   const body: Record<keyof typeof PAGE_SEO, React.JSX.Element> = {
-    "/start": <Onboarding />,
+    "/start": <OnboardingExperience hour={14} />,
     "/welcome": <OnboardingExperience hour={14} />,
     "/demo": <DemoSandbox />,
     "/sandbox": <DemoSandbox />,
@@ -165,9 +165,28 @@ function StaticAppRouteShell(props: { eyebrow: string; title: string; body: stri
 function StaticAuthPage({ mode }: { mode: "login" | "signup" }): React.JSX.Element {
   const isSignup = mode === "signup";
   return (
-    <div className="auth">
-      <form className="auth__card">
-        <h1 className="auth__tag">{isSignup ? "Create your ipop workspace" : "Sign in to ipop"}</h1>
+    <div className="auth auth--message" style={experienceTokenStyle("onboarding")}>
+      <div className="auth-message__sunscape" aria-hidden="true">
+        <span className="auth-message__ray auth-message__ray--one" />
+        <span className="auth-message__ray auth-message__ray--two" />
+        <span className="auth-message__ray auth-message__ray--three" />
+        <span className="auth-message__sun" />
+      </div>
+      <header className="auth-message__nav">
+        <a href="/" className="auth-message__brand" aria-label={BRAND.name}>
+          <span className="auth-message__brand-word">{BRAND.name}</span>
+          <span className="auth-message__proof">marketing team in your messages</span>
+        </a>
+      </header>
+      <main className="auth-message__layout">
+        <section className="auth-message__copy" aria-label="messaging setup">
+          <p className="auth-message__eyebrow">messaging setup</p>
+          <h1>{isSignup ? "Create your agent room" : "Sign in to your agent room"}</h1>
+          <p>Continue iMessage, WhatsApp, and Telegram room setup after this.</p>
+        </section>
+      <form className="auth__card auth__card--message">
+        <h2 className="auth__headline">{isSignup ? "Start here" : "Welcome back"}</h2>
+        <p className="auth__tag">Back to your marketing team in messages.</p>
         {isSignup && (
           <p className="auth__trial" role="note">
             <span className="auth__trial-badge">{PRICING.trial.eyebrow}</span> {PRICING.trial.generic}
@@ -197,6 +216,7 @@ function StaticAuthPage({ mode }: { mode: "login" | "signup" }): React.JSX.Eleme
           {isSignup ? "Create account" : "Sign in"}
         </button>
       </form>
+      </main>
     </div>
   );
 }

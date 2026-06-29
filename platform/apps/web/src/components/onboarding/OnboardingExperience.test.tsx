@@ -144,9 +144,16 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
     expect(screen.getByText(/customer/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toHaveAttribute(
+      "href",
+      "/login?return=%2Feveryday",
+    );
     expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /imessage/i })).toHaveAttribute("href", "#onboard-target");
+    expect(screen.getByRole("link", { name: /whatsapp/i })).toHaveAttribute("href", "#onboard-target");
+    expect(screen.getByRole("link", { name: /telegram/i })).toHaveAttribute("href", "#onboard-target");
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(container.querySelector(".onboard-sunscape__sun")).toBeInTheDocument();
     expect(container.querySelectorAll(".onboard-sunscape__ray")).toHaveLength(3);

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, navigate, replace, useRoute } from "./routing.js";
+import { Link, navigate, normalizeRoutePath, replace, useRoute } from "./routing.js";
 
 function Probe(): React.JSX.Element {
   const path = useRoute();
@@ -14,6 +14,12 @@ afterEach(() => {
 });
 
 describe("routing", () => {
+  it("normalizes trailing slashes for route matching", () => {
+    expect(normalizeRoutePath("/")).toBe("/");
+    expect(normalizeRoutePath("/login/")).toBe("/login");
+    expect(normalizeRoutePath("/start///")).toBe("/start");
+  });
+
   it("useRoute reflects the current pathname and reacts to navigate()", () => {
     render(<Probe />);
     expect(screen.getByTestId("path")).toHaveTextContent("/");
@@ -55,6 +61,16 @@ describe("routing", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(screen.getByTestId("path")).toHaveTextContent("/login");
+  });
+
+  it("useRoute normalizes direct trailing-slash entries", () => {
+    render(<Probe />);
+    act(() => {
+      window.history.replaceState({}, "", "/login/");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByTestId("path")).toHaveTextContent("/login");
+    expect(window.location.pathname).toBe("/login/");
   });
 
   it("Link renders an anchor and client-navigates on plain click (no full reload)", async () => {

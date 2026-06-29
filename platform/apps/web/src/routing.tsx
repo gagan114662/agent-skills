@@ -20,8 +20,12 @@ export const APP_ROUTES = {
   privacy: "/privacy",
 } as const;
 
+export function normalizeRoutePath(pathname: string): string {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
 function path(): string {
-  return window.location.pathname;
+  return normalizeRoutePath(window.location.pathname);
 }
 
 function subscribe(onChange: () => void): () => void {

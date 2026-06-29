@@ -135,7 +135,7 @@ describe("AuthGate routing", () => {
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
-  it("serves the #260 onboarding screen at /start for a logged-out visitor (domain + Google, no password)", async () => {
+  it("serves the messaging-first homepage-style setup at /start for a logged-out visitor", async () => {
     act(() => navigate("/start"));
     renderWithStore(
       <AuthGate>
@@ -144,10 +144,30 @@ describe("AuthGate routing", () => {
       { me: unauthorized },
     );
 
-    expect(await screen.findByRole("button", { name: /connect google to ship/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/your website/i)).toBeInTheDocument();
+    expect(await screen.findByText(/marketing team in your messages/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /imessage/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /whatsapp/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /telegram/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("frames login as returning to messaging room setup", async () => {
+    act(() => navigate("/login"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: unauthorized },
+    );
+
+    expect(await screen.findByRole("heading", { name: /sign in to your agent room/i })).toBeInTheDocument();
+    expect(screen.getByText(/marketing team in your messages/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /imessage/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /whatsapp/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /telegram/i })).toBeInTheDocument();
   });
 
   it("frames signup as checkout for the plan chosen on /pricing (?plan=pro)", async () => {
@@ -353,8 +373,8 @@ describe("AuthGate routing", () => {
       { me: unauthorized },
     );
 
-    // The marketing landing must NOT be served for a deep app link; the visitor lands on sign-in (/start).
-    await screen.findByRole("button", { name: /connect google to ship/i });
+    // The marketing landing must NOT be served for a deep app link; the visitor lands on the messaging setup door.
+    await screen.findByText(/marketing team in your messages/i);
     expect(window.location.pathname).toBe("/start");
     // …and the page they wanted is preserved so we can return them there after they sign in.
     expect(new URLSearchParams(window.location.search).get("return")).toBe("/app/reports");
@@ -374,7 +394,7 @@ describe("AuthGate routing", () => {
       { me: unauthorized },
     );
 
-    await screen.findByRole("button", { name: /connect google to ship/i });
+    await screen.findByText(/marketing team in your messages/i);
     expect(window.location.pathname).toBe("/start");
     // The redirect replaced the /app entry instead of pushing a new one, so Back can't return to the
     // dead route (which would just bounce forward again).
