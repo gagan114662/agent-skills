@@ -485,6 +485,67 @@ describe("iMessage member recipient relay", () => {
         },
       });
 
+      const failedAccessHeartbeat = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/heartbeat",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          version: "dev-1341",
+          messagesAccess: "failed",
+        },
+      });
+      expect(failedAccessHeartbeat.statusCode).toBe(200);
+      expect(failedAccessHeartbeat.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          messagesAccess: "failed",
+          active: true,
+        },
+      });
+
+      const blockedRoom = await queuedApp.inject({
+        method: "POST",
+        url: `/channels/${channelId}/imessage/room`,
+        cookies: { rid: owner.cookie },
+        payload: { text: "agents, show your work in Messages" },
+      });
+      expect(blockedRoom.statusCode).toBe(503);
+      expect(blockedRoom.json()).toMatchObject({
+        status: "not_configured",
+        error: "iMessage Mac relay must be active with Messages access before starting the room.",
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          messagesAccess: "failed",
+          active: true,
+        },
+      });
+      await expect(listChannelMessages(channelId)).resolves.toHaveLength(0);
+      expect(send).not.toHaveBeenCalled();
+
+      const recoveredHeartbeat = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/heartbeat",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          version: "dev-1341",
+          messagesAccess: "ok",
+        },
+      });
+      expect(recoveredHeartbeat.statusCode).toBe(200);
+      expect(recoveredHeartbeat.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          messagesAccess: "ok",
+          active: true,
+        },
+      });
+
       const started = await queuedApp.inject({
         method: "POST",
         url: `/channels/${channelId}/imessage/room`,
