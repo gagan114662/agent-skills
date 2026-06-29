@@ -13,9 +13,12 @@ import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from ".
 import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import { TeamCoordinator } from "../../src/team/coordinator.js";
+import { TelegramRoomService } from "../../src/telegram/service.js";
 import { WhatsAppRoomService, type WhatsAppTransport } from "../../src/whatsapp/service.js";
+import { createExternalRoomMirror, setExternalRoomMirror } from "../../src/messaging/external-room-mirror.js";
 
 let app: FastifyInstance;
+let whatsappService: WhatsAppRoomService;
 const slugs: string[] = [];
 const originalEnv = {
   WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
@@ -64,14 +67,8 @@ const codexSubscription: CodexSubscriptionStatusProvider = {
   },
 };
 
-beforeAll(async () => {
-  process.env.WHATSAPP_ACCESS_TOKEN = "wa-token";
-  process.env.WHATSAPP_PHONE_NUMBER_ID = "phone-id";
-  delete process.env.WHATSAPP_ROOM_RECIPIENT;
-  process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "verify-token";
-  process.env.WHATSAPP_APP_SECRET = "app-secret";
-  const transport: WhatsAppTransport = { sendMessage };
-  const teamCoordinator = new TeamCoordinator({
+function createTeamCoordinator(): TeamCoordinator {
+  return new TeamCoordinator({
     launcher: fakeLauncher,
     channel: new TeamChannel({
       poster: channelPoster,
@@ -81,21 +78,46 @@ beforeAll(async () => {
     maxConcurrency: 4,
     logger: silentLogger,
   });
-  app = buildApp({
-    whatsapp: new WhatsAppRoomService(
-      {
-        accessToken: "wa-token",
-        phoneNumberId: "phone-id",
-        webhookVerifyToken: "verify-token",
-        appSecret: "app-secret",
-        apiBaseUrl: "https://graph.test/v20.0",
-        maxChars: 3500,
-      },
-      transport,
-    ),
-    teamCoordinator,
+}
+
+function buildWhatsAppTestApp(service: WhatsAppRoomService): FastifyInstance {
+  return buildApp({
+    whatsapp: service,
+    teamCoordinator: createTeamCoordinator(),
     codexSubscription,
   });
+}
+
+function restoreExternalRoomMirror(): void {
+  if (!whatsappService) return;
+  setExternalRoomMirror(
+    createExternalRoomMirror({
+      telegram: new TelegramRoomService({ apiBaseUrl: "https://telegram.test", maxChars: 3500 }),
+      whatsapp: whatsappService,
+      log: silentLogger,
+    }),
+  );
+}
+
+beforeAll(async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "wa-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "phone-id";
+  delete process.env.WHATSAPP_ROOM_RECIPIENT;
+  process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "verify-token";
+  process.env.WHATSAPP_APP_SECRET = "app-secret";
+  const transport: WhatsAppTransport = { sendMessage };
+  whatsappService = new WhatsAppRoomService(
+    {
+      accessToken: "wa-token",
+      phoneNumberId: "phone-id",
+      webhookVerifyToken: "verify-token",
+      appSecret: "app-secret",
+      apiBaseUrl: "https://graph.test/v20.0",
+      maxChars: 3500,
+    },
+    transport,
+  );
+  app = buildWhatsAppTestApp(whatsappService);
   await app.ready();
 });
 
@@ -105,6 +127,7 @@ afterEach(() => {
   fakeLauncher.join.mockClear();
   teamLaunches.length = 0;
   codexConnected = false;
+  restoreExternalRoomMirror();
 });
 
 afterAll(async () => {
@@ -126,10 +149,10 @@ function sign(payload: unknown): string {
   return signRaw(JSON.stringify(payload));
 }
 
-async function newOwner(): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
+async function newOwner(targetApp: FastifyInstance = app): Promise<{ cookie: string; workspaceId: string; memberId: string }> {
   const slug = `whatsapp-${newId()}`;
   slugs.push(slug);
-  const signup = await app.inject({
+  const signup = await targetApp.inject({
     method: "POST",
     url: "/auth/signup",
     payload: {
@@ -141,12 +164,16 @@ async function newOwner(): Promise<{ cookie: string; workspaceId: string; member
   });
   expect(signup.statusCode).toBe(201);
   const cookie = signup.cookies.find((c) => c.name === "rid")!.value;
-  const me = (await app.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
+  const me = (await targetApp.inject({ method: "GET", url: "/me", cookies: { rid: cookie } })).json();
   return { cookie, workspaceId: me.workspaceId, memberId: me.memberId };
 }
 
-async function createChannel(owner: { cookie: string; workspaceId: string }, name = "whatsapp-room"): Promise<string> {
-  const res = await app.inject({
+async function createChannel(
+  owner: { cookie: string; workspaceId: string },
+  name = "whatsapp-room",
+  targetApp: FastifyInstance = app,
+): Promise<string> {
+  const res = await targetApp.inject({
     method: "POST",
     url: `/workspaces/${owner.workspaceId}/channels`,
     cookies: { rid: owner.cookie },
@@ -212,6 +239,50 @@ describe("WhatsApp room bridge (#1267)", () => {
     });
     expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: web room update for WhatsApp");
     expect(sendMessage.mock.calls[0]?.[0].text).not.toContain("workspace:");
+  });
+
+  it("does not persist a WhatsApp room start when deployment sender config is missing", async () => {
+    const misconfiguredApp = buildWhatsAppTestApp(
+      new WhatsAppRoomService(
+        {
+          phoneNumberId: "phone-id",
+          webhookVerifyToken: "verify-token",
+          appSecret: "app-secret",
+          apiBaseUrl: "https://graph.test/v20.0",
+          maxChars: 3500,
+        },
+        { sendMessage },
+      ),
+    );
+    await misconfiguredApp.ready();
+    try {
+      const owner = await newOwner(misconfiguredApp);
+      const channelId = await createChannel(owner, "whatsapp-missing-sender", misconfiguredApp);
+      const enable = await misconfiguredApp.inject({
+        method: "POST",
+        url: "/me/connections/whatsapp_room/enable",
+        cookies: { rid: owner.cookie },
+        payload: { recipient: "+1 (555) 111-2222" },
+      });
+      expect(enable.statusCode).toBe(200);
+
+      const started = await misconfiguredApp.inject({
+        method: "POST",
+        url: `/channels/${channelId}/whatsapp/room`,
+        cookies: { rid: owner.cookie },
+        payload: { text: "agents, show the WhatsApp room" },
+      });
+      expect(started.statusCode).toBe(503);
+      expect(started.json()).toMatchObject({
+        status: "not_configured",
+        missingEnv: ["WHATSAPP_ACCESS_TOKEN"],
+      });
+      expect(started.json().message).toBeUndefined();
+      expect(sendMessage).not.toHaveBeenCalled();
+      await expect(listChannelMessages(channelId)).resolves.toHaveLength(0);
+    } finally {
+      await misconfiguredApp.close();
+    }
   });
 
   it("connects a configured WhatsApp room, mirrors room events, and ingests signed replies", async () => {
