@@ -127,6 +127,16 @@ function relayHeartbeatPayload(
   };
 }
 
+function relayHeartbeatReadyForRoom(
+  heartbeat: Awaited<ReturnType<typeof getLatestIMessageRelayHeartbeat>>,
+): boolean {
+  if (!heartbeat) return false;
+  return (
+    Date.now() - heartbeat.checkedInAt.getTime() <= RELAY_HEARTBEAT_ACTIVE_MS &&
+    heartbeat.messagesAccess === "ok"
+  );
+}
+
 function normalizeMessagesAccess(raw: unknown): "unknown" | "ok" | "failed" | undefined {
   return raw === "ok" || raw === "failed" || raw === "unknown" ? raw : undefined;
 }
@@ -309,6 +319,18 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     const preflight = imessageRoomPreflight(status);
     const canQueue = Boolean(preflight?.status === "disabled" && opts.webhookSecret && status.recipient && status.configured && !status.dryRun);
     if (preflight && !canQueue) return reply.code(statusCode(preflight.status)).send(preflight);
+    if (canQueue) {
+      const relayHeartbeat = await getLatestIMessageRelayHeartbeat();
+      if (!relayHeartbeatReadyForRoom(relayHeartbeat)) {
+        return reply.code(503).send({
+          status: "not_configured",
+          dryRun: false,
+          recipient: status.recipient,
+          error: "iMessage Mac relay must be active with Messages access before starting the room.",
+          relayHeartbeat: relayHeartbeatPayload(relayHeartbeat),
+        });
+      }
+    }
 
     const message = await postMessage({
       workspaceId: identity.workspaceId,
