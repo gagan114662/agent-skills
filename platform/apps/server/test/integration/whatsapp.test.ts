@@ -192,7 +192,7 @@ async function newAgent(owner: { cookie: string; workspaceId: string }, name: st
     payload: { name },
   });
   expect(res.statusCode).toBe(201);
-  return { memberId: res.json().id as string, token: res.json().token as string };
+  return { memberId: res.json().memberId as string, token: res.json().token as string };
 }
 
 async function waitForLaunches(count: number): Promise<void> {
