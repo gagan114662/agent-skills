@@ -181,6 +181,7 @@ import { connectionsRoutes } from "./routes/connections.js";
 import { imessageRoutes } from "./routes/imessage.js";
 import { telegramRoutes } from "./routes/telegram.js";
 import { whatsappRoutes } from "./routes/whatsapp.js";
+import { createInboundTeamLaunchService } from "./messaging/inbound-team-launch.js";
 import { gardenRoutes } from "./routes/garden.js";
 import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
@@ -746,6 +747,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // usage route + #113 saturation queue-depth read what the manager runs). With all caps 0 (the
   // default) it admits everything — unchanged #25 behavior — but enables kill-switch-halts-launch + usage.
   const sessionManager = opts.sessionManager ?? createDefaultSessionManager(app.log, scale);
+  const teamCoordinator =
+    opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
+  const codexSubscription = opts.codexSubscription ?? createCodexSubscriptionStatusProvider();
+  const inboundTeamLaunch = createInboundTeamLaunchService({
+    sessionManager,
+    coordinator: teamCoordinator,
+    codexSubscription,
+  });
   app.register(agentSessionRoutes, { sessionManager });
   app.register(scaleRoutes, { admission: scale.admission, config: scale.config, activePlans: scale.activePlans });
   // #69 preflight/doctor: GET /preflight reports whether the configured cloud + real-agent posture
@@ -1180,9 +1189,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   });
   app.register(telegramRoutes, {
     service: opts.telegram ?? createTelegramRoomService(env.telegram),
+    inboundTeamLaunch,
   });
   app.register(whatsappRoutes, {
     service: opts.whatsapp ?? createWhatsAppRoomService(env.whatsapp),
+    inboundTeamLaunch,
   });
   // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each
   // agent per workspace. Default OFF, owner-workspace-first; enabling an external-send agent parks a #13
@@ -1328,11 +1339,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Team Mode: run N agents in parallel on one feature, each on its own subtask/branch, kept in
   // the loop over the channel's shared team protocol. The coordinator reuses the same
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.
-  const teamCoordinator =
-    opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
   app.register(teamRoutes, {
     coordinator: teamCoordinator,
-    codexSubscription: opts.codexSubscription ?? createCodexSubscriptionStatusProvider(),
+    codexSubscription,
   });
   // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in

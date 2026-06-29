@@ -10,6 +10,7 @@ import {
 import { getMessage, postMessage } from "../db/repositories/messages.js";
 import { WHATSAPP_ROOM_CONNECTION_ID } from "../connections/registry.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
+import type { InboundTeamLaunchResult, InboundTeamLaunchService } from "../messaging/inbound-team-launch.js";
 import { parseVisibilityChannelCommand } from "../messaging/visibility-commands.js";
 import { decideRoomApprovalCommand } from "../messaging/room-approval-decisions.js";
 import {
@@ -21,6 +22,7 @@ import {
 
 export interface WhatsAppRoutesOptions {
   service: WhatsAppRoomService;
+  inboundTeamLaunch?: InboundTeamLaunchService;
 }
 
 const WHATSAPP_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
@@ -29,6 +31,10 @@ function statusCode(result: WhatsAppSendResult): number {
   if (result.status === "not_configured") return 503;
   if (result.status === "too_long" || result.status === "failed") return 400;
   return 200;
+}
+
+function launchStatusCode(result: InboundTeamLaunchResult): number {
+  return result.status === "duplicate" ? 200 : 202;
 }
 
 function normalizePhone(raw: unknown): string | null {
@@ -52,12 +58,19 @@ function normalizeProviderMessageId(raw: unknown): string | null {
 
 function extractInboundMessage(
   body: unknown,
-): { from: string; text: string; receipt: string | null; providerReplyToMessageId: string | null } | null {
+): {
+  from: string;
+  text: string;
+  receipt: string | null;
+  providerMessageId: string | null;
+  providerReplyToMessageId: string | null;
+} | null {
   const payload = body as {
     entry?: Array<{
       changes?: Array<{
         value?: {
           messages?: Array<{
+            id?: unknown;
             from?: unknown;
             context?: { id?: unknown };
             text?: { body?: unknown };
@@ -72,9 +85,10 @@ function extractInboundMessage(
   const textRaw = message?.text?.body ?? message?.button?.text;
   const text = typeof textRaw === "string" ? textRaw.trim() : "";
   const receipt = findReceipt(text);
+  const providerMessageId = normalizeProviderMessageId(message?.id);
   const providerReplyToMessageId = normalizeProviderMessageId(message?.context?.id);
   if (!from || !text) return null;
-  return { from, text, receipt, providerReplyToMessageId };
+  return { from, text, receipt, providerMessageId, providerReplyToMessageId };
 }
 
 function rawJsonBody(req: FastifyRequest): string {
@@ -175,8 +189,35 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         return reply.code(401).send({ error: "unauthorized" });
       }
       const inbound = extractInboundMessage(parseRawJsonBody(rawBody));
-      if (!inbound || (!inbound.receipt && !inbound.providerReplyToMessageId)) {
-        return reply.code(400).send({ error: "WhatsApp message, sender, and room reply reference are required" });
+      if (!inbound) {
+        return reply.code(400).send({ error: "WhatsApp message and sender are required" });
+      }
+      if (!inbound.receipt && !inbound.providerReplyToMessageId) {
+        if (!opts.inboundTeamLaunch) {
+          return reply.code(400).send({ error: "WhatsApp room reply reference is required" });
+        }
+        const launched = await opts.inboundTeamLaunch.start({
+          provider: "whatsapp",
+          serviceKey: WHATSAPP_ROOM_CONNECTION_ID,
+          destinationEnvKey: WHATSAPP_RECIPIENT_KEY,
+          providerLabel: "WhatsApp",
+          providerConversationId: inbound.from,
+          providerMessageId: inbound.providerMessageId,
+          text: inbound.text,
+          log: req.log,
+        });
+        const sent = await opts.service.send({ recipient: inbound.from, text: launched.replyText });
+        if (sent.status === "sent" && "workspaceId" in launched) {
+          await recordExternalRoomMessageReceipt({
+            workspaceId: launched.workspaceId,
+            channelId: launched.channelId,
+            messageId: launched.messageId,
+            provider: "whatsapp",
+            providerConversationId: inbound.from,
+            providerMessageId: sent.providerMessageId,
+          });
+        }
+        return reply.code(launchStatusCode(launched)).send({ ...launched, providerReply: sent });
       }
       const receipt =
         parseWhatsAppRoomReceipt(inbound.receipt) ??

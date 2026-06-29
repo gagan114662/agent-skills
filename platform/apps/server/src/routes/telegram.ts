@@ -10,6 +10,7 @@ import {
 import { getMessage, postMessage } from "../db/repositories/messages.js";
 import { TELEGRAM_ROOM_CONNECTION_ID } from "../connections/registry.js";
 import { deliverPostedMessage, deliverThreadReply } from "../messaging/delivery.js";
+import type { InboundTeamLaunchResult, InboundTeamLaunchService } from "../messaging/inbound-team-launch.js";
 import { parseVisibilityChannelCommand } from "../messaging/visibility-commands.js";
 import { decideRoomApprovalCommand } from "../messaging/room-approval-decisions.js";
 import {
@@ -21,6 +22,7 @@ import {
 
 export interface TelegramRoutesOptions {
   service: TelegramRoomService;
+  inboundTeamLaunch?: InboundTeamLaunchService;
 }
 
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
@@ -29,6 +31,10 @@ function statusCode(result: TelegramSendResult): number {
   if (result.status === "not_configured") return 503;
   if (result.status === "too_long" || result.status === "failed") return 400;
   return 200;
+}
+
+function launchStatusCode(result: InboundTeamLaunchResult): number {
+  return result.status === "duplicate" ? 200 : 202;
 }
 
 function requireTelegramSecret(req: FastifyRequest, reply: FastifyReply, secret?: string): boolean {
@@ -62,9 +68,16 @@ function normalizeProviderMessageId(raw: unknown): string | null {
 
 function extractTelegramMessage(
   body: unknown,
-): { chatId: string; text: string; receipt: string | null; providerReplyToMessageId: string | null } | null {
+): {
+  chatId: string;
+  text: string;
+  receipt: string | null;
+  providerMessageId: string | null;
+  providerReplyToMessageId: string | null;
+} | null {
   const update = body as {
     message?: {
+      message_id?: unknown;
       chat?: { id?: unknown };
       text?: unknown;
       reply_to_message?: { message_id?: unknown; text?: unknown };
@@ -74,9 +87,10 @@ function extractTelegramMessage(
   const text = typeof update?.message?.text === "string" ? update.message.text.trim() : "";
   const replyText = typeof update?.message?.reply_to_message?.text === "string" ? update.message.reply_to_message.text : "";
   const receipt = findReceipt(replyText) ?? findReceipt(text);
+  const providerMessageId = normalizeProviderMessageId(update?.message?.message_id);
   const providerReplyToMessageId = normalizeProviderMessageId(update?.message?.reply_to_message?.message_id);
   if (!chatId || !text) return null;
-  return { chatId, text, receipt, providerReplyToMessageId };
+  return { chatId, text, receipt, providerMessageId, providerReplyToMessageId };
 }
 
 function findReceipt(text: string): string | null {
@@ -146,8 +160,35 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
   app.post("/telegram/webhook", async (req, reply) => {
     if (!requireTelegramSecret(req, reply, opts.service.webhookSecret())) return;
     const inbound = extractTelegramMessage(req.body);
-    if (!inbound || (!inbound.receipt && !inbound.providerReplyToMessageId)) {
-      return reply.code(400).send({ error: "Telegram message, chat id, and room reply reference are required" });
+    if (!inbound) {
+      return reply.code(400).send({ error: "Telegram message and chat id are required" });
+    }
+    if (!inbound.receipt && !inbound.providerReplyToMessageId) {
+      if (!opts.inboundTeamLaunch) {
+        return reply.code(400).send({ error: "Telegram room reply reference is required" });
+      }
+      const launched = await opts.inboundTeamLaunch.start({
+        provider: "telegram",
+        serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+        destinationEnvKey: TELEGRAM_CHAT_ID_KEY,
+        providerLabel: "Telegram",
+        providerConversationId: inbound.chatId,
+        providerMessageId: inbound.providerMessageId,
+        text: inbound.text,
+        log: req.log,
+      });
+      const sent = await opts.service.send({ chatId: inbound.chatId, text: launched.replyText });
+      if (sent.status === "sent" && "workspaceId" in launched) {
+        await recordExternalRoomMessageReceipt({
+          workspaceId: launched.workspaceId,
+          channelId: launched.channelId,
+          messageId: launched.messageId,
+          provider: "telegram",
+          providerConversationId: inbound.chatId,
+          providerMessageId: sent.providerMessageId,
+        });
+      }
+      return reply.code(launchStatusCode(launched)).send({ ...launched, providerReply: sent });
     }
     const receipt =
       parseTelegramRoomReceipt(inbound.receipt) ??

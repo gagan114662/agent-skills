@@ -8,6 +8,11 @@ import { workspaces } from "../../src/db/schema/index.js";
 import { listChannelMessages } from "../../src/db/repositories/messages.js";
 import { newId } from "../../src/db/id.js";
 import { closeRedis } from "../../src/redis/index.js";
+import { channelPoster } from "../../src/runtime/default.js";
+import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from "../../src/routes/team.js";
+import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
+import { TeamChannel } from "../../src/team/channel.js";
+import { TeamCoordinator } from "../../src/team/coordinator.js";
 import { WhatsAppRoomService, type WhatsAppTransport } from "../../src/whatsapp/service.js";
 
 let app: FastifyInstance;
@@ -20,6 +25,44 @@ const originalEnv = {
   WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET,
 };
 const sendMessage = vi.fn(async () => ({ ok: true, messageId: "wamid.room.42" }));
+const teamLaunches: LaunchInput[] = [];
+let codexConnected = false;
+
+const silentLogger: SessionLogger = {
+  child: () => silentLogger,
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
+
+const fakeLauncher = {
+  launch: vi.fn(async (input: LaunchInput) => {
+    teamLaunches.push(input);
+    return { id: "whatsapp-session-" + teamLaunches.length };
+  }),
+  join: vi.fn(async () => {}),
+};
+
+function codexStatus(connected: boolean): CodexSubscriptionStatus {
+  return {
+    connected,
+    reason: connected
+      ? "OpenAI ChatGPT subscription auth is ready for Codex agent runs."
+      : "Codex subscription auth is not connected for this workspace yet.",
+    selectedHarness: "codex",
+    userAuthenticated: true,
+    workspaceAuthenticated: true,
+    runtimeAuth: connected ? "signed_in_subscription" : "missing",
+    fallback: "none",
+    apiKeySatisfies: false,
+  };
+}
+
+const codexSubscription: CodexSubscriptionStatusProvider = {
+  async status() {
+    return codexStatus(codexConnected);
+  },
+};
 
 beforeAll(async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "wa-token";
@@ -28,6 +71,16 @@ beforeAll(async () => {
   process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "verify-token";
   process.env.WHATSAPP_APP_SECRET = "app-secret";
   const transport: WhatsAppTransport = { sendMessage };
+  const teamCoordinator = new TeamCoordinator({
+    launcher: fakeLauncher,
+    channel: new TeamChannel({
+      poster: channelPoster,
+      publish: async () => {},
+      listMessages: listChannelMessages,
+    }),
+    maxConcurrency: 4,
+    logger: silentLogger,
+  });
   app = buildApp({
     whatsapp: new WhatsAppRoomService(
       {
@@ -40,12 +93,18 @@ beforeAll(async () => {
       },
       transport,
     ),
+    teamCoordinator,
+    codexSubscription,
   });
   await app.ready();
 });
 
 afterEach(() => {
   sendMessage.mockClear();
+  fakeLauncher.launch.mockClear();
+  fakeLauncher.join.mockClear();
+  teamLaunches.length = 0;
+  codexConnected = false;
 });
 
 afterAll(async () => {
@@ -106,6 +165,14 @@ async function newAgent(owner: { cookie: string; workspaceId: string }, name: st
   });
   expect(res.statusCode).toBe(201);
   return { token: res.json().token as string };
+}
+
+async function waitForLaunches(count: number): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (teamLaunches.length < count) {
+    if (Date.now() > deadline) throw new Error("expected " + count + " team launches, saw " + teamLaunches.length);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 describe("WhatsApp room bridge (#1267)", () => {
@@ -281,5 +348,65 @@ describe("WhatsApp room bridge (#1267)", () => {
       await app.inject({ method: "GET", url: `/approvals/${rid}`, cookies: { rid: owner.cookie } })
     ).json();
     expect(request.status).toBe("executed");
+  });
+
+  it("lets a first inbound WhatsApp message start the Codex marketing team room (#1423)", async () => {
+    codexConnected = true;
+    const owner = await newOwner();
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: owner.cookie },
+      payload: { recipient: "+1 (555) 222-3333" },
+    });
+    expect(enable.statusCode).toBe(200);
+
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.inbound.1",
+                    from: "15552223333",
+                    text: { body: "market ipop.ai" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const rawPayload = JSON.stringify(payload);
+    const first = await app.inject({
+      method: "POST",
+      url: "/whatsapp/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signRaw(rawPayload),
+      },
+      payload: rawPayload,
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(first.json()).toMatchObject({
+      status: "launched",
+      subtaskCount: 4,
+      providerReply: { status: "sent", recipient: "15552223333" },
+    });
+    expect(sendMessage).toHaveBeenCalledWith({
+      accessToken: "wa-token",
+      apiBaseUrl: "https://graph.test/v20.0",
+      phoneNumberId: "phone-id",
+      recipient: "15552223333",
+      text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
+    });
+    await waitForLaunches(4);
+    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
+    expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
+    expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");
   });
 });
