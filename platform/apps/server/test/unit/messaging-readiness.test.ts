@@ -226,6 +226,7 @@ describe("messaging readiness (#1426)", () => {
     });
     expect(healthy.state).toBe("healthy");
     expect(healthy.healthy).toBe(true);
+    expect(healthy.missingConfig).toEqual([]);
 
     const staleHeartbeat = buildIMessageReadiness({
       status: {
@@ -244,6 +245,7 @@ describe("messaging readiness (#1426)", () => {
     });
     expect(staleHeartbeat.state).toBe("configured_unproven");
     expect(staleHeartbeat.healthy).toBe(false);
+    expect(staleHeartbeat.missingConfig).toContain("active_iMessage_relay");
     expect(staleHeartbeat.notes).toContain("signed Mac relay heartbeat is not active");
 
     const messagesBlocked = buildIMessageReadiness({
@@ -263,8 +265,63 @@ describe("messaging readiness (#1426)", () => {
     });
     expect(messagesBlocked.state).toBe("configured_unproven");
     expect(messagesBlocked.healthy).toBe(false);
+    expect(messagesBlocked.missingConfig).toContain("iMessage_messages_access");
     expect(messagesBlocked.relayHeartbeat?.messagesAccess).toBe("failed");
-    expect(messagesBlocked.notes).toContain("signed Mac relay cannot access Messages");
+    expect(messagesBlocked.notes).toContain(
+      "signed Mac relay cannot access Messages; grant Messages Automation and Full Disk Access or set IMESSAGE_MESSAGES_DB_PATH",
+    );
+  });
+
+  it("reports each iMessage operational gate in missingConfig", () => {
+    const disabled = buildIMessageReadiness({
+      status: {
+        enabled: false,
+        configured: true,
+        dryRun: false,
+        recipient: "owner@example.com",
+        recipientSource: "member_verified",
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient(),
+      relayHeartbeat: heartbeat(),
+      nowMs,
+    });
+    expect(disabled.state).toBe("disabled");
+    expect(disabled.missingConfig).toContain("iMessage_relay_enabled");
+
+    const dryRun = buildIMessageReadiness({
+      status: {
+        enabled: true,
+        configured: true,
+        dryRun: true,
+        recipient: "owner@example.com",
+        recipientSource: "member_verified",
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient(),
+      relayHeartbeat: heartbeat(),
+      nowMs,
+    });
+    expect(dryRun.state).toBe("disabled");
+    expect(dryRun.missingConfig).toContain("iMessage_relay_live_mode");
+
+    const pendingRecipient = buildIMessageReadiness({
+      status: {
+        enabled: true,
+        configured: false,
+        dryRun: false,
+        recipient: "owner@example.com",
+        recipientSource: "member_pending",
+        requiresVerification: true,
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient({ verifiedAt: null }),
+      nowMs,
+    });
+    expect(pendingRecipient.state).toBe("config_missing");
+    expect(pendingRecipient.missingConfig).toEqual(
+      expect.arrayContaining(["verified_iMessage_recipient", "active_iMessage_relay"]),
+    );
   });
 
   it("does not mark iMessage healthy from an inbound reply to an older outbound message", () => {
