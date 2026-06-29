@@ -192,9 +192,10 @@ describe("Telegram room bridge (#1267)", () => {
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "445566",
-      text: expect.stringContaining(`receipt: telegram:${channelId}:${posted.json().id}`),
+      text: expect.stringContaining(`ref: tg:${channelId}:${posted.json().id}`),
     });
-    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: room message: web room update for Telegram");
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: web room update for Telegram");
+    expect(sendMessage.mock.calls[0]?.[0].text).not.toContain("workspace:");
 
     sendMessage.mockClear();
     const reply = await app.inject({
@@ -204,7 +205,7 @@ describe("Telegram room bridge (#1267)", () => {
       payload: { body: "thread reply for Telegram" },
     });
     expect(reply.statusCode).toBe(201);
-    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: thread reply: thread reply for Telegram");
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: reply: thread reply for Telegram");
   });
 
   it("connects a configured Telegram room, mirrors room events, and ingests signed replies", async () => {
@@ -260,7 +261,7 @@ describe("Telegram room bridge (#1267)", () => {
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "123456",
-      text: expect.stringContaining(`receipt: telegram:${channelId}:${started.json().message.id}`),
+      text: expect.stringContaining(`ref: tg:${channelId}:${started.json().message.id}`),
     });
     await expect(listChannelMessages(channelId)).resolves.toHaveLength(1);
 
@@ -441,7 +442,7 @@ describe("Telegram room bridge (#1267)", () => {
       text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
     });
     await waitForLaunches(4);
-    await waitForSendContaining("agent update: started:");
+    await waitForSendContaining("started:");
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");

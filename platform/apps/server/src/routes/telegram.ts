@@ -94,7 +94,7 @@ function extractTelegramMessage(
 }
 
 function findReceipt(text: string): string | null {
-  const match = /(?:^|\s)receipt:\s*(telegram:[^\s]+)/i.exec(text);
+  const match = /(?:^|\s)(?:receipt|ref):\s*((?:telegram|tg):[^\s]+)/i.exec(text);
   return match?.[1] ?? null;
 }
 

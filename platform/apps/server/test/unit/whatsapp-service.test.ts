@@ -16,7 +16,11 @@ describe("WhatsApp room service (#1267)", () => {
       author: "Gagan",
       text: "show the team working",
     });
-    expect(text).toContain("receipt: whatsapp:ch1:msg1");
+    expect(text).not.toContain("workspace:");
+    expect(text).toContain("ref: wa:ch1:msg1");
+    expect(text).toContain("Gagan: show the team working");
+    expect(parseWhatsAppRoomReceipt("ref: wa:ch1:msg1")).toEqual({ channelId: "ch1", messageId: "msg1" });
+    expect(parseWhatsAppRoomReceipt("receipt: whatsapp:ch1:msg1")).toEqual({ channelId: "ch1", messageId: "msg1" });
     expect(parseWhatsAppRoomReceipt("whatsapp:ch1:msg1")).toEqual({ channelId: "ch1", messageId: "msg1" });
     expect(parseWhatsAppRoomReceipt("telegram:ch1:msg1")).toBeNull();
   });
