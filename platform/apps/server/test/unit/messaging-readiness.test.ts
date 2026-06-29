@@ -36,6 +36,7 @@ function externalProof(input: Partial<ExternalRoomMessageProof> = {}): ExternalR
     workspaceId: input.workspaceId ?? "w1",
     channelId: input.channelId ?? "c1",
     messageId: input.messageId ?? "m1",
+    replyToMessageId: input.replyToMessageId,
     provider: input.provider ?? "telegram",
     providerConversationId: input.providerConversationId ?? "123456",
     providerMessageId: input.providerMessageId ?? "provider-1",
@@ -133,7 +134,12 @@ describe("messaging readiness (#1426)", () => {
 
   it("requires fresh outbound and inbound provider proof for external-room health", () => {
     const outbound = externalProof({ direction: "outbound" });
-    const inbound = externalProof({ direction: "inbound", messageId: "reply-1", providerMessageId: "provider-2" });
+    const correlatedInbound = externalProof({
+      direction: "inbound",
+      messageId: "reply-1",
+      providerMessageId: "provider-2",
+      replyToMessageId: "m1",
+    });
     const healthy = buildExternalProviderReadiness({
       provider: "telegram",
       label: "Telegram",
@@ -143,12 +149,13 @@ describe("messaging readiness (#1426)", () => {
       connectedByMemberId: "member-1",
       destination: "123456",
       outboundProof: outbound,
-      inboundProof: inbound,
+      inboundProof: correlatedInbound,
       nowMs,
     });
     expect(healthy.state).toBe("healthy");
     expect(healthy.healthy).toBe(true);
     expect(healthy.destination.connectedByMemberId).toBe("member-1");
+    expect(healthy.latestInboundProof?.replyToMessageId).toBe("m1");
 
     const staleOutbound = buildExternalProviderReadiness({
       provider: "telegram",
@@ -161,11 +168,44 @@ describe("messaging readiness (#1426)", () => {
         direction: "outbound",
         createdAt: new Date(nowMs - ROUND_TRIP_PROOF_MAX_AGE_MS - 1),
       }),
-      inboundProof: inbound,
+      inboundProof: correlatedInbound,
       nowMs,
     });
     expect(staleOutbound.state).toBe("inbound_received");
     expect(staleOutbound.latestOutboundProof?.stale).toBe(true);
+  });
+
+  it("does not mark external-room readiness healthy from unthreaded inbound proof", () => {
+    const readiness = buildExternalProviderReadiness({
+      provider: "whatsapp",
+      label: "WhatsApp",
+      configured: true,
+      missingConfig: [],
+      connection: connection({ serviceKey: "whatsapp_room" }),
+      destination: "15551112222",
+      outboundProof: externalProof({
+        provider: "whatsapp",
+        providerConversationId: "15551112222",
+        providerMessageId: "wamid.outbound",
+        messageId: "room-message-1",
+      }),
+      inboundProof: externalProof({
+        provider: "whatsapp",
+        providerConversationId: "15551112222",
+        providerMessageId: "wamid.inbound",
+        direction: "inbound",
+        messageId: "reply-message-1",
+        replyToMessageId: "different-room-message",
+      }),
+      nowMs,
+    });
+
+    expect(readiness.state).toBe("outbound_sent");
+    expect(readiness.healthy).toBe(false);
+    expect(readiness.latestInboundProof?.replyToMessageId).toBe("different-room-message");
+    expect(readiness.notes).toContain(
+      "latest inbound proof is not threaded to the latest outbound room message",
+    );
   });
 
   it("requires iMessage relay config, fresh proof, and active heartbeat", () => {

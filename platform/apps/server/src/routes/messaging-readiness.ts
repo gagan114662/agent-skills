@@ -6,7 +6,7 @@ import {
   getServiceStatus,
   resolveServiceSecrets,
 } from "../db/repositories/external-credentials.js";
-import { getLatestExternalRoomMessageProof } from "../db/repositories/external-room-message-receipts.js";
+import { getLatestExternalRoomRoundTripProof } from "../db/repositories/external-room-message-receipts.js";
 import {
   getIMessageRecipient,
   getLatestIMessageRelayHeartbeat,
@@ -68,39 +68,21 @@ export async function messagingReadinessRoutes(
 
     const telegramDestination = normalizeTelegramDestination(telegramSecrets[TELEGRAM_CHAT_ID_KEY]);
     const whatsappDestination = normalizeWhatsAppDestination(whatsappSecrets[WHATSAPP_RECIPIENT_KEY]);
-    const [telegramOutbound, telegramInbound, whatsappOutbound, whatsappInbound] = await Promise.all([
+    const [telegramProof, whatsappProof] = await Promise.all([
       telegramDestination
-        ? getLatestExternalRoomMessageProof({
+        ? getLatestExternalRoomRoundTripProof({
             workspaceId: identity.workspaceId,
             provider: "telegram",
-            direction: "outbound",
             providerConversationId: telegramDestination,
           })
-        : Promise.resolve(undefined),
-      telegramDestination
-        ? getLatestExternalRoomMessageProof({
-            workspaceId: identity.workspaceId,
-            provider: "telegram",
-            direction: "inbound",
-            providerConversationId: telegramDestination,
-          })
-        : Promise.resolve(undefined),
+        : Promise.resolve({ outbound: undefined, inbound: undefined }),
       whatsappDestination
-        ? getLatestExternalRoomMessageProof({
+        ? getLatestExternalRoomRoundTripProof({
             workspaceId: identity.workspaceId,
             provider: "whatsapp",
-            direction: "outbound",
             providerConversationId: whatsappDestination,
           })
-        : Promise.resolve(undefined),
-      whatsappDestination
-        ? getLatestExternalRoomMessageProof({
-            workspaceId: identity.workspaceId,
-            provider: "whatsapp",
-            direction: "inbound",
-            providerConversationId: whatsappDestination,
-          })
-        : Promise.resolve(undefined),
+        : Promise.resolve({ outbound: undefined, inbound: undefined }),
     ]);
 
     const imessageStatus = imessageRecipient
@@ -124,8 +106,8 @@ export async function messagingReadinessRoutes(
           connection: telegramConnection,
           connectedByMemberId: telegramActor?.connectedByMemberId ?? null,
           destination: telegramDestination,
-          outboundProof: telegramOutbound,
-          inboundProof: telegramInbound,
+          outboundProof: telegramProof.outbound,
+          inboundProof: telegramProof.inbound,
           nowMs,
         }),
         buildExternalProviderReadiness({
@@ -136,8 +118,8 @@ export async function messagingReadinessRoutes(
           connection: whatsappConnection,
           connectedByMemberId: whatsappActor?.connectedByMemberId ?? null,
           destination: whatsappDestination,
-          outboundProof: whatsappOutbound,
-          inboundProof: whatsappInbound,
+          outboundProof: whatsappProof.outbound,
+          inboundProof: whatsappProof.inbound,
           nowMs,
         }),
         buildIMessageReadiness({

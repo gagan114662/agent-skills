@@ -22,6 +22,7 @@ export type MessagingReadinessState =
 export interface MessagingProofSummary {
   channelId: string | null;
   messageId: string | null;
+  replyToMessageId?: string | null;
   providerConversationId?: string;
   providerMessageId?: string;
   createdAt: string;
@@ -97,6 +98,7 @@ function proofSummary(proof: ExternalRoomMessageProof | undefined, nowMs: number
   return {
     channelId: proof.channelId,
     messageId: proof.messageId,
+    replyToMessageId: proof.replyToMessageId,
     providerConversationId: proof.providerConversationId,
     providerMessageId: proof.providerMessageId,
     createdAt: proof.createdAt.toISOString(),
@@ -162,15 +164,29 @@ export function buildExternalProviderReadiness(input: ExternalProviderReadinessI
   const nowMs = input.nowMs ?? Date.now();
   const outbound = proofSummary(input.outboundProof, nowMs);
   const inbound = proofSummary(input.inboundProof, nowMs);
+  const inboundCorrelatesToOutbound = Boolean(
+    outbound &&
+    inbound &&
+    inbound.channelId === outbound.channelId &&
+    inbound.providerConversationId === outbound.providerConversationId &&
+    inbound.replyToMessageId === outbound.messageId,
+  );
   const destinationConfigured = Boolean(input.destination);
   const configured = input.configured && Boolean(input.connection?.connected) && destinationConfigured;
-  const state = roundTripState({ configured, outbound, inbound });
+  const state = roundTripState({
+    configured,
+    outbound,
+    inbound: inboundCorrelatesToOutbound ? inbound : null,
+  });
   const notes: string[] = [];
   if (input.missingConfig.length > 0) notes.push("deployment config missing: " + input.missingConfig.join(", "));
   if (!input.connection?.connected) notes.push("workspace has not connected a " + input.label + " destination");
   if (input.connection?.connected && !destinationConfigured) notes.push("connected credential is missing the room destination");
   if (outbound?.stale) notes.push("latest outbound proof is stale");
   if (inbound?.stale) notes.push("latest inbound proof is stale");
+  if (outbound && inbound && !inboundCorrelatesToOutbound) {
+    notes.push("latest inbound proof is not threaded to the latest outbound room message");
+  }
   if (configured && state !== "healthy") notes.push("send and reply in the same external room to complete round-trip proof");
 
   return {
