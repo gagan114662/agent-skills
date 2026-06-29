@@ -6,6 +6,7 @@ import { buildApp } from "../../src/app.js";
 import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { listChannelMessages } from "../../src/db/repositories/messages.js";
+import { getExternalRoomMessageReceipt } from "../../src/db/repositories/external-room-message-receipts.js";
 import { newId } from "../../src/db/id.js";
 import { closeRedis } from "../../src/redis/index.js";
 import { channelPoster } from "../../src/runtime/default.js";
@@ -183,7 +184,7 @@ async function createChannel(
   return res.json().id as string;
 }
 
-async function newAgent(owner: { cookie: string; workspaceId: string }, name: string): Promise<{ token: string }> {
+async function newAgent(owner: { cookie: string; workspaceId: string }, name: string): Promise<{ memberId: string; token: string }> {
   const res = await app.inject({
     method: "POST",
     url: `/workspaces/${owner.workspaceId}/agents`,
@@ -191,7 +192,7 @@ async function newAgent(owner: { cookie: string; workspaceId: string }, name: st
     payload: { name },
   });
   expect(res.statusCode).toBe(201);
-  return { token: res.json().token as string };
+  return { memberId: res.json().memberId as string, token: res.json().token as string };
 }
 
 async function waitForLaunches(count: number): Promise<void> {
@@ -206,6 +207,22 @@ async function waitForSendContaining(text: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (!sendMessage.mock.calls.some((call) => String(call[0].text).includes(text))) {
     if (Date.now() > deadline) throw new Error("expected WhatsApp send containing " + text);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function waitForProviderReceipt(providerConversationId: string, providerMessageId: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (
+    !(await getExternalRoomMessageReceipt({
+      provider: "whatsapp",
+      providerConversationId,
+      providerMessageId,
+    }))
+  ) {
+    if (Date.now() > deadline) {
+      throw new Error("expected WhatsApp receipt " + providerConversationId + "/" + providerMessageId);
+    }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
@@ -239,6 +256,72 @@ describe("WhatsApp room bridge (#1267)", () => {
     });
     expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: web room update for WhatsApp");
     expect(sendMessage.mock.calls[0]?.[0].text).not.toContain("workspace:");
+  });
+
+  it("authors WhatsApp replies to agent updates as the connected human, not the agent", async () => {
+    const owner = await newOwner();
+    const channelId = await createChannel(owner);
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: owner.cookie },
+      payload: { recipient: "+1 (555) 777-8888" },
+    });
+    expect(enable.statusCode).toBe(200);
+    const agent = await newAgent(owner, `scout-${newId()}`);
+
+    sendMessage.mockClear();
+    const agentPost = await channelPoster.post({
+      workspaceId: owner.workspaceId,
+      channelId,
+      agentMemberId: agent.memberId,
+      body: "Scout finished the competitor readout",
+    });
+    await waitForSendContaining(`ref: wa:${channelId}:${agentPost.id}`);
+    await waitForProviderReceipt("15557778888", "wamid.room.42");
+
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.owner.reply",
+                    from: "15557778888",
+                    context: { id: "wamid.room.42" },
+                    text: { body: "tighten the launch angle" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const rawPayload = JSON.stringify(payload);
+    const inbound = await app.inject({
+      method: "POST",
+      url: "/whatsapp/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signRaw(rawPayload),
+      },
+      payload: rawPayload,
+    });
+
+    expect(inbound.statusCode).toBe(201);
+    expect(inbound.json()).toMatchObject({
+      status: "ingested",
+      message: {
+        channelId,
+        authorMemberId: owner.memberId,
+        parentMessageId: agentPost.id,
+        alsoSentToChannel: true,
+      },
+    });
+    expect(inbound.json().message.authorMemberId).not.toBe(agent.memberId);
   });
 
   it("does not persist a WhatsApp room start when deployment sender config is missing", async () => {
