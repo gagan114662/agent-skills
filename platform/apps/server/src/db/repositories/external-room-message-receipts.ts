@@ -58,3 +58,22 @@ export async function getExternalRoomMessageReceipt(input: {
     .limit(1);
   return row as ExternalRoomMessageReceipt | undefined;
 }
+
+export async function getExternalRoomMessageReceiptForMessage(input: {
+  provider: ExternalRoomMessageProvider;
+  providerConversationId: string;
+  messageId: string;
+}): Promise<ExternalRoomMessageReceipt | undefined> {
+  const [row] = await db
+    .select(receiptColumns)
+    .from(externalRoomMessageReceipts)
+    .where(
+      and(
+        eq(externalRoomMessageReceipts.provider, input.provider),
+        eq(externalRoomMessageReceipts.providerConversationId, input.providerConversationId),
+        eq(externalRoomMessageReceipts.messageId, input.messageId),
+      ),
+    )
+    .limit(1);
+  return row as ExternalRoomMessageReceipt | undefined;
+}

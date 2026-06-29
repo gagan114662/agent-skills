@@ -51,6 +51,7 @@ import { createAgentRegistryService } from "./agent-registry/default.js";
 import { parseHandoffChain } from "./agent-registry/handoff.js";
 import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
+import { createExternalRoomMirror, setExternalRoomMirror } from "./messaging/external-room-mirror.js";
 import { slackRoutes } from "./routes/slack.js";
 import { createDefaultSlackService, createDefaultSlackDigestEngine } from "./slack/default.js";
 import type { SlackEventService } from "./slack/service.js";
@@ -750,6 +751,15 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const teamCoordinator =
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
   const codexSubscription = opts.codexSubscription ?? createCodexSubscriptionStatusProvider();
+  const telegramService = opts.telegram ?? createTelegramRoomService(env.telegram);
+  const whatsappService = opts.whatsapp ?? createWhatsAppRoomService(env.whatsapp);
+  setExternalRoomMirror(
+    createExternalRoomMirror({
+      telegram: telegramService,
+      whatsapp: whatsappService,
+      log: app.log,
+    }),
+  );
   const inboundTeamLaunch = createInboundTeamLaunchService({
     sessionManager,
     coordinator: teamCoordinator,
@@ -948,6 +958,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.addHook("onClose", async () => {
     setMarketingMentionTrigger(undefined);
     setChannelPostHook(undefined);
+    setExternalRoomMirror(undefined);
     setDeliverableHandoffHook(undefined);
     setApprovalPendingHook(undefined);
     slackDigestEngine.stop();
@@ -1188,11 +1199,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     webhookSecret: opts.imessageWebhookSecret ?? env.imessage.webhookSecret,
   });
   app.register(telegramRoutes, {
-    service: opts.telegram ?? createTelegramRoomService(env.telegram),
+    service: telegramService,
     inboundTeamLaunch,
   });
   app.register(whatsappRoutes, {
-    service: opts.whatsapp ?? createWhatsAppRoomService(env.whatsapp),
+    service: whatsappService,
     inboundTeamLaunch,
   });
   // #284 Agent Garden: browse the department fleet (the #282 registry contracts) + enable/disable each

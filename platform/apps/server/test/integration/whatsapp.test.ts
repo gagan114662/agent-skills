@@ -175,7 +175,44 @@ async function waitForLaunches(count: number): Promise<void> {
   }
 }
 
+async function waitForSendContaining(text: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!sendMessage.mock.calls.some((call) => String(call[0].text).includes(text))) {
+    if (Date.now() > deadline) throw new Error("expected WhatsApp send containing " + text);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 describe("WhatsApp room bridge (#1267)", () => {
+  it("automatically mirrors signed-in web room messages to WhatsApp (#1424)", async () => {
+    const owner = await newOwner();
+    const channelId = await createChannel(owner);
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: owner.cookie },
+      payload: { recipient: "+1 (555) 333-4444" },
+    });
+    expect(enable.statusCode).toBe(200);
+
+    const posted = await app.inject({
+      method: "POST",
+      url: `/channels/${channelId}/messages`,
+      cookies: { rid: owner.cookie },
+      payload: { body: "web room update for WhatsApp" },
+    });
+
+    expect(posted.statusCode).toBe(201);
+    expect(sendMessage).toHaveBeenCalledWith({
+      accessToken: "wa-token",
+      apiBaseUrl: "https://graph.test/v20.0",
+      phoneNumberId: "phone-id",
+      recipient: "15553334444",
+      text: expect.stringContaining(`receipt: whatsapp:${channelId}:${posted.json().id}`),
+    });
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: room message: web room update for WhatsApp");
+  });
+
   it("connects a configured WhatsApp room, mirrors room events, and ingests signed replies", async () => {
     const owner = await newOwner();
     const channelId = await createChannel(owner);
@@ -405,6 +442,7 @@ describe("WhatsApp room bridge (#1267)", () => {
       text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
     });
     await waitForLaunches(4);
+    await waitForSendContaining("agent update: started:");
     expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");
