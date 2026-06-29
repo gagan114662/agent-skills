@@ -52,6 +52,7 @@ import { parseHandoffChain } from "./agent-registry/handoff.js";
 import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
 import { createExternalRoomMirror, setExternalRoomMirror } from "./messaging/external-room-mirror.js";
+import { createIMessageRoomMirror, setIMessageRoomMirror } from "./messaging/imessage-room-mirror.js";
 import { slackRoutes } from "./routes/slack.js";
 import { createDefaultSlackService, createDefaultSlackDigestEngine } from "./slack/default.js";
 import type { SlackEventService } from "./slack/service.js";
@@ -762,6 +763,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
       log: app.log,
     }),
   );
+  setIMessageRoomMirror(createIMessageRoomMirror({ log: app.log }));
   const inboundTeamLaunch = createInboundTeamLaunchService({
     sessionManager,
     coordinator: teamCoordinator,
@@ -961,6 +963,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     setMarketingMentionTrigger(undefined);
     setChannelPostHook(undefined);
     setExternalRoomMirror(undefined);
+    setIMessageRoomMirror(undefined);
     setDeliverableHandoffHook(undefined);
     setApprovalPendingHook(undefined);
     slackDigestEngine.stop();
