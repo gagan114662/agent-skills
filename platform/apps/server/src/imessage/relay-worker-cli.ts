@@ -1,6 +1,10 @@
 #!/usr/bin/env tsx
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { hostname } from "node:os";
+import { homedir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -10,9 +14,14 @@ const execFileAsync = promisify(execFile);
 
 interface RelayJob {
   id: string;
+  workspaceId: string;
+  channelId: string | null;
+  messageId: string | null;
+  purpose: "verification" | "room" | "notification";
   recipient: string;
   serviceName: string | null;
   text: string;
+  receipt: string | null;
 }
 
 interface ClaimResponse {
@@ -31,6 +40,11 @@ interface RelayWorkerConfig {
   once: boolean;
   doctor: boolean;
   osascriptBin: string;
+  sqliteBin: string;
+  inboundEnabled: boolean;
+  messagesDbPath: string;
+  stateFile: string;
+  inboundLimit: number;
   doctorTimeoutMs: number;
 }
 
@@ -38,6 +52,34 @@ interface DoctorCheck {
   name: string;
   status: "pass" | "fail";
   message: string;
+}
+
+export interface RelayTrackedReceipt {
+  workspaceId: string;
+  recipient: string;
+  receipt: string;
+  lastSeenRowId: number;
+  updatedAt: string;
+}
+
+export interface RelayWorkerState {
+  trackedReceipts: Record<string, RelayTrackedReceipt>;
+}
+
+export interface InboundMessageCandidate {
+  rowId: number;
+  sender: string;
+  text: string;
+}
+
+export interface InboundRelayDelivery {
+  rowId: number;
+  payload: {
+    workspaceId: string;
+    receipt: string;
+    sender: string;
+    text: string;
+  };
 }
 
 function requiredFrom(env: NodeJS.ProcessEnv, name: string): string {
@@ -73,6 +115,12 @@ function positiveNumber(raw: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function envFlag(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
+  const raw = env[name]?.trim().toLowerCase();
+  if (raw === undefined || raw === "") return fallback;
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 export function parseRelayWorkerConfig(input: {
   env?: NodeJS.ProcessEnv;
   argv?: string[];
@@ -98,6 +146,11 @@ export function parseRelayWorkerConfig(input: {
     once: argv.includes("--once"),
     doctor: argv.includes("--doctor"),
     osascriptBin: env.IMESSAGE_OSASCRIPT_BIN || "osascript",
+    sqliteBin: env.IMESSAGE_SQLITE_BIN || "sqlite3",
+    inboundEnabled: envFlag(env, "IMESSAGE_RELAY_INBOUND_ENABLED", true),
+    messagesDbPath: env.IMESSAGE_MESSAGES_DB_PATH?.trim() || join(homedir(), "Library", "Messages", "chat.db"),
+    stateFile: env.IMESSAGE_RELAY_STATE_FILE?.trim() || join(homedir(), ".ipop", "imessage-relay-state.json"),
+    inboundLimit: positiveNumber(env.IMESSAGE_RELAY_INBOUND_LIMIT, 25),
     doctorTimeoutMs: positiveNumber(env.IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS, 10_000),
   };
 }
@@ -183,10 +236,35 @@ async function checkMessagesAccess(input: {
   }
 }
 
+async function checkMessagesDb(input: { adapter: MacOsMessagesAdapter; dbPath: string }): Promise<DoctorCheck> {
+  if (!existsSync(input.dbPath)) {
+    return {
+      name: "messages-db",
+      status: "fail",
+      message: "Messages chat database not found at " + input.dbPath,
+    };
+  }
+  try {
+    const rowId = await input.adapter.latestMessageRowId({ dbPath: input.dbPath });
+    return {
+      name: "messages-db",
+      status: "pass",
+      message: "Messages chat database is readable (latest row " + rowId + ")",
+    };
+  } catch (error) {
+    return {
+      name: "messages-db",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function runRelayDoctor(input: {
   config: RelayWorkerConfig;
   execFileImpl?: typeof execFileAsync;
   postJsonImpl?: typeof postJson;
+  adapter?: MacOsMessagesAdapter;
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
   checks.push(
@@ -202,6 +280,14 @@ export async function runRelayDoctor(input: {
     execFileImpl: input.execFileImpl,
   });
   checks.push(messagesAccess);
+  if (input.config.inboundEnabled) {
+    checks.push(
+      await checkMessagesDb({
+        adapter: input.adapter ?? new MacOsMessagesAdapter(input.config.osascriptBin, input.config.sqliteBin),
+        dbPath: input.config.messagesDbPath,
+      }),
+    );
+  }
   try {
     await (input.postJsonImpl ?? postJson)(apiUrl(input.config.baseUrl, "/imessage/relay/heartbeat"), input.config.secret, {
       relayId: input.config.relayId,
@@ -224,6 +310,134 @@ export async function runRelayDoctor(input: {
   return checks;
 }
 
+function emptyState(): RelayWorkerState {
+  return { trackedReceipts: {} };
+}
+
+export function normalizeRelayRecipient(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+export function rememberSentRelayJob(state: RelayWorkerState, job: RelayJob, lastSeenRowId: number, now = new Date()): RelayWorkerState {
+  if (!job.receipt || !job.workspaceId || !job.recipient.trim()) return state;
+  const key = normalizeRelayRecipient(job.recipient);
+  return {
+    trackedReceipts: {
+      ...state.trackedReceipts,
+      [key]: {
+        workspaceId: job.workspaceId,
+        recipient: job.recipient,
+        receipt: job.receipt,
+        lastSeenRowId: Math.max(0, Math.floor(lastSeenRowId)),
+        updatedAt: now.toISOString(),
+      },
+    },
+  };
+}
+
+export function buildInboundRelayDeliveries(
+  state: RelayWorkerState,
+  candidates: InboundMessageCandidate[],
+): { deliveries: InboundRelayDelivery[]; state: RelayWorkerState } {
+  let nextState = state;
+  const deliveries: InboundRelayDelivery[] = [];
+  for (const candidate of candidates.sort((a, b) => a.rowId - b.rowId)) {
+    const key = normalizeRelayRecipient(candidate.sender);
+    const tracked = nextState.trackedReceipts[key];
+    if (!tracked || candidate.rowId <= tracked.lastSeenRowId || !candidate.text.trim()) continue;
+    deliveries.push({
+      rowId: candidate.rowId,
+      payload: {
+        workspaceId: tracked.workspaceId,
+        receipt: tracked.receipt,
+        sender: candidate.sender,
+        text: candidate.text,
+      },
+    });
+    nextState = {
+      trackedReceipts: {
+        ...nextState.trackedReceipts,
+        [key]: {
+          ...tracked,
+          lastSeenRowId: candidate.rowId,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
+  return { deliveries, state: nextState };
+}
+
+async function loadState(path: string): Promise<RelayWorkerState> {
+  try {
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw) as Partial<RelayWorkerState>;
+    return parsed && typeof parsed === "object" && parsed.trackedReceipts ? (parsed as RelayWorkerState) : emptyState();
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "ENOENT") return emptyState();
+    throw error;
+  }
+}
+
+async function saveState(path: string, state: RelayWorkerState): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(state, null, 2) + "\n", "utf8");
+}
+
+async function syncInboundReplies(input: {
+  baseUrl: string;
+  secret: string;
+  stateFile: string;
+  messagesDbPath: string;
+  inboundLimit: number;
+  adapter: MacOsMessagesAdapter;
+}): Promise<number> {
+  const state = await loadState(input.stateFile);
+  const tracked = Object.values(state.trackedReceipts);
+  if (tracked.length === 0) return 0;
+  const afterRowId = Math.min(...tracked.map((entry) => entry.lastSeenRowId));
+  const candidates = await input.adapter.inboundMessagesAfter({
+    dbPath: input.messagesDbPath,
+    recipients: tracked.map((entry) => entry.recipient),
+    afterRowId,
+    limit: input.inboundLimit,
+  });
+  const built = buildInboundRelayDeliveries(state, candidates);
+  let sent = 0;
+  let nextState = state;
+  for (const delivery of built.deliveries) {
+    try {
+      await postJson(apiUrl(input.baseUrl, "/imessage/relay/inbound"), input.secret, delivery.payload);
+      sent += 1;
+      const key = normalizeRelayRecipient(delivery.payload.sender);
+      const tracked = nextState.trackedReceipts[key];
+      if (tracked) {
+        nextState = {
+          trackedReceipts: {
+            ...nextState.trackedReceipts,
+            [key]: {
+              ...tracked,
+              lastSeenRowId: delivery.rowId,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      }
+      console.log("relayed inbound iMessage row " + delivery.rowId + " from " + delivery.payload.sender);
+    } catch (error) {
+      console.error(
+        "failed inbound iMessage row " +
+          delivery.rowId +
+          ": " +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+  if (sent > 0) await saveState(input.stateFile, nextState);
+  return sent;
+}
+
 async function runOnce(input: {
   baseUrl: string;
   secret: string;
@@ -233,6 +447,10 @@ async function runOnce(input: {
   limit: number;
   leaseMs: number;
   adapter: MacOsMessagesAdapter;
+  inboundEnabled: boolean;
+  messagesDbPath: string;
+  stateFile: string;
+  inboundLimit: number;
 }): Promise<number> {
   await postJson(apiUrl(input.baseUrl, "/imessage/relay/heartbeat"), input.secret, {
     relayId: input.relayId,
@@ -245,6 +463,7 @@ async function runOnce(input: {
     leaseMs: input.leaseMs,
   });
   const jobs = claim.jobs ?? [];
+  let state = input.inboundEnabled ? await loadState(input.stateFile) : emptyState();
   for (const job of jobs) {
     try {
       await input.adapter.send({
@@ -256,6 +475,20 @@ async function runOnce(input: {
         relayId: input.relayId,
         status: "sent",
       });
+      if (input.inboundEnabled) {
+        try {
+          const lastSeenRowId = await input.adapter.latestMessageRowId({ dbPath: input.messagesDbPath });
+          state = rememberSentRelayJob(state, job, lastSeenRowId);
+          await saveState(input.stateFile, state);
+        } catch (error) {
+          console.error(
+            "sent imessage relay job " +
+              job.id +
+              " but could not track inbound replies: " +
+              (error instanceof Error ? error.message : String(error)),
+          );
+        }
+      }
       console.log("sent imessage relay job " + job.id + " -> " + job.recipient);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -265,6 +498,13 @@ async function runOnce(input: {
         error: message,
       });
       console.error("failed imessage relay job " + job.id + ": " + message);
+    }
+  }
+  if (input.inboundEnabled) {
+    try {
+      await syncInboundReplies(input);
+    } catch (error) {
+      console.error("iMessage inbound sync failed: " + (error instanceof Error ? error.message : String(error)));
     }
   }
   return jobs.length;
@@ -279,7 +519,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const adapter = new MacOsMessagesAdapter(config.osascriptBin);
+  const adapter = new MacOsMessagesAdapter(config.osascriptBin, config.sqliteBin);
   let shouldContinue = true;
   while (shouldContinue) {
     const count = await runOnce({ ...config, adapter });

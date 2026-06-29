@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseRelayWorkerConfig, runRelayDoctor } from "../../src/imessage/relay-worker-cli.js";
+import { MacOsMessagesAdapter } from "../../src/imessage/macos-adapter.js";
+import {
+  buildInboundRelayDeliveries,
+  parseRelayWorkerConfig,
+  rememberSentRelayJob,
+  runRelayDoctor,
+} from "../../src/imessage/relay-worker-cli.js";
 
 describe("iMessage relay worker CLI (#1341)", () => {
   it("requires a logged-in macOS host unless explicitly allowed for tests", () => {
@@ -25,6 +31,10 @@ describe("iMessage relay worker CLI (#1341)", () => {
         IMESSAGE_RELAY_POLL_MS: "3000",
         IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS: "12000",
         IMESSAGE_OSASCRIPT_BIN: "/usr/bin/osascript",
+        IMESSAGE_SQLITE_BIN: "/usr/bin/sqlite3",
+        IMESSAGE_MESSAGES_DB_PATH: "/tmp/messages/chat.db",
+        IMESSAGE_RELAY_STATE_FILE: "/tmp/ipop/imessage-state.json",
+        IMESSAGE_RELAY_INBOUND_LIMIT: "13",
       },
       platform: "darwin",
       host: "Gagans-MacBook-Pro",
@@ -41,6 +51,11 @@ describe("iMessage relay worker CLI (#1341)", () => {
       once: true,
       doctor: true,
       osascriptBin: "/usr/bin/osascript",
+      sqliteBin: "/usr/bin/sqlite3",
+      inboundEnabled: true,
+      messagesDbPath: "/tmp/messages/chat.db",
+      stateFile: "/tmp/ipop/imessage-state.json",
+      inboundLimit: 13,
     });
     expect(config.secret).toBe("SECRET_RELAY");
   });
@@ -54,7 +69,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
-        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "secret" },
+        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "secret", IMESSAGE_RELAY_INBOUND_ENABLED: "0" },
         platform: "darwin",
         host: "Gagans-MacBook-Pro",
       }),
@@ -97,7 +112,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
-        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "secret" },
+        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "secret", IMESSAGE_RELAY_INBOUND_ENABLED: "0" },
         platform: "darwin",
         host: "Gagans-MacBook-Pro",
       }),
@@ -137,6 +152,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         argv: ["--doctor"],
         env: {
           IMESSAGE_RELAY_WEBHOOK_SECRET: "secret",
+          IMESSAGE_RELAY_INBOUND_ENABLED: "0",
           IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS: "25",
         },
         platform: "darwin",
@@ -177,7 +193,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
-        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "wrong" },
+        env: { IMESSAGE_RELAY_WEBHOOK_SECRET: "wrong", IMESSAGE_RELAY_INBOUND_ENABLED: "0" },
         platform: "darwin",
         host: "Gagans-MacBook-Pro",
       }),
@@ -188,5 +204,70 @@ describe("iMessage relay worker CLI (#1341)", () => {
     });
 
     expect(checks).toContainEqual({ name: "api-heartbeat", status: "fail", message: "unauthorized" });
+  });
+
+  it("doctor reports missing Messages chat database access when inbound sync is enabled", async () => {
+    const adapter = {
+      latestMessageRowId: vi.fn(async () => 123),
+    } as unknown as MacOsMessagesAdapter;
+    const checks = await runRelayDoctor({
+      config: parseRelayWorkerConfig({
+        argv: ["--doctor"],
+        env: {
+          IMESSAGE_RELAY_WEBHOOK_SECRET: "secret",
+          IMESSAGE_MESSAGES_DB_PATH: "/tmp/messages-chat.db",
+        },
+        platform: "darwin",
+        host: "Gagans-MacBook-Pro",
+      }),
+      execFileImpl: vi.fn(async () => ({ stdout: "ok", stderr: "" })),
+      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      adapter,
+    });
+
+    expect(checks).toContainEqual({
+      name: "messages-db",
+      status: "fail",
+      message: "Messages chat database not found at /tmp/messages-chat.db",
+    });
+    expect(adapter.latestMessageRowId).not.toHaveBeenCalled();
+  });
+
+  it("maps new inbound Messages rows onto the latest sent room receipt", () => {
+    const state = rememberSentRelayJob(
+      { trackedReceipts: {} },
+      {
+        id: "job_1",
+        workspaceId: "workspace_1",
+        channelId: "channel_1",
+        messageId: "message_1",
+        purpose: "room",
+        recipient: "Founder@Example.com",
+        serviceName: null,
+        text: "receipt: imessage:channel_1:message_1",
+        receipt: "imessage:channel_1:message_1",
+      },
+      40,
+      new Date("2026-06-29T00:00:00Z"),
+    );
+
+    const result = buildInboundRelayDeliveries(state, [
+      { rowId: 39, sender: "founder@example.com", text: "old reply" },
+      { rowId: 41, sender: "founder@example.com", text: "tell Scout to update pricing" },
+      { rowId: 42, sender: "other@example.com", text: "ignore me" },
+    ]);
+
+    expect(result.deliveries).toEqual([
+      {
+        rowId: 41,
+        payload: {
+          workspaceId: "workspace_1",
+          receipt: "imessage:channel_1:message_1",
+          sender: "founder@example.com",
+          text: "tell Scout to update pricing",
+        },
+      },
+    ]);
+    expect(result.state.trackedReceipts["founder@example.com"]?.lastSeenRowId).toBe(41);
   });
 });
