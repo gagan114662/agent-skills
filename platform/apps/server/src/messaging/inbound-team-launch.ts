@@ -232,6 +232,7 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           provider: input.provider,
           providerConversationId: input.providerConversationId,
           providerMessageId: input.providerMessageId,
+          direction: "inbound",
         });
       }
 

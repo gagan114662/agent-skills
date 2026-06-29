@@ -253,6 +253,17 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         alsoSentToChannel: true,
         body: inbound.text,
       });
+      if (inbound.providerMessageId) {
+        await recordExternalRoomMessageReceipt({
+          workspaceId: channel.workspaceId,
+          channelId: receipt.channelId,
+          messageId: message.id,
+          provider: "whatsapp",
+          providerConversationId: inbound.from,
+          providerMessageId: inbound.providerMessageId,
+          direction: "inbound",
+        });
+      }
       await deliverThreadReply(
         req.log,
         {

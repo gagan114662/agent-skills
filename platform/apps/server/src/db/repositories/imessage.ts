@@ -306,6 +306,25 @@ export async function getLatestIMessageRelayJobForMember(input: {
   return row as IMessageRelayJob | undefined;
 }
 
+export async function getLatestSentIMessageRelayJobForMember(input: {
+  workspaceId: string;
+  memberId: string;
+}): Promise<IMessageRelayJob | undefined> {
+  const [row] = await db
+    .select(JOB_COLUMNS)
+    .from(imessageRelayJobs)
+    .where(
+      and(
+        eq(imessageRelayJobs.workspaceId, input.workspaceId),
+        eq(imessageRelayJobs.memberId, input.memberId),
+        eq(imessageRelayJobs.status, "sent"),
+      ),
+    )
+    .orderBy(desc(imessageRelayJobs.sentAt))
+    .limit(1);
+  return row as IMessageRelayJob | undefined;
+}
+
 export async function recordIMessageRelayHeartbeat(input: {
   relayId: string;
   host: string;

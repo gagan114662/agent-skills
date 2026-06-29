@@ -180,6 +180,7 @@ import { hostedRoutes } from "./routes/hosted.js";
 import { socialRoutes } from "./routes/social.js";
 import { connectionsRoutes } from "./routes/connections.js";
 import { imessageRoutes } from "./routes/imessage.js";
+import { messagingReadinessRoutes } from "./routes/messaging-readiness.js";
 import { telegramRoutes } from "./routes/telegram.js";
 import { whatsappRoutes } from "./routes/whatsapp.js";
 import { createInboundTeamLaunchService } from "./messaging/inbound-team-launch.js";
@@ -751,6 +752,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const teamCoordinator =
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
   const codexSubscription = opts.codexSubscription ?? createCodexSubscriptionStatusProvider();
+  const imessageService = opts.imessage ?? createIMessageRelayService(env.imessage);
   const telegramService = opts.telegram ?? createTelegramRoomService(env.telegram);
   const whatsappService = opts.whatsapp ?? createWhatsAppRoomService(env.whatsapp);
   setExternalRoomMirror(
@@ -1195,8 +1197,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // its token into the #192 vault so `publish_site` needs no Fly server secret.
   app.register(connectionsRoutes);
   app.register(imessageRoutes, {
-    service: opts.imessage ?? createIMessageRelayService(env.imessage),
+    service: imessageService,
     webhookSecret: opts.imessageWebhookSecret ?? env.imessage.webhookSecret,
+  });
+  app.register(messagingReadinessRoutes, {
+    telegram: telegramService,
+    whatsapp: whatsappService,
+    imessage: imessageService,
   });
   app.register(telegramRoutes, {
     service: telegramService,
