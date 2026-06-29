@@ -24,7 +24,7 @@ const sendMessage = vi.fn(async () => ({ ok: true, messageId: "wamid.room.42" })
 beforeAll(async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "wa-token";
   process.env.WHATSAPP_PHONE_NUMBER_ID = "phone-id";
-  process.env.WHATSAPP_ROOM_RECIPIENT = "15551112222";
+  delete process.env.WHATSAPP_ROOM_RECIPIENT;
   process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "verify-token";
   process.env.WHATSAPP_APP_SECRET = "app-secret";
   const transport: WhatsAppTransport = { sendMessage };
@@ -33,7 +33,6 @@ beforeAll(async () => {
       {
         accessToken: "wa-token",
         phoneNumberId: "phone-id",
-        roomRecipient: "15551112222",
         webhookVerifyToken: "verify-token",
         appSecret: "app-secret",
         apiBaseUrl: "https://graph.test/v20.0",
@@ -121,10 +120,18 @@ describe("WhatsApp room bridge (#1267)", () => {
     expect(challenge.statusCode).toBe(200);
     expect(challenge.body).toBe("ok-123");
 
+    const missingDestination = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: owner.cookie },
+    });
+    expect(missingDestination.statusCode).toBe(400);
+
     const enable = await app.inject({
       method: "POST",
       url: "/me/connections/whatsapp_room/enable",
       cookies: { rid: owner.cookie },
+      payload: { recipient: "+1 (555) 111-2222" },
     });
     expect(enable.statusCode).toBe(200);
     expect(enable.json()).toMatchObject({

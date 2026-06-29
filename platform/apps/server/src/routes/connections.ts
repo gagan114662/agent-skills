@@ -70,12 +70,10 @@ const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
 const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 const IMESSAGE_MACOS_HOST_KEYS = ["IMESSAGE_RELAY_MACOS_HOST"] as const;
 const TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN";
-const TELEGRAM_ROOM_CHAT_ID_KEY = "TELEGRAM_ROOM_CHAT_ID";
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const TELEGRAM_WEBHOOK_SECRET_KEY = "TELEGRAM_WEBHOOK_SECRET";
 const WHATSAPP_ACCESS_TOKEN_KEY = "WHATSAPP_ACCESS_TOKEN";
 const WHATSAPP_PHONE_NUMBER_ID_KEY = "WHATSAPP_PHONE_NUMBER_ID";
-const WHATSAPP_ROOM_RECIPIENT_KEY = "WHATSAPP_ROOM_RECIPIENT";
 const WHATSAPP_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY = "WHATSAPP_WEBHOOK_VERIFY_TOKEN";
 const WHATSAPP_APP_SECRET_KEY = "WHATSAPP_APP_SECRET";
@@ -128,6 +126,26 @@ interface EmailProviderProof {
   secrets: Record<string, string>;
 }
 
+type MessagingProviderProof =
+  | { ok: true; secrets: Record<string, string> }
+  | { ok: false; error: string };
+
+function normalizeTelegramChatId(raw: unknown): string | null {
+  if (typeof raw === "number" && Number.isSafeInteger(raw)) return String(raw);
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!/^-?[0-9]{3,32}$/.test(value)) return null;
+  return value;
+}
+
+function normalizeWhatsAppRecipient(raw: unknown): string | null {
+  if (typeof raw === "number" && Number.isSafeInteger(raw)) return String(raw);
+  if (typeof raw !== "string") return null;
+  const value = raw.replace(/[ +().-]/g, "").trim();
+  if (!/^[0-9]{7,18}$/.test(value)) return null;
+  return value;
+}
+
 function emailProviderProofSecrets(workspaceId: string): EmailProviderProof | null {
   const reach = loadConfig(workspaceId).reach;
   if (reach?.liveSendEnabled !== true) return null;
@@ -170,25 +188,35 @@ function emailProviderProofSecrets(workspaceId: string): EmailProviderProof | nu
   return null;
 }
 
-function telegramProviderProofSecrets(): Record<string, string> {
+function telegramProviderProofSecrets(input: Record<string, unknown>): MessagingProviderProof {
   const botToken = process.env[TELEGRAM_BOT_TOKEN_KEY]?.trim() ?? "";
-  const chatId = process.env[TELEGRAM_ROOM_CHAT_ID_KEY]?.trim() ?? "";
   const webhookSecret = process.env[TELEGRAM_WEBHOOK_SECRET_KEY]?.trim() ?? "";
-  if (!botToken || !chatId || !webhookSecret) return {};
+  if (!botToken || !webhookSecret) return { ok: false, error: "Telegram sender and webhook config are required" };
+  const chatId = normalizeTelegramChatId(input.chatId);
+  if (!chatId) return { ok: false, error: "Telegram chat id is required" };
   return {
-    [TELEGRAM_CHAT_ID_KEY]: chatId,
+    ok: true,
+    secrets: {
+      [TELEGRAM_CHAT_ID_KEY]: chatId,
+    },
   };
 }
 
-function whatsappProviderProofSecrets(): Record<string, string> {
+function whatsappProviderProofSecrets(input: Record<string, unknown>): MessagingProviderProof {
   const accessToken = process.env[WHATSAPP_ACCESS_TOKEN_KEY]?.trim() ?? "";
   const phoneNumberId = process.env[WHATSAPP_PHONE_NUMBER_ID_KEY]?.trim() ?? "";
-  const recipient = process.env[WHATSAPP_ROOM_RECIPIENT_KEY]?.trim() ?? "";
   const verifyToken = process.env[WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]?.trim() ?? "";
   const appSecret = process.env[WHATSAPP_APP_SECRET_KEY]?.trim() ?? "";
-  if (!accessToken || !phoneNumberId || !recipient || !verifyToken || !appSecret) return {};
+  if (!accessToken || !phoneNumberId || !verifyToken || !appSecret) {
+    return { ok: false, error: "WhatsApp sender and webhook config are required" };
+  }
+  const recipient = normalizeWhatsAppRecipient(input.recipient);
+  if (!recipient) return { ok: false, error: "WhatsApp recipient phone number is required" };
   return {
-    [WHATSAPP_RECIPIENT_KEY]: recipient,
+    ok: true,
+    secrets: {
+      [WHATSAPP_RECIPIENT_KEY]: recipient,
+    },
   };
 }
 
@@ -284,7 +312,6 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       if (descriptor.id === TELEGRAM_ROOM_CONNECTION_ID) {
         const missing = [
           ...(process.env[TELEGRAM_BOT_TOKEN_KEY]?.trim() ? [] : [TELEGRAM_BOT_TOKEN_KEY]),
-          ...(process.env[TELEGRAM_ROOM_CHAT_ID_KEY]?.trim() ? [] : [TELEGRAM_ROOM_CHAT_ID_KEY]),
           ...(process.env[TELEGRAM_WEBHOOK_SECRET_KEY]?.trim() ? [] : [TELEGRAM_WEBHOOK_SECRET_KEY]),
         ];
         if (missing.length === 0) {
@@ -292,7 +319,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
             ...descriptor,
             status: "available",
             summary:
-              "Mirror the agent room into the configured Telegram chat with signed webhook replies back into ipop.",
+              "Connect your Telegram chat, then mirror the agent room with signed webhook replies back into ipop.",
           };
         }
         return {
@@ -301,7 +328,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
             code: "telegram_room_missing_config",
             missingEnv: missing,
             remedy:
-              "Set TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks with X-Telegram-Bot-Api-Secret-Token.",
+              "Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks with X-Telegram-Bot-Api-Secret-Token.",
           },
         };
       }
@@ -309,7 +336,6 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         const missing = [
           ...(process.env[WHATSAPP_ACCESS_TOKEN_KEY]?.trim() ? [] : [WHATSAPP_ACCESS_TOKEN_KEY]),
           ...(process.env[WHATSAPP_PHONE_NUMBER_ID_KEY]?.trim() ? [] : [WHATSAPP_PHONE_NUMBER_ID_KEY]),
-          ...(process.env[WHATSAPP_ROOM_RECIPIENT_KEY]?.trim() ? [] : [WHATSAPP_ROOM_RECIPIENT_KEY]),
           ...(process.env[WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]?.trim() ? [] : [WHATSAPP_WEBHOOK_VERIFY_TOKEN_KEY]),
           ...(process.env[WHATSAPP_APP_SECRET_KEY]?.trim() ? [] : [WHATSAPP_APP_SECRET_KEY]),
         ];
@@ -318,7 +344,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
             ...descriptor,
             status: "available",
             summary:
-              "Mirror the agent room into the configured WhatsApp Business chat with signed webhook replies back into ipop.",
+              "Connect your WhatsApp destination, then mirror the agent room with signed webhook replies back into ipop.",
           };
         }
         return {
@@ -327,7 +353,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
             code: "whatsapp_room_missing_config",
             missingEnv: missing,
             remedy:
-              "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ROOM_RECIPIENT, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for /whatsapp/webhook.",
+              "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for /whatsapp/webhook.",
           },
         };
       }
@@ -465,6 +491,7 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     if (!identity) return;
     const wid = identity.workspaceId;
     const id = (req.params as { id: string }).id;
+    const body = (req.body ?? {}) as Record<string, unknown>;
     const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(wid, id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
     const emailProof = decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : null;
@@ -477,14 +504,18 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       });
       if (!channelConnection.ok) return reply.code(400).send({ error: channelConnection.error });
     }
-    const providerSecrets =
-      decision.serviceKey === EMAIL_CONNECTION_ID
-        ? (emailProof?.secrets ?? {})
-        : decision.serviceKey === TELEGRAM_ROOM_CONNECTION_ID
-          ? telegramProviderProofSecrets()
-          : decision.serviceKey === WHATSAPP_ROOM_CONNECTION_ID
-            ? whatsappProviderProofSecrets()
-          : {};
+    let providerSecrets: Record<string, string> =
+      decision.serviceKey === EMAIL_CONNECTION_ID ? (emailProof?.secrets ?? {}) : {};
+    if (decision.serviceKey === TELEGRAM_ROOM_CONNECTION_ID) {
+      const proof = telegramProviderProofSecrets(body);
+      if (!proof.ok) return reply.code(400).send({ error: proof.error });
+      providerSecrets = proof.secrets;
+    }
+    if (decision.serviceKey === WHATSAPP_ROOM_CONNECTION_ID) {
+      const proof = whatsappProviderProofSecrets(body);
+      if (!proof.ok) return reply.code(400).send({ error: proof.error });
+      providerSecrets = proof.secrets;
+    }
     await setServiceCredentials({
       workspaceId: wid,
       serviceKey: emailProof?.serviceKey ?? decision.serviceKey,
