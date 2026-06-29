@@ -20,14 +20,13 @@ const sendMessage = vi.fn(async () => ({ ok: true, messageId: "42" }));
 
 beforeAll(async () => {
   process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-  process.env.TELEGRAM_ROOM_CHAT_ID = "123456";
+  delete process.env.TELEGRAM_ROOM_CHAT_ID;
   process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
   const transport: TelegramTransport = { sendMessage };
   app = buildApp({
     telegram: new TelegramRoomService(
       {
         botToken: "bot-token",
-        roomChatId: "123456",
         webhookSecret: "telegram-secret",
         apiBaseUrl: "https://telegram.test",
         maxChars: 3500,
@@ -111,10 +110,18 @@ describe("Telegram room bridge (#1267)", () => {
       providerStatus: "unproven",
     });
 
+    const missingDestination = await app.inject({
+      method: "POST",
+      url: "/me/connections/telegram_room/enable",
+      cookies: { rid: owner.cookie },
+    });
+    expect(missingDestination.statusCode).toBe(400);
+
     const enable = await app.inject({
       method: "POST",
       url: "/me/connections/telegram_room/enable",
       cookies: { rid: owner.cookie },
+      payload: { chatId: "123456" },
     });
     expect(enable.statusCode).toBe(200);
     expect(enable.json()).toMatchObject({

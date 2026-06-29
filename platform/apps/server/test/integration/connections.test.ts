@@ -41,6 +41,14 @@ afterEach(() => {
   delete process.env.IMESSAGE_RELAY_ENABLED;
   delete process.env.IMESSAGE_RELAY_DRY_RUN;
   delete process.env.IMESSAGE_RELAY_MACOS_HOST;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_ROOM_CHAT_ID;
+  delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  delete process.env.WHATSAPP_ACCESS_TOKEN;
+  delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+  delete process.env.WHATSAPP_ROOM_RECIPIENT;
+  delete process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+  delete process.env.WHATSAPP_APP_SECRET;
 });
 
 async function seed(): Promise<{ cookie: string; workspaceId: string }> {
@@ -319,6 +327,78 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     });
     expect(del.statusCode).toBe(200);
     expect(await resolveServiceSecrets(workspaceId, "postmark")).toEqual({});
+  });
+
+  it("requires user-specific destinations for configured messaging room connectors (#1422)", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
+    process.env.WHATSAPP_ACCESS_TOKEN = "wa-token";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "phone-id";
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "verify-token";
+    process.env.WHATSAPP_APP_SECRET = "app-secret";
+    const { cookie, workspaceId } = await seed();
+
+    const before = (
+      await app.inject({ method: "GET", url: "/me/connections", cookies: { rid: cookie } })
+    ).json();
+    expect(before.connections.find((c: { id: string }) => c.id === "telegram_room")).toMatchObject({
+      status: "available",
+      connected: false,
+      providerStatus: "unproven",
+      configIssue: null,
+    });
+    expect(before.connections.find((c: { id: string }) => c.id === "whatsapp_room")).toMatchObject({
+      status: "available",
+      connected: false,
+      providerStatus: "unproven",
+      configIssue: null,
+    });
+
+    const missingTelegram = await app.inject({
+      method: "POST",
+      url: "/me/connections/telegram_room/enable",
+      cookies: { rid: cookie },
+    });
+    expect(missingTelegram.statusCode).toBe(400);
+
+    const telegram = await app.inject({
+      method: "POST",
+      url: "/me/connections/telegram_room/enable",
+      cookies: { rid: cookie },
+      payload: { chatId: "-1001234567890" },
+    });
+    expect(telegram.statusCode).toBe(200);
+    expect(telegram.json()).toMatchObject({
+      connected: true,
+      id: "telegram_room",
+      providerStatus: "healthy",
+    });
+    await expect(resolveServiceSecrets(workspaceId, "telegram_room")).resolves.toMatchObject({
+      TELEGRAM_CHAT_ID: "-1001234567890",
+    });
+
+    const missingWhatsApp = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: cookie },
+    });
+    expect(missingWhatsApp.statusCode).toBe(400);
+
+    const whatsapp = await app.inject({
+      method: "POST",
+      url: "/me/connections/whatsapp_room/enable",
+      cookies: { rid: cookie },
+      payload: { recipient: "+1 (555) 111-2222" },
+    });
+    expect(whatsapp.statusCode).toBe(200);
+    expect(whatsapp.json()).toMatchObject({
+      connected: true,
+      id: "whatsapp_room",
+      providerStatus: "healthy",
+    });
+    await expect(resolveServiceSecrets(workspaceId, "whatsapp_room")).resolves.toMatchObject({
+      WHATSAPP_RECIPIENT: "15551112222",
+    });
   });
 
   it("enabling a not-yet-available connector is refused; a coming-soon connector offers the waitlist instead (#507)", async () => {

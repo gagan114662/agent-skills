@@ -564,12 +564,11 @@ function checkTelegramRoomConfig(env: NodeJS.ProcessEnv, required: boolean): Che
     label: "Telegram room bridge",
     vars: {
       TELEGRAM_BOT_TOKEN: Boolean(env.TELEGRAM_BOT_TOKEN),
-      TELEGRAM_ROOM_CHAT_ID: Boolean(env.TELEGRAM_ROOM_CHAT_ID),
       TELEGRAM_WEBHOOK_SECRET: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
     },
     required,
     remedy:
-      "Set TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks to https://<api-host>/telegram/webhook with X-Telegram-Bot-Api-Secret-Token.",
+      "Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET, then configure Telegram to send webhooks to https://<api-host>/telegram/webhook with X-Telegram-Bot-Api-Secret-Token.",
   });
 }
 
@@ -580,13 +579,12 @@ function checkWhatsAppRoomConfig(env: NodeJS.ProcessEnv, required: boolean): Che
     vars: {
       WHATSAPP_ACCESS_TOKEN: Boolean(env.WHATSAPP_ACCESS_TOKEN),
       WHATSAPP_PHONE_NUMBER_ID: Boolean(env.WHATSAPP_PHONE_NUMBER_ID),
-      WHATSAPP_ROOM_RECIPIENT: Boolean(env.WHATSAPP_ROOM_RECIPIENT),
       WHATSAPP_WEBHOOK_VERIFY_TOKEN: Boolean(env.WHATSAPP_WEBHOOK_VERIFY_TOKEN),
       WHATSAPP_APP_SECRET: Boolean(env.WHATSAPP_APP_SECRET),
     },
     required,
     remedy:
-      "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ROOM_RECIPIENT, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for https://<api-host>/whatsapp/webhook.",
+      "Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WEBHOOK_VERIFY_TOKEN, and WHATSAPP_APP_SECRET, then configure the Meta webhook for https://<api-host>/whatsapp/webhook.",
   });
 }
 

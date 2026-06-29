@@ -21,11 +21,11 @@ describe("Telegram room service (#1267)", () => {
     expect(parseTelegramRoomReceipt("imessage:ch1:msg1")).toBeNull();
   });
 
-  it("fails closed until bot token, chat id, and webhook secret are configured", async () => {
+  it("fails closed until bot token and webhook secret are configured", async () => {
     const service = new TelegramRoomService({ apiBaseUrl: "https://api.telegram.org", maxChars: 10 });
     expect(service.status()).toMatchObject({
       configured: false,
-      missingEnv: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ROOM_CHAT_ID", "TELEGRAM_WEBHOOK_SECRET"],
+      missingEnv: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
     });
     await expect(service.send({ chatId: "123", text: "hello" })).resolves.toMatchObject({
       status: "not_configured",
@@ -39,7 +39,6 @@ describe("Telegram room service (#1267)", () => {
     const service = new TelegramRoomService(
       {
         botToken: "bot-token",
-        roomChatId: "123",
         webhookSecret: "secret",
         apiBaseUrl: "https://telegram.test",
         maxChars: 100,
@@ -60,4 +59,3 @@ describe("Telegram room service (#1267)", () => {
     });
   });
 });
-

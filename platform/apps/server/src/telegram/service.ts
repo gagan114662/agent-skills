@@ -58,7 +58,7 @@ export class TelegramRoomService {
   ) {}
 
   configured(): boolean {
-    return Boolean(this.config.botToken && this.config.roomChatId && this.config.webhookSecret);
+    return Boolean(this.config.botToken && this.config.webhookSecret);
   }
 
   webhookSecret(): string | undefined {
@@ -68,7 +68,6 @@ export class TelegramRoomService {
   status(): { configured: boolean; missingEnv: string[] } {
     const missingEnv: string[] = [];
     if (!this.config.botToken) missingEnv.push("TELEGRAM_BOT_TOKEN");
-    if (!this.config.roomChatId) missingEnv.push("TELEGRAM_ROOM_CHAT_ID");
     if (!this.config.webhookSecret) missingEnv.push("TELEGRAM_WEBHOOK_SECRET");
     return { configured: missingEnv.length === 0, missingEnv };
   }

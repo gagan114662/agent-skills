@@ -66,7 +66,6 @@ export class WhatsAppRoomService {
     const missingEnv: string[] = [];
     if (!this.config.accessToken) missingEnv.push("WHATSAPP_ACCESS_TOKEN");
     if (!this.config.phoneNumberId) missingEnv.push("WHATSAPP_PHONE_NUMBER_ID");
-    if (!this.config.roomRecipient) missingEnv.push("WHATSAPP_ROOM_RECIPIENT");
     if (!this.config.webhookVerifyToken) missingEnv.push("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
     if (!this.config.appSecret) missingEnv.push("WHATSAPP_APP_SECRET");
     return { configured: missingEnv.length === 0, missingEnv };
@@ -131,4 +130,3 @@ export function parseWhatsAppRoomReceipt(raw: unknown): { channelId: string; mes
   if (!match) return null;
   return { channelId: match[1]!, messageId: match[2]! };
 }
-

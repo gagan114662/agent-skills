@@ -28,7 +28,6 @@ describe("WhatsApp room service (#1267)", () => {
       missingEnv: [
         "WHATSAPP_ACCESS_TOKEN",
         "WHATSAPP_PHONE_NUMBER_ID",
-        "WHATSAPP_ROOM_RECIPIENT",
         "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
         "WHATSAPP_APP_SECRET",
       ],
@@ -46,7 +45,6 @@ describe("WhatsApp room service (#1267)", () => {
       {
         accessToken: "wa-token",
         phoneNumberId: "phone-id",
-        roomRecipient: "15551112222",
         webhookVerifyToken: "verify-token",
         appSecret: "app-secret",
         apiBaseUrl: "https://graph.test/v20.0",
@@ -73,4 +71,3 @@ describe("WhatsApp room service (#1267)", () => {
     });
   });
 });
-
