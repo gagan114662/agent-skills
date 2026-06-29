@@ -1,5 +1,7 @@
 #!/usr/bin/env tsx
 import { pathToFileURL } from "node:url";
+import { TELEGRAM_ROOM_CONNECTION_ID, WHATSAPP_ROOM_CONNECTION_ID } from "../connections/registry.js";
+import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { loadEnv, type TelegramEnv, type WhatsAppEnv } from "../env.js";
 import { TelegramRoomService } from "../telegram/service.js";
 import { WhatsAppRoomService } from "../whatsapp/service.js";
@@ -8,6 +10,10 @@ export type DoctorStatus = "pass" | "fail" | "warn";
 type ExternalRoomMessageProvider = "telegram" | "whatsapp";
 type RecordExternalRoomMessageReceipt =
   typeof import("../db/repositories/external-room-message-receipts.js").recordExternalRoomMessageReceipt;
+type ResolveServiceSecrets = typeof resolveServiceSecrets;
+
+const TELEGRAM_WORKSPACE_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
+const WHATSAPP_WORKSPACE_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
 
 export interface DoctorCheck {
   name: string;
@@ -30,6 +36,7 @@ export interface ExternalRoomDoctorDeps {
   telegramService?: TelegramRoomService;
   whatsappService?: WhatsAppRoomService;
   recordExternalRoomMessageReceipt?: RecordExternalRoomMessageReceipt;
+  resolveServiceSecrets?: ResolveServiceSecrets;
 }
 
 function hasArg(argv: string[], name: string): boolean {
@@ -207,10 +214,11 @@ function checkWhatsAppSignature(service: WhatsAppRoomService): DoctorCheck {
 }
 
 async function maybeSendTelegramSmoke(input: {
-  config: TelegramEnv;
   service: TelegramRoomService;
+  chatId?: string;
   text: string;
   enabled: boolean;
+  workspaceId: string;
 }): Promise<{ check: DoctorCheck; providerMessageId?: string; providerConversationId?: string }> {
   if (!input.enabled) {
     return {
@@ -221,16 +229,20 @@ async function maybeSendTelegramSmoke(input: {
       },
     };
   }
-  if (!input.config.roomChatId) {
+  if (!input.chatId) {
     return {
       check: {
         name: "telegram-send-smoke",
         status: "fail",
-        message: "TELEGRAM_ROOM_CHAT_ID is missing",
+        message: input.workspaceId
+          ? "workspace Telegram destination is missing; connect telegram_room with TELEGRAM_CHAT_ID for workspace " +
+            input.workspaceId +
+            " or set TELEGRAM_ROOM_CHAT_ID"
+          : "Telegram destination is missing; pass --workspace-id for a connected workspace or set TELEGRAM_ROOM_CHAT_ID",
       },
     };
   }
-  const result = await input.service.send({ chatId: input.config.roomChatId, text: input.text });
+  const result = await input.service.send({ chatId: input.chatId, text: input.text });
   return result.status === "sent"
     ? {
         check: {
@@ -245,10 +257,11 @@ async function maybeSendTelegramSmoke(input: {
 }
 
 async function maybeSendWhatsAppSmoke(input: {
-  config: WhatsAppEnv;
   service: WhatsAppRoomService;
+  recipient?: string;
   text: string;
   enabled: boolean;
+  workspaceId: string;
 }): Promise<{ check: DoctorCheck; providerMessageId?: string; providerConversationId?: string }> {
   if (!input.enabled) {
     return {
@@ -259,17 +272,21 @@ async function maybeSendWhatsAppSmoke(input: {
       },
     };
   }
-  if (!input.config.roomRecipient) {
+  if (!input.recipient) {
     return {
       check: {
         name: "whatsapp-send-smoke",
         status: "fail",
-        message: "WHATSAPP_ROOM_RECIPIENT is missing",
+        message: input.workspaceId
+          ? "workspace WhatsApp destination is missing; connect whatsapp_room with WHATSAPP_RECIPIENT for workspace " +
+            input.workspaceId +
+            " or set WHATSAPP_ROOM_RECIPIENT"
+          : "WhatsApp destination is missing; pass --workspace-id for a connected workspace or set WHATSAPP_ROOM_RECIPIENT",
       },
     };
   }
   const result = await input.service.send({
-    recipient: input.config.roomRecipient,
+    recipient: input.recipient,
     text: input.text,
   });
   return result.status === "sent"
@@ -283,6 +300,21 @@ async function maybeSendWhatsAppSmoke(input: {
         providerMessageId: result.providerMessageId,
       }
     : { check: { name: "whatsapp-send-smoke", status: "fail", message: result.error } };
+}
+
+async function resolveWorkspaceDestination(input: {
+  workspaceId: string;
+  serviceKey: string;
+  envKey: string;
+  fallback: string | undefined;
+  resolveServiceSecrets: ResolveServiceSecrets;
+}): Promise<string | undefined> {
+  if (input.workspaceId) {
+    const secrets = await input.resolveServiceSecrets(input.workspaceId, input.serviceKey);
+    const destination = secrets[input.envKey]?.trim();
+    if (destination) return destination;
+  }
+  return input.fallback?.trim() || undefined;
 }
 
 async function maybeRecordSmokeReceipt(input: {
@@ -337,6 +369,7 @@ export async function runExternalRoomDoctor(
   const fetchImpl = deps.fetchImpl ?? fetch;
   const telegramService = deps.telegramService ?? new TelegramRoomService(config.telegram);
   const whatsappService = deps.whatsappService ?? new WhatsAppRoomService(config.whatsapp);
+  const resolveSecrets = deps.resolveServiceSecrets ?? resolveServiceSecrets;
   const recordExternalRoomMessageReceipt: RecordExternalRoomMessageReceipt =
     deps.recordExternalRoomMessageReceipt ??
     (async (...args) => {
@@ -347,11 +380,21 @@ export async function runExternalRoomDoctor(
 
   checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv));
   checks.push(await checkTelegramIdentity({ config: config.telegram, fetchImpl }));
+  const telegramChatId = config.sendSmoke
+    ? await resolveWorkspaceDestination({
+        workspaceId: config.workspaceId,
+        serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+        envKey: TELEGRAM_WORKSPACE_CHAT_ID_KEY,
+        fallback: config.telegram.roomChatId,
+        resolveServiceSecrets: resolveSecrets,
+      })
+    : undefined;
   const telegramSmoke = await maybeSendTelegramSmoke({
-    config: config.telegram,
     service: telegramService,
+    chatId: telegramChatId,
     text: config.smokeText,
     enabled: config.sendSmoke,
+    workspaceId: config.workspaceId,
   });
   checks.push(telegramSmoke.check);
   const telegramReceipt = await maybeRecordSmokeReceipt({
@@ -366,11 +409,21 @@ export async function runExternalRoomDoctor(
   checks.push(missingEnvCheck("whatsapp", whatsappService.status().missingEnv));
   checks.push(await checkWhatsAppSender({ config: config.whatsapp, fetchImpl }));
   checks.push(checkWhatsAppSignature(whatsappService));
+  const whatsAppRecipient = config.sendSmoke
+    ? await resolveWorkspaceDestination({
+        workspaceId: config.workspaceId,
+        serviceKey: WHATSAPP_ROOM_CONNECTION_ID,
+        envKey: WHATSAPP_WORKSPACE_RECIPIENT_KEY,
+        fallback: config.whatsapp.roomRecipient,
+        resolveServiceSecrets: resolveSecrets,
+      })
+    : undefined;
   const whatsAppSmoke = await maybeSendWhatsAppSmoke({
-    config: config.whatsapp,
     service: whatsappService,
+    recipient: whatsAppRecipient,
     text: config.smokeText,
     enabled: config.sendSmoke,
+    workspaceId: config.workspaceId,
   });
   checks.push(whatsAppSmoke.check);
   const whatsAppReceipt = await maybeRecordSmokeReceipt({
