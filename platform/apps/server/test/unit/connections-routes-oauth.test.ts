@@ -19,15 +19,18 @@ const metaAdsConnectionOAuthConfigStatus = vi.fn();
 const xConnectionOAuthConfigStatus = vi.fn();
 const getRequest = vi.fn();
 const recordExecution = vi.fn();
+const listServiceStatuses = vi.fn();
 const setServiceCredentials = vi.fn();
+const revokeServiceCredentials = vi.fn();
+const connectChannel = vi.fn();
+const revokeChannel = vi.fn();
+const loadConfig = vi.fn();
 
 vi.mock("../../src/auth/guard.js", () => ({
   requireIdentity: vi.fn(async () => ({ workspaceId: OWNER, memberId: MEMBER })),
 }));
 
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(() => ({ marketing: { ownerWorkspaceId: OWNER }, connectOnce: undefined })),
-}));
+vi.mock("../../src/config/loader.js", () => ({ loadConfig }));
 
 vi.mock("../../src/connections/default.js", () => ({
   defaultConnectProvider,
@@ -47,9 +50,14 @@ vi.mock("../../src/db/repositories/approvals.js", () => ({
 }));
 
 vi.mock("../../src/db/repositories/external-credentials.js", () => ({
-  listServiceStatuses: vi.fn(async () => []),
+  listServiceStatuses,
   setServiceCredentials,
-  revokeServiceCredentials: vi.fn(),
+  revokeServiceCredentials,
+}));
+
+vi.mock("../../src/outbound-channel/service.js", () => ({
+  connectChannel,
+  revokeChannel,
 }));
 
 const { connectionsRoutes } = await import("../../src/routes/connections.js");
@@ -101,8 +109,14 @@ beforeEach(() => {
     })),
   );
   process.env.AGENT_CREDENTIALS_ENC_KEY = STATE_SECRET;
+  process.env.RESEND_API_KEY = "";
+  process.env.RELOAD_FLEET_FROM_EMAIL = "";
+  loadConfig.mockReturnValue({ marketing: { ownerWorkspaceId: OWNER }, connectOnce: undefined });
+  listServiceStatuses.mockResolvedValue([]);
   getRequest.mockResolvedValue(approval());
   recordExecution.mockResolvedValue({ outcome: "recorded", request: approval({ status: "executed" }) });
+  connectChannel.mockResolvedValue({ ok: true, connection: { id: "conn-1" } });
+  revokeChannel.mockResolvedValue({ id: "conn-1" });
   setServiceCredentials.mockResolvedValue({
     serviceKey: "google",
     connected: true,
@@ -199,6 +213,60 @@ describe("connectionsRoutes OAuth descriptor availability (#1285)", () => {
           code: "google_connection_oauth_missing_config",
           missingEnv: ["GOOGLE_CONNECTION_OAUTH_REDIRECT_URI"],
         },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("connectionsRoutes one-click email provider proof (#395)", () => {
+  it("seals Resend proof and connects the matching outbound-channel ledger on enable", async () => {
+    process.env.RESEND_API_KEY = "re-secret";
+    process.env.RELOAD_FLEET_FROM_EMAIL = "hello@ipop.ai";
+    loadConfig.mockReturnValue({
+      marketing: { ownerWorkspaceId: OWNER },
+      connectOnce: undefined,
+      reach: { sendProvider: "resend", liveSendEnabled: true },
+    });
+    listServiceStatuses.mockResolvedValue([
+      {
+        serviceKey: "resend",
+        status: "connected",
+        envKeys: ["RESEND_API_KEY", "RESEND_FROM"],
+        fingerprint: "fp_resend",
+        connectedAtMs: 123,
+      },
+    ]);
+
+    const app = await buildRoute();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/me/connections/email/enable",
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(connectChannel).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        channel: "email_resend",
+        fromAddress: "hello@ipop.ai",
+        connectedByMemberId: MEMBER,
+      });
+      expect(setServiceCredentials).toHaveBeenCalledWith({
+        workspaceId: OWNER,
+        serviceKey: "resend",
+        secrets: {
+          RESEND_API_KEY: "re-secret",
+          RESEND_FROM: "hello@ipop.ai",
+        },
+        scopes: ["send_email"],
+        connectedByMemberId: MEMBER,
+      });
+      expect(res.json()).toMatchObject({
+        connected: true,
+        id: "email",
+        providerStatus: "healthy",
       });
     } finally {
       await app.close();

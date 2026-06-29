@@ -5,7 +5,7 @@
  */
 
 /** The outbound channels the fleet can connect. The lowest-risk first channel (#395 / #268) is Postmark. */
-export const OUTBOUND_CHANNELS = ["email_postmark"] as const;
+export const OUTBOUND_CHANNELS = ["email_postmark", "email_resend"] as const;
 export type OutboundChannel = (typeof OUTBOUND_CHANNELS)[number];
 
 /**

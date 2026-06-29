@@ -77,6 +77,40 @@ describe("outbound doctor CLI (#395)", () => {
     );
   });
 
+  it("proves Resend API reachability and skips sends unless --send-smoke is set", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(String(url)).toBe("https://api.resend.com/domains");
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer re-secret");
+      expect((init?.headers as Record<string, string>)["User-Agent"]).toBe("ipop-server/1.0");
+      return jsonResponse({ object: "list", data: [{ id: "domain-1", name: "ipop.ai" }] });
+    });
+    const config = parseOutboundDoctorConfig({
+      argv: [],
+      env: {
+        RESEND_API_KEY: "re-secret",
+        RELOAD_FLEET_FROM_EMAIL: "hello@ipop.ai",
+        RELOAD_ACQUISITION_ENABLED: "true",
+        RELOAD_ACQUISITION_EMAIL: "true",
+        RELOAD_ACQUISITION_ESP_PROVIDER: "resend",
+        RELOAD_ACQUISITION_BRAND_NAME: "ipop",
+        RELOAD_ACQUISITION_POSTAL_ADDRESS: "1 Market St, San Francisco, CA",
+        RELOAD_ACQUISITION_UNSUBSCRIBE_URL: "https://ipop.ai/unsubscribe",
+      },
+    });
+
+    const checks = await runOutboundDoctor(config, { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "resend-config", status: "pass" }),
+        expect.objectContaining({ name: "acquisition-email-live", status: "pass" }),
+        expect.objectContaining({ name: "resend-domains", status: "pass" }),
+        expect.objectContaining({ name: "resend-send-smoke", status: "warn" }),
+      ]),
+    );
+  });
+
   it("sends an explicit smoke message only when requested", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
       const value = String(url);
@@ -150,6 +184,74 @@ describe("outbound doctor CLI (#395)", () => {
           name: "outbound-proof-ledger",
           status: "warn",
           message: expect.stringContaining("--workspace-id and --approval-request-id"),
+        }),
+      ]),
+    );
+  });
+
+  it("sends an explicit Resend smoke message and returns a Resend proof", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      const value = String(url);
+      if (value.endsWith("/domains")) return jsonResponse({ object: "list", data: [] });
+      expect(value).toBe("https://api.resend.com/emails");
+      const body = JSON.parse(String(init?.body)) as {
+        to?: string[];
+        from?: string;
+        subject?: string;
+        text?: string;
+        headers?: Record<string, string>;
+      };
+      expect(body).toMatchObject({
+        to: ["founder@example.com"],
+        from: "hello@ipop.ai",
+        subject: "doctor subject",
+        text: "doctor smoke",
+      });
+      expect(body.headers).toMatchObject({ "X-ipop-Proof": "outbound-doctor-smoke" });
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer re-secret");
+      return jsonResponse({ id: "resend-123" });
+    });
+    const config = parseOutboundDoctorConfig({
+      argv: [
+        "--send-smoke",
+        "--to",
+        "founder@example.com",
+        "--subject",
+        "doctor subject",
+        "--text",
+        "doctor smoke",
+        "--tracking-ref",
+        "ipop_deadbeefdeadbeef",
+      ],
+      env: {
+        RESEND_API_KEY: "re-secret",
+        RELOAD_FLEET_FROM_EMAIL: "hello@ipop.ai",
+        RELOAD_ACQUISITION_ENABLED: "true",
+        RELOAD_ACQUISITION_EMAIL: "true",
+        RELOAD_ACQUISITION_ESP_PROVIDER: "resend",
+        RELOAD_ACQUISITION_BRAND_NAME: "ipop",
+        RELOAD_ACQUISITION_POSTAL_ADDRESS: "1 Market St, San Francisco, CA",
+        RELOAD_ACQUISITION_UNSUBSCRIBE_URL: "https://ipop.ai/unsubscribe",
+      },
+    });
+
+    const checks = await runOutboundDoctor(config, { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "resend-send-smoke",
+          status: "pass",
+          message: expect.stringContaining("resend-123"),
+          outboundDeliveryProof: expect.objectContaining({
+            channel: "email_resend",
+            provider: "resend",
+            receipt: expect.objectContaining({
+              source: "production_readback",
+              externalRef: "resend-123",
+            }),
+          }),
         }),
       ]),
     );

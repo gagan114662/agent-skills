@@ -55,6 +55,24 @@ describe("verifyFirstCustomerProof (#908 / #395 close gate)", () => {
     expect(result.gaps).toEqual([]);
   });
 
+  it("also accepts Resend as a real email ESP channel when the provider and channel match", () => {
+    const result = verifyFirstCustomerProof({
+      ...baseProof,
+      outboundDelivery: {
+        ...baseProof.outboundDelivery,
+        channel: "email_resend",
+        provider: "resend",
+        receipt: {
+          ...baseProof.outboundDelivery.receipt,
+          externalRef: "resend-email-id-123",
+          detail: { provider: "resend" },
+        },
+      },
+    });
+
+    expect(result.proven).toBe(true);
+  });
+
   it("rejects mock prospects, dry-run delivery, missing approval, invisible replies, unrouted leads, and no booking link", () => {
     const result = verifyFirstCustomerProof({
       prospectSource: {
@@ -119,6 +137,25 @@ describe("verifyFirstCustomerProof (#908 / #395 close gate)", () => {
       "inbound_qualified_routed",
       "booking_or_trial_link",
     ]);
+  });
+
+  it("rejects a mismatched ESP provider/channel pair", () => {
+    const result = verifyFirstCustomerProof({
+      ...baseProof,
+      outboundDelivery: {
+        ...baseProof.outboundDelivery,
+        channel: "email_resend",
+        provider: "postmark",
+      },
+    });
+
+    expect(result.proven).toBe(false);
+    expect(result.gaps).toContainEqual(
+      expect.objectContaining({
+        requirement: "real_outbound_delivery",
+        message: expect.stringContaining("real email ESP channel"),
+      }),
+    );
   });
 
   it("rejects a Frankenstein proof where valid stages belong to different buyers", () => {
