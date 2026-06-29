@@ -192,12 +192,12 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
       configIssue: {
         code: "email_outbound_live_send_missing_config",
         missingEnv: expect.arrayContaining([
-          "RELOAD_REACH_SEND_PROVIDER=postmark",
+          "RELOAD_REACH_SEND_PROVIDER=postmark or resend",
           "RELOAD_REACH_LIVE_SEND_ENABLED=1",
-          "POSTMARK_SERVER_TOKEN",
+          "POSTMARK_SERVER_TOKEN + sender or RESEND_API_KEY + sender",
           "RELOAD_ACQUISITION_ENABLED=true",
           "RELOAD_ACQUISITION_EMAIL=true",
-          "RELOAD_ACQUISITION_ESP_PROVIDER=postmark",
+          "RELOAD_ACQUISITION_ESP_PROVIDER=postmark or resend",
           "RELOAD_ACQUISITION_UNSUBSCRIBE_URL",
         ]),
         remedy: expect.stringContaining("enable reach live-send and acquisition email"),
