@@ -61,6 +61,7 @@ export function isChannelFlagLive(
   if (!isWorkspaceInRolloutScope(flags, workspaceId)) return false;
   switch (channel) {
     case "email_postmark":
+    case "email_resend":
       return flags.emailEnabled;
     default:
       return false;

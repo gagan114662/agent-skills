@@ -10,11 +10,10 @@
  *   - {@link buildAcquisitionBriefReader} — the founder-brief reader (AC5) that turns the external send
  *     receipts into the daily-brief acquisition section (spend + CAC + failing channels).
  *
- * ONE real adapter is wired here (issue #395): the email channel's ESP is the real Postmark provider,
- * behind the connect-once gate. It stays SAFE BY DEFAULT — `resolvePostmarkForWorkspace` returns
- * `live:false` (→ the recorded-only dry-run sender, no network) unless the owner has (a) selected the
- * Postmark ESP for the workspace, (b) connected the channel (the ledger shows `connected` with a verified
- * From address), AND (c) set the owner-gated `POSTMARK_SERVER_TOKEN` secret. ads/social/SEO stay dry-run.
+ * Real email adapters are wired here (issue #395): Postmark and Resend, both behind the same connect-once
+ * gate. They stay SAFE BY DEFAULT — the provider resolver returns live:false (the recorded-only dry-run
+ * sender, no network) unless the owner selects that ESP, connects the matching channel, and sets the
+ * owner-gated credential. ads/social/SEO stay dry-run.
  * A real send is NEVER autonomous: the dispatcher is only reached from `executeApprovedRequest`, i.e. after
  * a human approves the parked `external.send` #13 request.
  */
@@ -26,8 +25,14 @@ import type { ExecutorRegistry } from "../approvals/executor.js";
 import { resolveAcquisitionCaps, type AcquisitionCaps } from "./caps.js";
 import { createAcquisitionProviders } from "./providers.js";
 import { createPostmarkEspProvider, type PostmarkEspResolution } from "./postmark-esp.js";
+import { createResendEspProvider, type ResendEspResolution } from "./resend-esp.js";
 import { getChannelConnection } from "../db/repositories/outbound-channels.js";
-import { getChannelDescriptor, LOWEST_RISK_CHANNEL } from "../outbound-channel/channel.js";
+import {
+  channelForEspProvider,
+  getChannelDescriptor,
+  LOWEST_RISK_CHANNEL,
+  type OutboundChannel,
+} from "../outbound-channel/channel.js";
 import { verifyAndRecordSend } from "../outbound-channel/service.js";
 import { createAcquisitionDispatcher, type AcquisitionDispatcher } from "./execution.js";
 import { buildDeliveryDispatcher } from "../delivery/default.js";
@@ -71,12 +76,29 @@ function footerInfoFor(workspaceId: string): FooterInfo | null {
 async function resolvePostmarkForWorkspace(workspaceId: string): Promise<PostmarkEspResolution> {
   const caps = acquisitionCapsFor(workspaceId);
   if (caps.espProvider !== "postmark") return { live: false, serverToken: "", from: "" };
-  const connection = await getChannelConnection(workspaceId, LOWEST_RISK_CHANNEL);
+  const channel = channelForEspProvider("postmark") ?? LOWEST_RISK_CHANNEL;
+  const connection = await getChannelConnection(workspaceId, channel);
   const connected = connection?.status === "connected";
   const from = (connection?.fromAddress ?? "").trim();
-  const credentialEnvKey = getChannelDescriptor(LOWEST_RISK_CHANNEL)?.credentialEnvKey ?? "POSTMARK_SERVER_TOKEN";
+  const credentialEnvKey = getChannelDescriptor(channel)?.credentialEnvKey ?? "POSTMARK_SERVER_TOKEN";
   const serverToken = (process.env[credentialEnvKey] ?? "").trim();
   return { live: connected && from !== "" && serverToken !== "", serverToken, from };
+}
+
+async function resolveResendForWorkspace(workspaceId: string): Promise<ResendEspResolution> {
+  const caps = acquisitionCapsFor(workspaceId);
+  if (caps.espProvider !== "resend") return { live: false, apiKey: "", from: "" };
+  const channel = channelForEspProvider("resend") ?? "email_resend";
+  const connection = await getChannelConnection(workspaceId, channel);
+  const connected = connection?.status === "connected";
+  const from = (connection?.fromAddress ?? "").trim();
+  const credentialEnvKey = getChannelDescriptor(channel)?.credentialEnvKey ?? "RESEND_API_KEY";
+  const apiKey = (process.env[credentialEnvKey] ?? "").trim();
+  return { live: connected && from !== "" && apiKey !== "", apiKey, from };
+}
+
+function readbackChannelForProvider(provider: string): OutboundChannel {
+  return channelForEspProvider(provider) ?? LOWEST_RISK_CHANNEL;
 }
 
 /**
@@ -85,22 +107,34 @@ async function resolvePostmarkForWorkspace(workspaceId: string): Promise<Postmar
  * with nothing connected the Postmark provider resolves to the dry-run sender, so behavior is unchanged.
  */
 export function buildAcquisitionDispatcher(): AcquisitionDispatcher {
+  const postmarkEsp = createPostmarkEspProvider({ resolve: resolvePostmarkForWorkspace });
+  const resendEsp = createResendEspProvider({ resolve: resolveResendForWorkspace });
   return createAcquisitionDispatcher({
     resolveCaps: acquisitionCapsFor,
     providers: createAcquisitionProviders(
       {},
-      { esp: createPostmarkEspProvider({ resolve: resolvePostmarkForWorkspace }) },
+      {
+        esp: {
+          kind: "configured-email",
+          send(input) {
+            return acquisitionCapsFor(input.workspaceId).espProvider === "resend"
+              ? resendEsp.send(input)
+              : postmarkEsp.send(input);
+          },
+        },
+      },
     ),
     envelopes: dbEnvelopeStore,
     suppressions: dbSuppressionStore,
     receipts: dbReceiptStore,
     outboundReadbacks: {
-      async recordPostmarkReadbacks(input) {
+      async recordEspReadbacks(input) {
+        const channel = readbackChannelForProvider(input.provider);
         await Promise.all(
           input.messageIds.map((messageId, index) =>
             verifyAndRecordSend({
               workspaceId: input.workspaceId,
-              channel: LOWEST_RISK_CHANNEL,
+              channel,
               recipient: input.recipients[index] ?? input.recipients[0] ?? "",
               approvalRequestId: input.approvalRequestId,
               probe: async () => ({

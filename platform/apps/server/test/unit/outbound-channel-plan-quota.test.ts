@@ -40,7 +40,7 @@ describe("outbound-channel plan quota (#1290)", () => {
       serverToken: "pm-token",
       planForWorkspace: async () => starter,
       listConnectionsForWorkspace: async () => [
-        row({ id: "conn-future", channel: "future_channel" as "email_postmark" }),
+        row({ id: "conn-resend", channel: "email_resend", provider: "resend" }),
       ],
     });
     expect(result).toMatchObject({

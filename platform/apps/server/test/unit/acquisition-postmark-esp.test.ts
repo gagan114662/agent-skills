@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { FastifyBaseLogger } from "fastify";
 import type { Identity } from "../../src/auth/identity.js";
 import { createPostmarkEspProvider } from "../../src/acquisition/postmark-esp.js";
+import { createResendEspProvider } from "../../src/acquisition/resend-esp.js";
 import {
   createAcquisitionDispatcher,
   type AcquisitionDispatcherDeps,
@@ -191,7 +192,7 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
         },
       },
       outboundReadbacks: {
-        recordPostmarkReadbacks: (r) => {
+        recordEspReadbacks: (r) => {
           readbacks.push(r);
           return Promise.resolve();
         },
@@ -295,6 +296,78 @@ describe("#395 end-to-end: an approved external.send dispatches a REAL email", (
       body: "Hello there",
     });
     await expect(registry.get("external.send")!.execute(action.payload, ctx)).rejects.toThrow(/readback recorder/);
+  });
+
+  it("an APPROVED send can dispatch via the real Resend provider and still requires readback proof", async () => {
+    const { impl, calls } = fakeFetch({ body: { id: "resend-approved-1" } });
+    const readbacks: Array<{
+      workspaceId: string;
+      approvalRequestId: string;
+      recipients: readonly string[];
+      messageIds: readonly string[];
+      provider: string;
+      detail: Record<string, unknown>;
+    }> = [];
+    const receipts: SendReceiptInput[] = [];
+    const deps: AcquisitionDispatcherDeps = {
+      resolveCaps: () => resolveAcquisitionCaps({ enabled: true, email: true, espProvider: "resend" }),
+      providers: createAcquisitionProviders(
+        {},
+        {
+          esp: createResendEspProvider({
+            resolve: () => ({ live: true, apiKey: "re-secret", from: FROM }),
+            fetchImpl: impl as never,
+          }),
+        },
+      ),
+      envelopes: {
+        getActiveAdsEnvelope: () => Promise.resolve(null),
+        reserveAdsSpend: () => Promise.resolve(null),
+        refundAdsSpend: () => Promise.resolve(),
+        debitAdsEnvelope: () => Promise.resolve(),
+      },
+      suppressions: { loadSuppressed: () => Promise.resolve(new Set<string>()) },
+      receipts: {
+        record: (r) => {
+          receipts.push(r);
+          return Promise.resolve();
+        },
+      },
+      outboundReadbacks: {
+        recordEspReadbacks: (r) => {
+          readbacks.push(r);
+          return Promise.resolve();
+        },
+      },
+      emailWindow: { warmupState: () => Promise.resolve({ dayIndex: 99, sentToday: 0 }) },
+      footerInfo: () => footer,
+    };
+    const registry = buildDefaultRegistry(
+      { enforce: () => Promise.resolve(null) },
+      noopComplianceEnforcer,
+      createAcquisitionDispatcher(deps),
+    );
+    const action = buildOutboundEmailAction({
+      to: "prospect@example.com",
+      subject: "Quick intro",
+      body: "Hello there",
+    });
+
+    const result = await registry.get("external.send")!.execute(action.payload, ctx);
+
+    expect(result.executed).toBe(true);
+    expect(result.provider).toBe("resend");
+    expect(result.externalId).toBe("resend-approved-1");
+    expect(calls).toHaveLength(1);
+    expect(receipts[0]!.provider).toBe("resend");
+    expect(readbacks).toEqual([
+      expect.objectContaining({
+        approvalRequestId: "req_approved",
+        recipients: ["prospect@example.com"],
+        messageIds: ["resend-approved-1"],
+        provider: "resend",
+      }),
+    ]);
   });
 
   it("with the channel connected but NOT enabled, an approved send stays recorded-only (no network)", async () => {

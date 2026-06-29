@@ -15,6 +15,7 @@ describe("outbound-channel flags", () => {
     expect(f.emailEnabled).toBe(false);
     expect(f.ownerWorkspaceId).toBeNull();
     expect(isChannelFlagLive(f, "email_postmark", WS)).toBe(false);
+    expect(isChannelFlagLive(f, "email_resend", WS)).toBe(false);
   });
 
   it("defaults everything OFF for an empty acquisition block (the resolved default)", () => {
@@ -35,6 +36,7 @@ describe("outbound-channel flags", () => {
   it("is live only when BOTH switches are on", () => {
     const f = resolveOutboundChannelFlags({ enabled: true, email: true });
     expect(isChannelFlagLive(f, "email_postmark", WS)).toBe(true);
+    expect(isChannelFlagLive(f, "email_resend", WS)).toBe(true);
   });
 
   it("respects owner-workspace-first rollout when an owner workspace is pinned", () => {

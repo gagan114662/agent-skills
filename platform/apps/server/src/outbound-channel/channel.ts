@@ -3,8 +3,8 @@
  * job. This is the source of truth for WHICH channel the fleet connects first and the static metadata that
  * binds a channel to its provider + the env var that carries its (owner-gated) credential.
  *
- * #395 ships exactly ONE channel — the lowest-risk sending domain (Postmark email, #268) — so the fleet
- * can leave the building with a real, reputation-safe surface before any social/ad lane is wired.
+ * #395 ships the lowest-risk sending-domain lanes first so the fleet can leave the building with a real,
+ * reputation-safe surface before any social/ad lane is wired.
  */
 
 import { OUTBOUND_CHANNELS, type OutboundChannel } from "./constants.js";
@@ -44,6 +44,13 @@ const DESCRIPTORS: Readonly<Record<OutboundChannel, ChannelDescriptor>> = {
     credentialEnvKey: "POSTMARK_SERVER_TOKEN",
     spendsMoney: false,
   },
+  email_resend: {
+    channel: "email_resend",
+    label: "Email (Resend)",
+    provider: "resend",
+    credentialEnvKey: "RESEND_API_KEY",
+    spendsMoney: false,
+  },
 };
 
 /** Total guard: is `value` a known outbound channel? Rejects unknown strings (a closed allow-list). */
@@ -54,4 +61,10 @@ export function isOutboundChannel(value: unknown): value is OutboundChannel {
 /** The descriptor for a channel, or `null` for an unknown one. */
 export function getChannelDescriptor(channel: string): ChannelDescriptor | null {
   return isOutboundChannel(channel) ? DESCRIPTORS[channel] : null;
+}
+
+/** The outbound-channel ledger id for an ESP provider, or null for unknown/dry-run providers. */
+export function channelForEspProvider(provider: string): OutboundChannel | null {
+  const normalized = provider.trim().toLowerCase();
+  return OUTBOUND_CHANNELS.find((channel) => DESCRIPTORS[channel].provider === normalized) ?? null;
 }

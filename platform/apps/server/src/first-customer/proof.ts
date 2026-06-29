@@ -1,5 +1,6 @@
 import { isExternalReceipt, type ExternalReceipt } from "../action-contract/receipt.js";
 import type { OutboundChannel } from "../outbound-channel/constants.js";
+import { channelForEspProvider } from "../outbound-channel/channel.js";
 
 /**
  * First-real-customer proof gate (#908, bridging #395).
@@ -85,6 +86,12 @@ const MOCK_EMAIL_DOMAINS = [
   "@example.net",
 ] as const;
 
+const REAL_EMAIL_PROVIDERS = ["postmark", "resend"] as const;
+
+function isRealEmailProvider(provider: string): boolean {
+  return (REAL_EMAIL_PROVIDERS as readonly string[]).includes(provider);
+}
+
 function hasMockEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase();
   return MOCK_EMAIL_DOMAINS.some((suffix) => normalized.endsWith(suffix));
@@ -134,11 +141,11 @@ export function verifyFirstCustomerProof(proof: FirstCustomerProof): FirstCustom
   }
 
   const delivery = proof.outboundDelivery;
-  if (delivery.channel !== "email_postmark") {
-    push(gaps, "real_outbound_delivery", "First outbound proof must use the connected Postmark email channel.");
-  }
-  if (delivery.provider.trim().toLowerCase() !== "postmark") {
-    push(gaps, "real_outbound_delivery", "Dry-run or non-Postmark providers do not prove inbox delivery.");
+  const normalizedProvider = delivery.provider.trim().toLowerCase();
+  if (!isRealEmailProvider(normalizedProvider)) {
+    push(gaps, "real_outbound_delivery", "Dry-run or unsupported ESP providers do not prove inbox delivery.");
+  } else if (delivery.channel !== channelForEspProvider(normalizedProvider)) {
+    push(gaps, "real_outbound_delivery", "First outbound proof must use a connected real email ESP channel.");
   }
   if ((delivery.approvalRequestId ?? "").trim() === "") {
     push(gaps, "real_outbound_delivery", "A #13 approval id must be tied to the irreversible send.");

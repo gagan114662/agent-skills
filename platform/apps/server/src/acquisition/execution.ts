@@ -99,7 +99,7 @@ export interface ReceiptStore {
 }
 
 export interface OutboundEmailReadbackStore {
-  recordPostmarkReadbacks(input: {
+  recordEspReadbacks(input: {
     workspaceId: string;
     approvalRequestId: string;
     recipients: readonly string[];
@@ -144,6 +144,11 @@ function num(v: unknown): number {
 }
 function strList(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+function requiresEmailReadback(provider: string, detail: Record<string, unknown>): boolean {
+  if (detail.dryRun === true) return false;
+  return provider === "postmark" || provider === "resend";
 }
 
 /**
@@ -303,13 +308,15 @@ async function dispatchEmail(
     body,
     recipients: toSend,
   });
-  if (outcome.status === "sent" && outcome.provider === "postmark" && outcome.detail.dryRun !== true) {
+  if (outcome.status === "sent" && requiresEmailReadback(outcome.provider, outcome.detail)) {
     if (!deps.outboundReadbacks) {
-      throw new ActionExecutionError("postmark send cannot be proven because the readback recorder is not configured");
+      throw new ActionExecutionError(
+        outcome.provider + " send cannot be proven because the readback recorder is not configured",
+      );
     }
     const approvalRequestId = (ctx.requestId ?? "").trim();
     if (!approvalRequestId) {
-      throw new ActionExecutionError("postmark send cannot be proven without a #13 approval request id");
+      throw new ActionExecutionError(outcome.provider + " send cannot be proven without a #13 approval request id");
     }
     const rawMessageIds = Array.isArray(outcome.detail.messageIds)
       ? outcome.detail.messageIds
@@ -318,9 +325,9 @@ async function dispatchEmail(
         : [];
     const messageIds = rawMessageIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
     if (messageIds.length === 0) {
-      throw new ActionExecutionError("postmark send returned no production readback message id");
+      throw new ActionExecutionError(outcome.provider + " send returned no production readback message id");
     }
-    await deps.outboundReadbacks.recordPostmarkReadbacks({
+    await deps.outboundReadbacks.recordEspReadbacks({
       workspaceId: ctx.workspaceId,
       approvalRequestId,
       recipients: toSend,

@@ -37,6 +37,8 @@ import {
   setServiceCredentials,
   revokeServiceCredentials,
 } from "../db/repositories/external-credentials.js";
+import { channelForEspProvider, type OutboundChannel } from "../outbound-channel/channel.js";
+import { connectChannel, revokeChannel } from "../outbound-channel/service.js";
 
 /**
  * Connections routes (#258) — the OAuth-first "connect once, the agents do the rest" surface. All
@@ -61,6 +63,9 @@ const POSTMARK_SERVICE_KEY = "postmark";
 const POSTMARK_TOKEN_KEY = "POSTMARK_SERVER_TOKEN";
 const POSTMARK_FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
 const POSTMARK_AUTH_RESULTS_HEADER_KEY = "POSTMARK_AUTH_RESULTS_HEADER";
+const RESEND_SERVICE_KEY = "resend";
+const RESEND_TOKEN_KEY = "RESEND_API_KEY";
+const RESEND_FROM_KEYS = ["RESEND_FROM", "RESEND_FROM_ADDRESS", "RELOAD_FLEET_FROM_EMAIL"] as const;
 const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
 const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 const IMESSAGE_MACOS_HOST_KEYS = ["IMESSAGE_RELAY_MACOS_HOST"] as const;
@@ -116,21 +121,53 @@ function firstEnv(keys: readonly string[]): string {
   return "";
 }
 
-function emailProviderProofSecrets(workspaceId: string): Record<string, string> {
+interface EmailProviderProof {
+  serviceKey: string;
+  channel: OutboundChannel;
+  fromAddress: string;
+  secrets: Record<string, string>;
+}
+
+function emailProviderProofSecrets(workspaceId: string): EmailProviderProof | null {
   const reach = loadConfig(workspaceId).reach;
-  if (reach?.sendProvider !== "postmark" || reach.liveSendEnabled !== true) return {};
-  const token = process.env[POSTMARK_TOKEN_KEY]?.trim() ?? "";
-  const from = firstEnv(POSTMARK_FROM_KEYS);
-  if (!token || !from) return {};
-  return {
-    [POSTMARK_TOKEN_KEY]: token,
-    POSTMARK_FROM: from,
-    ...(process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim()
-      ? {
-          [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim(),
-        }
-      : {}),
-  };
+  if (reach?.liveSendEnabled !== true) return null;
+  const provider = reach.sendProvider?.trim().toLowerCase();
+  if (provider === POSTMARK_SERVICE_KEY) {
+    const token = process.env[POSTMARK_TOKEN_KEY]?.trim() ?? "";
+    const from = firstEnv(POSTMARK_FROM_KEYS);
+    const channel = channelForEspProvider(provider);
+    if (!token || !from || !channel) return null;
+    return {
+      serviceKey: POSTMARK_SERVICE_KEY,
+      channel,
+      fromAddress: from,
+      secrets: {
+        [POSTMARK_TOKEN_KEY]: token,
+        POSTMARK_FROM: from,
+        ...(process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]?.trim()
+          ? {
+              [POSTMARK_AUTH_RESULTS_HEADER_KEY]: process.env[POSTMARK_AUTH_RESULTS_HEADER_KEY]!.trim(),
+            }
+          : {}),
+      },
+    };
+  }
+  if (provider === RESEND_SERVICE_KEY) {
+    const token = process.env[RESEND_TOKEN_KEY]?.trim() ?? "";
+    const from = firstEnv(RESEND_FROM_KEYS);
+    const channel = channelForEspProvider(provider);
+    if (!token || !from || !channel) return null;
+    return {
+      serviceKey: RESEND_SERVICE_KEY,
+      channel,
+      fromAddress: from,
+      secrets: {
+        [RESEND_TOKEN_KEY]: token,
+        RESEND_FROM: from,
+      },
+    };
+  }
+  return null;
 }
 
 function telegramProviderProofSecrets(): Record<string, string> {
@@ -183,8 +220,18 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         },
       ]),
     );
-    const postmark = proofs.get(POSTMARK_SERVICE_KEY);
-    if (postmark?.connected) proofs.set(EMAIL_CONNECTION_ID, postmark);
+    const activeEmailProvider = loadConfig(workspaceId).reach?.sendProvider?.trim().toLowerCase();
+    const emailProofOrder =
+      activeEmailProvider === RESEND_SERVICE_KEY
+        ? [RESEND_SERVICE_KEY, POSTMARK_SERVICE_KEY]
+        : [POSTMARK_SERVICE_KEY, RESEND_SERVICE_KEY];
+    for (const serviceKey of emailProofOrder) {
+      const proof = proofs.get(serviceKey);
+      if (proof?.connected) {
+        proofs.set(EMAIL_CONNECTION_ID, proof);
+        break;
+      }
+    }
     return proofs;
   }
 
@@ -420,9 +467,19 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
     const id = (req.params as { id: string }).id;
     const decision = decideOneClickConnect({ descriptor: runtimeDescriptor(wid, id) });
     if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    const emailProof = decision.serviceKey === EMAIL_CONNECTION_ID ? emailProviderProofSecrets(wid) : null;
+    if (emailProof) {
+      const channelConnection = await connectChannel({
+        workspaceId: wid,
+        channel: emailProof.channel,
+        fromAddress: emailProof.fromAddress,
+        connectedByMemberId: identity.memberId,
+      });
+      if (!channelConnection.ok) return reply.code(400).send({ error: channelConnection.error });
+    }
     const providerSecrets =
       decision.serviceKey === EMAIL_CONNECTION_ID
-        ? emailProviderProofSecrets(wid)
+        ? (emailProof?.secrets ?? {})
         : decision.serviceKey === TELEGRAM_ROOM_CONNECTION_ID
           ? telegramProviderProofSecrets()
           : decision.serviceKey === WHATSAPP_ROOM_CONNECTION_ID
@@ -430,9 +487,9 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
           : {};
     await setServiceCredentials({
       workspaceId: wid,
-      serviceKey: providerSecrets[POSTMARK_TOKEN_KEY] ? POSTMARK_SERVICE_KEY : decision.serviceKey,
-      // Without live provider proof, one-click records consent only. With live Postmark configured, seal the
-      // provider credential where the sender actually reads it, then alias that proof back to the email card.
+      serviceKey: emailProof?.serviceKey ?? decision.serviceKey,
+      // Without live provider proof, one-click records consent only. With live ESP config, seal the provider
+      // proof for the connection UI and record the matching outbound-channel ledger used by the sender.
       secrets: providerSecrets,
       scopes: decision.scopes,
       connectedByMemberId: identity.memberId,
@@ -676,6 +733,17 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
           identity.memberId,
         );
       }
+      if (proofs.get(RESEND_SERVICE_KEY)?.connected) {
+        await revokeServiceCredentials(
+          identity.workspaceId,
+          RESEND_SERVICE_KEY,
+          identity.memberId,
+        );
+      }
+      await Promise.all([
+        revokeChannel({ workspaceId: identity.workspaceId, channel: "email_postmark" }),
+        revokeChannel({ workspaceId: identity.workspaceId, channel: "email_resend" }),
+      ]);
     }
     return { revoked: true, id };
   });

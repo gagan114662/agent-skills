@@ -1,7 +1,9 @@
 #!/usr/bin/env tsx
 import { pathToFileURL } from "node:url";
 import { PostmarkEspProvider } from "../email/postmark-provider.js";
+import { ResendEspProvider } from "../email/resend-provider.js";
 import type { OutboundDeliveryProof } from "../first-customer/proof.js";
+import { channelForEspProvider } from "./channel.js";
 import { buildEspReadbackReceipt } from "./receipt.js";
 
 type VerifyAndRecordSend = typeof import("./service.js").verifyAndRecordSend;
@@ -16,7 +18,9 @@ export interface OutboundDoctorCheck {
 }
 
 export interface OutboundDoctorConfig {
+  provider: string;
   serverToken: string;
+  resendApiKey: string;
   from: string;
   acquisitionEnabled: boolean;
   acquisitionEmailEnabled: boolean;
@@ -41,6 +45,12 @@ export interface OutboundDoctorDeps {
 }
 
 const FROM_KEYS = ["POSTMARK_FROM", "POSTMARK_FROM_ADDRESS", "POSTMARK_SENDER"] as const;
+const RESEND_FROM_KEYS = ["RESEND_FROM", "RESEND_FROM_ADDRESS", "RELOAD_FLEET_FROM_EMAIL"] as const;
+
+function normalizeProvider(value: string | undefined): string {
+  const provider = value?.trim().toLowerCase() ?? "";
+  return provider || "postmark";
+}
 
 function hasArg(argv: string[], name: string): boolean {
   return argv.includes(name);
@@ -73,9 +83,12 @@ export function parseOutboundDoctorConfig(
 ): OutboundDoctorConfig {
   const env = input.env ?? process.env;
   const argv = input.argv ?? process.argv.slice(2);
+  const provider = normalizeProvider(env.RELOAD_ACQUISITION_ESP_PROVIDER ?? env.RELOAD_REACH_SEND_PROVIDER);
   return {
+    provider,
     serverToken: env.POSTMARK_SERVER_TOKEN?.trim() ?? "",
-    from: firstEnv(env, FROM_KEYS),
+    resendApiKey: env.RESEND_API_KEY?.trim() ?? "",
+    from: provider === "resend" ? firstEnv(env, RESEND_FROM_KEYS) : firstEnv(env, FROM_KEYS),
     acquisitionEnabled: flag(env.RELOAD_ACQUISITION_ENABLED),
     acquisitionEmailEnabled: flag(env.RELOAD_ACQUISITION_EMAIL),
     acquisitionEspProvider: env.RELOAD_ACQUISITION_ESP_PROVIDER?.trim() ?? "",
@@ -87,7 +100,7 @@ export function parseOutboundDoctorConfig(
     smokeSubject: argValue(argv, "--subject") ?? "ipop outbound doctor smoke",
     smokeText:
       argValue(argv, "--text") ??
-      "ipop outbound doctor smoke: Postmark live-send setup is reachable; reply to complete first-customer proof.",
+      "ipop outbound doctor smoke: " + provider + " live-send setup is reachable; reply to complete first-customer proof.",
     workspaceId:
       argValue(argv, "--workspace-id")?.trim() ??
       env.RELOAD_OWNER_WORKSPACE_ID?.trim() ??
@@ -102,20 +115,28 @@ export function parseOutboundDoctorConfig(
       env.RELOAD_OUTBOUND_DOCTOR_TRACKING_REF?.trim() ??
       "",
     proofJson: hasArg(argv, "--proof-json"),
-    apiBaseUrl: env.POSTMARK_API_BASE_URL?.trim() || "https://api.postmarkapp.com",
+    apiBaseUrl:
+      provider === "resend"
+        ? env.RESEND_API_BASE_URL?.trim() || "https://api.resend.com"
+        : env.POSTMARK_API_BASE_URL?.trim() || "https://api.postmarkapp.com",
   };
 }
 
 function configCheck(config: OutboundDoctorConfig): OutboundDoctorCheck {
   const missing: string[] = [];
-  if (!config.serverToken) missing.push("POSTMARK_SERVER_TOKEN");
-  if (!config.from) missing.push("POSTMARK_FROM or POSTMARK_FROM_ADDRESS or POSTMARK_SENDER");
+  if (config.provider === "resend") {
+    if (!config.resendApiKey) missing.push("RESEND_API_KEY");
+    if (!config.from) missing.push("RESEND_FROM or RESEND_FROM_ADDRESS or RELOAD_FLEET_FROM_EMAIL");
+  } else {
+    if (!config.serverToken) missing.push("POSTMARK_SERVER_TOKEN");
+    if (!config.from) missing.push("POSTMARK_FROM or POSTMARK_FROM_ADDRESS or POSTMARK_SENDER");
+  }
   return {
-    name: "postmark-config",
+    name: config.provider + "-config",
     status: missing.length === 0 ? "pass" : "fail",
     message:
       missing.length === 0
-        ? "Postmark token and sender env present"
+        ? config.provider + " token and sender env present"
         : "missing: " + missing.join(", "),
   };
 }
@@ -124,14 +145,14 @@ function acquisitionCheck(config: OutboundDoctorConfig): OutboundDoctorCheck {
   const missing: string[] = [];
   if (!config.acquisitionEnabled) missing.push("RELOAD_ACQUISITION_ENABLED=true");
   if (!config.acquisitionEmailEnabled) missing.push("RELOAD_ACQUISITION_EMAIL=true");
-  if (config.acquisitionEspProvider !== "postmark")
-    missing.push("RELOAD_ACQUISITION_ESP_PROVIDER=postmark");
+  if (config.acquisitionEspProvider !== config.provider)
+    missing.push("RELOAD_ACQUISITION_ESP_PROVIDER=" + config.provider);
   return {
     name: "acquisition-email-live",
     status: missing.length === 0 ? "pass" : "fail",
     message:
       missing.length === 0
-        ? "acquisition email is configured to use Postmark"
+        ? "acquisition email is configured to use " + config.provider
         : "not live-send ready: " + missing.join(", "),
   };
 }
@@ -202,35 +223,93 @@ async function checkPostmarkServer(
   }
 }
 
+async function checkResendDomains(
+  config: OutboundDoctorConfig,
+  fetchImpl: typeof fetch,
+): Promise<OutboundDoctorCheck> {
+  if (!config.resendApiKey) {
+    return { name: "resend-domains", status: "fail", message: "RESEND_API_KEY is missing" };
+  }
+  try {
+    const result = await jsonFetch({
+      url: config.apiBaseUrl.replace(/\/+$/, "") + "/domains",
+      fetchImpl,
+      init: {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer " + config.resendApiKey,
+          "User-Agent": "ipop-server/1.0",
+        },
+      },
+    });
+    const payload = result.payload as { object?: string; data?: unknown[]; message?: string } | null;
+    if (!result.ok || payload?.object !== "list" || !Array.isArray(payload.data)) {
+      return {
+        name: "resend-domains",
+        status: "fail",
+        message: payload?.message ?? "Resend /domains lookup failed with HTTP " + result.status,
+      };
+    }
+    return {
+      name: "resend-domains",
+      status: "pass",
+      message: "Resend API key reachable; domains returned " + payload.data.length,
+    };
+  } catch (error) {
+    return {
+      name: "resend-domains",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function providerIdentityCheck(
+  config: OutboundDoctorConfig,
+  fetchImpl: typeof fetch,
+): Promise<OutboundDoctorCheck> {
+  if (config.provider === "resend") return checkResendDomains(config, fetchImpl);
+  return checkPostmarkServer(config, fetchImpl);
+}
+
 async function maybeSendSmoke(
   config: OutboundDoctorConfig,
   fetchImpl: typeof fetch,
   verifyAndRecordSend: VerifyAndRecordSend,
 ): Promise<OutboundDoctorCheck[]> {
+  const smokeCheckName = config.provider + "-send-smoke";
   if (!config.sendSmoke) {
     return [
       {
-        name: "postmark-send-smoke",
+        name: smokeCheckName,
         status: "warn",
-        message: "skipped; pass --send-smoke --to <recipient> to send a tagged Postmark message",
+        message: "skipped; pass --send-smoke --to <recipient> to send a tagged " + config.provider + " message",
       },
     ];
   }
   if (!config.smokeTo) {
     return [
       {
-        name: "postmark-send-smoke",
+        name: smokeCheckName,
         status: "fail",
         message: "--to is required when --send-smoke is set",
       },
     ];
   }
-  if (!config.serverToken || !config.from) {
+  const credentialMissing =
+    config.provider === "resend"
+      ? !config.resendApiKey || !config.from
+      : !config.serverToken || !config.from;
+  if (credentialMissing) {
     return [
       {
-        name: "postmark-send-smoke",
+        name: smokeCheckName,
         status: "fail",
-        message: "POSTMARK_SERVER_TOKEN and sender env are required before sending smoke",
+        message:
+          config.provider === "resend"
+            ? "RESEND_API_KEY and sender env are required before sending smoke"
+            : "POSTMARK_SERVER_TOKEN and sender env are required before sending smoke",
       },
     ];
   }
@@ -245,12 +324,24 @@ async function maybeSendSmoke(
     ];
   }
   try {
-    const provider = new PostmarkEspProvider({
-      serverToken: config.serverToken,
-      from: config.from,
-      fetchImpl,
-      html: false,
-    });
+    const channel = channelForEspProvider(config.provider);
+    if (!channel) {
+      return [{ name: smokeCheckName, status: "fail", message: "unsupported ESP provider " + config.provider }];
+    }
+    const provider =
+      config.provider === "resend"
+        ? new ResendEspProvider({
+            apiKey: config.resendApiKey,
+            from: config.from,
+            fetchImpl,
+            html: false,
+          })
+        : new PostmarkEspProvider({
+            serverToken: config.serverToken,
+            from: config.from,
+            fetchImpl,
+            html: false,
+          });
     const result = await provider.send({
       to: config.smokeTo,
       subject: config.smokeSubject,
@@ -263,12 +354,12 @@ async function maybeSendSmoke(
     const receipt = buildEspReadbackReceipt({
       messageId: result.externalId,
       observedAt,
-      detail: { provider: "postmark", source: "outbound-doctor-smoke" },
+      detail: { provider: config.provider, source: "outbound-doctor-smoke" },
     });
     const outboundDeliveryProof = receipt
       ? {
-          channel: "email_postmark" as const,
-          provider: "postmark",
+          channel,
+          provider: config.provider,
           receipt,
           recipient: config.smokeTo,
           approvalRequestId: config.approvalRequestId,
@@ -277,9 +368,9 @@ async function maybeSendSmoke(
       : undefined;
     const checks: OutboundDoctorCheck[] = [
       {
-        name: "postmark-send-smoke",
+        name: smokeCheckName,
         status: "pass",
-        message: "sent Postmark smoke message id " + result.externalId,
+        message: "sent " + config.provider + " smoke message id " + result.externalId,
         outboundDeliveryProof,
       },
     ];
@@ -294,13 +385,13 @@ async function maybeSendSmoke(
     }
     const recorded = await verifyAndRecordSend({
       workspaceId: config.workspaceId,
-      channel: "email_postmark",
+      channel,
       recipient: config.smokeTo,
       approvalRequestId: config.approvalRequestId,
       probe: async () => ({
         messageId: result.externalId,
         observedAt,
-        detail: { provider: "postmark", source: "outbound-doctor-smoke" },
+        detail: { provider: config.provider, source: "outbound-doctor-smoke" },
       }),
     });
     checks.push({
@@ -308,14 +399,14 @@ async function maybeSendSmoke(
       status: recorded.verified ? "pass" : "fail",
       message: recorded.verified
         ? "recorded verified send receipt " + (recorded.row?.id ?? "(no row id)")
-        : "Postmark returned a message id but the receipt did not verify",
+        : config.provider + " returned a message id but the receipt did not verify",
       outboundDeliveryProof,
     });
     return checks;
   } catch (error) {
     return [
       {
-        name: "postmark-send-smoke",
+        name: smokeCheckName,
         status: "fail",
         message: error instanceof Error ? error.message : String(error),
       },
@@ -338,7 +429,7 @@ export async function runOutboundDoctor(
     configCheck(config),
     acquisitionCheck(config),
     complianceCheck(config),
-    await checkPostmarkServer(config, fetchImpl),
+    await providerIdentityCheck(config, fetchImpl),
     ...(await maybeSendSmoke(config, fetchImpl, verifyAndRecordSend)),
   ];
 }
