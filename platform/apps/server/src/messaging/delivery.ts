@@ -7,6 +7,7 @@ import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 import { publishMessageEvent, publishMention } from "../realtime/bus.js";
 import { notify } from "../notifications/service.js";
 import { mirrorExternalRoomPost, type ExternalRoomMirrorSource } from "./external-room-mirror.js";
+import { mirrorIMessageRoomPost } from "./imessage-room-mirror.js";
 
 /**
  * Side-effect fan-out for a freshly-persisted message, factored out of the #4 channel routes so the
@@ -151,13 +152,16 @@ export async function deliverPostedMessage(
   await notifyDmRecipients(log, identity, channel, message);
   // #123: a top-level @mention of a department agent in its channel launches a real session.
   await fireMarketingMention(log, identity, channel, message);
-  await mirrorExternalRoomPost(log, {
+  const source = externalRoomSourceForIdentity(identity, "room_message");
+  const mirrorInput = {
     workspaceId: identity.workspaceId,
     channelId: channel.id,
     message,
     author: identity.displayName,
-    source: externalRoomSourceForIdentity(identity, "room_message"),
-  });
+    source,
+  };
+  await mirrorExternalRoomPost(log, mirrorInput);
+  await mirrorIMessageRoomPost(log, mirrorInput);
 }
 
 /**
@@ -185,11 +189,14 @@ export async function deliverThreadReply(
     messageId: message.id,
     excerpt: message.body,
   });
-  await mirrorExternalRoomPost(log, {
+  const source = externalRoomSourceForIdentity(identity, "thread_reply");
+  const mirrorInput = {
     workspaceId: identity.workspaceId,
     channelId: channel.id,
     message,
     author: identity.displayName,
-    source: externalRoomSourceForIdentity(identity, "thread_reply"),
-  });
+    source,
+  };
+  await mirrorExternalRoomPost(log, mirrorInput);
+  await mirrorIMessageRoomPost(log, mirrorInput);
 }
