@@ -9,6 +9,7 @@ import {
 
 export type IMessageRelayJobPurpose = "verification" | "room" | "notification";
 export type IMessageRelayJobStatus = "pending" | "claimed" | "sent" | "failed";
+export type IMessageRelayMessagesAccess = "unknown" | "ok" | "failed";
 
 export interface IMessageRecipient {
   id: string;
@@ -46,6 +47,7 @@ export interface IMessageRelayHeartbeat {
   relayId: string;
   host: string;
   version: string | null;
+  messagesAccess: IMessageRelayMessagesAccess;
   checkedInAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -100,6 +102,7 @@ const HEARTBEAT_COLUMNS = {
   relayId: imessageRelayHeartbeats.relayId,
   host: imessageRelayHeartbeats.host,
   version: imessageRelayHeartbeats.version,
+  messagesAccess: imessageRelayHeartbeats.messagesAccess,
   checkedInAt: imessageRelayHeartbeats.checkedInAt,
   createdAt: imessageRelayHeartbeats.createdAt,
   updatedAt: imessageRelayHeartbeats.updatedAt,
@@ -329,29 +332,51 @@ export async function recordIMessageRelayHeartbeat(input: {
   relayId: string;
   host: string;
   version?: string | null;
+  messagesAccess?: IMessageRelayMessagesAccess;
   nowMs?: number;
 }): Promise<IMessageRelayHeartbeat> {
   const now = new Date(input.nowMs ?? Date.now());
+  const heartbeatUpdate = {
+    host: input.host,
+    version: input.version ?? null,
+    checkedInAt: now,
+    updatedAt: now,
+    ...(input.messagesAccess ? { messagesAccess: input.messagesAccess } : {}),
+  };
   const [row] = await db
     .insert(imessageRelayHeartbeats)
     .values({
       relayId: input.relayId,
       host: input.host,
       version: input.version ?? null,
+      messagesAccess: input.messagesAccess ?? "unknown",
       checkedInAt: now,
       updatedAt: now,
     })
     .onConflictDoUpdate({
       target: imessageRelayHeartbeats.relayId,
-      set: {
-        host: input.host,
-        version: input.version ?? null,
-        checkedInAt: now,
-        updatedAt: now,
-      },
+      set: heartbeatUpdate,
     })
     .returning(HEARTBEAT_COLUMNS);
   return row as IMessageRelayHeartbeat;
+}
+
+export async function recordIMessageRelayMessagesAccess(input: {
+  relayId: string;
+  messagesAccess: Exclude<IMessageRelayMessagesAccess, "unknown">;
+  nowMs?: number;
+}): Promise<IMessageRelayHeartbeat | undefined> {
+  const now = new Date(input.nowMs ?? Date.now());
+  const [row] = await db
+    .update(imessageRelayHeartbeats)
+    .set({
+      messagesAccess: input.messagesAccess,
+      checkedInAt: now,
+      updatedAt: now,
+    })
+    .where(eq(imessageRelayHeartbeats.relayId, input.relayId))
+    .returning(HEARTBEAT_COLUMNS);
+  return row as IMessageRelayHeartbeat | undefined;
 }
 
 export async function getLatestIMessageRelayHeartbeat(): Promise<IMessageRelayHeartbeat | undefined> {

@@ -13,6 +13,7 @@ import {
   getLatestIMessageRelayJobForMember,
   getLatestIMessageRelayHeartbeat,
   markIMessageRecipientVerified,
+  recordIMessageRelayMessagesAccess,
   recordIMessageRelayInboundReceipt,
   recordIMessageRelayHeartbeat,
   upsertIMessageRecipient,
@@ -120,9 +121,14 @@ function relayHeartbeatPayload(
     relayId: heartbeat.relayId,
     host: heartbeat.host,
     version: heartbeat.version,
+    messagesAccess: heartbeat.messagesAccess,
     checkedInAt: heartbeat.checkedInAt.toISOString(),
     active: Date.now() - checkedInAtMs <= RELAY_HEARTBEAT_ACTIVE_MS,
   };
+}
+
+function normalizeMessagesAccess(raw: unknown): "unknown" | "ok" | "failed" | undefined {
+  return raw === "ok" || raw === "failed" || raw === "unknown" ? raw : undefined;
 }
 
 function relayInboundReceiptPayload(receipt: IMessageRelayInboundReceipt): Record<string, unknown> {
@@ -357,11 +363,16 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
 
   app.post("/imessage/relay/heartbeat", async (req, reply) => {
     if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
-    const body = (req.body ?? {}) as { relayId?: unknown; host?: unknown; version?: unknown };
+    const body = (req.body ?? {}) as { relayId?: unknown; host?: unknown; version?: unknown; messagesAccess?: unknown };
     const relayId = typeof body.relayId === "string" && body.relayId.trim() ? body.relayId.trim().slice(0, 120) : "mac-relay";
     const host = typeof body.host === "string" && body.host.trim() ? body.host.trim().slice(0, 180) : "macOS relay host";
     const version = typeof body.version === "string" && body.version.trim() ? body.version.trim().slice(0, 120) : null;
-    const heartbeat = await recordIMessageRelayHeartbeat({ relayId, host, version });
+    const heartbeat = await recordIMessageRelayHeartbeat({
+      relayId,
+      host,
+      version,
+      messagesAccess: normalizeMessagesAccess(body.messagesAccess),
+    });
     return { relayHeartbeat: relayHeartbeatPayload(heartbeat) };
   });
 
@@ -375,6 +386,9 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
     const error = typeof body.error === "string" ? body.error.slice(0, 500) : null;
     const job = await completeIMessageRelayJob({ id, relayId, status, error });
     if (!job) return reply.code(409).send({ error: "iMessage relay job is not claimed by this relay" });
+    if (status === "sent") {
+      await recordIMessageRelayMessagesAccess({ relayId, messagesAccess: "ok" });
+    }
     let memberRecipient: Record<string, unknown> | null = null;
     if (job.purpose === "verification" && job.memberId && status === "sent") {
       const verified = await markIMessageRecipientVerified({

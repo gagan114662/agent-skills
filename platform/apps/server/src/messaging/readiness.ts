@@ -48,6 +48,7 @@ export interface MessagingProviderReadiness {
   latestInboundProof: MessagingProofSummary | null;
   relayHeartbeat?: {
     active: boolean;
+    messagesAccess: "unknown" | "ok" | "failed";
     checkedInAt: string | null;
     relayId: string | null;
     host: string | null;
@@ -196,6 +197,8 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
   const outbound = imessageJobProof(input.latestSentJob, nowMs);
   const inbound = imessageInboundProof(input.latestInboundReceipt, nowMs);
   const heartbeatFresh = Boolean(input.relayHeartbeat && nowMs - input.relayHeartbeat.checkedInAt.getTime() <= 120_000);
+  const messagesAccess = input.relayHeartbeat?.messagesAccess ?? "unknown";
+  const relayReady = heartbeatFresh && messagesAccess === "ok";
   const configured = input.status.enabled && input.status.configured && !input.status.dryRun && Boolean(input.recipient?.verifiedAt);
   let state: MessagingReadinessState = roundTripState({ configured, outbound, inbound });
   const notes: string[] = [];
@@ -213,10 +216,12 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
         ? "member iMessage recipient still needs a successful verification send"
         : "verified iMessage recipient is missing",
     );
-  } else if (state === "healthy" && !heartbeatFresh) {
+  } else if (state === "healthy" && !relayReady) {
     state = "configured_unproven";
   }
   if (!heartbeatFresh) notes.push("signed Mac relay heartbeat is not active");
+  if (heartbeatFresh && messagesAccess === "failed") notes.push("signed Mac relay cannot access Messages");
+  if (heartbeatFresh && messagesAccess === "unknown") notes.push("signed Mac relay Messages access is not proven");
   if (outbound?.stale) notes.push("latest iMessage outbound proof is stale");
   if (inbound?.stale) notes.push("latest iMessage inbound proof is stale");
   if (configured && state !== "healthy") notes.push("send and reply through iMessage to complete round-trip proof");
@@ -238,6 +243,7 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
     latestInboundProof: inbound,
     relayHeartbeat: {
       active: heartbeatFresh,
+      messagesAccess,
       checkedInAt: input.relayHeartbeat?.checkedInAt.toISOString() ?? null,
       relayId: input.relayHeartbeat?.relayId ?? null,
       host: input.relayHeartbeat?.host ?? null,

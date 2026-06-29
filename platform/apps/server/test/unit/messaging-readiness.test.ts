@@ -100,6 +100,7 @@ function heartbeat(input: Partial<IMessageRelayHeartbeat> = {}): IMessageRelayHe
     relayId: input.relayId ?? "relay-1",
     host: input.host ?? "mac-mini",
     version: input.version ?? "1.0.0",
+    messagesAccess: input.messagesAccess ?? "ok",
     checkedInAt: input.checkedInAt ?? new Date(nowMs - 1_000),
     createdAt: input.createdAt ?? new Date(nowMs - 10_000),
     updatedAt: input.updatedAt ?? new Date(nowMs - 1_000),
@@ -204,5 +205,25 @@ describe("messaging readiness (#1426)", () => {
     expect(staleHeartbeat.state).toBe("configured_unproven");
     expect(staleHeartbeat.healthy).toBe(false);
     expect(staleHeartbeat.notes).toContain("signed Mac relay heartbeat is not active");
+
+    const messagesBlocked = buildIMessageReadiness({
+      status: {
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "owner@example.com",
+        recipientSource: "member_verified",
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient(),
+      latestSentJob: relayJob(),
+      latestInboundReceipt: inboundReceipt(),
+      relayHeartbeat: { ...heartbeat(), messagesAccess: "failed" } as IMessageRelayHeartbeat,
+      nowMs,
+    });
+    expect(messagesBlocked.state).toBe("configured_unproven");
+    expect(messagesBlocked.healthy).toBe(false);
+    expect(messagesBlocked.relayHeartbeat?.messagesAccess).toBe("failed");
+    expect(messagesBlocked.notes).toContain("signed Mac relay cannot access Messages");
   });
 });

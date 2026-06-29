@@ -331,17 +331,29 @@ function IMessageSetup({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const verified = Boolean(status?.memberRecipient?.verified);
-  const relayReady = Boolean(verified && status?.enabled && status.configured && !status.dryRun);
+  const relayJob = status?.lastRelayJob ?? null;
+  const relayHeartbeat = status?.relayHeartbeat ?? null;
+  const messagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
+  const relayReady = Boolean(
+    verified &&
+      status?.enabled &&
+      status.configured &&
+      !status.dryRun &&
+      relayHeartbeat?.active &&
+      messagesAccess === "ok",
+  );
   const relayBlocked = Boolean(verified && !relayReady);
   const pending = Boolean(status?.memberRecipient && !verified);
   const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
   const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
-  const relayJob = status?.lastRelayJob ?? null;
-  const relayHeartbeat = status?.relayHeartbeat ?? null;
   const inboundReceipt = status?.lastInboundReceipt ?? null;
   const relayHostProof = relayHeartbeat
     ? relayHeartbeat.active
-      ? "Mac relay host active: " + relayHeartbeat.host
+      ? messagesAccess === "ok"
+        ? "Mac relay host active with Messages access: " + relayHeartbeat.host
+        : messagesAccess === "failed"
+          ? "Mac relay host active, but Messages access is blocked: " + relayHeartbeat.host
+          : "Mac relay API heartbeat active; Messages access not proven: " + relayHeartbeat.host
       : "Mac relay host stale: last check-in " + relayHeartbeat.checkedInAt
     : "Mac relay host has not checked in yet.";
   const relayProof = relayJobProof(relayJob);
