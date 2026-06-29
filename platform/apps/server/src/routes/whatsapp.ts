@@ -46,7 +46,7 @@ function normalizePhone(raw: unknown): string | null {
 }
 
 function findReceipt(text: string): string | null {
-  const match = /(?:^|\s)receipt:\s*(whatsapp:[^\s]+)/i.exec(text);
+  const match = /(?:^|\s)(?:receipt|ref):\s*((?:whatsapp|wa):[^\s]+)/i.exec(text);
   return match?.[1] ?? null;
 }
 

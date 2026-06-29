@@ -64,6 +64,9 @@ describe("external room mirror (#1424)", () => {
     expect(formatExternalRoomEvent({ body: blockedTeamEvent, source: "agent_post" }).text).toContain(
       "blocked: Codex auth is missing",
     );
+    expect(formatExternalRoomEvent({ body: handoffTeamEvent, source: "agent_post" }).text).not.toContain(
+      "team run:",
+    );
   });
 
   it("mirrors a canonical agent post to connected Telegram and WhatsApp rooms and stores receipts", async () => {
@@ -100,12 +103,13 @@ describe("external room mirror (#1424)", () => {
 
     expect(telegramSend).toHaveBeenCalledWith({
       chatId: "123456",
-      text: expect.stringContaining("receipt: telegram:c1:m1"),
+      text: expect.stringContaining("ref: tg:c1:m1"),
     });
-    expect(telegramSend.mock.calls[0]?.[0].text).toContain("Scout: agent update: Found the homepage gap");
+    expect(telegramSend.mock.calls[0]?.[0].text).toContain("Scout: Found the homepage gap");
+    expect(telegramSend.mock.calls[0]?.[0].text).not.toContain("workspace:");
     expect(whatsappSend).toHaveBeenCalledWith({
       recipient: "15551112222",
-      text: expect.stringContaining("receipt: whatsapp:c1:m1"),
+      text: expect.stringContaining("ref: wa:c1:m1"),
     });
     expect(recordReceipt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -207,4 +211,3 @@ describe("external room mirror (#1424)", () => {
     expect(recordReceipt).toHaveBeenCalledWith(expect.objectContaining({ provider: "whatsapp" }));
   });
 });
-

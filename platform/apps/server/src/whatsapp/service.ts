@@ -116,17 +116,42 @@ export function whatsappRoomReceipt(input: {
   author: string;
   text: string;
 }): string {
-  return [
-    "ipop room update",
-    "workspace: " + input.workspaceId,
-    "receipt: whatsapp:" + input.channelId + ":" + input.messageId,
-    input.author + ": " + input.text,
-  ].join("\n");
+  return chatNativeRoomUpdate({
+    providerPrefix: "wa",
+    channelId: input.channelId,
+    messageId: input.messageId,
+    author: input.author,
+    text: input.text,
+  });
 }
 
 export function parseWhatsAppRoomReceipt(raw: unknown): { channelId: string; messageId: string } | null {
   if (typeof raw !== "string") return null;
-  const match = /^whatsapp:([^:]+):([^:]+)$/.exec(raw.trim());
+  const match = /(?:^|\s)(?:(?:receipt|ref):\s*)?(?:whatsapp|wa):([^:\s]+):([^:\s]+)/i.exec(raw.trim());
   if (!match) return null;
   return { channelId: match[1]!, messageId: match[2]! };
+}
+
+function chatNativeRoomUpdate(input: {
+  providerPrefix: "wa";
+  channelId: string;
+  messageId: string;
+  author: string;
+  text: string;
+}): string {
+  const update = clipped(input.text, 700);
+  const lines = [input.author + ": " + update.text];
+  if (update.clipped) lines.push("Full update: https://ipop.ai/everyday");
+  lines.push(
+    "",
+    "Reply here to keep this in the room.",
+    "ref: " + input.providerPrefix + ":" + input.channelId + ":" + input.messageId,
+  );
+  return lines.join("\n");
+}
+
+function clipped(text: string, max: number): { text: string; clipped: boolean } {
+  const value = text.replace(/\s+/g, " ").trim();
+  if (value.length <= max) return { text: value, clipped: false };
+  return { text: value.slice(0, max - 3).trimEnd() + "...", clipped: true };
 }

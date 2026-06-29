@@ -208,9 +208,10 @@ describe("WhatsApp room bridge (#1267)", () => {
       apiBaseUrl: "https://graph.test/v20.0",
       phoneNumberId: "phone-id",
       recipient: "15553334444",
-      text: expect.stringContaining(`receipt: whatsapp:${channelId}:${posted.json().id}`),
+      text: expect.stringContaining(`ref: wa:${channelId}:${posted.json().id}`),
     });
-    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: room message: web room update for WhatsApp");
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: web room update for WhatsApp");
+    expect(sendMessage.mock.calls[0]?.[0].text).not.toContain("workspace:");
   });
 
   it("connects a configured WhatsApp room, mirrors room events, and ingests signed replies", async () => {
@@ -262,7 +263,7 @@ describe("WhatsApp room bridge (#1267)", () => {
       apiBaseUrl: "https://graph.test/v20.0",
       phoneNumberId: "phone-id",
       recipient: "15551112222",
-      text: expect.stringContaining(`receipt: whatsapp:${channelId}:${started.json().message.id}`),
+      text: expect.stringContaining(`ref: wa:${channelId}:${started.json().message.id}`),
     });
     await expect(listChannelMessages(channelId)).resolves.toHaveLength(1);
 
@@ -442,7 +443,7 @@ describe("WhatsApp room bridge (#1267)", () => {
       text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
     });
     await waitForLaunches(4);
-    await waitForSendContaining("agent update: started:");
+    await waitForSendContaining("started:");
     expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");

@@ -112,27 +112,35 @@ export function formatExternalRoomEvent(input: {
         ? "handoff"
         : type === "blocked"
           ? "blocked"
-          : "agent update";
-    const lines = [
-      label + ": " + snippet(teamEvent.summary),
-      "team run: " + teamEvent.teamRunId,
-      "subtask: " + teamEvent.subtaskId,
-    ];
-    if (teamEvent.branch) lines.push("branch: " + teamEvent.branch);
-    return { type, text: lines.join("\n") };
+          : "";
+    return {
+      type,
+      text: label ? label + ": " + snippet(teamEvent.summary, 500) : snippet(teamEvent.summary, 500),
+    };
   }
 
   const type = classifyExternalRoomEvent(input);
-  const labels: Record<ExternalRoomEventType, string> = {
-    room_message: "room message",
-    thread_reply: "thread reply",
-    agent_status: "agent update",
+  const body = snippet(input.body, 700);
+  if (type === "approval_request") {
+    return {
+      type,
+      text:
+        "approval request: " +
+        body +
+        "\nReply YES approval <id> because ... or NO approval <id> because ...",
+    };
+  }
+  const labels: Record<ExternalRoomEventType, string | null> = {
+    room_message: null,
+    thread_reply: "reply",
+    agent_status: null,
     handoff: "handoff",
     approval_request: "approval request",
-    deliverable_preview: "deliverable preview",
+    deliverable_preview: "preview",
     blocked: "blocked",
   };
-  return { type, text: labels[type] + ": " + snippet(input.body) };
+  const label = labels[type];
+  return { type, text: label ? label + ": " + body : body };
 }
 
 function logRetryableFailure(input: {

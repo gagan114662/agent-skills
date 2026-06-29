@@ -8,7 +8,7 @@ import {
   type ExternalRoomMessageProvider,
 } from "../db/repositories/external-room-message-receipts.js";
 import { getWorkspaceOwnerMemberId } from "../db/repositories/members.js";
-import { getMessage, postMessage } from "../db/repositories/messages.js";
+import { postMessage } from "../db/repositories/messages.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { newId } from "../db/id.js";
 import { seedDepartmentForWorkspace } from "../marketing/default.js";
@@ -163,7 +163,6 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           providerMessageId: input.providerMessageId,
         });
         if (existing) {
-          const original = await getMessage(existing.messageId);
           return {
             status: "duplicate",
             workspaceId: existing.workspaceId,
@@ -172,9 +171,7 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
             replyText:
               "Already on it. I found the same room message again, so I did not start a duplicate run. " +
               "Open the room: " +
-              appUrl +
-              "\nroom message: " +
-              (original?.id ?? existing.messageId),
+              appUrl,
           };
         }
       }
@@ -275,8 +272,6 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           replyText:
             "I opened the marketing room, but Codex subscription auth is not connected yet. Connect it here: " +
             appUrl +
-            "\nroom message: " +
-            rootMessage.id +
             "\nreason: " +
             codexStatus.reason,
         };
@@ -321,10 +316,6 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           names +
           " are starting on: " +
           snippet(objective, 120) +
-          "\nroom message: " +
-          rootMessage.id +
-          "\nteam run: " +
-          teamRunId +
           "\nOpen the room: " +
           appUrl,
       };
