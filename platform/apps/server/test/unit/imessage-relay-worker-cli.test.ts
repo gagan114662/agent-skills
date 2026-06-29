@@ -23,6 +23,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         IMESSAGE_RELAY_CLAIM_LIMIT: "7",
         IMESSAGE_RELAY_LEASE_MS: "90000",
         IMESSAGE_RELAY_POLL_MS: "3000",
+        IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS: "12000",
         IMESSAGE_OSASCRIPT_BIN: "/usr/bin/osascript",
       },
       platform: "darwin",
@@ -36,6 +37,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
       limit: 7,
       leaseMs: 90_000,
       pollMs: 3_000,
+      doctorTimeoutMs: 12_000,
       once: true,
       doctor: true,
       osascriptBin: "/usr/bin/osascript",
@@ -74,11 +76,15 @@ describe("iMessage relay worker CLI (#1341)", () => {
       },
     ]);
     expect(JSON.stringify(checks)).not.toContain("secret");
-    expect(execFileImpl).toHaveBeenCalledWith("osascript", ["-e", "return \"ok\""]);
+    expect(execFileImpl).toHaveBeenCalledWith(
+      "osascript",
+      ["-e", "return \"ok\""],
+      expect.objectContaining({ timeout: 10_000, killSignal: "SIGTERM" }),
+    );
     expect(execFileImpl).toHaveBeenCalledWith("osascript", [
       "-e",
       "tell application \"Messages\" to count services",
-    ]);
+    ], expect.objectContaining({ timeout: 10_000, killSignal: "SIGTERM" }));
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
@@ -108,6 +114,43 @@ describe("iMessage relay worker CLI (#1341)", () => {
           name: "messages-access",
           status: "fail",
           message: "Not authorized to send Apple events to Messages",
+        },
+        {
+          name: "api-heartbeat",
+          status: "pass",
+          message: "signed heartbeat accepted by https://api.ipop.ai",
+        },
+      ]),
+    );
+  });
+
+  it("doctor bounds a hanging Messages AppleScript probe and still reports API heartbeat", async () => {
+    const checks = await runRelayDoctor({
+      config: parseRelayWorkerConfig({
+        argv: ["--doctor"],
+        env: {
+          IMESSAGE_RELAY_WEBHOOK_SECRET: "secret",
+          IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS: "25",
+        },
+        platform: "darwin",
+        host: "Gagans-MacBook-Pro",
+      }),
+      execFileImpl: vi.fn(async (_bin, args) => {
+        if (args.includes("return \"ok\"")) return { stdout: "ok", stderr: "" };
+        const error = new Error("Command failed: osascript");
+        Object.assign(error, { killed: true, signal: "SIGTERM" });
+        throw error;
+      }),
+      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+    });
+
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        { name: "osascript", status: "pass", message: "osascript is runnable" },
+        {
+          name: "messages-access",
+          status: "fail",
+          message: "Messages AppleScript access timed out after 25ms",
         },
         {
           name: "api-heartbeat",
