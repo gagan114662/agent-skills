@@ -54,6 +54,11 @@ interface DoctorCheck {
   message: string;
 }
 
+const MESSAGES_AUTOMATION_REMEDY =
+  "Allow this terminal/Codex process to control Messages in System Settings > Privacy & Security > Automation, then keep Messages open and signed in.";
+const MESSAGES_DB_REMEDY =
+  "Grant Full Disk Access to this terminal/Codex process in System Settings > Privacy & Security > Full Disk Access, or set IMESSAGE_MESSAGES_DB_PATH to a readable Messages chat.db copy.";
+
 export interface RelayTrackedReceipt {
   workspaceId: string;
   recipient: string;
@@ -165,6 +170,10 @@ function execTimedOut(error: unknown): boolean {
   );
 }
 
+function withRemedy(message: string, remedy: string): string {
+  return message.includes(remedy) ? message : message + "; remedy: " + remedy;
+}
+
 async function execFileCheck(input: {
   osascriptBin: string;
   args: string[];
@@ -228,10 +237,11 @@ async function checkMessagesAccess(input: {
       message: "Messages AppleScript access is available (" + (serviceCount || "unknown") + " service(s) visible)",
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return {
       name: "messages-access",
       status: "fail",
-      message: error instanceof Error ? error.message : String(error),
+      message: withRemedy(message, MESSAGES_AUTOMATION_REMEDY),
     };
   }
 }
@@ -252,10 +262,11 @@ async function checkMessagesDb(input: { adapter: MacOsMessagesAdapter; dbPath: s
       message: "Messages chat database is readable (latest row " + rowId + ")",
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return {
       name: "messages-db",
       status: "fail",
-      message: error instanceof Error ? error.message : String(error),
+      message: withRemedy(message, MESSAGES_DB_REMEDY),
     };
   }
 }

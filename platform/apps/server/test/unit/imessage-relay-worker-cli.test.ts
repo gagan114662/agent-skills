@@ -129,7 +129,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         {
           name: "messages-access",
           status: "fail",
-          message: "Not authorized to send Apple events to Messages",
+          message: expect.stringContaining("Not authorized to send Apple events to Messages"),
         },
         {
           name: "api-heartbeat",
@@ -137,6 +137,9 @@ describe("iMessage relay worker CLI (#1341)", () => {
           message: "signed heartbeat accepted by https://api.ipop.ai",
         },
       ]),
+    );
+    expect(checks.find((check) => check.name === "messages-access")?.message).toContain(
+      "Allow this terminal/Codex process to control Messages",
     );
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
@@ -173,7 +176,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         {
           name: "messages-access",
           status: "fail",
-          message: "Messages AppleScript access timed out after 25ms",
+          message: expect.stringContaining("Messages AppleScript access timed out after 25ms"),
         },
         {
           name: "api-heartbeat",
@@ -181,6 +184,9 @@ describe("iMessage relay worker CLI (#1341)", () => {
           message: "signed heartbeat accepted by https://api.ipop.ai",
         },
       ]),
+    );
+    expect(checks.find((check) => check.name === "messages-access")?.message).toContain(
+      "Allow this terminal/Codex process to control Messages",
     );
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
@@ -231,6 +237,37 @@ describe("iMessage relay worker CLI (#1341)", () => {
       message: "Messages chat database not found at /tmp/messages-chat.db",
     });
     expect(adapter.latestMessageRowId).not.toHaveBeenCalled();
+  });
+
+  it("doctor reports the Full Disk Access remedy when Messages chat.db exists but is not readable", async () => {
+    const adapter = {
+      latestMessageRowId: vi.fn(async () => {
+        throw new Error('unable to open database "/tmp": authorization denied');
+      }),
+    } as unknown as MacOsMessagesAdapter;
+    const checks = await runRelayDoctor({
+      config: parseRelayWorkerConfig({
+        argv: ["--doctor"],
+        env: {
+          IMESSAGE_RELAY_WEBHOOK_SECRET: "secret",
+          IMESSAGE_MESSAGES_DB_PATH: "/tmp",
+        },
+        platform: "darwin",
+        host: "Gagans-MacBook-Pro",
+      }),
+      execFileImpl: vi.fn(async () => ({ stdout: "ok", stderr: "" })),
+      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      adapter,
+    });
+
+    expect(checks).toContainEqual({
+      name: "messages-db",
+      status: "fail",
+      message: expect.stringContaining("Grant Full Disk Access"),
+    });
+    expect(checks.find((check) => check.name === "messages-db")?.message).toContain(
+      "IMESSAGE_MESSAGES_DB_PATH",
+    );
   });
 
   it("maps new inbound Messages rows onto the latest sent room receipt", () => {

@@ -32,9 +32,25 @@ The doctor is safe to run during setup. It checks:
 - this is a macOS-capable worker environment
 - `osascript` can execute a harmless script
 - Apple Messages is reachable through AppleScript without sending a message
+- the local Messages `chat.db` is readable when inbound sync is enabled
 - the API accepts a signed relay heartbeat
 
 It does not claim queued jobs and does not send an iMessage.
+
+### macOS permissions
+
+The relay needs two separate macOS permissions before a real user-visible room loop can pass:
+
+1. **Automation for Messages.** If the doctor prints `FAIL messages-access`, open
+   **System Settings > Privacy & Security > Automation** and allow the terminal/Codex process that runs the relay
+   to control **Messages**. Keep Messages open and signed in, then rerun the doctor.
+2. **Messages database read access.** If the doctor prints `FAIL messages-db` with `authorization denied`,
+   open **System Settings > Privacy & Security > Full Disk Access** and grant access to the terminal/Codex process
+   that runs the relay. Alternatively set `IMESSAGE_MESSAGES_DB_PATH` to a readable copy of
+   `~/Library/Messages/chat.db` for a constrained relay host.
+
+Do not start the worker for production proof until the doctor shows `PASS messages-access`, `PASS messages-db`,
+and `PASS api-heartbeat`.
 
 After the doctor passes, start the worker:
 
