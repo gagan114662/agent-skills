@@ -293,10 +293,16 @@ const MARKETING_ICON_ROW = [
 ] as const;
 
 const DOOR_ACTIONS = [
-  { key: "login", label: "Login", href: APP_ROUTES.everyday },
+  { key: "login", label: "Login", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
   { key: "love", label: "Love", href: "#onboard-target" },
   { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
   { key: "start", label: "Start", href: "#onboard-target" },
+] as const;
+
+const MESSAGING_CHANNELS = [
+  { key: "imessage", label: "iMessage", detail: "personal room" },
+  { key: "whatsapp", label: "WhatsApp", detail: "team thread" },
+  { key: "telegram", label: "Telegram", detail: "bot room" },
 ] as const;
 
 function MarketingIconRow(): React.JSX.Element {
@@ -331,6 +337,27 @@ function DoorActions(): React.JSX.Element {
         </a>
       ))}
     </nav>
+  );
+}
+
+function MessagingChannelRail(): React.JSX.Element {
+  return (
+    <section className="onboard-message-channels" aria-label="messaging channels">
+      {MESSAGING_CHANNELS.map((channel) => (
+        <a
+          key={channel.key}
+          className="onboard-message-channel"
+          data-kind={channel.key}
+          href="#onboard-target"
+        >
+          <span className="onboard-message-channel__mark" aria-hidden="true" />
+          <span className="onboard-message-channel__copy">
+            <strong>{channel.label}</strong>
+            <span>{channel.detail}</span>
+          </span>
+        </a>
+      ))}
+    </section>
   );
 }
 
@@ -487,6 +514,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
               <PopMark className="onboard__mark" />
               <MarketingIconRow />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
+              <MessagingChannelRail />
               <label className="onboard-door__label" htmlFor="onboard-target">
                 {ONBOARD_COPY.door.inputLabel}
               </label>

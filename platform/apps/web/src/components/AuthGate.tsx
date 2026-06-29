@@ -10,11 +10,11 @@ import { Suspense, lazy, useEffect, useRef, useState, type FormEvent, type React
 import { useAppState, useStore } from "../store/StoreContext.js";
 import { BRAND, COMPANY, LANDING, LEGAL, PRICING, VOICE } from "../brand.js";
 import { trackAcquisitionEvent } from "../acquisition-events.js";
-import { Link, replace, useRoute } from "../routing.js";
+import { APP_ROUTES, Link, replace, useRoute } from "../routing.js";
 import { api } from "../api/client.js";
 import { Wordmark } from "./Wordmark.js";
 import { PopMark } from "./PopMark.js";
-import { Onboarding } from "./Onboarding.js";
+import { OnboardingExperience } from "./onboarding/OnboardingExperience.js";
 import { SampleConsole } from "./SampleConsole.js";
 import { isMarketingPath } from "./site/paths.js";
 
@@ -115,6 +115,13 @@ function isBlogPath(path: string): boolean {
 
 /** The query key carrying where a logged-out deep link wanted to land, set on the `/start` redirect. */
 const RETURN_KEY = "return";
+const MESSAGING_RETURN_PATH = APP_ROUTES.everyday;
+
+const AUTH_CHANNELS = [
+  { key: "imessage", label: "iMessage", detail: "finish relay setup" },
+  { key: "whatsapp", label: "WhatsApp", detail: "sync the team thread" },
+  { key: "telegram", label: "Telegram", detail: "watch the bot room" },
+] as const;
 
 /**
  * A safe same-origin return path, or null. Only a single leading slash is allowed, so a crafted
@@ -229,7 +236,19 @@ export function AuthGate({
   // Logged out: the public landing at "/", the auth forms at their own routes.
   // #260: the non-technical onboarding entry — enter your domain, Sign in with Google. The OAuth callback
   // also redirects failures back here (`/start?error=…`), so an un-authed visitor always sees this screen.
-  if (path === "/start") return <Onboarding />;
+  if (path === "/start") {
+    return (
+      <OnboardingExperience
+        onOpenWorkspace={() => {
+          const requestedReturn =
+            typeof window === "undefined"
+              ? MESSAGING_RETURN_PATH
+              : safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_KEY)) ?? MESSAGING_RETURN_PATH;
+          replace(`/login?${RETURN_KEY}=${encodeURIComponent(requestedReturn)}`);
+        }}
+      />
+    );
+  }
   if (path === "/login") return <AuthForm initialMode="login" />;
   if (path === "/signup") return <AuthForm initialMode="signup" />;
   if ((path === "/" || path === "/welcome") && publicEntry) return <>{publicEntry}</>;
@@ -370,14 +389,57 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
     }
   }
 
+  const authHeadline = mode === "login" ? "Sign in to your agent room" : "Create your agent room";
+  const authTag =
+    mode === "login"
+      ? "then jump back to iMessage, WhatsApp, or Telegram setup."
+      : "make the workspace, then choose where the team should text you.";
+
   return (
-    <div className="auth">
-      <form className="auth__card" onSubmit={onSubmit}>
-        <PopMark burst className="auth__popmark" />
-        <Link href="/" className="auth__brand" aria-label={BRAND.name}>
-          <Wordmark />
+    <div className="auth auth--message">
+      <div className="auth-message__sunscape" aria-hidden="true">
+        <span className="auth-message__ray auth-message__ray--one" />
+        <span className="auth-message__ray auth-message__ray--two" />
+        <span className="auth-message__ray auth-message__ray--three" />
+        <span className="auth-message__sun" />
+      </div>
+      <header className="auth-message__nav">
+        <Link href="/" className="auth-message__brand" aria-label={BRAND.name}>
+          <PopMark className="auth-message__brand-mark" size={42} />
+          <Wordmark className="auth-message__brand-word" />
+          <span className="auth-message__proof">marketing team in your messages</span>
         </Link>
-        <p className="auth__tag">{BRAND.tagline}</p>
+      </header>
+      <main className="auth-message__layout">
+        <section className="auth-message__copy" aria-label="messaging setup">
+          <p className="auth-message__eyebrow">messaging setup</p>
+          <h1>{authHeadline}</h1>
+          <p>{authTag}</p>
+          <div className="auth-message__channels" aria-label="messaging channels">
+            {AUTH_CHANNELS.map((channel) => (
+              <a
+                key={channel.key}
+                className="auth-message-channel"
+                data-kind={channel.key}
+                href={mode === "login" ? `/login?${RETURN_KEY}=${encodeURIComponent(MESSAGING_RETURN_PATH)}` : "/signup"}
+              >
+                <span className="auth-message-channel__mark" aria-hidden="true" />
+                <span>
+                  <strong>{channel.label}</strong>
+                  <em>{channel.detail}</em>
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+        <form className="auth__card auth__card--message" onSubmit={onSubmit}>
+          <PopMark burst className="auth__popmark" />
+          <Link href="/" className="auth__brand" aria-label={BRAND.name}>
+            <Wordmark />
+          </Link>
+          <p className="auth__eyebrow">room access</p>
+          <h2 className="auth__headline">{mode === "login" ? "Welcome back" : "Start here"}</h2>
+          <p className="auth__tag">{authTag}</p>
 
         {mode === "signup" && (
           <p className="auth__trial" role="note">
@@ -503,6 +565,7 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
           )}
         </p>
       </form>
+      </main>
     </div>
   );
 }
