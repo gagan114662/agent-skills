@@ -357,12 +357,16 @@ function connectorFromConnection(
 ): EverydayConnector {
   const isIMessage = connection.id === "imessage";
   const imessageRecipient = isIMessage ? imessageStatus?.memberRecipient : null;
+  const relayHeartbeat = isIMessage ? imessageStatus?.relayHeartbeat : null;
+  const relayMessagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
   const imessageRelayReady = Boolean(
     isIMessage &&
       imessageRecipient?.verified &&
       imessageStatus?.enabled &&
       imessageStatus.configured &&
-      !imessageStatus.dryRun,
+      !imessageStatus.dryRun &&
+      relayHeartbeat?.active &&
+      relayMessagesAccess === "ok",
   );
   const status = imessageRelayReady
     ? "connected"
@@ -381,9 +385,15 @@ function connectorFromConnection(
         ? imessageRelayReady
           ? "live relay verified for " + imessageRecipient.recipient
           : imessageRecipient.verified
-            ? "recipient verified; relay is " +
-              (imessageStatus?.dryRun ? "dry-run" : imessageStatus?.enabled ? "not live" : "disabled") +
-              " before agents can use Messages"
+            ? imessageStatus?.dryRun
+              ? "recipient verified; relay is dry-run before agents can use Messages"
+              : !imessageStatus?.enabled
+                ? "recipient verified; relay is disabled before agents can use Messages"
+                : relayHeartbeat?.active && relayMessagesAccess === "failed"
+                  ? "recipient verified; relay is blocked by Messages access before agents can use Messages"
+                  : relayHeartbeat?.active
+                    ? "recipient verified; relay API is live but Messages access is not proven before agents can use Messages"
+                    : "recipient verified; relay is not live before agents can use Messages"
           : "test needed before agents can relay to " + imessageRecipient.recipient
         : connection.summary,
     actionLabel:

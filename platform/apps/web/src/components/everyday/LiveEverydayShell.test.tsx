@@ -232,6 +232,7 @@ describe("LiveEverydayShell (#1181)", () => {
         host: "Gagans-MacBook-Pro",
         version: "dev-1341",
         checkedInAt: "2026-06-28T05:01:00.000Z",
+        messagesAccess: "ok",
         active: true,
       },
       lastRelayJob: {
@@ -273,9 +274,69 @@ describe("LiveEverydayShell (#1181)", () => {
       await store.bootstrap();
     });
 
-    expect(await screen.findByText("Mac relay host active: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(await screen.findByText("Mac relay host active with Messages access: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
     expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
+  });
+
+  it("does not mark iMessage connected when the Mac relay cannot access Messages", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "imessage",
+          label: "iMessage",
+          summary: "Production Messages bridge",
+          provider: "apple",
+          kind: "chat",
+          audience: "customer",
+          auth: "paste_internal",
+          status: "available",
+          statusReason: null,
+          capabilities: ["work_visibility", "imessage_room"],
+          oauthScopes: [],
+          consentStatus: "recorded",
+          providerStatus: "healthy",
+          lastProofAt: 123,
+          lastProofReceipt: "imessage:test",
+          failureReason: null,
+          connected: true,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      dryRun: false,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: "iMessage",
+        verified: true,
+        verifiedAt: "2026-06-28T05:00:00.000Z",
+      },
+      relayHeartbeat: {
+        relayId: "gagan-mac",
+        host: "Gagans-MacBook-Pro",
+        version: "dev-1341",
+        checkedInAt: "2026-06-28T05:01:00.000Z",
+        messagesAccess: "failed",
+        active: true,
+      },
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
+    expect(screen.getByText(/recipient verified; relay is blocked by Messages access/i)).toBeInTheDocument();
+    expect(screen.getByText("Mac relay host active, but Messages access is blocked: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(screen.queryByText(/live relay verified for gagan@example.com/i)).not.toBeInTheDocument();
   });
 
   it("blocks iMessage room launch before posting when the signed-in team engine is not connected", async () => {
@@ -531,6 +592,14 @@ describe("LiveEverydayShell (#1181)", () => {
           verified: true,
           verifiedAt: "2026-06-27T06:00:00.000Z",
         },
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          version: "dev-1283",
+          checkedInAt: "2026-06-27T06:01:00.000Z",
+          messagesAccess: "ok",
+          active: true,
+        },
       });
     const save = vi.spyOn(api, "saveIMessageRecipient").mockResolvedValue({
       status: "pending_verification",
@@ -636,6 +705,7 @@ describe("LiveEverydayShell (#1181)", () => {
         host: "Gagans-MacBook-Pro",
         version: "dev-1341",
         checkedInAt: "2026-06-27T06:04:00.000Z",
+        messagesAccess: "ok",
         active: true,
       },
     });
@@ -647,7 +717,7 @@ describe("LiveEverydayShell (#1181)", () => {
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
     expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
-    expect(screen.getByText(/Mac relay host active: Gagans-MacBook-Pro/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mac relay host active with Messages access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
   });

@@ -376,7 +376,7 @@ describe("iMessage member recipient relay", () => {
         method: "POST",
         url: "/imessage/relay/heartbeat",
         headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
-        payload: { relayId: "gagan-mac", host: "Gagans-MacBook-Pro", version: "dev-1341" },
+        payload: { relayId: "gagan-mac", host: "Gagans-MacBook-Pro", version: "dev-1341", messagesAccess: "failed" },
       });
       expect(heartbeat.statusCode).toBe(200);
       expect(heartbeat.json()).toMatchObject({
@@ -384,6 +384,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
+          messagesAccess: "failed",
           active: true,
         },
       });
@@ -414,6 +415,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
+          messagesAccess: "failed",
           active: true,
         },
         lastRelayJob: {
@@ -451,6 +453,36 @@ describe("iMessage member recipient relay", () => {
       expect(completeVerification.json()).toMatchObject({
         job: { status: "sent", purpose: "verification" },
         memberRecipient: { recipient: "gagan@example.com", verified: true },
+      });
+
+      const verifiedStatus = await queuedApp.inject({
+        method: "GET",
+        url: "/me/imessage/status",
+        cookies: { rid: owner.cookie },
+      });
+      expect(verifiedStatus.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          messagesAccess: "ok",
+          active: true,
+        },
+      });
+
+      const plainHeartbeat = await queuedApp.inject({
+        method: "POST",
+        url: "/imessage/relay/heartbeat",
+        headers: { "x-ipop-imessage-relay-secret": "relay-secret" },
+        payload: { relayId: "gagan-mac", host: "Gagans-MacBook-Pro", version: "dev-1341" },
+      });
+      expect(plainHeartbeat.statusCode).toBe(200);
+      expect(plainHeartbeat.json()).toMatchObject({
+        relayHeartbeat: {
+          relayId: "gagan-mac",
+          host: "Gagans-MacBook-Pro",
+          messagesAccess: "ok",
+          active: true,
+        },
       });
 
       const started = await queuedApp.inject({

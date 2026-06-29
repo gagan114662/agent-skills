@@ -88,11 +88,12 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
-      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null },
+      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "ok" },
     );
   });
 
   it("doctor reports missing Messages AppleScript access without hiding a valid API heartbeat", async () => {
+    const postJsonImpl = vi.fn(async () => ({ relayHeartbeat: { active: true } }));
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
@@ -104,7 +105,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         if (args.includes("return \"ok\"")) return { stdout: "ok", stderr: "" };
         throw new Error("Not authorized to send Apple events to Messages");
       }),
-      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      postJsonImpl,
     });
 
     expect(checks).toEqual(
@@ -122,9 +123,15 @@ describe("iMessage relay worker CLI (#1341)", () => {
         },
       ]),
     );
+    expect(postJsonImpl).toHaveBeenCalledWith(
+      "https://api.ipop.ai/imessage/relay/heartbeat",
+      "secret",
+      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "failed" },
+    );
   });
 
   it("doctor bounds a hanging Messages AppleScript probe and still reports API heartbeat", async () => {
+    const postJsonImpl = vi.fn(async () => ({ relayHeartbeat: { active: true } }));
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
@@ -141,7 +148,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         Object.assign(error, { killed: true, signal: "SIGTERM" });
         throw error;
       }),
-      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      postJsonImpl,
     });
 
     expect(checks).toEqual(
@@ -158,6 +165,11 @@ describe("iMessage relay worker CLI (#1341)", () => {
           message: "signed heartbeat accepted by https://api.ipop.ai",
         },
       ]),
+    );
+    expect(postJsonImpl).toHaveBeenCalledWith(
+      "https://api.ipop.ai/imessage/relay/heartbeat",
+      "secret",
+      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "failed" },
     );
   });
 

@@ -196,18 +196,18 @@ export async function runRelayDoctor(input: {
       execFileImpl: input.execFileImpl,
     }),
   );
-  checks.push(
-    await checkMessagesAccess({
-      osascriptBin: input.config.osascriptBin,
-      timeoutMs: input.config.doctorTimeoutMs,
-      execFileImpl: input.execFileImpl,
-    }),
-  );
+  const messagesAccess = await checkMessagesAccess({
+    osascriptBin: input.config.osascriptBin,
+    timeoutMs: input.config.doctorTimeoutMs,
+    execFileImpl: input.execFileImpl,
+  });
+  checks.push(messagesAccess);
   try {
     await (input.postJsonImpl ?? postJson)(apiUrl(input.config.baseUrl, "/imessage/relay/heartbeat"), input.config.secret, {
       relayId: input.config.relayId,
       host: input.config.host,
       version: input.config.version,
+      messagesAccess: messagesAccess.status === "pass" ? "ok" : "failed",
     });
     checks.push({
       name: "api-heartbeat",
