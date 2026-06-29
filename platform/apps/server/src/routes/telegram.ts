@@ -223,11 +223,13 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
     if (!expectedChatId || expectedChatId !== inbound.chatId) {
       return reply.code(403).send({ error: "Telegram chat is not connected to this workspace" });
     }
+    const actor = await getServiceCredentialActor(channel.workspaceId, TELEGRAM_ROOM_CONNECTION_ID);
+    const authorMemberId = actor?.connectedByMemberId ?? original.authorMemberId;
 
     const message = await postMessage({
       workspaceId: channel.workspaceId,
       channelId: receipt.channelId,
-      authorMemberId: original.authorMemberId,
+      authorMemberId,
       parentMessageId: receipt.messageId,
       alsoSentToChannel: true,
       body: inbound.text,
@@ -245,13 +247,12 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
     }
     await deliverThreadReply(
       req.log,
-      { workspaceId: channel.workspaceId, memberId: original.authorMemberId, kind: "human", displayName: "Telegram" },
+      { workspaceId: channel.workspaceId, memberId: authorMemberId, kind: "human", displayName: "Telegram" },
       channel,
       message,
       original.authorMemberId,
     );
     const command = parseVisibilityChannelCommand(inbound.text);
-    const actor = await getServiceCredentialActor(channel.workspaceId, TELEGRAM_ROOM_CONNECTION_ID);
     const approvalDecision = await decideRoomApprovalCommand({
       workspaceId: channel.workspaceId,
       deciderMemberId: actor?.connectedByMemberId ?? null,

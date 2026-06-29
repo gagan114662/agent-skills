@@ -252,11 +252,13 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
       if (!expected || expected !== inbound.from) {
         return reply.code(403).send({ error: "WhatsApp sender is not connected to this workspace" });
       }
+      const actor = await getServiceCredentialActor(channel.workspaceId, WHATSAPP_ROOM_CONNECTION_ID);
+      const authorMemberId = actor?.connectedByMemberId ?? original.authorMemberId;
 
       const message = await postMessage({
         workspaceId: channel.workspaceId,
         channelId: receipt.channelId,
-        authorMemberId: original.authorMemberId,
+        authorMemberId,
         parentMessageId: receipt.messageId,
         alsoSentToChannel: true,
         body: inbound.text,
@@ -276,7 +278,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         req.log,
         {
           workspaceId: channel.workspaceId,
-          memberId: original.authorMemberId,
+          memberId: authorMemberId,
           kind: "human",
           displayName: "WhatsApp",
         },
@@ -285,7 +287,6 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
         original.authorMemberId,
       );
       const command = parseVisibilityChannelCommand(inbound.text);
-      const actor = await getServiceCredentialActor(channel.workspaceId, WHATSAPP_ROOM_CONNECTION_ID);
       const approvalDecision = await decideRoomApprovalCommand({
         workspaceId: channel.workspaceId,
         deciderMemberId: actor?.connectedByMemberId ?? null,
