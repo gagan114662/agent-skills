@@ -6,6 +6,7 @@ import { listChannelMemberIds } from "../db/repositories/channels.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
 import { publishMessageEvent, publishMention } from "../realtime/bus.js";
 import { notify } from "../notifications/service.js";
+import { mirrorExternalRoomPost } from "./external-room-mirror.js";
 
 /**
  * Side-effect fan-out for a freshly-persisted message, factored out of the #4 channel routes so the
@@ -143,6 +144,13 @@ export async function deliverPostedMessage(
   await notifyDmRecipients(log, identity, channel, message);
   // #123: a top-level @mention of a department agent in its channel launches a real session.
   await fireMarketingMention(log, identity, channel, message);
+  await mirrorExternalRoomPost(log, {
+    workspaceId: identity.workspaceId,
+    channelId: channel.id,
+    message,
+    author: identity.displayName,
+    source: "room_message",
+  });
 }
 
 /**
@@ -169,5 +177,12 @@ export async function deliverThreadReply(
     channelId: channel.id,
     messageId: message.id,
     excerpt: message.body,
+  });
+  await mirrorExternalRoomPost(log, {
+    workspaceId: identity.workspaceId,
+    channelId: channel.id,
+    message,
+    author: identity.displayName,
+    source: "thread_reply",
   });
 }

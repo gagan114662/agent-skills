@@ -160,7 +160,53 @@ async function waitForLaunches(count: number): Promise<void> {
   }
 }
 
+async function waitForSendContaining(text: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!sendMessage.mock.calls.some((call) => String(call[0].text).includes(text))) {
+    if (Date.now() > deadline) throw new Error("expected Telegram send containing " + text);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 describe("Telegram room bridge (#1267)", () => {
+  it("automatically mirrors signed-in web room messages to Telegram (#1424)", async () => {
+    const owner = await newOwner();
+    const channelId = await createChannel(owner);
+    const enable = await app.inject({
+      method: "POST",
+      url: "/me/connections/telegram_room/enable",
+      cookies: { rid: owner.cookie },
+      payload: { chatId: "445566" },
+    });
+    expect(enable.statusCode).toBe(200);
+
+    const posted = await app.inject({
+      method: "POST",
+      url: `/channels/${channelId}/messages`,
+      cookies: { rid: owner.cookie },
+      payload: { body: "web room update for Telegram" },
+    });
+
+    expect(posted.statusCode).toBe(201);
+    expect(sendMessage).toHaveBeenCalledWith({
+      botToken: "bot-token",
+      apiBaseUrl: "https://telegram.test",
+      chatId: "445566",
+      text: expect.stringContaining(`receipt: telegram:${channelId}:${posted.json().id}`),
+    });
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: room message: web room update for Telegram");
+
+    sendMessage.mockClear();
+    const reply = await app.inject({
+      method: "POST",
+      url: `/channels/${channelId}/messages/${posted.json().id}/replies`,
+      cookies: { rid: owner.cookie },
+      payload: { body: "thread reply for Telegram" },
+    });
+    expect(reply.statusCode).toBe(201);
+    expect(sendMessage.mock.calls[0]?.[0].text).toContain("Gagan: thread reply: thread reply for Telegram");
+  });
+
   it("connects a configured Telegram room, mirrors room events, and ingests signed replies", async () => {
     const owner = await newOwner();
     const channelId = await createChannel(owner);
@@ -395,6 +441,7 @@ describe("Telegram room bridge (#1267)", () => {
       text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
     });
     await waitForLaunches(4);
+    await waitForSendContaining("agent update: started:");
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");

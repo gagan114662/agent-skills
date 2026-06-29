@@ -78,6 +78,7 @@ import {
   recordModelFailureIncident,
   resolveModelFailureIncident,
 } from "../self-healing/model-incident.js";
+import { mirrorExternalRoomPost } from "../messaging/external-room-mirror.js";
 
 /** Repository-backed session store (exported so integration tests reuse real persistence). */
 export const dbStore: SessionStore = {
@@ -166,6 +167,12 @@ export const channelPoster: ChannelPoster = {
         /* best-effort Slack mirror; the message is already persisted */
       });
     }
+    void mirrorExternalRoomPost(undefined, {
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      message,
+      source: input.parentMessageId ? "thread_reply" : "agent_post",
+    });
     return { id: message.id };
   },
 };

@@ -223,6 +223,7 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
         workspaceId: owner.workspaceId,
         channelId: channel.id,
         authorMemberId: createdByMemberId,
+        alsoSentToChannel: true,
         body: input.text,
       });
       await deliverPostedMessage(input.log, identity, channel, rootMessage);
@@ -330,4 +331,3 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
     },
   };
 }
-

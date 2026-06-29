@@ -126,6 +126,7 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
       workspaceId: identity.workspaceId,
       channelId: cid,
       authorMemberId: identity.memberId,
+      alsoSentToChannel: true,
       body: text,
     });
     await deliverPostedMessage(req.log, identity, channel, message);

@@ -147,6 +147,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: WhatsAppRoutesO
       workspaceId: identity.workspaceId,
       channelId: cid,
       authorMemberId: identity.memberId,
+      alsoSentToChannel: true,
       body: text,
     });
     await deliverPostedMessage(req.log, identity, channel, message);
