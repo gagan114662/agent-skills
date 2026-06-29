@@ -31,6 +31,7 @@ interface RelayWorkerConfig {
   once: boolean;
   doctor: boolean;
   osascriptBin: string;
+  doctorTimeoutMs: number;
 }
 
 interface DoctorCheck {
@@ -97,15 +98,53 @@ export function parseRelayWorkerConfig(input: {
     once: argv.includes("--once"),
     doctor: argv.includes("--doctor"),
     osascriptBin: env.IMESSAGE_OSASCRIPT_BIN || "osascript",
+    doctorTimeoutMs: positiveNumber(env.IMESSAGE_RELAY_DOCTOR_TIMEOUT_MS, 10_000),
   };
+}
+
+function execTimedOut(error: unknown): boolean {
+  const detail = error as { killed?: boolean; signal?: string; message?: string };
+  return Boolean(
+    detail.killed ||
+      detail.signal === "SIGTERM" ||
+      detail.signal === "SIGKILL" ||
+      (detail.message && /timed out|ETIMEDOUT|SIGTERM|SIGKILL/i.test(detail.message)),
+  );
+}
+
+async function execFileCheck(input: {
+  osascriptBin: string;
+  args: string[];
+  timeoutMs: number;
+  label: string;
+  execFileImpl?: typeof execFileAsync;
+}) {
+  try {
+    return await (input.execFileImpl ?? execFileAsync)(input.osascriptBin, input.args, {
+      timeout: input.timeoutMs,
+      killSignal: "SIGTERM",
+    });
+  } catch (error) {
+    if (execTimedOut(error)) {
+      throw new Error(input.label + " timed out after " + input.timeoutMs + "ms");
+    }
+    throw error;
+  }
 }
 
 async function checkOsascript(input: {
   osascriptBin: string;
+  timeoutMs: number;
   execFileImpl?: typeof execFileAsync;
 }): Promise<DoctorCheck> {
   try {
-    await (input.execFileImpl ?? execFileAsync)(input.osascriptBin, ["-e", "return \"ok\""]);
+    await execFileCheck({
+      osascriptBin: input.osascriptBin,
+      args: ["-e", "return \"ok\""],
+      timeoutMs: input.timeoutMs,
+      label: "osascript",
+      execFileImpl: input.execFileImpl,
+    });
     return { name: "osascript", status: "pass", message: input.osascriptBin + " is runnable" };
   } catch (error) {
     return {
@@ -118,13 +157,17 @@ async function checkOsascript(input: {
 
 async function checkMessagesAccess(input: {
   osascriptBin: string;
+  timeoutMs: number;
   execFileImpl?: typeof execFileAsync;
 }): Promise<DoctorCheck> {
   try {
-    const result = await (input.execFileImpl ?? execFileAsync)(input.osascriptBin, [
-      "-e",
-      "tell application \"Messages\" to count services",
-    ]);
+    const result = await execFileCheck({
+      osascriptBin: input.osascriptBin,
+      args: ["-e", "tell application \"Messages\" to count services"],
+      timeoutMs: input.timeoutMs,
+      label: "Messages AppleScript access",
+      execFileImpl: input.execFileImpl,
+    });
     const serviceCount = String(result.stdout ?? "").trim();
     return {
       name: "messages-access",
@@ -147,10 +190,18 @@ export async function runRelayDoctor(input: {
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
   checks.push(
-    await checkOsascript({ osascriptBin: input.config.osascriptBin, execFileImpl: input.execFileImpl }),
+    await checkOsascript({
+      osascriptBin: input.config.osascriptBin,
+      timeoutMs: input.config.doctorTimeoutMs,
+      execFileImpl: input.execFileImpl,
+    }),
   );
   checks.push(
-    await checkMessagesAccess({ osascriptBin: input.config.osascriptBin, execFileImpl: input.execFileImpl }),
+    await checkMessagesAccess({
+      osascriptBin: input.config.osascriptBin,
+      timeoutMs: input.config.doctorTimeoutMs,
+      execFileImpl: input.execFileImpl,
+    }),
   );
   try {
     await (input.postJsonImpl ?? postJson)(apiUrl(input.config.baseUrl, "/imessage/relay/heartbeat"), input.config.secret, {
