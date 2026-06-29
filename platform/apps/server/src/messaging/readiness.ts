@@ -126,6 +126,7 @@ function imessageInboundProof(
   return {
     channelId: receipt.channelId,
     messageId: receipt.messageId,
+    replyToMessageId: receipt.replyToMessageId,
     createdAt: receipt.createdAt.toISOString(),
     expiresAt: expiresAt(receipt.createdAt).toISOString(),
     stale: !isFresh(receipt.createdAt, nowMs),
@@ -212,11 +213,21 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
   const nowMs = input.nowMs ?? Date.now();
   const outbound = imessageJobProof(input.latestSentJob, nowMs);
   const inbound = imessageInboundProof(input.latestInboundReceipt, nowMs);
+  const inboundCorrelatesToOutbound = Boolean(
+    outbound &&
+    inbound &&
+    inbound.channelId === outbound.channelId &&
+    inbound.replyToMessageId === outbound.messageId,
+  );
   const heartbeatFresh = Boolean(input.relayHeartbeat && nowMs - input.relayHeartbeat.checkedInAt.getTime() <= 120_000);
   const messagesAccess = input.relayHeartbeat?.messagesAccess ?? "unknown";
   const relayReady = heartbeatFresh && messagesAccess === "ok";
   const configured = input.status.enabled && input.status.configured && !input.status.dryRun && Boolean(input.recipient?.verifiedAt);
-  let state: MessagingReadinessState = roundTripState({ configured, outbound, inbound });
+  let state: MessagingReadinessState = roundTripState({
+    configured,
+    outbound,
+    inbound: inboundCorrelatesToOutbound ? inbound : null,
+  });
   const notes: string[] = [];
 
   if (!input.status.enabled) {
@@ -240,6 +251,9 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
   if (heartbeatFresh && messagesAccess === "unknown") notes.push("signed Mac relay Messages access is not proven");
   if (outbound?.stale) notes.push("latest iMessage outbound proof is stale");
   if (inbound?.stale) notes.push("latest iMessage inbound proof is stale");
+  if (outbound && inbound && !inboundCorrelatesToOutbound) {
+    notes.push("latest iMessage inbound proof is not threaded to the latest outbound room message");
+  }
   if (configured && state !== "healthy") notes.push("send and reply through iMessage to complete round-trip proof");
 
   return {
