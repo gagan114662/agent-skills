@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../index.js";
-import { externalRoomMessageReceipts } from "../schema/index.js";
+import { externalRoomMessageReceipts, messages } from "../schema/index.js";
 
 export type ExternalRoomMessageProvider = "telegram" | "whatsapp";
 export type ExternalRoomMessageDirection = "outbound" | "inbound";
@@ -19,6 +19,7 @@ export interface ExternalRoomMessageProof {
   workspaceId: string;
   channelId: string;
   messageId: string;
+  replyToMessageId?: string | null;
   provider: ExternalRoomMessageProvider;
   providerConversationId: string;
   providerMessageId: string;
@@ -36,6 +37,43 @@ const receiptColumns = {
   direction: externalRoomMessageReceipts.direction,
   createdAt: externalRoomMessageReceipts.createdAt,
 };
+
+const threadedReceiptColumns = {
+  ...receiptColumns,
+  replyToMessageId: messages.parentMessageId,
+};
+
+async function getLatestInboundExternalRoomMessageProof(input: {
+  workspaceId: string;
+  provider: ExternalRoomMessageProvider;
+  providerConversationId?: string;
+  channelId?: string;
+  replyToMessageId?: string;
+}): Promise<ExternalRoomMessageProof | undefined> {
+  const predicates = [
+    eq(externalRoomMessageReceipts.workspaceId, input.workspaceId),
+    eq(externalRoomMessageReceipts.provider, input.provider),
+    eq(externalRoomMessageReceipts.direction, "inbound"),
+  ];
+  if (input.providerConversationId) {
+    predicates.push(eq(externalRoomMessageReceipts.providerConversationId, input.providerConversationId));
+  }
+  if (input.channelId) {
+    predicates.push(eq(externalRoomMessageReceipts.channelId, input.channelId));
+  }
+  if (input.replyToMessageId) {
+    predicates.push(eq(messages.parentMessageId, input.replyToMessageId));
+  }
+
+  const [row] = await db
+    .select(threadedReceiptColumns)
+    .from(externalRoomMessageReceipts)
+    .innerJoin(messages, eq(externalRoomMessageReceipts.messageId, messages.id))
+    .where(and(...predicates))
+    .orderBy(desc(externalRoomMessageReceipts.createdAt))
+    .limit(1);
+  return row as ExternalRoomMessageProof | undefined;
+}
 
 export async function recordExternalRoomMessageReceipt(input: ExternalRoomMessageReceipt): Promise<void> {
   await db
@@ -116,4 +154,27 @@ export async function getLatestExternalRoomMessageProof(input: {
     .orderBy(desc(externalRoomMessageReceipts.createdAt))
     .limit(1);
   return row as ExternalRoomMessageProof | undefined;
+}
+
+export async function getLatestExternalRoomRoundTripProof(input: {
+  workspaceId: string;
+  provider: ExternalRoomMessageProvider;
+  providerConversationId?: string;
+}): Promise<{ outbound?: ExternalRoomMessageProof; inbound?: ExternalRoomMessageProof }> {
+  const latestInbound = await getLatestInboundExternalRoomMessageProof(input);
+  const outbound = await getLatestExternalRoomMessageProof({
+    workspaceId: input.workspaceId,
+    provider: input.provider,
+    direction: "outbound",
+    providerConversationId: input.providerConversationId,
+  });
+  if (!outbound) return { inbound: latestInbound };
+
+  const threadedInbound = await getLatestInboundExternalRoomMessageProof({
+    ...input,
+    channelId: outbound.channelId,
+    replyToMessageId: outbound.messageId,
+  });
+
+  return { outbound, inbound: threadedInbound ?? latestInbound };
 }

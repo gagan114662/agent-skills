@@ -367,6 +367,7 @@ describe("Telegram room bridge (#1267)", () => {
       headers: { "x-telegram-bot-api-secret-token": "telegram-secret" },
       payload: {
         message: {
+          message_id: 43,
           chat: { id: 123456 },
           text: "YES ship homepage because the draft is approved",
           reply_to_message: { message_id: 42 },
@@ -394,6 +395,33 @@ describe("Telegram room bridge (#1267)", () => {
       "agents, show the Telegram room",
       "YES ship homepage because the draft is approved",
     ]);
+
+    const readiness = await app.inject({
+      method: "GET",
+      url: "/me/messaging-readiness",
+      cookies: { rid: owner.cookie },
+    });
+    expect(readiness.statusCode).toBe(200);
+    const telegramReadiness = readiness
+      .json()
+      .providers.find((provider: { provider: string }) => provider.provider === "telegram");
+    expect(telegramReadiness).toMatchObject({
+      state: "healthy",
+      healthy: true,
+      latestOutboundProof: {
+        channelId,
+        messageId: started.json().message.id,
+        providerConversationId: "123456",
+        providerMessageId: "42",
+      },
+      latestInboundProof: {
+        channelId,
+        messageId: inbound.json().message.id,
+        replyToMessageId: started.json().message.id,
+        providerConversationId: "123456",
+        providerMessageId: "43",
+      },
+    });
 
     const agent = await newAgent(owner, `agent-${newId()}`);
     const submit = await app.inject({
