@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-server.mjs",
     "build": "tsc -p tsconfig.json --noEmit && vite build && pnpm run prerender",
     "prerender": "vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -22,6 +22,7 @@
     "deploy:prebuilt:freshness:test": "node --test scripts/vercel-prebuilt-freshness.test.mjs",
     "deploy:status:test": "node --test scripts/production-status.test.mjs",
     "deploy:freshness:test": "node --test scripts/production-freshness.test.mjs",
+    "dev:test": "node --test scripts/dev-server.test.mjs",
     "visual:verify": "node scripts/visual-match.mjs"
   },
   "dependencies": {
