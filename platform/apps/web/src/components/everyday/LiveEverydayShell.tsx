@@ -206,6 +206,29 @@ function withFirstRunReceipt(
           proof: "no external transparency receipt created",
         },
       ],
+      rankedWork: [
+        {
+          agent: "Scout",
+          work: "first useful marketing result",
+          impact: "turned a live source read into one owner-reviewable direction",
+          status: "shipped",
+          proof: firstRun.receipt,
+        },
+        {
+          agent: "Quill",
+          work: firstRun.artifactTitle,
+          impact: "asset is ready to approve, but has not moved revenue yet",
+          status: "queued",
+          proof: firstRun.artifactSummary,
+        },
+        {
+          agent: "Echo",
+          work: "external send path",
+          impact: "blocked until one connector produces a real sent-message receipt",
+          status: "blocked",
+          proof: "no external transparency receipt created",
+        },
+      ],
       capacity: [
         {
           label: "active campaign lanes",

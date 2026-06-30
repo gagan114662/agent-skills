@@ -223,6 +223,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.since)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.executive)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.capacity)).toBeInTheDocument();
     expect(within(dashboard).getAllByText(EVERYDAY.dashboard.blockers).length).toBeGreaterThan(0);
     expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
@@ -232,6 +233,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("pipeline moved")).toBeInTheDocument();
     expect(within(dashboard).getByText("approvals waiting")).toBeInTheDocument();
     expect(within(dashboard).getByText("blocked channels")).toBeInTheDocument();
+    expect(within(dashboard).getAllByText("first campaign platform").length).toBeGreaterThan(0);
+    expect(within(dashboard).getByText("usable asset ready for a connected channel")).toBeInTheDocument();
     expect(within(dashboard).getByText("active campaign lanes")).toBeInTheDocument();
     expect(within(dashboard).getByText("agent seats used")).toBeInTheDocument();
     expect(within(dashboard).getByText("monthly work cap")).toBeInTheDocument();
@@ -277,12 +280,25 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(metrics).queryByText("sample")).not.toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.since)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.executive)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.capacity)).toBeInTheDocument();
     expect(within(dashboard).getByText("External customer proof remains zero")).toBeInTheDocument();
     expect(within(dashboard).getByText("no external leads qualified or contacted")).toBeInTheDocument();
+    expect(within(dashboard).getByText("changed homepage direction, but did not create customer pipeline")).toBeInTheDocument();
+    expect(within(dashboard).getByText("blocked until one provider has a sent-message receipt")).toBeInTheDocument();
     expect(within(dashboard).getByText("do not upsell until the first lane creates value")).toBeInTheDocument();
     expect(within(dashboard).getAllByText("zero signup/payment/customer approval receipts").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
+  });
+
+  it("keeps the empty CMO dashboard honest with blocked ranked work instead of fake traction", () => {
+    render(<EverydayShell data={emptyData()} dashboardFirst dashboardOnly />);
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
+    expect(within(dashboard).getByText("real acquisition channel")).toBeInTheDocument();
+    expect(within(dashboard).getByText("blocked work cannot create leads until a provider is connected")).toBeInTheDocument();
+    expect(within(dashboard).getByText("0 customers")).toBeInTheDocument();
   });
 
   it("shows all room visibility lanes without pretending external transports are live", () => {

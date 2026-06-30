@@ -1804,6 +1804,7 @@ export const EVERYDAY = {
     sample: "sample readout",
     live: "live workspace",
     executive: "executive snapshot",
+    rankedWork: "agent work by business impact",
     goalTarget: "target",
     pace: "pace",
     capacity: "limits + upgrade moments",

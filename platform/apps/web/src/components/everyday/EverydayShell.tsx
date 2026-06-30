@@ -734,6 +734,19 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
           ))}
         </ol>
       </div>
+      <div className="everyday-dashboard__ranked-work" aria-label={d.rankedWork}>
+        <p className="everyday-eyebrow">{d.rankedWork}</p>
+        <ol>
+          {brief.rankedWork.map((item) => (
+            <li key={item.agent + item.work} data-status={item.status}>
+              <span>{item.agent}</span>
+              <strong>{item.work}</strong>
+              <em>{item.impact}</em>
+              <b>{item.proof}</b>
+            </li>
+          ))}
+        </ol>
+      </div>
       <div className="everyday-dashboard__capacity" aria-label={d.capacity}>
         <p className="everyday-eyebrow">{d.capacity}</p>
         <ol>
@@ -964,6 +977,13 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proof: hasExternalReceipts ? "transparency receipt log" : "no external receipts yet",
       },
     ],
+    rankedWork: rankedAgentWork(data, {
+      deliverables,
+      liveReceipts,
+      connectedChannels: connectedChannels.length,
+      pendingDecisions,
+      hasBrief,
+    }),
     capacity: [
       {
         label: "active campaign lanes",
@@ -1085,6 +1105,70 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       { label: "legal/trust", status: "pending", proof: "legal state is not part of workspace feed" },
     ],
   };
+}
+
+function rankedAgentWork(
+  data: EverydayData,
+  state: {
+    deliverables: number;
+    liveReceipts: number;
+    connectedChannels: number;
+    pendingDecisions: number;
+    hasBrief: boolean;
+  },
+): MarketingBrief["rankedWork"] {
+  const latestDeliverable = [...data.thread].reverse().find((entry) => entry.kind === "deliverable");
+  const items: MarketingBrief["rankedWork"][number][] = [];
+  if (state.liveReceipts > 0) {
+    const latestReceipt = data.transparency[data.transparency.length - 1];
+    items.push({
+      agent: "Operator",
+      work: latestReceipt?.action ?? "external work receipt",
+      impact: "proved work left the room with a receipt",
+      status: "shipped",
+      proof: latestReceipt?.receiptLabel ?? latestReceipt?.href ?? "transparency receipt log",
+    });
+  }
+  if (latestDeliverable) {
+    items.push({
+      agent: latestDeliverable.agent,
+      work: latestDeliverable.deliverable.title,
+      impact:
+        state.connectedChannels > 0
+          ? "usable asset ready for a connected channel"
+          : "usable asset exists, but distribution is still blocked",
+      status: state.pendingDecisions > 0 ? "queued" : "learning",
+      proof: latestDeliverable.deliverable.preview,
+    });
+  }
+  if (state.pendingDecisions > 0) {
+    items.push({
+      agent: "You",
+      work: String(state.pendingDecisions) + " approval decision(s)",
+      impact: "owner decisions are the fastest path to business movement",
+      status: "queued",
+      proof: "workspace approval queue",
+    });
+  }
+  if (state.connectedChannels === 0) {
+    items.push({
+      agent: "Echo",
+      work: "real acquisition channel",
+      impact: "blocked work cannot create leads until a provider is connected",
+      status: "blocked",
+      proof: "workspace connector catalog",
+    });
+  }
+  if (items.length > 0) return items.slice(0, 4);
+  return [
+    {
+      agent: "Scout",
+      work: "waiting for first source read",
+      impact: "no insight or customer movement ranked yet",
+      status: "blocked",
+      proof: "no thread, approval, or receipt activity",
+    },
+  ];
 }
 
 function dashboardChangesSinceLastCheckIn(
