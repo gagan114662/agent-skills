@@ -31,6 +31,9 @@ const WELCOME_PATH = /^\/(?:welcome\/?)?$/;
 /** The everyday workspace shell (#784) — the linzumi-calm chat-first redesign, also reachable at its own
  * `/everyday` path. It is the live default for a signed-in workspace (see {@link AuthedHome}). */
 const EVERYDAY_PATH = /^\/everyday\/?$/;
+/** Auth forms are first-class public routes, not catch-all app shells (#1457/#1459). */
+const LOGIN_PATH = /^\/login\/?$/;
+const SIGNUP_PATH = /^\/signup\/?$/;
 /** The one-icon dashboard from the homepage: a public summary of what the agent team has done. */
 const DASHBOARD_PATH = /^\/dashboard\/?$/;
 
@@ -72,6 +75,14 @@ export function App(): React.JSX.Element {
 
   // The instant demo is fully public — no session, no auth — so it renders before the auth boundary.
   if (DEMO_PATH.test(path)) return <DemoSandbox />;
+
+  if (LOGIN_PATH.test(path) || SIGNUP_PATH.test(path)) {
+    return (
+      <AuthGate>
+        <AuthedHome />
+      </AuthGate>
+    );
+  }
 
   // The homepage Dashboard icon should not dump visitors into the auth wall. Anonymous visitors get a
   // clearly-labelled sample; signed-in workspaces get the live workspace dashboard, not hard-coded dogfood.
