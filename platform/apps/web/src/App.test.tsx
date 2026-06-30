@@ -77,6 +77,7 @@ describe("App root routing", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /what are we marketing/i })).toBeInTheDocument();
   });
 
   it("opens /signup as the real signup form for logged-out visitors (#1457)", async () => {

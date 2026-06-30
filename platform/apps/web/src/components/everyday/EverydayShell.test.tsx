@@ -147,10 +147,52 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai"));
     expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(EVERYDAY.thread.working("Scout")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Reading ipop\.ai and lining up/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Scout/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Team engine active/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Codex subscription/i)).not.toBeInTheDocument();
+  });
+
+  it("replaces stale first-run chat with the owner's new target when the room starts (#1466)", async () => {
+    const onStartRoom = vi.fn(async () => undefined);
+    render(
+      <EverydayShell
+        data={emptyData({
+          thread: [
+            {
+              id: "old-acme-scout",
+              kind: "agent-line",
+              agent: "Scout",
+              at: "first run",
+              text: "read acme.com and found the offer gap",
+            },
+            {
+              id: "old-acme-quill",
+              kind: "deliverable",
+              agent: "Quill",
+              at: "queued",
+              deliverable: {
+                title: "acme-week-one-homepage-clarity.md",
+                kind: "draft",
+                preview: "drafting launch copy for acme.com",
+              },
+            },
+          ],
+        })}
+        onStartRoom={onStartRoom}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "ipop.ai — an AI marketing team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai — an AI marketing team"));
+    const room = screen.getByRole("region", { name: EVERYDAY.room.heading });
+    expect(within(room).getByText("ipop.ai — an AI marketing team")).toBeInTheDocument();
+    expect(within(room).getByText(/Reading ipop\.ai/i)).toBeInTheDocument();
+    expect(within(room).queryByText(/acme/i)).not.toBeInTheDocument();
   });
 
   it("does not show accepted room activity until the live team run is accepted", async () => {
@@ -168,7 +210,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     await waitFor(() =>
       expect(screen.getAllByText("The team engine is not connected to your signed-in subscription yet.").length).toBeGreaterThan(0),
     );
-    expect(screen.queryByText(EVERYDAY.thread.working("Scout"))).not.toBeInTheDocument();
+    expect(screen.queryByText(/Reading ipop\.ai and lining up/i)).not.toBeInTheDocument();
     expect(screen.queryByText("I can take product/code handoffs once the team agrees what should ship.")).not.toBeInTheDocument();
     expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
   });

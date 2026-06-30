@@ -41,6 +41,10 @@ import {
 
 export type EverydayDecisionStatus = "idle" | "pending" | "shipped" | "revision" | "error";
 
+export interface EverydayRoomLaunchResult {
+  notices?: readonly string[];
+}
+
 export interface EverydayApprovalActions {
   ship(card: ApprovalCard): Promise<void>;
   requestRevision(card: ApprovalCard, note: string): Promise<void>;
@@ -1299,7 +1303,7 @@ export function EverydayShell({
   onSaveIMessageRecipient?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
   onTestIMessageRecipient?: () => Promise<void> | void;
   onDeleteIMessageRecipient?: () => Promise<void> | void;
-  onStartRoom?: (goal: string) => Promise<void> | void;
+  onStartRoom?: (goal: string) => Promise<EverydayRoomLaunchResult | void> | EverydayRoomLaunchResult | void;
   onEmergencyStop?: () => Promise<void> | void;
   onResumeFleet?: () => Promise<void> | void;
   operatorPacketForGoal?: (goal: string) => string;
@@ -1313,7 +1317,7 @@ export function EverydayShell({
   const [operatorPacket, setOperatorPacket] = useState<string | null>(null);
   const pending = data.approvals.filter((c) => !shipped.includes(c.id));
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
-  const thread = [...data.thread, ...localThread];
+  const thread = localThread.length > 0 ? localThread : data.thread;
 
   function startRoom(goal: string): void {
     setOperatorPacket(operatorPacketForGoal?.(goal) ?? null);
@@ -1326,7 +1330,8 @@ export function EverydayShell({
     };
     setLocalThread((entries) => [...entries, userEntry]);
 
-    const showAcceptedRoom = (): void => {
+    const showAcceptedRoom = (result?: EverydayRoomLaunchResult | void): void => {
+      const notices = result?.notices ?? [];
       setRoom(defaultAgentRoom(goal));
       setLocalThread((entries) => [
         ...entries,
@@ -1335,7 +1340,7 @@ export function EverydayShell({
           kind: "agent-line",
           agent: "Scout",
           at: "just now",
-          text: EVERYDAY.thread.working("Scout"),
+          text: "Reading " + goal + " and lining up the first useful marketing moves.",
         },
         {
           id: "codex-" + Date.now(),
@@ -1344,6 +1349,13 @@ export function EverydayShell({
           at: "ready",
           text: "I can take product/code handoffs once the team agrees what should ship.",
         },
+        ...notices.map((notice, index): ThreadEntry => ({
+          id: "room-notice-" + Date.now() + "-" + index,
+          kind: "agent-line",
+          agent: "Operator",
+          at: "channels",
+          text: notice,
+        })),
       ]);
     };
 

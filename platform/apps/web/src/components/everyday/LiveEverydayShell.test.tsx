@@ -418,7 +418,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
 
-  it("blocks room launch when iMessage relay has not produced a receipt (#1283)", async () => {
+  it("falls back to the canonical web room and still launches agents when iMessage is not configured (#1466)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],
       canManageInternal: false,
@@ -440,7 +440,17 @@ describe("LiveEverydayShell (#1181)", () => {
       message: makeMessage({ id: "m1", channelId: "c1", body: "build ipop.ai" }),
       error: "iMessage relay is not configured for this workspace yet.",
     });
-    const launchTeamRun = vi.spyOn(api, "launchTeamRun");
+    const postMessage = vi
+      .spyOn(api, "postMessage")
+      .mockResolvedValue(makeMessage({ id: "web-room", channelId: "c1", body: "build ipop.ai" }));
+    vi.spyOn(api, "searchMembers").mockImplementation(async (_workspaceId, q) => [
+      { id: "ag-" + q.toLowerCase(), kind: "agent", displayName: q },
+    ]);
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun").mockResolvedValue({
+      teamRunId: "team-1",
+      subtaskCount: 5,
+      subtasks: [],
+    });
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
     await act(async () => {
@@ -452,13 +462,14 @@ describe("LiveEverydayShell (#1181)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
 
-    expect(
-      await screen.findByText("iMessage relay is not configured for this workspace yet."),
-    ).toBeInTheDocument();
-    expect(launchTeamRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai"));
+    await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
+    expect(await screen.findByText(/Team started in the web room/i)).toBeInTheDocument();
+    expect(screen.getByText(/iMessage, WhatsApp, and Telegram mirror/i)).toBeInTheDocument();
+    expect(screen.queryByText("iMessage relay is not configured for this workspace yet.")).not.toBeInTheDocument();
   });
 
-  it("blocks room launch when iMessage relay is only dry-run (#1283)", async () => {
+  it("uses the web room instead of blocking when iMessage is only dry-run (#1466)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],
       canManageInternal: false,
@@ -479,7 +490,17 @@ describe("LiveEverydayShell (#1181)", () => {
       recipient: "gagan@example.com",
       error: "iMessage relay is still in dry-run mode; no real Messages room was started.",
     });
-    const launchTeamRun = vi.spyOn(api, "launchTeamRun");
+    const postMessage = vi
+      .spyOn(api, "postMessage")
+      .mockResolvedValue(makeMessage({ id: "web-room", channelId: "c1", body: "build ipop.ai" }));
+    vi.spyOn(api, "searchMembers").mockImplementation(async (_workspaceId, q) => [
+      { id: "ag-" + q.toLowerCase(), kind: "agent", displayName: q },
+    ]);
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun").mockResolvedValue({
+      teamRunId: "team-1",
+      subtaskCount: 5,
+      subtasks: [],
+    });
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
     await act(async () => {
@@ -491,10 +512,10 @@ describe("LiveEverydayShell (#1181)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
 
-    expect(
-      await screen.findByText("iMessage relay is still in dry-run mode; no real Messages room was started."),
-    ).toBeInTheDocument();
-    expect(launchTeamRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai"));
+    await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
+    expect(await screen.findByText(/Team started in the web room/i)).toBeInTheDocument();
+    expect(screen.queryByText("iMessage relay is still in dry-run mode; no real Messages room was started.")).not.toBeInTheDocument();
   });
 
   it("launches every room agent with the shared prompt structure and a Codex operator packet (#1265)", async () => {
