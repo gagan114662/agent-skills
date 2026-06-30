@@ -149,7 +149,6 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
   it.each([
     ["/everyday", "Everyday workspace", "Review approvals"],
-    ["/dashboard", "Dashboard", "Review live ipop work receipts"],
     ["/theater", "Agent theater", "Watch workspace-scoped"],
     ["/support/status", "Support ticket status", "Ticket status"],
     ["/status/test", "Status page", "component health"],
@@ -161,6 +160,21 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.html).toContain(bodyText);
     expect(page.html).not.toBe(home.html);
     expect(page.html).toContain("Log in");
+    expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+  });
+
+  it("prerenders /dashboard as the public CMO brief instead of the legacy signed-in splash (#1485)", () => {
+    const page = byPath("/dashboard")!;
+    const home = byPath("/")!;
+    expect(page.title).toContain("Dashboard");
+    expect(page.description, "/dashboard has no description").toBeTruthy();
+    expect(page.html).not.toBe(home.html);
+    expect(page.html).toContain("CMO brief");
+    expect(page.html).toContain("homepage actions");
+    expect(page.html).toContain("Public footer");
+    expect(page.html).toContain("work shipped today");
+    expect(page.html).not.toContain("Signed-in workspace");
+    expect(page.html).not.toContain("Review live ipop work receipts");
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
