@@ -29,9 +29,25 @@ describe("external room doctor CLI (#1267)", () => {
           message: expect.stringContaining("TELEGRAM_BOT_TOKEN"),
         }),
         expect.objectContaining({
+          name: "telegram-config",
+          message: expect.stringContaining("fly secrets set --app reload-api TELEGRAM_BOT_TOKEN=<bot-token>"),
+        }),
+        expect.objectContaining({
+          name: "telegram-config",
+          message: expect.stringContaining("https://api.ipop.ai/telegram/webhook"),
+        }),
+        expect.objectContaining({
           name: "whatsapp-config",
           status: "fail",
           message: expect.stringContaining("WHATSAPP_ACCESS_TOKEN"),
+        }),
+        expect.objectContaining({
+          name: "whatsapp-config",
+          message: expect.stringContaining("fly secrets set --app reload-api WHATSAPP_ACCESS_TOKEN=<access-token>"),
+        }),
+        expect.objectContaining({
+          name: "whatsapp-config",
+          message: expect.stringContaining("https://api.ipop.ai/whatsapp/webhook"),
         }),
       ]),
     );

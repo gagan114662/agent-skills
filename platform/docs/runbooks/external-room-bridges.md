@@ -10,9 +10,9 @@ Run the safe provider setup doctor from the repo root:
 
     pnpm -C platform --filter @reload/server room:doctor
 
-The doctor reports missing Telegram and WhatsApp env vars by name only, verifies Telegram bot identity with
-getMe, verifies the WhatsApp sender with the Graph phone-number lookup, checks that the local WhatsApp
-signature verifier rejects invalid signatures, and skips sends by default.
+The doctor reports missing Telegram and WhatsApp env vars by name plus the exact production remedy to run next,
+verifies Telegram bot identity with getMe, verifies the WhatsApp sender with the Graph phone-number lookup, checks
+that the local WhatsApp signature verifier rejects invalid signatures, and skips sends by default.
 
 To send an explicit smoke message to the configured dogfood chat or recipient:
 
@@ -30,10 +30,21 @@ them, the doctor can prove provider reachability but cannot prove the provider m
 
 ## Telegram Production Checklist
 
-Required env: TELEGRAM_BOT_TOKEN, TELEGRAM_ROOM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET.
+Required deployment env: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET.
+
+Production secret install:
+
+    fly secrets set --app reload-api TELEGRAM_BOT_TOKEN=<bot-token> TELEGRAM_WEBHOOK_SECRET=<random-secret>
+
+The legacy TELEGRAM_ROOM_CHAT_ID env may still be used for dogfood smoke fallback, but production room sends should
+prefer the sealed workspace telegram_room connection value TELEGRAM_CHAT_ID.
 
 Provider setup: configure Telegram to send webhooks to https://api.ipop.ai/telegram/webhook, with
 X-Telegram-Bot-Api-Secret-Token set to the same TELEGRAM_WEBHOOK_SECRET.
+
+Telegram webhook command:
+
+    curl -fsS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" --data-urlencode "url=https://api.ipop.ai/telegram/webhook" --data-urlencode "secret_token=$TELEGRAM_WEBHOOK_SECRET"
 
 Proof before closure: room:doctor passes Telegram config and identity; room:doctor -- --send-smoke sends a
 tagged message to the connected Telegram chat and records the provider MessageID with the room correlation
@@ -42,8 +53,15 @@ concrete approval id resolves through the canonical approval path.
 
 ## WhatsApp Production Checklist
 
-Required env: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ROOM_RECIPIENT,
-WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_APP_SECRET.
+Required deployment env: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+WHATSAPP_APP_SECRET.
+
+Production secret install:
+
+    fly secrets set --app reload-api WHATSAPP_ACCESS_TOKEN=<access-token> WHATSAPP_PHONE_NUMBER_ID=<phone-number-id> WHATSAPP_WEBHOOK_VERIFY_TOKEN=<verify-token> WHATSAPP_APP_SECRET=<app-secret>
+
+The legacy WHATSAPP_ROOM_RECIPIENT env may still be used for dogfood smoke fallback, but production room sends should
+prefer the sealed workspace whatsapp_room connection value WHATSAPP_RECIPIENT.
 
 Provider setup: configure the Meta webhook callback URL to https://api.ipop.ai/whatsapp/webhook, use
 WHATSAPP_WEBHOOK_VERIFY_TOKEN for the GET challenge, and ensure Meta signs POST webhooks with
