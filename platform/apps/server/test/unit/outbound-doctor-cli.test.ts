@@ -40,6 +40,44 @@ describe("outbound doctor CLI (#395)", () => {
     );
   });
 
+  it("lets operators explicitly doctor Resend before acquisition provider env is flipped", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(String(url)).toBe("https://api.resend.com/domains");
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer re-secret");
+      return jsonResponse({ object: "list", data: [{ id: "domain-1", name: "ipop.ai" }] });
+    });
+    const config = parseOutboundDoctorConfig({
+      argv: ["--provider", "resend"],
+      env: {
+        RESEND_API_KEY: "re-secret",
+        RELOAD_FLEET_FROM_EMAIL: "hello@ipop.ai",
+        RELOAD_REACH_SEND_PROVIDER: "postmark",
+        RELOAD_ACQUISITION_ENABLED: "true",
+        RELOAD_ACQUISITION_EMAIL: "true",
+        RELOAD_ACQUISITION_BRAND_NAME: "ipop",
+        RELOAD_ACQUISITION_POSTAL_ADDRESS: "1 Market St, San Francisco, CA",
+        RELOAD_ACQUISITION_UNSUBSCRIBE_URL: "https://ipop.ai/unsubscribe",
+      },
+    });
+
+    const checks = await runOutboundDoctor(config, { fetchImpl });
+
+    expect(config.provider).toBe("resend");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "resend-config", status: "pass" }),
+        expect.objectContaining({
+          name: "acquisition-email-live",
+          status: "fail",
+          message: expect.stringContaining("RELOAD_ACQUISITION_ESP_PROVIDER=resend"),
+        }),
+        expect.objectContaining({ name: "resend-domains", status: "pass" }),
+        expect.objectContaining({ name: "resend-send-smoke", status: "warn" }),
+      ]),
+    );
+  });
+
   it("proves Postmark server identity and skips sends unless --send-smoke is set", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (url) => {
       expect(String(url)).toBe("https://api.postmarkapp.com/server");
