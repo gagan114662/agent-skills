@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PricingPage } from "./PricingPage.js";
 import { FAQ, LANDING, LAUNCH_READINESS, PRICING, REFUND_POLICY } from "../../brand.js";
+import { APP_ROUTES } from "../../routing.js";
 
 describe("PricingPage (#214)", () => {
   it("leads with the focused pricing hero", () => {
@@ -50,6 +51,21 @@ describe("PricingPage (#214)", () => {
   it("keeps the no-signup demo visible from pricing", () => {
     render(<PricingPage />);
     expect(screen.getAllByRole("link", { name: /watch live demo/i })[0]).toHaveAttribute("href", "/demo");
+  });
+
+  it("uses the same simple homepage action nav on pricing", () => {
+    render(<PricingPage />);
+    const nav = screen.getByRole("navigation", { name: "homepage actions" });
+    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login?return=%2Feveryday",
+    );
+    expect(within(nav).getByRole("link", { name: /love/i })).toHaveAttribute("href", "/demo");
+    expect(within(nav).getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "href",
+      APP_ROUTES.dashboard,
+    );
+    expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute("href", "#onboard-target");
   });
 
   it("marks exactly one plan as most popular", () => {

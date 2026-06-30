@@ -20,9 +20,9 @@ import { api, googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
-import { Wordmark } from "../Wordmark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
 import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
+import { PublicDoorNav } from "./PublicDoorNav.js";
 import {
   createDefaultProvider,
   OnboardingReadError,
@@ -294,13 +294,6 @@ const MARKETING_ICON_ROW = [
   { key: "receipt", label: "receipt", detail: "proof saved" },
 ] as const;
 
-const DOOR_ACTIONS = [
-  { key: "login", label: "Log in", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
-  { key: "love", label: "Love", href: "/demo" },
-  { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
-  { key: "start", label: "Start", href: "#onboard-target" },
-] as const;
-
 const MESSAGING_CHANNELS = [
   { key: "imessage", label: "iMessage", detail: "personal room" },
   { key: "whatsapp", label: "WhatsApp", detail: "team thread" },
@@ -321,25 +314,6 @@ function MarketingIconRow(): React.JSX.Element {
         ))}
       </ol>
     </section>
-  );
-}
-
-function DoorActions(): React.JSX.Element {
-  return (
-    <nav className="onboard-door-actions" aria-label="homepage actions">
-      {DOOR_ACTIONS.map((action) => (
-        <a
-          key={action.key}
-          className="onboard-door-action"
-          data-kind={action.key}
-          href={action.href}
-          aria-label={action.key === "love" ? "Love: watch a demo" : undefined}
-        >
-          <span className="onboard-door-action__mark" aria-hidden="true" />
-          <span className="onboard-door-action__label">{action.label}</span>
-        </a>
-      ))}
-    </nav>
   );
 }
 
@@ -512,14 +486,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         <span className="onboard-sunscape__ray onboard-sunscape__ray--three" />
         <span className="onboard-sunscape__sun" />
       </div>
-      <header className="onboard__nav">
-        <a href={APP_ROUTES.home} className="onboard__brand" aria-label={BRAND.name}>
-          <PopMark className="onboard__brand-mark" size={42} />
-          <Wordmark className="onboard__brand-word" />
-          <span className="onboard__brand-proof">marketing team in your messages</span>
-        </a>
-        <DoorActions />
-      </header>
+      <PublicDoorNav />
       <div className="onboard__inner">
         <main className="onboard__primary">
           {/* ---- 1. the door ------------------------------------------------------------------ */}

@@ -3885,12 +3885,16 @@ select:focus-visible {
   margin: 0 auto;
   padding: 28px 20px 48px;
 }
-/* #214: the dedicated public /pricing page wrapper. Reuses the landing nav/footer + pricing grid. */
+/* #214: the dedicated public /pricing page wrapper. Reuses the homepage door nav + pricing grid. */
 .pricing-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
+}
+.pricing-page__nav {
+  width: min(1120px, calc(100% - 40px));
+  padding-top: clamp(18px, 3vw, 34px);
 }
 .pricing-page > main {
   flex: 1;

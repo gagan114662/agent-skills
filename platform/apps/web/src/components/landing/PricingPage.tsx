@@ -13,10 +13,10 @@
 import { BRAND, FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
-import { Wordmark } from "../Wordmark.js";
 import { PopMark } from "../PopMark.js";
 import { useState } from "react";
 import { LaunchReadiness } from "./LaunchReadiness.js";
+import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 
 type BillingInterval = "month" | "year";
 
@@ -34,22 +34,7 @@ export function PricingPage(): React.JSX.Element {
   const isAnnual = billingInterval === "year";
   return (
     <div className="pricing-page">
-      <header className="landing__nav">
-        <Link href="/" className="landing__brand" aria-label={BRAND.name}>
-          <Wordmark />
-        </Link>
-        <nav className="landing__nav-actions">
-          <Link href="/demo" className="linklike">
-            {LANDING.hero.ctaDemo}
-          </Link>
-          <Link href="/login" className="linklike" onClick={() => trackCta("/login", "pricing-nav")}>
-            {LANDING.hero.ctaSecondary}
-          </Link>
-          <Link href="/signup" className="btn btn--primary landing__nav-cta" onClick={() => trackCta("/signup", "pricing-nav")}>
-            {LANDING.hero.ctaPrimary}
-          </Link>
-        </nav>
-      </header>
+      <PublicDoorNav className="pricing-page__nav" />
 
       <main>
         <section className="pricing-page__hero" aria-labelledby="pricing-title">
