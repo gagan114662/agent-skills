@@ -576,11 +576,16 @@ function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.
 
   useEffect(() => {
     if (attempted.current || !identity?.workspaceId || typeof window === "undefined") return;
-    const planKey = window.sessionStorage.getItem(PLAN_INTENT_KEY);
+    const params = new URLSearchParams(window.location.search);
+    const urlPlanKey = window.location.pathname === "/signup" ? params.get("plan") : null;
+    const planKey = window.sessionStorage.getItem(PLAN_INTENT_KEY) ?? urlPlanKey;
     if (!planKey) return;
+    const urlBillingInterval = params.get("billing") === "year" ? "year" : "month";
     const billingInterval =
-      window.sessionStorage.getItem(BILLING_INTERVAL_INTENT_KEY) === "year" ? "year" : "month";
-    const trackingRef = window.sessionStorage.getItem(TRACKING_REF_INTENT_KEY);
+      window.sessionStorage.getItem(BILLING_INTERVAL_INTENT_KEY) === "year"
+        ? "year"
+        : urlBillingInterval;
+    const trackingRef = window.sessionStorage.getItem(TRACKING_REF_INTENT_KEY) ?? params.get("ref");
     attempted.current = true;
     void api.billing
       .startCheckout(identity.workspaceId, planKey, billingInterval, undefined, trackingRef)
