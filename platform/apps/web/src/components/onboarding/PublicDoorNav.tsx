@@ -4,7 +4,7 @@ import { PopMark } from "../PopMark.js";
 import { Wordmark } from "../Wordmark.js";
 
 const DOOR_ACTIONS = [
-  { key: "login", label: "Log in", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
+  { key: "login", label: "Login", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
   { key: "love", label: "Love", href: "/demo" },
   { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
 ] as const;

@@ -82,7 +82,9 @@ jobs:
       - name: Test production web probes
         run: |
           pnpm --filter @reload/web deploy:freshness:test
+          pnpm --filter @reload/web deploy:status:test
           pnpm --filter @reload/web qa:links:test
+          pnpm --filter @reload/web qa:prod-smoke:test
       - name: Probe live web deploy freshness
         env:
           EXPECTED_WEB_SHA: ${{ steps.expected.outputs.sha }}
@@ -97,6 +99,24 @@ jobs:
             fi
           done
           exit 1
+      - name: Report web/API production status
+        env:
+          EXPECTED_WEB_SHA: ${{ steps.expected.outputs.sha }}
+        run: pnpm --filter @reload/web deploy:status
       - name: Crawl live web links
         if: ${{ always() }}
         run: pnpm --filter @reload/web qa:links
+      - name: Install browser for production smoke
+        if: ${{ always() }}
+        run: pnpm --filter @reload/web exec playwright install --with-deps chromium
+      - name: Smoke public product in Chromium
+        if: ${{ always() }}
+        env:
+          PRODUCTION_SMOKE_ARTIFACT_DIR: ${{ github.workspace }}/production-smoke-artifacts
+        run: pnpm --filter @reload/web qa:prod-smoke
+      - name: Upload production smoke screenshots
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-artifacts
+          path: production-smoke-artifacts

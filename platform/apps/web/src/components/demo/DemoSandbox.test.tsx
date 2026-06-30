@@ -61,7 +61,7 @@ describe("DemoSandbox (#610)", () => {
     const { impl } = okFetch();
     render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);
     const nav = screen.getByRole("navigation", { name: "homepage actions" });
-    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Login" })).toHaveAttribute(
       "href",
       "/login?return=%2Feveryday",
     );

@@ -56,7 +56,7 @@ describe("PricingPage (#214)", () => {
   it("uses the same simple homepage action nav on pricing", () => {
     render(<PricingPage />);
     const nav = screen.getByRole("navigation", { name: "homepage actions" });
-    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Login" })).toHaveAttribute(
       "href",
       "/login?return=%2Feveryday",
     );
