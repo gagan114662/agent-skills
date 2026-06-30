@@ -203,6 +203,9 @@ describe("App root routing", () => {
     expect(screen.getByText("channel performance")).toBeInTheDocument();
     expect(screen.getAllByText("PR #1276").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Sign in with Google/i)).not.toBeInTheDocument();
+    const footer = screen.getByRole("navigation", { name: "Public footer" });
+    expect(within(footer).getByRole("link", { name: "Demo" })).toHaveAttribute("href", "/demo");
+    expect(within(footer).getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
   });
 
   it("opens /dashboard with live workspace data for signed-in users instead of dogfood copy", async () => {

@@ -130,6 +130,36 @@ function withFirstRunReceipt(
     marketingBrief: {
       mode: "live",
       headline: firstRun.finding,
+      executiveSummary: [
+        {
+          label: "work shipped today",
+          value: "1",
+          detail: "first useful result captured",
+          tone: "warn",
+          proof: firstRun.receipt,
+        },
+        {
+          label: "pipeline moved",
+          value: "0",
+          detail: "no customer/revenue movement yet",
+          tone: "bad",
+          proof: "north-star customer row is unchanged",
+        },
+        {
+          label: "approvals waiting",
+          value: String(data.approvals.length),
+          detail: data.approvals.length ? "owner decision needed" : "no owner queue",
+          tone: data.approvals.length ? "warn" : "neutral",
+          proof: "workspace approval queue",
+        },
+        {
+          label: "blocked channels",
+          value: "1",
+          detail: "external connector proof required",
+          tone: "bad",
+          proof: "no real sent-message receipt",
+        },
+      ],
       sinceLastCheckIn: [
         { title: "First useful marketing result captured", owner: "Scout", proof: firstRun.receipt },
         { title: "Draft artifact is ready for the owner", owner: "Quill", proof: firstRun.artifactTitle },
@@ -174,6 +204,29 @@ function withFirstRunReceipt(
           tone: "neutral",
           proofKind: "live",
           proof: "no external transparency receipt created",
+        },
+      ],
+      capacity: [
+        {
+          label: "active campaign lanes",
+          value: "1 / 1",
+          detail: "upgrade when a second lane queues",
+          tone: "warn",
+          proof: firstRun.receipt,
+        },
+        {
+          label: "agent seats used",
+          value: String(data.room.length) + " / 3",
+          detail: data.room.length > 3 ? "team shape exceeds starter seat limit" : "inside starter team limit",
+          tone: data.room.length > 3 ? "warn" : "neutral",
+          proof: "workspace agent lane state",
+        },
+        {
+          label: "monthly work cap",
+          value: "$0 / $200",
+          detail: "no paid distribution approved yet",
+          tone: "neutral",
+          proof: "no paid campaign spend receipt",
         },
       ],
       funnel: [
