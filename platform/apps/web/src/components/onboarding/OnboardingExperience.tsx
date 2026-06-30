@@ -296,7 +296,7 @@ const MARKETING_ICON_ROW = [
 
 const DOOR_ACTIONS = [
   { key: "login", label: "Log in", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
-  { key: "love", label: "Love", href: "#onboard-target" },
+  { key: "love", label: "Love", href: "/demo" },
   { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
   { key: "start", label: "Start", href: "#onboard-target" },
 ] as const;
@@ -309,8 +309,8 @@ const MESSAGING_CHANNELS = [
 
 function MarketingIconRow(): React.JSX.Element {
   return (
-    <section className="onboard-marketing" aria-label="marketing work preview">
-      <ol className="onboard-marketing__row">
+    <section className="onboard-marketing" aria-label="marketing work preview" data-interactive="false">
+      <ol className="onboard-marketing__row" aria-label="decorative marketing capability preview">
         {MARKETING_ICON_ROW.map((item) => (
           <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
             <span className="onboard-marketing__mark" aria-hidden="true">
@@ -333,6 +333,7 @@ function DoorActions(): React.JSX.Element {
           className="onboard-door-action"
           data-kind={action.key}
           href={action.href}
+          aria-label={action.key === "love" ? "Love: watch a demo" : undefined}
         >
           <span className="onboard-door-action__mark" aria-hidden="true" />
           <span className="onboard-door-action__label">{action.label}</span>
@@ -342,22 +343,31 @@ function DoorActions(): React.JSX.Element {
   );
 }
 
-function MessagingChannelRail(): React.JSX.Element {
+function MessagingChannelRail({
+  selected,
+  onSelect,
+}: {
+  selected: string;
+  onSelect: (channel: string) => void;
+}): React.JSX.Element {
   return (
     <section className="onboard-message-channels" aria-label="messaging channels">
       {MESSAGING_CHANNELS.map((channel) => (
-        <a
+        <button
           key={channel.key}
+          type="button"
           className="onboard-message-channel"
           data-kind={channel.key}
-          href="#onboard-target"
+          data-selected={selected === channel.key ? "true" : "false"}
+          aria-pressed={selected === channel.key}
+          onClick={() => onSelect(channel.key)}
         >
           <span className="onboard-message-channel__mark" aria-hidden="true" />
           <span className="onboard-message-channel__copy">
             <strong>{channel.label}</strong>
             <span>{channel.detail}</span>
           </span>
-        </a>
+        </button>
       ))}
     </section>
   );
@@ -382,6 +392,8 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const [phase, setPhase] = useState<Phase>("door");
   const [input, setInput] = useState("");
   const [doorError, setDoorError] = useState<string | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<string>("imessage");
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [finding, setFinding] = useState<SiteFinding | null>(null);
   const [mission, setMission] = useState<TeamMission | null>(null);
@@ -516,12 +528,19 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
               <PopMark className="onboard__mark" />
               <MarketingIconRow />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
-              <MessagingChannelRail />
+              <MessagingChannelRail
+                selected={selectedChannel}
+                onSelect={(channel) => {
+                  setSelectedChannel(channel);
+                  inputRef.current?.focus();
+                }}
+              />
               <label className="onboard-door__label" htmlFor="onboard-target">
                 {ONBOARD_COPY.door.inputLabel}
               </label>
               <div className="onboard-door__field">
                 <input
+                  ref={inputRef}
                   id="onboard-target"
                   className="onboard-input"
                   type="text"
