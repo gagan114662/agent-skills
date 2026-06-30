@@ -229,7 +229,11 @@ export function AuthGate({
     );
   }
 
-  if (phase === "ready") return <PostSignupCheckoutIntent>{children}</PostSignupCheckoutIntent>;
+  if (phase === "ready") {
+    if (path === "/login") return <SignedInAuthRoute mode="login" />;
+    if (path === "/signup") return <SignedInAuthRoute mode="signup" />;
+    return <PostSignupCheckoutIntent>{children}</PostSignupCheckoutIntent>;
+  }
   if (phase === "loading") return <Splash />;
   if (phase === "offline") return <OfflineNotice onRetry={() => void store.bootstrap()} />;
 
@@ -573,6 +577,8 @@ export function AuthForm({ initialMode }: { initialMode: Mode }): React.JSX.Elem
 function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.JSX.Element {
   const { identity } = useAppState();
   const attempted = useRef(false);
+  const [attemptingCheckout, setAttemptingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState(false);
 
   useEffect(() => {
     if (attempted.current || !identity?.workspaceId || typeof window === "undefined") return;
@@ -587,6 +593,8 @@ function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.
         : urlBillingInterval;
     const trackingRef = window.sessionStorage.getItem(TRACKING_REF_INTENT_KEY) ?? params.get("ref");
     attempted.current = true;
+    setCheckoutError(false);
+    setAttemptingCheckout(true);
     void api.billing
       .startCheckout(identity.workspaceId, planKey, billingInterval, undefined, trackingRef)
       .then(({ url }) => {
@@ -597,8 +605,76 @@ function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.
       })
       .catch(() => {
         attempted.current = false;
+        setAttemptingCheckout(false);
+        setCheckoutError(true);
       });
   }, [identity?.workspaceId]);
 
+  if (checkoutError) return <CheckoutIntentError />;
+  if (attemptingCheckout) return <CheckoutIntentSplash />;
   return <>{children}</>;
+}
+
+function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
+  const hasCheckoutPlan =
+    typeof window !== "undefined" &&
+    mode === "signup" &&
+    Boolean(new URLSearchParams(window.location.search).get("plan") ?? window.sessionStorage.getItem(PLAN_INTENT_KEY));
+
+  if (hasCheckoutPlan) {
+    return (
+      <PostSignupCheckoutIntent>
+        <CheckoutIntentSplash />
+      </PostSignupCheckoutIntent>
+    );
+  }
+
+  return (
+    <main className="splash" role="main" aria-labelledby="signed-in-auth-title">
+      <PopMark burst />
+      <p className="auth__trial-badge">Already signed in</p>
+      <h1 id="signed-in-auth-title">{mode === "login" ? "You're already in" : "Your workspace is ready"}</h1>
+      <p>
+        Head to the agent room, or pick a plan from pricing if you want to change what the team can do.
+      </p>
+      <div className="auth__actions">
+        <Link className="btn btn--primary" href={APP_ROUTES.everyday}>
+          Open agent room
+        </Link>
+        <Link className="btn" href="/pricing">
+          View pricing
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+function CheckoutIntentSplash(): React.JSX.Element {
+  return (
+    <main className="splash" role="main" aria-labelledby="checkout-intent-title">
+      <PopMark burst />
+      <p className="auth__trial-badge">Checkout</p>
+      <h1 id="checkout-intent-title">Opening checkout</h1>
+      <p>One moment. We're taking you to the secure plan checkout.</p>
+    </main>
+  );
+}
+
+function CheckoutIntentError(): React.JSX.Element {
+  return (
+    <main className="splash" role="main" aria-labelledby="checkout-error-title">
+      <PopMark />
+      <p className="auth__trial-badge">Checkout needs a nudge</p>
+      <h1 id="checkout-error-title">Checkout did not open</h1>
+      <p>Try the plan again from pricing. If it still sticks, the team needs to fix the billing handoff.</p>
+      <div className="auth__actions">
+        <Link className="btn btn--primary" href="/pricing">
+          Back to pricing
+        </Link>
+        <Link className="btn" href={APP_ROUTES.everyday}>
+          Open agent room
+        </Link>
+      </div>
+    </main>
+  );
 }
