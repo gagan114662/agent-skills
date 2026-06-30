@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ACQUISITION_EVENT_TARGET } from "../../acquisition-events.js";
 import { DemoSandbox } from "./DemoSandbox.js";
 import type { DemoDeliverableDto, FetchLike } from "../../api/demo.js";
@@ -55,6 +55,24 @@ describe("DemoSandbox (#610)", () => {
     expect(screen.getByRole("button", { name: /build my free deliverable/i })).toBeInTheDocument();
     // No fetch until the visitor asks.
     expect(screen.queryByText(plan.sections[0]!.heading)).not.toBeInTheDocument();
+  });
+
+  it("keeps the shared public action nav on the standalone demo page", () => {
+    const { impl } = okFetch();
+    render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);
+    const nav = screen.getByRole("navigation", { name: "homepage actions" });
+    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login?return=%2Feveryday",
+    );
+    expect(within(nav).getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
+    expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute(
+      "href",
+      "/start#onboard-target",
+    );
   });
 
   it("builds a personalized deliverable from the typed URL and surfaces the signup CTA", async () => {

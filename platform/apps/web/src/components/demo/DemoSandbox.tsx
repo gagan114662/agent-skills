@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BRAND } from "../../brand.js";
 import { Link } from "../../routing.js";
-import { PopMark } from "../PopMark.js";
+import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 import {
   DemoError,
   fetchDemoDeliverable,
@@ -199,10 +199,8 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
 
   return (
     <div className="demo">
+      <PublicDoorNav className="demo__nav" startHref="/start#onboard-target" />
       <header className="demo__head">
-        <Link href="/" className="demo__brand" aria-label={BRAND.name}>
-          <PopMark className="demo__mark" />
-        </Link>
         <p className="demo__eyebrow">{COPY.eyebrow}</p>
         <h1 className="demo__headline">{plan ? plan.title : COPY.headline}</h1>
         <p className="demo__sub">{plan ? plan.subtitle : COPY.sub}</p>

@@ -34,7 +34,7 @@ export function PricingPage(): React.JSX.Element {
   const isAnnual = billingInterval === "year";
   return (
     <div className="pricing-page">
-      <PublicDoorNav className="pricing-page__nav" />
+      <PublicDoorNav className="pricing-page__nav" startHref="/start#onboard-target" />
 
       <main>
         <section className="pricing-page__hero" aria-labelledby="pricing-title">

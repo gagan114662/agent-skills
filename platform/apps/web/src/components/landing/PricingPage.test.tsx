@@ -65,7 +65,10 @@ describe("PricingPage (#214)", () => {
       "href",
       APP_ROUTES.dashboard,
     );
-    expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute("href", "#onboard-target");
+    expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute(
+      "href",
+      "/start#onboard-target",
+    );
   });
 
   it("marks exactly one plan as most popular", () => {
