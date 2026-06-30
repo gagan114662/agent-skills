@@ -1126,28 +1126,110 @@ function TransparencyLog({ actions }: { actions: readonly ExternalAction[] }): R
 }
 
 /** Money + kill-switch, framed as reassurance. The kill switch is ALWAYS on — there is nothing to configure. */
-function SafetyFooter({ paused }: { paused: boolean }): React.JSX.Element {
+function SafetyFooter({
+  paused,
+  onEmergencyStop,
+  onResumeFleet,
+}: {
+  paused: boolean;
+  onEmergencyStop?: () => Promise<void> | void;
+  onResumeFleet?: () => Promise<void> | void;
+}): React.JSX.Element {
   const s = EVERYDAY.safety;
   const [confirming, setConfirming] = useState(false);
+  const [localPaused, setLocalPaused] = useState(false);
+  const [busy, setBusy] = useState<"stop" | "resume" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const stopped = paused || localPaused;
+
+  async function stopFleet(): Promise<void> {
+    setBusy("stop");
+    setError(null);
+    try {
+      await onEmergencyStop?.();
+      setLocalPaused(true);
+      setConfirming(false);
+    } catch {
+      setError(s.killSwitchError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resumeFleet(): Promise<void> {
+    setBusy("resume");
+    setError(null);
+    try {
+      await onResumeFleet?.();
+      setLocalPaused(false);
+      setConfirming(false);
+    } catch {
+      setError(s.killSwitchError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const statusText =
+    busy === "stop"
+      ? s.killSwitchPending
+      : busy === "resume"
+        ? s.killSwitchResumePending
+        : error ?? (stopped ? s.killSwitchEngaged : confirming ? s.killSwitchConfirm : null);
+
   return (
     <section className="everyday-safety" aria-label={s.killSwitchTitle}>
       <p className="everyday-eyebrow">{s.eyebrow}</p>
       <h2 className="everyday-serif everyday-safety__title">{s.killSwitchTitle}</h2>
       <p className="everyday-safety__body">{s.killSwitchBody}</p>
+      {statusText && (
+        <p
+          className="everyday-safety__status"
+          role="status"
+          data-state={error ? "error" : stopped ? "stopped" : "ready"}
+        >
+          {statusText}
+        </p>
+      )}
       <div className="everyday-safety__action">
-        {confirming ? (
+        {stopped ? (
           <button
             type="button"
-            className="everyday-btn everyday-btn--stop"
-            onClick={() => setConfirming(false)}
+            className="everyday-btn everyday-btn--ghost"
+            aria-pressed="true"
+            disabled={busy !== null}
+            onClick={() => void resumeFleet()}
           >
-            {s.killSwitchAction}
+            {s.killSwitchResume}
           </button>
+        ) : confirming ? (
+          <>
+            <button
+              type="button"
+              className="everyday-btn everyday-btn--stop"
+              disabled={busy !== null}
+              onClick={() => void stopFleet()}
+            >
+              {s.killSwitchAction}
+            </button>
+            <button
+              type="button"
+              className="everyday-btn everyday-btn--ghost"
+              disabled={busy !== null}
+              onClick={() => {
+                setConfirming(false);
+                setError(null);
+              }}
+            >
+              {s.killSwitchCancel}
+            </button>
+          </>
         ) : (
           <button
             type="button"
             className="everyday-btn everyday-btn--ghost"
-            aria-pressed={paused}
+            aria-pressed="false"
+            disabled={busy !== null}
             onClick={() => setConfirming(true)}
           >
             {s.killSwitchAction}
@@ -1204,6 +1286,8 @@ export function EverydayShell({
   onTestIMessageRecipient,
   onDeleteIMessageRecipient,
   onStartRoom,
+  onEmergencyStop,
+  onResumeFleet,
   operatorPacketForGoal,
   dashboardFirst = false,
 }: {
@@ -1216,6 +1300,8 @@ export function EverydayShell({
   onTestIMessageRecipient?: () => Promise<void> | void;
   onDeleteIMessageRecipient?: () => Promise<void> | void;
   onStartRoom?: (goal: string) => Promise<void> | void;
+  onEmergencyStop?: () => Promise<void> | void;
+  onResumeFleet?: () => Promise<void> | void;
   operatorPacketForGoal?: (goal: string) => string;
   dashboardFirst?: boolean;
 }): React.JSX.Element {
@@ -1338,7 +1424,11 @@ export function EverydayShell({
           errors={errors}
         />
         <TransparencyLog actions={data.transparency} />
-        <SafetyFooter paused={data.fleetPaused} />
+        <SafetyFooter
+          paused={data.fleetPaused}
+          onEmergencyStop={onEmergencyStop}
+          onResumeFleet={onResumeFleet}
+        />
       </main>
     </div>
   );

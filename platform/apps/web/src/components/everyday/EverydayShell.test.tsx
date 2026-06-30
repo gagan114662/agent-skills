@@ -416,4 +416,55 @@ describe("EverydayShell — transparency + kill switch (#629/#784)", () => {
       screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction }),
     ).toBeInTheDocument();
   });
+
+  it("confirms, engages, and resumes the fleet switch with visible feedback (#1468)", async () => {
+    const onEmergencyStop = vi.fn(async () => undefined);
+    const onResumeFleet = vi.fn(async () => undefined);
+    render(
+      <EverydayShell
+        data={seedEveryday()}
+        onEmergencyStop={onEmergencyStop}
+        onResumeFleet={onResumeFleet}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction }));
+    expect(screen.getByRole("status")).toHaveTextContent(EVERYDAY.safety.killSwitchConfirm);
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction }));
+
+    await waitFor(() => expect(onEmergencyStop).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status")).toHaveTextContent(EVERYDAY.safety.killSwitchEngaged);
+    expect(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchResume })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchResume }));
+
+    await waitFor(() => expect(onResumeFleet).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("surfaces a failed fleet-stop instead of silently doing nothing (#1468)", async () => {
+    render(
+      <EverydayShell
+        data={seedEveryday()}
+        onEmergencyStop={vi.fn(async () => {
+          throw new Error("nope");
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction }));
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.safety.killSwitchAction }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(EVERYDAY.safety.killSwitchError),
+    );
+  });
 });
