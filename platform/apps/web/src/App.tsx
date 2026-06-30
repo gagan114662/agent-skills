@@ -36,6 +36,13 @@ const LOGIN_PATH = /^\/login\/?$/;
 const SIGNUP_PATH = /^\/signup\/?$/;
 /** The one-icon dashboard from the homepage: a public summary of what the agent team has done. */
 const DASHBOARD_PATH = /^\/dashboard\/?$/;
+/**
+ * Public routes whose rendering lives inside AuthGate because it owns the code-split marketing/legal/blog
+ * surfaces. Keep this allowlist explicit so unknown URLs still reach the branded 404 instead of the app
+ * shell, while direct public URLs hydrate to their real page (#1482).
+ */
+const AUTHGATE_PUBLIC_PATH =
+  /^\/(?:start|pricing|refund-policy|security|terms|privacy|dpa|company|sample|blog(?:\/.*)?|compare(?:\/.*)?|stories(?:\/.*)?|guides(?:\/.*)?|changelog(?:\/.*)?|brand(?:\/.*)?|segments(?:\/.*)?)\/?$/;
 
 /**
  * The signed-in home. The iMessage/Codex room is the product now; do not let stale deployment flags
@@ -123,6 +130,14 @@ export function App(): React.JSX.Element {
     return (
       <AuthGate>
         <LiveEverydayShell />
+      </AuthGate>
+    );
+  }
+
+  if (AUTHGATE_PUBLIC_PATH.test(path)) {
+    return (
+      <AuthGate>
+        <AuthedHome />
       </AuthGate>
     );
   }

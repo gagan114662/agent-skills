@@ -15,7 +15,7 @@
  * surface is gated default-OFF (#784 `onboarding-flag`); this component renders nothing in production until then.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BRAND, SUPPORT_CONTACT } from "../../brand.js";
+import { SUPPORT_CONTACT } from "../../brand.js";
 import { api, googleStartUrl } from "../../api/client.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate } from "../../routing.js";

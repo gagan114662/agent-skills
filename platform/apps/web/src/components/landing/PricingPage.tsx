@@ -10,7 +10,7 @@
  *
  * Every word comes from `brand.ts`; brand.test scans this file for hardcoded brand strings.
  */
-import { BRAND, FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
+import { FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { PopMark } from "../PopMark.js";
