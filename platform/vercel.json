@@ -20,6 +20,13 @@
     { "source": "/workspaces/:path*", "destination": "https://api.ipop.ai/workspaces/:path*" },
     { "source": "/channels/:path*", "destination": "https://api.ipop.ai/channels/:path*" },
     { "source": "/approvals/:path*", "destination": "https://api.ipop.ai/approvals/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/status/:path*", "destination": "/index.html" },
+    { "source": "/dogfood/:path*", "destination": "/index.html" },
+    { "source": "/compare/:path*", "destination": "/index.html" },
+    { "source": "/stories/:path*", "destination": "/index.html" },
+    { "source": "/guides/:path*", "destination": "/index.html" },
+    { "source": "/changelog/:path*", "destination": "/index.html" },
+    { "source": "/brand/:path*", "destination": "/index.html" },
+    { "source": "/segments/:path*", "destination": "/index.html" }
   ]
 }

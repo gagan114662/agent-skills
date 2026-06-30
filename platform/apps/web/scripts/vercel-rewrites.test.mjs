@@ -8,15 +8,37 @@ function rewriteFor(source) {
   return vercelConfig.rewrites.find((rewrite) => rewrite.source === source);
 }
 
+function rewriteSourcesTo(destination) {
+  return vercelConfig.rewrites.filter((rewrite) => rewrite.destination === destination).map((rewrite) => rewrite.source);
+}
+
 describe("Vercel API rewrites", () => {
   it("routes representative production API paths to api.ipop.ai before the SPA fallback", () => {
-    const fallbackIndex = vercelConfig.rewrites.findIndex((rewrite) => rewrite.destination === "/index.html");
+    const firstSpaRewriteIndex = vercelConfig.rewrites.findIndex((rewrite) => rewrite.destination === "/index.html");
 
     for (const source of ["/healthz", "/ws", "/onboarding/:path*", "/inbound/:path*", "/me/:path*", "/workspaces/:path*"]) {
       const index = vercelConfig.rewrites.findIndex((rewrite) => rewrite.source === source);
       expect(index, source).toBeGreaterThanOrEqual(0);
-      expect(index, source).toBeLessThan(fallbackIndex);
+      expect(index, source).toBeLessThan(firstSpaRewriteIndex);
       expect(rewriteFor(source).destination, source).toMatch(/^https:\/\/api\.ipop\.ai\//);
     }
+  });
+
+  it("does not soft-200 arbitrary unknown public URLs through a universal SPA fallback", () => {
+    expect(rewriteFor("/(.*)")).toBeUndefined();
+    expect(vercelConfig.rewrites).not.toContainEqual({ source: "/:path*", destination: "/index.html" });
+  });
+
+  it("keeps only dynamic public SPA prefixes routed to the app shell", () => {
+    expect(rewriteSourcesTo("/index.html")).toEqual([
+      "/status/:path*",
+      "/dogfood/:path*",
+      "/compare/:path*",
+      "/stories/:path*",
+      "/guides/:path*",
+      "/changelog/:path*",
+      "/brand/:path*",
+      "/segments/:path*",
+    ]);
   });
 });
