@@ -364,6 +364,25 @@ describe("AuthGate routing", () => {
     expect(window.sessionStorage.getItem("checkout-tracking-ref-intent")).toBeNull();
   });
 
+  it("opens hosted checkout directly when a signed-in visitor chooses a public pricing plan (#1467)", async () => {
+    act(() => navigate("/signup?plan=pro&billing=month&ref=ipop_signedin"));
+    const checkout = vi
+      .spyOn(api.billing, "startCheckout")
+      .mockResolvedValue({ url: "#checkout", planKey: "pro", billingInterval: "month" });
+
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(checkout).toHaveBeenCalledWith("w1", "pro", "month", undefined, "ipop_signedin"),
+    );
+  });
+
   it("redirects a logged-out app-route hit to sign-in, preserving the return path (#304)", async () => {
     act(() => navigate("/app/reports"));
     renderWithStore(
