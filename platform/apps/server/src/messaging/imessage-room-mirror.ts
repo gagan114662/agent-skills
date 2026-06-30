@@ -7,7 +7,11 @@ import {
 import { getWorkspaceMember } from "../db/repositories/members.js";
 import type { Message } from "../db/repositories/messages.js";
 import { imessageRoomReceipt } from "../imessage/service.js";
-import { formatExternalRoomEvent, type ExternalRoomMirrorSource } from "./external-room-mirror.js";
+import {
+  formatExternalRoomEvent,
+  shouldMirrorExternalRoomEvent,
+  type ExternalRoomMirrorSource,
+} from "./external-room-mirror.js";
 
 export interface IMessageRoomMirrorInput {
   workspaceId: string;
@@ -53,6 +57,7 @@ export function createIMessageRoomMirror(deps: IMessageRoomMirrorDeps = {}): IMe
   return {
     async mirror(input) {
       if (input.message.alsoSentToChannel || input.source !== "agent_post") return;
+      if (!shouldMirrorExternalRoomEvent({ body: input.message.body, source: input.source })) return;
       const roomJob = await getRoomJob({ workspaceId: input.workspaceId, channelId: input.channelId });
       if (!roomJob || !roomJob.memberId) return;
       const existing = await getJobForMessage({

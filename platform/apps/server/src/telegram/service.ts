@@ -128,11 +128,7 @@ function chatNativeRoomUpdate(input: {
   const update = clipped(input.text, 700);
   const lines = [input.author + ": " + update.text];
   if (update.clipped) lines.push("Full update: https://ipop.ai/everyday");
-  lines.push(
-    "",
-    "Reply here to keep this in the room.",
-    "ref: " + input.providerPrefix + ":" + input.channelId + ":" + input.messageId,
-  );
+  lines.push("", "reply with ref: " + input.providerPrefix + ":" + input.channelId + ":" + input.messageId);
   return lines.join("\n");
 }
 
