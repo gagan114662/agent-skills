@@ -29,6 +29,9 @@ import { RefundPolicy } from "./components/landing/RefundPolicy.js";
 import { Security } from "./components/landing/Security.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
+import { PublicDoorFooter, PublicDoorNav } from "./components/onboarding/PublicDoorNav.js";
+import { EverydayShell } from "./components/everyday/EverydayShell.js";
+import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
 import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
 import { LegalPage } from "./components/landing/LegalPage.js";
 import { CompanyPage } from "./components/landing/CompanyPage.js";
@@ -87,7 +90,7 @@ function marketingPages(): PrerenderPage[] {
     "/login": <StaticAuthPage mode="login" />,
     "/signup": <StaticAuthPage mode="signup" />,
     "/everyday": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Everyday workspace" body="Review approvals, receipts, and the work queue after signing in. This route never serves the homepage to crawlers." />,
-    "/dashboard": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Dashboard" body="Review live ipop work receipts, workspace state, and agent coordination after signing in. This route never serves a static 404 to crawlers." />,
+    "/dashboard": <StaticPublicDashboard />,
     "/theater": <StaticAppRouteShell eyebrow="Signed-in workspace" title="Agent theater" body="Watch workspace-scoped reasoning, actions, artifacts, and receipts after signing in." />,
     "/support/status": <StaticAppRouteShell eyebrow="Support ticket" title="Ticket status" body="Open a ticket status link with its secure parameters to see SLA, response state, and timeline." />,
     "/status/test": <StaticAppRouteShell eyebrow="Public status" title="Workspace status" body="Published status pages show component health and incident history for workspaces that opt in." />,
@@ -147,6 +150,17 @@ function marketingPages(): PrerenderPage[] {
       ),
     };
   });
+}
+
+function StaticPublicDashboard(): React.JSX.Element {
+  return (
+    <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
+      <PublicDoorNav className="public-dashboard__nav" startHref="/start#onboard-target" />
+      <h1 className="sr-only">CMO brief</h1>
+      <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />
+      <PublicDoorFooter className="public-dashboard__footer" />
+    </div>
+  );
 }
 
 function StaticAppRouteShell(props: { eyebrow: string; title: string; body: string }): React.JSX.Element {
