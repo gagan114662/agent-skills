@@ -143,6 +143,7 @@ export interface MarketingFunnelStage {
 export interface MarketingBrief {
   readonly mode: "live" | "sample";
   readonly headline: string;
+  readonly sinceLastCheckIn: readonly MarketingAction[];
   readonly goal: MarketingGoal;
   readonly metrics: readonly MarketingMetric[];
   readonly funnel: readonly MarketingFunnelStage[];
@@ -212,6 +213,9 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       mode: "live",
       headline:
         "No marketing signal yet. Start the room and the team should fill this with pipeline, channel, spend, and blocker data.",
+      sinceLastCheckIn: [
+        { title: "No measurable workspace change yet", owner: "Operator", proof: "no thread, approval, or receipt activity" },
+      ],
       goal: {
         label: "customer goal",
         target: "set by owner",
@@ -656,6 +660,11 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
       mode: "sample",
       headline:
         "Public sample: ipop has shipped product work, but customer acquisition is still blocked until auth, connectors, and live outbound proof are real.",
+      sinceLastCheckIn: [
+        { title: "Homepage serves the simplified marketing-door flow", owner: "Scout", proof: "production / route receipt" },
+        { title: "Dashboard labels proof classes instead of implying fake traction", owner: "Lens", proof: "public CMO brief" },
+        { title: "External customer proof remains zero", owner: "Operator", proof: "zero signup/payment/customer approval receipts" },
+      ],
       goal: {
         label: "30-day customer goal",
         target: "10 activated trial teams",

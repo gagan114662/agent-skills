@@ -28,6 +28,7 @@ import {
   type EverydayConnector,
   type ExternalAction,
   type AgentLane,
+  type MarketingAction,
   type MarketingBrief,
   type NorthStar,
   type ThreadEntry,
@@ -660,6 +661,18 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
           <h2 className="everyday-serif everyday-dashboard__heading">{d.heading}</h2>
           <p className="everyday-dashboard__subhead">{d.subhead}</p>
           <p className="everyday-dashboard__headline">{brief.headline}</p>
+          <div className="everyday-dashboard__since" aria-label={d.since}>
+            <p className="everyday-eyebrow">{d.since}</p>
+            <ul>
+              {brief.sinceLastCheckIn.slice(0, 3).map((change) => (
+                <li key={change.title}>
+                  <strong>{change.title}</strong>
+                  <span>{change.owner}</span>
+                  <em>{change.proof}</em>
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="everyday-dashboard__goal" data-confidence={brief.goal.confidence}>
             <span>{brief.goal.label}</span>
             <strong>{brief.goal.current}</strong>
@@ -794,6 +807,11 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       hasBrief || pendingDecisions || hasExternalReceipts
         ? "Live CMO readout from this workspace: work in motion, decisions waiting, channel truth, and proof gaps."
         : "No measurable marketing work yet. Start the room and this brief should fill with live proof, not sample traction.",
+    sinceLastCheckIn: dashboardChangesSinceLastCheckIn(data, {
+      hasBrief,
+      hasExternalReceipts,
+      pendingDecisions,
+    }),
     goal: {
       label: "customer goal",
       target: data.northStar.customers > 0 ? String(data.northStar.customers) : "not set",
@@ -959,6 +977,44 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       { label: "legal/trust", status: "pending", proof: "legal state is not part of workspace feed" },
     ],
   };
+}
+
+function dashboardChangesSinceLastCheckIn(
+  data: EverydayData,
+  state: { hasBrief: boolean; hasExternalReceipts: boolean; pendingDecisions: number },
+): readonly MarketingAction[] {
+  const latestReceipt = data.transparency[data.transparency.length - 1];
+  const latestThread = data.thread[data.thread.length - 1];
+  const changes: MarketingAction[] = [];
+  if (latestReceipt) {
+    changes.push({
+      title: latestReceipt.action,
+      owner: "Operator",
+      proof: latestReceipt.receiptLabel ?? latestReceipt.href,
+    });
+  }
+  if (state.pendingDecisions > 0) {
+    changes.push({
+      title: state.pendingDecisions + " approval decision(s) waiting",
+      owner: "You",
+      proof: "approval queue",
+    });
+  }
+  if (latestThread) {
+    changes.push({
+      title: latestThread.kind === "deliverable" ? latestThread.deliverable.title : latestThread.text,
+      owner: latestThread.agent,
+      proof: latestThread.at,
+    });
+  }
+  if (changes.length > 0) return changes.slice(0, 3);
+  return [
+    {
+      title: state.hasBrief || state.hasExternalReceipts ? "Workspace has prior activity, but no new delta" : "No measurable workspace change yet",
+      owner: "Operator",
+      proof: state.hasBrief ? "thread activity exists" : "no thread, approval, or receipt activity",
+    },
+  ];
 }
 
 function BriefActionList({
