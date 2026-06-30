@@ -249,7 +249,10 @@ export interface IMessageRelayReadinessView {
   directReady: boolean;
   queueReady: boolean;
   heartbeatReady: boolean;
+  roomStartReady: boolean;
+  loopbackReady: boolean;
   roomReady: boolean;
+  roomReadyReason: string;
   jobSummary: IMessageRelayJobSummaryView;
 }
 

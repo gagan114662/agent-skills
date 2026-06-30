@@ -151,6 +151,13 @@ describe("iMessage member recipient relay", () => {
       recipientSource: "member_verified",
       requiresVerification: false,
       memberRecipient: { recipient: "gagan@example.com", verified: true },
+      relay: {
+        directReady: true,
+        roomStartReady: true,
+        loopbackReady: false,
+        roomReady: false,
+        roomReadyReason: "waiting for an inbound iMessage reply receipt before claiming the room works end-to-end",
+      },
     });
 
     const started = await app.inject({
@@ -310,6 +317,13 @@ describe("iMessage member recipient relay", () => {
     });
     expect(status.statusCode).toBe(200);
     expect(status.json()).toMatchObject({
+      relay: {
+        directReady: true,
+        roomStartReady: true,
+        loopbackReady: true,
+        roomReady: true,
+        roomReadyReason: "verified recipient, outbound room send, and inbound iMessage reply are correlated",
+      },
       lastInboundReceipt: {
         workspaceId: owner.workspaceId,
         memberId: owner.memberId,
@@ -417,6 +431,8 @@ describe("iMessage member recipient relay", () => {
           webhookConfigured: true,
           queueReady: true,
           heartbeatReady: false,
+          roomStartReady: false,
+          loopbackReady: false,
           roomReady: false,
           jobSummary: {
             pending: 1,
@@ -480,6 +496,8 @@ describe("iMessage member recipient relay", () => {
           mode: "queued",
           queueReady: true,
           heartbeatReady: false,
+          roomStartReady: false,
+          loopbackReady: false,
           roomReady: false,
           jobSummary: {
             pending: 0,
@@ -605,7 +623,10 @@ describe("iMessage member recipient relay", () => {
           mode: "queued",
           queueReady: true,
           heartbeatReady: true,
-          roomReady: true,
+          roomStartReady: true,
+          loopbackReady: false,
+          roomReady: false,
+          roomReadyReason: "waiting for an inbound iMessage reply receipt before claiming the room works end-to-end",
           jobSummary: {
             pending: 1,
             claimed: 0,
@@ -669,6 +690,31 @@ describe("iMessage member recipient relay", () => {
           receipt: roomReceipt,
         },
         inboundReceipt: {
+          workspaceId: owner.workspaceId,
+          memberId: owner.memberId,
+          channelId,
+          receipt: roomReceipt,
+          text: "reply from Messages: tell Scout to update pricing",
+        },
+      });
+
+      const loopbackStatus = await queuedApp.inject({
+        method: "GET",
+        url: "/me/imessage/status",
+        cookies: { rid: owner.cookie },
+      });
+      expect(loopbackStatus.statusCode).toBe(200);
+      expect(loopbackStatus.json()).toMatchObject({
+        relay: {
+          mode: "queued",
+          queueReady: true,
+          heartbeatReady: true,
+          roomStartReady: true,
+          loopbackReady: true,
+          roomReady: true,
+          roomReadyReason: "verified recipient, outbound room send, and inbound iMessage reply are correlated",
+        },
+        lastInboundReceipt: {
           workspaceId: owner.workspaceId,
           memberId: owner.memberId,
           channelId,

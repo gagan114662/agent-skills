@@ -178,17 +178,25 @@ function relayReadinessPayload(input: {
   webhookSecret?: string;
   heartbeat: Awaited<ReturnType<typeof getLatestIMessageRelayHeartbeat>>;
   summary: IMessageRelayJobSummary;
+  lastInboundReceipt?: IMessageRelayInboundReceipt;
 }): Record<string, unknown> {
   const heartbeatReady = relayHeartbeatReadyForRoom(input.heartbeat);
   const webhookConfigured = Boolean(input.webhookSecret);
   const directReady = Boolean(input.status.enabled && input.status.configured && !input.status.dryRun);
+  const roomStartReady = Boolean(directReady || (webhookConfigured && heartbeatReady));
+  const loopbackReady = Boolean(input.lastInboundReceipt);
   return {
     mode: directReady ? "direct" : webhookConfigured ? "queued" : input.status.dryRun ? "dry_run" : "unconfigured",
     webhookConfigured,
     directReady,
     queueReady: webhookConfigured,
     heartbeatReady,
-    roomReady: Boolean(directReady || (webhookConfigured && heartbeatReady)),
+    roomStartReady,
+    loopbackReady,
+    roomReady: Boolean(roomStartReady && loopbackReady),
+    roomReadyReason: loopbackReady
+      ? "verified recipient, outbound room send, and inbound iMessage reply are correlated"
+      : "waiting for an inbound iMessage reply receipt before claiming the room works end-to-end",
     jobSummary: relayJobSummaryPayload(input.summary),
   };
 }
@@ -263,7 +271,13 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       ...status,
       memberRecipient: recipientPayload(row),
       lastRelayJob: lastRelayJob ? relayJobPayload(lastRelayJob) : null,
-      relay: relayReadinessPayload({ status, webhookSecret: opts.webhookSecret, heartbeat: relayHeartbeat, summary: relayJobSummary }),
+      relay: relayReadinessPayload({
+        status,
+        webhookSecret: opts.webhookSecret,
+        heartbeat: relayHeartbeat,
+        summary: relayJobSummary,
+        lastInboundReceipt,
+      }),
       relayHeartbeat: relayHeartbeatPayload(relayHeartbeat),
       lastInboundReceipt: lastInboundReceipt ? relayInboundReceiptPayload(lastInboundReceipt) : null,
     };
