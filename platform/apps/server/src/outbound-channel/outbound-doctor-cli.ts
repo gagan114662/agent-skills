@@ -83,7 +83,9 @@ export function parseOutboundDoctorConfig(
 ): OutboundDoctorConfig {
   const env = input.env ?? process.env;
   const argv = input.argv ?? process.argv.slice(2);
-  const provider = normalizeProvider(env.RELOAD_ACQUISITION_ESP_PROVIDER ?? env.RELOAD_REACH_SEND_PROVIDER);
+  const provider = normalizeProvider(
+    argValue(argv, "--provider") ?? env.RELOAD_ACQUISITION_ESP_PROVIDER ?? env.RELOAD_REACH_SEND_PROVIDER,
+  );
   return {
     provider,
     serverToken: env.POSTMARK_SERVER_TOKEN?.trim() ?? "",
