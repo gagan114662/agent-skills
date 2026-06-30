@@ -36,9 +36,8 @@ describe("web console with no API backend", () => {
   it("renders a clear 'API not connected' state instead of crashing", async () => {
     stubHtmlFetch();
     // #784: root `/` (and `/welcome`) now open the public onboarding door, which needs no backend. This test
-    // exercises the AUTHED app's offline fallback, so it must render at an authed route — any path other than
-    // the public onboarding/demo/theater routes falls through to AuthGate, which shows the offline notice.
-    window.history.pushState({}, "", "/board");
+    // exercises the AUTHED app's offline fallback, so it must render at a real signed-in product route.
+    window.history.pushState({}, "", "/everyday");
     const store = createStore({ api, realtime: fakeRealtime() });
 
     render(
