@@ -65,7 +65,9 @@ function argValues(argv: string[], name: string): string[] {
   const prefix = name + "=";
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === name && argv[index + 1]) values.push(argv[index + 1]);
+    if (!arg) continue;
+    const next = argv[index + 1];
+    if (arg === name && next) values.push(next);
     else if (arg.startsWith(prefix)) values.push(arg.slice(prefix.length));
   }
   return values;
@@ -77,9 +79,10 @@ function parseProviders(argv: string[]): ExternalRoomMessageProvider[] {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   if (requested.length === 0) return ["telegram", "whatsapp"];
-  return [...new Set(requested)].filter((provider): provider is ExternalRoomMessageProvider =>
+  const providers = [...new Set(requested)].filter((provider): provider is ExternalRoomMessageProvider =>
     provider === "telegram" || provider === "whatsapp",
   );
+  return providers.length > 0 ? providers : ["telegram", "whatsapp"];
 }
 
 export function parseExternalRoomDoctorConfig(
