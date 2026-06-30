@@ -207,6 +207,73 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(data.fleetPaused).toBe(false);
   });
 
+  it("opens the Telegram bot start-link flow from the live everyday connector", async () => {
+    const originalLocation = window.location;
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
+    });
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        {
+          id: "telegram_room",
+          label: "Connect Telegram room",
+          summary: "Connect your Telegram chat, then mirror the agent room with signed webhook replies back into ipop.",
+          provider: "telegram",
+          kind: "sms",
+          audience: "customer",
+          auth: "one_click",
+          status: "available",
+          statusReason: null,
+          capabilities: ["work_visibility", "mobile_messaging", "agent_room_visibility", "inbound_replies"],
+          oauthScopes: [],
+          consentStatus: "none",
+          providerStatus: "unproven",
+          lastProofAt: null,
+          lastProofReceipt: null,
+          failureReason: null,
+          connected: false,
+        },
+      ],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "startTelegramConnection").mockResolvedValue({
+      status: "pending_telegram_start",
+      botUsername: "ipopmarketingbot",
+      startParam: "telegram-start-code",
+      startCommand: "/start telegram-start-code",
+      startUrl: "https://t.me/ipopmarketingbot?start=telegram-start-code",
+      expiresAtMs: 1_800_000_000_000,
+    });
+    const enableConnection = vi.spyOn(api, "enableConnection").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+
+    try {
+      const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+      await act(async () => {
+        await store.bootstrap();
+      });
+
+      expect(await screen.findByText("Telegram room")).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole("button", { name: "connect" }));
+
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith("https://t.me/ipopmarketingbot?start=telegram-start-code"),
+      );
+      expect(api.startTelegramConnection).toHaveBeenCalledTimes(1);
+      expect(enableConnection).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
   it("surfaces Mac relay heartbeat plus outbound and inbound iMessage proof (#1341)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [
