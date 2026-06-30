@@ -15,9 +15,23 @@ function jsonResponse(payload: unknown, init: { status?: number } = {}): Respons
 
 describe("external room doctor CLI (#1267)", () => {
   it("audits production secret presence without requiring plaintext local provider credentials (#1501)", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+      const value = String(url);
+      if (value.endsWith("/version")) return jsonResponse({ version: "abc123" });
+      if (value.endsWith("/readyz")) {
+        return jsonResponse({
+          status: "ready",
+          db: "up",
+          redis: "up",
+          loops: { status: "ready", disabledCritical: [] },
+        });
+      }
+      return jsonResponse({ error: "unexpected" }, { status: 404 });
+    });
     const config = parseExternalRoomDoctorConfig({ env: {}, argv: ["--production"] });
 
     const checks = await runExternalRoomDoctor(config, {
+      fetchImpl,
       listProductionSecrets: vi.fn(async () => [
         { name: "TELEGRAM_BOT_TOKEN", status: "Deployed" },
         { name: "TELEGRAM_WEBHOOK_SECRET", status: "Deployed" },
@@ -41,9 +55,55 @@ describe("external room doctor CLI (#1267)", () => {
           status: "warn",
           message: expect.stringContaining("--send-smoke"),
         }),
+        expect.objectContaining({
+          name: "production-version",
+          status: "pass",
+          message: expect.stringContaining("abc123"),
+        }),
+        expect.objectContaining({
+          name: "production-readyz",
+          status: "pass",
+          message: expect.stringContaining("db=up"),
+        }),
       ]),
     );
+    expect(fetchImpl).toHaveBeenCalledWith("https://api.ipop.ai/version", undefined);
+    expect(fetchImpl).toHaveBeenCalledWith("https://api.ipop.ai/readyz", undefined);
     expect(checks.find((check) => check.name === "telegram-config")).toBeUndefined();
+  });
+
+  it("scopes production audit to requested providers", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (url) =>
+      String(url).endsWith("/version")
+        ? jsonResponse({ version: "abc123" })
+        : jsonResponse({
+            status: "ready",
+            db: "up",
+            redis: "up",
+            loops: { status: "ready" },
+          }),
+    );
+    const config = parseExternalRoomDoctorConfig({
+      env: {},
+      argv: ["--production", "--provider", "telegram"],
+    });
+
+    const checks = await runExternalRoomDoctor(config, {
+      fetchImpl,
+      listProductionSecrets: vi.fn(async () => [
+        { name: "TELEGRAM_BOT_TOKEN", status: "Deployed" },
+        { name: "TELEGRAM_WEBHOOK_SECRET", status: "Deployed" },
+      ]),
+    });
+
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "telegram-production-secrets", status: "pass" }),
+        expect.objectContaining({ name: "production-version", status: "pass" }),
+        expect.objectContaining({ name: "production-readyz", status: "pass" }),
+      ]),
+    );
+    expect(checks.find((check) => check.name === "whatsapp-production-secrets")).toBeUndefined();
   });
 
   it("reports missing Telegram and WhatsApp production config without making provider calls", async () => {
