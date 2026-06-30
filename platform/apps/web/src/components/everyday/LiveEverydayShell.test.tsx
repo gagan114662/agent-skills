@@ -390,6 +390,8 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText("healthy")).toBeInTheDocument();
     expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
     expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
+    expect(screen.getByText(EVERYDAY.room.imessageNotes.ready)).toBeInTheDocument();
+    expect(screen.queryByText(/Until the native relay is live/i)).not.toBeInTheDocument();
   });
 
   it("does not call iMessage verified until a reply loop lands back in the room", async () => {
@@ -454,6 +456,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText("reply loop")).toBeInTheDocument();
     expect(screen.getAllByText("waiting").length).toBeGreaterThan(0);
     expect(screen.queryByText(EVERYDAY.connectors.imessage.verified)).not.toBeInTheDocument();
+    expect(screen.getByText(EVERYDAY.room.imessageNotes.replyNeeded)).toBeInTheDocument();
   });
 
   it("does not mark iMessage connected when the Mac relay cannot access Messages", async () => {
@@ -922,6 +925,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText(/Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
+    expect(screen.getByText(EVERYDAY.room.imessageNotes.relayBlocked)).toBeInTheDocument();
   });
 
   it("surfaces a dry-run iMessage test as an error instead of a successful verification (#1283)", async () => {

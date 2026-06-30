@@ -178,6 +178,7 @@ function GroupChatHero({
   memberName,
   onSubmit,
   operatorPacket,
+  imessageStatus,
 }: {
   greeting: string;
   lanes: readonly AgentLane[];
@@ -185,9 +186,11 @@ function GroupChatHero({
   memberName: string;
   onSubmit: (goal: string) => void;
   operatorPacket?: string | null;
+  imessageStatus?: IMessageStatusResponse | null;
 }): React.JSX.Element {
   const preview = chatPreviewFrom({ entries: thread, lanes, memberName });
   const packetCopy = EVERYDAY.codexLane;
+  const imessageNote = roomIMessageNote(imessageStatus);
   return (
     <header className="everyday-hero">
       <div className="everyday-hero__brief">
@@ -200,7 +203,7 @@ function GroupChatHero({
           <div>
             <h2 className="everyday-serif everyday-chat__title">{EVERYDAY.room.heading}</h2>
             <p className="everyday-chat__subhead">{EVERYDAY.room.subhead}</p>
-            <p className="everyday-imessage__note">{EVERYDAY.room.imessageNote}</p>
+            <p className="everyday-imessage__note">{imessageNote}</p>
           </div>
           <div className="everyday-chat__avatars" aria-label="agents in the room">
             {lanes.slice(0, 5).map((lane) => (
@@ -262,6 +265,14 @@ function GroupChatHero({
       </section>
     </header>
   );
+}
+
+function roomIMessageNote(status?: IMessageStatusResponse | null): string {
+  const copy = EVERYDAY.room.imessageNotes;
+  if (status?.relay?.roomReady || status?.lastInboundReceipt) return copy.ready;
+  if (status?.relay?.roomStartReady) return copy.replyNeeded;
+  if (status?.memberRecipient?.verified || status?.relayHeartbeat) return copy.relayBlocked;
+  return copy.setupNeeded;
 }
 
 function ConnectorSetup({
@@ -1606,6 +1617,7 @@ export function EverydayShell({
               memberName={data.memberName}
               onSubmit={startRoom}
               operatorPacket={operatorPacket}
+              imessageStatus={imessageStatus}
             />
             {!dashboardFirst && (
               <WorkSummary data={{ ...data, room, thread, approvals: pending }} />

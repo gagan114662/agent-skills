@@ -140,6 +140,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
   it("starts the room from one input and lets the user chat into the room", async () => {
     const onStartRoom = vi.fn(async () => undefined);
     render(<EverydayShell data={emptyData()} onStartRoom={onStartRoom} />);
+    expect(screen.getByText(EVERYDAY.room.imessageNotes.setupNeeded)).toBeInTheDocument();
+    expect(screen.queryByText(/Until the native relay is live/i)).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: EVERYDAY.prompt }), {
       target: { value: "ipop.ai" },
     });
