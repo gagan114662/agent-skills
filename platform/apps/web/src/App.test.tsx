@@ -4,7 +4,7 @@ import { App } from "./App.js";
 import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
 import { fakeRealtime, makeFakeDeps } from "./test/utils.js";
-import { navigate } from "./routing.js";
+import { APP_ROUTES, navigate } from "./routing.js";
 import { api } from "./api/client.js";
 import { FIRST_RUN_RECEIPT_KEY } from "./components/onboarding/first-run-receipt.js";
 
@@ -111,6 +111,25 @@ describe("App root routing", () => {
     expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
+  });
+
+  it("renders a branded not-found page for unknown routes instead of the app shell (#1458)", async () => {
+    navigate("/this-route-does-not-exist-qa");
+    const { deps } = makeFakeDeps();
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+    expect(screen.getByText("404")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", APP_ROUTES.home);
+    expect(screen.getByRole("link", { name: "Start" })).toHaveAttribute("href", "/start");
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
   });
 

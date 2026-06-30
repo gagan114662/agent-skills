@@ -58,6 +58,27 @@ function DashboardRoute(): React.JSX.Element {
   return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
 }
 
+function NotFoundRoute(): React.JSX.Element {
+  return (
+    <main className="splash" role="main" aria-labelledby="not-found-title">
+      <p className="auth__trial-badge">404</p>
+      <h1 id="not-found-title">Page not found</h1>
+      <p>
+        This link doesn't point to a live ipop page. Head back to the front door and start the
+        marketing team from there.
+      </p>
+      <div className="auth__actions">
+        <a className="btn btn--primary" href={APP_ROUTES.home}>
+          Go home
+        </a>
+        <a className="btn" href="/start">
+          Start
+        </a>
+      </div>
+    </main>
+  );
+}
+
 export function App(): React.JSX.Element {
   // useRoute keeps these top-level branches in sync with client navigation (and browser back/forward).
   const path = useRoute();
@@ -106,9 +127,5 @@ export function App(): React.JSX.Element {
     );
   }
 
-  return (
-    <AuthGate>
-      <AuthedHome />
-    </AuthGate>
-  );
+  return <NotFoundRoute />;
 }
