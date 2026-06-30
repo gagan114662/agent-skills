@@ -65,6 +65,27 @@ function AgentChip({ name }: { name: string }): React.JSX.Element {
   );
 }
 
+const INTERNAL_TOOL_COMMAND_RE =
+  /^(?:(?:\/usr\/bin\/|\/bin\/)?(?:sh|bash|zsh)\s+-lc\b|(?:sed|cat|awk|grep|rg|find|curl|gh|git|pnpm|npm|yarn|node|tsx|python3?|flyctl|vercel)\b)/i;
+
+function firstCustomerVisibleLine(text: string): string {
+  return (
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith(String.fromCharCode(96).repeat(3)))[0] ?? ""
+  );
+}
+
+function looksLikeInternalToolActivity(text: string): boolean {
+  const firstLine = firstCustomerVisibleLine(text).replace(/^\$\s*/, "");
+  return INTERNAL_TOOL_COMMAND_RE.test(firstLine);
+}
+
+function customerVisibleAgentText(text: string): string {
+  return looksLikeInternalToolActivity(text) ? EVERYDAY.thread.internalToolActivity : text;
+}
+
 /** The north star: customers + revenue, the only scoreboard that matters. */
 function NorthStarBar({ data }: { data: NorthStar }): React.JSX.Element {
   const ns = EVERYDAY.northStar;
@@ -96,16 +117,16 @@ function DeliverableBody({ deliverable }: { deliverable: Deliverable }): React.J
       <div className="everyday-deliverable everyday-deliverable--diff">
         <p className="everyday-deliverable__label">{EVERYDAY.thread.diffLabel}</p>
         {deliverable.before !== undefined && (
-          <p className="everyday-diff everyday-diff--before">{deliverable.before}</p>
+          <p className="everyday-diff everyday-diff--before">{customerVisibleAgentText(deliverable.before)}</p>
         )}
-        <p className="everyday-diff everyday-diff--after">{deliverable.preview}</p>
+        <p className="everyday-diff everyday-diff--after">{customerVisibleAgentText(deliverable.preview)}</p>
       </div>
     );
   }
   return (
     <div className="everyday-deliverable everyday-deliverable--draft">
       <p className="everyday-deliverable__label">{EVERYDAY.thread.previewLabel}</p>
-      <p className="everyday-deliverable__body">{deliverable.preview}</p>
+      <p className="everyday-deliverable__body">{customerVisibleAgentText(deliverable.preview)}</p>
     </div>
   );
 }
@@ -200,7 +221,9 @@ function GroupChatHero({
                   <span className="everyday-msg__at">{entry.at}</span>
                 </p>
                 {entry.kind === "agent-line" ? (
-                  <p className="everyday-msg__text">{entry.text}</p>
+                  <p className="everyday-msg__text">
+                    {entry.agent === memberName ? entry.text : customerVisibleAgentText(entry.text)}
+                  </p>
                 ) : (
                   <DeliverableBody deliverable={entry.deliverable} />
                 )}
