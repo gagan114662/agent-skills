@@ -2851,8 +2851,8 @@ export const PAGE_SEO = {
 export const PAYWALL = {
   title: "that's today's free work used up",
   body:
-    "You've seen the useful bit: the audit, the plan, and drafts. Upgrade when you want the agents to " +
-    "keep going across more campaigns.",
+    "You've seen the useful bit: the audit, the plan, and drafts. We're politely not spending past your cap; " +
+    "upgrade when you want the agents to keep going across more campaigns.",
   cta: "keep them working",
   dismiss: "not now",
   /** Shown as the small print under the nudge, naming the current plan. */
