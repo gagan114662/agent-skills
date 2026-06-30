@@ -80,6 +80,7 @@ import type {
   ExternalAccountConnectInput,
   ConnectionsResponse,
   ConnectionOAuthStartResponse,
+  TelegramConnectionLinkResponse,
   GoogleAuthStatus,
   IMessageRecipientSaveResponse,
   IMessageStatusResponse,
@@ -470,6 +471,11 @@ export const api = {
   async enableConnection(id: string): Promise<ConnectionsResponse> {
     await post(`/me/connections/${encodeURIComponent(id)}/enable`);
     return this.getConnections();
+  },
+  startTelegramConnection(): Promise<TelegramConnectionLinkResponse> {
+    return request<TelegramConnectionLinkResponse>("/me/connections/telegram_room/link", {
+      method: "POST",
+    });
   },
   // Join the waitlist (#507) for a connector that isn't live yet — a clear next step instead of a dead stop.
   async joinConnectionWaitlist(id: string): Promise<void> {

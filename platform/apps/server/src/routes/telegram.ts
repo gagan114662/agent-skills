@@ -2,7 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireChannelCapability } from "../auth/access.js";
 import { requireIdentity } from "../auth/guard.js";
 import { getChannel } from "../db/repositories/channels.js";
-import { getServiceCredentialActor, resolveServiceSecrets } from "../db/repositories/external-credentials.js";
+import {
+  findServiceCredentialOwnerBySecretValue,
+  getServiceCredentialActor,
+  resolveServiceSecrets,
+  setServiceCredentials,
+} from "../db/repositories/external-credentials.js";
 import {
   getExternalRoomMessageReceipt,
   recordExternalRoomMessageReceipt,
@@ -19,6 +24,7 @@ import {
   type TelegramRoomService,
   type TelegramSendResult,
 } from "../telegram/service.js";
+import { consumeTelegramConnectCode, parseTelegramStartCode } from "../telegram/connect-code.js";
 
 export interface TelegramRoutesOptions {
   service: TelegramRoomService;
@@ -98,6 +104,37 @@ function findReceipt(text: string): string | null {
   return match?.[1] ?? null;
 }
 
+async function bindTelegramStartCode(input: {
+  chatId: string;
+  text: string;
+}): Promise<
+  | { status: "not_start_code" }
+  | { status: "expired" }
+  | { status: "already_connected_elsewhere"; workspaceId: string }
+  | { status: "connected"; workspaceId: string; memberId: string }
+> {
+  const code = parseTelegramStartCode(input.text);
+  if (!code) return { status: "not_start_code" };
+  const pending = await consumeTelegramConnectCode(code);
+  if (!pending) return { status: "expired" };
+  const existing = await findServiceCredentialOwnerBySecretValue({
+    serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+    envKey: TELEGRAM_CHAT_ID_KEY,
+    value: input.chatId,
+  });
+  if (existing && existing.workspaceId !== pending.workspaceId) {
+    return { status: "already_connected_elsewhere", workspaceId: existing.workspaceId };
+  }
+  await setServiceCredentials({
+    workspaceId: pending.workspaceId,
+    serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+    secrets: { [TELEGRAM_CHAT_ID_KEY]: input.chatId },
+    scopes: ["room_visibility"],
+    connectedByMemberId: pending.memberId,
+  });
+  return { status: "connected", workspaceId: pending.workspaceId, memberId: pending.memberId };
+}
+
 export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesOptions): Promise<void> {
   app.post("/channels/:cid/telegram/room", async (req, reply) => {
     const identity = await requireIdentity(req, reply);
@@ -173,6 +210,17 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
       return reply.code(400).send({ error: "Telegram message and chat id are required" });
     }
     if (!inbound.receipt && !inbound.providerReplyToMessageId) {
+      const bound = await bindTelegramStartCode({ chatId: inbound.chatId, text: inbound.text });
+      if (bound.status !== "not_start_code") {
+        const text =
+          bound.status === "connected"
+            ? "Telegram is connected to ipop. Send a brief here, and Scout, Quill, Echo, and Bid will work in the room."
+            : bound.status === "already_connected_elsewhere"
+              ? "This Telegram chat is already connected to another ipop workspace. Disconnect it there before reconnecting."
+              : "That Telegram connect link expired. Open https://ipop.ai/everyday and tap Connect Telegram again.";
+        const sent = await opts.service.send({ chatId: inbound.chatId, text });
+        return reply.code(bound.status === "connected" ? 200 : 409).send({ ...bound, providerReply: sent });
+      }
       if (!opts.inboundTeamLaunch) {
         return reply.code(400).send({ error: "Telegram room reply reference is required" });
       }

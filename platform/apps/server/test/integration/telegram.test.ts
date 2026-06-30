@@ -6,6 +6,7 @@ import { db, closeDb } from "../../src/db/index.js";
 import { workspaces } from "../../src/db/schema/index.js";
 import { listChannelMessages } from "../../src/db/repositories/messages.js";
 import { getExternalRoomMessageReceipt } from "../../src/db/repositories/external-room-message-receipts.js";
+import { resolveServiceSecrets } from "../../src/db/repositories/external-credentials.js";
 import { newId } from "../../src/db/id.js";
 import { closeRedis } from "../../src/redis/index.js";
 import { channelPoster } from "../../src/runtime/default.js";
@@ -22,6 +23,7 @@ let telegramService: TelegramRoomService;
 const slugs: string[] = [];
 const originalEnv = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
   TELEGRAM_ROOM_CHAT_ID: process.env.TELEGRAM_ROOM_CHAT_ID,
   TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
 };
@@ -99,6 +101,7 @@ function restoreExternalRoomMirror(): void {
 
 beforeAll(async () => {
   process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+  process.env.TELEGRAM_BOT_USERNAME = "ipopmarketingbot";
   delete process.env.TELEGRAM_ROOM_CHAT_ID;
   process.env.TELEGRAM_WEBHOOK_SECRET = "telegram-secret";
   const transport: TelegramTransport = { sendMessage };
@@ -588,6 +591,67 @@ describe("Telegram room bridge (#1267)", () => {
         expect.stringContaining("Blocked before starting the Codex marketing team"),
       ]),
     );
+  });
+
+  it("binds Telegram from a bot-native /start code without exposing chat ids (#1267)", async () => {
+    const owner = await newOwner();
+    const link = await app.inject({
+      method: "POST",
+      url: "/me/connections/telegram_room/link",
+      cookies: { rid: owner.cookie },
+    });
+    expect(link.statusCode).toBe(200);
+    expect(link.json()).toMatchObject({
+      status: "pending_telegram_start",
+      botUsername: "ipopmarketingbot",
+      startUrl: expect.stringContaining("https://t.me/ipopmarketingbot?start="),
+    });
+    expect(link.json().startCommand).toMatch(/^\/start [A-Za-z0-9_-]{16,64}$/);
+
+    const connected = await app.inject({
+      method: "POST",
+      url: "/telegram/webhook",
+      headers: { "x-telegram-bot-api-secret-token": "telegram-secret" },
+      payload: {
+        message: {
+          message_id: 900,
+          chat: { id: 987654 },
+          text: link.json().startCommand,
+        },
+      },
+    });
+
+    expect(connected.statusCode).toBe(200);
+    expect(connected.json()).toMatchObject({
+      status: "connected",
+      workspaceId: owner.workspaceId,
+      memberId: owner.memberId,
+      providerReply: { status: "sent", chatId: "987654" },
+    });
+    await expect(resolveServiceSecrets(owner.workspaceId, "telegram_room")).resolves.toMatchObject({
+      TELEGRAM_CHAT_ID: "987654",
+    });
+    expect(sendMessage).toHaveBeenCalledWith({
+      botToken: "bot-token",
+      apiBaseUrl: "https://telegram.test",
+      chatId: "987654",
+      text: expect.stringContaining("Telegram is connected to ipop"),
+    });
+
+    const reused = await app.inject({
+      method: "POST",
+      url: "/telegram/webhook",
+      headers: { "x-telegram-bot-api-secret-token": "telegram-secret" },
+      payload: {
+        message: {
+          message_id: 901,
+          chat: { id: 987654 },
+          text: link.json().startCommand,
+        },
+      },
+    });
+    expect(reused.statusCode).toBe(409);
+    expect(reused.json()).toMatchObject({ status: "expired" });
   });
 
   it("lets a first inbound Telegram message start the Codex marketing team room once (#1423)", async () => {

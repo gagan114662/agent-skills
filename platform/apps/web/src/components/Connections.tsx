@@ -19,6 +19,8 @@ export interface ConnectionsProps {
   onOAuthConnect: (id: string) => void;
   /** Turn on a one-click live channel (e.g. outbound email) — no redirect, no pasted secret (#529/#507). */
   onOneClickConnect: (id: string) => void;
+  /** Start Telegram's bot-native one-time connect flow. */
+  onTelegramConnect: () => void;
   /** Join the waitlist for a connector that isn't live yet — a next step instead of a dead stop (#507). */
   onWaitlist: (id: string) => void;
   onInternalConnect: (id: string, input: { repo: string; token: string; baseBranch: string }) => void;
@@ -26,7 +28,17 @@ export interface ConnectionsProps {
 }
 
 export function Connections(props: ConnectionsProps): React.JSX.Element {
-  const { data, busy, error, onOAuthConnect, onOneClickConnect, onWaitlist, onInternalConnect, onDisconnect } = props;
+  const {
+    data,
+    busy,
+    error,
+    onOAuthConnect,
+    onOneClickConnect,
+    onTelegramConnect,
+    onWaitlist,
+    onInternalConnect,
+    onDisconnect,
+  } = props;
 
   if (data === null) {
     return (
@@ -56,6 +68,7 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
               busy={busy}
               onOAuthConnect={onOAuthConnect}
               onOneClickConnect={onOneClickConnect}
+              onTelegramConnect={onTelegramConnect}
               onWaitlist={onWaitlist}
               onDisconnect={onDisconnect}
             />
@@ -120,10 +133,12 @@ function CustomerAction(props: {
   busy?: boolean;
   onOAuthConnect: (id: string) => void;
   onOneClickConnect: (id: string) => void;
+  onTelegramConnect: () => void;
   onWaitlist: (id: string) => void;
   onDisconnect: (id: string) => void;
 }): React.JSX.Element {
-  const { connection: c, busy, onOAuthConnect, onOneClickConnect, onWaitlist, onDisconnect } = props;
+  const { connection: c, busy, onOAuthConnect, onOneClickConnect, onTelegramConnect, onWaitlist, onDisconnect } =
+    props;
   const [waitlisted, setWaitlisted] = useState(false);
   if (c.connected) {
     return (
@@ -191,6 +206,15 @@ function CustomerAction(props: {
     );
   }
   // Live: one-click connectors (e.g. outbound email) turn on without a redirect; the rest start consumer OAuth.
+  if (c.id === "telegram_room") {
+    return (
+      <span className="connections__action">
+        <button type="button" disabled={busy} onClick={onTelegramConnect}>
+          {c.label}
+        </button>
+      </span>
+    );
+  }
   const onConnect = c.auth === "one_click" ? onOneClickConnect : onOAuthConnect;
   return (
     <span className="connections__action">

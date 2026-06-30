@@ -46,6 +46,7 @@ import {
 import { buildExternalProviderReadiness } from "../messaging/readiness.js";
 import { channelForEspProvider, type OutboundChannel } from "../outbound-channel/channel.js";
 import { connectChannel, revokeChannel } from "../outbound-channel/service.js";
+import { createTelegramConnectCode } from "../telegram/connect-code.js";
 
 /**
  * Connections routes (#258) — the OAuth-first "connect once, the agents do the rest" surface. All
@@ -77,6 +78,7 @@ const IMESSAGE_ENABLED_KEYS = ["IMESSAGE_RELAY_ENABLED"] as const;
 const IMESSAGE_DRY_RUN_KEYS = ["IMESSAGE_RELAY_DRY_RUN"] as const;
 const IMESSAGE_MACOS_HOST_KEYS = ["IMESSAGE_RELAY_MACOS_HOST"] as const;
 const TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN";
+const TELEGRAM_BOT_USERNAME_KEY = "TELEGRAM_BOT_USERNAME";
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const TELEGRAM_WEBHOOK_SECRET_KEY = "TELEGRAM_WEBHOOK_SECRET";
 const WHATSAPP_ACCESS_TOKEN_KEY = "WHATSAPP_ACCESS_TOKEN";
@@ -144,6 +146,13 @@ function normalizeTelegramChatId(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim();
   if (!/^-?[0-9]{3,32}$/.test(value)) return null;
+  return value;
+}
+
+function normalizeTelegramBotUsername(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim().replace(/^@/, "");
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(value)) return null;
   return value;
 }
 
@@ -623,6 +632,42 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       consentStatus: view?.consentStatus ?? "recorded",
       providerStatus: view?.providerStatus ?? "unproven",
       connections,
+    };
+  });
+
+  // Telegram room setup cannot honestly be one-click: Telegram only reveals the user's chat id after they
+  // start the bot. Mint a short one-time code, let Telegram carry it as /start <code>, then the webhook
+  // seals the observed chat id into this workspace's vault without exposing or guessing chat ids.
+  app.post("/me/connections/telegram_room/link", async (req, reply) => {
+    const identity = await requireIdentity(req, reply);
+    if (!identity) return;
+    const descriptor = runtimeDescriptor(identity.workspaceId, TELEGRAM_ROOM_CONNECTION_ID);
+    const decision = decideOneClickConnect({ descriptor });
+    if (!decision.ok) return reply.code(400).send({ error: decision.reason });
+    const missing = [
+      ...(process.env[TELEGRAM_BOT_TOKEN_KEY]?.trim() ? [] : [TELEGRAM_BOT_TOKEN_KEY]),
+      ...(process.env[TELEGRAM_WEBHOOK_SECRET_KEY]?.trim() ? [] : [TELEGRAM_WEBHOOK_SECRET_KEY]),
+    ];
+    if (missing.length > 0) {
+      return reply.code(400).send({
+        error: "Telegram sender and webhook config are required",
+        missingEnv: missing,
+      });
+    }
+
+    const minted = await createTelegramConnectCode({
+      workspaceId: identity.workspaceId,
+      memberId: identity.memberId,
+    });
+    const username = normalizeTelegramBotUsername(process.env[TELEGRAM_BOT_USERNAME_KEY]);
+    const startCommand = "/start " + minted.code;
+    return {
+      status: "pending_telegram_start",
+      botUsername: username,
+      startParam: minted.code,
+      startCommand,
+      startUrl: username ? "https://t.me/" + username + "?start=" + encodeURIComponent(minted.code) : null,
+      expiresAtMs: minted.expiresAtMs,
     };
   });
 
