@@ -608,8 +608,8 @@ export const LANDING = {
     sub:
       "Hire a whole marketing department of AI agents. They draft, research, and plan around the clock — " +
       "money waits for your yes; allowed no-spend work ships with receipts.",
-    ctaPrimary: "Start free",
-    ctaSecondary: "Sign in",
+    ctaPrimary: "Start",
+    ctaSecondary: "Log in",
     ctaDemo: "Watch live demo",
   },
   /** The looping hero vignette — a tiny staged channel where the fleet visibly does work. */
@@ -773,7 +773,7 @@ export const LAUNCH_READINESS = {
 export const PRICING = {
   eyebrow: "Plans & pricing",
   title: "See value first.",
-  sub: "Start free, watch the agents do useful daily work, then upgrade when you want more lanes running at once.",
+  sub: "Start, watch the agents do useful daily work, then upgrade when you want more lanes running at once.",
   /** Accessible label for the plans grid region (distinct from the hero heading). */
   plansLabel: "Plans",
   perMonth: "/mo",
@@ -787,7 +787,7 @@ export const PRICING = {
   planCta: "Keep them working",
   tableTitle: "Keep the agents working.",
   tableLede:
-    "Start free, see useful work every day, then upgrade when you want more campaigns, more agents, or more live work moving at once.",
+    "Start, see useful work every day, then upgrade when you want more campaigns, more agents, or more live work moving at once.",
   everyDayLabel: "Every day",
   limitLabel: "Limit:",
   upgradeLabel: "Upgrade:",
@@ -2026,7 +2026,7 @@ export const FAQ = {
     },
     {
       q: "What does it cost, and what's the difference between Starter and Pro?",
-      a: "Start free, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, three agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
+      a: "Start, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, three agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
     },
     {
       q: "What is the refund policy and support SLA?",
@@ -2463,8 +2463,8 @@ export const SITE = {
     { href: "/changelog", label: "Changelog" },
     { href: "/brand", label: "Brand" },
   ],
-  ctaPrimary: "Start free",
-  ctaSecondary: "Sign in",
+  ctaPrimary: "Start",
+  ctaSecondary: "Log in",
   /** The dogfood credit on every content page — the agents drafted it, a human approved it. */
   maintainedBy: "This page is maintained by Quill, our content agent — drafted by AI, approved by a human.",
   support: SUPPORT_CONTACT,

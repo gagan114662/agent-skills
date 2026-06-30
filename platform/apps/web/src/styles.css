@@ -10753,11 +10753,6 @@ select:focus-visible {
   display: flex;
   gap: 22px;
 }
-.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(1),
-.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(2),
-.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(3),
-.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(5),
-.onboard[data-phase="door"] .onboard__footer .onboard-trust__link:nth-child(8),
 .onboard[data-phase="door"] .onboard__footer .onboard-trust__support {
   display: none;
 }

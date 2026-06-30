@@ -156,7 +156,7 @@ function StaticAppRouteShell(props: { eyebrow: string; title: string; body: stri
       <h1>{props.title}</h1>
       <p>{props.body}</p>
       <a className="btn btn--primary" href="/login">
-        Sign in
+        Log in
       </a>
     </main>
   );
