@@ -3918,6 +3918,32 @@ select:focus-visible {
 .public-dashboard__nav .onboard__brand-proof::before {
   background: rgba(247, 242, 232, 0.88);
 }
+.public-door-footer {
+  width: min(1120px, calc(100% - 40px));
+  padding: 22px 0 30px;
+  margin-top: auto;
+  color: inherit;
+}
+.public-door-footer__links {
+  display: flex;
+  gap: clamp(14px, 2vw, 24px);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+.public-door-footer__links a {
+  color: currentColor;
+  text-decoration: none;
+  font: 800 13px/1 var(--o-sans, system-ui, sans-serif);
+}
+.public-door-footer__links a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.public-dashboard__footer {
+  color: #f7f2e8;
+}
 .pricing-page > main {
   flex: 1;
 }

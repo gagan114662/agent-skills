@@ -106,9 +106,14 @@ describe("PricingPage (#214)", () => {
     }
   });
 
-  it("offers a way back to the homepage", () => {
+  it("uses the shared public footer links", () => {
     render(<PricingPage />);
-    expect(screen.getByRole("link", { name: PRICING.backLabel })).toHaveAttribute("href", "/");
+    const footer = screen.getByRole("navigation", { name: "Public footer" });
+    expect(within(footer).getByRole("link", { name: "Demo" })).toHaveAttribute("href", "/demo");
+    expect(within(footer).getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+    expect(within(footer).getByRole("link", { name: "Company" })).toHaveAttribute("href", "/company");
+    expect(within(footer).getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+    expect(within(footer).getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   });
 
   it("links the public refund policy from the pricing terms", () => {

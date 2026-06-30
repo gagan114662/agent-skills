@@ -1,4 +1,4 @@
-import { BRAND } from "../../brand.js";
+import { BRAND, COMPANY, LEGAL } from "../../brand.js";
 import { APP_ROUTES } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { Wordmark } from "../Wordmark.js";
@@ -25,6 +25,20 @@ export function PublicDoorNav({
       </a>
       <DoorActions startHref={startHref} />
     </header>
+  );
+}
+
+export function PublicDoorFooter({ className = "" }: { className?: string }): React.JSX.Element {
+  return (
+    <footer className={["onboard__footer", "public-door-footer", className].filter(Boolean).join(" ")}>
+      <nav className="public-door-footer__links" aria-label="Public footer">
+        <a href="/demo">Demo</a>
+        <a href="/pricing">Pricing</a>
+        <a href={COMPANY.href}>Company</a>
+        <a href={LEGAL.terms.href}>Terms</a>
+        <a href={LEGAL.privacy.href}>Privacy</a>
+      </nav>
+    </footer>
   );
 }
 

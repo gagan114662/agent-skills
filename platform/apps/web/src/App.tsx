@@ -7,7 +7,7 @@ import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
-import { PublicDoorNav } from "./components/onboarding/PublicDoorNav.js";
+import { PublicDoorFooter, PublicDoorNav } from "./components/onboarding/PublicDoorNav.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
@@ -72,6 +72,7 @@ function DashboardRoute(): React.JSX.Element {
       <PublicDoorNav className="public-dashboard__nav" startHref="/start#onboard-target" />
       <h1 className="sr-only">CMO brief</h1>
       {dashboard}
+      <PublicDoorFooter className="public-dashboard__footer" />
     </div>
   );
 }

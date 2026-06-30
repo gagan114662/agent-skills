@@ -73,6 +73,10 @@ describe("DemoSandbox (#610)", () => {
       "href",
       "/start#onboard-target",
     );
+    const footer = screen.getByRole("navigation", { name: "Public footer" });
+    expect(within(footer).getByRole("link", { name: "Demo" })).toHaveAttribute("href", "/demo");
+    expect(within(footer).getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+    expect(within(footer).getByRole("link", { name: "Company" })).toHaveAttribute("href", "/company");
   });
 
   it("builds a personalized deliverable from the typed URL and surfaces the signup CTA", async () => {

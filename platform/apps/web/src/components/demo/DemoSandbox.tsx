@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BRAND } from "../../brand.js";
 import { Link } from "../../routing.js";
-import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 import {
   DemoError,
   fetchDemoDeliverable,
@@ -293,6 +293,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
       )}
 
       <p className="demo__reassurance">{COPY.reassurance}</p>
+      <PublicDoorFooter className="demo__footer" />
     </div>
   );
 }

@@ -10,13 +10,13 @@
  *
  * Every word comes from `brand.ts`; brand.test scans this file for hardcoded brand strings.
  */
-import { FAQ, LANDING, PRICING, REFUND_POLICY, VOICE } from "../../brand.js";
+import { FAQ, LANDING, PRICING, REFUND_POLICY } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { PopMark } from "../PopMark.js";
 import { useState } from "react";
 import { LaunchReadiness } from "./LaunchReadiness.js";
-import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 
 type BillingInterval = "month" | "year";
 
@@ -160,14 +160,7 @@ export function PricingPage(): React.JSX.Element {
         </section>
       </main>
 
-      <footer className="landing__footer">
-        <div className="landing__footer-bottom">
-          <Link href="/" className="linklike landing__footer-link">
-            {PRICING.backLabel}
-          </Link>
-          <p className="landing__signoff">{VOICE.signOff}</p>
-        </div>
-      </footer>
+      <PublicDoorFooter className="pricing-page__footer" />
     </div>
   );
 }
