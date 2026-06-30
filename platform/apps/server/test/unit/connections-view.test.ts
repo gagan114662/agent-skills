@@ -17,7 +17,20 @@ import {
   WHATSAPP_ROOM_CONNECTION_ID,
 } from "../../src/connections/registry.js";
 
-function proofs(entries: Array<[string, { envKeys?: string[]; connectedAtMs?: number; fingerprint?: string }]> = []) {
+function proofs(
+  entries: Array<
+    [
+      string,
+      {
+        envKeys?: string[];
+        connectedAtMs?: number;
+        fingerprint?: string;
+        providerStatus?: "unproven" | "healthy";
+        failureReason?: string | null;
+      },
+    ]
+  > = [],
+) {
   return new Map(
     entries.map(([id, value]) => [
       id,
@@ -26,6 +39,8 @@ function proofs(entries: Array<[string, { envKeys?: string[]; connectedAtMs?: nu
         envKeys: value.envKeys ?? [],
         connectedAtMs: value.connectedAtMs ?? 123,
         fingerprint: value.fingerprint ?? "abcdef1234567890",
+        providerStatus: value.providerStatus,
+        failureReason: value.failureReason,
       },
     ]),
   );
@@ -80,6 +95,44 @@ describe("decideConnectionView (#258)", () => {
       providerStatus: "unproven",
     });
     expect(email?.failureReason).toMatch(/health check/i);
+  });
+
+  it("keeps messaging-room destinations unproven until same-thread provider round-trip proof passes (#1267)", () => {
+    const view = decideConnectionView({
+      descriptors: CONNECTION_DESCRIPTORS,
+      proofs: proofs([
+        [
+          TELEGRAM_ROOM_CONNECTION_ID,
+          {
+            envKeys: ["TELEGRAM_CHAT_ID"],
+            providerStatus: "unproven",
+            failureReason: "Destination is recorded, but no same-thread Telegram send and reply proof has passed yet.",
+          },
+        ],
+        [
+          WHATSAPP_ROOM_CONNECTION_ID,
+          {
+            envKeys: ["WHATSAPP_RECIPIENT"],
+            providerStatus: "unproven",
+            failureReason: "Destination is recorded, but no same-thread WhatsApp send and reply proof has passed yet.",
+          },
+        ],
+      ]),
+      isOwner: false,
+    });
+
+    expect(view.find((v) => v.id === TELEGRAM_ROOM_CONNECTION_ID)).toMatchObject({
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+      connected: false,
+      failureReason: expect.stringMatching(/same-thread Telegram send and reply proof/i),
+    });
+    expect(view.find((v) => v.id === WHATSAPP_ROOM_CONNECTION_ID)).toMatchObject({
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+      connected: false,
+      failureReason: expect.stringMatching(/same-thread WhatsApp send and reply proof/i),
+    });
   });
 });
 

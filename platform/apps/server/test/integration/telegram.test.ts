@@ -374,9 +374,21 @@ describe("Telegram room bridge (#1267)", () => {
     });
     expect(enable.statusCode).toBe(200);
     expect(enable.json()).toMatchObject({
-      connected: true,
+      connected: false,
       id: "telegram_room",
-      providerStatus: "healthy",
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
+    const afterEnable = await app.inject({
+      method: "GET",
+      url: "/me/connections",
+      cookies: { rid: owner.cookie },
+    });
+    expect(afterEnable.json().connections.find((c: { id: string }) => c.id === "telegram_room")).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+      failureReason: expect.stringMatching(/same-thread Telegram send and reply proof/i),
     });
 
     const started = await app.inject({
@@ -487,6 +499,17 @@ describe("Telegram room bridge (#1267)", () => {
         providerConversationId: "123456",
         providerMessageId: "43",
       },
+    });
+    const afterRoundTrip = await app.inject({
+      method: "GET",
+      url: "/me/connections",
+      cookies: { rid: owner.cookie },
+    });
+    expect(afterRoundTrip.json().connections.find((c: { id: string }) => c.id === "telegram_room")).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+      lastProofReceipt: expect.stringMatching(/^external-room:telegram:/),
     });
 
     const agent = await newAgent(owner, `agent-${newId()}`);

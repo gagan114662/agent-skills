@@ -394,9 +394,21 @@ describe("WhatsApp room bridge (#1267)", () => {
     });
     expect(enable.statusCode).toBe(200);
     expect(enable.json()).toMatchObject({
-      connected: true,
+      connected: false,
       id: "whatsapp_room",
-      providerStatus: "healthy",
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+    });
+    const afterEnable = await app.inject({
+      method: "GET",
+      url: "/me/connections",
+      cookies: { rid: owner.cookie },
+    });
+    expect(afterEnable.json().connections.find((c: { id: string }) => c.id === "whatsapp_room")).toMatchObject({
+      connected: false,
+      consentStatus: "recorded",
+      providerStatus: "unproven",
+      failureReason: expect.stringMatching(/same-thread WhatsApp send and reply proof/i),
     });
 
     const started = await app.inject({
@@ -429,6 +441,7 @@ describe("WhatsApp room bridge (#1267)", () => {
               value: {
                 messages: [
                   {
+                    id: "wamid.reply.43",
                     from: "15551112222",
                     context: { id: "wamid.room.42" },
                     text: {
@@ -461,6 +474,7 @@ describe("WhatsApp room bridge (#1267)", () => {
     expect(wrongSender.statusCode).toBe(400);
 
     const rawPayload = JSON.stringify(payload, null, 2);
+    sendMessage.mockResolvedValueOnce({ ok: true, messageId: "wamid.room.echo.43" });
     const inbound = await app.inject({
       method: "POST",
       url: "/whatsapp/webhook",
@@ -491,6 +505,17 @@ describe("WhatsApp room bridge (#1267)", () => {
       "agents, show the WhatsApp room",
       "YES ship homepage because the draft is approved",
     ]);
+    const afterRoundTrip = await app.inject({
+      method: "GET",
+      url: "/me/connections",
+      cookies: { rid: owner.cookie },
+    });
+    expect(afterRoundTrip.json().connections.find((c: { id: string }) => c.id === "whatsapp_room")).toMatchObject({
+      connected: true,
+      consentStatus: "recorded",
+      providerStatus: "healthy",
+      lastProofReceipt: expect.stringMatching(/^external-room:whatsapp:/),
+    });
 
     const agent = await newAgent(owner, `agent-${newId()}`);
     const submit = await app.inject({

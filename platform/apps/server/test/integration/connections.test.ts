@@ -369,9 +369,10 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     });
     expect(telegram.statusCode).toBe(200);
     expect(telegram.json()).toMatchObject({
-      connected: true,
+      connected: false,
       id: "telegram_room",
-      providerStatus: "healthy",
+      consentStatus: "recorded",
+      providerStatus: "unproven",
     });
     await expect(resolveServiceSecrets(workspaceId, "telegram_room")).resolves.toMatchObject({
       TELEGRAM_CHAT_ID: "-1001234567890",
@@ -392,9 +393,10 @@ describe("connections (#258) — customer view never pastes a token, GitHub past
     });
     expect(whatsapp.statusCode).toBe(200);
     expect(whatsapp.json()).toMatchObject({
-      connected: true,
+      connected: false,
       id: "whatsapp_room",
-      providerStatus: "healthy",
+      consentStatus: "recorded",
+      providerStatus: "unproven",
     });
     await expect(resolveServiceSecrets(workspaceId, "whatsapp_room")).resolves.toMatchObject({
       WHATSAPP_RECIPIENT: "15551112222",

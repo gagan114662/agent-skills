@@ -22,6 +22,10 @@ export interface ConnectionProofInput {
   envKeys: readonly string[];
   fingerprint: string;
   connectedAtMs: number;
+  providerStatus?: ConnectionProviderStatus;
+  lastProofAt?: number | null;
+  lastProofReceipt?: string | null;
+  failureReason?: string | null;
 }
 
 export type ConnectionConsentStatus = "none" | "recorded";
@@ -65,6 +69,19 @@ function proofFor(d: ConnectionDescriptor, proof: ConnectionProofInput | undefin
       lastProofReceipt: null,
       failureReason: null,
       connected: false,
+    };
+  }
+  if (proof.providerStatus) {
+    const connected = proof.providerStatus === "healthy";
+    return {
+      consentStatus: "recorded",
+      providerStatus: proof.providerStatus,
+      lastProofAt: proof.lastProofAt ?? (connected ? proof.connectedAtMs : null),
+      lastProofReceipt: proof.lastProofReceipt ?? (connected ? `vault:${proof.fingerprint.slice(0, 12)}` : null),
+      failureReason: connected
+        ? null
+        : (proof.failureReason ?? "Provider proof is missing."),
+      connected,
     };
   }
   const hasProviderProof = proof.envKeys.length > 0;
