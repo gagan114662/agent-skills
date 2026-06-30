@@ -44,7 +44,7 @@ test("runProductionStatus reports web and API SHAs separately", async () => {
 test("runProductionStatus can be used as a local report without EXPECTED_WEB_SHA", async () => {
   const result = await runProductionStatus({
     webTarget: "https://ipop.ai/",
-    expectedSha: undefined,
+    expectedSha: null,
     fetcher: fakeFetch({
       "https://ipop.ai/": response(200, freshHtml),
       "https://api.ipop.ai/version": response(200, JSON.stringify({ version: "deadbeef1234" })),
