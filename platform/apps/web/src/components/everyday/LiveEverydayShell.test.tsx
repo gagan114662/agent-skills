@@ -227,6 +227,24 @@ describe("LiveEverydayShell (#1181)", () => {
         verified: true,
         verifiedAt: "2026-06-28T05:00:00.000Z",
       },
+      relay: {
+        mode: "queued",
+        webhookConfigured: true,
+        directReady: false,
+        queueReady: true,
+        heartbeatReady: true,
+        roomReady: true,
+        jobSummary: {
+          pending: 0,
+          claimed: 0,
+          sent: 3,
+          failed: 0,
+          lastOutboundAt: "2026-06-28T05:02:00.000Z",
+          lastSentAt: "2026-06-28T05:02:00.000Z",
+          lastFailedAt: null,
+          lastError: null,
+        },
+      },
       relayHeartbeat: {
         relayId: "gagan-mac",
         host: "Gagans-MacBook-Pro",
@@ -276,6 +294,9 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText("Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(screen.getByText("queue")).toBeInTheDocument();
+    expect(screen.getByText("Mac host")).toBeInTheDocument();
+    expect(screen.getByText("healthy")).toBeInTheDocument();
     expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
     expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
   });

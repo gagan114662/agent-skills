@@ -68,6 +68,17 @@ export interface IMessageRelayInboundReceipt {
   createdAt: Date;
 }
 
+export interface IMessageRelayJobSummary {
+  pending: number;
+  claimed: number;
+  sent: number;
+  failed: number;
+  lastOutboundAt: Date | null;
+  lastSentAt: Date | null;
+  lastFailedAt: Date | null;
+  lastError: string | null;
+}
+
 const COLUMNS = {
   id: imessageRecipients.id,
   workspaceId: imessageRecipients.workspaceId,
@@ -312,6 +323,48 @@ export async function getLatestIMessageRelayJobForMember(input: {
   return row as IMessageRelayJob | undefined;
 }
 
+export async function getIMessageRelayJobSummaryForMember(input: {
+  workspaceId: string;
+  memberId: string;
+}): Promise<IMessageRelayJobSummary> {
+  const result = await getPool().query(
+    `
+      SELECT
+        count(*) FILTER (WHERE status = 'pending')::int AS pending,
+        count(*) FILTER (WHERE status = 'claimed')::int AS claimed,
+        count(*) FILTER (WHERE status = 'sent')::int AS sent,
+        count(*) FILTER (WHERE status = 'failed')::int AS failed,
+        max(updated_at) FILTER (WHERE status IN ('claimed','sent','failed')) AS last_outbound_at,
+        max(sent_at) AS last_sent_at,
+        max(failed_at) AS last_failed_at,
+        (
+          SELECT error
+            FROM imessage_relay_jobs
+           WHERE workspace_id = $1
+             AND member_id = $2
+             AND status = 'failed'
+           ORDER BY failed_at DESC NULLS LAST, updated_at DESC
+           LIMIT 1
+        ) AS last_error
+      FROM imessage_relay_jobs
+      WHERE workspace_id = $1
+        AND member_id = $2
+    `,
+    [input.workspaceId, input.memberId],
+  );
+  const row = result.rows[0] ?? {};
+  return {
+    pending: Number(row.pending ?? 0),
+    claimed: Number(row.claimed ?? 0),
+    sent: Number(row.sent ?? 0),
+    failed: Number(row.failed ?? 0),
+    lastOutboundAt: coerceDate(row.last_outbound_at),
+    lastSentAt: coerceDate(row.last_sent_at),
+    lastFailedAt: coerceDate(row.last_failed_at),
+    lastError: row.last_error ? String(row.last_error) : null,
+  };
+}
+
 export async function getLatestSentIMessageRelayJobForMember(input: {
   workspaceId: string;
   memberId: string;
@@ -499,4 +552,9 @@ function rowToRelayJob(row: Record<string, unknown>): IMessageRelayJob {
     createdAt: row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at)),
     updatedAt: row.updated_at instanceof Date ? row.updated_at : new Date(String(row.updated_at)),
   };
+}
+
+function coerceDate(value: unknown): Date | null {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(String(value));
 }

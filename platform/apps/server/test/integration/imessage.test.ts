@@ -412,6 +412,19 @@ describe("iMessage member recipient relay", () => {
       });
       expect(pendingStatus.statusCode).toBe(200);
       expect(pendingStatus.json()).toMatchObject({
+        relay: {
+          mode: "queued",
+          webhookConfigured: true,
+          queueReady: true,
+          heartbeatReady: false,
+          roomReady: false,
+          jobSummary: {
+            pending: 1,
+            claimed: 0,
+            sent: 0,
+            failed: 0,
+          },
+        },
         relayHeartbeat: {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
@@ -463,6 +476,18 @@ describe("iMessage member recipient relay", () => {
         cookies: { rid: owner.cookie },
       });
       expect(verifiedStatus.json()).toMatchObject({
+        relay: {
+          mode: "queued",
+          queueReady: true,
+          heartbeatReady: false,
+          roomReady: false,
+          jobSummary: {
+            pending: 0,
+            claimed: 0,
+            sent: 1,
+            failed: 0,
+          },
+        },
         relayHeartbeat: {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
@@ -576,6 +601,18 @@ describe("iMessage member recipient relay", () => {
       });
       expect(queuedRoomStatus.statusCode).toBe(200);
       expect(queuedRoomStatus.json()).toMatchObject({
+        relay: {
+          mode: "queued",
+          queueReady: true,
+          heartbeatReady: true,
+          roomReady: true,
+          jobSummary: {
+            pending: 1,
+            claimed: 0,
+            sent: 1,
+            failed: 0,
+          },
+        },
         lastRelayJob: {
           id: started.json().jobId,
           purpose: "room",

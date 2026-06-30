@@ -232,6 +232,27 @@ export interface IMessageRelayInboundReceiptView {
   createdAt: string;
 }
 
+export interface IMessageRelayJobSummaryView {
+  pending: number;
+  claimed: number;
+  sent: number;
+  failed: number;
+  lastOutboundAt: string | null;
+  lastSentAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+}
+
+export interface IMessageRelayReadinessView {
+  mode: "direct" | "queued" | "dry_run" | "unconfigured";
+  webhookConfigured: boolean;
+  directReady: boolean;
+  queueReady: boolean;
+  heartbeatReady: boolean;
+  roomReady: boolean;
+  jobSummary: IMessageRelayJobSummaryView;
+}
+
 export interface IMessageStatusResponse {
   enabled: boolean;
   configured: boolean;
@@ -242,6 +263,7 @@ export interface IMessageStatusResponse {
   maxChars: number;
   memberRecipient: IMessageRecipientView | null;
   lastRelayJob?: IMessageRelayJobView | null;
+  relay?: IMessageRelayReadinessView;
   relayHeartbeat?: IMessageRelayHeartbeatView | null;
   lastInboundReceipt?: IMessageRelayInboundReceiptView | null;
 }
