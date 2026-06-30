@@ -365,7 +365,7 @@ function IMessageSetup({
   const jobSummary = relayReadiness?.jobSummary ?? null;
   const messagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
   const messagesDbAccess = relayHeartbeat?.messagesDbAccess ?? "unknown";
-  const relayReady = Boolean(
+  const legacyRelayCanSend = Boolean(
     verified &&
       status?.enabled &&
       status.configured &&
@@ -374,10 +374,28 @@ function IMessageSetup({
       messagesAccess === "ok" &&
       messagesDbAccess === "ok",
   );
-  const relayBlocked = Boolean(verified && !relayReady);
+  const roomStartReady = Boolean(verified && (relayReadiness?.roomStartReady ?? legacyRelayCanSend));
+  const loopbackReady = Boolean(verified && (relayReadiness?.loopbackReady ?? status?.lastInboundReceipt));
+  const relayBlocked = Boolean(verified && !roomStartReady);
   const pending = Boolean(status?.memberRecipient && !verified);
-  const stateLabel = relayReady ? copy.verified : relayBlocked ? copy.blocked : pending ? copy.pending : copy.notSet;
-  const detail = relayReady ? copy.readyDetail : relayBlocked ? copy.blockedDetail : pending ? copy.pendingDetail : copy.emptyDetail;
+  const stateLabel = loopbackReady
+    ? copy.verified
+    : roomStartReady
+      ? copy.loopPending
+      : relayBlocked
+        ? copy.blocked
+        : pending
+          ? copy.pending
+          : copy.notSet;
+  const detail = loopbackReady
+    ? copy.readyDetail
+    : roomStartReady
+      ? copy.loopPendingDetail
+      : relayBlocked
+        ? copy.blockedDetail
+        : pending
+          ? copy.pendingDetail
+          : copy.emptyDetail;
   const inboundReceipt = status?.lastInboundReceipt ?? null;
   const relayHostProof = relayHeartbeat
     ? relayHeartbeat.active
@@ -400,6 +418,7 @@ function IMessageSetup({
     ? [
         { label: "queue", value: relayReadiness.queueReady ? "ready" : "missing secret", state: relayReadiness.queueReady ? "ok" : "warn" },
         { label: "Mac host", value: relayReadiness.heartbeatReady ? "healthy" : relayHeartbeat?.active ? "needs access" : "waiting", state: relayReadiness.heartbeatReady ? "ok" : "warn" },
+        { label: "reply loop", value: relayReadiness.loopbackReady ? "proven" : "waiting", state: relayReadiness.loopbackReady ? "ok" : "warn" },
         { label: "pending", value: String(jobSummary?.pending ?? 0), state: jobSummary?.pending ? "warn" : "ok" },
         { label: "sent", value: jobSummary?.lastSentAt ? shortDateTime(jobSummary.lastSentAt) : String(jobSummary?.sent ?? 0), state: jobSummary?.sent ? "ok" : "idle" },
       ]
@@ -426,7 +445,11 @@ function IMessageSetup({
   }
 
   return (
-    <section className="everyday-imessage-setup" aria-label={copy.title} data-state={relayReady ? "verified" : pending || relayBlocked ? "pending" : "empty"}>
+    <section
+      className="everyday-imessage-setup"
+      aria-label={copy.title}
+      data-state={loopbackReady ? "verified" : pending || relayBlocked || roomStartReady ? "pending" : "empty"}
+    >
       <div className="everyday-imessage-setup__copy">
         <div>
           <h3>{copy.title}</h3>

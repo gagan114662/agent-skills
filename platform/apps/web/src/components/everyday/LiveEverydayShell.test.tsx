@@ -252,7 +252,10 @@ describe("LiveEverydayShell (#1181)", () => {
         directReady: false,
         queueReady: true,
         heartbeatReady: true,
+        roomStartReady: true,
+        loopbackReady: true,
         roomReady: true,
+        roomReadyReason: "verified recipient, outbound room send, and inbound iMessage reply are correlated",
         jobSummary: {
           pending: 0,
           claimed: 0,
@@ -315,9 +318,75 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(await screen.findByText("Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.getByText("queue")).toBeInTheDocument();
     expect(screen.getByText("Mac host")).toBeInTheDocument();
+    expect(screen.getByText("reply loop")).toBeInTheDocument();
+    expect(screen.getByText("proven")).toBeInTheDocument();
     expect(screen.getByText("healthy")).toBeInTheDocument();
     expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
     expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
+  });
+
+  it("does not call iMessage verified until a reply loop lands back in the room", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.mocked(api.getIMessageStatus).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      dryRun: false,
+      recipient: "gagan@example.com",
+      recipientSource: "member_verified",
+      requiresVerification: false,
+      maxChars: 2000,
+      memberRecipient: {
+        recipient: "gagan@example.com",
+        serviceName: "iMessage",
+        verified: true,
+        verifiedAt: "2026-06-28T05:00:00.000Z",
+      },
+      relay: {
+        mode: "queued",
+        webhookConfigured: true,
+        directReady: false,
+        queueReady: true,
+        heartbeatReady: true,
+        roomStartReady: true,
+        loopbackReady: false,
+        roomReady: false,
+        roomReadyReason: "waiting for an inbound iMessage reply receipt before claiming the room works end-to-end",
+        jobSummary: {
+          pending: 1,
+          claimed: 0,
+          sent: 1,
+          failed: 0,
+          lastOutboundAt: "2026-06-28T05:02:00.000Z",
+          lastSentAt: "2026-06-28T05:02:00.000Z",
+          lastFailedAt: null,
+          lastError: null,
+        },
+      },
+      relayHeartbeat: {
+        relayId: "gagan-mac",
+        host: "Gagans-MacBook-Pro",
+        version: "dev-1341",
+        checkedInAt: "2026-06-28T05:01:00.000Z",
+        messagesAccess: "ok",
+        messagesDbAccess: "ok",
+        active: true,
+      },
+      lastInboundReceipt: null,
+    });
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.loopPending)).toBeInTheDocument();
+    expect(screen.getByText(EVERYDAY.connectors.imessage.loopPendingDetail)).toBeInTheDocument();
+    expect(screen.getByText("reply loop")).toBeInTheDocument();
+    expect(screen.getAllByText("waiting").length).toBeGreaterThan(0);
+    expect(screen.queryByText(EVERYDAY.connectors.imessage.verified)).not.toBeInTheDocument();
   });
 
   it("does not mark iMessage connected when the Mac relay cannot access Messages", async () => {
@@ -703,7 +772,8 @@ describe("LiveEverydayShell (#1181)", () => {
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.test }));
 
     await waitFor(() => expect(test).toHaveBeenCalled());
-    expect(await screen.findByText(EVERYDAY.connectors.imessage.verified)).toBeInTheDocument();
+    expect(await screen.findByText(EVERYDAY.connectors.imessage.loopPending)).toBeInTheDocument();
+    expect(screen.queryByText(EVERYDAY.connectors.imessage.verified)).not.toBeInTheDocument();
   });
 
   it("does not mark iMessage connected when the recipient is verified but the relay is dry-run (#1283)", async () => {
