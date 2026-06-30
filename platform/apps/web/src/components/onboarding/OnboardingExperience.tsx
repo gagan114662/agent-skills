@@ -53,9 +53,11 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
 const NATIVE_IMESSAGE_URL = "imessage://";
 
 const FOOTER_TRUST_LINKS = [
+  { href: "/demo", label: "Demo" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/company", label: "Company" },
   { href: APP_ROUTES.terms, label: "Terms" },
   { href: APP_ROUTES.privacy, label: "Privacy" },
-  { href: SUPPORT_CONTACT.href, label: "Contact" },
 ] as const;
 
 function roomReceipt(
@@ -293,7 +295,7 @@ const MARKETING_ICON_ROW = [
 ] as const;
 
 const DOOR_ACTIONS = [
-  { key: "login", label: "Login", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
+  { key: "login", label: "Log in", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
   { key: "love", label: "Love", href: "#onboard-target" },
   { key: "dashboard", label: "Dashboard", href: APP_ROUTES.dashboard },
   { key: "start", label: "Start", href: "#onboard-target" },
@@ -756,14 +758,14 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           />
         )}
       </div>
-      {phase !== "door" && (
-        <footer className="onboard__footer">
-          <PublicTrustLinks />
+      <footer className="onboard__footer">
+        <PublicTrustLinks />
+        {phase !== "door" && (
           <a className="onboard-trust__support" href={SUPPORT_CONTACT.href}>
             {SUPPORT_CONTACT.email}
           </a>
-        </footer>
-      )}
+        )}
+      </footer>
     </div>
   );
 }

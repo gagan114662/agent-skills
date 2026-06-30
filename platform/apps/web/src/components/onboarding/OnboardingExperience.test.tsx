@@ -102,6 +102,15 @@ function fakeProvider(over: Partial<OnboardingProvider> = {}): OnboardingProvide
 }
 
 function expectPublicLinks(): void {
+  expect(screen.getAllByRole("link", { name: "Demo" })[0]).toHaveAttribute("href", "/demo");
+  expect(screen.getAllByRole("link", { name: "Pricing" })[0]).toHaveAttribute(
+    "href",
+    "/pricing",
+  );
+  expect(screen.getAllByRole("link", { name: "Company" })[0]).toHaveAttribute(
+    "href",
+    "/company",
+  );
   expect(screen.getAllByRole("link", { name: "Terms" })[0]).toHaveAttribute(
     "href",
     APP_ROUTES.terms,
@@ -110,7 +119,7 @@ function expectPublicLinks(): void {
     "href",
     APP_ROUTES.privacy,
   );
-  expect(screen.getAllByRole("link", { name: "Contact" })[0]).toHaveAttribute(
+  expect(screen.getAllByRole("link", { name: SUPPORT_CONTACT.email })[0]).toHaveAttribute(
     "href",
     SUPPORT_CONTACT.href,
   );
@@ -143,8 +152,8 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByText(/marketing team in your messages/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
     expect(screen.getByText(/customer/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /login/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /log in/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /log in/i })).toHaveAttribute(
       "href",
       "/login?return=%2Feveryday",
     );
@@ -154,6 +163,8 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.getByRole("link", { name: /imessage/i })).toHaveAttribute("href", "#onboard-target");
     expect(screen.getByRole("link", { name: /whatsapp/i })).toHaveAttribute("href", "#onboard-target");
     expect(screen.getByRole("link", { name: /telegram/i })).toHaveAttribute("href", "#onboard-target");
+    expect(screen.getByRole("link", { name: /demo/i })).toHaveAttribute("href", "/demo");
+    expect(screen.getByRole("link", { name: /pricing/i })).toHaveAttribute("href", "/pricing");
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(container.querySelector(".onboard-sunscape__sun")).toBeInTheDocument();
     expect(container.querySelectorAll(".onboard-sunscape__ray")).toHaveLength(3);
@@ -211,15 +222,16 @@ describe("OnboardingExperience (#784)", () => {
     expect(
       await screen.findByRole("article", { name: /instant personalized deliverable/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /log in/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /love/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute(
       "href",
       APP_ROUTES.dashboard,
     );
     expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Pricing" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Company" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Demo" })).toHaveAttribute("href", "/demo");
+    expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+    expect(screen.getByRole("link", { name: "Company" })).toHaveAttribute("href", "/company");
     expect(screen.queryByRole("link", { name: "Watch live demo" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /finished work proof/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/already shipped/i)).not.toBeInTheDocument();

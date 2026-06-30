@@ -61,7 +61,7 @@ describe("Landing", () => {
     ).toHaveAttribute("href", "/demo");
   });
 
-  it("actually navigates to /start when the hero 'Start free' CTA is clicked (#305)", async () => {
+  it("actually navigates to /start when the hero start CTA is clicked (#305)", async () => {
     act(() => navigate("/")); // start on the landing, as a visitor would
     render(<Landing />);
     const hero = screen.getByRole("region", { name: BRAND.tagline });

@@ -114,13 +114,12 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(pricing.description).toBeTruthy();
     // The SSR body carries the real pricing H1 + a real plan name (proves it isn't an empty shell).
     expect(pricing.html).toContain(PRICING.title);
-    expect(pricing.html).toContain("Start free");
+    expect(pricing.html).toContain("Start");
     expect(pricing.headExtra).toContain('"@type":"BreadcrumbList"');
     expect(pricing.headExtra).toContain("/pricing");
   });
 
   it.each([
-    ["/start", "Start", "Your website"],
     ["/demo", "Live demo", "Build my free deliverable"],
     ["/sandbox", "Sandbox", "Build my free deliverable"],
     ["/login", "Sign in", "Sign in"],
@@ -135,12 +134,14 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
-  it("keeps /welcome as an explicit alias of the public homepage door", () => {
-    const page = byPath("/welcome")!;
+  it.each(["/start", "/welcome"])("keeps %s as an explicit alias of the public homepage door", (urlPath) => {
+    const page = byPath(urlPath)!;
     const home = byPath("/")!;
 
-    expect(page.title).toContain("Welcome");
-    expect(page.description).toContain("connect your tools");
+    expect(page.title).toContain(urlPath === "/start" ? "Start" : "Welcome");
+    expect(page.description).toContain(
+      urlPath === "/start" ? "Scout reads your site" : "connect your tools",
+    );
     expect(page.html).toContain("what are we marketing today?");
     expect(page.html).toBe(home.html);
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
@@ -159,7 +160,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.description, urlPath + " has no description").toBeTruthy();
     expect(page.html).toContain(bodyText);
     expect(page.html).not.toBe(home.html);
-    expect(page.html).toContain("Sign in");
+    expect(page.html).toContain("Log in");
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
   });
 
