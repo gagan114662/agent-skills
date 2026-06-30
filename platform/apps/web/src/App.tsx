@@ -53,9 +53,9 @@ function DashboardRoute(): React.JSX.Element {
     void store.bootstrap();
   }, [store]);
 
-  if (phase === "ready") return <LiveEverydayShell dashboardFirst />;
+  if (phase === "ready") return <LiveEverydayShell dashboardFirst dashboardOnly />;
   if (phase === "loading") return <Splash />;
-  return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />;
+  return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />;
 }
 
 export function App(): React.JSX.Element {

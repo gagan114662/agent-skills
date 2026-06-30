@@ -130,6 +130,8 @@ describe("App root routing", () => {
       "id",
       "dashboard",
     );
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("sample readout")).toBeInTheDocument();
     expect(screen.getByText("leads found")).toBeInTheDocument();
     expect(screen.getByText("channel performance")).toBeInTheDocument();
@@ -152,6 +154,8 @@ describe("App root routing", () => {
 
     const dashboard = await screen.findByRole("region", { name: "CMO brief" });
     expect(dashboard).toHaveAttribute("id", "dashboard");
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("live workspace")).toBeInTheDocument();
     expect(screen.getByText(/no prospect source connected/i)).toBeInTheDocument();
     expect(screen.queryByText("PR #1276")).not.toBeInTheDocument();

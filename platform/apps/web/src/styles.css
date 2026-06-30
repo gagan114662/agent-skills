@@ -8930,6 +8930,15 @@ select:focus-visible {
   flex-direction: column;
   gap: 34px;
 }
+.everyday-shell__main--dashboard {
+  max-width: 1120px;
+  min-height: 100vh;
+  padding-block: 32px;
+  justify-content: flex-start;
+}
+.everyday-shell__main--dashboard .everyday-dashboard {
+  min-height: calc(100vh - 64px);
+}
 
 /* Editorial serif headlines (greetings + section heads). */
 .everyday-serif {
