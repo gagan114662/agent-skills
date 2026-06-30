@@ -7,6 +7,7 @@ import type {
   FirstRunReceiptDto,
   FirstRunReceiptInput,
   IMessageStatusResponse,
+  Message,
   TeamRunSubtaskInput,
 } from "../../api/types.js";
 import type { AppState, LiveSessionLite } from "../../store/store.js";
@@ -16,7 +17,7 @@ import {
   clearPendingFirstRunReceipt,
   readPendingFirstRunReceipt,
 } from "../onboarding/first-run-receipt.js";
-import { EverydayShell } from "./EverydayShell.js";
+import { EverydayShell, type EverydayRoomLaunchResult } from "./EverydayShell.js";
 import {
   emptyEverydayData,
   type AgentLane,
@@ -591,7 +592,10 @@ async function resolveAgentMemberId(state: AppState, role: string): Promise<stri
   return hits.find((hit) => hit.kind === "agent")?.id ?? null;
 }
 
-async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> {
+async function launchCodexRoomRun(
+  state: AppState,
+  goal: string,
+): Promise<EverydayRoomLaunchResult> {
   const channelId = state.activeChannelId;
   if (!channelId) throw new Error("Open a workspace channel before starting the iMessage room.");
   const codex = await api.getCodexStatus();
@@ -600,13 +604,7 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
       "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
     );
   }
-  const relay = await api.startIMessageRoom(channelId, goal);
-  if (relay.status !== "sent") {
-    throw new Error(
-      relay.error ??
-        "iMessage relay is not ready for this workspace yet. Set up Messages before starting the agent room.",
-    );
-  }
+  const started = await startCanonicalRoomMessage(channelId, goal);
 
   const subtasks: TeamRunSubtaskInput[] = [];
   for (const spec of ROOM_AGENT_TASKS) {
@@ -625,6 +623,36 @@ async function launchCodexRoomRun(state: AppState, goal: string): Promise<void> 
     );
   }
   await api.launchTeamRun(channelId, subtasks);
+  return started;
+}
+
+async function startCanonicalRoomMessage(
+  channelId: string,
+  goal: string,
+): Promise<EverydayRoomLaunchResult & { message: Message }> {
+  try {
+    const relay = await api.startIMessageRoom(channelId, goal);
+    if ((relay.status === "sent" || relay.status === "queued") && relay.message) {
+      return {
+        message: relay.message,
+        notices:
+          relay.status === "queued"
+            ? ["iMessage queued the room start; agent updates will mirror as the relay drains."]
+            : [],
+      };
+    }
+  } catch {
+    // The web room is the source of truth. A missing Messages relay must not stop the owner from
+    // briefing the team; verified external bridges mirror from the normal channel delivery path.
+  }
+
+  const message = await api.postMessage(channelId, goal);
+  return {
+    message,
+    notices: [
+      "Team started in the web room. iMessage, WhatsApp, and Telegram mirror the thread only after their verified bridge is connected.",
+    ],
+  };
 }
 
 async function activateFirstRunTeam(
