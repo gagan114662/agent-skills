@@ -14,6 +14,7 @@ type ResolveServiceSecrets = typeof resolveServiceSecrets;
 
 const TELEGRAM_WORKSPACE_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const WHATSAPP_WORKSPACE_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
+const PRODUCTION_API_BASE_URL = "https://api.ipop.ai";
 
 export interface DoctorCheck {
   name: string;
@@ -76,6 +77,27 @@ export function parseExternalRoomDoctorConfig(
   };
 }
 
+function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[]): string {
+  if (missingEnv.length === 0) return "";
+  if (provider === "telegram") {
+    return [
+      "remedy: set production secrets",
+      "fly secrets set --app reload-api TELEGRAM_BOT_TOKEN=<bot-token> TELEGRAM_WEBHOOK_SECRET=<random-secret>",
+      "then call Telegram setWebhook for " +
+        PRODUCTION_API_BASE_URL +
+        "/telegram/webhook with secret_token=$TELEGRAM_WEBHOOK_SECRET",
+      "then run room:doctor -- --send-smoke --workspace-id <workspace-id> --channel-id <channel-id> --message-id <message-id>",
+    ].join("; ");
+  }
+  return [
+    "remedy: set production secrets",
+    "fly secrets set --app reload-api WHATSAPP_ACCESS_TOKEN=<access-token> WHATSAPP_PHONE_NUMBER_ID=<phone-number-id> WHATSAPP_WEBHOOK_VERIFY_TOKEN=<verify-token> WHATSAPP_APP_SECRET=<app-secret>",
+    "then configure Meta webhook callback " + PRODUCTION_API_BASE_URL + "/whatsapp/webhook",
+    "with the same verify token and signed POSTs using X-Hub-Signature-256",
+    "then run room:doctor -- --send-smoke --workspace-id <workspace-id> --channel-id <channel-id> --message-id <message-id>",
+  ].join("; ");
+}
+
 function missingEnvCheck(provider: "telegram" | "whatsapp", missingEnv: string[]): DoctorCheck {
   return {
     name: provider + "-config",
@@ -83,7 +105,7 @@ function missingEnvCheck(provider: "telegram" | "whatsapp", missingEnv: string[]
     message:
       missingEnv.length === 0
         ? provider + " room config present"
-        : provider + " room config missing: " + missingEnv.join(", "),
+        : provider + " room config missing: " + missingEnv.join(", ") + "; " + missingEnvRemedy(provider, missingEnv),
   };
 }
 
