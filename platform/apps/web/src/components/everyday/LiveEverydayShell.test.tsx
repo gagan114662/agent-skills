@@ -233,6 +233,7 @@ describe("LiveEverydayShell (#1181)", () => {
         version: "dev-1341",
         checkedInAt: "2026-06-28T05:01:00.000Z",
         messagesAccess: "ok",
+        messagesDbAccess: "ok",
         active: true,
       },
       lastRelayJob: {
@@ -274,7 +275,7 @@ describe("LiveEverydayShell (#1181)", () => {
       await store.bootstrap();
     });
 
-    expect(await screen.findByText("Mac relay host active with Messages access: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(await screen.findByText("Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.getByText("last iMessage relay sent: imessage:c1:root-1")).toBeInTheDocument();
     expect(screen.getByText("last inbound iMessage reply landed: imessage:c1:root-1")).toBeInTheDocument();
   });
@@ -324,6 +325,7 @@ describe("LiveEverydayShell (#1181)", () => {
         version: "dev-1341",
         checkedInAt: "2026-06-28T05:01:00.000Z",
         messagesAccess: "failed",
+        messagesDbAccess: "ok",
         active: true,
       },
     });
@@ -334,8 +336,8 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
-    expect(screen.getByText(/recipient verified; relay is blocked by Messages access/i)).toBeInTheDocument();
-    expect(screen.getByText("Mac relay host active, but Messages access is blocked: Gagans-MacBook-Pro")).toBeInTheDocument();
+    expect(screen.getByText(/recipient verified; relay cannot send through Messages yet/i)).toBeInTheDocument();
+    expect(screen.getByText("Mac relay host active, but Messages send access is blocked: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.queryByText(/live relay verified for gagan@example.com/i)).not.toBeInTheDocument();
   });
 
@@ -598,6 +600,7 @@ describe("LiveEverydayShell (#1181)", () => {
           version: "dev-1283",
           checkedInAt: "2026-06-27T06:01:00.000Z",
           messagesAccess: "ok",
+          messagesDbAccess: "ok",
           active: true,
         },
       });
@@ -706,6 +709,7 @@ describe("LiveEverydayShell (#1181)", () => {
         version: "dev-1341",
         checkedInAt: "2026-06-27T06:04:00.000Z",
         messagesAccess: "ok",
+        messagesDbAccess: "ok",
         active: true,
       },
     });
@@ -717,7 +721,7 @@ describe("LiveEverydayShell (#1181)", () => {
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
     expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
-    expect(screen.getByText(/Mac relay host active with Messages access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
   });

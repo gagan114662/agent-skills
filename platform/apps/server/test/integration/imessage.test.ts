@@ -385,6 +385,7 @@ describe("iMessage member recipient relay", () => {
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
           messagesAccess: "failed",
+          messagesDbAccess: "unknown",
           active: true,
         },
       });
@@ -416,6 +417,7 @@ describe("iMessage member recipient relay", () => {
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
           messagesAccess: "failed",
+          messagesDbAccess: "unknown",
           active: true,
         },
         lastRelayJob: {
@@ -465,6 +467,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           messagesAccess: "ok",
+          messagesDbAccess: "unknown",
           active: true,
         },
       });
@@ -481,6 +484,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           messagesAccess: "ok",
+          messagesDbAccess: "unknown",
           active: true,
         },
       });
@@ -494,6 +498,7 @@ describe("iMessage member recipient relay", () => {
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
           messagesAccess: "failed",
+          messagesDbAccess: "failed",
         },
       });
       expect(failedAccessHeartbeat.statusCode).toBe(200);
@@ -502,6 +507,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           messagesAccess: "failed",
+          messagesDbAccess: "failed",
           active: true,
         },
       });
@@ -515,10 +521,11 @@ describe("iMessage member recipient relay", () => {
       expect(blockedRoom.statusCode).toBe(503);
       expect(blockedRoom.json()).toMatchObject({
         status: "not_configured",
-        error: "iMessage Mac relay must be active with Messages access before starting the room.",
+        error: "iMessage Mac relay must be active with Messages send and reply access before starting the room.",
         relayHeartbeat: {
           relayId: "gagan-mac",
           messagesAccess: "failed",
+          messagesDbAccess: "failed",
           active: true,
         },
       });
@@ -534,6 +541,7 @@ describe("iMessage member recipient relay", () => {
           host: "Gagans-MacBook-Pro",
           version: "dev-1341",
           messagesAccess: "ok",
+          messagesDbAccess: "ok",
         },
       });
       expect(recoveredHeartbeat.statusCode).toBe(200);
@@ -542,6 +550,7 @@ describe("iMessage member recipient relay", () => {
           relayId: "gagan-mac",
           host: "Gagans-MacBook-Pro",
           messagesAccess: "ok",
+          messagesDbAccess: "ok",
           active: true,
         },
       });

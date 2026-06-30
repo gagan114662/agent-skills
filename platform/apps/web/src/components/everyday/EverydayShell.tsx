@@ -334,13 +334,15 @@ function IMessageSetup({
   const relayJob = status?.lastRelayJob ?? null;
   const relayHeartbeat = status?.relayHeartbeat ?? null;
   const messagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
+  const messagesDbAccess = relayHeartbeat?.messagesDbAccess ?? "unknown";
   const relayReady = Boolean(
     verified &&
       status?.enabled &&
       status.configured &&
       !status.dryRun &&
       relayHeartbeat?.active &&
-      messagesAccess === "ok",
+      messagesAccess === "ok" &&
+      messagesDbAccess === "ok",
   );
   const relayBlocked = Boolean(verified && !relayReady);
   const pending = Boolean(status?.memberRecipient && !verified);
@@ -350,10 +352,14 @@ function IMessageSetup({
   const relayHostProof = relayHeartbeat
     ? relayHeartbeat.active
       ? messagesAccess === "ok"
-        ? "Mac relay host active with Messages access: " + relayHeartbeat.host
+        ? messagesDbAccess === "ok"
+          ? "Mac relay host active with Messages send and reply access: " + relayHeartbeat.host
+          : messagesDbAccess === "failed"
+            ? "Mac relay host active, but Messages reply-sync access is blocked: " + relayHeartbeat.host
+            : "Mac relay host active; Messages reply-sync access not proven: " + relayHeartbeat.host
         : messagesAccess === "failed"
-          ? "Mac relay host active, but Messages access is blocked: " + relayHeartbeat.host
-          : "Mac relay API heartbeat active; Messages access not proven: " + relayHeartbeat.host
+          ? "Mac relay host active, but Messages send access is blocked: " + relayHeartbeat.host
+          : "Mac relay API heartbeat active; Messages send access not proven: " + relayHeartbeat.host
       : "Mac relay host stale: last check-in " + relayHeartbeat.checkedInAt
     : "Mac relay host has not checked in yet.";
   const relayProof = relayJobProof(relayJob);
