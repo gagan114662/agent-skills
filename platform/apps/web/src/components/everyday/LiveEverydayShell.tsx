@@ -28,6 +28,14 @@ import {
   type ThreadEntry,
 } from "./everyday-data.js";
 
+function navigateToTelegramStart(link: Awaited<ReturnType<typeof api.startTelegramConnection>>): void {
+  if (link.startUrl) {
+    window.location.assign(link.startUrl);
+    return;
+  }
+  void navigator.clipboard?.writeText(link.startCommand);
+}
+
 function asText(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -800,6 +808,10 @@ export function LiveEverydayShell({
     const connection = connections?.find((item) => item.id === id);
     if (!connection) return;
     if (connection.connected) return;
+    if (id === "telegram_room") {
+      navigateToTelegramStart(await api.startTelegramConnection());
+      return;
+    }
     if (connection.status === "coming_soon") {
       await api.joinConnectionWaitlist(id).catch(() => undefined);
       return;
