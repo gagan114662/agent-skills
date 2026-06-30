@@ -3,6 +3,8 @@ import {
   classifyExternalRoomEvent,
   createExternalRoomMirror,
   formatExternalRoomEvent,
+  isExternalRoomDebugChatter,
+  shouldMirrorExternalRoomEvent,
 } from "../../src/messaging/external-room-mirror.js";
 import type { ExternalRoomMessageReceipt } from "../../src/db/repositories/external-room-message-receipts.js";
 import type { Message } from "../../src/db/repositories/messages.js";
@@ -67,6 +69,15 @@ describe("external room mirror (#1424)", () => {
     expect(formatExternalRoomEvent({ body: handoffTeamEvent, source: "agent_post" }).text).not.toContain(
       "team run:",
     );
+    expect(
+      isExternalRoomDebugChatter({
+        body: "\u{1f527} /bin/sh -lc 'find . -maxdepth 3 -type f -print'",
+        source: "agent_post",
+      }),
+    ).toBe(true);
+    expect(
+      shouldMirrorExternalRoomEvent({ body: "Drafting a tighter launch angle", source: "agent_post" }),
+    ).toBe(true);
   });
 
   it("mirrors a canonical agent post to connected Telegram and WhatsApp rooms and stores receipts", async () => {
@@ -125,6 +136,43 @@ describe("external room mirror (#1424)", () => {
         providerMessageId: "wa-1",
       }),
     );
+  });
+
+  it("does not mirror raw tool-command chatter into external rooms by default (#1496)", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const whatsappSend = vi.fn(async () => ({
+      status: "sent" as const,
+      recipient: "15551112222",
+      providerMessageId: "wa-1",
+    }));
+    const recordReceipt = vi.fn(async () => undefined);
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: whatsappSend },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room"
+          ? { TELEGRAM_CHAT_ID: "123456" }
+          : { WHATSAPP_RECIPIENT: "+1 (555) 111-2222" },
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt,
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Quill" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ body: "\u{1f527} /bin/sh -lc 'find . -maxdepth 3 -type f -print'" }),
+      source: "agent_post",
+    });
+
+    expect(telegramSend).not.toHaveBeenCalled();
+    expect(whatsappSend).not.toHaveBeenCalled();
+    expect(recordReceipt).not.toHaveBeenCalled();
   });
 
   it("skips already externally visible messages and already mirrored provider destinations", async () => {

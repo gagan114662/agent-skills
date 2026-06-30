@@ -57,6 +57,13 @@ interface ProviderDestination {
 
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const WHATSAPP_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
+const DEBUG_TOOL_CHATTER_ENV = "EXTERNAL_ROOM_DEBUG_TOOL_CHATTER";
+const TOOL_MARKER = "\u{1f527}";
+
+function envFlag(raw: string | undefined): boolean {
+  const value = raw?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
 
 function normalizeTelegramChatId(raw: unknown): string | null {
   if (typeof raw === "number" && Number.isSafeInteger(raw)) return String(raw);
@@ -141,6 +148,34 @@ export function formatExternalRoomEvent(input: {
   };
   const label = labels[type];
   return { type, text: label ? label + ": " + body : body };
+}
+
+export function isExternalRoomDebugChatter(input: {
+  body: string;
+  source: ExternalRoomMirrorSource;
+}): boolean {
+  if (input.source !== "agent_post") return false;
+
+  const body = input.body.replace(/\s+/g, " ").trim();
+  if (!body) return true;
+  if (body.startsWith(TOOL_MARKER)) return true;
+  if (/^(?:tool(?: call| use| result)?|command_execution|file_change)\b[:\s-]*/i.test(body)) return true;
+  if (/(?:^|\s)\/bin\/(?:sh|bash)\s+-lc\b/.test(body)) return true;
+  if (
+    /^\{/.test(body) &&
+    /"(?:tool_use|tool_result|command_execution|file_change|item\.completed)"/.test(body)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function shouldMirrorExternalRoomEvent(input: {
+  body: string;
+  source: ExternalRoomMirrorSource;
+}): boolean {
+  if (envFlag(process.env[DEBUG_TOOL_CHATTER_ENV])) return true;
+  return !isExternalRoomDebugChatter(input);
 }
 
 function logRetryableFailure(input: {
@@ -276,6 +311,7 @@ export function createExternalRoomMirror(deps: ExternalRoomMirrorDeps): External
   return {
     async mirror(input) {
       if (input.message.alsoSentToChannel) return;
+      if (!shouldMirrorExternalRoomEvent({ body: input.message.body, source: input.source })) return;
       const connected = await destinations(input.workspaceId);
       if (connected.length === 0) return;
       const author = await safeAuthor({ ...input, getMember });

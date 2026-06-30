@@ -95,4 +95,23 @@ describe("iMessage room mirror (#1283)", () => {
     await duplicateMirror.mirror({ workspaceId: "w1", channelId: "c1", message: message(), source: "agent_post" });
     expect(enqueueJob).not.toHaveBeenCalled();
   });
+
+  it("does not queue raw tool-command chatter into the native iMessage room by default (#1496)", async () => {
+    const enqueueJob = vi.fn(async () => roomJob({ id: "job-notify", purpose: "notification" }));
+    const mirror = createIMessageRoomMirror({
+      getRoomJob: vi.fn(async () => roomJob()),
+      getJobForMessage: vi.fn(async () => undefined),
+      enqueueJob,
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Quill" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ body: "\u{1f527} /bin/sh -lc 'ls -la'" }),
+      source: "agent_post",
+    });
+
+    expect(enqueueJob).not.toHaveBeenCalled();
+  });
 });
