@@ -64,6 +64,40 @@ For one polling/send cycle during manual QA:
 pnpm -C platform --filter @reload/server imessage:relay -- --once
 ```
 
+## Keep the Mac Relay Running
+
+For production proof, run the relay as a user LaunchAgent after the doctor passes. The LaunchAgent sources
+`~/.ipop/imessage-relay.env` at runtime, so the shared secret stays in the local env file instead of being embedded
+in the plist.
+
+Preview the plist without writing it:
+
+```sh
+pnpm -C platform --filter @reload/server imessage:relay:launch-agent -- --print
+```
+
+Install the plist and create the log directory:
+
+```sh
+pnpm -C platform --filter @reload/server imessage:relay:launch-agent -- --install
+```
+
+Load or restart it with launchd:
+
+```sh
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.ipop.imessage-relay.plist
+launchctl kickstart -k gui/$(id -u)/ai.ipop.imessage-relay
+```
+
+Unload it:
+
+```sh
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/ai.ipop.imessage-relay.plist
+```
+
+If the repo or env file lives somewhere else, pass `--repo-dir <path>` or `--env-file <path>` when generating the
+LaunchAgent.
+
 ## Closure Proof
 
 Do not close #1341 until production evidence shows:
