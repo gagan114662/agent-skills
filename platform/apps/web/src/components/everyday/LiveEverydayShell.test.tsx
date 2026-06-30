@@ -877,6 +877,11 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getAllByText("recorded first result for acme.com").length).toBeGreaterThan(0);
     expect(screen.getAllByText("site-read receipt").length).toBeGreaterThan(0);
     expect(screen.getAllByText("send/spend gates active").length).toBeGreaterThan(0);
+    expect(screen.getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
+    expect(screen.getByText("first useful marketing result")).toBeInTheDocument();
+    expect(screen.getByText("turned a live source read into one owner-reviewable direction")).toBeInTheDocument();
+    expect(screen.getByText("external send path")).toBeInTheDocument();
+    expect(screen.getByText("blocked until one connector produces a real sent-message receipt")).toBeInTheDocument();
   });
 
   it("flushes the public first-run handoff once signed in, then clears browser state (#1289)", async () => {

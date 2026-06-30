@@ -9622,6 +9622,63 @@ select:focus-visible {
 .everyday-dashboard__metric em[data-tone="bad"] { color: #ff8a9b; }
 .everyday-dashboard__metric em[data-tone="warn"] { color: #ffe082; }
 .everyday-dashboard__metric em[data-tone="good"] { color: #bdf58b; }
+.everyday-dashboard__ranked-work {
+  border-top: 1px solid var(--ed-border);
+  padding-top: 16px;
+}
+.everyday-dashboard__ranked-work ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.everyday-dashboard__ranked-work li {
+  min-width: 0;
+  min-height: 138px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-bg);
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+.everyday-dashboard__ranked-work li[data-status="shipped"] {
+  border-color: color-mix(in srgb, #bdf58b 38%, var(--ed-border));
+}
+.everyday-dashboard__ranked-work li[data-status="queued"],
+.everyday-dashboard__ranked-work li[data-status="learning"] {
+  border-color: color-mix(in srgb, #ffe082 38%, var(--ed-border));
+}
+.everyday-dashboard__ranked-work li[data-status="blocked"] {
+  border-color: color-mix(in srgb, #ff8a9b 42%, var(--ed-border));
+}
+.everyday-dashboard__ranked-work span {
+  color: var(--ed-pop);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.everyday-dashboard__ranked-work strong {
+  color: var(--ed-text);
+  font-size: 15px;
+  line-height: 1.2;
+}
+.everyday-dashboard__ranked-work em,
+.everyday-dashboard__ranked-work b {
+  color: var(--ed-text-dim);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.everyday-dashboard__ranked-work em {
+  color: var(--ed-text);
+}
 .everyday-dashboard__capacity {
   border-top: 1px solid var(--ed-border);
   padding-top: 16px;
@@ -10380,6 +10437,7 @@ select:focus-visible {
   .everyday-dashboard__head,
   .everyday-dashboard__executive ol,
   .everyday-dashboard__metrics,
+  .everyday-dashboard__ranked-work ol,
   .everyday-dashboard__capacity ol,
   .everyday-dashboard__readiness-list,
   .everyday-dashboard__funnel-list,

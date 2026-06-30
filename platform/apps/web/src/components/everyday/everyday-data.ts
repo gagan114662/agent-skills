@@ -133,6 +133,14 @@ export interface MarketingGoal {
   readonly confidence: "high" | "medium" | "low";
 }
 
+export interface MarketingWorkItem {
+  readonly agent: string;
+  readonly work: string;
+  readonly impact: string;
+  readonly status: "shipped" | "queued" | "blocked" | "learning";
+  readonly proof: string;
+}
+
 export interface ExecutiveSignal {
   readonly label: string;
   readonly value: string;
@@ -155,6 +163,7 @@ export interface MarketingBrief {
   readonly sinceLastCheckIn: readonly MarketingAction[];
   readonly goal: MarketingGoal;
   readonly metrics: readonly MarketingMetric[];
+  readonly rankedWork: readonly MarketingWorkItem[];
   readonly capacity: readonly ExecutiveSignal[];
   readonly funnel: readonly MarketingFunnelStage[];
   readonly channels: readonly MarketingChannel[];
@@ -246,6 +255,22 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
         { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
         { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
         { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
+      ],
+      rankedWork: [
+        {
+          agent: "Scout",
+          work: "waiting for the first source read",
+          impact: "no usable insight ranked yet",
+          status: "blocked",
+          proof: "empty live workspace",
+        },
+        {
+          agent: "Echo",
+          work: "waiting for one real acquisition channel",
+          impact: "no customer-facing distribution can happen",
+          status: "blocked",
+          proof: "no provider receipt connected",
+        },
       ],
       capacity: [
         { label: "active campaign lanes", value: "0 / 1", detail: "brief one campaign before upgrading", tone: "neutral", proof: "starter lane is unused" },
@@ -706,6 +731,29 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad", proofKind: "external", proof: "zero reply/customer receipts" },
         { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad", proofKind: "external", proof: "zero signup/payment/customer approval receipts" },
         { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral", proofKind: "live", proof: "no paid campaign spend receipt" },
+      ],
+      rankedWork: [
+        {
+          agent: "Scout",
+          work: "Tomo/reload.chat dogfood read",
+          impact: "changed homepage direction, but did not create customer pipeline",
+          status: "shipped",
+          proof: "production / route receipt",
+        },
+        {
+          agent: "Lens",
+          work: "proof-class dashboard pass",
+          impact: "prevents fake traction claims from reaching the owner",
+          status: "shipped",
+          proof: "public CMO brief",
+        },
+        {
+          agent: "Echo",
+          work: "external distribution",
+          impact: "blocked until one provider has a sent-message receipt",
+          status: "blocked",
+          proof: "GitHub #1283/#1285/#1286",
+        },
       ],
       capacity: [
         { label: "active campaign lanes", value: "0 / 1", detail: "first live acquisition lane not proven", tone: "bad", proof: "no contacted-lead receipt" },
