@@ -156,6 +156,31 @@ export async function getLatestExternalRoomMessageProof(input: {
   return row as ExternalRoomMessageProof | undefined;
 }
 
+async function getExternalRoomMessageProofForMessage(input: {
+  workspaceId: string;
+  provider: ExternalRoomMessageProvider;
+  direction: ExternalRoomMessageDirection;
+  providerConversationId?: string;
+  messageId: string;
+}): Promise<ExternalRoomMessageProof | undefined> {
+  const predicates = [
+    eq(externalRoomMessageReceipts.workspaceId, input.workspaceId),
+    eq(externalRoomMessageReceipts.provider, input.provider),
+    eq(externalRoomMessageReceipts.direction, input.direction),
+    eq(externalRoomMessageReceipts.messageId, input.messageId),
+  ];
+  if (input.providerConversationId) {
+    predicates.push(eq(externalRoomMessageReceipts.providerConversationId, input.providerConversationId));
+  }
+
+  const [row] = await db
+    .select(receiptColumns)
+    .from(externalRoomMessageReceipts)
+    .where(and(...predicates))
+    .limit(1);
+  return row as ExternalRoomMessageProof | undefined;
+}
+
 export async function getLatestExternalRoomRoundTripProof(input: {
   workspaceId: string;
   provider: ExternalRoomMessageProvider;
@@ -175,6 +200,18 @@ export async function getLatestExternalRoomRoundTripProof(input: {
     channelId: outbound.channelId,
     replyToMessageId: outbound.messageId,
   });
+  if (threadedInbound) return { outbound, inbound: threadedInbound };
 
-  return { outbound, inbound: threadedInbound ?? latestInbound };
+  if (latestInbound?.replyToMessageId) {
+    const inboundParentOutbound = await getExternalRoomMessageProofForMessage({
+      workspaceId: input.workspaceId,
+      provider: input.provider,
+      direction: "outbound",
+      providerConversationId: input.providerConversationId,
+      messageId: latestInbound.replyToMessageId,
+    });
+    if (inboundParentOutbound) return { outbound: inboundParentOutbound, inbound: latestInbound };
+  }
+
+  return { outbound, inbound: latestInbound };
 }

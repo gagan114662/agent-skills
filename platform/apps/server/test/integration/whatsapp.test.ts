@@ -441,6 +441,7 @@ describe("WhatsApp room bridge (#1267)", () => {
               value: {
                 messages: [
                   {
+                    id: "wamid.reply.43",
                     from: "15551112222",
                     context: { id: "wamid.room.42" },
                     text: {
@@ -473,6 +474,7 @@ describe("WhatsApp room bridge (#1267)", () => {
     expect(wrongSender.statusCode).toBe(400);
 
     const rawPayload = JSON.stringify(payload, null, 2);
+    sendMessage.mockResolvedValueOnce({ ok: true, messageId: "wamid.room.echo.43" });
     const inbound = await app.inject({
       method: "POST",
       url: "/whatsapp/webhook",
