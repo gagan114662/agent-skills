@@ -103,6 +103,40 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).queryByText(/Codex/i)).not.toBeInTheDocument();
   });
 
+  it("hides raw shell/tool invocations from the user-facing iMessage room (#1463)", () => {
+    render(
+      <EverydayShell
+        data={emptyData({
+          thread: [
+            {
+              id: "leaked-tool",
+              kind: "agent-line",
+              agent: "Scout",
+              at: "now",
+              text: `/bin/sh -lc "sed -n '1,220p' ipop_homepage_clarity_receipt.md"`,
+            },
+            {
+              id: "leaked-deliverable",
+              kind: "deliverable",
+              agent: "Quill",
+              at: "now",
+              deliverable: {
+                title: "Homepage receipt",
+                kind: "draft",
+                preview: "sed -n '1,220p' ipop_homepage_clarity_receipt.md",
+              },
+            },
+          ],
+        })}
+      />,
+    );
+
+    const room = screen.getByRole("region", { name: EVERYDAY.room.heading });
+    expect(within(room).queryByText(/\/bin\/sh -lc/i)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/ipop_homepage_clarity_receipt\.md/i)).not.toBeInTheDocument();
+    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(2);
+  });
+
   it("starts the room from one input and lets the user chat into the room", async () => {
     const onStartRoom = vi.fn(async () => undefined);
     render(<EverydayShell data={emptyData()} onStartRoom={onStartRoom} />);

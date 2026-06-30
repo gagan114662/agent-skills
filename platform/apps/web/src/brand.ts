@@ -1840,6 +1840,8 @@ export const EVERYDAY = {
     previewLabel: "here's what we made",
     /** Label above a before/after diff preview. */
     diffLabel: "before → after",
+    /** Customer-safe replacement for accidental raw tool/shell activity in the room. */
+    internalToolActivity: "checking the workspace. we'll post the useful bit here, not the plumbing.",
   },
 
   /** Approval queue = one-glance ship decisions showing the finished deliverable (#572/#574/#632). */
