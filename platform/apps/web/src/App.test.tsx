@@ -79,6 +79,40 @@ describe("App root routing", () => {
     expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
   });
 
+  it("opens /signup as the real signup form for logged-out visitors (#1457)", async () => {
+    navigate("/signup");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: /create account/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/workspace/i)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
+  });
+
+  it("opens /login as the real sign-in form for logged-out visitors (#1459)", async () => {
+    navigate("/login");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
+  });
+
   it("opens the homepage dashboard as a public CMO brief surface", async () => {
     await act(async () => {
       navigate("/dashboard");
@@ -151,6 +185,19 @@ describe("App root routing", () => {
       connections: [],
       canManageInternal: false,
     });
+    vi.spyOn(api.department, "seed").mockResolvedValue({
+      channels: [],
+      agents: [],
+      welcomeTasks: [],
+    });
+    vi.spyOn(api.department, "brief").mockResolvedValue({
+      lead: "scout",
+      department: "growth",
+      channelId: "c1",
+      messageId: "m-brief",
+      launched: [],
+      connectPrompted: [],
+    });
     const recordFirstRun = vi
       .spyOn(api, "recordFirstRunReceipt")
       .mockImplementation(async (input) => ({
@@ -207,7 +254,7 @@ describe("App root routing", () => {
         receipt: "send/spend gates active",
       }),
     );
-    expect(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY)).toBeNull();
+    await waitFor(() => expect(window.sessionStorage.getItem(FIRST_RUN_RECEIPT_KEY)).toBeNull());
     expect(await screen.findByRole("region", { name: "CMO brief" })).toHaveAttribute(
       "id",
       "dashboard",
