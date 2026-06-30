@@ -175,6 +175,44 @@ describe("external room mirror (#1424)", () => {
     expect(recordReceipt).not.toHaveBeenCalled();
   });
 
+  it("summarizes plain shell transcripts before mirroring customer rooms (#1496)", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: vi.fn() },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room" ? { TELEGRAM_CHAT_ID: "123456" } : {},
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt: vi.fn(async () => undefined),
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Quill" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        body: [
+          "$ pnpm --filter @reload/web test",
+          "Script completed",
+          "Wall time 12.4 seconds",
+          "Output:",
+          "gh issue comment 1496 --body debug",
+        ].join("\n"),
+      }),
+      source: "agent_post",
+    });
+
+    const mirrored = telegramSend.mock.calls[0]?.[0].text ?? "";
+    expect(mirrored).toContain("Quill: working update: technical work is underway");
+    expect(mirrored).toContain("ref: tg:c1:m1");
+    expect(mirrored).not.toMatch(/pnpm|gh issue|Script completed|Wall time|Output:/);
+  });
+
   it("skips already externally visible messages and already mirrored provider destinations", async () => {
     const telegramSend = vi.fn(async () => ({
       status: "sent" as const,

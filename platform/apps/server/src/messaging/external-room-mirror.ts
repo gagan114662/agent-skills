@@ -87,6 +87,44 @@ function snippet(text: string, max = 1200): string {
   return value.slice(0, max - 3).trimEnd() + "...";
 }
 
+function isToolTraceLine(line: string): boolean {
+  const value = line.trim();
+  if (!value) return false;
+  if (/^```/.test(value)) return true;
+  if (/^(script completed|script failed|wall time|exit code|output:|stderr:|stdout:|workdir:|command:)/i.test(value)) {
+    return true;
+  }
+  if (/^(\$|>|%|❯)\s*(pnpm|npm|node|tsx|gh|git|curl|python3?|sed|rg|cat|ls|jq|psql|docker)\b/i.test(value)) {
+    return true;
+  }
+  if (/^(pnpm|npm|node|tsx|gh|git|curl|python3?|sed|rg|cat|ls|jq|psql|docker)\s+[-\w./:@]/i.test(value)) {
+    return true;
+  }
+  if (/^(await tools\.|const result = await tools\.|tools\.|import\(|JSON\.stringify\()/i.test(value)) return true;
+  if (/^(\{|\[).*("cmd"|"workdir"|"yield_time_ms"|"max_output_tokens")/i.test(value)) return true;
+  return false;
+}
+
+function customerSafeBody(input: { body: string; type: ExternalRoomEventType }): string {
+  const lines = input.body.split(/\r?\n/);
+  const traceLines = lines.filter(isToolTraceLine).length;
+  const nonTraceLines = lines
+    .map((line) => line.trim())
+    .filter((line) => line && !isToolTraceLine(line) && !/^[-=]{3,}$/.test(line));
+  const traceHeavy = traceLines > 0 && traceLines >= Math.max(2, Math.ceil(lines.filter((line) => line.trim()).length / 3));
+  if (!traceHeavy) return input.body;
+
+  const safe = nonTraceLines
+    .filter((line) => !/[{};]/.test(line) || /[.!?]$/.test(line))
+    .join(" ");
+  if (safe.trim()) return safe;
+
+  if (input.type === "blocked") return "blocked: ran into a technical blocker. Ask for debug details if you want the full trace.";
+  if (input.type === "approval_request") return "approval request ready. Ask for debug details if you want the full trace.";
+  if (input.type === "deliverable_preview") return "preview ready. Ask for debug details if you want the full trace.";
+  return "working update: technical work is underway. Ask for debug details if you want the full trace.";
+}
+
 export function classifyExternalRoomEvent(input: {
   body: string;
   source: ExternalRoomMirrorSource;
@@ -127,7 +165,7 @@ export function formatExternalRoomEvent(input: {
   }
 
   const type = classifyExternalRoomEvent(input);
-  const body = snippet(input.body, 700);
+  const body = snippet(customerSafeBody({ body: input.body, type }), 700);
   if (type === "approval_request") {
     return {
       type,
