@@ -102,6 +102,7 @@ function heartbeat(input: Partial<IMessageRelayHeartbeat> = {}): IMessageRelayHe
     host: input.host ?? "mac-mini",
     version: input.version ?? "1.0.0",
     messagesAccess: input.messagesAccess ?? "ok",
+    messagesDbAccess: input.messagesDbAccess ?? "ok",
     checkedInAt: input.checkedInAt ?? new Date(nowMs - 1_000),
     createdAt: input.createdAt ?? new Date(nowMs - 10_000),
     updatedAt: input.updatedAt ?? new Date(nowMs - 1_000),
@@ -267,8 +268,29 @@ describe("messaging readiness (#1426)", () => {
     expect(messagesBlocked.healthy).toBe(false);
     expect(messagesBlocked.missingConfig).toContain("iMessage_messages_access");
     expect(messagesBlocked.relayHeartbeat?.messagesAccess).toBe("failed");
-    expect(messagesBlocked.notes).toContain(
-      "signed Mac relay cannot access Messages; grant Messages Automation and Full Disk Access or set IMESSAGE_MESSAGES_DB_PATH",
+    expect(messagesBlocked.notes).toContain("signed Mac relay cannot control Messages; grant Messages Automation and keep Messages open");
+
+    const dbBlocked = buildIMessageReadiness({
+      status: {
+        enabled: true,
+        configured: true,
+        dryRun: false,
+        recipient: "owner@example.com",
+        recipientSource: "member_verified",
+        maxChars: 1000,
+      },
+      recipient: imessageRecipient(),
+      latestSentJob: relayJob(),
+      latestInboundReceipt: inboundReceipt(),
+      relayHeartbeat: { ...heartbeat(), messagesDbAccess: "failed" } as IMessageRelayHeartbeat,
+      nowMs,
+    });
+    expect(dbBlocked.state).toBe("configured_unproven");
+    expect(dbBlocked.healthy).toBe(false);
+    expect(dbBlocked.missingConfig).toContain("iMessage_messages_db_access");
+    expect(dbBlocked.relayHeartbeat?.messagesDbAccess).toBe("failed");
+    expect(dbBlocked.notes).toContain(
+      "signed Mac relay cannot read Messages replies; grant Full Disk Access or set IMESSAGE_MESSAGES_DB_PATH",
     );
   });
 

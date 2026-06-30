@@ -359,6 +359,7 @@ function connectorFromConnection(
   const imessageRecipient = isIMessage ? imessageStatus?.memberRecipient : null;
   const relayHeartbeat = isIMessage ? imessageStatus?.relayHeartbeat : null;
   const relayMessagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
+  const relayMessagesDbAccess = relayHeartbeat?.messagesDbAccess ?? "unknown";
   const imessageRelayReady = Boolean(
     isIMessage &&
       imessageRecipient?.verified &&
@@ -366,7 +367,8 @@ function connectorFromConnection(
       imessageStatus.configured &&
       !imessageStatus.dryRun &&
       relayHeartbeat?.active &&
-      relayMessagesAccess === "ok",
+      relayMessagesAccess === "ok" &&
+      relayMessagesDbAccess === "ok",
   );
   const status = imessageRelayReady
     ? "connected"
@@ -390,9 +392,11 @@ function connectorFromConnection(
               : !imessageStatus?.enabled
                 ? "recipient verified; relay is disabled before agents can use Messages"
                 : relayHeartbeat?.active && relayMessagesAccess === "failed"
-                  ? "recipient verified; relay is blocked by Messages access before agents can use Messages"
+                  ? "recipient verified; relay cannot send through Messages yet"
+                  : relayHeartbeat?.active && relayMessagesDbAccess === "failed"
+                    ? "recipient verified; relay cannot read Messages replies yet"
                   : relayHeartbeat?.active
-                    ? "recipient verified; relay API is live but Messages access is not proven before agents can use Messages"
+                    ? "recipient verified; relay API is live but Messages reply-sync access is not proven yet"
                     : "recipient verified; relay is not live before agents can use Messages"
           : "test needed before agents can relay to " + imessageRecipient.recipient
         : connection.summary,

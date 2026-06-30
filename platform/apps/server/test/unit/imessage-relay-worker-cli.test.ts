@@ -103,7 +103,13 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
-      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "ok" },
+      {
+        relayId: "mac-Gagans-MacBook-Pro",
+        host: "Gagans-MacBook-Pro",
+        version: null,
+        messagesAccess: "ok",
+        messagesDbAccess: "unknown",
+      },
     );
   });
 
@@ -144,7 +150,13 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
-      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "failed" },
+      {
+        relayId: "mac-Gagans-MacBook-Pro",
+        host: "Gagans-MacBook-Pro",
+        version: null,
+        messagesAccess: "failed",
+        messagesDbAccess: "unknown",
+      },
     );
   });
 
@@ -191,7 +203,13 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(postJsonImpl).toHaveBeenCalledWith(
       "https://api.ipop.ai/imessage/relay/heartbeat",
       "secret",
-      { relayId: "mac-Gagans-MacBook-Pro", host: "Gagans-MacBook-Pro", version: null, messagesAccess: "failed" },
+      {
+        relayId: "mac-Gagans-MacBook-Pro",
+        host: "Gagans-MacBook-Pro",
+        version: null,
+        messagesAccess: "failed",
+        messagesDbAccess: "unknown",
+      },
     );
   });
 
@@ -216,6 +234,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
     const adapter = {
       latestMessageRowId: vi.fn(async () => 123),
     } as unknown as MacOsMessagesAdapter;
+    const postJsonImpl = vi.fn(async () => ({ relayHeartbeat: { active: true } }));
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
@@ -227,7 +246,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         host: "Gagans-MacBook-Pro",
       }),
       execFileImpl: vi.fn(async () => ({ stdout: "ok", stderr: "" })),
-      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      postJsonImpl,
       adapter,
     });
 
@@ -237,6 +256,11 @@ describe("iMessage relay worker CLI (#1341)", () => {
       message: "Messages chat database not found at /tmp/messages-chat.db",
     });
     expect(adapter.latestMessageRowId).not.toHaveBeenCalled();
+    expect(postJsonImpl).toHaveBeenCalledWith(
+      "https://api.ipop.ai/imessage/relay/heartbeat",
+      "secret",
+      expect.objectContaining({ messagesAccess: "ok", messagesDbAccess: "failed" }),
+    );
   });
 
   it("doctor reports the Full Disk Access remedy when Messages chat.db exists but is not readable", async () => {
@@ -245,6 +269,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         throw new Error('unable to open database "/tmp": authorization denied');
       }),
     } as unknown as MacOsMessagesAdapter;
+    const postJsonImpl = vi.fn(async () => ({ relayHeartbeat: { active: true } }));
     const checks = await runRelayDoctor({
       config: parseRelayWorkerConfig({
         argv: ["--doctor"],
@@ -256,7 +281,7 @@ describe("iMessage relay worker CLI (#1341)", () => {
         host: "Gagans-MacBook-Pro",
       }),
       execFileImpl: vi.fn(async () => ({ stdout: "ok", stderr: "" })),
-      postJsonImpl: vi.fn(async () => ({ relayHeartbeat: { active: true } })),
+      postJsonImpl,
       adapter,
     });
 
@@ -268,6 +293,16 @@ describe("iMessage relay worker CLI (#1341)", () => {
     expect(checks.find((check) => check.name === "messages-db")?.message).toContain(
       "IMESSAGE_MESSAGES_DB_PATH",
     );
+    expect(postJsonImpl).toHaveBeenCalledWith(
+      "https://api.ipop.ai/imessage/relay/heartbeat",
+      "secret",
+      expect.objectContaining({ messagesAccess: "ok", messagesDbAccess: "failed" }),
+    );
+    expect(checks).toContainEqual({
+      name: "api-heartbeat",
+      status: "pass",
+      message: "signed heartbeat accepted by https://api.ipop.ai",
+    });
   });
 
   it("maps new inbound Messages rows onto the latest sent room receipt", () => {

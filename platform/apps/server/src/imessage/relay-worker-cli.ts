@@ -291,13 +291,14 @@ export async function runRelayDoctor(input: {
     execFileImpl: input.execFileImpl,
   });
   checks.push(messagesAccess);
+  let messagesDbAccess: "unknown" | "ok" | "failed" = "unknown";
   if (input.config.inboundEnabled) {
-    checks.push(
-      await checkMessagesDb({
-        adapter: input.adapter ?? new MacOsMessagesAdapter(input.config.osascriptBin, input.config.sqliteBin),
-        dbPath: input.config.messagesDbPath,
-      }),
-    );
+    const messagesDb = await checkMessagesDb({
+      adapter: input.adapter ?? new MacOsMessagesAdapter(input.config.osascriptBin, input.config.sqliteBin),
+      dbPath: input.config.messagesDbPath,
+    });
+    messagesDbAccess = messagesDb.status === "pass" ? "ok" : "failed";
+    checks.push(messagesDb);
   }
   try {
     await (input.postJsonImpl ?? postJson)(apiUrl(input.config.baseUrl, "/imessage/relay/heartbeat"), input.config.secret, {
@@ -305,6 +306,7 @@ export async function runRelayDoctor(input: {
       host: input.config.host,
       version: input.config.version,
       messagesAccess: messagesAccess.status === "pass" ? "ok" : "failed",
+      messagesDbAccess,
     });
     checks.push({
       name: "api-heartbeat",
@@ -463,10 +465,20 @@ async function runOnce(input: {
   stateFile: string;
   inboundLimit: number;
 }): Promise<number> {
+  let messagesDbAccess: "ok" | "failed" | undefined;
+  if (input.inboundEnabled) {
+    try {
+      await input.adapter.latestMessageRowId({ dbPath: input.messagesDbPath });
+      messagesDbAccess = "ok";
+    } catch {
+      messagesDbAccess = "failed";
+    }
+  }
   await postJson(apiUrl(input.baseUrl, "/imessage/relay/heartbeat"), input.secret, {
     relayId: input.relayId,
     host: input.host,
     version: input.version,
+    ...(messagesDbAccess ? { messagesDbAccess } : {}),
   });
   const claim = await postJson<ClaimResponse>(apiUrl(input.baseUrl, "/imessage/relay/outbound/claim"), input.secret, {
     relayId: input.relayId,

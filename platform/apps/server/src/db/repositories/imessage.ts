@@ -10,6 +10,7 @@ import {
 export type IMessageRelayJobPurpose = "verification" | "room" | "notification";
 export type IMessageRelayJobStatus = "pending" | "claimed" | "sent" | "failed";
 export type IMessageRelayMessagesAccess = "unknown" | "ok" | "failed";
+export type IMessageRelayMessagesDbAccess = "unknown" | "ok" | "failed";
 
 export interface IMessageRecipient {
   id: string;
@@ -48,6 +49,7 @@ export interface IMessageRelayHeartbeat {
   host: string;
   version: string | null;
   messagesAccess: IMessageRelayMessagesAccess;
+  messagesDbAccess: IMessageRelayMessagesDbAccess;
   checkedInAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -103,6 +105,7 @@ const HEARTBEAT_COLUMNS = {
   host: imessageRelayHeartbeats.host,
   version: imessageRelayHeartbeats.version,
   messagesAccess: imessageRelayHeartbeats.messagesAccess,
+  messagesDbAccess: imessageRelayHeartbeats.messagesDbAccess,
   checkedInAt: imessageRelayHeartbeats.checkedInAt,
   createdAt: imessageRelayHeartbeats.createdAt,
   updatedAt: imessageRelayHeartbeats.updatedAt,
@@ -374,6 +377,7 @@ export async function recordIMessageRelayHeartbeat(input: {
   host: string;
   version?: string | null;
   messagesAccess?: IMessageRelayMessagesAccess;
+  messagesDbAccess?: IMessageRelayMessagesDbAccess;
   nowMs?: number;
 }): Promise<IMessageRelayHeartbeat> {
   const now = new Date(input.nowMs ?? Date.now());
@@ -383,6 +387,7 @@ export async function recordIMessageRelayHeartbeat(input: {
     checkedInAt: now,
     updatedAt: now,
     ...(input.messagesAccess ? { messagesAccess: input.messagesAccess } : {}),
+    ...(input.messagesDbAccess ? { messagesDbAccess: input.messagesDbAccess } : {}),
   };
   const [row] = await db
     .insert(imessageRelayHeartbeats)
@@ -391,6 +396,7 @@ export async function recordIMessageRelayHeartbeat(input: {
       host: input.host,
       version: input.version ?? null,
       messagesAccess: input.messagesAccess ?? "unknown",
+      messagesDbAccess: input.messagesDbAccess ?? "unknown",
       checkedInAt: now,
       updatedAt: now,
     })

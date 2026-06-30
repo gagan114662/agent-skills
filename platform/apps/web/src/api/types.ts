@@ -215,6 +215,7 @@ export interface IMessageRelayHeartbeatView {
   version: string | null;
   checkedInAt: string;
   messagesAccess: "unknown" | "ok" | "failed";
+  messagesDbAccess: "unknown" | "ok" | "failed";
   active: boolean;
 }
 

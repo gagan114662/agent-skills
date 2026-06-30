@@ -31,6 +31,7 @@ export const imessageRecipients = pgTable(
 export const IMESSAGE_RELAY_JOB_PURPOSES = ["verification", "room", "notification"] as const;
 export const IMESSAGE_RELAY_JOB_STATUSES = ["pending", "claimed", "sent", "failed"] as const;
 export const IMESSAGE_RELAY_MESSAGES_ACCESS_STATUSES = ["unknown", "ok", "failed"] as const;
+export const IMESSAGE_RELAY_MESSAGES_DB_ACCESS_STATUSES = ["unknown", "ok", "failed"] as const;
 
 /** Durable outbound queue for a signed Mac Messages relay worker (#1341). */
 export const imessageRelayJobs = pgTable(
@@ -73,6 +74,9 @@ export const imessageRelayHeartbeats = pgTable(
     host: text("host").notNull(),
     version: text("version"),
     messagesAccess: text("messages_access", { enum: IMESSAGE_RELAY_MESSAGES_ACCESS_STATUSES }).notNull().default("unknown"),
+    messagesDbAccess: text("messages_db_access", { enum: IMESSAGE_RELAY_MESSAGES_DB_ACCESS_STATUSES })
+      .notNull()
+      .default("unknown"),
     checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -82,6 +86,10 @@ export const imessageRelayHeartbeats = pgTable(
     messagesAccessCk: check(
       "imessage_relay_heartbeats_messages_access_ck",
       sql`${t.messagesAccess} IN ('unknown','ok','failed')`,
+    ),
+    messagesDbAccessCk: check(
+      "imessage_relay_heartbeats_messages_db_access_ck",
+      sql`${t.messagesDbAccess} IN ('unknown','ok','failed')`,
     ),
   }),
 );

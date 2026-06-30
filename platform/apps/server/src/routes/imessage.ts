@@ -122,6 +122,7 @@ function relayHeartbeatPayload(
     host: heartbeat.host,
     version: heartbeat.version,
     messagesAccess: heartbeat.messagesAccess,
+    messagesDbAccess: heartbeat.messagesDbAccess,
     checkedInAt: heartbeat.checkedInAt.toISOString(),
     active: Date.now() - checkedInAtMs <= RELAY_HEARTBEAT_ACTIVE_MS,
   };
@@ -133,11 +134,12 @@ function relayHeartbeatReadyForRoom(
   if (!heartbeat) return false;
   return (
     Date.now() - heartbeat.checkedInAt.getTime() <= RELAY_HEARTBEAT_ACTIVE_MS &&
-    heartbeat.messagesAccess === "ok"
+    heartbeat.messagesAccess === "ok" &&
+    heartbeat.messagesDbAccess === "ok"
   );
 }
 
-function normalizeMessagesAccess(raw: unknown): "unknown" | "ok" | "failed" | undefined {
+function normalizeRelayAccess(raw: unknown): "unknown" | "ok" | "failed" | undefined {
   return raw === "ok" || raw === "failed" || raw === "unknown" ? raw : undefined;
 }
 
@@ -326,7 +328,7 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
           status: "not_configured",
           dryRun: false,
           recipient: status.recipient,
-          error: "iMessage Mac relay must be active with Messages access before starting the room.",
+          error: "iMessage Mac relay must be active with Messages send and reply access before starting the room.",
           relayHeartbeat: relayHeartbeatPayload(relayHeartbeat),
         });
       }
@@ -385,7 +387,13 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
 
   app.post("/imessage/relay/heartbeat", async (req, reply) => {
     if (!requireRelaySecret(req, reply, opts.webhookSecret)) return;
-    const body = (req.body ?? {}) as { relayId?: unknown; host?: unknown; version?: unknown; messagesAccess?: unknown };
+    const body = (req.body ?? {}) as {
+      relayId?: unknown;
+      host?: unknown;
+      version?: unknown;
+      messagesAccess?: unknown;
+      messagesDbAccess?: unknown;
+    };
     const relayId = typeof body.relayId === "string" && body.relayId.trim() ? body.relayId.trim().slice(0, 120) : "mac-relay";
     const host = typeof body.host === "string" && body.host.trim() ? body.host.trim().slice(0, 180) : "macOS relay host";
     const version = typeof body.version === "string" && body.version.trim() ? body.version.trim().slice(0, 120) : null;
@@ -393,7 +401,8 @@ export async function imessageRoutes(app: FastifyInstance, opts: IMessageRoutesO
       relayId,
       host,
       version,
-      messagesAccess: normalizeMessagesAccess(body.messagesAccess),
+      messagesAccess: normalizeRelayAccess(body.messagesAccess),
+      messagesDbAccess: normalizeRelayAccess(body.messagesDbAccess),
     });
     return { relayHeartbeat: relayHeartbeatPayload(heartbeat) };
   });

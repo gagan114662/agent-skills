@@ -50,6 +50,7 @@ export interface MessagingProviderReadiness {
   relayHeartbeat?: {
     active: boolean;
     messagesAccess: "unknown" | "ok" | "failed";
+    messagesDbAccess: "unknown" | "ok" | "failed";
     checkedInAt: string | null;
     relayId: string | null;
     host: string | null;
@@ -221,7 +222,8 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
   );
   const heartbeatFresh = Boolean(input.relayHeartbeat && nowMs - input.relayHeartbeat.checkedInAt.getTime() <= 120_000);
   const messagesAccess = input.relayHeartbeat?.messagesAccess ?? "unknown";
-  const relayReady = heartbeatFresh && messagesAccess === "ok";
+  const messagesDbAccess = input.relayHeartbeat?.messagesDbAccess ?? "unknown";
+  const relayReady = heartbeatFresh && messagesAccess === "ok" && messagesDbAccess === "ok";
   const configured = input.status.enabled && input.status.configured && !input.status.dryRun && Boolean(input.recipient?.verifiedAt);
   const missingConfig: string[] = [];
   let state: MessagingReadinessState = roundTripState({
@@ -259,13 +261,21 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
   }
   if (heartbeatFresh && messagesAccess === "failed") {
     missingConfig.push("iMessage_messages_access");
-    notes.push(
-      "signed Mac relay cannot access Messages; grant Messages Automation and Full Disk Access or set IMESSAGE_MESSAGES_DB_PATH",
-    );
+    notes.push("signed Mac relay cannot control Messages; grant Messages Automation and keep Messages open");
   }
   if (heartbeatFresh && messagesAccess === "unknown") {
     missingConfig.push("iMessage_messages_access");
-    notes.push("signed Mac relay Messages access is not proven");
+    notes.push("signed Mac relay Messages send access is not proven");
+  }
+  if (heartbeatFresh && messagesDbAccess === "failed") {
+    missingConfig.push("iMessage_messages_db_access");
+    notes.push(
+      "signed Mac relay cannot read Messages replies; grant Full Disk Access or set IMESSAGE_MESSAGES_DB_PATH",
+    );
+  }
+  if (heartbeatFresh && messagesDbAccess === "unknown") {
+    missingConfig.push("iMessage_messages_db_access");
+    notes.push("signed Mac relay Messages reply-sync access is not proven");
   }
   if (outbound?.stale) notes.push("latest iMessage outbound proof is stale");
   if (inbound?.stale) notes.push("latest iMessage inbound proof is stale");
@@ -292,6 +302,7 @@ export function buildIMessageReadiness(input: IMessageReadinessInput): Messaging
     relayHeartbeat: {
       active: heartbeatFresh,
       messagesAccess,
+      messagesDbAccess,
       checkedInAt: input.relayHeartbeat?.checkedInAt.toISOString() ?? null,
       relayId: input.relayHeartbeat?.relayId ?? null,
       host: input.relayHeartbeat?.host ?? null,
