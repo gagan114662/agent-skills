@@ -333,6 +333,8 @@ function IMessageSetup({
   const verified = Boolean(status?.memberRecipient?.verified);
   const relayJob = status?.lastRelayJob ?? null;
   const relayHeartbeat = status?.relayHeartbeat ?? null;
+  const relayReadiness = status?.relay ?? null;
+  const jobSummary = relayReadiness?.jobSummary ?? null;
   const messagesAccess = relayHeartbeat?.messagesAccess ?? "unknown";
   const messagesDbAccess = relayHeartbeat?.messagesDbAccess ?? "unknown";
   const relayReady = Boolean(
@@ -366,6 +368,14 @@ function IMessageSetup({
   const inboundProof = inboundReceipt
     ? "last inbound iMessage reply landed: " + inboundReceipt.receipt
     : null;
+  const relayFacts = relayReadiness
+    ? [
+        { label: "queue", value: relayReadiness.queueReady ? "ready" : "missing secret", state: relayReadiness.queueReady ? "ok" : "warn" },
+        { label: "Mac host", value: relayReadiness.heartbeatReady ? "healthy" : relayHeartbeat?.active ? "needs access" : "waiting", state: relayReadiness.heartbeatReady ? "ok" : "warn" },
+        { label: "pending", value: String(jobSummary?.pending ?? 0), state: jobSummary?.pending ? "warn" : "ok" },
+        { label: "sent", value: jobSummary?.lastSentAt ? shortDateTime(jobSummary.lastSentAt) : String(jobSummary?.sent ?? 0), state: jobSummary?.sent ? "ok" : "idle" },
+      ]
+    : [];
 
   useEffect(() => {
     setRecipientInput(recipient);
@@ -446,13 +456,33 @@ function IMessageSetup({
         </div>
       </form>
       <p className="everyday-imessage-setup__detail">{detail}</p>
+      {relayFacts.length > 0 && (
+        <dl className="everyday-imessage-setup__relay" aria-label="iMessage relay readiness">
+          {relayFacts.map((fact) => (
+            <div key={fact.label} data-state={fact.state}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <p className="everyday-imessage-setup__detail">{relayHostProof}</p>
       {relayProof && <p className="everyday-imessage-setup__detail">{relayProof}</p>}
+      {jobSummary?.lastError && <p className="everyday-imessage-setup__error">last relay failure: {jobSummary.lastError}</p>}
       {inboundProof && <p className="everyday-imessage-setup__detail">{inboundProof}</p>}
       {notice && <p className="everyday-imessage-setup__notice" role="status">{notice}</p>}
       {error && <p className="everyday-imessage-setup__error" role="alert">{error}</p>}
     </section>
   );
+}
+
+function shortDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function relayJobProof(job: IMessageStatusResponse["lastRelayJob"] | null | undefined): string | null {

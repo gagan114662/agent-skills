@@ -9750,6 +9750,40 @@ select:focus-visible {
   min-height: 38px;
   padding: 8px 12px;
 }
+.everyday-imessage-setup__relay {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.everyday-imessage-setup__relay div {
+  min-width: 0;
+  border: 1px solid var(--ed-border);
+  border-radius: 10px;
+  padding: 8px 9px;
+  background: color-mix(in srgb, var(--ed-surface) 72%, transparent);
+}
+.everyday-imessage-setup__relay div[data-state="ok"] {
+  border-color: color-mix(in srgb, var(--ed-pop) 38%, var(--ed-border));
+}
+.everyday-imessage-setup__relay div[data-state="warn"] {
+  border-color: color-mix(in srgb, #ff9a89 42%, var(--ed-border));
+}
+.everyday-imessage-setup__relay dt {
+  margin: 0 0 3px;
+  color: var(--ed-text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+.everyday-imessage-setup__relay dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ed-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .everyday-imessage-setup__notice {
   color: var(--ed-pop);
 }
@@ -10202,6 +10236,9 @@ select:focus-visible {
   }
   .everyday-imessage-setup__copy span {
     justify-self: start;
+  }
+  .everyday-imessage-setup__relay {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .everyday-btn {
     width: 100%;
