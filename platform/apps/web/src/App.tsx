@@ -7,9 +7,11 @@ import { PublicDogfood } from "./components/dogfood/PublicDogfood.js";
 import { TheaterView } from "./components/theater/TheaterView.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
+import { PublicDoorNav } from "./components/onboarding/PublicDoorNav.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
+import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate, useRoute } from "./routing.js";
 import { useAppState, useStore } from "./store/StoreContext.js";
 
@@ -60,9 +62,18 @@ function DashboardRoute(): React.JSX.Element {
     void store.bootstrap();
   }, [store]);
 
-  if (phase === "ready") return <LiveEverydayShell dashboardFirst dashboardOnly />;
-  if (phase === "loading") return <Splash />;
-  return <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />;
+  let dashboard: React.JSX.Element;
+  if (phase === "ready") dashboard = <LiveEverydayShell dashboardFirst dashboardOnly />;
+  else if (phase === "loading") dashboard = <Splash />;
+  else dashboard = <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />;
+
+  return (
+    <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
+      <PublicDoorNav className="public-dashboard__nav" startHref="/start#onboard-target" />
+      <h1 className="sr-only">CMO brief</h1>
+      {dashboard}
+    </div>
+  );
 }
 
 function NotFoundRoute(): React.JSX.Element {

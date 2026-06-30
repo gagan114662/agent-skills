@@ -3896,6 +3896,28 @@ select:focus-visible {
   width: min(1120px, calc(100% - 40px));
   padding-top: clamp(18px, 3vw, 34px);
 }
+.public-dashboard {
+  min-height: 100vh;
+  background: #09090b;
+}
+.public-dashboard__nav {
+  width: min(1120px, calc(100% - 40px));
+  padding-top: clamp(18px, 3vw, 30px);
+}
+.public-dashboard__nav .onboard__brand-word.wordmark,
+.public-dashboard__nav .onboard-door-action {
+  color: #f7f2e8;
+}
+.public-dashboard__nav .onboard__brand-mark {
+  --pop-color: #f7f2e8;
+}
+.public-dashboard__nav .onboard__brand-proof {
+  background: rgba(247, 242, 232, 0.88);
+  color: #121212;
+}
+.public-dashboard__nav .onboard__brand-proof::before {
+  background: rgba(247, 242, 232, 0.88);
+}
 .pricing-page > main {
   flex: 1;
 }
@@ -8180,19 +8202,20 @@ select:focus-visible {
    watches a personalized deliverable build itself, section by section, then is invited to sign up. It
    reuses the #633 .deliverable__* section/badge/spinner styling for the artifact itself. */
 .demo {
-  max-width: 760px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 56px 24px 72px;
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
-.demo__head {
-  text-align: center;
+.demo__nav {
+  width: 100%;
 }
-.demo__brand {
-  display: inline-flex;
-  margin-bottom: 12px;
+.demo__head {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
 }
 .demo__eyebrow {
   margin: 0 0 8px;
@@ -8216,6 +8239,8 @@ select:focus-visible {
   line-height: 1.55;
 }
 .demo__form {
+  width: min(760px, 100%);
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -8260,6 +8285,8 @@ select:focus-visible {
   font-size: 13px;
 }
 .demo__working {
+  width: min(760px, 100%);
+  margin-inline: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8269,6 +8296,8 @@ select:focus-visible {
   font-size: 13px;
 }
 .demo__cta {
+  width: min(760px, 100%);
+  margin-inline: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-1));
@@ -8310,6 +8339,8 @@ select:focus-visible {
   margin-top: 2px;
 }
 .demo__reassurance {
+  width: min(760px, 100%);
+  margin-inline: auto;
   text-align: center;
   margin: 0;
   color: var(--text-dim);

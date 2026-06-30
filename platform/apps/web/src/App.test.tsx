@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App.js";
 import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
@@ -182,6 +182,20 @@ describe("App root routing", () => {
       "id",
       "dashboard",
     );
+    expect(screen.getByRole("heading", { name: "CMO brief", level: 1 })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "homepage actions" });
+    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login?return=%2Feveryday",
+    );
+    expect(within(nav).getByRole("link", { name: "Love: watch a demo" })).toHaveAttribute(
+      "href",
+      "/demo",
+    );
+    expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute(
+      "href",
+      "/start#onboard-target",
+    );
     expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("sample readout")).toBeInTheDocument();
@@ -206,6 +220,8 @@ describe("App root routing", () => {
 
     const dashboard = await screen.findByRole("region", { name: "CMO brief" });
     expect(dashboard).toHaveAttribute("id", "dashboard");
+    expect(screen.getByRole("heading", { name: "CMO brief", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "homepage actions" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("live workspace")).toBeInTheDocument();
