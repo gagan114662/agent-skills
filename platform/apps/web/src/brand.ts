@@ -1897,6 +1897,13 @@ export const EVERYDAY = {
       "nothing leaves the building or spends a penny without your nod. one tap stops the whole fleet, " +
       "any time. it's always on — you don't have to do a thing.",
     killSwitchAction: "stop everything",
+    killSwitchConfirm: "tap once more and the agents stop taking new work.",
+    killSwitchCancel: "not now",
+    killSwitchPending: "stopping the fleet...",
+    killSwitchEngaged: "all agents stopped. nothing new starts until you resume them.",
+    killSwitchResume: "resume agents",
+    killSwitchResumePending: "resuming the fleet...",
+    killSwitchError: "couldn't update the fleet switch. please try again.",
     /** Reassurance footer eyebrow. */
     eyebrow: "the boring-but-important bit",
   },

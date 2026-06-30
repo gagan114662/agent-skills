@@ -341,7 +341,7 @@ export function liveEverydayDataFromState(
       approvals: state.approvals.requests
         .filter((request) => request.status === "pending")
         .map((request) => approvalCard(request, state)),
-      fleetPaused: state.liveSessions.length === 0,
+      fleetPaused: false,
     },
     state,
   );
@@ -654,6 +654,7 @@ export function LiveEverydayShell({
   const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
   const [codexStatus, setCodexStatus] = useState<CodexSubscriptionStatus | null>(null);
+  const [fleetPaused, setFleetPaused] = useState(false);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();
@@ -708,6 +709,7 @@ export function LiveEverydayShell({
     <EverydayShell
       data={{
         ...data,
+        fleetPaused,
         connectors: connections
           ? connections.map((connection) => connectorFromConnection(connection, imessageStatus))
           : data.connectors,
@@ -730,6 +732,18 @@ export function LiveEverydayShell({
         await refreshIMessageStatus();
       }}
       onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
+      onEmergencyStop={async () => {
+        const workspaceId = state.identity?.workspaceId;
+        if (!workspaceId) throw new Error("No signed-in workspace is ready for the fleet switch.");
+        const result = await api.setKillSwitch(workspaceId, true);
+        setFleetPaused(result.killSwitch);
+      }}
+      onResumeFleet={async () => {
+        const workspaceId = state.identity?.workspaceId;
+        if (!workspaceId) throw new Error("No signed-in workspace is ready for the fleet switch.");
+        const result = await api.setKillSwitch(workspaceId, false);
+        setFleetPaused(result.killSwitch);
+      }}
       operatorPacketForGoal={codexOperatorPacket}
       dashboardFirst={dashboardFirst}
     />

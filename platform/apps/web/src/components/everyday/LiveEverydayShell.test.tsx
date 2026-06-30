@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ApprovalRequestDto } from "@reload/shared";
-import { LiveEverydayShell, withLiveRoomSessions } from "./LiveEverydayShell.js";
+import {
+  LiveEverydayShell,
+  liveEverydayDataFromState,
+  withLiveRoomSessions,
+} from "./LiveEverydayShell.js";
 import { EVERYDAY } from "../../brand.js";
 import { api } from "../../api/client.js";
 import { makeMessage, renderWithStore } from "../../test/utils.js";
@@ -186,6 +190,21 @@ describe("LiveEverydayShell (#1181)", () => {
       "Operator is handing work to the next lane",
     );
     expect(projected.marketingBrief?.headline).toContain("Scout working, Quill working, Operator working");
+  });
+
+  it("does not mistake an idle room for an engaged kill switch", () => {
+    const data = liveEverydayDataFromState(
+      {
+        activeChannelId: "c1",
+        directory: {},
+        liveSessions: [],
+        messagesByChannel: {},
+        approvals: { requests: [] },
+        identity: { memberId: "m1", workspaceId: "ws1", displayName: "Ada" },
+      } as unknown as AppState,
+    );
+
+    expect(data.fleetPaused).toBe(false);
   });
 
   it("surfaces Mac relay heartbeat plus outbound and inbound iMessage proof (#1341)", async () => {
