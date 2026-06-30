@@ -688,6 +688,19 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
           <h2 className="everyday-serif everyday-dashboard__heading">{d.heading}</h2>
           <p className="everyday-dashboard__subhead">{d.subhead}</p>
           <p className="everyday-dashboard__headline">{brief.headline}</p>
+          <div className="everyday-dashboard__executive" aria-label={d.executive}>
+            <p className="everyday-eyebrow">{d.executive}</p>
+            <ol>
+              {brief.executiveSummary.map((signal) => (
+                <li key={signal.label} data-tone={signal.tone}>
+                  <span>{signal.label}</span>
+                  <strong>{signal.value}</strong>
+                  <em>{signal.detail}</em>
+                  <b>{signal.proof}</b>
+                </li>
+              ))}
+            </ol>
+          </div>
           <div className="everyday-dashboard__since" aria-label={d.since}>
             <p className="everyday-eyebrow">{d.since}</p>
             <ul>
@@ -717,6 +730,19 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
               <span>{metric.label}</span>
               <em data-tone={metric.tone}>{metric.detail}</em>
               <b>{metric.proof}</b>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="everyday-dashboard__capacity" aria-label={d.capacity}>
+        <p className="everyday-eyebrow">{d.capacity}</p>
+        <ol>
+          {brief.capacity.map((item) => (
+            <li key={item.label} data-tone={item.tone}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <em>{item.detail}</em>
+              <b>{item.proof}</b>
             </li>
           ))}
         </ol>
@@ -828,12 +854,44 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
   const pendingDecisions = data.approvals.length;
   const hasBrief = data.thread.length > 0;
   const hasExternalReceipts = liveReceipts > 0;
+  const blockedChannelCount = Math.max(data.connectors.length - connectedChannels.length, 0);
+  const shippedWork = deliverables + liveReceipts;
   return {
     mode: "live",
     headline:
       hasBrief || pendingDecisions || hasExternalReceipts
         ? "Live CMO readout from this workspace: work in motion, decisions waiting, channel truth, and proof gaps."
         : "No measurable marketing work yet. Start the room and this brief should fill with live proof, not sample traction.",
+    executiveSummary: [
+      {
+        label: "work shipped today",
+        value: String(shippedWork),
+        detail: liveReceipts > 0 ? String(liveReceipts) + " external receipt(s)" : String(deliverables) + " draft artifact(s)",
+        tone: shippedWork > 0 ? (liveReceipts > 0 ? "good" : "warn") : "bad",
+        proof: liveReceipts > 0 ? "transparency receipt log" : deliverables > 0 ? "workspace thread deliverables" : "no work receipts yet",
+      },
+      {
+        label: "pipeline moved",
+        value: compactCount(data.northStar.customers),
+        detail: data.northStar.revenue,
+        tone: data.northStar.customers > 0 ? "good" : "bad",
+        proof: "workspace north-star row",
+      },
+      {
+        label: "approvals waiting",
+        value: String(pendingDecisions),
+        detail: pendingDecisions > 0 ? "owner decision needed" : "no owner queue",
+        tone: pendingDecisions > 0 ? "warn" : "neutral",
+        proof: "workspace approval queue",
+      },
+      {
+        label: "blocked channels",
+        value: String(blockedChannelCount),
+        detail: connectedChannels.length > 0 ? String(connectedChannels.length) + " usable" : "no live acquisition channel",
+        tone: blockedChannelCount > 0 ? "bad" : "good",
+        proof: "workspace connector catalog",
+      },
+    ],
     sinceLastCheckIn: dashboardChangesSinceLastCheckIn(data, {
       hasBrief,
       hasExternalReceipts,
@@ -904,6 +962,29 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         tone: hasExternalReceipts ? "good" : "neutral",
         proofKind: hasExternalReceipts ? "external" : "live",
         proof: hasExternalReceipts ? "transparency receipt log" : "no external receipts yet",
+      },
+    ],
+    capacity: [
+      {
+        label: "active campaign lanes",
+        value: hasBrief ? "1 / 1" : "0 / 1",
+        detail: hasBrief ? "upgrade when a second lane queues" : "brief one campaign before upgrading",
+        tone: hasBrief ? "warn" : "neutral",
+        proof: hasBrief ? "workspace thread has active brief" : "no active brief",
+      },
+      {
+        label: "agent seats used",
+        value: String(data.room.length) + " / 3",
+        detail: data.room.length > 3 ? "team shape exceeds starter seat limit" : "inside starter team limit",
+        tone: data.room.length > 3 ? "warn" : "neutral",
+        proof: "workspace agent lane state",
+      },
+      {
+        label: "monthly work cap",
+        value: data.northStar.revenue + " / $200",
+        detail: data.northStar.revenue === "$0" ? "no paid work/spend to cap yet" : "compare revenue/spend before upgrade",
+        tone: data.northStar.revenue === "$0" ? "neutral" : "warn",
+        proof: "workspace north-star revenue row",
       },
     ],
     funnel: [

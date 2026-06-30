@@ -133,6 +133,14 @@ export interface MarketingGoal {
   readonly confidence: "high" | "medium" | "low";
 }
 
+export interface ExecutiveSignal {
+  readonly label: string;
+  readonly value: string;
+  readonly detail: string;
+  readonly tone: "good" | "warn" | "bad" | "neutral";
+  readonly proof: string;
+}
+
 export interface MarketingFunnelStage {
   readonly label: string;
   readonly count: string;
@@ -143,9 +151,11 @@ export interface MarketingFunnelStage {
 export interface MarketingBrief {
   readonly mode: "live" | "sample";
   readonly headline: string;
+  readonly executiveSummary: readonly ExecutiveSignal[];
   readonly sinceLastCheckIn: readonly MarketingAction[];
   readonly goal: MarketingGoal;
   readonly metrics: readonly MarketingMetric[];
+  readonly capacity: readonly ExecutiveSignal[];
   readonly funnel: readonly MarketingFunnelStage[];
   readonly channels: readonly MarketingChannel[];
   readonly blockers: readonly MarketingAction[];
@@ -213,6 +223,12 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       mode: "live",
       headline:
         "No marketing signal yet. Start the room and the team should fill this with pipeline, channel, spend, and blocker data.",
+      executiveSummary: [
+        { label: "work shipped today", value: "0", detail: "no thread or receipt activity yet", tone: "bad", proof: "empty live workspace" },
+        { label: "pipeline moved", value: "0", detail: "no lead source connected", tone: "bad", proof: "empty live workspace" },
+        { label: "approvals waiting", value: "0", detail: "nothing queued for owner review", tone: "neutral", proof: "empty approval queue" },
+        { label: "blocked channels", value: "all", detail: "connect one real acquisition source", tone: "bad", proof: "connector catalog has no live channel" },
+      ],
       sinceLastCheckIn: [
         { title: "No measurable workspace change yet", owner: "Operator", proof: "no thread, approval, or receipt activity" },
       ],
@@ -230,6 +246,11 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
         { label: "customers", value: "0", detail: "no won customer recorded", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
         { label: "spend", value: "$0", detail: "no paid campaigns live", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
         { label: "roi", value: "—", detail: "needs revenue + spend", tone: "neutral", proofKind: "live", proof: "empty live workspace" },
+      ],
+      capacity: [
+        { label: "active campaign lanes", value: "0 / 1", detail: "brief one campaign before upgrading", tone: "neutral", proof: "starter lane is unused" },
+        { label: "agent seats used", value: "0 / 3", detail: "room has not started", tone: "neutral", proof: "no active team packet" },
+        { label: "monthly work cap", value: "$0 / $200", detail: "upgrade only after useful work is queued", tone: "neutral", proof: "no spend or work receipt yet" },
       ],
       funnel: [
         { label: "audience read", count: "0", detail: "no site/source crawl receipt", tone: "bad" },
@@ -660,6 +681,12 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
       mode: "sample",
       headline:
         "Public sample: ipop has shipped product work, but customer acquisition is still blocked until auth, connectors, and live outbound proof are real.",
+      executiveSummary: [
+        { label: "work shipped today", value: "3", detail: "public product fixes, not customer outcomes", tone: "warn", proof: "PR #1276, PR #1277, dashboard receipt" },
+        { label: "pipeline moved", value: "0", detail: "no external leads qualified or contacted", tone: "bad", proof: "zero prospect/customer receipts" },
+        { label: "approvals waiting", value: "2", detail: "owner must choose first channel and success bar", tone: "warn", proof: "public CMO brief decisions" },
+        { label: "blocked channels", value: "3", detail: "iMessage, outbound, connectors need live proof", tone: "bad", proof: "GitHub #1283/#1285/#1286" },
+      ],
       sinceLastCheckIn: [
         { title: "Homepage serves the simplified marketing-door flow", owner: "Scout", proof: "production / route receipt" },
         { title: "Dashboard labels proof classes instead of implying fake traction", owner: "Lens", proof: "public CMO brief" },
@@ -679,6 +706,11 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { label: "replies", value: "0", detail: "no external conversations yet", tone: "bad", proofKind: "external", proof: "zero reply/customer receipts" },
         { label: "customers", value: "0", detail: "dogfood only so far", tone: "bad", proofKind: "external", proof: "zero signup/payment/customer approval receipts" },
         { label: "spend / roi", value: "$0 / —", detail: "no paid acquisition running", tone: "neutral", proofKind: "live", proof: "no paid campaign spend receipt" },
+      ],
+      capacity: [
+        { label: "active campaign lanes", value: "0 / 1", detail: "first live acquisition lane not proven", tone: "bad", proof: "no contacted-lead receipt" },
+        { label: "agent seats used", value: "4 / 3", detail: "sample shows team shape; plan must enforce seats live", tone: "warn", proof: "sample room has Scout/Quill/Echo/Bid" },
+        { label: "monthly work cap", value: "$0 / $200", detail: "do not upsell until the first lane creates value", tone: "neutral", proof: "no spend/revenue receipt" },
       ],
       funnel: [
         { label: "market read", count: "1", detail: "Tomo/reload.chat dogfood brief converted into product work", tone: "warn" },
