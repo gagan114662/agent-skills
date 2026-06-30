@@ -43,15 +43,29 @@ describe("httpSmokeDriver", () => {
     const driver = httpSmokeDriver(downFetch);
     const res = await driver.run(getCheck("auth-sign-in")!, { target: "https://ipop.ai" });
     expect(res.ok).toBe(false);
-    expect(res.actual).toBeTruthy();
+    expect(res.actual).toContain("status 503 from https://ipop.ai");
+    expect(res.actual).toContain("after 3 attempts");
+    expect(downFetch).toHaveBeenCalledTimes(3);
   });
 
-  it("turns a thrown fetch (DNS/timeout) into a failed result, not a crash", async () => {
+  it("retries a thrown fetch (DNS/timeout) and reports the probed URL, not a crash", async () => {
     const throwFetch = vi.fn(async () => {
       throw new Error("ENOTFOUND");
     }) as unknown as typeof fetch;
     const res = await httpSmokeDriver(throwFetch).run(getCheck("layout-no-overflow")!, { target: "https://ipop.ai" });
     expect(res.ok).toBe(false);
+    expect(res.actual).toContain("request failed for https://ipop.ai");
+    expect(res.actual).toContain("after 3 attempts");
+    expect(throwFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses the derived API health URL for session smoke failures", async () => {
+    const throwFetch = vi.fn(async () => {
+      throw new Error("fetch failed");
+    }) as unknown as typeof fetch;
+    const res = await httpSmokeDriver(throwFetch).run(getCheck("sessions-produce-replies")!, { target: "https://ipop.ai" });
+    expect(res.ok).toBe(false);
+    expect(res.actual).toContain("request failed for https://api.ipop.ai/livez");
   });
 
   it("resolveDriver returns the no-op for an unknown/none name and never a real browser", () => {

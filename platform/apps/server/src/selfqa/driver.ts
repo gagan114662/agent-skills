@@ -31,13 +31,37 @@ export const noopDriver: QaBrowserDriver = {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const SNIPPET_MAX = 200;
+const PROBE_ATTEMPTS = 3;
+const PROBE_RETRY_DELAY_MS = 100;
+
+interface ProbeResult {
+  ok: boolean;
+  detail: string;
+  retryable: boolean;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorDetail(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error && cause.message && cause.message !== err.message) {
+    return err.message + "; cause: " + cause.message;
+  }
+  if (cause && typeof cause === "object" && "code" in cause) {
+    return err.message + "; cause: " + String((cause as { code?: unknown }).code);
+  }
+  return err.message;
+}
 
 /** Probe one URL. Any failure (timeout, DNS, reset, non-2xx) becomes a failed result, never a throw. */
-async function probe(
+async function probeOnce(
   url: string,
   fetchImpl: typeof fetch,
   timeoutMs: number,
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<ProbeResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -53,13 +77,36 @@ async function probe(
       ok,
       detail: ok
         ? `status ${res.status}`
-        : `status ${res.status}: ${body.replace(/\s+/g, " ").trim().slice(0, SNIPPET_MAX)}`,
+        : `status ${res.status} from ${url}: ${body.replace(/\s+/g, " ").trim().slice(0, SNIPPET_MAX)}`,
+      retryable: res.status >= 500,
     };
   } catch (err) {
-    return { ok: false, detail: `request failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, detail: `request failed for ${url}: ${errorDetail(err)}`, retryable: true };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function probe(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+): Promise<{ ok: boolean; detail: string }> {
+  let latest: ProbeResult | null = null;
+  for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt++) {
+    latest = await probeOnce(url, fetchImpl, timeoutMs);
+    if (latest.ok || !latest.retryable || attempt === PROBE_ATTEMPTS) break;
+    await sleep(PROBE_RETRY_DELAY_MS);
+  }
+  if (!latest) return { ok: false, detail: `request failed for ${url}: no probe attempts ran` };
+  if (latest.ok) return { ok: true, detail: latest.detail };
+  return {
+    ok: false,
+    detail:
+      latest.retryable && PROBE_ATTEMPTS > 1
+        ? latest.detail + ` after ${PROBE_ATTEMPTS} attempts`
+        : latest.detail,
+  };
 }
 
 /** Derive the API health URL for session/API-dependent checks from the web target. Best-effort. */
