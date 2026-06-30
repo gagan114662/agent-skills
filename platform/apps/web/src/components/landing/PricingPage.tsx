@@ -103,7 +103,7 @@ export function PricingPage(): React.JSX.Element {
                     </li>
                   ))}
                 </ul>
-                <Link
+                <a
                   href={`/signup?plan=${plan.key}&billing=${billingInterval}`}
                   className={`btn pricing-card__cta${plan.featured ? " btn--primary" : ""}`}
                   aria-label={`${PRICING.planCta} — ${plan.name}`}
@@ -115,7 +115,7 @@ export function PricingPage(): React.JSX.Element {
                   }
                 >
                   {PRICING.planCta}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>
@@ -151,9 +151,9 @@ export function PricingPage(): React.JSX.Element {
             {LANDING.sections.ctaTitle}
           </h2>
           <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
-          <Link href="/signup" className="btn btn--primary landing__cta landing__final-cta" onClick={() => trackCta("/signup", "pricing-final")}>
+          <a href="/signup" className="btn btn--primary landing__cta landing__final-cta" onClick={() => trackCta("/signup", "pricing-final")}>
             {LANDING.sections.ctaButton}
-          </Link>
+          </a>
           <Link href="/demo" className="btn landing__cta landing__cta--ghost">
             {LANDING.hero.ctaDemo}
           </Link>

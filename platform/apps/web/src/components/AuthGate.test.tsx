@@ -81,7 +81,8 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/password/i), "hunter2");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /you're already in/i })).toBeInTheDocument());
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
   it("switching from /login to sign-up reveals the workspace + display-name fields", async () => {
@@ -146,9 +147,9 @@ describe("AuthGate routing", () => {
 
     expect(await screen.findByText(/marketing team in your messages/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /imessage/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /whatsapp/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /telegram/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /imessage/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /whatsapp/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /telegram/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
@@ -349,7 +350,8 @@ describe("AuthGate routing", () => {
     await acceptSignupTerms();
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
-    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: /opening checkout/i })).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(checkout).toHaveBeenCalledWith(
         "w1",
@@ -377,10 +379,27 @@ describe("AuthGate routing", () => {
       { me: async () => TEST_IDENTITY },
     );
 
-    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: /opening checkout/i })).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(checkout).toHaveBeenCalledWith("w1", "pro", "month", undefined, "ipop_signedin"),
     );
+  });
+
+  it("does not fall through to workspace content when signed-in checkout fails (#1489)", async () => {
+    act(() => navigate("/signup?plan=pro&billing=month"));
+    vi.spyOn(api.billing, "startCheckout").mockRejectedValue(new Error("billing unavailable"));
+
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    expect(await screen.findByRole("heading", { name: /checkout did not open/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /back to pricing/i })).toHaveAttribute("href", "/pricing");
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
   it("redirects a logged-out app-route hit to sign-in, preserving the return path (#304)", async () => {
@@ -482,7 +501,7 @@ describe("AuthGate routing", () => {
     expect(window.location.pathname).toBe("/start");
   });
 
-  it("sends a logged-in visitor straight to the app, even on an auth route", async () => {
+  it("keeps a logged-in visitor out of workspace content on a bare auth route (#1489)", async () => {
     act(() => navigate("/login"));
     renderWithStore(
       <AuthGate>
@@ -491,7 +510,8 @@ describe("AuthGate routing", () => {
       { me: async () => TEST_IDENTITY },
     );
 
-    await waitFor(() => expect(screen.getByText("WORKSPACE CONTENT")).toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: /you're already in/i })).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });
 });
