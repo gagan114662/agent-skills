@@ -1724,7 +1724,12 @@ export const EVERYDAY = {
     empty: "type a domain or goal and we'll wake the room up.",
     chatLabel: "text your ipop team",
     codexBadge: "team engine active",
-    imessageNote: "iMessage relay is the intended home. Until the native relay is live, this preview shows the exact room, approvals, and receipts inside ipop.",
+    imessageNotes: {
+      ready: "Messages loop proven. Your team can text receipts, replies, approvals, and agent updates through iMessage.",
+      replyNeeded: "Messages can send the room. Reply once from iMessage and we'll mark the full loop proven.",
+      relayBlocked: "Messages is not live yet. The web room stays honest until the Mac relay proves send and reply access.",
+      setupNeeded: "Add your iMessage destination to move this room from web-only to Messages.",
+    },
     statuses: {
       idle: "waiting",
       working: "working",
