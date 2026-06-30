@@ -40,6 +40,7 @@ const CUSTOMER: ConnectionsResponse = {
 const noopHandlers = {
   onOAuthConnect: () => {},
   onOneClickConnect: () => {},
+  onTelegramConnect: () => {},
   onWaitlist: () => {},
   onInternalConnect: () => {},
   onDisconnect: () => {},
@@ -134,6 +135,33 @@ describe("Connections (#258)", () => {
     render(<Connections data={data} {...noopHandlers} onOneClickConnect={onOneClickConnect} />);
     fireEvent.click(screen.getByRole("button", { name: /connect email/i }));
     expect(onOneClickConnect).toHaveBeenCalledWith("email");
+  });
+
+  it("starts Telegram with the bot-native connect flow instead of empty one-click enable (#1267)", () => {
+    const onTelegramConnect = vi.fn();
+    const onOneClickConnect = vi.fn();
+    const data: ConnectionsResponse = {
+      canManageInternal: false,
+      connections: [
+        view({
+          id: "telegram_room",
+          label: "Connect Telegram",
+          auth: "one_click",
+          status: "available",
+        }),
+      ],
+    };
+    render(
+      <Connections
+        data={data}
+        {...noopHandlers}
+        onTelegramConnect={onTelegramConnect}
+        onOneClickConnect={onOneClickConnect}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /connect telegram/i }));
+    expect(onTelegramConnect).toHaveBeenCalledTimes(1);
+    expect(onOneClickConnect).not.toHaveBeenCalled();
   });
 
   it("surfaces live-send config blockers even when outbound email is available to connect (#395)", () => {

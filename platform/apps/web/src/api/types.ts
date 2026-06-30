@@ -132,6 +132,15 @@ export interface ConnectionsResponse {
   canManageInternal: boolean;
 }
 
+export interface TelegramConnectionLinkResponse {
+  status: "pending_telegram_start";
+  botUsername: string | null;
+  startParam: string;
+  startCommand: string;
+  startUrl: string | null;
+  expiresAtMs: number;
+}
+
 export type ConnectionOAuthStartResponse =
   | {
       status: "pending_approval";
