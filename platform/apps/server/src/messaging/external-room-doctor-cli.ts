@@ -25,7 +25,10 @@ export interface DoctorCheck {
 export interface ExternalRoomDoctorConfig {
   telegram: TelegramEnv;
   whatsapp: WhatsAppEnv;
+  providers: ExternalRoomMessageProvider[];
   sendSmoke: boolean;
+  productionAudit: boolean;
+  productionApiBaseUrl: string;
   smokeText: string;
   workspaceId: string;
   channelId: string;
@@ -34,10 +37,16 @@ export interface ExternalRoomDoctorConfig {
 
 export interface ExternalRoomDoctorDeps {
   fetchImpl?: typeof fetch;
+  listProductionSecrets?: () => Promise<ProductionSecret[]>;
   telegramService?: TelegramRoomService;
   whatsappService?: WhatsAppRoomService;
   recordExternalRoomMessageReceipt?: RecordExternalRoomMessageReceipt;
   resolveServiceSecrets?: ResolveServiceSecrets;
+}
+
+interface ProductionSecret {
+  name: string;
+  status?: string;
 }
 
 function hasArg(argv: string[], name: string): boolean {
@@ -49,6 +58,31 @@ function argValue(argv: string[], name: string): string | undefined {
   if (index >= 0) return argv[index + 1];
   const prefix = name + "=";
   return argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+}
+
+function argValues(argv: string[], name: string): string[] {
+  const values: string[] = [];
+  const prefix = name + "=";
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (!arg) continue;
+    const next = argv[index + 1];
+    if (arg === name && next) values.push(next);
+    else if (arg.startsWith(prefix)) values.push(arg.slice(prefix.length));
+  }
+  return values;
+}
+
+function parseProviders(argv: string[]): ExternalRoomMessageProvider[] {
+  const requested = argValues(argv, "--provider")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (requested.length === 0) return ["telegram", "whatsapp"];
+  const providers = [...new Set(requested)].filter((provider): provider is ExternalRoomMessageProvider =>
+    provider === "telegram" || provider === "whatsapp",
+  );
+  return providers.length > 0 ? providers : ["telegram", "whatsapp"];
 }
 
 export function parseExternalRoomDoctorConfig(
@@ -63,7 +97,13 @@ export function parseExternalRoomDoctorConfig(
   return {
     telegram: env,
     whatsapp,
+    providers: parseProviders(argv),
     sendSmoke: hasArg(argv, "--send-smoke"),
+    productionAudit: hasArg(argv, "--production"),
+    productionApiBaseUrl:
+      argValue(argv, "--api-base-url")?.replace(/\/+$/, "") ??
+      input.env?.RELOAD_PRODUCTION_API_BASE_URL?.replace(/\/+$/, "") ??
+      PRODUCTION_API_BASE_URL,
     smokeText:
       argValue(argv, "--text") ??
       "ipop external-room doctor smoke: provider setup is reachable; reply in-thread to complete E2E proof.",
@@ -75,6 +115,137 @@ export function parseExternalRoomDoctorConfig(
     channelId: argValue(argv, "--channel-id")?.trim() ?? "",
     messageId: argValue(argv, "--message-id")?.trim() ?? "",
   };
+}
+
+const REQUIRED_PRODUCTION_SECRETS: Record<ExternalRoomMessageProvider, string[]> = {
+  telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
+  whatsapp: [
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    "WHATSAPP_APP_SECRET",
+  ],
+};
+
+async function defaultListProductionSecrets(): Promise<ProductionSecret[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  const { stdout } = await execFileAsync("flyctl", ["secrets", "list", "-a", "reload-api"]);
+  return stdout
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, , status] = line.split(/[│|]/).map((part) => part.trim());
+      return { name: name ?? "", status };
+    })
+    .filter((secret) => secret.name.length > 0);
+}
+
+async function productionSecretChecks(input: {
+  listProductionSecrets: () => Promise<ProductionSecret[]>;
+  providers: ExternalRoomMessageProvider[];
+}): Promise<DoctorCheck[]> {
+  let secrets: ProductionSecret[];
+  try {
+    secrets = await input.listProductionSecrets();
+  } catch (error) {
+    return [
+      {
+        name: "production-secrets",
+        status: "fail",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
+  }
+  const deployed = new Map(secrets.map((secret) => [secret.name, secret.status ?? "unknown"]));
+  return input.providers.map((provider) => {
+    const required = REQUIRED_PRODUCTION_SECRETS[provider];
+    const missing = required.filter((name) => !deployed.has(name));
+    const present = required.filter((name) => deployed.has(name));
+    if (missing.length > 0) {
+      return {
+        name: provider + "-production-secrets",
+        status: "fail",
+        message:
+          "missing in production: " +
+          missing.join(", ") +
+          (present.length > 0 ? "; present: " + present.join(", ") : ""),
+      };
+    }
+    return {
+      name: provider + "-production-secrets",
+      status: "pass",
+      message:
+        "present in production but not locally testable without provider credentials: " +
+        present.map((name) => name + " (" + deployed.get(name) + ")").join(", "),
+    };
+  });
+}
+
+async function productionEndpointChecks(input: {
+  apiBaseUrl: string;
+  fetchImpl: typeof fetch;
+}): Promise<DoctorCheck[]> {
+  const apiBaseUrl = input.apiBaseUrl.replace(/\/+$/, "");
+  const checks: DoctorCheck[] = [];
+  try {
+    const version = await jsonFetch({
+      url: apiBaseUrl + "/version",
+      fetchImpl: input.fetchImpl,
+    });
+    const payload = version.payload as { version?: string } | null;
+    checks.push({
+      name: "production-version",
+      status: version.ok && typeof payload?.version === "string" ? "pass" : "fail",
+      message:
+        version.ok && typeof payload?.version === "string"
+          ? "live /version is " + payload.version
+          : "/version failed with HTTP " + version.status,
+    });
+  } catch (error) {
+    checks.push({
+      name: "production-version",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const readyz = await jsonFetch({
+      url: apiBaseUrl + "/readyz",
+      fetchImpl: input.fetchImpl,
+    });
+    const payload = readyz.payload as {
+      status?: string;
+      db?: string;
+      redis?: string;
+      loops?: { status?: string; disabledCritical?: string[] };
+    } | null;
+    const ready =
+      readyz.ok &&
+      payload?.status === "ready" &&
+      payload.db === "up" &&
+      payload.redis === "up" &&
+      payload.loops?.status === "ready";
+    checks.push({
+      name: "production-readyz",
+      status: ready ? "pass" : "fail",
+      message: ready
+        ? "live /readyz is ready; db=up redis=up loops=ready"
+        : "/readyz not ready: " + JSON.stringify(payload ?? { httpStatus: readyz.status }),
+    });
+  } catch (error) {
+    checks.push({
+      name: "production-readyz",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return checks;
 }
 
 function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[]): string {
@@ -389,6 +560,7 @@ export async function runExternalRoomDoctor(
   deps: ExternalRoomDoctorDeps = {},
 ): Promise<DoctorCheck[]> {
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const listProductionSecrets = deps.listProductionSecrets ?? defaultListProductionSecrets;
   const telegramService = deps.telegramService ?? new TelegramRoomService(config.telegram);
   const whatsappService = deps.whatsappService ?? new WhatsAppRoomService(config.whatsapp);
   const resolveSecrets = deps.resolveServiceSecrets ?? resolveServiceSecrets;
@@ -400,62 +572,90 @@ export async function runExternalRoomDoctor(
     });
   const checks: DoctorCheck[] = [];
 
-  checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv));
-  checks.push(await checkTelegramIdentity({ config: config.telegram, fetchImpl }));
-  const telegramChatId = config.sendSmoke
-    ? await resolveWorkspaceDestination({
-        workspaceId: config.workspaceId,
-        serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
-        envKey: TELEGRAM_WORKSPACE_CHAT_ID_KEY,
-        fallback: config.telegram.roomChatId,
-        resolveServiceSecrets: resolveSecrets,
-      })
-    : undefined;
-  const telegramSmoke = await maybeSendTelegramSmoke({
-    service: telegramService,
-    chatId: telegramChatId,
-    text: config.smokeText,
-    enabled: config.sendSmoke,
-    workspaceId: config.workspaceId,
-  });
-  checks.push(telegramSmoke.check);
-  const telegramReceipt = await maybeRecordSmokeReceipt({
-    provider: "telegram",
-    config,
-    providerConversationId: telegramSmoke.providerConversationId,
-    providerMessageId: telegramSmoke.providerMessageId,
-    recordExternalRoomMessageReceipt,
-  });
-  if (telegramReceipt) checks.push(telegramReceipt);
+  if (config.productionAudit) {
+    checks.push(
+      ...(await productionSecretChecks({
+        listProductionSecrets,
+        providers: config.providers,
+      })),
+    );
+    checks.push(
+      ...(await productionEndpointChecks({
+        apiBaseUrl: config.productionApiBaseUrl,
+        fetchImpl,
+      })),
+    );
+    if (!config.sendSmoke) {
+      checks.push({
+        name: "production-send-smoke",
+        status: "warn",
+        message:
+          "production secret audit only; pass --send-smoke with provider credentials and a connected workspace to prove live send/reply",
+      });
+      return checks;
+    }
+  }
 
-  checks.push(missingEnvCheck("whatsapp", whatsappService.status().missingEnv));
-  checks.push(await checkWhatsAppSender({ config: config.whatsapp, fetchImpl }));
-  checks.push(checkWhatsAppSignature(whatsappService));
-  const whatsAppRecipient = config.sendSmoke
-    ? await resolveWorkspaceDestination({
-        workspaceId: config.workspaceId,
-        serviceKey: WHATSAPP_ROOM_CONNECTION_ID,
-        envKey: WHATSAPP_WORKSPACE_RECIPIENT_KEY,
-        fallback: config.whatsapp.roomRecipient,
-        resolveServiceSecrets: resolveSecrets,
-      })
-    : undefined;
-  const whatsAppSmoke = await maybeSendWhatsAppSmoke({
-    service: whatsappService,
-    recipient: whatsAppRecipient,
-    text: config.smokeText,
-    enabled: config.sendSmoke,
-    workspaceId: config.workspaceId,
-  });
-  checks.push(whatsAppSmoke.check);
-  const whatsAppReceipt = await maybeRecordSmokeReceipt({
-    provider: "whatsapp",
-    config,
-    providerConversationId: whatsAppSmoke.providerConversationId,
-    providerMessageId: whatsAppSmoke.providerMessageId,
-    recordExternalRoomMessageReceipt,
-  });
-  if (whatsAppReceipt) checks.push(whatsAppReceipt);
+  if (config.providers.includes("telegram")) {
+    checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv));
+    checks.push(await checkTelegramIdentity({ config: config.telegram, fetchImpl }));
+    const telegramChatId = config.sendSmoke
+      ? await resolveWorkspaceDestination({
+          workspaceId: config.workspaceId,
+          serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+          envKey: TELEGRAM_WORKSPACE_CHAT_ID_KEY,
+          fallback: config.telegram.roomChatId,
+          resolveServiceSecrets: resolveSecrets,
+        })
+      : undefined;
+    const telegramSmoke = await maybeSendTelegramSmoke({
+      service: telegramService,
+      chatId: telegramChatId,
+      text: config.smokeText,
+      enabled: config.sendSmoke,
+      workspaceId: config.workspaceId,
+    });
+    checks.push(telegramSmoke.check);
+    const telegramReceipt = await maybeRecordSmokeReceipt({
+      provider: "telegram",
+      config,
+      providerConversationId: telegramSmoke.providerConversationId,
+      providerMessageId: telegramSmoke.providerMessageId,
+      recordExternalRoomMessageReceipt,
+    });
+    if (telegramReceipt) checks.push(telegramReceipt);
+  }
+
+  if (config.providers.includes("whatsapp")) {
+    checks.push(missingEnvCheck("whatsapp", whatsappService.status().missingEnv));
+    checks.push(await checkWhatsAppSender({ config: config.whatsapp, fetchImpl }));
+    checks.push(checkWhatsAppSignature(whatsappService));
+    const whatsAppRecipient = config.sendSmoke
+      ? await resolveWorkspaceDestination({
+          workspaceId: config.workspaceId,
+          serviceKey: WHATSAPP_ROOM_CONNECTION_ID,
+          envKey: WHATSAPP_WORKSPACE_RECIPIENT_KEY,
+          fallback: config.whatsapp.roomRecipient,
+          resolveServiceSecrets: resolveSecrets,
+        })
+      : undefined;
+    const whatsAppSmoke = await maybeSendWhatsAppSmoke({
+      service: whatsappService,
+      recipient: whatsAppRecipient,
+      text: config.smokeText,
+      enabled: config.sendSmoke,
+      workspaceId: config.workspaceId,
+    });
+    checks.push(whatsAppSmoke.check);
+    const whatsAppReceipt = await maybeRecordSmokeReceipt({
+      provider: "whatsapp",
+      config,
+      providerConversationId: whatsAppSmoke.providerConversationId,
+      providerMessageId: whatsAppSmoke.providerMessageId,
+      recordExternalRoomMessageReceipt,
+    });
+    if (whatsAppReceipt) checks.push(whatsAppReceipt);
+  }
 
   return checks;
 }
