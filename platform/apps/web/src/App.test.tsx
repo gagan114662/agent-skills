@@ -7,6 +7,7 @@ import { fakeRealtime, makeFakeDeps } from "./test/utils.js";
 import { APP_ROUTES, navigate } from "./routing.js";
 import { api } from "./api/client.js";
 import { FIRST_RUN_RECEIPT_KEY } from "./components/onboarding/first-run-receipt.js";
+import { PRICING } from "./brand.js";
 
 const unauthorized = () => {
   throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -112,6 +113,37 @@ describe("App root routing", () => {
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
+  });
+
+  it("opens direct /pricing as the public pricing page instead of the branded 404 (#1482)", async () => {
+    navigate("/pricing");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: PRICING.title })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "homepage actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
+  });
+
+  it("opens direct /start as the public homepage flow instead of the branded 404 (#1482)", async () => {
+    navigate("/start");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
   });
 
   it("renders a branded not-found page for unknown routes instead of the app shell (#1458)", async () => {
