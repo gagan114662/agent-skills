@@ -131,9 +131,9 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     await waitFor(() => expect(onStartRoom).toHaveBeenCalledWith("ipop.ai"));
     expect(screen.getAllByText("ipop.ai").length).toBeGreaterThan(0);
-    expect(
-      await screen.findByText("The team engine is not connected to your signed-in subscription yet."),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByText("The team engine is not connected to your signed-in subscription yet.").length).toBeGreaterThan(0),
+    );
     expect(screen.queryByText(EVERYDAY.thread.working("Scout"))).not.toBeInTheDocument();
     expect(screen.queryByText("I can take product/code handoffs once the team agrees what should ship.")).not.toBeInTheDocument();
     expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
@@ -145,6 +145,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(dashboard).toHaveAttribute("id", "dashboard");
     expect(within(dashboard).getByText(EVERYDAY.dashboard.funnel)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.channels)).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.since)).toBeInTheDocument();
     expect(within(dashboard).getAllByText(EVERYDAY.dashboard.blockers).length).toBeGreaterThan(0);
     expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
@@ -176,7 +177,9 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(metrics).getAllByText("external proof").length).toBeGreaterThan(0);
     expect(within(metrics).getAllByText("live").length).toBeGreaterThan(0);
     expect(within(metrics).queryByText("sample")).not.toBeInTheDocument();
-    expect(within(dashboard).getByText("zero signup/payment/customer approval receipts")).toBeInTheDocument();
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.since)).toBeInTheDocument();
+    expect(within(dashboard).getByText("External customer proof remains zero")).toBeInTheDocument();
+    expect(within(dashboard).getAllByText("zero signup/payment/customer approval receipts").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
   });
 

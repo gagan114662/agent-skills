@@ -129,6 +129,11 @@ function withFirstRunReceipt(
     marketingBrief: {
       mode: "live",
       headline: firstRun.finding,
+      sinceLastCheckIn: [
+        { title: "First useful marketing result captured", owner: "Scout", proof: firstRun.receipt },
+        { title: "Draft artifact is ready for the owner", owner: "Quill", proof: firstRun.artifactTitle },
+        { title: "External sends remain gated", owner: "Operator", proof: "no external transparency receipt created" },
+      ],
       goal: {
         label: "first-run stage",
         target: "first useful marketing result",

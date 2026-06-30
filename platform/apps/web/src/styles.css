@@ -9342,6 +9342,39 @@ select:focus-visible {
   font-size: 15px;
   line-height: 1.55;
 }
+.everyday-dashboard__since {
+  margin-top: 14px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: color-mix(in srgb, var(--ed-bg) 84%, transparent);
+  padding: 12px;
+}
+.everyday-dashboard__since .everyday-eyebrow {
+  margin-bottom: 8px;
+}
+.everyday-dashboard__since ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.everyday-dashboard__since li {
+  display: grid;
+  gap: 2px;
+}
+.everyday-dashboard__since strong {
+  color: var(--ed-text);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.everyday-dashboard__since span,
+.everyday-dashboard__since em {
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.3;
+}
 .everyday-dashboard__goal {
   margin-top: 16px;
   border: 1px solid var(--ed-border);

@@ -1806,6 +1806,7 @@ export const EVERYDAY = {
     goalTarget: "target",
     pace: "pace",
     funnel: "growth funnel",
+    since: "since last check-in",
     channels: "channel performance",
     blockers: "blocked",
     decisions: "needs your call",
