@@ -245,6 +245,19 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("legal/trust")).toBeInTheDocument();
   });
 
+  it("can render the dashboard as a focused one-icon summary without the full workspace below it", () => {
+    render(<EverydayShell data={seedEveryday()} dashboardFirst dashboardOnly />);
+
+    expect(screen.getByRole("region", { name: EVERYDAY.dashboard.heading })).toHaveAttribute(
+      "id",
+      "dashboard",
+    );
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: EVERYDAY.connectors.heading })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: EVERYDAY.approvals.heading })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: EVERYDAY.transparency.heading })).not.toBeInTheDocument();
+  });
+
   it("labels public dogfood dashboard metrics by proof class instead of implying sample traction is live", () => {
     render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });

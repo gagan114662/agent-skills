@@ -675,7 +675,8 @@ async function activateFirstRunTeam(
 
 export function LiveEverydayShell({
   dashboardFirst = false,
-}: { dashboardFirst?: boolean } = {}): React.JSX.Element {
+  dashboardOnly = false,
+}: { dashboardFirst?: boolean; dashboardOnly?: boolean } = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
@@ -774,6 +775,7 @@ export function LiveEverydayShell({
       }}
       operatorPacketForGoal={codexOperatorPacket}
       dashboardFirst={dashboardFirst}
+      dashboardOnly={dashboardOnly}
     />
   );
 }

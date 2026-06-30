@@ -1294,6 +1294,7 @@ export function EverydayShell({
   onResumeFleet,
   operatorPacketForGoal,
   dashboardFirst = false,
+  dashboardOnly = false,
 }: {
   data?: EverydayData;
   hour?: number;
@@ -1308,6 +1309,7 @@ export function EverydayShell({
   onResumeFleet?: () => Promise<void> | void;
   operatorPacketForGoal?: (goal: string) => string;
   dashboardFirst?: boolean;
+  dashboardOnly?: boolean;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -1403,44 +1405,48 @@ export function EverydayShell({
 
   return (
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
-      <main className="everyday-shell__main">
+      <main className={dashboardOnly ? "everyday-shell__main everyday-shell__main--dashboard" : "everyday-shell__main"}>
         {dashboardFirst && (
           <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
         )}
-        <GroupChatHero
-          greeting={greeting}
-          lanes={room}
-          thread={thread}
-          memberName={data.memberName}
-          onSubmit={startRoom}
-          operatorPacket={operatorPacket}
-        />
-        {!dashboardFirst && (
-          <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
+        {!dashboardOnly && (
+          <>
+            <GroupChatHero
+              greeting={greeting}
+              lanes={room}
+              thread={thread}
+              memberName={data.memberName}
+              onSubmit={startRoom}
+              operatorPacket={operatorPacket}
+            />
+            {!dashboardFirst && (
+              <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
+            )}
+            <ConnectorSetup
+              connectors={data.connectors}
+              onConnect={onConnectorConnect}
+              imessageStatus={imessageStatus}
+              onSaveIMessageRecipient={onSaveIMessageRecipient}
+              onTestIMessageRecipient={onTestIMessageRecipient}
+              onDeleteIMessageRecipient={onDeleteIMessageRecipient}
+            />
+            <NorthStarBar data={data.northStar} />
+            <ApprovalQueue
+              cards={pending}
+              justShipped={shipped.length > 0}
+              onShip={(card) => decide(card, "ship")}
+              onRedo={(card, note) => decide(card, "redo", note)}
+              statuses={statuses}
+              errors={errors}
+            />
+            <TransparencyLog actions={data.transparency} />
+            <SafetyFooter
+              paused={data.fleetPaused}
+              onEmergencyStop={onEmergencyStop}
+              onResumeFleet={onResumeFleet}
+            />
+          </>
         )}
-        <ConnectorSetup
-          connectors={data.connectors}
-          onConnect={onConnectorConnect}
-          imessageStatus={imessageStatus}
-          onSaveIMessageRecipient={onSaveIMessageRecipient}
-          onTestIMessageRecipient={onTestIMessageRecipient}
-          onDeleteIMessageRecipient={onDeleteIMessageRecipient}
-        />
-        <NorthStarBar data={data.northStar} />
-        <ApprovalQueue
-          cards={pending}
-          justShipped={shipped.length > 0}
-          onShip={(card) => decide(card, "ship")}
-          onRedo={(card, note) => decide(card, "redo", note)}
-          statuses={statuses}
-          errors={errors}
-        />
-        <TransparencyLog actions={data.transparency} />
-        <SafetyFooter
-          paused={data.fleetPaused}
-          onEmergencyStop={onEmergencyStop}
-          onResumeFleet={onResumeFleet}
-        />
       </main>
     </div>
   );
