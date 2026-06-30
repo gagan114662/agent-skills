@@ -184,7 +184,7 @@ describe("App root routing", () => {
     );
     expect(screen.getByRole("heading", { name: "CMO brief", level: 1 })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "homepage actions" });
-    expect(within(nav).getByRole("link", { name: "Log in" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Login" })).toHaveAttribute(
       "href",
       "/login?return=%2Feveryday",
     );
