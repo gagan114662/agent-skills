@@ -14,6 +14,38 @@ function jsonResponse(payload: unknown, init: { status?: number } = {}): Respons
 }
 
 describe("external room doctor CLI (#1267)", () => {
+  it("audits production secret presence without requiring plaintext local provider credentials (#1501)", async () => {
+    const config = parseExternalRoomDoctorConfig({ env: {}, argv: ["--production"] });
+
+    const checks = await runExternalRoomDoctor(config, {
+      listProductionSecrets: vi.fn(async () => [
+        { name: "TELEGRAM_BOT_TOKEN", status: "Deployed" },
+        { name: "TELEGRAM_WEBHOOK_SECRET", status: "Deployed" },
+      ]),
+    });
+
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "telegram-production-secrets",
+          status: "pass",
+          message: expect.stringContaining("present in production but not locally testable"),
+        }),
+        expect.objectContaining({
+          name: "whatsapp-production-secrets",
+          status: "fail",
+          message: expect.stringContaining("WHATSAPP_ACCESS_TOKEN"),
+        }),
+        expect.objectContaining({
+          name: "production-send-smoke",
+          status: "warn",
+          message: expect.stringContaining("--send-smoke"),
+        }),
+      ]),
+    );
+    expect(checks.find((check) => check.name === "telegram-config")).toBeUndefined();
+  });
+
   it("reports missing Telegram and WhatsApp production config without making provider calls", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const config = parseExternalRoomDoctorConfig({ env: {}, argv: [] });

@@ -26,6 +26,7 @@ export interface ExternalRoomDoctorConfig {
   telegram: TelegramEnv;
   whatsapp: WhatsAppEnv;
   sendSmoke: boolean;
+  productionAudit: boolean;
   smokeText: string;
   workspaceId: string;
   channelId: string;
@@ -34,10 +35,16 @@ export interface ExternalRoomDoctorConfig {
 
 export interface ExternalRoomDoctorDeps {
   fetchImpl?: typeof fetch;
+  listProductionSecrets?: () => Promise<ProductionSecret[]>;
   telegramService?: TelegramRoomService;
   whatsappService?: WhatsAppRoomService;
   recordExternalRoomMessageReceipt?: RecordExternalRoomMessageReceipt;
   resolveServiceSecrets?: ResolveServiceSecrets;
+}
+
+interface ProductionSecret {
+  name: string;
+  status?: string;
 }
 
 function hasArg(argv: string[], name: string): boolean {
@@ -64,6 +71,7 @@ export function parseExternalRoomDoctorConfig(
     telegram: env,
     whatsapp,
     sendSmoke: hasArg(argv, "--send-smoke"),
+    productionAudit: hasArg(argv, "--production"),
     smokeText:
       argValue(argv, "--text") ??
       "ipop external-room doctor smoke: provider setup is reachable; reply in-thread to complete E2E proof.",
@@ -75,6 +83,73 @@ export function parseExternalRoomDoctorConfig(
     channelId: argValue(argv, "--channel-id")?.trim() ?? "",
     messageId: argValue(argv, "--message-id")?.trim() ?? "",
   };
+}
+
+const REQUIRED_PRODUCTION_SECRETS: Record<ExternalRoomMessageProvider, string[]> = {
+  telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
+  whatsapp: [
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    "WHATSAPP_APP_SECRET",
+  ],
+};
+
+async function defaultListProductionSecrets(): Promise<ProductionSecret[]> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile);
+  const { stdout } = await execFileAsync("flyctl", ["secrets", "list", "-a", "reload-api"]);
+  return stdout
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, _digest, status] = line.split(/[│|]/).map((part) => part.trim());
+      return { name: name ?? "", status };
+    })
+    .filter((secret) => secret.name.length > 0);
+}
+
+async function productionSecretChecks(input: {
+  listProductionSecrets: () => Promise<ProductionSecret[]>;
+}): Promise<DoctorCheck[]> {
+  let secrets: ProductionSecret[];
+  try {
+    secrets = await input.listProductionSecrets();
+  } catch (error) {
+    return [
+      {
+        name: "production-secrets",
+        status: "fail",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
+  }
+  const deployed = new Map(secrets.map((secret) => [secret.name, secret.status ?? "unknown"]));
+  return (Object.keys(REQUIRED_PRODUCTION_SECRETS) as ExternalRoomMessageProvider[]).map((provider) => {
+    const required = REQUIRED_PRODUCTION_SECRETS[provider];
+    const missing = required.filter((name) => !deployed.has(name));
+    const present = required.filter((name) => deployed.has(name));
+    if (missing.length > 0) {
+      return {
+        name: provider + "-production-secrets",
+        status: "fail",
+        message:
+          "missing in production: " +
+          missing.join(", ") +
+          (present.length > 0 ? "; present: " + present.join(", ") : ""),
+      };
+    }
+    return {
+      name: provider + "-production-secrets",
+      status: "pass",
+      message:
+        "present in production but not locally testable without provider credentials: " +
+        present.map((name) => name + " (" + deployed.get(name) + ")").join(", "),
+    };
+  });
 }
 
 function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[]): string {
@@ -389,6 +464,7 @@ export async function runExternalRoomDoctor(
   deps: ExternalRoomDoctorDeps = {},
 ): Promise<DoctorCheck[]> {
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const listProductionSecrets = deps.listProductionSecrets ?? defaultListProductionSecrets;
   const telegramService = deps.telegramService ?? new TelegramRoomService(config.telegram);
   const whatsappService = deps.whatsappService ?? new WhatsAppRoomService(config.whatsapp);
   const resolveSecrets = deps.resolveServiceSecrets ?? resolveServiceSecrets;
@@ -399,6 +475,19 @@ export async function runExternalRoomDoctor(
       return mod.recordExternalRoomMessageReceipt(...args);
     });
   const checks: DoctorCheck[] = [];
+
+  if (config.productionAudit) {
+    checks.push(...(await productionSecretChecks({ listProductionSecrets })));
+    if (!config.sendSmoke) {
+      checks.push({
+        name: "production-send-smoke",
+        status: "warn",
+        message:
+          "production secret audit only; pass --send-smoke with provider credentials and a connected workspace to prove live send/reply",
+      });
+      return checks;
+    }
+  }
 
   checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv));
   checks.push(await checkTelegramIdentity({ config: config.telegram, fetchImpl }));
