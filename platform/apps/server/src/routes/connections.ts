@@ -19,6 +19,7 @@ import {
   decideInternalConnect,
   decideOneClickConnect,
   decideWaitlist,
+  type ConnectionProofInput,
 } from "../connections/view.js";
 import { verifyConnectionHealth } from "../connections/health.js";
 import { emailOutboundConfigIssue } from "../connections/email-readiness.js";
@@ -34,9 +35,15 @@ import {
 import { getRequest, recordExecution } from "../db/repositories/approvals.js";
 import {
   listServiceStatuses,
+  resolveServiceSecrets,
   setServiceCredentials,
   revokeServiceCredentials,
 } from "../db/repositories/external-credentials.js";
+import {
+  getLatestExternalRoomRoundTripProof,
+  type ExternalRoomMessageProvider,
+} from "../db/repositories/external-room-message-receipts.js";
+import { buildExternalProviderReadiness } from "../messaging/readiness.js";
 import { channelForEspProvider, type OutboundChannel } from "../outbound-channel/channel.js";
 import { connectChannel, revokeChannel } from "../outbound-channel/service.js";
 
@@ -130,6 +137,8 @@ type MessagingProviderProof =
   | { ok: true; secrets: Record<string, string> }
   | { ok: false; error: string };
 
+type DestinationNormalizer = (raw: unknown) => string | null;
+
 function normalizeTelegramChatId(raw: unknown): string | null {
   if (typeof raw === "number" && Number.isSafeInteger(raw)) return String(raw);
   if (typeof raw !== "string") return null;
@@ -220,24 +229,27 @@ function whatsappProviderProofSecrets(input: Record<string, unknown>): Messaging
   };
 }
 
+function externalRoomProofReceipt(input: {
+  provider: ExternalRoomMessageProvider;
+  proof: { channelId: string | null; messageId: string | null } | null;
+}): string | null {
+  if (!input.proof?.channelId || !input.proof.messageId) return null;
+  return `external-room:${input.provider}:${input.proof.channelId}:${input.proof.messageId}`;
+}
+
+function externalRoomFailureReason(label: string, notes: readonly string[]): string {
+  const detail = notes.length > 0 ? ` ${notes.join("; ")}` : "";
+  return `Destination is recorded, but no same-thread ${label} send and reply proof has passed yet.${detail}`;
+}
+
 export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
   function isOwnerWorkspace(workspaceId: string): boolean {
     return loadConfig(workspaceId).marketing.ownerWorkspaceId === workspaceId;
   }
 
-  async function connectionProofs(workspaceId: string): Promise<
-    Map<
-      string,
-      {
-        connected: boolean;
-        envKeys: string[];
-        fingerprint: string;
-        connectedAtMs: number;
-      }
-    >
-  > {
+  async function connectionProofs(workspaceId: string): Promise<Map<string, ConnectionProofInput>> {
     const rows = await listServiceStatuses(workspaceId);
-    const proofs = new Map(
+    const proofs = new Map<string, ConnectionProofInput>(
       rows.map((r) => [
         r.serviceKey,
         {
@@ -260,7 +272,81 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
         break;
       }
     }
+    await Promise.all([
+      applyExternalRoomConnectionProof({
+        workspaceId,
+        rows,
+        proofs,
+        serviceKey: TELEGRAM_ROOM_CONNECTION_ID,
+        destinationKey: TELEGRAM_CHAT_ID_KEY,
+        provider: "telegram",
+        label: "Telegram",
+        normalize: normalizeTelegramChatId,
+      }),
+      applyExternalRoomConnectionProof({
+        workspaceId,
+        rows,
+        proofs,
+        serviceKey: WHATSAPP_ROOM_CONNECTION_ID,
+        destinationKey: WHATSAPP_RECIPIENT_KEY,
+        provider: "whatsapp",
+        label: "WhatsApp",
+        normalize: normalizeWhatsAppRecipient,
+      }),
+    ]);
     return proofs;
+  }
+
+  async function applyExternalRoomConnectionProof(input: {
+    workspaceId: string;
+    rows: Awaited<ReturnType<typeof listServiceStatuses>>;
+    proofs: Map<string, ConnectionProofInput>;
+    serviceKey: string;
+    destinationKey: string;
+    provider: ExternalRoomMessageProvider;
+    label: string;
+    normalize: DestinationNormalizer;
+  }): Promise<void> {
+    const row = input.rows.find((candidate) => candidate.serviceKey === input.serviceKey);
+    const baseProof = input.proofs.get(input.serviceKey);
+    if (!row || !baseProof || row.status !== "connected") return;
+
+    const secrets = await resolveServiceSecrets(input.workspaceId, input.serviceKey);
+    const destination = input.normalize(secrets[input.destinationKey]);
+    if (!destination) {
+      input.proofs.set(input.serviceKey, {
+        ...baseProof,
+        providerStatus: "unproven",
+        lastProofAt: null,
+        lastProofReceipt: null,
+        failureReason: `${input.label} destination is missing or invalid; reconnect the room destination before proof can pass.`,
+      });
+      return;
+    }
+
+    const proof = await getLatestExternalRoomRoundTripProof({
+      workspaceId: input.workspaceId,
+      provider: input.provider,
+      providerConversationId: destination,
+    });
+    const readiness = buildExternalProviderReadiness({
+      provider: input.provider,
+      label: input.label,
+      configured: true,
+      missingConfig: [],
+      connection: row,
+      destination,
+      outboundProof: proof.outbound,
+      inboundProof: proof.inbound,
+    });
+    const latestProof = readiness.latestInboundProof ?? readiness.latestOutboundProof;
+    input.proofs.set(input.serviceKey, {
+      ...baseProof,
+      providerStatus: readiness.healthy ? "healthy" : "unproven",
+      lastProofAt: latestProof ? Date.parse(latestProof.createdAt) : null,
+      lastProofReceipt: externalRoomProofReceipt({ provider: input.provider, proof: latestProof }),
+      failureReason: readiness.healthy ? null : externalRoomFailureReason(input.label, readiness.notes),
+    });
   }
 
   function runtimeDescriptors(workspaceId: string): ConnectionDescriptor[] {
