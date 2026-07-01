@@ -171,6 +171,25 @@ describe("readSiteSnapshot SSRF guard (#1530)", () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  it("returns a truthful deliverable snapshot when the public homepage serves an HTTP error", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response("<!doctype html><html><body></body></html>", {
+        status: 404,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    });
+
+    await expect(
+      readSiteSnapshot({ url: "https://getfoolish.com", host: "getfoolish.com", name: "Getfoolish" }, fetchImpl, publicResolver),
+    ).resolves.toMatchObject({
+      sourceUrl: "https://getfoolish.com/",
+      status: 404,
+      title: "HTTP 404 from getfoolish.com",
+      description: expect.stringContaining("buyers and crawlers are seeing an error"),
+      keywords: expect.arrayContaining(["getfoolish"]),
+    });
+  });
 });
 
 describe("buildDeliverable (#633)", () => {

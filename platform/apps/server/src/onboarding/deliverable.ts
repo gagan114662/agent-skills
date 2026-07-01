@@ -327,11 +327,13 @@ async function fetchSnapshotUrl(url: string, fetchImpl: typeof fetch, resolver: 
       current = next;
     }
     if (!res) return null;
-    if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "";
-    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return null;
+    const sourceUrl = res.url || current.href;
+    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
+      return res.ok ? null : httpStatusSnapshot(sourceUrl, res.status);
+    }
     const html = (await res.text().catch(() => "")).slice(0, MAX_HTML_BYTES);
-    return parseSiteSnapshot(res.url || current.href, res.status, html);
+    return parseSiteSnapshot(sourceUrl, res.status, html) ?? (res.ok ? null : httpStatusSnapshot(sourceUrl, res.status));
   } catch {
     return null;
   } finally {
@@ -354,6 +356,28 @@ export function parseSiteSnapshot(sourceUrl: string, status: number, html: strin
     ...(h1 ? { h1 } : {}),
     ctas,
     keywords,
+  };
+}
+
+function httpStatusSnapshot(sourceUrl: string, status: number): SiteSnapshot {
+  let host = "the site";
+  try {
+    host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    // Keep the generic host label; sourceUrl is still sanitized below.
+  }
+  const statusLine = "HTTP " + status + " from " + host;
+  const description =
+    "The public homepage responded with HTTP " +
+    status +
+    ", so we could not read normal homepage copy. That is the first marketing fix: buyers and crawlers are seeing an error instead of the landing page.";
+  return {
+    sourceUrl: sanitizeUrl(sourceUrl),
+    status,
+    title: statusLine,
+    description,
+    ctas: [],
+    keywords: extractKeywords(host.replace(/\./g, " ") + " " + statusLine),
   };
 }
 
