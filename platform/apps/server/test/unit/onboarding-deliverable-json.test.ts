@@ -1,21 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { onboardingRoutes } from "../../src/routes/onboarding.js";
+import type { SiteSnapshot } from "../../src/onboarding/deliverable.js";
 
 /**
  * Hermetic test of the #610 instant-demo single-shot feed: `GET /onboarding/deliverable`. It is the
  * non-streaming JSON sibling of the #633 SSE stream that the no-signup sandbox page fetches. PUBLIC (no
- * auth) and dependency-free (the deliverable is derived purely from the URL), so stub deps satisfy the
- * registration signature and no Postgres/onboarding service is touched.
+ * auth) and DB-free. The test injects a fake public-site reader so no live network is touched.
  */
 
 const stubService = {} as Parameters<typeof onboardingRoutes>[1]["service"];
 const stubDnsManager = {} as Parameters<typeof onboardingRoutes>[1]["dnsManager"];
+let snapshot: SiteSnapshot | null;
 
 let app: FastifyInstance;
 beforeEach(async () => {
+  snapshot = {
+    sourceUrl: "https://acme.com/",
+    status: 200,
+    title: "Acme Scheduling — book more demos",
+    description: "Acme helps B2B teams qualify leads and book better demo calls.",
+    h1: "Book better demo calls",
+    ctas: ["Book a demo", "Start free"],
+    keywords: ["demo", "calls", "leads"],
+  };
   app = Fastify();
-  await app.register(onboardingRoutes, { service: stubService, dnsManager: stubDnsManager });
+  await app.register(onboardingRoutes, {
+    service: stubService,
+    dnsManager: stubDnsManager,
+    deliverableSiteReader: async () => snapshot,
+  });
   await app.ready();
 });
 
@@ -34,6 +48,7 @@ describe("GET /onboarding/deliverable (#610 instant demo)", () => {
       title: string;
       subtitle: string;
       sections: { id: string; kind: string; heading: string; body: string }[];
+      siteRead: SiteSnapshot;
     };
 
     // Personalized to the typed URL.
@@ -41,6 +56,7 @@ describe("GET /onboarding/deliverable (#610 instant demo)", () => {
     expect(plan.business.name).toBe("Acme");
     expect(plan.title).toContain("Acme");
     expect(plan.subtitle).toContain("acme.com");
+    expect(plan.siteRead.title).toContain("Acme Scheduling");
 
     // A real, multi-section artifact whose bodies are woven with the brand/host (theirs, not a template).
     expect(plan.sections.length).toBeGreaterThan(2);
@@ -53,6 +69,8 @@ describe("GET /onboarding/deliverable (#610 instant demo)", () => {
     const blob = plan.sections.map((s) => s.body).join("\n");
     expect(blob).toContain("acme.com");
     expect(blob).toContain("Acme");
+    expect(blob).toContain("Book better demo calls");
+    expect(blob).toContain("Book a demo");
   });
 
   it("is deterministic for a given URL (same input → identical artifact)", async () => {
@@ -75,5 +93,12 @@ describe("GET /onboarding/deliverable (#610 instant demo)", () => {
 
     const localhost = await app.inject({ method: "GET", url: "/onboarding/deliverable?url=localhost" });
     expect(localhost.statusCode).toBe(400);
+  });
+
+  it("502s when the public homepage cannot be read", async () => {
+    snapshot = null;
+    const res = await app.inject({ method: "GET", url: "/onboarding/deliverable?url=acme.com" });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ error: expect.stringContaining("could not read") });
   });
 });

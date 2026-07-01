@@ -7,10 +7,11 @@ import type { DnsManager } from "../onboarding/dns/manager.js";
 import type { RequiredService } from "../onboarding/types.js";
 import { listDnsReceipts } from "../db/repositories/dns-receipts.js";
 import {
-  buildDeliverable,
+  buildDeliverableForBusiness,
   deriveBusiness,
   planToFrames,
-  type DeliverableBusiness,
+  type DeliverablePlan,
+  type SiteSnapshotReader,
 } from "../onboarding/deliverable.js";
 import {
   getWorkspaceOnboarding,
@@ -30,9 +31,10 @@ import {
  */
 export async function onboardingRoutes(
   app: FastifyInstance,
-  opts: { service: OnboardingService; dnsManager: DnsManager },
+  opts: { service: OnboardingService; dnsManager: DnsManager; deliverableSiteReader?: SiteSnapshotReader },
 ): Promise<void> {
   const { service, dnsManager } = opts;
+  const deliverableSiteReader = opts.deliverableSiteReader;
 
   async function enabled(workspaceId: string): Promise<boolean> {
     return resolveOnboardingCaps((await loadWorkspaceConfig(workspaceId)).onboarding).enabled;
@@ -50,37 +52,44 @@ export async function onboardingRoutes(
   //
   // PUBLIC + UNAUTHENTICATED on purpose — a brand-new visitor types a URL and immediately watches a real,
   // personalized artifact appear, with zero setup first. The Google sign-in / config happens in parallel in
-  // the browser, never as a gate. This route is a pure, offline generator: it derives everything from the
-  // typed URL (no DB, no outbound fetch → no SSRF), so it is deterministic and finishes well inside ~60s.
-  // The URL is UNTRUSTED (#200): we parse it structurally and only ever emit sanitized text — no execution,
-  // no fetch, no secrets. No money moves and there are no side effects, so nothing here needs the #13 queue.
+  // the browser, never as a gate. This route fetches the public homepage read-only, with SSRF clamps and a
+  // hard timeout, then emits sanitized text. No money moves and there are no side effects, so nothing here
+  // needs the #13 queue.
   // -------------------------------------------------------------------------------------------------
   app.get("/onboarding/deliverable/stream", async (req, reply) => {
     const business = deriveBusiness((req.query as { url?: string }).url);
     if (!business) {
       return reply.code(400).send({ error: "a website url is required (e.g. acme.com)" });
     }
+    const plan = await buildDeliverableForBusiness(business, deliverableSiteReader);
+    if (!plan) {
+      return reply.code(502).send({ error: "we could not read that public homepage yet; try the full https url or another site" });
+    }
     reply.hijack();
     writeDeliverableSseHead(reply);
-    await streamDeliverable(business, req, reply, activeStreams);
+    await streamDeliverable(plan, req, reply, activeStreams);
   });
 
   // -------------------------------------------------------------------------------------------------
   // #610 INSTANT DEMO / SANDBOX: the no-signup sandbox's single-shot feed.
   //
-  // The same pure, offline #633 generator as the SSE stream above — but returned as ONE JSON document so
+  // The same read-first #633 generator as the SSE stream above — but returned as ONE JSON document so
   // a standalone public landing page can fetch it with a plain request and run its own paced reveal. A
   // single GET is far more robust than `EventSource` behind a CDN/proxy (e.g. a Vercel preview that
   // buffers or rate-limits SSE), which matters for a prospect's first impression. Still PUBLIC +
-  // UNAUTHENTICATED, deterministic, no DB, no outbound fetch (no SSRF), and no side effects — so nothing
-  // here needs the #13 queue. The URL is UNTRUSTED (#200): `deriveBusiness` parses it structurally and we
-  // only ever emit sanitized text. 400s (never partial/faked output) when the input isn't a web address.
+  // UNAUTHENTICATED, no DB, read-only public fetch, and no side effects — so nothing here needs the #13
+  // queue. The URL is UNTRUSTED (#200): `deriveBusiness` parses it structurally and we only ever emit
+  // sanitized text. 400s when the input is not a web address; 502s when the site cannot be honestly read.
   app.get("/onboarding/deliverable", async (req, reply) => {
     const business = deriveBusiness((req.query as { url?: string }).url);
     if (!business) {
       return reply.code(400).send({ error: "a website url is required (e.g. acme.com)" });
     }
-    return buildDeliverable(business);
+    const plan = await buildDeliverableForBusiness(business, deliverableSiteReader);
+    if (!plan) {
+      return reply.code(502).send({ error: "we could not read that public homepage yet; try the full https url or another site" });
+    }
+    return plan;
   });
 
   // #1289 first-run receipt: signed-in dashboard proof that public start produced durable agent work.
@@ -371,13 +380,13 @@ function deliverableDelayMs(): number {
  * or the server shuts down — the timer is always cleared and the socket always ended exactly once.
  */
 async function streamDeliverable(
-  business: DeliverableBusiness,
+  plan: DeliverablePlan,
   req: FastifyRequest,
   reply: FastifyReply,
   activeStreams: Set<() => void>,
 ): Promise<void> {
   const res = reply.raw;
-  const frames = planToFrames(buildDeliverable(business));
+  const frames = planToFrames(plan);
   const delay = deliverableDelayMs();
 
   let timer: ReturnType<typeof setTimeout> | undefined;
