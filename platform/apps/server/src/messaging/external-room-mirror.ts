@@ -96,6 +96,14 @@ function isLocalPathMarkdownLink(line: string): boolean {
 function isOperationalMirrorLine(line: string): boolean {
   const value = line.trim();
   if (!value) return false;
+  if (/^🤖\s*session\s+[0-9a-f-]+\s+started:/i.test(value)) return true;
+  if (/^reading additional input from stdin\.{0,3}$/i.test(value)) return true;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+(?:ERROR|WARN|INFO)\s+codex_/i.test(value)) {
+    return true;
+  }
+  if (/\bshell snapshot validation failed\b/i.test(value)) return true;
+  if (/\bfailed to install system skills\b/i.test(value)) return true;
+  if (/\/home\/reload\/\.codex\/shell_snapshots\//i.test(value)) return true;
   if (/^✅\s*session completed\s*\(exit\s+\d+\)/i.test(value)) return true;
   if (/^session completed\s*\(exit\s+\d+\)/i.test(value)) return true;
   if (/^receipt left:\s*/i.test(value)) return true;
@@ -108,7 +116,19 @@ function isOperationalMirrorLine(line: string): boolean {
   return false;
 }
 
+function isOperationalMirrorBody(body: string): boolean {
+  const value = body.trim();
+  if (!value) return false;
+  if (/^🤖\s*session\s+[0-9a-f-]+\s+started:/i.test(value)) return true;
+  if (/^reading additional input from stdin\.{0,3}$/i.test(value)) return true;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+(?:ERROR|WARN|INFO)\s+codex_/i.test(value)) {
+    return true;
+  }
+  return false;
+}
+
 function stripOperationalMirrorLines(body: string): string {
+  if (isOperationalMirrorBody(body)) return "";
   return body
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
@@ -226,6 +246,7 @@ export function isExternalRoomDebugChatter(input: {
   source: ExternalRoomMirrorSource;
 }): boolean {
   if (input.source !== "agent_post") return false;
+  if (isOperationalMirrorBody(input.body)) return true;
 
   const contentLines = input.body
     .split(/\r?\n/)
