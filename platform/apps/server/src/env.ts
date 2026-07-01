@@ -6,7 +6,7 @@ import type { SandboxGitSource } from "./runtime/sandbox.js";
 import type { BillingMode } from "./billing/mode.js";
 import { ConfigValidationError } from "./config/loader.js";
 
-/** Environment configuration with local-dev defaults matching docker-compose.yml. */
+/** Environment configuration with local-dev defaults matching docker-compose.yml; production fails closed. */
 export interface Env {
   port: number;
   databaseUrl: string;
@@ -454,6 +454,38 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function flag(value: string | undefined): boolean {
+  return value === "true" || value === "1";
+}
+
+function isProductionPosture(source: NodeJS.ProcessEnv): boolean {
+  return (
+    source.NODE_ENV === "production" ||
+    source.RELOAD_ENV === "production" ||
+    source.VERCEL_ENV === "production" ||
+    source.RELOAD_PROFILE === "prod"
+  );
+}
+
+function prodConfigError(detail: string): never {
+  throw new ConfigValidationError("env", detail);
+}
+
+function devDefault(
+  source: NodeJS.ProcessEnv,
+  key: keyof NodeJS.ProcessEnv,
+  fallback: string,
+  production: boolean,
+  allowFlag: keyof NodeJS.ProcessEnv,
+): string {
+  const value = source[key];
+  if (value) return value;
+  if (production && !flag(source[allowFlag])) {
+    prodConfigError(`${String(key)} must be set in production; ${String(allowFlag)}=1 is required to use the local development fallback`);
+  }
+  return fallback;
+}
+
 function parseHarnessArgs(raw: string | undefined, fallback: string[]): string[] {
   if (!raw) return fallback;
   try {
@@ -472,12 +504,38 @@ function parseHarnessArgs(raw: string | undefined, fallback: string[]): string[]
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const production = isProductionPosture(source);
+  const databaseUrl = devDefault(
+    source,
+    "DATABASE_URL",
+    "postgres://reload:reload@localhost:5433/reload",
+    production,
+    "RELOAD_ALLOW_DEV_DATA_SERVICES_IN_PROD",
+  );
+  const redisUrl = devDefault(
+    source,
+    "REDIS_URL",
+    "redis://localhost:6379",
+    production,
+    "RELOAD_ALLOW_DEV_DATA_SERVICES_IN_PROD",
+  );
+  const deployProvider: DeployProviderKind =
+    source.DEPLOY_PROVIDER === "vercel" ? "vercel" : "dryrun";
+  if (production && deployProvider === "dryrun" && !flag(source.RELOAD_ALLOW_DRYRUN_DEPLOY_IN_PROD)) {
+    prodConfigError("DEPLOY_PROVIDER=vercel is required in production; dryrun deploys require RELOAD_ALLOW_DRYRUN_DEPLOY_IN_PROD=1");
+  }
+  const billingProvider: BillingProviderKind =
+    source.BILLING_PROVIDER === "stripe" ? "stripe" : "none";
+  if (production && billingProvider === "none" && !flag(source.RELOAD_ALLOW_BILLING_NONE_IN_PROD)) {
+    prodConfigError("BILLING_PROVIDER=stripe is required in production; billing-none requires RELOAD_ALLOW_BILLING_NONE_IN_PROD=1");
+  }
+
   return {
     port: Number(source.PORT ?? 3000),
-    databaseUrl: source.DATABASE_URL ?? "postgres://reload:reload@localhost:5433/reload",
+    databaseUrl,
     // #113 worker-concurrency knob: pg pool size per process. Default 10 (the prior hard-coded value).
     databasePoolMax: num(source.DATABASE_POOL_MAX, 10),
-    redisUrl: source.REDIS_URL ?? "redis://localhost:6379",
+    redisUrl,
     publicDogfood: {
       enabledSlugs: list(source.PUBLIC_DOGFOOD_SLUGS),
       limit: num(source.PUBLIC_DOGFOOD_LIMIT, 30),
@@ -491,6 +549,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
       // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
       const harness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
+      if (production && harness === "demo" && !flag(source.RELOAD_ALLOW_DEMO_HARNESS_IN_PROD)) {
+        prodConfigError("AGENT_HARNESS=demo is not allowed in production; set a real harness or RELOAD_ALLOW_DEMO_HARNESS_IN_PROD=1");
+      }
       // Model/provider selection (#52) flows through env Claude Code reads natively (ANTHROPIC_MODEL
       // + provider flags), delivered per-session via the harnessEnv seam — so we no longer bake a
       // static `--model` here. A deployment-wide default ANTHROPIC_MODEL in the process env still
@@ -681,7 +742,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     deploy: {
       // Default `dryrun`: no cloud spend. `vercel` enables the real adapter (lazy SDK load).
-      provider: source.DEPLOY_PROVIDER === "vercel" ? "vercel" : "dryrun",
+      provider: deployProvider,
       // Default 0 (off): the health sweep is opt-in so tests/CI drive `checkHealth()` deterministically.
       monitorIntervalMs: Number(source.DEPLOY_MONITOR_INTERVAL_MS ?? 0) || 0,
     },
@@ -692,7 +753,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     },
     billing: {
       // Default `none`: no network/spend. `stripe` enables the real adapter (lazy SDK load).
-      provider: source.BILLING_PROVIDER === "stripe" ? "stripe" : "none",
+      provider: billingProvider,
       // #481 go-live: only the exact string `live` takes real money — anything else is `test` (fail safe).
       mode: source.BILLING_MODE === "live" ? "live" : "test",
       // Stripe's recommended webhook replay window (seconds).
