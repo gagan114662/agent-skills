@@ -6,7 +6,7 @@ import { StoreProvider } from "./store/StoreContext.js";
 import { fakeRealtime, makeFakeDeps } from "./test/utils.js";
 import { APP_ROUTES, navigate } from "./routing.js";
 import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
-import { PRICING } from "./brand.js";
+import { EVERYDAY, PRICING } from "./brand.js";
 
 const unauthorized = () => {
   throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -30,7 +30,7 @@ describe("App root routing", () => {
     );
 
     expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
   });
 
   it("shows the marketing-icon front door at / for signed-in visitors too", async () => {
@@ -46,7 +46,7 @@ describe("App root routing", () => {
     expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.getByText("brief")).toBeInTheDocument();
     expect(screen.getByText("ICP folder")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
   });
 
   it("keeps /welcome on the same marketing-icon front door", async () => {
@@ -62,10 +62,10 @@ describe("App root routing", () => {
 
     expect(await screen.findByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.getByText("customer")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
   });
 
-  it("keeps /everyday as the direct signed-in iMessage agent room", async () => {
+  it("keeps /everyday as the direct signed-in Telegram agent room", async () => {
     navigate("/everyday");
     const { deps } = makeFakeDeps();
     const store = createStore({ api: deps.api, realtime: fakeRealtime() });
@@ -76,7 +76,7 @@ describe("App root routing", () => {
       </StoreProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "iMessage room" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: EVERYDAY.room.heading })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /what are we marketing/i })).toBeInTheDocument();
   });
 
@@ -160,7 +160,7 @@ describe("App root routing", () => {
     expect(screen.getByText("404")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", APP_ROUTES.home);
     expect(screen.getByRole("link", { name: "Start" })).toHaveAttribute("href", "/start");
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "CMO brief" })).not.toBeInTheDocument();
   });
 
@@ -195,7 +195,7 @@ describe("App root routing", () => {
       "href",
       TELEGRAM_BOT_URL,
     );
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("sample readout")).toBeInTheDocument();
     expect(screen.getByText("leads found")).toBeInTheDocument();
@@ -224,7 +224,7 @@ describe("App root routing", () => {
     expect(dashboard).toHaveAttribute("id", "dashboard");
     expect(screen.getByRole("heading", { name: "CMO brief", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "homepage actions" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: EVERYDAY.room.heading })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Connect accounts" })).not.toBeInTheDocument();
     expect(screen.getByText("live workspace")).toBeInTheDocument();
     expect(screen.getByText(/no prospect source connected/i)).toBeInTheDocument();

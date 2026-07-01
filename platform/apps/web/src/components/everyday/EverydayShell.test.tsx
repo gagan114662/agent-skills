@@ -103,7 +103,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).queryByText(/Codex/i)).not.toBeInTheDocument();
   });
 
-  it("hides raw shell/tool invocations from the user-facing iMessage room (#1463)", () => {
+  it("hides raw shell/tool invocations from the user-facing Telegram room (#1463)", () => {
     render(
       <EverydayShell
         data={emptyData({
@@ -121,6 +121,13 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
               agent: "gagan",
               at: "now",
               text: `/bin/sh -lc "node -e fetch('https://ipop.ai/').then(r=>r.text())"`,
+            },
+            {
+              id: "leaked-runtime-status",
+              kind: "agent-line",
+              agent: "Quill",
+              at: "now",
+              text: "✅ session completed (exit 0)",
             },
             {
               id: "leaked-deliverable",
@@ -142,13 +149,14 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).queryByText(/\/bin\/sh -lc/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/node -e/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/ipop_homepage_clarity_receipt\.md/i)).not.toBeInTheDocument();
-    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(3);
+    expect(within(room).queryByText(/session completed/i)).not.toBeInTheDocument();
+    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(4);
   });
 
   it("starts the room from one input and lets the user chat into the room", async () => {
     const onStartRoom = vi.fn(async () => undefined);
     render(<EverydayShell data={emptyData()} onStartRoom={onStartRoom} />);
-    expect(screen.getByText(EVERYDAY.room.imessageNotes.setupNeeded)).toBeInTheDocument();
+    expect(screen.getByText(EVERYDAY.room.telegramNotes.setupNeeded)).toBeInTheDocument();
     expect(screen.queryByText(/Until the native relay is live/i)).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: EVERYDAY.prompt }), {
       target: { value: "ipop.ai" },
@@ -343,7 +351,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(onConnectorConnect).toHaveBeenCalledWith("telegram_room");
   });
 
-  it("shows all room visibility lanes without pretending external transports are live", () => {
+  it("shows all room visibility lanes without pretending unproven transports are connected", () => {
     const onConnectorConnect = vi.fn();
     render(<EverydayShell data={seedEveryday()} onConnectorConnect={onConnectorConnect} />);
     const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
@@ -354,7 +362,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(setup).getByText("iMessage")).toBeInTheDocument();
     expect(within(setup).getByText("WhatsApp room")).toBeInTheDocument();
     expect(within(setup).getByText("Telegram room")).toBeInTheDocument();
-    expect(within(setup).getAllByText("notify me").length).toBeGreaterThanOrEqual(2);
+    expect(within(setup).getByRole("button", { name: "Connect Telegram room" })).toBeInTheDocument();
+    expect(within(setup).getAllByText("notify me").length).toBeGreaterThanOrEqual(1);
     expect(within(setup).getByText("Gmail")).toBeInTheDocument();
     expect(within(setup).getByText("gagan@getfoolish.com")).toBeInTheDocument();
     expect(within(setup).getByText(EVERYDAY.connectors.connected)).toBeInTheDocument();

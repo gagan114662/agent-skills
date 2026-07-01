@@ -258,8 +258,8 @@ describe("LiveEverydayShell (#1181)", () => {
         await store.bootstrap();
       });
 
-      expect(await screen.findByText("Telegram room")).toBeInTheDocument();
-      fireEvent.click(await screen.findByRole("button", { name: "connect" }));
+      expect(await screen.findByRole("heading", { name: EVERYDAY.room.heading })).toBeInTheDocument();
+      fireEvent.click((await screen.findAllByRole("button", { name: "Connect Telegram room" }))[0]!);
 
       await waitFor(() =>
         expect(assign).toHaveBeenCalledWith("https://t.me/ipopmarketingbot?start=telegram-start-code"),
@@ -515,7 +515,7 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
-    expect(screen.getByText(/recipient verified; relay cannot send through Messages yet/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/recipient verified; relay cannot send through Messages yet/i).length).toBeGreaterThan(0);
     expect(screen.getByText("Mac relay host active, but Messages send access is blocked: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.queryByText(/live relay verified for gagan@example.com/i)).not.toBeInTheDocument();
   });
@@ -604,7 +604,7 @@ describe("LiveEverydayShell (#1181)", () => {
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai"));
     await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
     expect(await screen.findByText(/Team started in the web room/i)).toBeInTheDocument();
-    expect(screen.getByText(/iMessage, WhatsApp, and Telegram mirror/i)).toBeInTheDocument();
+    expect(screen.getByText(/Telegram, iMessage, and WhatsApp mirror/i)).toBeInTheDocument();
     expect(screen.queryByText("iMessage relay is not configured for this workspace yet.")).not.toBeInTheDocument();
   });
 
@@ -837,7 +837,7 @@ describe("LiveEverydayShell (#1181)", () => {
       expect(save).toHaveBeenCalledWith({ recipient: "GAGAN@Example.COM", serviceName: undefined }),
     );
     expect(await screen.findByText(EVERYDAY.connectors.imessage.pending)).toBeInTheDocument();
-    expect(screen.getByText(/gagan@example.com/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/gagan@example.com/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.test }));
 
@@ -921,7 +921,7 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
-    expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/recipient verified; relay is dry-run/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();

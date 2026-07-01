@@ -1719,16 +1719,22 @@ export const EVERYDAY = {
 
   /** The visible cowork room: multiple agents working together, with an operator lane. */
   room: {
-    heading: "iMessage room",
-    subhead: "your marketing team, texting the work as it happens.",
+    heading: "Telegram room",
+    subhead: "your marketing team working in Telegram, with web receipts here.",
     empty: "type a domain or goal and we'll wake the room up.",
     chatLabel: "text your ipop team",
     codexBadge: "team engine active",
+    telegramNotes: {
+      ready: "Telegram loop proven. The team can text receipts, replies, approvals, and agent updates through this room.",
+      bindNeeded: "Telegram is ready to bind. Open @ipopmarketingbot, press Start, and this workspace becomes the team room.",
+      setupNeeded: "Telegram is the first chat bridge. Connect the bot before claiming a live messaging room.",
+      blocked: "Telegram cannot run yet. Provider proof is missing, so the web room stays the honest ledger.",
+    },
     imessageNotes: {
       ready: "Messages loop proven. Your team can text receipts, replies, approvals, and agent updates through iMessage.",
       replyNeeded: "Messages can send the room. Reply once from iMessage and we'll mark the full loop proven.",
-      relayBlocked: "Messages is not live yet. The web room stays honest until the Mac relay proves send and reply access.",
-      setupNeeded: "Add your iMessage destination to move this room from web-only to Messages.",
+      relayBlocked: "iMessage is still relay-gated. Telegram stays first while the Mac relay proves send and reply access.",
+      setupNeeded: "Connect Telegram first; add iMessage later when the Mac relay is proven.",
     },
     statuses: {
       idle: "waiting",
@@ -1754,7 +1760,7 @@ export const EVERYDAY = {
   /** Tomo-style first-run connectors: visible, grouped, and honest about what is connected. */
   connectors: {
     heading: "Room visibility",
-    subhead: "web room today, external chat bridges only when verified. no fake green ticks.",
+    subhead: "Telegram first, web receipts always, other bridges only when verified. no fake green ticks.",
     connect: "connect",
     connected: "connected",
     pending: "verify",

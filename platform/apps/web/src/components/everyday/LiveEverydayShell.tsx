@@ -491,7 +491,9 @@ function connectorFromConnection(
           : "test needed before agents can relay to " + imessageRecipient.recipient
         : connection.summary,
     actionLabel:
-      connection.id === "imessage"
+      connection.id === "telegram_room"
+        ? connection.label
+        : connection.id === "imessage"
         ? "set up iMessage"
         : connection.status === "coming_soon"
           ? "notify me"
@@ -681,7 +683,7 @@ async function launchCodexRoomRun(
   goal: string,
 ): Promise<EverydayRoomLaunchResult> {
   const channelId = state.activeChannelId;
-  if (!channelId) throw new Error("Open a workspace channel before starting the iMessage room.");
+  if (!channelId) throw new Error("Open a workspace channel before starting the team room.");
   const codex = await api.getCodexStatus();
   if (!codex.connected) {
     throw new Error(
@@ -734,7 +736,7 @@ async function startCanonicalRoomMessage(
   return {
     message,
     notices: [
-      "Team started in the web room. iMessage, WhatsApp, and Telegram mirror the thread only after their verified bridge is connected.",
+      "Team started in the web room. Telegram, iMessage, and WhatsApp mirror the thread only after their verified bridge is connected.",
     ],
   };
 }

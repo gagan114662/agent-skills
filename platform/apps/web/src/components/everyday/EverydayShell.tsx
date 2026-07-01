@@ -71,6 +71,8 @@ function AgentChip({ name }: { name: string }): React.JSX.Element {
 
 const INTERNAL_TOOL_COMMAND_RE =
   /^(?:(?:\/usr\/bin\/|\/bin\/)?(?:sh|bash|zsh)\s+-lc\b|(?:sed|cat|awk|grep|rg|find|curl|gh|git|pnpm|npm|yarn|node|tsx|python3?|flyctl|vercel)\b)/i;
+const INTERNAL_RUNTIME_STATUS_RE =
+  /^(?:[^\w\s]+\s*)?(?:session completed\s*\(exit\s+\d+\)|script completed|script running with cell id|process exited\b)/i;
 
 function firstCustomerVisibleLine(text: string): string {
   return (
@@ -83,7 +85,7 @@ function firstCustomerVisibleLine(text: string): string {
 
 function looksLikeInternalToolActivity(text: string): boolean {
   const firstLine = firstCustomerVisibleLine(text).replace(/^\$\s*/, "");
-  return INTERNAL_TOOL_COMMAND_RE.test(firstLine);
+  return INTERNAL_TOOL_COMMAND_RE.test(firstLine) || INTERNAL_RUNTIME_STATUS_RE.test(firstLine);
 }
 
 function customerVisibleAgentText(text: string): string {
@@ -179,6 +181,7 @@ function GroupChatHero({
   onSubmit,
   operatorPacket,
   imessageStatus,
+  connectors,
 }: {
   greeting: string;
   lanes: readonly AgentLane[];
@@ -187,10 +190,11 @@ function GroupChatHero({
   onSubmit: (goal: string) => void;
   operatorPacket?: string | null;
   imessageStatus?: IMessageStatusResponse | null;
+  connectors: readonly EverydayConnector[];
 }): React.JSX.Element {
   const preview = chatPreviewFrom({ entries: thread, lanes, memberName });
   const packetCopy = EVERYDAY.codexLane;
-  const imessageNote = roomIMessageNote(imessageStatus);
+  const channelNote = roomChannelNote(connectors, imessageStatus);
   return (
     <header className="everyday-hero">
       <div className="everyday-hero__brief">
@@ -203,7 +207,7 @@ function GroupChatHero({
           <div>
             <h2 className="everyday-serif everyday-chat__title">{EVERYDAY.room.heading}</h2>
             <p className="everyday-chat__subhead">{EVERYDAY.room.subhead}</p>
-            <p className="everyday-imessage__note">{imessageNote}</p>
+            <p className="everyday-imessage__note">{channelNote}</p>
           </div>
           <div className="everyday-chat__avatars" aria-label="agents in the room">
             {lanes.slice(0, 5).map((lane) => (
@@ -263,6 +267,25 @@ function GroupChatHero({
       </section>
     </header>
   );
+}
+
+function roomChannelNote(
+  connectors: readonly EverydayConnector[],
+  imessageStatus?: IMessageStatusResponse | null,
+): string {
+  const telegram = connectors.find((connector) => connector.id === "telegram_room" || /telegram/i.test(connector.name));
+  const copy = EVERYDAY.room.telegramNotes;
+  if (!telegram) {
+    if (imessageStatus?.memberRecipient || imessageStatus?.relay?.roomStartReady || imessageStatus?.lastInboundReceipt) {
+      return roomIMessageNote(imessageStatus);
+    }
+    return copy.setupNeeded;
+  }
+  if (telegram.status === "connected") return copy.ready;
+  if (telegram.status === "available" || telegram.status === "pending") return copy.bindNeeded;
+  if (telegram.status === "blocked") return copy.blocked;
+  if (telegram.status === "coming_soon") return copy.setupNeeded;
+  return roomIMessageNote(imessageStatus);
 }
 
 function roomIMessageNote(status?: IMessageStatusResponse | null): string {
@@ -1680,6 +1703,7 @@ export function EverydayShell({
               onSubmit={startRoom}
               operatorPacket={operatorPacket}
               imessageStatus={imessageStatus}
+              connectors={data.connectors}
             />
             {!dashboardFirst && (
               <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />

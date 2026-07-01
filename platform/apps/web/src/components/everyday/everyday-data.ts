@@ -375,7 +375,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         agent: "Echo",
         role: "Distribution",
         status: "blocked",
-        task: "Found warm channels; waiting for send approval before anything leaves Messages.",
+        task: "Found warm channels; waiting for send approval before anything leaves Telegram.",
       },
       {
         id: "lens",
@@ -402,11 +402,19 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         actionLabel: "connect",
       },
       {
+        id: "telegram_room",
+        group: "visibility",
+        name: "Telegram room",
+        status: "available",
+        detail: "open @ipopmarketingbot and press Start so this workspace can bind the live team room.",
+        actionLabel: "Connect Telegram room",
+      },
+      {
         id: "imessage",
         group: "visibility",
         name: "iMessage",
         status: "coming_soon",
-        detail: "the primary home for agent work visibility once the Apple Messages relay is production-ready.",
+        detail: "Apple Messages stays behind the Mac relay proof gate; do not treat it as live yet.",
         actionLabel: "set up iMessage",
       },
       {
@@ -415,14 +423,6 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         name: "WhatsApp room",
         status: "coming_soon",
         detail: "requires a verified WhatsApp sender and signed webhook loop before agents can use it.",
-        actionLabel: "notify me",
-      },
-      {
-        id: "telegram_room",
-        group: "visibility",
-        name: "Telegram room",
-        status: "coming_soon",
-        detail: "requires a verified bot and signed webhook loop before agents can use it.",
         actionLabel: "notify me",
       },
       {
@@ -710,7 +710,7 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
         { label: "work shipped today", value: "3", detail: "public product fixes, not customer outcomes", tone: "warn", proof: "PR #1276, PR #1277, dashboard receipt" },
         { label: "pipeline moved", value: "0", detail: "no external leads qualified or contacted", tone: "bad", proof: "zero prospect/customer receipts" },
         { label: "approvals waiting", value: "2", detail: "owner must choose first channel and success bar", tone: "warn", proof: "public CMO brief decisions" },
-        { label: "blocked channels", value: "3", detail: "iMessage, outbound, connectors need live proof", tone: "bad", proof: "GitHub #1283/#1285/#1286" },
+        { label: "blocked channels", value: "3", detail: "Telegram binding, iMessage, and outbound still need live proof", tone: "bad", proof: "GitHub #1267/#1283/#395" },
       ],
       sinceLastCheckIn: [
         { title: "Homepage serves the simplified marketing-door flow", owner: "Scout", proof: "production / route receipt" },
@@ -777,12 +777,12 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
           next: "instrument starts, signups, and activation",
         },
         {
-          source: "iMessage room",
-          status: "preview only",
+          source: "Telegram room",
+          status: "bind + smoke required",
           pipeline: "0 usable conversations",
           conversion: "blocked",
           spend: "$0",
-          next: "ship real inbound/outbound relay",
+          next: "bind the bot, send the room, reply from Telegram, and record proof",
         },
         {
           source: "outbound",
@@ -795,11 +795,11 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
       ],
       blockers: [
         { title: "Signed-in team-engine runtime proof", owner: "Operator", proof: "GitHub #1282" },
-        { title: "iMessage is not a real group room yet", owner: "Echo", proof: "GitHub #1283" },
+        { title: "Telegram needs bound-chat send/reply proof", owner: "Echo", proof: "GitHub #1267" },
         { title: "Connectors can look green without provider proof", owner: "Scout", proof: "GitHub #1284" },
       ],
       decisions: [
-        { title: "Pick the first real acquisition channel to prove", owner: "You", proof: "iMessage, Gmail, or one outreach provider" },
+        { title: "Pick the first real acquisition channel to prove", owner: "You", proof: "Telegram, Gmail, or one outreach provider" },
         { title: "Approve one measurable success bar", owner: "You", proof: "e.g. 10 activated trial teams in 30 days" },
       ],
       nextActions: [
@@ -880,11 +880,19 @@ export function defaultConnectors(): readonly EverydayConnector[] {
       actionLabel: "connect",
     },
     {
+      id: "telegram_room",
+      group: "visibility",
+      name: "Telegram room",
+      status: "available",
+      detail: "open @ipopmarketingbot and press Start so this workspace can bind the live team room.",
+      actionLabel: "Connect Telegram room",
+    },
+    {
       id: "imessage",
       group: "visibility",
       name: "iMessage",
       status: "coming_soon",
-      detail: "the primary home for agent work visibility once the Apple Messages relay is production-ready.",
+      detail: "Apple Messages stays behind the Mac relay proof gate; do not treat it as live yet.",
       actionLabel: "set up iMessage",
     },
     {
@@ -893,14 +901,6 @@ export function defaultConnectors(): readonly EverydayConnector[] {
       name: "WhatsApp room",
       status: "coming_soon",
       detail: "requires a verified WhatsApp sender and signed webhook loop before agents can use it.",
-      actionLabel: "notify me",
-    },
-    {
-      id: "telegram_room",
-      group: "visibility",
-      name: "Telegram room",
-      status: "coming_soon",
-      detail: "requires a verified bot and signed webhook loop before agents can use it.",
       actionLabel: "notify me",
     },
     {

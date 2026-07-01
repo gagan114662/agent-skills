@@ -197,7 +197,7 @@ function StaticAuthPage({ mode }: { mode: "login" | "signup" }): React.JSX.Eleme
         <section className="auth-message__copy" aria-label="messaging setup">
           <p className="auth-message__eyebrow">messaging setup</p>
           <h1>{isSignup ? "Create your agent room" : "Sign in to your agent room"}</h1>
-          <p>Continue iMessage, WhatsApp, and Telegram room setup after this.</p>
+          <p>Continue Telegram room setup after this; iMessage and WhatsApp stay proof-gated.</p>
         </section>
       <form className="auth__card auth__card--message">
         <h2 className="auth__headline">{isSignup ? "Start here" : "Welcome back"}</h2>
