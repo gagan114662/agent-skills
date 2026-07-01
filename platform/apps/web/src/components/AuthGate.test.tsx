@@ -183,9 +183,10 @@ describe("AuthGate routing", () => {
 
     expect(await screen.findByText(/marketing team in your messages/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /marketing work preview/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open telegram/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /imessage/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /whatsapp/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /telegram/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /telegram live bot room/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/what are we marketing today/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();

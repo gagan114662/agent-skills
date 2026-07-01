@@ -91,6 +91,8 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
     expect(home.html).toContain("Make marketing pop.");
     expect(home.html).toContain("what are we marketing today?");
+    expect(home.html).toContain("Open Telegram");
+    expect(home.html).toContain("https://t.me/ipopmarketingbot");
     expect(home.html).toContain("marketing team in your messages");
     expect(home.html).toContain("marketing work preview");
     expect(home.html).not.toContain("Start free");
@@ -140,7 +142,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
 
     expect(page.title).toContain(urlPath === "/start" ? "Start" : "Welcome");
     expect(page.description).toContain(
-      urlPath === "/start" ? "Scout reads your site" : "connect your tools",
+      urlPath === "/start" ? "live Telegram room" : "Choose Telegram",
     );
     expect(page.html).toContain("what are we marketing today?");
     expect(page.html).toBe(home.html);
@@ -182,7 +184,7 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(byPath("/demo")!.title).toMatch(/^Live demo\b/);
     expect(byPath("/demo")!.description).toContain("website");
     expect(byPath("/welcome")!.title).toMatch(/^Welcome\b/);
-    expect(byPath("/welcome")!.description).toContain("connect your tools");
+    expect(byPath("/welcome")!.description).toContain("Choose Telegram");
   });
 
   it.each([

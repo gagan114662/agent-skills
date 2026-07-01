@@ -24,6 +24,12 @@ import { ONBOARD_COPY, greeting } from "./copy.js";
 import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
 import { PublicDoorNav } from "./PublicDoorNav.js";
 import {
+  TELEGRAM_BOT_URL,
+  messagingChannelCta,
+  messagingChannelUrl,
+  type MessagingChannelKey,
+} from "./messaging-entry.js";
+import {
   createDefaultProvider,
   OnboardingReadError,
   type ConnectResult,
@@ -49,8 +55,6 @@ const CONNECTORS: readonly { tool: ConnectTool; copy: ConnectorCopy }[] = [
   { tool: "social", copy: ONBOARD_COPY.connect.social },
   { tool: "site", copy: ONBOARD_COPY.connect.site },
 ];
-
-const NATIVE_IMESSAGE_URL = "imessage://";
 
 const FOOTER_TRUST_LINKS = [
   { href: "/demo", label: "Demo" },
@@ -180,11 +184,11 @@ export interface OnboardingExperienceProps {
    */
   startGoogleAuth?: (input: string) => void | Promise<void>;
   /**
-   * The public product experience is iMessage/workspace-first. Tests and connector-specific demos can still
+   * The public product experience is Telegram/workspace-first. Tests and connector-specific demos can still
    * force the older guided connector walk-through so those real-connection seams stay covered.
    */
   connectMode?: "workspace" | "guided";
-  /** Opens the workspace/iMessage room after the first site-read result. */
+  /** Opens the workspace messaging room after the first site-read result. */
   onOpenWorkspace?: (target: string) => void;
 }
 
@@ -294,10 +298,14 @@ const MARKETING_ICON_ROW = [
   { key: "receipt", label: "receipt", detail: "proof saved" },
 ] as const;
 
-const MESSAGING_CHANNELS = [
-  { key: "imessage", label: "iMessage", detail: "personal room" },
+const MESSAGING_CHANNELS: readonly {
+  key: MessagingChannelKey;
+  label: string;
+  detail: string;
+}[] = [
+  { key: "telegram", label: "Telegram", detail: "live bot room" },
+  { key: "imessage", label: "iMessage", detail: "native room" },
   { key: "whatsapp", label: "WhatsApp", detail: "team thread" },
-  { key: "telegram", label: "Telegram", detail: "bot room" },
 ] as const;
 
 function MarketingIconRow(): React.JSX.Element {
@@ -321,8 +329,8 @@ function MessagingChannelRail({
   selected,
   onSelect,
 }: {
-  selected: string;
-  onSelect: (channel: string) => void;
+  selected: MessagingChannelKey;
+  onSelect: (channel: MessagingChannelKey) => void;
 }): React.JSX.Element {
   return (
     <section className="onboard-message-channels" aria-label="messaging channels">
@@ -366,7 +374,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const [phase, setPhase] = useState<Phase>("door");
   const [input, setInput] = useState("");
   const [doorError, setDoorError] = useState<string | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<string>("imessage");
+  const [selectedChannel, setSelectedChannel] = useState<MessagingChannelKey>("telegram");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [finding, setFinding] = useState<SiteFinding | null>(null);
@@ -404,8 +412,17 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
     [provider],
   );
 
+  const openSelectedMessagingChannel = useCallback((): void => {
+    window.location.assign(messagingChannelUrl(selectedChannel));
+  }, [selectedChannel]);
+
   const onDoorSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
+    if (connectMode === "workspace") {
+      setDoorError(null);
+      openSelectedMessagingChannel();
+      return;
+    }
     const value = input.trim();
     if (value === "") {
       setDoorError(ONBOARD_COPY.door.needInput);
@@ -486,7 +503,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
         <span className="onboard-sunscape__ray onboard-sunscape__ray--three" />
         <span className="onboard-sunscape__sun" />
       </div>
-      <PublicDoorNav />
+      <PublicDoorNav startHref={TELEGRAM_BOT_URL} />
       <div className="onboard__inner">
         <main className="onboard__primary">
           {/* ---- 1. the door ------------------------------------------------------------------ */}
@@ -518,7 +535,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   aria-describedby={doorError ? "onboard-door-error" : undefined}
                 />
                 <button className="onboard-cta" type="submit">
-                  {ONBOARD_COPY.door.submit}
+                  {connectMode === "workspace" ? messagingChannelCta(selectedChannel) : ONBOARD_COPY.door.submit}
                 </button>
               </div>
               {doorError && (
@@ -586,7 +603,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   ) : (
                     <a
                       className="onboard-cta onboard-cta--ghost"
-                      href={NATIVE_IMESSAGE_URL}
+                      href={TELEGRAM_BOT_URL}
                       onClick={(event) => {
                         if (!onOpenWorkspace) return;
                         event.preventDefault();

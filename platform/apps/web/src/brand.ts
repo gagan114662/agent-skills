@@ -2730,13 +2730,14 @@ export const PAGE_SEO = {
   "/start": {
     name: "Start",
     title: `Start your AI marketing team — ${BRAND.name}`,
-    description: ONBOARDING.sub,
+    description:
+      "Open the live Telegram room and text your AI marketing team what to market next.",
   },
   "/welcome": {
     name: "Welcome",
     title: `Welcome — build with your AI marketing team`,
     description:
-      "Tell ipop what you are marketing, then connect your tools one at a time and watch the team build a real first deliverable.",
+      "Choose Telegram from the public door and start the AI marketing team where you already message.",
   },
   "/demo": {
     name: "Live demo",

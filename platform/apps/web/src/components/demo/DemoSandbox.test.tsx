@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ACQUISITION_EVENT_TARGET } from "../../acquisition-events.js";
 import { DemoSandbox } from "./DemoSandbox.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import type { DemoDeliverableDto, FetchLike } from "../../api/demo.js";
 
 /**
@@ -71,7 +72,7 @@ describe("DemoSandbox (#610)", () => {
     );
     expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute(
       "href",
-      "/start#onboard-target",
+      TELEGRAM_BOT_URL,
     );
     const footer = screen.getByRole("navigation", { name: "Public footer" });
     expect(within(footer).getByRole("link", { name: "Demo" })).toHaveAttribute("href", "/demo");

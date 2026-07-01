@@ -10,7 +10,7 @@ function message(input: Partial<Message> = {}): Message {
     authorMemberId: input.authorMemberId ?? "agent-1",
     parentMessageId: input.parentMessageId ?? "m1",
     alsoSentToChannel: input.alsoSentToChannel ?? false,
-    body: input.body ?? "Drafting the launch angle",
+    body: input.body ?? "deliverable preview: Launch angle is ready",
   };
 }
 
@@ -64,7 +64,7 @@ describe("iMessage room mirror (#1283)", () => {
         recipient: "+15551112222",
         serviceName: "E:owner@example.com",
         receipt: "imessage:c1:m2",
-        body: expect.stringMatching(/author: Quill[\s\S]*Drafting the launch angle/),
+        body: expect.stringMatching(/author: Quill[\s\S]*deliverable preview: Launch angle is ready/),
       }),
     );
   });

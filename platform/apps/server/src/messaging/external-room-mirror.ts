@@ -127,6 +127,33 @@ function isOperationalMirrorBody(body: string): boolean {
   return false;
 }
 
+function isCustomerValuableAgentBody(body: string): boolean {
+  const value = body.replace(/\s+/g, " ").trim();
+  if (!value) return false;
+  return /\b(preview|deliverable|approval request|pending approval|blocked|handoff)\b/i.test(value);
+}
+
+function isLowValueAgentProgressBody(body: string): boolean {
+  if (isCustomerValuableAgentBody(body)) return false;
+  const value = body.replace(/\s+/g, " ").trim();
+  if (!value) return true;
+  if (
+    /^(?:and\s+)?(?:i['’]?ll|i will)\b/i.test(value) &&
+    /\b(?:write|draft|make|read|inspect|check|look|handle|treat|use|leave|avoid|keep|start|work)\b/i.test(value)
+  ) {
+    return true;
+  }
+  if (/^(?:drafting|writing|making|checking|reading|inspecting|looking|handling|working|ready to)\b/i.test(value)) {
+    return true;
+  }
+  if (/^(?:right,?\s*)?i\s+(?:read|checked|looked at)\b.*\bfound something\b/i.test(value)) return true;
+  if (/\b(?:found something|the good ones|tastefully loud)\b/i.test(value)) return true;
+  if (/\b(?:empty workspace|workspace looks empty|local note|receipt file|room\/brief artifacts|source of truth and checking|execution-only actions behind approval)\b/i.test(value)) {
+    return true;
+  }
+  return false;
+}
+
 function stripOperationalMirrorLines(body: string): string {
   if (isOperationalMirrorBody(body)) return "";
   return body
@@ -223,8 +250,7 @@ export function formatExternalRoomEvent(input: {
     return {
       type,
       text:
-        "approval request: " +
-        body +
+        labelExternalRoomBody("approval request", body) +
         "\nReply YES approval <id> because ... or NO approval <id> because ...",
     };
   }
@@ -238,7 +264,12 @@ export function formatExternalRoomEvent(input: {
     blocked: "blocked",
   };
   const label = labels[type];
-  return { type, text: label ? label + ": " + body : body };
+  return { type, text: label ? labelExternalRoomBody(label, body) : body };
+}
+
+function labelExternalRoomBody(label: string, body: string): string {
+  const value = body.trim();
+  return value.toLowerCase().startsWith(label.toLowerCase() + ":") ? value : label + ": " + value;
 }
 
 export function isExternalRoomDebugChatter(input: {
@@ -246,6 +277,9 @@ export function isExternalRoomDebugChatter(input: {
   source: ExternalRoomMirrorSource;
 }): boolean {
   if (input.source !== "agent_post") return false;
+  const teamEvent = tryParseTeamEvent(input.body);
+  if (teamEvent?.kind === "started") return true;
+  if (teamEvent?.kind === "milestone" && !isCustomerValuableAgentBody(teamEvent.summary)) return true;
   if (isOperationalMirrorBody(input.body)) return true;
 
   const contentLines = input.body
@@ -259,6 +293,7 @@ export function isExternalRoomDebugChatter(input: {
 
   const body = (stripped || input.body).replace(/\s+/g, " ").trim();
   if (!body) return true;
+  if (isLowValueAgentProgressBody(body)) return true;
   if (body.startsWith(TOOL_MARKER)) return true;
   if (/^(?:tool(?: call| use| result)?|command_execution|file_change)\b[:\s-]*/i.test(body)) return true;
   if (/(?:^|\s)\/bin\/(?:sh|bash)\s+-lc\b/.test(body)) return true;
